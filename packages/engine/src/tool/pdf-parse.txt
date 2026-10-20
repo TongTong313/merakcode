@@ -1,0 +1,36 @@
+Parse and extract content from PDF files with smart per-page routing.
+
+This is a lightweight PDF routing tool that:
+- Extracts text directly from pages that have a text layer.
+- Detects pages with images or table/layout structures.
+- Renders visual pages to PNG attachments when vision is needed.
+
+It does not perform OCR itself. Image-only and mixed pages require a model with image input support.
+
+Modes:
+- "auto" (default): per-page smart classification.
+  - text pages: extracted directly.
+  - image pages: rendered as PNG attachments.
+  - mixed pages: text extracted and the page rendered as a PNG attachment.
+  - table/layout pages: text extracted and the page rendered as a PNG attachment.
+- "text": force text-only extraction.
+- "vision": render all requested pages as PNG attachments and skip page classification.
+
+Usage:
+1. Call pdf_parse with a file path and page range.
+2. Text content appears directly in the output.
+3. Pages flagged "Vision Suggested" are attached as rendered PNG images.
+
+Parameters:
+- filePath: absolute path to the PDF. Relative paths resolve against the project directory.
+- pages: range like "1-10", "5,8-12". Default "1-10". Max 20 pages per call.
+- mode: "auto", "text", or "vision". Default "auto".
+- maxCharsPerPage: output limit per page, 500-30000. Default 6000.
+
+Tips:
+- For a quick overview of the first 10 pages, use `read` on the PDF.
+- Use this tool directly for finer control: specify a page range or mode.
+- Use "text" for known text-heavy PDFs.
+- Use "vision" for scanned documents.
+- Process large PDFs in chunks of 10-20 pages.
+- Vision rendering uses the bundled PDF parser plus @napi-rs/canvas; the canvas library is downloaded automatically the first time vision mode is used.

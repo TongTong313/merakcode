@@ -1,0 +1,19 @@
+Use this tool when you have completed the planning phase and are ready to leave plan mode.
+
+This tool will ask the user to approve the plan and switch back to the mode they were in before, so you can start implementing it.
+
+Call this tool:
+- After you have written a complete plan to the plan file
+- After you have clarified any questions with the user
+- When you are confident the plan is ready for implementation
+- When the user asks to implement or execute the plan — including phrases like
+  「开始执行」「开始实施」「执行方案」「实现方案」「切换到 build」,
+  "execute the plan", "start implementing", or "switch to build"
+
+Do NOT call this tool:
+- Before you have created or finalized the plan
+- If you still have unanswered questions about the implementation
+- If the user has indicated they want to continue planning
+
+IMPORTANT: While still in plan mode you MUST NOT edit project files.
+If the user wants to start implementing, call plan_exit first and wait for approval.

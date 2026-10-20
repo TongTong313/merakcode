@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@merakcode/desktop",
+  "productName": "MerakCode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MerakCode desktop app (Electron main process)",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "node --import ../../../script/node/register.mjs script/build.ts",
+    "dev": "node --import ../../../script/node/register.mjs script/dev.ts",
+    "package": "node --import ../../../script/node/register.mjs script/package.ts",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@merakcode/log": "workspace:*",
+    "@merakcode/sdk": "workspace:*",
+    "@merakcode/util": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@zip.js/zip.js": "2.24.0",
+    "yaml": "2.9.1",
+    "@types/node": "catalog:",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "electron-updater": "6.8.9",
+    "esbuild": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "apps/desktop/main"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

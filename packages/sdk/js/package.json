@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@merakcode/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p examples",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
+    "./errors": "./src/errors.ts",
+    "./store": "./src/store/index.ts",
+    "./process": "./src/process/index.ts",
+    "./plugin": "./src/plugin/index.ts",
+    "./transcript": "./src/transcript/index.ts"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@merakcode/util": "workspace:*",
+    "@tsconfig/node26": "catalog:",
+    "@types/node": "catalog:",
+    "esbuild": "catalog:",
+    "typescript": "6.0.3",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "undici": "catalog:",
+    "zod": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "packages/sdk/js"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

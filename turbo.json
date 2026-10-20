@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalEnv": ["CI"],
+  "globalPassThroughEnv": ["CI"],
+  "tasks": {
+    "typecheck": { "dependsOn": ["transit"] },
+    "transit": { "dependsOn": ["^transit"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    }
+  }
+}

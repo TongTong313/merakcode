@@ -1,0 +1,224 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds everything, creates a draft GitHub release and publishes to npm.
+# Running it by hand builds everything as a dry run (no release, no npm) unless dry-run is switched off.
+# A maintainer then tries the installers from the draft and publishes it.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Build only; do not create the release or publish to npm
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 26.12.0
+  PNPM_VERSION: 12.14.0
+
+jobs:
+  verify:
+    name: Verify version and checks
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: version
+        name: Tag and package versions match
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the package version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - run: pnpm check
+
+  cli:
+    name: Command-line packages
+    needs: verify
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/cli run build --archive
+      - run: pnpm --dir apps/cli run pack:npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-dist
+          path: apps/cli/dist
+          retention-days: 7
+
+  smoke:
+    name: Smoke test (${{ matrix.platform }})
+    needs: cli
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, platform: linux-x64, archive: tar.gz }
+          - { os: macos-latest, platform: darwin-arm64, archive: tar.gz }
+          - { os: windows-latest, platform: windows-x64, archive: zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-dist
+          path: dist
+      - name: Unpack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem dist -Filter "merakcode-*-${{ matrix.platform }}.zip" | Select-Object -First 1
+          Expand-Archive -Path $file.FullName -DestinationPath unpacked
+          $bin = (Get-ChildItem unpacked -Directory | Select-Object -First 1).FullName + "\bin"
+          "BIN_DIR=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Unpack
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir unpacked
+          tar -xzf dist/merakcode-*-${{ matrix.platform }}.tar.gz -C unpacked
+          echo "BIN_DIR=$(cd unpacked/merakcode-*-${{ matrix.platform }}/bin && pwd)" >> "$GITHUB_ENV"
+      - name: merak --version
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then cmd //c "$BIN_DIR\\merak.cmd" --version; else "$BIN_DIR/merak" --version; fi
+      - name: Smoke test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then export MERAKCODE_SMOKE_BIN="$BIN_DIR\\merak.cmd"; else export MERAKCODE_SMOKE_BIN="$BIN_DIR/merak"; fi
+          node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: windows-x64, targets: "--target windows-x64" }
+          # Both Mac builds in one job: their update manifests are merged into one latest-mac.yml
+          - { os: macos-latest, name: darwin, targets: "--target darwin-arm64 --target darwin-x64" }
+          - { os: ubuntu-24.04, name: linux-x64, targets: "--target linux-x64" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/desktop/main run package ${{ matrix.targets }}
+        env:
+          # Optional: with a Developer ID certificate the Mac app is signed (and notarized with APPLE_TEAM_ID),
+          # which is what lets it update itself
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: |
+            apps/desktop/main/release/*.exe
+            apps/desktop/main/release/*.dmg
+            apps/desktop/main/release/*.zip
+            apps/desktop/main/release/*.AppImage
+            apps/desktop/main/release/*.deb
+            apps/desktop/main/release/*.blockmap
+            apps/desktop/main/release/latest*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Draft GitHub release
+    needs: [verify, cli, smoke, desktop]
+    if: github.event_name == 'push' || !inputs.dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create the draft and upload every file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          node --import ./script/node/register.mjs script/release/notes.ts "$VERSION" > notes.md
+          files=$(ls artifacts/cli-dist/*.tar.gz artifacts/cli-dist/*.zip artifacts/cli-dist/SHA256SUMS artifacts/cli-dist/install.sh artifacts/cli-dist/install.ps1 artifacts/desktop-*/*)
+          flags=""
+          if [ "$PRERELEASE" = "true" ]; then flags="--prerelease"; fi
+          gh release create "v$VERSION" --draft --title "v$VERSION" --notes-file notes.md $flags $files
+
+  npm:
+    name: Publish to npm
+    needs: [verify, cli, smoke, release]
+    if: github.event_name == 'push' || !inputs.dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-dist
+          path: dist
+      - name: Publish the platform packages, the SDK and merakcode
+        run: sh dist/npm/publish.sh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

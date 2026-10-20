@@ -1,0 +1,88 @@
+packages:
+  - apps/*
+  - apps/desktop/*
+  - packages/*
+  - packages/sdk/js
+
+# Shared dependency versions; packages refer to them as catalog:
+catalog:
+  "@agentclientprotocol/sdk": "1.9.0"
+  "@ai-sdk/openai": "4.0.96"
+  "@ai-sdk/openai-compatible": "3.0.71"
+  "@hono/node-server": "2.1.5"
+  "@kobalte/core": "0.13.14"
+  "@lydell/node-pty": "1.1.0"
+  "@modelcontextprotocol/sdk": "1.32.1"
+  "@playwright/test": "1.64.1"
+  "@solid-primitives/event-bus": "1.1.4"
+  "@solidjs/router": "1.0.0"
+  "@tsconfig/node26": "26.0.1"
+  "@types/cross-spawn": "6.0.6"
+  "@types/node": "26.6.5"
+  "@types/semver": "7.8.0"
+  ai: "7.0.143"
+  cross-spawn: "7.0.6"
+  diff: "9.0.0"
+  esbuild: "0.28.2"
+  fuzzysort: "4.0.2"
+  gray-matter: "4.0.3"
+  hono: "4.13.13"
+  hono-openapi: "1.5.0"
+  ignore: "7.0.12"
+  jsonc-parser: "3.3.1"
+  marked: "18.1.1"
+  open: "11.0.4"
+  remeda: "2.52.0"
+  shiki: "4.5.0"
+  solid-js: "1.9.12"
+  strip-ansi: "7.2.0"
+  typescript: "7.0.2"
+  ulid: "3.0.2"
+  undici: "8.12.2"
+  vite: "8.3.4"
+  vite-plugin-solid: "2.11.14"
+  vitest: "5.0.5"
+  xdg-basedir: "5.1.0"
+  zod: "4.6.7"
+
+# Dependency install scripts: true runs them (native modules to build); false skips them (prebuilt binaries ship in
+# the platform packages)
+allowBuilds:
+  electron: true
+  esbuild: true
+  tree-sitter: true
+  tree-sitter-bash: true
+  web-tree-sitter: true
+  "@parcel/watcher": false
+  "@tailwindcss/oxide": false
+  electron-winstaller: false
+  msgpackr-extract: false
+  protobufjs: false
+
+# The terminal UI renderer @opentui/solid needs solid-js and babel-preset-solid at exactly 1.9.12; the desktop app
+# shares the same copy
+overrides:
+  babel-preset-solid: "1.9.12"
+  # It also pins @babel/preset-typescript to 7.27.1; both are Babel 7, so use the newest 7.x and install one copy.
+  # Babel 8 is out for now: the latest babel-preset-solid and babel-plugin-jsx-dom-expressions only accept @babel/core 7
+  "@babel/preset-typescript": "7.29.7"
+  # ai-gateway-provider's optional dependency is still on openrouter 2.x (which wants ai 6); it only calls
+  # createOpenRouter, which works the same in 3.x
+  "ai-gateway-provider>@openrouter/ai-sdk-provider": "3.1.0"
+  "@types/node": "catalog:"
+
+# Only the declared ranges are behind: the latest opentui-spinner (0.0.7) still lists opentui 0.3 and TypeScript 5,
+# and bun-ffi-structs, which opentui depends on, lists only TypeScript 5 (it uses types only)
+peerDependencyRules:
+  allowedVersions:
+    "opentui-spinner>@opentui/core": "0.6"
+    "opentui-spinner>@opentui/solid": "0.6"
+    "opentui-spinner>typescript": "7"
+    "bun-ffi-structs>typescript": "7"
+
+patchedDependencies:
+  "ghostty-web@0.4.0": patches/ghostty-web@0.4.0.patch
+  "@lydell/node-pty@1.1.0": patches/@lydell%2Fnode-pty@1.1.0.patch
+
+# New dependencies get exact versions, no ^
+savePrefix: ""

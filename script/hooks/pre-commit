@@ -1,0 +1,4 @@
+#!/bin/sh
+# Check the formatting of staged files with prettier before committing
+git diff --cached --name-only --diff-filter=ACMR -z |
+  xargs -0 -r node node_modules/prettier/bin/prettier.cjs --check --ignore-unknown --log-level warn

@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+
+// npm entry point. npm installs only the platform package for this machine (merakcode-<os>-<arch>, see
+// optionalDependencies); find it and run its lib/index.js with its bundled Node.
+// MERAKCODE_BIN_PATH overrides the executable (for debugging).
+
+const childProcess = require("child_process")
+const fs = require("fs")
+const path = require("path")
+const os = require("os")
+const crypto = require("crypto")
+const { platformPackage } = require("./cli-name.cjs")
+
+function logRoot(env) {
+  if (env.MERAKCODE_LOG_ROOT) return env.MERAKCODE_LOG_ROOT.replaceAll("\0", "")
+  return path.join(env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "merakcode", "log")
+}
+
+function runDirect(command, args, env) {
+  const result = childProcess.spawnSync(command, args, { stdio: "inherit", env })
+  if (result.error) {
+    console.error(result.error.message)
+    process.exit(1)
+  }
+  process.exit(typeof result.status === "number" ? result.status : 0)
+}
+
+function run(command, args, env) {
+  if (process.platform !== "win32") return runDirect(command, args, env)
+  // Windows: keep stderr as crash evidence when the process exits abnormally
+  const runId = crypto.randomUUID()
+  const childEnv = { ...env, MERAKCODE_RUN_ID: runId }
+  const evidence = (() => {
+    try {
+      const helper = fs.existsSync(path.join(__dirname, "crash-evidence.cjs"))
+        ? path.join(__dirname, "crash-evidence.cjs")
+        : path.join(__dirname, "../node_modules/@merakcode/log/src/crash-evidence.cjs")
+      const { CrashEvidence } = require(helper)
+      return new CrashEvidence({ root: logRoot(childEnv), component: "cli", runId })
+    } catch {
+      return undefined
+    }
+  })()
+  // Evidence failure never prevents launching the product.
+  let controlled = false
+  const child = childProcess.spawn(command, args, {
+    stdio: ["inherit", "inherit", "pipe"],
+    env: childEnv,
+  })
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk)
+    evidence?.write(chunk)
+  })
+  child.on("error", (error) => {
+    evidence?.close()
+    console.error(error.message)
+    process.exit(1)
+  })
+  // close, unlike exit, waits for stderr to drain.
+  child.on("close", (code, signal) => {
+    evidence?.close({ keep: !controlled && (code !== 0 || !!signal), code, signal })
+    process.exit(typeof code === "number" ? code : signal ? 1 : 0)
+  })
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      controlled = true
+      child.kill(signal)
+    })
+  }
+}
+
+/** Walks up from this script looking for node_modules/<platform package> */
+function findPlatformPackage(name) {
+  for (let dir = path.dirname(fs.realpathSync(__filename)); ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, "node_modules", name)
+    if (fs.existsSync(path.join(candidate, "lib", "index.js"))) return candidate
+    if (path.dirname(dir) === dir) return
+  }
+}
+
+const env = { ...process.env }
+const args = process.argv.slice(2)
+
+if (process.env.MERAKCODE_BIN_PATH) {
+  run(process.env.MERAKCODE_BIN_PATH, args, env)
+} else {
+  const name = platformPackage(process.platform, process.arch)
+  const pkg = findPlatformPackage(name)
+  if (!pkg) {
+    console.error(
+      `The package for this platform (${name}) is not installed. npm may have skipped optional dependencies; ` +
+        `reinstall with: npm install -g merakcode\n` +
+        `You can also use the install script or download a release from GitHub.`,
+    )
+    process.exit(1)
+  }
+  const node = path.join(pkg, "node", process.platform === "win32" ? "node.exe" : "bin/node")
+  // node:ffi (used by the terminal UI) prints an ExperimentalWarning on every start
+  run(node, ["--disable-warning=ExperimentalWarning", path.join(pkg, "lib", "index.js"), ...args], env)
+}

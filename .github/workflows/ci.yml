@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:script
+
+  test:
+    name: Test (${{ matrix.package }}, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        package:
+          - packages/util
+          - packages/log
+          - packages/sandbox
+          - packages/client-core
+          - packages/sdk/js
+          - packages/engine
+          - apps/cli
+          - apps/desktop/main
+          - apps/desktop/renderer
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # File search needs rg; without it on PATH every test process would download its own copy from GitHub
+      - name: Install ripgrep
+        if: contains(fromJSON('["packages/engine", "apps/cli", "packages/sdk/js"]'), matrix.package)
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
+            macOS) brew install ripgrep ;;
+            Windows) choco install ripgrep -y --no-progress ;;
+          esac
+      - run: pnpm test
+        working-directory: ${{ matrix.package }}
+
+  sandbox:
+    name: Sandbox conformance (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Set up the sandbox (Windows needs a one-time setup; the runner is already an administrator)
+        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts setup
+      - name: Conformance must run, not skip
+        run: pnpm test test/conformance.test.ts
+        working-directory: packages/sandbox
+        env:
+          MERAKCODE_SANDBOX_REQUIRED: "1"
+      - name: Reset leaves nothing behind
+        if: runner.os == 'Windows'
+        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts reset

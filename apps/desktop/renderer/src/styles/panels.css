@@ -1,0 +1,632 @@
+/* Side panel (review / code / browser) and the maximized review */
+.panel {
+  position: relative;
+  flex: none;
+  min-width: 360px;
+  max-width: 70vw;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+.panel-resize {
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+}
+.panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 44px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.panel-tab:hover {
+  color: var(--text);
+}
+.panel-tab[aria-selected="true"] {
+  background: var(--surface-active);
+  color: var(--text);
+}
+.panel-tab .count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  display: inline-grid;
+  place-items: center;
+}
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Review */
+.review-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  overflow-x: auto;
+}
+.progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.progress-bar {
+  width: 72px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--surface-active);
+  overflow: hidden;
+}
+.progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+.diff {
+  flex: 1;
+  min-height: 0;
+  font-size: var(--text-sm);
+}
+.diff-file + .diff-file {
+  border-top: 1px solid var(--border);
+}
+.diff-file-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.diff-file-head .path {
+  font-weight: 600;
+  min-width: 0;
+}
+.diff-file-head .seen {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.diff-file-head .seen input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.diff-note {
+  padding: 10px 14px;
+}
+.hunk {
+  border-bottom: 1px solid var(--border);
+}
+.hunk-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.hunk-bar .where {
+  font-family: var(--font-mono);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.hunk-bar .ctx {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.hunk.active .hunk-bar {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.hunk.accepted .hunk-bar {
+  background: var(--success-soft);
+}
+.hunk-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+.hunk-state.accepted {
+  color: var(--success-text);
+}
+/* In a narrow panel the comment button shows only its icon */
+.panel .hunk-bar .label {
+  display: none;
+}
+.lines {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  overflow-x: auto;
+  user-select: text;
+}
+.line {
+  display: grid;
+  grid-template-columns: 40px 40px 16px minmax(0, 1fr);
+  white-space: pre;
+  min-height: 20px;
+}
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.split-row > .line {
+  grid-template-columns: 44px 16px minmax(0, 1fr);
+  overflow: hidden;
+}
+.split-row > .line + .line {
+  border-left: 1px solid var(--border);
+}
+.line .n {
+  padding-right: 8px;
+  text-align: right;
+  color: var(--text-subtle);
+  user-select: none;
+}
+.line .sign {
+  color: var(--text-subtle);
+  user-select: none;
+}
+.line .code {
+  overflow: hidden;
+  text-overflow: clip;
+}
+.line.add {
+  background: var(--diff-add);
+}
+.line.add .sign {
+  color: var(--success-text);
+}
+.line.del {
+  background: var(--diff-del);
+}
+.line.del .sign {
+  color: var(--danger-text);
+}
+.line.empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    color-mix(in srgb, var(--border) 70%, transparent) 5px 6px
+  );
+}
+.comment-box {
+  display: grid;
+  gap: 6px;
+  margin: 6px 12px 8px 40px;
+  font-family: var(--font-sans);
+}
+.line-comment {
+  margin: 4px 12px 6px 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  white-space: normal;
+}
+.line-comment .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+.pending-comments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  flex: none;
+}
+.review-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.review-foot:empty {
+  display: none;
+}
+.decision {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+/* Maximized review */
+.review-full {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.review-full-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 max(10px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px)) 0 8px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  min-width: 0;
+}
+.review-full-bar .title {
+  font-weight: 600;
+  font-size: var(--text-md);
+  max-width: 280px;
+}
+.review-full-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.review-tree {
+  width: 272px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+.review-tree-list {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+}
+.rt-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.rt-file:hover {
+  background: var(--surface-hover);
+}
+.rt-file.on {
+  background: var(--surface-active);
+}
+.rt-file .name {
+  font-family: var(--font-mono);
+  flex: 1;
+}
+.rt-file .hunks {
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+}
+.keys span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.review-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.review-side {
+  width: 300px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  flex: none;
+}
+.side-list {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 10px;
+}
+.side-empty {
+  margin: 12px;
+  font-size: var(--text-sm);
+}
+.comment-item {
+  margin: 10px 12px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+.comment-item .loc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+}
+.side-foot {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  flex: none;
+}
+
+/* Code */
+.code-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.tree {
+  width: 200px;
+  flex: none;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  font-size: var(--text-sm);
+  background: var(--bg-sidebar);
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.tree-row:hover {
+  background: var(--surface-hover);
+}
+.tree-row.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.tree-row .mark {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.mark.m {
+  color: var(--warning-text);
+}
+.mark.a {
+  color: var(--success-text);
+}
+.mark.d {
+  color: var(--danger-text);
+}
+.editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.editor-tabs {
+  display: flex;
+  min-height: 34px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  overflow-x: auto;
+  flex: none;
+}
+.editor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 0 4px 0 12px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+}
+.editor-tab.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.editor-tab .dirty {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  flex: none;
+}
+.editor-host {
+  flex: 1;
+  min-height: 0;
+}
+.editor-host.hidden {
+  display: none;
+}
+
+/* Browser */
+.browser {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.address {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0 4px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  outline: none;
+}
+.address:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.browser-title {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  flex: none;
+}
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-muted);
+}
+.console {
+  max-height: 180px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex: none;
+}
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.console-list {
+  min-height: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.console .entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.console .entry.error {
+  color: var(--danger-text);
+  background: var(--danger-soft);
+}
+.console .entry.warn {
+  color: var(--warning-text);
+  background: var(--warning-soft);
+}
+
+/* Commit and push at the bottom of the review panel */
+.review-commit {
+  padding: 0 12px 12px;
+  flex: none;
+}
+.commit {
+  display: grid;
+  gap: 6px;
+}
+.commit-input {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.commit-input textarea.input {
+  min-height: 32px;
+  resize: none;
+}

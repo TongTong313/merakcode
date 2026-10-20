@@ -1,0 +1,36 @@
+{
+  "name": "@merakcode/log",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./logger": "./src/logger.ts",
+    "./inspect": "./src/inspect.ts",
+    "./bundle": "./src/bundle.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "packages/log"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "2.24.0",
+    "zod": "catalog:"
+  }
+}

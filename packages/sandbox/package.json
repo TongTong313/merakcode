@@ -1,0 +1,32 @@
+{
+  "name": "@merakcode/sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@merakcode/util": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "packages/sandbox"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

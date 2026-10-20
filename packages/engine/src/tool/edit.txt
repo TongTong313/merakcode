@@ -1,0 +1,12 @@
+Performs exact string replacements in files. 
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- Call this tool in parallel when you are editing multiple DIFFERENT files. Edits to separate files are independent, so issue them together in a single message instead of one edit per turn. Read every file you plan to touch first (also in parallel), then send the edits as one batch.
+- NEVER issue parallel edit calls against the SAME file. Each call matches `oldString` against the file as it currently is on disk, so once the first call lands the others fail. Use `multi_edit` when one file needs two or more patches.
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: line number + colon + space (e.g., `1: `). Everything after that space is the actual file content to match. Never include any part of the line number prefix in the oldString or newString.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `oldString` is not found in the file with an error "oldString not found in content".
+- The edit will FAIL if `oldString` is found multiple times in the file with an error "Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match." Either provide a larger string with more surrounding context to make it unique or use `replaceAll` to change every instance of `oldString`. 
+- Use `replaceAll` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
