@@ -32,10 +32,12 @@ let last = 0
 /** Native subscriptions queued for cancellation */
 const pending: Subscription[] = []
 let draining: Promise<void> | undefined
+/** Set by closeParcelWatchers: on Windows no new native cancel starts once the process is on its way out */
+let exiting = false
 
 function drain() {
   draining ??= (async () => {
-    while (pending.length > 0) {
+    while (pending.length > 0 && !exiting) {
       const quiet = Date.now() - last
       if (quiet < QUIET_MS) {
         await new Promise((resolve) => setTimeout(resolve, QUIET_MS - quiet))
@@ -103,14 +105,17 @@ export function activeParcelWatchers() {
 }
 
 /**
- * Cancels all remaining subscriptions. Call before the process exits: exiting with live subscriptions on Linux makes
- * the inotify backend free memory twice in static destructors, crashing with 134 (double free). On Windows, queued
- * cancels get at most EXIT_WAIT_MS.
+ * Stops every subscription; call once, right before the process exits.
+ * Linux and macOS cancel natively: exiting with live subscriptions makes the inotify backend free memory twice in
+ * static destructors (exit 134). Windows is the opposite: a native cancel while the directory is busy crashes, while
+ * exiting with live subscriptions does not, so callbacks stop, no new native cancel starts, and only a cancel that is
+ * already running is awaited (exiting in the middle of it crashes too). The caller must then exit the process
+ * (process.exit), since the subscriptions left open on Windows keep it alive.
  */
 export async function closeParcelWatchers() {
+  if (deferred) exiting = true
   await Promise.all([...active].map((subscription) => subscription.unsubscribe().catch(() => undefined)))
-  if (pending.length > 0)
-    await Promise.race([drain(), new Promise((resolve) => setTimeout(resolve, EXIT_WAIT_MS).unref())])
+  if (draining) await Promise.race([draining, new Promise((resolve) => setTimeout(resolve, EXIT_WAIT_MS).unref())])
 }
 
 export function parcelWatcherBackend(): "windows" | "fs-events" | "inotify" | undefined {

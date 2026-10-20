@@ -35,7 +35,7 @@ test("repeatedly unsubscribing and resubscribing while the directory changes doe
       for (let i = 0; writing; i++, writes++) {
         const temp = path.join(dir, "merakcode.json." + i + ".tmp")
         await fs.writeFile(temp, String(i))
-        // Windows 上目标文件正被别的进程（杀毒、索引）读着时改名会 EPERM，这一次跳过
+        // On Windows a rename fails with EPERM while another process (antivirus, indexer) reads the target; skip it
         await fs.rename(temp, path.join(dir, "merakcode.json")).catch(() => undefined)
       }
     })()
@@ -47,13 +47,49 @@ test("repeatedly unsubscribing and resubscribing while the directory changes doe
     writing = false
     await writer
     await closeParcelWatchers()
-    // 取消、重订期间目录一直在变
+    // The directory kept changing the whole time
     console.log("survived", writes > 20)
+    // As the CLI does: on Windows the subscriptions left open keep the process alive until it exits
+    process.exit(0)
   `
   const result = await Process.run(evaluate(code), { nothrow: true, timeout: 120_000 })
   expect(result.exitCode, result.stderr.toString()).toBe(0)
   expect(result.text().trim()).toBe("survived true")
 }, 150_000)
+
+// Exiting while a native cancel is still running crashes on Windows (0xC0000005). Closing must wait for cancels that
+// are already in flight, not only for queued ones. The crash is intermittent, so several processes run.
+test("exiting right after closing watchers on busy directories does not crash", async () => {
+  await using tmp = await tmpdir()
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const code = `
+    import fs from "node:fs/promises"
+    import path from "node:path"
+    const { parcelWatcher, closeParcelWatchers } = await import(${JSON.stringify(source)})
+    const watcher = parcelWatcher()
+    const dirs = []
+    for (let i = 0; i < 6; i++) {
+      const dir = await fs.mkdtemp(path.join(${JSON.stringify(tmp.path)}, "busy-"))
+      dirs.push(dir)
+      await watcher.subscribe(dir, () => {}, { ignore: [] })
+    }
+    let busy = true
+    const churn = (async () => {
+      for (let n = 0; busy; n++)
+        await Promise.all(dirs.map((dir) => fs.writeFile(path.join(dir, "f" + (n % 50)), String(n)).catch(() => {})))
+    })()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await closeParcelWatchers()
+    busy = false
+    await churn
+    await Promise.all(dirs.map((dir) => fs.rm(dir, { recursive: true, force: true, maxRetries: 5 }).catch(() => {})))
+    process.exit(0)
+  `
+  for (let run = 0; run < 12; run++) {
+    const result = await Process.run(evaluate(code), { nothrow: true, timeout: 60_000 })
+    expect(result.exitCode, `run ${run}: ${result.stderr.toString()}`).toBe(0)
+  }
+}, 180_000)
 
 // On Linux, subscriptions still active at exit make the @parcel/watcher inotify backend double free in static
 // destructors, exiting with 134. All subscriptions must be cancellable at once before exit.
