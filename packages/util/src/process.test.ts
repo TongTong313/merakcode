@@ -61,6 +61,20 @@ describe("Process.spawn", () => {
     expect(() => Process.spawn(["no-such-command-merakcode"])).toThrow(expect.objectContaining({ code: "ENOENT" }))
   })
 
+  test("a spawn failure (missing cwd) rejects exited for whoever awaits it, without an unhandled rejection", async () => {
+    const unhandled: unknown[] = []
+    const track = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", track)
+    try {
+      const child = Process.spawn([process.execPath, "-e", "0"], { cwd: path.join(os.tmpdir(), `gone-${Date.now()}`) })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      await expect(child.exited).rejects.toMatchObject({ code: "ENOENT" })
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", track)
+    }
+  })
+
   test("reports 128 + signal number after kill, like a shell", async () => {
     const child = Process.spawn(node("setInterval(() => {}, 1000)"))
     child.kill()

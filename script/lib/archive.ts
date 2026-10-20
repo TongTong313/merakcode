@@ -25,18 +25,64 @@ export namespace Archive {
   }
 
   /**
-   * Extracts into dest, creating it if needed. Uses the system bsdtar (bundled since Windows 10 and on macOS); zip
-   * files on Linux use unzip.
+   * Extracts into dest, creating it if needed. zip is read here (Ubuntu's unzip guesses the name encoding from the
+   * locale and garbles UTF-8 names); tar.gz uses the system tar (bsdtar on Windows 10+ and macOS, GNU tar on Linux).
    */
   export async function extract(file: string, dest: string) {
     await fs.mkdir(dest, { recursive: true })
-    // Under the C locale (common in CI and containers) GNU tar and unzip mangle UTF-8 file names
+    if (file.endsWith(".zip")) return unzip(file, dest)
+    // Under the C locale (common in CI and containers) GNU tar mangles UTF-8 file names
     const env = process.platform === "linux" ? { ...process.env, LC_ALL: "C.UTF-8" } : process.env
-    if (file.endsWith(".zip") && process.platform === "linux")
-      return void execFileSync("unzip", ["-q", file, "-d", dest], { env })
-    // On Windows the tar on PATH may be Git's GNU tar, which cannot read zip, so use the system one
+    // On Windows the tar on PATH may be Git's GNU tar, so use the system one
     const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "System32", "tar.exe") : "tar"
     execFileSync(tar, ["-xf", file, "-C", dest], { env })
+  }
+
+  /** UTF-8 name from the Info-ZIP Unicode Path extra field (0x7075): version byte, CRC of the old name, then the name */
+  function unicodePath(extra: Buffer) {
+    for (let at = 0; at + 4 <= extra.length; at += 4 + extra.readUInt16LE(at + 2)) {
+      if (extra.readUInt16LE(at) === 0x7075) return extra.toString("utf8", at + 9, at + 4 + extra.readUInt16LE(at + 2))
+    }
+  }
+
+  /**
+   * Stored and deflated entries without zip64, which covers our archives and the official Node zips. Names must be
+   * UTF-8 (flag or Unicode Path field) or plain ASCII; a legacy code page name cannot be decoded reliably
+   */
+  async function unzip(file: string, dest: string) {
+    const data = await fs.readFile(file)
+    const end = data.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
+    if (end < 0) throw new Error(`${file} is not a zip file`)
+    const root = path.resolve(dest)
+    let at = data.readUInt32LE(end + 16)
+    for (let index = data.readUInt16LE(end + 10); index > 0; index--) {
+      const method = data.readUInt16LE(at + 10)
+      const size = data.readUInt32LE(at + 20)
+      const length = data.readUInt16LE(at + 28)
+      const extra = data.readUInt16LE(at + 30)
+      const unix = data.readUInt32LE(at + 38) >>> 16
+      const local = data.readUInt32LE(at + 42)
+      const bytes = data.subarray(at + 46, at + 46 + length)
+      const name =
+        data.readUInt16LE(at + 8) & 0x800 || bytes.every((byte) => byte < 0x80)
+          ? bytes.toString("utf8")
+          : unicodePath(data.subarray(at + 46 + length, at + 46 + length + extra))
+      if (name === undefined)
+        throw new Error(`${file} stores a non-ASCII name in an unknown encoding: ${bytes.toString("latin1")}`)
+      at += 46 + length + extra + data.readUInt16LE(at + 32)
+      const target = path.resolve(root, name)
+      if (!target.startsWith(root + path.sep)) throw new Error(`${file} has an entry outside the target: ${name}`)
+      if (name.endsWith("/")) {
+        await fs.mkdir(target, { recursive: true })
+        continue
+      }
+      if (method !== 0 && method !== 8) throw new Error(`${file}: compression method ${method} is not supported`)
+      const start = local + 30 + data.readUInt16LE(local + 26) + data.readUInt16LE(local + 28)
+      const raw = data.subarray(start, start + size)
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.writeFile(target, method === 0 ? raw : zlib.inflateRawSync(raw))
+      if (unix & 0o111) await fs.chmod(target, 0o755)
+    }
   }
 
   type Entry = { file: string; name: string; size: number; mode: number; mtime: Date }

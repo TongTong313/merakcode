@@ -60,6 +60,8 @@ export namespace Process {
         resolve(exitCode)
       })
     })
+    // A spawn error (such as a deleted cwd) arrives before callers await exited; they still get the rejection
+    exited.catch(() => {})
     const kill = (signal?: NodeJS.Signals) => {
       if (exitCode === null) child.kill(signal)
     }
