@@ -1,0 +1,32 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["packages/sdk/js/src/client/gen/**"],
+  "ignoreBinaries": ["icacls"],
+  "workspaces": {
+    ".": {
+      "entry": ["script/*.ts"]
+    },
+    "apps/cli": {
+      "entry": ["script/*.ts", "test/**/fixture/**", "test/**/*.fixture.ts"]
+    },
+    "apps/desktop/main": {
+      "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "test/fixture/**"]
+    },
+    "packages/engine": {
+      "entry": [
+        "script/*.ts",
+        "src/**/*-fixture.ts",
+        "test/**/fixture/**",
+        "test/**/fixtures/**",
+        "test/**/*-fixture.ts"
+      ],
+      "ignoreDependencies": ["tree-sitter-bash"]
+    },
+    "packages/sandbox": {
+      "entry": ["spike/**/*.ts", "script/*.ts"]
+    },
+    "packages/sdk/js": {
+      "entry": ["script/*.ts", "examples/*.ts", "test/fixture/**"]
+    }
+  }
+}

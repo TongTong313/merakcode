@@ -1,0 +1,2386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "JSON schema reference for configuration validation",
+      "type": "string"
+    },
+    "theme": {
+      "description": "Theme name to use for the interface",
+      "type": "string"
+    },
+    "locale": {
+      "description": "UI language (zh-CN or en-US)",
+      "type": "string",
+      "enum": [
+        "zh-CN",
+        "en-US"
+      ]
+    },
+    "keybinds": {
+      "description": "Custom keybind configurations",
+      "type": "object",
+      "properties": {
+        "leader": {
+          "default": "ctrl+x",
+          "description": "Leader key for keybind combinations\n\ndefault: `ctrl+x`",
+          "type": "string",
+          "examples": [
+            "ctrl+x"
+          ]
+        },
+        "app_exit": {
+          "default": "ctrl+c,ctrl+d,<leader>q",
+          "description": "Exit the application\n\ndefault: `ctrl+c,ctrl+d,<leader>q`",
+          "type": "string",
+          "examples": [
+            "ctrl+c,ctrl+d,<leader>q"
+          ]
+        },
+        "theme_list": {
+          "default": "<leader>t",
+          "description": "List available themes\n\ndefault: `<leader>t`",
+          "type": "string",
+          "examples": [
+            "<leader>t"
+          ]
+        },
+        "sidebar_toggle": {
+          "default": "<leader>b",
+          "description": "Toggle sidebar\n\ndefault: `<leader>b`",
+          "type": "string",
+          "examples": [
+            "<leader>b"
+          ]
+        },
+        "scrollbar_toggle": {
+          "default": "none",
+          "description": "Toggle session scrollbar\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "status_view": {
+          "default": "<leader>s",
+          "description": "View status\n\ndefault: `<leader>s`",
+          "type": "string",
+          "examples": [
+            "<leader>s"
+          ]
+        },
+        "session_export": {
+          "default": "<leader>x",
+          "description": "Export session to editor\n\ndefault: `<leader>x`",
+          "type": "string",
+          "examples": [
+            "<leader>x"
+          ]
+        },
+        "session_export_full": {
+          "default": "<leader>e",
+          "description": "Export full session data as JSON\n\ndefault: `<leader>e`",
+          "type": "string",
+          "examples": [
+            "<leader>e"
+          ]
+        },
+        "session_import_full": {
+          "default": "<leader>i",
+          "description": "Import full session data from JSON\n\ndefault: `<leader>i`",
+          "type": "string",
+          "examples": [
+            "<leader>i"
+          ]
+        },
+        "session_new": {
+          "default": "<leader>n",
+          "description": "Create a new session\n\ndefault: `<leader>n`",
+          "type": "string",
+          "examples": [
+            "<leader>n"
+          ]
+        },
+        "session_list": {
+          "default": "<leader>l",
+          "description": "List all sessions\n\ndefault: `<leader>l`",
+          "type": "string",
+          "examples": [
+            "<leader>l"
+          ]
+        },
+        "session_timeline": {
+          "default": "<leader>g",
+          "description": "Show session timeline\n\ndefault: `<leader>g`",
+          "type": "string",
+          "examples": [
+            "<leader>g"
+          ]
+        },
+        "session_fork": {
+          "default": "none",
+          "description": "Fork session from message\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "session_rename": {
+          "default": "ctrl+r",
+          "description": "Rename session\n\ndefault: `ctrl+r`",
+          "type": "string",
+          "examples": [
+            "ctrl+r"
+          ]
+        },
+        "session_delete": {
+          "default": "ctrl+d",
+          "description": "Delete session\n\ndefault: `ctrl+d`",
+          "type": "string",
+          "examples": [
+            "ctrl+d"
+          ]
+        },
+        "session_pin_toggle": {
+          "default": "ctrl+f",
+          "description": "Pin or unpin session in the session list\n\ndefault: `ctrl+f`",
+          "type": "string",
+          "examples": [
+            "ctrl+f"
+          ]
+        },
+        "stash_delete": {
+          "default": "ctrl+d",
+          "description": "Delete stash entry\n\ndefault: `ctrl+d`",
+          "type": "string",
+          "examples": [
+            "ctrl+d"
+          ]
+        },
+        "model_provider_list": {
+          "default": "ctrl+a",
+          "description": "Open provider list from model dialog\n\ndefault: `ctrl+a`",
+          "type": "string",
+          "examples": [
+            "ctrl+a"
+          ]
+        },
+        "model_favorite_toggle": {
+          "default": "ctrl+f",
+          "description": "Toggle model favorite status\n\ndefault: `ctrl+f`",
+          "type": "string",
+          "examples": [
+            "ctrl+f"
+          ]
+        },
+        "session_interrupt": {
+          "default": "escape",
+          "description": "Interrupt current session\n\ndefault: `escape`",
+          "type": "string",
+          "examples": [
+            "escape"
+          ]
+        },
+        "session_compact": {
+          "default": "<leader>c",
+          "description": "Compact the session\n\ndefault: `<leader>c`",
+          "type": "string",
+          "examples": [
+            "<leader>c"
+          ]
+        },
+        "messages_page_up": {
+          "default": "pageup,ctrl+alt+b",
+          "description": "Scroll messages up by one page\n\ndefault: `pageup,ctrl+alt+b`",
+          "type": "string",
+          "examples": [
+            "pageup,ctrl+alt+b"
+          ]
+        },
+        "messages_page_down": {
+          "default": "pagedown,ctrl+alt+f",
+          "description": "Scroll messages down by one page\n\ndefault: `pagedown,ctrl+alt+f`",
+          "type": "string",
+          "examples": [
+            "pagedown,ctrl+alt+f"
+          ]
+        },
+        "messages_line_up": {
+          "default": "ctrl+alt+y",
+          "description": "Scroll messages up by one line\n\ndefault: `ctrl+alt+y`",
+          "type": "string",
+          "examples": [
+            "ctrl+alt+y"
+          ]
+        },
+        "messages_line_down": {
+          "default": "ctrl+alt+e",
+          "description": "Scroll messages down by one line\n\ndefault: `ctrl+alt+e`",
+          "type": "string",
+          "examples": [
+            "ctrl+alt+e"
+          ]
+        },
+        "messages_half_page_up": {
+          "default": "ctrl+alt+u",
+          "description": "Scroll messages up by half page\n\ndefault: `ctrl+alt+u`",
+          "type": "string",
+          "examples": [
+            "ctrl+alt+u"
+          ]
+        },
+        "messages_half_page_down": {
+          "default": "ctrl+alt+d",
+          "description": "Scroll messages down by half page\n\ndefault: `ctrl+alt+d`",
+          "type": "string",
+          "examples": [
+            "ctrl+alt+d"
+          ]
+        },
+        "messages_first": {
+          "default": "ctrl+g,home",
+          "description": "Navigate to first message\n\ndefault: `ctrl+g,home`",
+          "type": "string",
+          "examples": [
+            "ctrl+g,home"
+          ]
+        },
+        "messages_last": {
+          "default": "ctrl+alt+g,end",
+          "description": "Navigate to last message\n\ndefault: `ctrl+alt+g,end`",
+          "type": "string",
+          "examples": [
+            "ctrl+alt+g,end"
+          ]
+        },
+        "messages_next": {
+          "default": "none",
+          "description": "Navigate to next message\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_previous": {
+          "default": "none",
+          "description": "Navigate to previous message\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_last_user": {
+          "default": "none",
+          "description": "Navigate to last user message\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_copy": {
+          "default": "<leader>y",
+          "description": "Copy message\n\ndefault: `<leader>y`",
+          "type": "string",
+          "examples": [
+            "<leader>y"
+          ]
+        },
+        "messages_undo": {
+          "default": "<leader>u",
+          "description": "Undo message\n\ndefault: `<leader>u`",
+          "type": "string",
+          "examples": [
+            "<leader>u"
+          ]
+        },
+        "messages_redo": {
+          "default": "<leader>r",
+          "description": "Redo message\n\ndefault: `<leader>r`",
+          "type": "string",
+          "examples": [
+            "<leader>r"
+          ]
+        },
+        "messages_toggle_conceal": {
+          "default": "<leader>h",
+          "description": "Toggle code block concealment in messages\n\ndefault: `<leader>h`",
+          "type": "string",
+          "examples": [
+            "<leader>h"
+          ]
+        },
+        "tool_details": {
+          "default": "none",
+          "description": "Toggle tool details visibility\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "model_list": {
+          "default": "<leader>m",
+          "description": "List available models\n\ndefault: `<leader>m`",
+          "type": "string",
+          "examples": [
+            "<leader>m"
+          ]
+        },
+        "model_cycle_recent": {
+          "default": "f2",
+          "description": "Next recently used model\n\ndefault: `f2`",
+          "type": "string",
+          "examples": [
+            "f2"
+          ]
+        },
+        "model_cycle_recent_reverse": {
+          "default": "shift+f2",
+          "description": "Previous recently used model\n\ndefault: `shift+f2`",
+          "type": "string",
+          "examples": [
+            "shift+f2"
+          ]
+        },
+        "model_cycle_favorite": {
+          "default": "none",
+          "description": "Next favorite model\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "model_cycle_favorite_reverse": {
+          "default": "none",
+          "description": "Previous favorite model\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "command_list": {
+          "default": "ctrl+p",
+          "description": "List available commands\n\ndefault: `ctrl+p`",
+          "type": "string",
+          "examples": [
+            "ctrl+p"
+          ]
+        },
+        "agent_list": {
+          "default": "<leader>a",
+          "description": "List agents\n\ndefault: `<leader>a`",
+          "type": "string",
+          "examples": [
+            "<leader>a"
+          ]
+        },
+        "agent_cycle": {
+          "default": "tab",
+          "description": "Next agent\n\ndefault: `tab`",
+          "type": "string",
+          "examples": [
+            "tab"
+          ]
+        },
+        "agent_cycle_reverse": {
+          "default": "none",
+          "description": "Previous agent\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "permission_mode_cycle": {
+          "default": "shift+tab",
+          "description": "Cycle permission mode (read-only, ask, auto)\n\ndefault: `shift+tab`",
+          "type": "string",
+          "examples": [
+            "shift+tab"
+          ]
+        },
+        "variant_cycle": {
+          "default": "ctrl+t",
+          "description": "Cycle model variants\n\ndefault: `ctrl+t`",
+          "type": "string",
+          "examples": [
+            "ctrl+t"
+          ]
+        },
+        "input_clear": {
+          "default": "ctrl+c",
+          "description": "Clear input field\n\ndefault: `ctrl+c`",
+          "type": "string",
+          "examples": [
+            "ctrl+c"
+          ]
+        },
+        "input_paste": {
+          "default": "ctrl+v",
+          "description": "Paste from clipboard\n\ndefault: `ctrl+v`",
+          "type": "string",
+          "examples": [
+            "ctrl+v"
+          ]
+        },
+        "input_submit": {
+          "default": "return",
+          "description": "Submit input\n\ndefault: `return`",
+          "type": "string",
+          "examples": [
+            "return"
+          ]
+        },
+        "input_newline": {
+          "default": "shift+return,ctrl+return,alt+return,ctrl+j",
+          "description": "Insert newline in input\n\ndefault: `shift+return,ctrl+return,alt+return,ctrl+j`",
+          "type": "string",
+          "examples": [
+            "shift+return,ctrl+return,alt+return,ctrl+j"
+          ]
+        },
+        "input_move_left": {
+          "default": "left,ctrl+b",
+          "description": "Move cursor left in input\n\ndefault: `left,ctrl+b`",
+          "type": "string",
+          "examples": [
+            "left,ctrl+b"
+          ]
+        },
+        "input_move_right": {
+          "default": "right,ctrl+f",
+          "description": "Move cursor right in input\n\ndefault: `right,ctrl+f`",
+          "type": "string",
+          "examples": [
+            "right,ctrl+f"
+          ]
+        },
+        "input_move_up": {
+          "default": "up",
+          "description": "Move cursor up in input\n\ndefault: `up`",
+          "type": "string",
+          "examples": [
+            "up"
+          ]
+        },
+        "input_move_down": {
+          "default": "down",
+          "description": "Move cursor down in input\n\ndefault: `down`",
+          "type": "string",
+          "examples": [
+            "down"
+          ]
+        },
+        "input_select_left": {
+          "default": "shift+left",
+          "description": "Select left in input\n\ndefault: `shift+left`",
+          "type": "string",
+          "examples": [
+            "shift+left"
+          ]
+        },
+        "input_select_right": {
+          "default": "shift+right",
+          "description": "Select right in input\n\ndefault: `shift+right`",
+          "type": "string",
+          "examples": [
+            "shift+right"
+          ]
+        },
+        "input_select_up": {
+          "default": "shift+up",
+          "description": "Select up in input\n\ndefault: `shift+up`",
+          "type": "string",
+          "examples": [
+            "shift+up"
+          ]
+        },
+        "input_select_down": {
+          "default": "shift+down",
+          "description": "Select down in input\n\ndefault: `shift+down`",
+          "type": "string",
+          "examples": [
+            "shift+down"
+          ]
+        },
+        "input_line_home": {
+          "default": "ctrl+a",
+          "description": "Move to start of line in input\n\ndefault: `ctrl+a`",
+          "type": "string",
+          "examples": [
+            "ctrl+a"
+          ]
+        },
+        "input_line_end": {
+          "default": "ctrl+e",
+          "description": "Move to end of line in input\n\ndefault: `ctrl+e`",
+          "type": "string",
+          "examples": [
+            "ctrl+e"
+          ]
+        },
+        "input_select_line_home": {
+          "default": "ctrl+shift+a",
+          "description": "Select to start of line in input\n\ndefault: `ctrl+shift+a`",
+          "type": "string",
+          "examples": [
+            "ctrl+shift+a"
+          ]
+        },
+        "input_select_line_end": {
+          "default": "ctrl+shift+e",
+          "description": "Select to end of line in input\n\ndefault: `ctrl+shift+e`",
+          "type": "string",
+          "examples": [
+            "ctrl+shift+e"
+          ]
+        },
+        "input_visual_line_home": {
+          "default": "alt+a",
+          "description": "Move to start of visual line in input\n\ndefault: `alt+a`",
+          "type": "string",
+          "examples": [
+            "alt+a"
+          ]
+        },
+        "input_visual_line_end": {
+          "default": "alt+e",
+          "description": "Move to end of visual line in input\n\ndefault: `alt+e`",
+          "type": "string",
+          "examples": [
+            "alt+e"
+          ]
+        },
+        "input_select_visual_line_home": {
+          "default": "alt+shift+a",
+          "description": "Select to start of visual line in input\n\ndefault: `alt+shift+a`",
+          "type": "string",
+          "examples": [
+            "alt+shift+a"
+          ]
+        },
+        "input_select_visual_line_end": {
+          "default": "alt+shift+e",
+          "description": "Select to end of visual line in input\n\ndefault: `alt+shift+e`",
+          "type": "string",
+          "examples": [
+            "alt+shift+e"
+          ]
+        },
+        "input_buffer_home": {
+          "default": "home",
+          "description": "Move to start of buffer in input\n\ndefault: `home`",
+          "type": "string",
+          "examples": [
+            "home"
+          ]
+        },
+        "input_buffer_end": {
+          "default": "end",
+          "description": "Move to end of buffer in input\n\ndefault: `end`",
+          "type": "string",
+          "examples": [
+            "end"
+          ]
+        },
+        "input_select_buffer_home": {
+          "default": "shift+home",
+          "description": "Select to start of buffer in input\n\ndefault: `shift+home`",
+          "type": "string",
+          "examples": [
+            "shift+home"
+          ]
+        },
+        "input_select_buffer_end": {
+          "default": "shift+end",
+          "description": "Select to end of buffer in input\n\ndefault: `shift+end`",
+          "type": "string",
+          "examples": [
+            "shift+end"
+          ]
+        },
+        "input_delete_line": {
+          "default": "ctrl+shift+d",
+          "description": "Delete line in input\n\ndefault: `ctrl+shift+d`",
+          "type": "string",
+          "examples": [
+            "ctrl+shift+d"
+          ]
+        },
+        "input_delete_to_line_end": {
+          "default": "ctrl+k",
+          "description": "Delete to end of line in input\n\ndefault: `ctrl+k`",
+          "type": "string",
+          "examples": [
+            "ctrl+k"
+          ]
+        },
+        "input_delete_to_line_start": {
+          "default": "ctrl+u",
+          "description": "Delete to start of line in input\n\ndefault: `ctrl+u`",
+          "type": "string",
+          "examples": [
+            "ctrl+u"
+          ]
+        },
+        "input_backspace": {
+          "default": "backspace,shift+backspace",
+          "description": "Backspace in input\n\ndefault: `backspace,shift+backspace`",
+          "type": "string",
+          "examples": [
+            "backspace,shift+backspace"
+          ]
+        },
+        "input_delete": {
+          "default": "ctrl+d,delete,shift+delete",
+          "description": "Delete character in input\n\ndefault: `ctrl+d,delete,shift+delete`",
+          "type": "string",
+          "examples": [
+            "ctrl+d,delete,shift+delete"
+          ]
+        },
+        "input_undo": {
+          "default": "ctrl+-,super+z",
+          "description": "Undo in input\n\ndefault: `ctrl+-,super+z`",
+          "type": "string",
+          "examples": [
+            "ctrl+-,super+z"
+          ]
+        },
+        "input_redo": {
+          "default": "ctrl+.,super+shift+z",
+          "description": "Redo in input\n\ndefault: `ctrl+.,super+shift+z`",
+          "type": "string",
+          "examples": [
+            "ctrl+.,super+shift+z"
+          ]
+        },
+        "input_word_forward": {
+          "default": "alt+f,alt+right,ctrl+right",
+          "description": "Move word forward in input\n\ndefault: `alt+f,alt+right,ctrl+right`",
+          "type": "string",
+          "examples": [
+            "alt+f,alt+right,ctrl+right"
+          ]
+        },
+        "input_word_backward": {
+          "default": "alt+b,alt+left,ctrl+left",
+          "description": "Move word backward in input\n\ndefault: `alt+b,alt+left,ctrl+left`",
+          "type": "string",
+          "examples": [
+            "alt+b,alt+left,ctrl+left"
+          ]
+        },
+        "input_select_word_forward": {
+          "default": "alt+shift+f,alt+shift+right",
+          "description": "Select word forward in input\n\ndefault: `alt+shift+f,alt+shift+right`",
+          "type": "string",
+          "examples": [
+            "alt+shift+f,alt+shift+right"
+          ]
+        },
+        "input_select_word_backward": {
+          "default": "alt+shift+b,alt+shift+left",
+          "description": "Select word backward in input\n\ndefault: `alt+shift+b,alt+shift+left`",
+          "type": "string",
+          "examples": [
+            "alt+shift+b,alt+shift+left"
+          ]
+        },
+        "input_delete_word_forward": {
+          "default": "alt+d,alt+delete,ctrl+delete",
+          "description": "Delete word forward in input\n\ndefault: `alt+d,alt+delete,ctrl+delete`",
+          "type": "string",
+          "examples": [
+            "alt+d,alt+delete,ctrl+delete"
+          ]
+        },
+        "input_delete_word_backward": {
+          "default": "ctrl+w,ctrl+backspace,alt+backspace",
+          "description": "Delete word backward in input\n\ndefault: `ctrl+w,ctrl+backspace,alt+backspace`",
+          "type": "string",
+          "examples": [
+            "ctrl+w,ctrl+backspace,alt+backspace"
+          ]
+        },
+        "history_previous": {
+          "default": "up",
+          "description": "Previous history item\n\ndefault: `up`",
+          "type": "string",
+          "examples": [
+            "up"
+          ]
+        },
+        "history_next": {
+          "default": "down",
+          "description": "Next history item\n\ndefault: `down`",
+          "type": "string",
+          "examples": [
+            "down"
+          ]
+        },
+        "session_child_cycle": {
+          "default": "<leader>right",
+          "description": "Next child session\n\ndefault: `<leader>right`",
+          "type": "string",
+          "examples": [
+            "<leader>right"
+          ]
+        },
+        "session_child_cycle_reverse": {
+          "default": "<leader>left",
+          "description": "Previous child session\n\ndefault: `<leader>left`",
+          "type": "string",
+          "examples": [
+            "<leader>left"
+          ]
+        },
+        "session_parent": {
+          "default": "<leader>up",
+          "description": "Go to parent session\n\ndefault: `<leader>up`",
+          "type": "string",
+          "examples": [
+            "<leader>up"
+          ]
+        },
+        "terminal_suspend": {
+          "default": "ctrl+z",
+          "description": "Suspend terminal\n\ndefault: `ctrl+z`",
+          "type": "string",
+          "examples": [
+            "ctrl+z"
+          ]
+        },
+        "terminal_title_toggle": {
+          "default": "none",
+          "description": "Toggle terminal title\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        },
+        "tips_toggle": {
+          "default": "<leader>h",
+          "description": "Toggle tips on home screen\n\ndefault: `<leader>h`",
+          "type": "string",
+          "examples": [
+            "<leader>h"
+          ]
+        },
+        "display_thinking": {
+          "default": "none",
+          "description": "Toggle thinking blocks visibility\n\ndefault: `none`",
+          "type": "string",
+          "examples": [
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "ref": "KeybindsConfig"
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR"
+      ],
+      "ref": "LogLevel",
+      "description": "Log level"
+    },
+    "tui": {
+      "description": "TUI specific settings",
+      "type": "object",
+      "properties": {
+        "scroll_speed": {
+          "description": "TUI scroll speed",
+          "type": "number",
+          "minimum": 0.001
+        },
+        "scroll_acceleration": {
+          "description": "Scroll acceleration settings",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable scroll acceleration"
+            }
+          },
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false
+        },
+        "diff_style": {
+          "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
+          "type": "string",
+          "enum": [
+            "auto",
+            "stacked"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "server": {
+      "description": "Server configuration for merak serve and web commands",
+      "type": "object",
+      "properties": {
+        "port": {
+          "description": "Port to listen on",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hostname": {
+          "description": "Hostname to listen on",
+          "type": "string"
+        },
+        "mdns": {
+          "description": "Enable mDNS service discovery",
+          "type": "boolean"
+        },
+        "mdnsDomain": {
+          "description": "Custom domain name for mDNS service (default: merakcode.local)",
+          "type": "string"
+        },
+        "cors": {
+          "description": "Additional domains to allow for CORS",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "ref": "ServerConfig"
+    },
+    "command": {
+      "description": "Command configuration",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "template": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+          },
+          "subtask": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "skills": {
+      "description": "Additional skill folder paths",
+      "type": "object",
+      "properties": {
+        "paths": {
+          "description": "Additional paths to skill folders",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "urls": {
+          "description": "URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "watcher": {
+      "type": "object",
+      "properties": {
+        "ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugin": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        ]
+      }
+    },
+    "snapshot": {
+      "type": "boolean"
+    },
+    "autoupdate": {
+      "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string",
+          "const": "notify"
+        }
+      ]
+    },
+    "disabled_providers": {
+      "description": "Disable providers that are loaded automatically",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enabled_providers": {
+      "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model": {
+      "type": "string",
+      "description": "Model to use in the format of provider/model, eg anthropic/claude-2",
+      "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+    },
+    "small_model": {
+      "type": "string",
+      "description": "Small model to use for tasks like title generation in the format of provider/model",
+      "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+    },
+    "default_agent": {
+      "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
+      "type": "string"
+    },
+    "mode": {
+      "description": "@deprecated Use `agent` field instead.",
+      "type": "object",
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "plan": {
+          "$ref": "#/$defs/__schema0"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "agent": {
+      "description": "Agent configuration",
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "build": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "general": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "explore": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "title": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "summary": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "compaction": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "memory-extractor": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "simplifier": {
+          "$ref": "#/$defs/__schema0"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "provider": {
+      "description": "Custom provider configurations and model overrides",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "npm": {
+            "type": "string"
+          },
+          "models": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "family": {
+                  "type": "string"
+                },
+                "release_date": {
+                  "type": "string"
+                },
+                "attachment": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "temperature": {
+                  "type": "boolean"
+                },
+                "tool_call": {
+                  "type": "boolean"
+                },
+                "interleaved": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "reasoning_content",
+                            "reasoning_details"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cache_read": {
+                      "type": "number"
+                    },
+                    "cache_write": {
+                      "type": "number"
+                    },
+                    "context_over_200k": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cache_read": {
+                          "type": "number"
+                        },
+                        "cache_write": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "input",
+                        "output"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": {
+                      "type": "number"
+                    },
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "context",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "modalities": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "audio",
+                          "image",
+                          "video",
+                          "pdf"
+                        ]
+                      }
+                    },
+                    "output": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "audio",
+                          "image",
+                          "video",
+                          "pdf"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "experimental": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "alpha",
+                    "beta",
+                    "deprecated"
+                  ]
+                },
+                "options": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "headers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "npm": {
+                      "type": "string"
+                    },
+                    "api": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "variants": {
+                  "description": "Variant-specific configuration",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "disabled": {
+                        "description": "Disable this variant for the model",
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "reasoning_options": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "toggle"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "effort"
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "values"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "budget_tokens"
+                          },
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              },
+              "setCacheKey": {
+                "description": "Enable promptCacheKey for this provider (default false)",
+                "type": "boolean"
+              },
+              "promptCacheRetention": {
+                "description": "OpenAI prompt cache retention policy when promptCacheKey is enabled.",
+                "type": "string",
+                "enum": [
+                  "in_memory",
+                  "24h"
+                ]
+              },
+              "timeout": {
+                "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout."
+                  },
+                  {
+                    "type": "boolean",
+                    "const": false,
+                    "description": "Disable timeout for this provider entirely."
+                  }
+                ]
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false,
+        "ref": "ProviderConfig"
+      }
+    },
+    "mcp": {
+      "description": "MCP (Model Context Protocol) server configurations",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "local",
+                    "description": "Type of MCP server connection"
+                  },
+                  "command": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Command and arguments to run the MCP server"
+                  },
+                  "environment": {
+                    "description": "Environment variables to set when running the MCP server",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
+                  },
+                  "timeout": {
+                    "description": "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "deferred": {
+                    "description": "Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "type",
+                  "command"
+                ],
+                "additionalProperties": false,
+                "ref": "McpLocalConfig"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "remote",
+                    "description": "Type of MCP server connection"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "URL of the remote MCP server"
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
+                  },
+                  "headers": {
+                    "description": "Headers to send with the request",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "oauth": {
+                    "description": "Remote MCP OAuth. Set false to keep header auth only.",
+                    "anyOf": [
+                      {
+                        "type": "boolean",
+                        "const": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "clientId": {
+                            "description": "Pre-registered OAuth client id",
+                            "type": "string"
+                          },
+                          "clientSecret": {
+                            "description": "Pre-registered OAuth client secret",
+                            "type": "string"
+                          },
+                          "scope": {
+                            "description": "OAuth scope",
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "timeout": {
+                    "description": "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "deferred": {
+                    "description": "Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.",
+                    "type": "boolean"
+                  },
+                  "transport": {
+                    "description": "Explicit transport protocol for the remote MCP server",
+                    "type": "string",
+                    "enum": [
+                      "http",
+                      "sse"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": false,
+                "ref": "McpRemoteConfig"
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "formatter": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": false
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "disabled": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "environment": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "extensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "lsp": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": false
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "disabled": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "disabled"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "extensions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "initialization": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "instructions": {
+      "description": "Additional instruction files or patterns to include",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "description": "Global user rules, always applied across all projects. Only read from global config; ignored in project config.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "layout": {
+      "description": "@deprecated Always uses stretch layout.",
+      "type": "string",
+      "enum": [
+        "auto",
+        "stretch"
+      ],
+      "ref": "LayoutConfig"
+    },
+    "permission": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "tools": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "enterprise": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "Enterprise URL",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compaction": {
+      "type": "object",
+      "properties": {
+        "auto": {
+          "description": "Enable automatic compaction when context is full (default: true)",
+          "type": "boolean"
+        },
+        "prune": {
+          "description": "Enable pruning of old tool outputs (default: true)",
+          "type": "boolean"
+        },
+        "reserved": {
+          "description": "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "failureThreshold": {
+          "description": "After this many consecutive auto-compaction failures, trip the breaker and switch to aggressive prune + blocking limit (default 3)",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "blockingLimit": {
+          "description": "After the breaker trips, hard-stop and notify the user if the context still exceeds capacity (default true)",
+          "type": "boolean"
+        },
+        "lossless": {
+          "description": "Lossless folding of tool output (default true). Strips ANSI color codes and folds adjacent repeated lines, repeated blocks and repeated path prefixes; every transform is round-trip checked and skipped if it cannot be restored exactly. No information is lost, and it runs before lossy compaction and truncation.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "min_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_block_fold_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "read_lifecycle": {
+          "description": "Read lifecycle management (default true). Projection layer: a Read is marked stale when the same file is edited afterwards, and superseded when it is read again with an overlapping range; either is replaced with a short notice. Storage is untouched and this is recomputed every turn. Reads within the last recent_turns turns are left alone to keep the cache.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "stale": {
+                  "description": "Handle Reads whose content is outdated (a quality issue, default true)",
+                  "type": "boolean"
+                },
+                "superseded": {
+                  "description": "Handle redundant repeated Reads (saves space, default true)",
+                  "type": "boolean"
+                },
+                "min_size_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "recent_turns": {
+                  "description": "Protection window: Reads within the last N user turns are not replaced, to keep the prompt cache stable (default 2)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "input_budget": {
+          "description": "Tool input content truncation (on by default). Projection layer: content fields in write/edit/multi_edit/apply_patch inputs that exceed the dynamic budget are truncated (filePath/path are kept) and a marker says the file can be re-read with Read. Independent of output cleanup and its dynamic budget. Inputs within the last recent_turns turns are not truncated, to keep the cache.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "description": "Whether to truncate tool input content (default true). Set false to disable.",
+                  "type": "boolean"
+                },
+                "share": {
+                  "description": "Dynamic budget share: budget = clamp(usable * share, min, max), default 0.1",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Lower bound of the dynamic budget in tokens, default 4000",
+                  "type": "number"
+                },
+                "max": {
+                  "description": "Upper bound of the dynamic budget in tokens, default 20000",
+                  "type": "number"
+                },
+                "max_chars_per_field": {
+                  "description": "Maximum length of a single content field after truncation (characters), default 4000",
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "auto_extract": {
+          "description": "Post-turn memory extraction policy. Default signals (extract only when needed). false disables it; true/signals extracts only on turns with memory signals; always extracts at the end of every root turn; unset means signals.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "signals",
+                "always"
+              ]
+            }
+          ]
+        },
+        "auto_recall": {
+          "description": "Whether to enable memory recall. Default false (off): past memories are not recalled into the context automatically. true: at the start of every user turn, relevant memories are recalled by keyword (optionally reranked by an LLM) and injected into the context.",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Model for post-turn memory extraction. Defaults to small_model, then the turn model.",
+          "type": "string",
+          "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+        },
+        "recall_rerank": {
+          "description": "Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.",
+          "type": "string",
+          "enum": [
+            "off",
+            "auto"
+          ]
+        },
+        "session_memory": {
+          "description": "Whether to enable SessionMemory (session notes). Default true (on). When on, a forked small model maintains per-session notes at token thresholds (10K to start, then every 5K) so context can be restored after compaction. Set false to turn it off completely.",
+          "type": "boolean"
+        },
+        "session_memory_compact": {
+          "description": "Use the SessionMemory notes instead of an LLM summary during compaction (saves one LLM call). Default true (on). Only applies when session_memory is not disabled; falls back to the LLM summary automatically when the notes are empty or fail. Set false to always use the LLM summary.",
+          "type": "boolean"
+        },
+        "extract_interval": {
+          "description": "Memory extraction throttle: extract once every N finished turns, default 1 (every turn). Larger values fork fewer child sessions and save cost.",
+          "type": "number"
+        },
+        "auto_dream": {
+          "description": "Whether to enable AutoDream (memory consolidation). Default false (off). When on, a child session is forked periodically to review the memory directory and merge, deduplicate, refine and prune the index, consolidating fragmented memories into organized, non-redundant long-term memory. Only applies when auto_extract is on (no extraction means nothing to consolidate).",
+          "type": "boolean"
+        },
+        "dream_min_hours": {
+          "description": "AutoDream time gate: minimum hours since the last consolidation, default 24. Consolidation runs only when dream_min_sessions is also met.",
+          "type": "number"
+        },
+        "dream_min_sessions": {
+          "description": "AutoDream session gate: minimum number of new sessions since the last consolidation, default 5. Consolidation runs only when dream_min_hours is also met.",
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_discovery": {
+      "type": "object",
+      "properties": {
+        "auto_activate": {
+          "description": "Auto-activate deferred tools on a strong match (default true). When a word in the user's request exactly matches an id segment or alias of a deferred tool, its full schema is injected in this turn, so the model does not need an extra tool_search round. Set false to go back to the old behavior where the model discovers tools on its own.",
+          "type": "boolean"
+        },
+        "rerank": {
+          "description": "Small-model selection for deferred tool search (default off). off uses keyword scoring only; auto, when the candidate count reaches the threshold (mostly with many MCP servers) and small_model is configured, lets the small model pick and activate the tools that are actually needed. Falls back to keywords only when not configured, on timeout or on failure.",
+          "type": "string",
+          "enum": [
+            "off",
+            "auto"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "experimental": {
+      "type": "object",
+      "properties": {
+        "disable_paste_summary": {
+          "type": "boolean"
+        },
+        "bash_output_compaction": {
+          "description": "Enable Bash output compaction, or configure thresholds for the compactor.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "safe",
+                    "aggressive"
+                  ]
+                },
+                "session_delta": {
+                  "type": "boolean"
+                },
+                "min_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_input_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_output_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "tool_result_delta": {
+          "description": "Collapse unchanged repeated glob/grep/ls results within a short session TTL.",
+          "type": "boolean"
+        },
+        "primary_tools": {
+          "description": "Tools that should only be available to primary agents.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "continue_loop_on_deny": {
+          "description": "Continue the agent loop when a tool call is denied",
+          "type": "boolean"
+        },
+        "mcp_timeout": {
+          "description": "Timeout in milliseconds for model context protocol (MCP) requests",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "object",
+          "properties": {
+            "hidden": {
+              "description": "Hidden models, as providerID/modelID",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recent": {
+              "description": "Recently used models, as providerID/modelID",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "variant": {
+              "description": "Selected variant per model",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "chat": {
+          "type": "object",
+          "properties": {
+            "autoScroll": {
+              "description": "Auto-scroll the conversation to the bottom",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugin_options": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "retention_days": {
+          "description": "Delete sessions inactive for more than N days; by default no history is deleted",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "sandbox": {
+      "description": "Sandbox for the commands the agent runs.",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "description": "preferred (default): use the sandbox when it is ready; until then commands that change things ask first, even in auto mode. required: refuse to run commands while the sandbox is not ready. off: never use the sandbox.",
+          "type": "string",
+          "enum": [
+            "preferred",
+            "required",
+            "off"
+          ]
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "deny": {
+              "description": "Extra folders commands cannot read, besides ~/.ssh, ~/.aws and the other credential folders. ~/ means your home folder.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "write": {
+          "type": "object",
+          "properties": {
+            "allow": {
+              "description": "Extra folders commands can always write, besides the workspace, the temp folder and package caches.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "allowLocalPorts": {
+              "description": "Linux only: local ports commands may connect to directly, for example a database at 127.0.0.1:5432.",
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "redactSecrets": {
+          "description": "Hide API keys, tokens and passwords in command output before the model sees it. Defaults to true.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "ref": "Config",
+  "$defs": {
+    "__schema0": {
+      "ref": "AgentConfig",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+        },
+        "variant": {
+          "description": "Default model variant for this agent (applies only when using the agent's configured model).",
+          "type": "string"
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "top_p": {
+          "type": "number"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "tools": {
+          "description": "@deprecated Use 'permission' field instead",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "disable": {
+          "type": "boolean"
+        },
+        "description": {
+          "description": "Description of when to use the agent",
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "subagent",
+            "primary",
+            "all"
+          ]
+        },
+        "hidden": {
+          "description": "Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)",
+          "type": "boolean"
+        },
+        "options": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "color": {
+          "description": "Hex color code (e.g., #FF5733) or theme color (e.g., primary)",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "primary",
+                "secondary",
+                "accent",
+                "success",
+                "warning",
+                "error",
+                "info"
+              ]
+            }
+          ]
+        },
+        "steps": {
+          "description": "Maximum number of agentic iterations before forcing text-only response",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxSteps": {
+          "description": "@deprecated Use 'steps' field instead.",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "permission": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "disableTools": {
+          "description": "Tool ids to remove from this agent's available-tools pool (e.g. pdf_parse, workflow_run) — reduces per-turn tool-schema token cost for tools this agent will never use. Only ever narrows the existing pool; unknown ids are ignored.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deferTools": {
+          "description": "Tool ids to defer-load: kept out of the tools array (only a one-line summary in the tool_search description) until the model activates one via tool_search, after which it is available with full parameters on the next turn. Defaults to [pdf_parse, excel_parse, excel_write, workflow_run]. Pass an empty array to disable deferral entirely (load all tools eagerly). Only applies to tools still in the pool (respecting disableTools).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": {}
+    },
+    "__schema1": {
+      "ref": "PermissionConfig",
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "__originalKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "read": {
+              "description": "Read files inside the workspace",
+              "$ref": "#/$defs/__schema2"
+            },
+            "external_read": {
+              "description": "Read files outside the workspace",
+              "$ref": "#/$defs/__schema2"
+            },
+            "sensitive_read": {
+              "description": "Read secrets: .env, keys, certificates, credentials",
+              "$ref": "#/$defs/__schema2"
+            },
+            "edit": {
+              "description": "Write files inside the workspace",
+              "$ref": "#/$defs/__schema2"
+            },
+            "protected_write": {
+              "description": "Write .git and dotfiles inside the workspace",
+              "$ref": "#/$defs/__schema2"
+            },
+            "external_write": {
+              "description": "Write files outside the workspace",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash_readonly": {
+              "description": "Run read-only commands (ls, git status, ...)",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash": {
+              "description": "Run other commands",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash_delete": {
+              "description": "Run commands that delete files (rm, git clean, ...)",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash_risky": {
+              "description": "Run risky commands (sudo, git push, npm publish, ...)",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash_forbidden": {
+              "description": "Run commands that wipe the system or home folder, format disks or write raw disks (denied unless allowed here)",
+              "$ref": "#/$defs/__schema2"
+            },
+            "bash_unsandboxed": {
+              "description": "Run a command that may change things while the sandbox is not ready",
+              "$ref": "#/$defs/__schema2"
+            },
+            "sandbox": {
+              "description": "Run a command with extra sandbox permissions",
+              "$ref": "#/$defs/__schema2"
+            },
+            "network": {
+              "description": "Connect to a domain",
+              "$ref": "#/$defs/__schema2"
+            },
+            "subagent": {
+              "description": "Start a subagent",
+              "$ref": "#/$defs/__schema2"
+            },
+            "workflow_run": {
+              "description": "Start a workflow",
+              "$ref": "#/$defs/__schema2"
+            },
+            "cron": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "mcp": {
+              "description": "Call an MCP tool (pattern: server/tool)",
+              "$ref": "#/$defs/__schema2"
+            },
+            "glob": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "grep": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "ls": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "lsp": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "skill": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "$ref": "#/$defs/__schema3"
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/__schema3"
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "ref": "PermissionObjectConfig"
+        }
+      ],
+      "ref": "PermissionRuleConfig"
+    },
+    "__schema3": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "allow",
+        "deny"
+      ],
+      "ref": "PermissionActionConfig"
+    }
+  },
+  "additionalProperties": false,
+  "allowComments": true,
+  "allowTrailingCommas": true
+}

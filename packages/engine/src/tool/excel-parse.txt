@@ -1,0 +1,29 @@
+Read and analyze Excel workbooks (.xlsx and .xlsm) with a streaming parser.
+
+This is a built-in Excel reader that:
+- Streams worksheet XML and stops early once row/cell limits are hit, so cost scales with rows actually read.
+- Returns cell values and formula cached values, not formula expressions or formatting.
+- Decodes common built-in and custom Excel date styles.
+- Supports paging large sheets by row range, and a summary mode that returns only each sheet's dimension + header.
+
+It does NOT edit an existing workbook in place. To update a workbook, use the read → transform → write pattern with `excel_write` (styles/formulas/formatting are not preserved).
+
+Usage:
+1. Call `excel_parse` with a workbook path (and optional sheet / row range / limits).
+2. By default it inspects at most 20 sheets, 100 rows per sheet, 2000 cells per sheet.
+3. Set `json: true` to get the parsed workbook as JSON for structured follow-up analysis.
+4. For large sheets, first call with `summary: true` to get dimensions + headers, then page with `rows: "1001:2000"`.
+
+Parameters:
+- filePath: absolute path to the .xlsx/.xlsm workbook. Relative paths resolve against the project directory.
+- sheets: optional list of worksheet names or 1-based indexes to inspect.
+- maxSheets: max worksheets to inspect. Default 20.
+- maxRows: max rows to show per sheet. Default 100.
+- maxCells: max cells to scan per sheet. Default 2000.
+- rows: 1-based closed row range to read, e.g. "1001:2000". Useful for paging large sheets.
+- summary: only output each sheet's dimension and header row.
+- json: print the parsed workbook as JSON instead of formatted text.
+
+Notes:
+- Supports .xlsx and .xlsm only. Legacy binary .xls is not supported — ask the user for an .xlsx export.
+- Do not use `read` directly on Excel files; use this tool so the workbook is decoded instead of rejected as binary.

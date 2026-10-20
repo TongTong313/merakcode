@@ -1,0 +1,22 @@
+Use this tool to suggest switching to plan mode when the user's request would benefit from planning before implementation. Plan mode is read-only: you research, then write the plan to the official session plan file, and the user approves it before anything changes.
+
+If they explicitly mention wanting to create a plan ALWAYS call this tool first.
+If they ask to switch to plan mode, or to revise/modify the official session plan file
+(under the merakcode data plans directory, e.g. …/merakcode/plans/<timestamp>-<slug>.md),
+ALWAYS call this tool first — before any write/edit to that official plan file.
+Do NOT call this tool merely because a path contains a folder named "plans"; user-authored
+markdown under project plans/ or other folders is ordinary file editing, not plan mode.
+If a prior tool error says you cannot modify plan files outside plan mode / must call plan_enter, call this tool immediately, then retry the edit after approval.
+
+This tool will ask the user if they want to switch to plan mode.
+
+Call this tool when:
+- The user's request is complex and would benefit from planning first
+- You want to research and design before making changes
+- The task involves multiple files or significant architectural decisions
+- The user wants to revise, optimize, or update an existing plan
+- The user explicitly asks to enter / return to plan mode
+
+Do NOT call this tool:
+- For simple, straightforward tasks
+- When the user explicitly wants immediate implementation

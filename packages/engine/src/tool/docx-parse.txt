@@ -1,0 +1,27 @@
+Read and analyze Word documents (.docx) with a streaming parser.
+
+This is a built-in Word reader that:
+- Streams document.xml and stops early once text/block limits are hit, so cost scales with content actually read.
+- Returns body text (paragraph order preserved), tables (as Markdown), and embedded images (as attachments, positions marked in text).
+- Aligns merged table cells (gridSpan/vMerge) to the rendered visual shape, so tables read like what you see.
+
+It does NOT edit an existing document in place. To create or edit a document, follow the `docx` skill's write instructions (TypeScript `docx` library).
+
+Usage:
+1. Call `docx_parse` with a document path (and optional block range / limits).
+2. By default it returns body text + tables + extracted images, capped at 6000 chars of text.
+3. Set `json: true` to get the parsed document as JSON for structured follow-up analysis.
+4. For large documents, page with `blocks: "1:100"` then increment the range until fewer blocks than the range length come back.
+
+Parameters:
+- filePath: absolute path to the .docx file. Relative paths resolve against the project directory.
+- blocks: 1-based closed block range to read, e.g. "1:100". Useful for paging large documents.
+- extractImages: whether to extract embedded raster images (png/jpeg/gif/bmp) as attachments. Default true.
+- maxChars: max text chars in output. Default 6000. Range 500-30000.
+- json: print the parsed document as JSON instead of formatted text.
+
+Notes:
+- Supports .docx only. Legacy binary .doc is not supported — ask the user for a .docx export.
+- Comments, tracked changes, headers/footers, footnotes are not parsed in the first version.
+- emf/wmf/svg vector images are not extracted (vision models cannot read them); their position is still marked.
+- Do not use `read` directly on Word files; use this tool so the document is decoded instead of rejected as binary.

@@ -1,0 +1,47 @@
+{
+  "name": "@merakcode/desktop-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MerakCode desktop app (renderer)",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "happy-dom": "21.0.3",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@kobalte/core": "catalog:",
+    "@merakcode/client-core": "workspace:*",
+    "@merakcode/sdk": "workspace:*",
+    "@solidjs/router": "catalog:",
+    "diff": "catalog:",
+    "dompurify": "3.4.17",
+    "ghostty-web": "0.4.0",
+    "katex": "0.18.10",
+    "lucide-solid": "1.59.0",
+    "marked": "catalog:",
+    "marked-katex-extension": "5.1.13",
+    "monaco-editor": "0.57.0",
+    "shiki": "catalog:",
+    "solid-js": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "apps/desktop/renderer"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

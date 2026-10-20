@@ -1,0 +1,5 @@
+# Files that may contain the blocked terms on purpose (one path glob per line).
+script/check-brand.ts
+script/check-brand.test.ts
+# Tests for replacing placeholder repository links
+script/sync-project.test.ts

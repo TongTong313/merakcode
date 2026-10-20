@@ -1,0 +1,31 @@
+Starts a long-running bash command in the background and returns immediately with a job ID. Use this for commands that would block the agent for minutes or hours; the agent can keep working while the command runs.
+
+When to use this instead of bash:
+- Dev servers (e.g. `npm run dev`, `bun run dev`, `python manage.py runserver`)
+- Build watchers (e.g. `tsc --watch`, `vite build --watch`)
+- Long compilations or test runs that the user does not need synchronous output from
+- Any command the user explicitly asks to run "in the background"
+
+When NOT to use this:
+- Short commands (< 30 seconds): use `bash` instead so the agent can read the result and react
+- Commands whose output you need to inspect right now: use `bash`
+- Anything that needs interactive stdin: not supported
+
+Output handling:
+- The command is launched immediately. The tool returns a `jobId` and a brief confirmation message.
+- The job's stdout and stderr are buffered in memory (last ~500KB only) and exposed through the HTTP API.
+- The job continues running until it exits, the process is killed, or the server stops.
+- When the job exits, its final status (completed / failed / stopped), exit code and tail output
+  are automatically delivered to you as a new user-style message. Do NOT poll the log endpoint —
+  just continue with other work and react to the completion message when it arrives.
+
+Available APIs (the user/UI controls these; you do not call them directly):
+- `GET /bash/jobs` — list all background jobs and their statuses
+- `GET /bash/jobs/:id/log` — fetch buffered stdout/stderr
+- `POST /bash/jobs/:id/stop` — terminate a running job (sends a cross-platform process-tree kill)
+
+Usage notes:
+- Always provide a clear, concise `description` (5-10 words) so users can recognize the job in lists.
+- The `workdir` parameter has the same semantics as the regular bash tool: defaults to the project root, never use `cd` in the command itself.
+- Once a background job is started, do NOT call this tool again with the same command unless the user explicitly asks. Spawning duplicate dev servers will cause port conflicts.
+- The agent should usually mention the job ID in its reply so the user can track it.
