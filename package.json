@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "merakcode-workspace",
+  "version": "0.1.0",
+  "description": "AI coding agent for the terminal and desktop",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=26.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --dir apps/cli dev",
+    "typecheck": "turbo typecheck",
+    "generate:sdk": "node --import ./script/node/register.mjs packages/sdk/js/script/generate.ts",
+    "generate:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json",
+    "check:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json --check",
+    "sync:project": "node --import ./script/node/register.mjs script/sync-project.ts",
+    "hooks:install": "node --import ./script/node/register.mjs script/install-hooks.ts",
+    "test": "echo 'do not run tests from root' && exit 1",
+    "test:script": "vitest run --config script/vitest.config.ts",
+    "format": "prettier --ignore-unknown --write .",
+    "format:check": "prettier --ignore-unknown --check .",
+    "check:deps": "node --import ./script/node/register.mjs script/check-deps.ts",
+    "check:css": "node --import ./script/node/register.mjs script/check-css.ts",
+    "check:api": "node --import ./script/node/register.mjs packages/sdk/js/script/api.ts",
+    "generate:sdk-reference": "node --import ./script/node/register.mjs packages/sdk/js/script/reference.ts",
+    "check:sdk-reference": "node --import ./script/node/register.mjs packages/sdk/js/script/reference.ts --check",
+    "check:sdk-docs": "node --import ./script/node/register.mjs packages/sdk/js/script/docs.ts",
+    "check:docs": "node --import ./script/node/register.mjs script/check-docs.ts",
+    "check:unused": "knip --no-progress",
+    "check:brand": "node --import ./script/node/register.mjs script/check-brand.ts",
+    "generate:errors": "node --import ./script/node/register.mjs script/generate-errors.ts",
+    "check:errors": "node --import ./script/node/register.mjs script/generate-errors.ts --check",
+    "check:comments": "node --import ./script/node/register.mjs script/check-comments.ts",
+    "release:version": "node --import ./script/node/register.mjs script/release/version.ts",
+    "check:versions": "node --import ./script/node/register.mjs script/release/version.ts --check",
+    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/preset-typescript": "7.29.7",
+    "@merakcode/util": "workspace:*",
+    "@types/node": "catalog:",
+    "babel-preset-solid": "1.9.12",
+    "knip": "6.42.0",
+    "oxc-parser": "0.154.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "turbo": "2.11.9",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "MIT",
+  "prettier": {
+    "semi": false,
+    "printWidth": 120
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

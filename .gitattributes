@@ -1,0 +1,5 @@
+# 所有文本文件统一使用 LF（跨平台协作，避免 Windows 编辑器/工具引入 CRLF）
+* text=auto eol=lf
+
+# Windows 批处理脚本必须使用 CRLF，否则 cmd.exe 解析会出错
+*.bat text eol=crlf

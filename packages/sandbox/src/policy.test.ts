@@ -1,0 +1,71 @@
+import { afterEach, describe, expect, test } from "vitest"
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { Policy } from "./policy"
+
+const roots: string[] = []
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
+
+const workspace = [path.resolve("/work/demo")]
+const home = path.resolve("/home/dev")
+const tmp = path.resolve("/tmp/merakcode")
+
+describe("Policy.build", () => {
+  test("writes: workspace, temp dir, package caches and extra directories; never the home itself", () => {
+    const policy = Policy.build({ workspace, home, tmp, writable: [path.join(home, "out")] })
+    expect(policy.write.allow).toEqual(
+      expect.arrayContaining([
+        ...workspace,
+        tmp,
+        path.join(home, ".npm"),
+        path.join(home, ".cache"),
+        path.join(home, "out"),
+      ]),
+    )
+    expect(policy.write.allow).not.toContain(home)
+  })
+
+  test("protects .git/hooks and .git/config of every workspace root", () => {
+    const roots = [path.resolve("/work/a"), path.resolve("/work/b")]
+    const policy = Policy.build({ workspace: roots, home, tmp })
+    expect(policy.write.protect).toEqual(
+      roots.flatMap((root) => [path.join(root, ".git", "hooks"), path.join(root, ".git", "config")]),
+    )
+  })
+
+  test("reads: credential directories are denied, plus the extra ones; ~ means the home", () => {
+    const policy = Policy.build({ workspace, home, tmp, readDeny: ["~/secrets", path.resolve("/opt/keys")] })
+    for (const dir of [".ssh", ".aws", ".azure", ".kube", ".gnupg", ".docker", ".config/gcloud", ".config/gh"])
+      expect(policy.read.deny, dir).toContain(path.join(home, dir))
+    expect(policy.read.deny).toContain(path.join(home, "secrets"))
+    expect(policy.read.deny).toContain(path.resolve("/opt/keys"))
+  })
+
+  test("network: keeps valid host patterns only and removes duplicates", () => {
+    const policy = Policy.build({
+      workspace,
+      home,
+      tmp,
+      network: { allow: ["github.com", "github.com", "exa*mple.org"], deny: ["*.example.com", "bad pattern"] },
+    })
+    expect(policy.network.allow).toEqual(["github.com"])
+    expect(policy.network.deny).toEqual(["*.example.com"])
+    expect(policy.network.blockPorts).toEqual([])
+    expect(policy.network.localPorts).toEqual([])
+  })
+
+  test("paths are resolved to their real location; missing paths are kept as given", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "policy-"))
+    roots.push(base)
+    const real = path.join(base, "real")
+    mkdirSync(real)
+    const link = path.join(base, "link")
+    symlinkSync(real, link, "junction")
+    const missing = path.join(base, "missing")
+    const policy = Policy.build({ workspace: [link], home, tmp, writable: [missing] })
+    expect(policy.write.allow).toContain(real)
+    expect(policy.write.allow).not.toContain(link)
+    expect(policy.write.allow).toContain(missing)
+  })
+})

@@ -1,0 +1,115 @@
+Execute a workflow script that orchestrates multiple child agents deterministically. Workflows run in the background: this tool returns immediately with a run ID, and the main conversation is notified when the workflow completes.
+
+A workflow encodes structure across many agents: fan out to be comprehensive, run independent perspectives to be confident, or take on scale one context cannot hold. The script is where you express what fans out, what verifies, and what synthesizes.
+
+ONLY call this tool when the user has explicitly opted into workflow-style orchestration. Explicit opt-in means one of:
+- The user used the word "workflow" / "workflows".
+- The user asked you to run a workflow, fan out agents, or orchestrate subagents in their own words.
+- The user invoked a skill or slash command whose instructions tell you to call workflow_run.
+- The user asked for a specific named/saved workflow.
+
+For any other task, do NOT call this tool. Use normal tools or a single agent, or describe what a workflow could do and ask first.
+
+The right move is often hybrid: scout inline first with normal tools to discover the work-list, then call workflow_run to pipeline over it.
+
+## Script Shape
+
+CRITICAL syntax rule:
+- The ONLY allowed export in the entire script is the first declaration: `export const meta = { ... }`.
+- Do NOT write any other `export`.
+- Do NOT write any `import`.
+- Do NOT write `export default`, `export async function`, `module.exports`, `require(...)`, or TypeScript syntax.
+- Put executable code directly after the meta object.
+
+Every script must begin with a PURE LITERAL meta object. No variables, function calls, spreads, computed keys, or template interpolation are allowed in meta:
+
+export const meta = {
+  name: "find-flaky-tests",
+  description: "Find flaky tests and propose fixes",
+  phases: [
+    { title: "Scan", detail: "search logs for retries" },
+    { title: "Fix", detail: "one agent per flaky test" },
+  ],
+}
+
+Required meta fields: name, description. Optional fields: whenToUse, phases, concurrency/maxConcurrentAgents. phase() titles are matched to meta.phases by exact string; a phase() with no matching entry gets its own progress group.
+
+After meta, the rest of the file is the workflow body. It is executed in an async context:
+- Use await directly in the body.
+- Do NOT wrap the body in export default async function, module.exports, or a function that expects { agent, phase, log }.
+- Do NOT add import/export statements after meta.
+- Scripts are plain JavaScript, not TypeScript.
+- Do not import filesystem/path modules. Ask child agents to inspect files using their normal tools.
+
+Correct shape:
+
+export const meta = { name: "project-review", description: "Review project", phases: ["Explore", "Synthesize"] }
+await phase("Explore")
+const notes = await agent("Inspect the project and identify optimization opportunities", { label: "explore", phase: "Explore" })
+await phase("Synthesize")
+return { notes }
+
+Wrong shapes:
+
+import fs from "fs"
+export default async function workflow() {}
+export async function run() {}
+module.exports = async () => {}
+
+## Script Body Hooks
+
+- agent(prompt, opts?): Promise<any> - spawn a workflow child agent. Without schema, returns its final text as a string. With { schema }, returns structured output. Options: label, phase, model, agent/agentType, tools/allowedTools.
+- fanout(workUnits, mapper?): Promise<any[]> - launch one child agent per work unit in one parallel barrier and record those planned units for progress tracking. Work units should include title, description, prompt, optional files, and optional phase. mapper(unit, index) can return agent options plus prompt.
+- pipeline(items, stage1, stage2, ...): Promise<any[]> - run each item through all stages independently, with no barrier between stages. Every stage receives (prevResult, originalItem, index). A stage failure returns null for that item and skips its remaining stages.
+- parallel(thunks): Promise<any[]> - run thunks concurrently as a barrier. A failing thunk resolves to null; the call itself never rejects.
+- phase(title): start or update the current phase.
+- log(message) / narrate(message): emit workflow progress messages.
+- args: the value passed as workflow_run.args.
+- budget: workflow budget information.
+- workflow(name, args?): run another saved workflow as a nested one-level child workflow when supported.
+
+DEFAULT TO pipeline(). Use fanout() when the task can be decomposed into independent work units and you want those units tracked individually. Reach for parallel() only when a stage genuinely needs all previous results together.
+
+When agent()/fanout() is called without a schema, use the returned string directly:
+
+const results = await fanout(workUnits)
+const report = `${results[0] ?? "missing"}`
+
+Do not assume text results are objects. For compatibility only, string results also expose .content/.text/.output aliases inside the workflow script.
+
+Only pass { schema } when you genuinely need structured fields. An agent({ schema }) call now FAILS LOUDLY if the child does not produce valid structured output (it throws instead of silently returning empty text). A thrown agent inside pipeline()/parallel()/fanout() becomes null for that item; a thrown agent at the top level fails the whole workflow. So: keep schemas small and unambiguous, and when a field is optional prefer a text agent plus your own parsing over a brittle schema.
+
+## Returning the Result
+
+The workflow's final value is whatever the body `return`s. It is delivered back to the main conversation as the `<result>` of the completion notification. ALWAYS end the body with a `return` of the synthesized result (an object or string). A workflow that computes results but never returns them reports an EMPTY result — the single most common reason a workflow "succeeds but shows nothing". Do not just leave results in a local variable; return them.
+
+Concurrent agent() calls are capped per workflow when meta.concurrency/maxConcurrentAgents is set; excess calls queue FIFO. If no concurrency is set, calls launched by parallel()/pipeline()/fanout() start according to the script's actual fan-out. Total agent() calls are capped at 1000 as a runaway backstop.
+
+Scripts are plain JavaScript. Standard built-ins such as JSON, Math, Array, Object, Number, Boolean, Promise, RegExp, Error, and URL are available through the workflow sandbox where supported. Date.now(), Math.random(), and argless new Date() are rejected because they break resume; pass timestamps via args and vary randomness by index. Do not rely on host runtime globals such as process, require, Bun, or filesystem APIs inside the script.
+
+## Quality Patterns
+
+- Adversarial verify: spawn skeptics per finding, each prompted to refute; keep only if a majority fail to refute.
+- Judge panel: generate independent attempts from different angles, score with judges, synthesize from the winner.
+- Loop-until-dry: keep spawning finders until consecutive rounds find nothing new.
+- Multi-modal sweep: parallel agents each search a different way.
+- No silent caps: if you bound coverage, log() what was dropped.
+
+## Canonical Example
+
+A common shape: pipeline() each item through a review stage that emits schema'd findings, then parallel()-verify each finding adversarially (see Quality Patterns above), flatten and filter for confirmed results, then return them.
+
+Input precedence:
+- scriptPath takes precedence over script and name.
+- script runs an inline self-contained script. Inline scripts are persisted to .merakcode/workflows/generated/ and returned as scriptPath.
+- name resolves a saved workflow from .merakcode/workflows/*.js.
+
+Prefer { name } for installed workflows. Use { scriptPath } when the user points to a file, or when resuming/editing a generated workflow. Use { script } when no saved workflow fits and the user asked for workflow-style orchestration.
+
+## Resume
+
+The result includes a runId. To resume after a stop or script edit, relaunch with { scriptPath, resumeFromRunId }. The longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args gives a full cache hit. Use resumeFromRunId only for a prior same-session run that has been stopped or completed; do not invent a run ID.
+
+## After Launching
+
+This tool returns immediately once the workflow is running in the background. After it returns, briefly tell the user the workflow has started, then end your turn. Do not poll progress or call workflow_run again while it runs; you will be notified when the workflow reaches a terminal status.

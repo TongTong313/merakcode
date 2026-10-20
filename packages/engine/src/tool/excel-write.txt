@@ -1,0 +1,19 @@
+Write data to a NEW Excel workbook (.xlsx or .xlsm).
+
+This is a built-in Excel writer that:
+- Creates a new workbook only. It does NOT edit an existing file in place (in-place edits would silently lose styles, formulas, merged cells, charts, and column widths, because the read side captures values only).
+- Strings go through a shared-strings table (deduplicated); numbers/booleans keep their type.
+- Null cells are skipped; column alignment is preserved via cell references (e.g. A1).
+- Files written by this tool can be read back correctly by `excel_parse`.
+
+To update an existing workbook, use the read → transform → write pattern: read it with `excel_parse` (json: true), modify the data in memory, then write a new file with `excel_write` (overwrite the original if desired). This is a data-level rewrite — original styles/formulas/formatting are not preserved.
+
+Usage:
+1. Build the sheets/rows structure (the shape mirrors the `excel_parse` JSON data model, but strip read-only fields like `number`/`dimension`/`totalRows` and keep only `name` + `rows`).
+2. Call `excel_write` with an output path and the sheets array.
+
+Parameters:
+- output: absolute path to the output .xlsx/.xlsm file. Relative paths resolve against the project directory.
+- sheets: array of `{ name: string, rows: (string|number|boolean|null)[][] }`. Each row is an array of cells; null cells are skipped (alignment preserved).
+- maxRows: max rows per sheet. Default 1000000.
+- maxCells: max cells per sheet. Default 50000000.

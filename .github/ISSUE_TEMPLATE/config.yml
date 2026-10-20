@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem / 安全问题
+    url: https://github.com/TongTong313/merakcode/security/advisories/new
+    about: Report it privately / 请私下报告
+  - name: Error codes / 错误码表
+    url: https://github.com/TongTong313/merakcode/blob/main/docs/errors.md
+    about: Look up an MRK code first / 先查一下错误码

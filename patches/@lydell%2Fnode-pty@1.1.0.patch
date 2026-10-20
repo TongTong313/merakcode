@@ -1,0 +1,15 @@
+diff --git a/windowsPtyAgent.js b/windowsPtyAgent.js
+index 7f35a2a..debb4c4 100644
+--- a/windowsPtyAgent.js
++++ b/windowsPtyAgent.js
+@@ -118,7 +118,9 @@ var WindowsPtyAgent = /** @class */ (function () {
+     WindowsPtyAgent.prototype._getConsoleProcessList = function () {
+         var _this = this;
+         return new Promise(function (resolve) {
+-            var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
++            // Patched: the agent races ClosePseudoConsole and usually fails AttachConsole; keep its stack trace out of the
++            // host's stderr, and do not inherit the host's loader flags (the agent is plain CommonJS).
++            var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], execArgv: [] });
+             agent.on('message', function (message) {
+                 clearTimeout(timeout);
+                 resolve(message.consoleProcessList);

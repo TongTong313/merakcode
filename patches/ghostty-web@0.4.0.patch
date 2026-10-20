@@ -1,0 +1,190 @@
+diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
+index a4ca427b9..fece01967 100644
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -803,8 +803,8 @@ class P {
+    * @param customKeyEventHandler - Optional custom key event handler
+    * @param getMode - Optional callback to query terminal mode state (for application cursor mode)
+    */
+-  constructor(A, B, g, E, C, I, D) {
+-    this.keydownListener = null, this.keypressListener = null, this.pasteListener = null, this.compositionStartListener = null, this.compositionUpdateListener = null, this.compositionEndListener = null, this.isComposing = !1, this.isDisposed = !1, this.encoder = A.createKeyEncoder(), this.container = B, this.onDataCallback = g, this.onBellCallback = E, this.onKeyCallback = C, this.customKeyEventHandler = I, this.getModeCallback = D, this.attach();
++  constructor(A, B, g, E, C, I, D, w) {
++    this.keydownListener = null, this.keyupListener = null, this.pasteListener = null, this.inputListener = null, this.compositionStartListener = null, this.compositionUpdateListener = null, this.compositionEndListener = null, this.isComposing = !1, this.isDisposed = !1, this.sawKeyDown = !1, this.inputElement = w || null, this.pendingKeyAfterComposition = null, this.compositionJustEnded = !1, this.encoder = A.createKeyEncoder(), this.container = B, this.onDataCallback = g, this.onBellCallback = E, this.onKeyCallback = C, this.customKeyEventHandler = I, this.getModeCallback = D, this.attach();
+   }
+   /**
+    * Set custom key event handler (for runtime updates)
+@@ -816,7 +816,9 @@ class P {
+    * Attach keyboard event listeners to container
+    */
+   attach() {
+-    typeof this.container.hasAttribute == "function" && typeof this.container.setAttribute == "function" && (this.container.hasAttribute("tabindex") || this.container.setAttribute("tabindex", "0"), this.container.style && (this.container.style.outline = "none")), this.keydownListener = this.handleKeyDown.bind(this), this.container.addEventListener("keydown", this.keydownListener), this.pasteListener = this.handlePaste.bind(this), this.container.addEventListener("paste", this.pasteListener), this.compositionStartListener = this.handleCompositionStart.bind(this), this.container.addEventListener("compositionstart", this.compositionStartListener), this.compositionUpdateListener = this.handleCompositionUpdate.bind(this), this.container.addEventListener("compositionupdate", this.compositionUpdateListener), this.compositionEndListener = this.handleCompositionEnd.bind(this), this.container.addEventListener("compositionend", this.compositionEndListener);
++    typeof this.container.hasAttribute == "function" && typeof this.container.setAttribute == "function" && (this.container.hasAttribute("tabindex") || this.container.setAttribute("tabindex", "0"), this.container.style && (this.container.style.outline = "none"));
++    const A = this.inputElement || this.container;
++    this.keydownListener = this.handleKeyDown.bind(this), A.addEventListener("keydown", this.keydownListener), this.keyupListener = this.handleKeyUp.bind(this), A.addEventListener("keyup", this.keyupListener), this.pasteListener = this.handlePaste.bind(this), this.container.addEventListener("paste", this.pasteListener), this.inputListener = this.handleInput.bind(this), A.addEventListener("input", this.inputListener), this.compositionStartListener = this.handleCompositionStart.bind(this), A.addEventListener("compositionstart", this.compositionStartListener), this.compositionUpdateListener = this.handleCompositionUpdate.bind(this), A.addEventListener("compositionupdate", this.compositionUpdateListener), this.compositionEndListener = this.handleCompositionEnd.bind(this), A.addEventListener("compositionend", this.compositionEndListener);
+   }
+   /**
+    * Map KeyboardEvent.code to USB HID Key enum value
+@@ -847,9 +849,37 @@ class P {
+    * Handle keydown event
+    * @param event - KeyboardEvent
+    */
++  handleKeyUp() {
++    this.sawKeyDown = !1;
++  }
++  handleInput(A) {
++    if (this.isDisposed || this.isComposing || A.isComposing)
++      return;
++    const B = this.inputElement, g = A.inputType, E = typeof A.data == "string" && A.data.length > 0 ? A.data : B && typeof B.value == "string" ? B.value : "";
++    if (!E)
++      return;
++    if (g && g !== "insertText" && g !== "insertReplacementText")
++      return;
++    if (this.sawKeyDown) {
++      B && typeof B.value == "string" && (B.value = "");
++      return;
++    }
++    this.onDataCallback(E), B && typeof B.value == "string" && (B.value = "");
++  }
+   handleKeyDown(A) {
+-    if (this.isDisposed || this.isComposing || A.isComposing || A.keyCode === 229)
++    if (this.isDisposed)
++      return;
++    this.sawKeyDown = !0;
++    if (A.isComposing || A.keyCode === 229)
++      return;
++    if (this.isComposing) {
++      this.pendingKeyAfterComposition = A, A.preventDefault();
++      return;
++    }
++    if (this.compositionJustEnded) {
++      this.compositionJustEnded = !1;
+       return;
++    }
+     if (this.onKeyCallback && this.onKeyCallback({ key: A.key, domEvent: A }), this.customKeyEventHandler && this.customKeyEventHandler(A)) {
+       A.preventDefault();
+       return;
+@@ -995,18 +1025,29 @@ class P {
+     if (this.isDisposed)
+       return;
+     this.isComposing = !1;
+-    const B = A.data;
+-    if (B && B.length > 0 && this.onDataCallback(B), this.container && this.container.childNodes)
+-      for (let g = this.container.childNodes.length - 1; g >= 0; g--) {
+-        const E = this.container.childNodes[g];
+-        E.nodeType === 3 && this.container.removeChild(E);
++    let B = A.data;
++    const g = this.inputElement;
++    if ((!B || !B.length) && g && typeof g.value == "string" && (B = g.value), B && B.length > 0 && this.onDataCallback(B), g && typeof g.value == "string" && (g.value = ""), this.container && this.container.childNodes)
++      for (let E = this.container.childNodes.length - 1; E >= 0; E--) {
++        const C = this.container.childNodes[E];
++        C.nodeType === 3 && this.container.removeChild(C);
+       }
++    this.processPendingKeyAfterComposition();
++  }
++  processPendingKeyAfterComposition() {
++    const A = this.pendingKeyAfterComposition;
++    if (this.pendingKeyAfterComposition = null, !A)
++      return;
++    this.handleKeyDown(A), this.compositionJustEnded = !0;
+   }
+   /**
+    * Dispose the InputHandler and remove event listeners
+    */
+   dispose() {
+-    this.isDisposed || (this.keydownListener && (this.container.removeEventListener("keydown", this.keydownListener), this.keydownListener = null), this.keypressListener && (this.container.removeEventListener("keypress", this.keypressListener), this.keypressListener = null), this.pasteListener && (this.container.removeEventListener("paste", this.pasteListener), this.pasteListener = null), this.compositionStartListener && (this.container.removeEventListener("compositionstart", this.compositionStartListener), this.compositionStartListener = null), this.compositionUpdateListener && (this.container.removeEventListener("compositionupdate", this.compositionUpdateListener), this.compositionUpdateListener = null), this.compositionEndListener && (this.container.removeEventListener("compositionend", this.compositionEndListener), this.compositionEndListener = null), this.isDisposed = !0);
++    if (this.isDisposed)
++      return;
++    const A = this.inputElement || this.container;
++    this.keydownListener && (A.removeEventListener("keydown", this.keydownListener), this.keydownListener = null), this.keyupListener && (A.removeEventListener("keyup", this.keyupListener), this.keyupListener = null), this.keypressListener && (this.container.removeEventListener("keypress", this.keypressListener), this.keypressListener = null), this.pasteListener && (this.container.removeEventListener("paste", this.pasteListener), this.pasteListener = null), this.inputListener && (A.removeEventListener("input", this.inputListener), this.inputListener = null), this.compositionStartListener && (A.removeEventListener("compositionstart", this.compositionStartListener), this.compositionStartListener = null), this.compositionUpdateListener && (A.removeEventListener("compositionupdate", this.compositionUpdateListener), this.compositionUpdateListener = null), this.compositionEndListener && (A.removeEventListener("compositionend", this.compositionEndListener), this.compositionEndListener = null), this.isDisposed = !0;
+   }
+   /**
+    * Check if handler is disposed
+@@ -2327,15 +2368,17 @@ class IA {
+       throw new Error("Terminal has been disposed");
+     this.element = A, this.isOpen = !0;
+     try {
+-      A.hasAttribute("tabindex") || A.setAttribute("tabindex", "0"), A.setAttribute("contenteditable", "true"), A.addEventListener("beforeinput", (E) => E.preventDefault()), A.setAttribute("role", "textbox"), A.setAttribute("aria-label", "Terminal input"), A.setAttribute("aria-multiline", "true");
++      A.setAttribute("tabindex", "-1"), getComputedStyle(A).position === "static" && (A.style.position = "relative"), A.setAttribute("role", "textbox"), A.setAttribute("aria-label", "Terminal input"), A.setAttribute("aria-multiline", "true");
+       const B = this.buildWasmConfig();
+-      this.wasmTerm = this.ghostty.createTerminal(this.cols, this.rows, B), this.canvas = document.createElement("canvas"), this.canvas.style.display = "block", A.appendChild(this.canvas), this.textarea = document.createElement("textarea"), this.textarea.setAttribute("autocorrect", "off"), this.textarea.setAttribute("autocapitalize", "off"), this.textarea.setAttribute("spellcheck", "false"), this.textarea.setAttribute("tabindex", "0"), this.textarea.setAttribute("aria-label", "Terminal input"), this.textarea.style.position = "absolute", this.textarea.style.left = "0", this.textarea.style.top = "0", this.textarea.style.width = "1px", this.textarea.style.height = "1px", this.textarea.style.padding = "0", this.textarea.style.border = "none", this.textarea.style.margin = "0", this.textarea.style.opacity = "0", this.textarea.style.clipPath = "inset(50%)", this.textarea.style.overflow = "hidden", this.textarea.style.whiteSpace = "nowrap", this.textarea.style.resize = "none", A.appendChild(this.textarea);
++      this.wasmTerm = this.ghostty.createTerminal(this.cols, this.rows, B), this.canvas = document.createElement("canvas"), this.canvas.style.display = "block", A.appendChild(this.canvas), this.textarea = document.createElement("textarea"), this.textarea.setAttribute("autocorrect", "off"), this.textarea.setAttribute("autocapitalize", "off"), this.textarea.setAttribute("spellcheck", "false"), this.textarea.setAttribute("tabindex", "0"), this.textarea.setAttribute("aria-label", "Terminal input"), this.textarea.style.position = "absolute", this.textarea.style.left = "0", this.textarea.style.top = "0", this.textarea.style.width = "1px", this.textarea.style.height = "1px", this.textarea.style.padding = "0", this.textarea.style.border = "none", this.textarea.style.margin = "0", this.textarea.style.opacity = "0.01", this.textarea.style.caretColor = "transparent", this.textarea.style.color = "transparent", this.textarea.style.background = "transparent", this.textarea.style.outline = "none", this.textarea.style.boxShadow = "none", this.textarea.style.appearance = "none", this.textarea.style.pointerEvents = "auto", this.textarea.style.overflow = "hidden", this.textarea.style.whiteSpace = "nowrap", this.textarea.style.resize = "none", this.textarea.style.zIndex = "1", A.appendChild(this.textarea);
+       const g = this.textarea;
+-      this.canvas.addEventListener("mousedown", (E) => {
+-        E.preventDefault(), g.focus();
+-      }), this.canvas.addEventListener("touchend", (E) => {
+-        E.preventDefault(), g.focus();
+-      }), this.renderer = new $(this.canvas, {
++      this.canvas.addEventListener("mousedown", () => {
++        g.focus();
++      }), this.canvas.addEventListener("touchend", () => {
++        g.focus();
++      }), A.addEventListener("mousedown", (E) => {
++        E.target === A && g.focus();
++      }), A.addEventListener("focus", () => g.focus()), this.renderer = new $(this.canvas, {
+         fontSize: this.options.fontSize,
+         fontFamily: this.options.fontFamily,
+         cursorStyle: this.options.cursorStyle,
+@@ -2357,7 +2400,8 @@ class IA {
+         (E) => {
+           var C;
+           return ((C = this.wasmTerm) == null ? void 0 : C.getMode(E, !1)) ?? !1;
+-        }
++        },
++        this.textarea
+       ), this.selectionManager = new AA(
+         this,
+         this.renderer,
+@@ -2444,16 +2488,16 @@ class IA {
+    * Focus terminal input
+    */
+   focus() {
+-    this.isOpen && this.element && (this.element.focus(), setTimeout(() => {
+-      var A;
+-      (A = this.element) == null || A.focus();
+-    }, 0));
++    if (!this.isOpen)
++      return;
++    const A = this.textarea || this.element;
++    A && (A.focus(), setTimeout(() => A.focus(), 0));
+   }
+   /**
+    * Blur terminal (remove focus)
+    */
+   blur() {
+-    this.isOpen && this.element && this.element.blur();
++    this.isOpen && (this.textarea ? this.textarea.blur() : this.element && this.element.blur());
+   }
+   /**
+    * Load an addon
+@@ -2633,6 +2677,13 @@ class IA {
+   // ==========================================================================
+   // Private Methods
+   // ==========================================================================
++  syncImeTextarea(A) {
++    const B = this.textarea, g = this.renderer;
++    if (!B || !g)
++      return;
++    const E = g.charWidth || 8, C = g.charHeight || 16, I = A && typeof A.x == "number" ? A.x : 0, D = A && typeof A.y == "number" ? A.y : 0;
++    B.style.position = "absolute", B.style.left = `${I * E}px`, B.style.top = `${D * C}px`, B.style.width = "2px", B.style.height = "2px", B.style.fontSize = `${C}px`, B.style.lineHeight = `${C}px`, B.style.opacity = "0.01", B.style.border = "none", B.style.outline = "none", B.style.boxShadow = "none", B.style.pointerEvents = "auto", B.style.zIndex = "1", B.style.caretColor = "transparent", B.style.color = "transparent", B.style.background = "transparent", B.style.forcedColorAdjust = "none";
++  }
+   /**
+    * Start the render loop
+    */
+@@ -2641,7 +2692,7 @@ class IA {
+       if (!this.isDisposed && this.isOpen) {
+         this.renderer.render(this.wasmTerm, !1, this.viewportY, this, this.scrollbarOpacity);
+         const B = this.wasmTerm.getCursor();
+-        B.y !== this.lastCursorY && (this.lastCursorY = B.y, this.cursorMoveEmitter.fire()), this.animationFrameId = requestAnimationFrame(A);
++        B.y !== this.lastCursorY && (this.lastCursorY = B.y, this.cursorMoveEmitter.fire()), this.syncImeTextarea(B), this.animationFrameId = requestAnimationFrame(A);
+       }
+     };
+     A();
+@@ -2664,7 +2715,7 @@ class IA {
+    * Clean up components (called on dispose or error)
+    */
+   cleanupComponents() {
+-    this.selectionManager && (this.selectionManager.dispose(), this.selectionManager = void 0), this.inputHandler && (this.inputHandler.dispose(), this.inputHandler = void 0), this.renderer && (this.renderer.dispose(), this.renderer = void 0), this.canvas && this.canvas.parentNode && (this.canvas.parentNode.removeChild(this.canvas), this.canvas = void 0), this.textarea && this.textarea.parentNode && (this.textarea.parentNode.removeChild(this.textarea), this.textarea = void 0), this.element && (this.element.removeEventListener("wheel", this.handleWheel), this.element.removeEventListener("mousedown", this.handleMouseDown, { capture: !0 }), this.element.removeEventListener("mousemove", this.handleMouseMove), this.element.removeEventListener("mouseleave", this.handleMouseLeave), this.element.removeEventListener("click", this.handleClick), this.element.removeAttribute("contenteditable"), this.element.removeAttribute("role"), this.element.removeAttribute("aria-label"), this.element.removeAttribute("aria-multiline")), this.isOpen && typeof document < "u" && document.removeEventListener("mouseup", this.handleMouseUp), this.scrollbarHideTimeout && (window.clearTimeout(this.scrollbarHideTimeout), this.scrollbarHideTimeout = void 0), this.linkDetector && (this.linkDetector.dispose(), this.linkDetector = void 0), this.wasmTerm && (this.wasmTerm.free(), this.wasmTerm = void 0), this.ghostty = void 0, this.element = void 0, this.textarea = void 0;
++    this.selectionManager && (this.selectionManager.dispose(), this.selectionManager = void 0), this.inputHandler && (this.inputHandler.dispose(), this.inputHandler = void 0), this.renderer && (this.renderer.dispose(), this.renderer = void 0), this.canvas && this.canvas.parentNode && (this.canvas.parentNode.removeChild(this.canvas), this.canvas = void 0), this.textarea && this.textarea.parentNode && (this.textarea.parentNode.removeChild(this.textarea), this.textarea = void 0), this.element && (this.element.removeEventListener("wheel", this.handleWheel), this.element.removeEventListener("mousedown", this.handleMouseDown, { capture: !0 }), this.element.removeEventListener("mousemove", this.handleMouseMove), this.element.removeEventListener("mouseleave", this.handleMouseLeave), this.element.removeEventListener("click", this.handleClick), this.element.removeAttribute("role"), this.element.removeAttribute("aria-label"), this.element.removeAttribute("aria-multiline")), this.isOpen && typeof document < "u" && document.removeEventListener("mouseup", this.handleMouseUp), this.scrollbarHideTimeout && (window.clearTimeout(this.scrollbarHideTimeout), this.scrollbarHideTimeout = void 0), this.linkDetector && (this.linkDetector.dispose(), this.linkDetector = void 0), this.wasmTerm && (this.wasmTerm.free(), this.wasmTerm = void 0), this.ghostty = void 0, this.element = void 0, this.textarea = void 0;
+   }
+   /**
+    * Assert terminal is open (throw if not)

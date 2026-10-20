@@ -1,0 +1,65 @@
+name: Bug report / 问题反馈
+description: Something doesn't work as expected / 有地方不对劲
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems: please don't post them here, see SECURITY.md.
+        安全问题请不要在这里提，见 SECURITY.md。
+
+        Tip: `merak bug-report` makes a zip with the checks, config and logs (keys and conversations left out). Attach it below.
+        小提示：运行 `merak bug-report` 会生成一个 zip，里面有检查结果、配置和日志（不含密钥和对话内容），可以附在下面。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / 发生了什么
+      description: Include the error code if there is one, such as [MRK-2002] / 有错误码的话一起写上，比如 [MRK-2002]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce / 怎么复现
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected / 你期望的结果
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      description: Output of `merak --version`, or Settings → About & updates in the desktop app / `merak --version` 的输出，或桌面端"设置 → 关于与更新"里的版本
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where / 在哪里用的
+      multiple: true
+      options:
+        - Terminal UI / 终端界面
+        - merak run
+        - Desktop app / 桌面端
+        - SDK
+        - Other / 其他
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System / 系统
+      placeholder: Windows 11 / macOS 15 / Ubuntu 24.04 ...
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else / 其他信息
+      description: Logs, screenshots, the bug-report zip / 日志、截图、bug-report 生成的 zip

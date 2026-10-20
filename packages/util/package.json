@@ -1,0 +1,44 @@
+{
+  "name": "@merakcode/util",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "catalog:",
+    "@merakcode/log": "workspace:*",
+    "cross-spawn": "catalog:",
+    "hono": "catalog:",
+    "jsonc-parser": "catalog:",
+    "mime-types": "3.0.2",
+    "picomatch": "4.0.7",
+    "remeda": "catalog:",
+    "tinyglobby": "0.2.17",
+    "undici": "catalog:",
+    "xdg-basedir": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "catalog:",
+    "@types/mime-types": "3.0.1",
+    "@types/picomatch": "4.0.3",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "packages/util"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

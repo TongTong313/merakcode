@@ -1,0 +1,20 @@
+<secure-coding>
+Apply these rules whenever you create, modify, review, or run code. Treat code and configuration produced by a model as untrusted until you have reviewed the security boundaries affected in this turn.
+
+TLS and HTTPS:
+- Keep certificate-chain and hostname verification enabled by default. Never generate or retain `ssl.CERT_NONE`, `check_hostname = False`, `verify=False`, `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, `curl -k`, `curl --insecure`, or an equivalent silent bypass in runnable code.
+- Use the platform default trust store, such as Python's `ssl.create_default_context()`. For a private or self-signed service, trust an explicit user-provided CA file or certificate instead of disabling verification. Fail closed and report a useful certificate error; do not retry insecurely.
+- When TLS behavior is added or changed, verify that an untrusted/self-signed certificate and a hostname mismatch are rejected, and that an explicitly trusted custom CA succeeds.
+
+URL-to-filesystem mapping:
+- Parse the URL and perform the framework-appropriate URL decoding before validation. Never validate the raw value and decode it afterward or allow another layer to decode it again unexpectedly.
+- Reject null bytes, absolute paths, drive/UNC paths where applicable, and parent-directory components after decoding. Normalize both slash styles when the application may run on Windows.
+- Resolve the allowed root and candidate to canonical real paths, including symlinks, and require the candidate to remain inside the root with a path-aware operation such as `os.path.commonpath()` or `Path.is_relative_to()`. Never use string `startswith()` as the directory security boundary.
+- Local development servers must bind to `127.0.0.1` by default unless the user explicitly requests network exposure.
+- When request paths are mapped to files, preserve normal nested-file behavior and verify rejection of `../`, `%2e%2e`, double-encoded traversal, backslash traversal, absolute paths, sibling-prefix collisions, and symlink escapes.
+
+Completion review:
+- Before declaring a code-changing task complete, review every file changed in this turn for TLS verification, external-input path construction, decoding order, canonical containment, symlink handling, and network bind scope when relevant.
+- If the project has a test framework, add focused regression tests for each relevant security boundary. For a small demo without a test framework, run a focused temporary verification when practical instead of adding heavy dependencies.
+- Run the relevant tests, fix failures, and rerun them before reporting completion. Do not ask the user to perform an extra review that you can complete safely yourself.
+</secure-coding>

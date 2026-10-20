@@ -1,0 +1,39 @@
+.DS_Store
+node_modules
+.worktrees
+.env
+.idea
+.vscode
+*~
+tmp
+dist
+dist.previous-*
+ts-dist
+.turbo
+target
+logs/
+
+# Desktop installers and packaging staging
+apps/desktop/main/release
+apps/desktop/main/.package
+
+# Large archives stay out of the repo (git add -f if one really belongs here)
+*.tar.gz
+
+# Local tool state
+.claude/
+.cursor/
+.codex
+.codex-*
+.serena/
+.agents
+.merakcode
+
+# Build cache (downloaded Node releases and so on)
+.cache
+
+# Maintainer-only terms for pnpm check:brand
+script/check-brand.private
+
+# Code blocks extracted from the SDK guide by pnpm check:sdk-docs
+packages/sdk/js/examples/.doc

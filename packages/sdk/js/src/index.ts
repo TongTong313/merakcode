@@ -1,0 +1,5 @@
+export * from "./client/index.js"
+export * from "./agent/index.js"
+export { MerakCodeError, fromResponse, isMerakCodeError } from "./errors.js"
+export type { LogEntry, Logger } from "./logger.js"
+export { EngineExitedError, EngineStartError, type Engine, type EngineOptions } from "./process/index.js"

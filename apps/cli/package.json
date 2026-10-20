@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "version": "0.1.0",
+  "name": "merakcode",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.sequence.config.ts",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
+    "build": "node --import ../../script/node/register.mjs script/build.ts",
+    "dev": "node --import ../../script/node/register.mjs --disable-warning=ExperimentalWarning src/index.ts",
+    "pack:npm": "node --import ../../script/node/register.mjs script/pack.ts",
+    "release": "node --import ../../script/node/register.mjs script/release.ts"
+  },
+  "bin": {
+    "merak": "./bin/merak"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "devDependencies": {
+    "@lydell/node-pty": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@types/semver": "catalog:",
+    "@types/yargs": "17.0.35",
+    "@zip.js/zip.js": "2.24.0",
+    "esbuild": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "catalog:",
+    "@clack/prompts": "1.8.1",
+    "semver": "7.8.5",
+    "@merakcode/client-core": "workspace:*",
+    "@merakcode/engine": "workspace:*",
+    "@merakcode/log": "workspace:*",
+    "@merakcode/sdk": "workspace:*",
+    "@merakcode/util": "workspace:*",
+    "@opentui/core": "0.6.6",
+    "@opentui/solid": "0.6.6",
+    "@solid-primitives/event-bus": "catalog:",
+    "@solid-primitives/scheduled": "1.5.3",
+    "clipboardy": "5.3.2",
+    "diff": "catalog:",
+    "fuzzysort": "catalog:",
+    "gray-matter": "catalog:",
+    "open": "catalog:",
+    "opentui-spinner": "0.0.7",
+    "remeda": "catalog:",
+    "solid-js": "catalog:",
+    "string-width": "8.3.0",
+    "strip-ansi": "catalog:",
+    "yargs": "18.2.0",
+    "zod": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

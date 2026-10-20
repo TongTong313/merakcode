@@ -1,0 +1,52 @@
+Launch a new agent to handle complex, multistep tasks autonomously.
+
+Available agent types and the tools they have access to:
+{agents}
+
+When using the subagent tool, you must specify a subagent_type parameter to select which agent type to use.
+
+When to use the subagent tool:
+- When exploring the codebase to gather context or to answer a question that is not a needle query (e.g. "how does auth work?", "where is X handled?"). Use `explore` and spawn multiple in parallel for independent areas.
+- When a task fits a specialized agent's description above (read each agent's "Trigger when" hints carefully). Prefer the most specific agent over `general`.
+- When a multi-step subtask shouldn't pollute the main session's context (long research, multi-file analysis, repetitive checks).
+- When you are instructed to execute custom slash commands. Pass the slash command invocation as the entire prompt. For example: subagent(description="Check the file", prompt="/check-file path/to/file.py")
+
+When NOT to use the subagent tool:
+- Reading one known file path — use Read directly
+- Finding one specific symbol like `class Foo` or `function bar` — use Glob/Grep directly
+- Searching within 2-3 known files — use Read directly
+- Trivial single-step tasks that don't match any agent description above
+
+
+Usage notes:
+1. Subagents decompose work — use them proactively whenever a task fits an agent description above. High-value cases:
+   - Investigating several independent code areas (spawn multiple `explore` agents in ONE assistant message)
+   - Specialized work that fits a dedicated agent (read its "Trigger when" hints)
+   - Multi-step subtasks the main session shouldn't carry context for
+
+   Launch multiple subagents concurrently by issuing several `subagent` tool calls in the SAME assistant message — the runtime caps total concurrency at 5 per parent session and queues extras automatically.
+
+   Concurrent write-capable subagents are safe at the file level: per-file write locks and mtime-based optimistic checks prevent lost updates on the same file. To avoid cross-file semantic conflicts (e.g. one agent changes an interface while another updates its callers), give each subagent a non-overlapping slice of work in your dispatch prompts.
+2. When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result. The output includes a task_id you can reuse later to continue the same subagent session.
+3. The optional `mode` field only controls context inheritance. Omit it (or use `mode: "fresh"`) to start without prior conversation context. Use `mode: "fork"` only when the subagent genuinely needs the main conversation context; fork copies messages since the last compaction and can significantly increase token usage. Do not put task options such as explore thoroughness in `mode`; put them in `prompt` instead. If you provide task_id, the existing subagent session is resumed and mode is ignored. When starting fresh, your prompt should contain a highly detailed task description for the agent to perform autonomously and you should specify exactly what information the agent should return back to you in its final and only message to you.
+4. The agent's outputs should generally be trusted.
+5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent. Tell it how to verify its work if possible (e.g., relevant test commands).
+6. If an agent's description or "Trigger when" hints suggest it should be used proactively, try your best to use it without the user having to ask for it first. Use your judgement.
+
+Examples (use the actual agents listed in {agents} above):
+
+<example>
+user: Where are errors from the API client handled in this codebase?
+<commentary>
+Not a needle query — needs exploration across files. Use `explore` instead of running Grep directly.
+</commentary>
+assistant: [Uses subagent tool with subagent_type="explore", prompt="Thoroughness: medium\nFind all locations where errors from the API client are handled. Report file paths and a one-line summary per location." The optional mode field is omitted, so the new subagent uses fresh context.]
+</example>
+
+<example>
+user: Refactor the auth middleware and the session manager — they're independent.
+<commentary>
+Two independent write tasks — dispatch concurrently to two `general` subagents in the same assistant message.
+</commentary>
+assistant: [Issues two subagent tool calls in the same assistant message, each with subagent_type="general" and a non-overlapping prompt for one file.]
+</example>
