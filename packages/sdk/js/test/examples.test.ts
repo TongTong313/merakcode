@@ -69,9 +69,10 @@ test("custom-tool.ts lets the model call the tool defined in the example", async
 test("batch.ts summarizes each file in its own session", async () => {
   await writeFile(path.join(env.project, "a.md"), "# A\n")
   await writeFile(path.join(env.project, "b.md"), "# B\n")
-  script = (turn) => ({ text: turn.prompt.includes("a.md") ? "Summary of A" : "Summary of B" })
+  // The prompt may also carry project context that lists both files, so match the example's own sentence
+  script = (turn) => ({ text: `Summary of ${/Read (\S+) and sum it up/.exec(turn.prompt)?.[1] ?? "?"}` })
   const result = await run("batch.ts", "a.md", "b.md")
-  expect(result.output).toMatch(/a\.md.*Summary of A/)
-  expect(result.output).toMatch(/b\.md.*Summary of B/)
+  expect(result.output).toContain("a.md: Summary of a.md")
+  expect(result.output).toContain("b.md: Summary of b.md")
   expect(result.code).toBe(0)
 }, 120_000)

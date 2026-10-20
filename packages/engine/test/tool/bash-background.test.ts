@@ -82,16 +82,16 @@ describe("BashJobStore", () => {
     const proc = spawnSleep(60)
     const job = BashJobStore.create({ command: "sleep 60", description: "x", cwd: process.cwd(), proc })
 
-    const exit = new Promise<number | null>((resolve) => {
-      proc.once("exit", (code) => resolve(code))
-    })
+    // A signal kill on Linux and macOS leaves exitCode null and proc.killed false, so wait for the exit itself
+    const exit = new Promise<boolean>((resolve) => proc.once("exit", () => resolve(true)))
 
     const ok = await BashJobStore.stop(job.id)
     expect(ok).toBe(true)
     expect(job.status).toBe("stopped")
 
-    await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 3000))])
-    expect(proc.killed || proc.exitCode !== null).toBe(true)
+    expect(await Promise.race([exit, new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000))])).toBe(
+      true,
+    )
   }, 10_000)
 
   test("timeout stops a running background job", async () => {

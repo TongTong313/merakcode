@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Policy } from "./policy"
@@ -56,7 +56,8 @@ describe("Policy.build", () => {
   })
 
   test("paths are resolved to their real location; missing paths are kept as given", () => {
-    const base = mkdtempSync(path.join(tmpdir(), "policy-"))
+    // The temp folder itself may be an alias (/var on macOS, 8.3 short names on Windows), so start from its real path
+    const base = realpathSync.native(mkdtempSync(path.join(tmpdir(), "policy-")))
     roots.push(base)
     const real = path.join(base, "real")
     mkdirSync(real)

@@ -29,6 +29,12 @@ test("debug agent --tool runs a tool directly under the agent's permission rules
         ...process.env,
         MERAKCODE_MODELS_PATH: path.join(root, "../../packages/engine/test/tool/fixtures/models-api.json"),
         MERAKCODE_DISABLE_MODELS_FETCH: "1",
+        // The agent needs a default model even though no model is called; a fake key keeps the test off real keys
+        MERAKCODE_CONFIG_CONTENT: JSON.stringify({
+          model: "alibaba/qwen-plus",
+          enabled_providers: ["alibaba"],
+          provider: { alibaba: { options: { apiKey: "fake" } } },
+        }),
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -40,6 +46,6 @@ test("debug agent --tool runs a tool directly under the agent's permission rules
     proc.exited,
   ])
   expect(stderr).not.toContain("not iterable")
-  expect(code).toBe(0)
+  expect(code, stderr).toBe(0)
   expect(stdout).toContain("debug-agent-marker")
 }, 120_000)

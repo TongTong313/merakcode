@@ -66,6 +66,19 @@ describe("WindowsCommand.request", () => {
   })
 })
 
+describe("WindowsCommand.powershellEnv", () => {
+  test("drops PSModulePath in any letter case, so Windows PowerShell does not load PowerShell 7 modules", () => {
+    const env = WindowsCommand.powershellEnv({
+      Path: "C:\\Windows",
+      PSModulePath: "C:\\Program Files\\PowerShell\\7\\Modules",
+      psmodulepath: "C:\\other",
+      TEMP: "C:\\Temp",
+      EMPTY: undefined,
+    })
+    expect(env).toEqual({ Path: "C:\\Windows", TEMP: "C:\\Temp" })
+  })
+})
+
 describe("WindowsCommand.BLOCKED", () => {
   test("covers every address except loopback", () => {
     expect(WindowsCommand.BLOCKED).toEqual([

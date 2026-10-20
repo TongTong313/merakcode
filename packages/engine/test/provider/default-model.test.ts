@@ -4,6 +4,7 @@ import { Auth } from "@merakcode/engine/auth/index"
 import { Env } from "@merakcode/engine/env/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Provider } from "@merakcode/engine/provider/provider"
+import { ErrorCode } from "@merakcode/util/error-code"
 
 // One environment variable can connect several providers (DASHSCOPE_API_KEY connects both the China and
 // international Alibaba Model Studio), yet a key only works on one of them, so the default model must be predictable.
@@ -18,6 +19,18 @@ test("with only env vars, the default model comes from the highest-ranked provid
       expect(Object.keys(providers)).toEqual(expect.arrayContaining(["alibaba", "alibaba-cn"]))
       expect((await Provider.defaultModel()).providerID).toBe("alibaba-cn")
       expect(Provider.rank(Object.values(providers)).map((p) => p.id)[0]).toBe("alibaba-cn")
+    },
+  })
+})
+
+test("with no provider connected there is no default model, and the error says so with its own code", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const error = await Provider.defaultModel().catch((error: unknown) => error)
+      expect(Provider.NoModelError.isInstance(error)).toBe(true)
+      expect(ErrorCode.of((error as Error).name)).toBe(ErrorCode.CATALOG.NO_MODEL.code)
     },
   })
 })

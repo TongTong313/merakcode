@@ -213,6 +213,7 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "还没有可用的模型", en: "No model is available" },
       hint: { zh: "先在 /provider 里连接一个模型服务。", en: "Connect a model provider in /provider first." },
+      errors: ["ProviderNoModelError"],
     },
     OUTPUT_TRUNCATED: {
       code: "MRK-2008",

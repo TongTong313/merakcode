@@ -338,9 +338,13 @@ export namespace Ripgrep {
     return { filepath }
   })
 
+  /** The remembered binary may have been deleted since (cleaned data folder, uninstall): then look it up again */
   export async function filepath() {
     const { filepath: rg } = await state()
-    return rg
+    if (!rg || (await Filesystem.isFile(rg))) return rg
+    log.warn("ripgrep binary disappeared, looking it up again", { filepath: rg })
+    state.reset()
+    return (await state()).filepath
   }
 
   export async function* files(input: {

@@ -1,3 +1,4 @@
+import os from "node:os"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
@@ -63,7 +64,7 @@ describe("plugin.runtime", () => {
     // Report the captured value through a file, not an exported getter: `servers()` treats every named function
     // export as a plugin entry (community plugins often export a bare function), so a getter would load as a second
     // plugin and throw.
-    const captureFile = path.join(process.env.TMPDIR ?? "/tmp", `data-dir-probe-${Date.now()}-${Math.random()}.json`)
+    const captureFile = path.join(os.tmpdir(), `data-dir-probe-${Date.now()}-${Math.random()}.json`)
     await using tmp = await tmpdir({
       init: async (dir) => {
         const plugins = await setup(dir)

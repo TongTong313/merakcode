@@ -1,3 +1,4 @@
+import os from "node:os"
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
@@ -39,10 +40,7 @@ afterEach(async () => {
 
 describe("GlobalBus events reach the event hook", () => {
   test("the plugin event hook receives events from GlobalBus.emit, not only from Bus", async () => {
-    const captureFile = path.join(
-      process.env.TMPDIR ?? "/tmp",
-      `global-bus-capture-${Date.now()}-${Math.random()}.json`,
-    )
+    const captureFile = path.join(os.tmpdir(), `global-bus-capture-${Date.now()}-${Math.random()}.json`)
     await using tmp = await tmpdir({
       init: async (dir) => {
         const plugins = await setup(dir)
@@ -141,10 +139,7 @@ describe("GlobalBus events reach the event hook", () => {
     // Regression: state() resolves the current Instance through AsyncLocalStorage, but GlobalBus.emit often fires from
     // paths outside Instance.provide(), such as the OIDC token refresh timer. state() used to throw there, and since
     // EventEmitter neither awaits nor catches, the rejection went unhandled and hung the whole worker.
-    const captureFile = path.join(
-      process.env.TMPDIR ?? "/tmp",
-      `global-bus-no-context-${Date.now()}-${Math.random()}.json`,
-    )
+    const captureFile = path.join(os.tmpdir(), `global-bus-no-context-${Date.now()}-${Math.random()}.json`)
     await using tmp = await tmpdir({
       init: async (dir) => {
         const plugins = await setup(dir)

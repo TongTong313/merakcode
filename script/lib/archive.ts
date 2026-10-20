@@ -11,8 +11,9 @@ import zlib from "node:zlib"
  *
  * Packing is done here instead of with the system tar: when building Linux / macOS packages on Windows, the file
  * system has no executable bit and the system tar would produce a node binary and launcher scripts that cannot run.
- * Permissions are decided explicitly: on Unix they are copied from the file; on Windows they come from the content,
- * with 755 for files under bin/, scripts with a shebang and ELF / Mach-O binaries, and 644 for everything else.
+ * Permissions are decided the same way on every system, so a checkout that lost an executable bit still packs
+ * correctly: 755 for files that are already executable, files under bin/, scripts with a shebang and ELF / Mach-O
+ * binaries, and 644 for everything else.
  */
 export namespace Archive {
   /** Packs dir into file (format chosen by extension); the top-level directory in the archive is named after dir */
@@ -29,11 +30,13 @@ export namespace Archive {
    */
   export async function extract(file: string, dest: string) {
     await fs.mkdir(dest, { recursive: true })
+    // Under the C locale (common in CI and containers) GNU tar and unzip mangle UTF-8 file names
+    const env = process.platform === "linux" ? { ...process.env, LC_ALL: "C.UTF-8" } : process.env
     if (file.endsWith(".zip") && process.platform === "linux")
-      return void execFileSync("unzip", ["-q", file, "-d", dest])
+      return void execFileSync("unzip", ["-q", file, "-d", dest], { env })
     // On Windows the tar on PATH may be Git's GNU tar, which cannot read zip, so use the system one
     const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "System32", "tar.exe") : "tar"
-    execFileSync(tar, ["-xf", file, "-C", dest])
+    execFileSync(tar, ["-xf", file, "-C", dest], { env })
   }
 
   type Entry = { file: string; name: string; size: number; mode: number; mtime: Date }
@@ -55,7 +58,7 @@ export namespace Archive {
   }
 
   async function mode(file: string, name: string, actual: number) {
-    if (process.platform !== "win32") return actual & 0o777
+    if (process.platform !== "win32" && actual & 0o111) return 0o755
     if (name.startsWith("bin/") || name.startsWith("node/bin/")) return 0o755
     const handle = await fs.open(file)
     const head = Buffer.alloc(4)

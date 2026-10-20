@@ -1400,9 +1400,9 @@ export namespace Provider {
     const provider = rank(Object.values(providers)).find(
       (p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id),
     )
-    if (!provider) throw new Error("no providers found")
+    if (!provider) throw new NoModelError({})
     const [model] = sortModels(Object.values(provider.models))
-    if (!model) throw new Error("no models found")
+    if (!model) throw new NoModelError({ providerID: provider.id })
     return {
       providerID: provider.id,
       modelID: model.id,
@@ -1419,6 +1419,9 @@ export namespace Provider {
       suggestions: z.array(z.string()).optional(),
     }),
   )
+
+  /** No connected provider has a usable model, so there is no default model */
+  export const NoModelError = NamedError.create("ProviderNoModelError", z.object({ providerID: z.string().optional() }))
 
   export const InitError = NamedError.create(
     "ProviderInitError",

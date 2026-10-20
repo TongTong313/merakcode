@@ -36,6 +36,18 @@ export namespace WindowsCommand {
     return `-c ${quote(command)}`
   }
 
+  /**
+   * Environment for Windows PowerShell 5.1. Started from PowerShell 7, it would inherit a PSModulePath that points at
+   * PowerShell 7's modules, which 5.1 cannot load (ConvertTo-SecureString fails); without the variable it uses its own
+   */
+  export function powershellEnv(env: Record<string, string | undefined>) {
+    return Object.fromEntries(
+      Object.entries(env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined && entry[0].toLowerCase() !== "psmodulepath",
+      ),
+    )
+  }
+
   /** Request file for `helper run`: user, password file, cwd, program, arguments, then KEY=VALUE, all NUL separated */
   export function request(input: {
     user: string

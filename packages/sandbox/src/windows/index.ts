@@ -131,8 +131,9 @@ export namespace WindowsSandbox {
       writeFileSync(ps1, script)
       try {
         const argv = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, ...args]
+        const env = WindowsCommand.powershellEnv(process.env)
         if (await admin()) {
-          await run(powershell, argv, { windowsHide: true })
+          await run(powershell, argv, { windowsHide: true, env })
           return
         }
         const list = argv.map((arg) => `'"${arg.replaceAll("'", "''")}"'`).join(",")
@@ -143,7 +144,7 @@ export namespace WindowsSandbox {
             "-Command",
             `Start-Process -FilePath '${powershell}' -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList ${list}`,
           ],
-          { windowsHide: true },
+          { windowsHide: true, env },
         ).catch(() => {
           throw new Error("The sandbox setup needs administrator approval, and it was not given")
         })
