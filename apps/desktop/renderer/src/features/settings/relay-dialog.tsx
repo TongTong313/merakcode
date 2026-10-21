@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js"
+import { createEffect, createSignal, For, Show } from "solid-js"
 import type { Config } from "@merakcode/sdk/client"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
@@ -112,6 +112,12 @@ export function CustomDialog(props: {
   const [protocol, setProtocol] = createSignal<Endpoint>("anthropic")
   const [auth, setAuth] = createSignal<"bearer" | "x-api-key">("bearer")
   const [headers, setHeaders] = createSignal("")
+  let headersBox: HTMLTextAreaElement | undefined
+  // The default window is shorter than this step, so the headers field would sit below the dialog body
+  createEffect(() => {
+    if (kind() !== "custom") return
+    requestAnimationFrame(() => headersBox?.scrollIntoView({ block: "nearest" }))
+  })
   const [rows, setRows] = createSignal<Row[]>([])
   const [manual, setManual] = createSignal("")
   const [step, setStep] = createSignal<"connect" | "models">("connect")
@@ -536,6 +542,7 @@ export function CustomDialog(props: {
               <label class="field">
                 {t("settings.relay.headers")}
                 <textarea
+                  ref={headersBox}
                   class="input mono"
                   rows={2}
                   placeholder={t("settings.relay.headersPlaceholder")}

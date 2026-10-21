@@ -19,6 +19,7 @@
  */
 import path from "path"
 import fs from "fs/promises"
+import { realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
 import z from "zod"
 import { NamedError } from "@merakcode/util/error"
@@ -335,8 +336,28 @@ export namespace Review {
     return { check: async () => true, run: () => Storage.write(key, before) }
   }
 
+  /** The real path, or the real parent plus the last segment when the file itself is missing */
+  function canonical(file: string): string {
+    try {
+      return realpathSync.native(file)
+    } catch {
+      const parent = path.dirname(file)
+      if (parent === file) return file
+      try {
+        return path.join(realpathSync.native(parent), path.basename(file))
+      } catch {
+        return file
+      }
+    }
+  }
+
+  /**
+   * Project-relative name with forward slashes. On GitHub-hosted Windows the tool path is `C:\Users\RUNNER~1\...`
+   * while the worktree is the long path, so path.relative leaves the project and the review would show the absolute
+   * path.
+   */
   function display(file: string) {
-    const relative = path.relative(Instance.worktree, file)
+    const relative = path.relative(canonical(Instance.worktree), canonical(file))
     if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return relative.split(path.sep).join("/")
     return file
   }
