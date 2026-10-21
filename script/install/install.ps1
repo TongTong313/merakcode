@@ -2,12 +2,12 @@
 #
 #   irm https://github.com/{{REPOSITORY}}/releases/latest/download/install.ps1 | iex
 #
-# Installs into %LOCALAPPDATA%\merakcode\versions\<version>\ and puts the `merak` command in
-# %LOCALAPPDATA%\merakcode\bin, which is added to the user PATH. Upgrade later with `merak upgrade`.
+# Installs into %USERPROFILE%\.merakcode\versions\<version>\ and puts the `merak` command in
+# %USERPROFILE%\.merakcode\bin, which is added to the user PATH. Upgrade later with `merak upgrade`.
 #
 # Environment variables:
 #   MERAKCODE_VERSION         version to install (default: latest release)
-#   MERAKCODE_INSTALL_DIR     install directory (default: %LOCALAPPDATA%\merakcode)
+#   MERAKCODE_INSTALL_DIR     install directory (default: MERAKCODE_HOME, else %USERPROFILE%\.merakcode)
 #   MERAKCODE_BIN_DIR         where the commands go (default: <install directory>\bin)
 #   MERAKCODE_DOWNLOAD_BASE   download location (default: GitHub Releases; set it to use a mirror)
 #   MERAKCODE_NO_MODIFY_PATH  set to 1 to leave the user PATH alone
@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repository = "{{REPOSITORY}}"
-$root = if ($env:MERAKCODE_INSTALL_DIR) { $env:MERAKCODE_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "merakcode" }
+$root = if ($env:MERAKCODE_INSTALL_DIR) { $env:MERAKCODE_INSTALL_DIR } elseif ($env:MERAKCODE_HOME) { $env:MERAKCODE_HOME } else { Join-Path $HOME ".merakcode" }
 $bin = if ($env:MERAKCODE_BIN_DIR) { $env:MERAKCODE_BIN_DIR } else { Join-Path $root "bin" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") { "arm64" } else { "x64" }
 
@@ -71,4 +71,4 @@ if ($env:MERAKCODE_NO_MODIFY_PATH -ne "1" -and -not (($path -split ";") -contain
 }
 $env:Path = "$bin;$env:Path"
 Write-Host ""
-Write-Host "MerakCode $version is installed. Run 'merak' to get started."
+Write-Host "MerakCode $version is installed. Run 'merak --help' to see the commands."

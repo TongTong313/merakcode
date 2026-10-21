@@ -31,11 +31,11 @@ async function doctor(cwd: string, env: Record<string, string>, ...args: string[
 
 test("a broken global config fails with MRK-3001 and the later checks still run", { timeout: 120_000 }, async () => {
   await using tmp = await tmpdir()
-  const config = path.join(tmp.path, "config")
-  await fs.mkdir(path.join(config, "merakcode"), { recursive: true })
-  await fs.writeFile(path.join(config, "merakcode", "merakcode.json"), '{ "model": ')
+  const config = path.join(tmp.path, "merakcode")
+  await fs.mkdir(config, { recursive: true })
+  await fs.writeFile(path.join(config, "merakcode.json"), '{ "model": ')
 
-  const result = await doctor(tmp.path, { XDG_CONFIG_HOME: config }, "--json")
+  const result = await doctor(tmp.path, { MERAKCODE_HOME: config }, "--json")
   expect(result.code).toBe(1)
   const checks = JSON.parse(result.stdout) as Check[]
   const ids = checks.map((check) => check.id)

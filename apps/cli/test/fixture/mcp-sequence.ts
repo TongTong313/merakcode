@@ -55,7 +55,7 @@ export function mcp(enabled = true, fail = false, retained = false) {
       if (fail) await Filesystem.write(join(root, "mcp-start-fail"), "1")
       if (retained)
         await Filesystem.write(
-          join(root, "config/merakcode/merakcode.json"),
+          join(root, "merakcode.json"),
           JSON.stringify({
             mcp: { retained: { ...config.mcp.sequence, command: [...config.mcp.sequence.command, "retained"] } },
           }),

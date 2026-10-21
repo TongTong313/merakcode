@@ -31,9 +31,9 @@ test("debug agent --tool runs a tool directly under the agent's permission rules
         MERAKCODE_DISABLE_MODELS_FETCH: "1",
         // The agent needs a default model even though no model is called; a fake key keeps the test off real keys
         MERAKCODE_CONFIG_CONTENT: JSON.stringify({
-          model: "alibaba/qwen-plus",
-          enabled_providers: ["alibaba"],
-          provider: { alibaba: { options: { apiKey: "fake" } } },
+          model: "alibaba-cn/qwen-plus",
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "fake" } } },
         }),
       },
       stdout: "pipe",

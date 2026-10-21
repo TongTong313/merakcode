@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events"
-import { createServer, type AddressInfo } from "node:net"
 import { startEngine, type Engine } from "@merakcode/sdk/process"
+import { Network } from "@merakcode/util/network"
 
 /**
  * Lifecycle of the local backend (the engine's `serve` child process): started through the SDK, awaited until it
@@ -42,6 +42,10 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
   private stopping = false
   private timer?: NodeJS.Timeout
   private ready?: number
+  /** The launch in progress: a restart or stop waits for it, so two engines never start on one port */
+  private launching?: Promise<unknown>
+  private restarting?: Promise<Endpoint>
+  private again?: Promise<Endpoint>
 
   constructor(private options: Options) {
     super()
@@ -55,9 +59,34 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     return this.first()
   }
 
-  /** Manual restart (Retry in the UI): resets the restart count and starts again immediately */
-  async restart(): Promise<Endpoint> {
+  /**
+   * Manual restart (Retry in the UI, or changed engine sources in development): resets the restart count and starts
+   * again once any start in progress is done. Requests made while restarting merge into one more restart.
+   */
+  restart(): Promise<Endpoint> {
+    if (this.again) return this.again
+    if (this.restarting) {
+      this.again = this.restarting
+        .catch(() => undefined)
+        .then(() => {
+          this.again = undefined
+          return this.restart()
+        })
+      return this.again
+    }
+    const run = this.relaunch()
+    this.restarting = run
+    void run
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.restarting === run) this.restarting = undefined
+      })
+    return run
+  }
+
+  private async relaunch() {
     clearTimeout(this.timer)
+    await this.launching
     await this.kill()
     this.attempt = 0
     this.stopping = false
@@ -76,6 +105,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
   async stop() {
     this.stopping = true
     clearTimeout(this.timer)
+    await this.launching
     await this.kill()
     this.set("stopped")
   }
@@ -85,8 +115,14 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     this.emit("state", state, state === "ready" ? this.endpoint : undefined)
   }
 
-  private async launch(): Promise<Endpoint> {
-    if (!this.port) this.port = await freePort()
+  private launch() {
+    const run = this.spawn()
+    this.launching = run.catch(() => undefined)
+    return run
+  }
+
+  private async spawn(): Promise<Endpoint> {
+    if (!this.port) this.port = await Network.freePort()
     this.options.log("info", "backend starting", { port: this.port, attempt: this.attempt })
     const engine = await startEngine({
       cwd: this.options.cwd,
@@ -142,15 +178,4 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     this.engine = undefined
     await engine?.close()
   }
-}
-
-function freePort() {
-  return new Promise<number>((resolve, reject) => {
-    const server = createServer()
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo
-      server.close(() => resolve(port))
-    })
-  })
 }

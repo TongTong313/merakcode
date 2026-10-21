@@ -7,6 +7,7 @@ import { Flag } from "../flag/flag"
 import { lazy } from "../util/lazy"
 import { withTrustedTls } from "@merakcode/util/tls"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { selectOfficial } from "./official"
 
 // Try to import bundled snapshot (generated at build time)
 // Falls back to undefined in dev mode when snapshot doesn't exist
@@ -129,7 +130,7 @@ export namespace ModelsDev {
 
   export async function get() {
     const result = await Data()
-    return result as Record<string, Provider>
+    return selectOfficial(result as Record<string, Provider>)
   }
 
   /** Fetches the latest model catalog into the cache; returns false and keeps the old cache if that fails */
@@ -156,7 +157,7 @@ export namespace ModelsDev {
     // Background refresh: failures reading the response or writing the cache are only logged; the old cache stays
     const written = await result
       .text()
-      .then((text) => Filesystem.write(filepath, text))
+      .then((text) => Filesystem.write(filepath, JSON.stringify(selectOfficial(JSON.parse(text)))))
       .then(
         () => true,
         (error: unknown) => {

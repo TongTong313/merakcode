@@ -56,12 +56,12 @@ describe("check-brand", () => {
   test("flags old names in file paths", () => {
     const found = violations([
       { path: "apps/cli/bin/myth", text: "" },
-      { path: "apps/cli/src/cli/cmd/tui/context/theme/mythcode.json", text: "{}" },
+      { path: "apps/desktop/renderer/src/assets/mythcode.svg", text: "{}" },
       { path: "docs/mythology.md", text: "" },
     ])
     expect(found.map((item) => [item.file, item.line, item.term])).toEqual([
       ["apps/cli/bin/myth", 0, "myth"],
-      ["apps/cli/src/cli/cmd/tui/context/theme/mythcode.json", 0, "mythcode"],
+      ["apps/desktop/renderer/src/assets/mythcode.svg", 0, "mythcode"],
     ])
   })
 

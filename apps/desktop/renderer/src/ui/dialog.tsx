@@ -24,7 +24,7 @@ export function Dialog(props: {
               <Kobalte.Title class="dialog-title">{props.title}</Kobalte.Title>
             </div>
             <Show when={props.description}>
-              <Kobalte.Description class="dialog-body">{props.description}</Kobalte.Description>
+              <Kobalte.Description class="dialog-desc">{props.description}</Kobalte.Description>
             </Show>
             {props.children}
             <Show when={props.footer}>

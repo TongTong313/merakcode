@@ -39,14 +39,15 @@ test("generates an agent from a description, sending the system prompt and parsi
         path.join(dir, "merakcode.json"),
         JSON.stringify({
           $schema: Config.SCHEMA,
-          enabled_providers: ["alibaba"],
-          provider: { alibaba: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
         }),
       ),
   })
   const generated = await Instance.provide({
     directory: tmp.path,
-    fn: () => Agent.generate({ description: "reviews diffs", model: { providerID: "alibaba", modelID: "qwen-plus" } }),
+    fn: () =>
+      Agent.generate({ description: "reviews diffs", model: { providerID: "alibaba-cn", modelID: "qwen-plus" } }),
   })
 
   expect(generated).toEqual({ identifier: "reviewer", whenToUse: "Review diffs", systemPrompt: "You review." })

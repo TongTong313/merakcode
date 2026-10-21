@@ -310,6 +310,34 @@ describe("session.compaction.isOverflow", () => {
       },
     })
   })
+
+  test("compacts a million-token window once the previous turn is within 6_000 of the real output limit", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 1_000_000, output: 128_000 })
+        const below = { input: 865_999, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        const at = { input: 866_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ tokens: below, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ tokens: at, model })).toBe(true)
+      },
+    })
+  })
+
+  test("keeps room to talk when the output limit fills the window", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 262_144, output: 262_144 })
+        const comfortable = { input: 200_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        const at = { input: 224_144, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ tokens: comfortable, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ tokens: at, model })).toBe(true)
+      },
+    })
+  })
 })
 
 describe("util.token.estimate", () => {

@@ -119,10 +119,18 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
   )
 }
 
-function Group(props: { folder: Folder; current?: string }) {
+function Group(props: { folder: Folder; current?: string; route?: string }) {
   const navigate = useNavigate()
   const name = () => baseName(props.folder.directory)
   const list = () => sessionsOf(props.folder)
+  const remove = () => {
+    const directory = props.folder.directory
+    const openHere = props.route !== undefined && sameDir(props.route, directory)
+    closeFolder(directory)
+    if (!openHere) return
+    const next = state.folders[0]
+    navigate(next ? sessionPath(next.directory) : "/")
+  }
   return (
     <section class="group" aria-label={name()}>
       <div class="group-title">
@@ -140,7 +148,7 @@ function Group(props: { folder: Folder; current?: string }) {
               onSelect: () => navigate(sessionPath(props.folder.directory)),
             },
             "separator",
-            { label: t("sidebar.removeProject"), onSelect: () => closeFolder(props.folder.directory) },
+            { label: t("sidebar.removeProject"), onSelect: remove },
           ]}
         />
       </div>
@@ -206,7 +214,9 @@ export function Sidebar(props: { directory?: string; current?: string }) {
         </button>
       </div>
       <div class="sidebar-scroll scroll">
-        <For each={state.folders}>{(folder) => <Group folder={folder} current={props.current} />}</For>
+        <For each={state.folders}>
+          {(folder) => <Group folder={folder} current={props.current} route={props.directory} />}
+        </For>
       </div>
       <UpdateNotice />
       <div class="sidebar-bottom">

@@ -45,10 +45,11 @@ export namespace Snapshot {
     }
     cleanupRunning = true
 
-    const lockPath = path.join(Global.Path.data, "storage", "snapshot", ".cleanup.lock")
+    const lockPath = path.join(backupRoot(), ".cleanup.lock")
     let lockAcquired = false
 
     try {
+      await fs.mkdir(backupRoot(), { recursive: true })
       lockAcquired = await acquireCleanupLock(lockPath)
       if (!lockAcquired) {
         log.debug("cleanup skipped: lock held by another process")
@@ -83,46 +84,25 @@ export namespace Snapshot {
       }
 
       // File backups, skipping sessions that are still active
-      const snapshotBaseDir = path.join(Global.Path.data, "storage", "snapshot")
-      const baseExists = await fs
-        .stat(snapshotBaseDir)
-        .then(() => true)
-        .catch(() => false)
-      if (!baseExists) return
-
       // Dynamic import avoids a circular dependency
-      const [{ Session }, { SessionUndoRedo }] = await Promise.all([
-        import("../session/index"),
+      const [{ SessionStore }, { SessionUndoRedo }] = await Promise.all([
+        import("../session/store"),
         import("../session/undo-redo"),
       ])
 
-      for (const sessionDir of await fs.readdir(snapshotBaseDir)) {
-        const sessionPath = path.join(snapshotBaseDir, sessionDir)
+      for (const sessionDir of await fs.readdir(backupRoot())) {
+        const sessionPath = path.join(backupRoot(), sessionDir)
         const sessionStat = await fs.stat(sessionPath).catch(() => null)
         if (!sessionStat?.isDirectory()) continue
         if (sessionDir.startsWith(".")) continue
 
-        // Session.get throws synchronously when argument validation fails, hence try/catch
-        let session: Awaited<ReturnType<typeof Session.get>> | null = null
+        // Looked up in every project, so a process with a different project id does not delete another process's
+        // backups; damaged session data counts as present
+        let session: ReturnType<typeof SessionStore.find>
         try {
-          session = await Session.get(sessionDir)
+          session = SessionStore.find(sessionDir)
         } catch {
-          session = null
-        }
-
-        // Not found in the current project: search all projects, so a process with a different project id does not
-        // delete another process's backups
-        if (!session) {
-          const sessionBaseDir = path.join(Global.Path.data, "storage", "session")
-          const projects = await fs.readdir(sessionBaseDir).catch(() => [] as string[])
-          for (const projectDir of projects) {
-            const candidatePath = path.join(sessionBaseDir, projectDir, sessionDir + ".json")
-            const candidate = await Filesystem.readJson(candidatePath).catch(() => null)
-            if (candidate) {
-              session = candidate as Awaited<ReturnType<typeof Session.get>>
-              break
-            }
-          }
+          continue
         }
 
         if (!session) {
@@ -557,7 +537,7 @@ export namespace Snapshot {
   export async function history(sessionIDs: string[]) {
     const result: { file: string; time: number; read: () => Promise<Buffer | undefined> }[] = []
     for (const sessionID of sessionIDs) {
-      const root = path.join(Global.Path.data, "storage", "snapshot", sessionID)
+      const root = path.join(backupRoot(), sessionID)
       for (const backupID of await fs.readdir(root).catch(() => [] as string[])) {
         const time = Number(backupID)
         if (!Number.isFinite(time)) continue
@@ -650,8 +630,18 @@ export namespace Snapshot {
     return path.join(backupDir, ...parts)
   }
 
+  /** File backups, one directory per session and one subdirectory per backupID */
+  function backupRoot() {
+    return path.join(Global.Path.data, "backup")
+  }
+
   function getBackupDir(sessionID: string, backupID: string): string {
-    return path.join(Global.Path.data, "storage", "snapshot", sessionID, backupID)
+    return path.join(backupRoot(), sessionID, backupID)
+  }
+
+  /** Deletes every backup of a session */
+  export async function drop(sessionID: string) {
+    await fs.rm(path.join(backupRoot(), sessionID), { recursive: true, force: true })
   }
 
   function gitdir(): string {

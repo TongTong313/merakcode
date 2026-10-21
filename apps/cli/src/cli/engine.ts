@@ -1,7 +1,7 @@
 /**
- * Engine for the terminal UI, `run` and `acp`: spawns this program's own `serve` (same binary) through the SDK and
- * never loads engine code in-process. In development that is the source tree (with the source loader), in releases
- * lib/index.js; either way the current runtime and entry point are launched again.
+ * Engine for `run`, `acp` and the management commands: spawns this program's own `serve` (same binary) through the
+ * SDK and never loads engine code in-process. In development that is the source tree (with the source loader), in
+ * releases lib/index.js; either way the current runtime and entry point are launched again.
  */
 import path from "node:path"
 import { startEngine, type Engine } from "@merakcode/sdk/process"

@@ -3,18 +3,14 @@ import { parse, type ParseError } from "jsonc-parser"
 import { globalConfigFile } from "./paths"
 
 /**
- * The two settings a client needs before it can start the engine: the UI language and whether to check for
- * updates. This is the only place client code reads the engine's config file; everything else goes through the SDK.
+ * The setting a client needs before it can start the engine: the UI language. This is the only place client code
+ * reads the engine's config file; everything else goes through the SDK.
  */
-export function peekGlobalConfig(file = globalConfigFile()): { locale?: string; autoupdate?: boolean | "notify" } {
+export function peekGlobalConfig(file = globalConfigFile()): { locale?: string } {
   if (!existsSync(file)) return {}
-  const config = parse(readFileSync(file, "utf8")) as { locale?: unknown; autoupdate?: unknown } | undefined
+  const config = parse(readFileSync(file, "utf8")) as { locale?: unknown } | undefined
   if (!config || typeof config !== "object") return {}
-  const autoupdate = config.autoupdate
-  return {
-    ...(typeof config.locale === "string" ? { locale: config.locale } : {}),
-    ...(typeof autoupdate === "boolean" || autoupdate === "notify" ? { autoupdate } : {}),
-  }
+  return typeof config.locale === "string" ? { locale: config.locale } : {}
 }
 
 /** A config file for a bug report: the parsed object, or the raw text when it does not parse */

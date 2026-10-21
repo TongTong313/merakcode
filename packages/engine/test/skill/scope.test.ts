@@ -4,10 +4,10 @@ import fs from "fs/promises"
 import { configDirScope } from "@merakcode/engine/skill/scope"
 import { Global } from "@merakcode/engine/global/index"
 import { Instance } from "@merakcode/engine/project/instance"
-import { tmpdir } from "../fixture/fixture"
+import { globalConfig, tmpdir } from "../fixture/fixture"
 
 describe("configDirScope", () => {
-  test("non-git worktree slash: xdg global config dir is global", async () => {
+  test("non-git worktree slash: the global root is global", async () => {
     await using project = await tmpdir()
     await Instance.provide({
       directory: project.path,
@@ -33,13 +33,14 @@ describe("configDirScope", () => {
     })
   })
 
-  test("home git worktree: home .config/merakcode is global", async () => {
+  test("home git worktree: the global root ~/.merakcode is global", async () => {
     await using home = await tmpdir({ git: true })
     const prevHome = process.env.MERAKCODE_TEST_HOME
     process.env.MERAKCODE_TEST_HOME = home.path
 
-    const configDir = path.join(home.path, ".config", "merakcode")
+    const configDir = path.join(home.path, ".merakcode")
     await fs.mkdir(configDir, { recursive: true })
+    using _ = globalConfig(configDir)
 
     try {
       await Instance.provide({

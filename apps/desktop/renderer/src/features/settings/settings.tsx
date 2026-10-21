@@ -18,16 +18,17 @@ import { locale, setLocale, t, toConfig, type Key, type Locale } from "../../i18
 import { bridge } from "../../lib/bridge"
 import type { SandboxStatus } from "@merakcode/sdk/client"
 import { call, client } from "../../state/client"
-import { available } from "../../state/models"
+import { available, shownDefaultModel, shownSmallModel } from "../../state/models"
 import { loadConfig, loadProviders, setState, state, updateConfig } from "../../state/store"
 import { setUi, ui, type SettingsSection } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
 import { Select } from "../../ui/select"
 import { Switch } from "../../ui/switch"
-import { Confirm, Dialog } from "../../ui/dialog"
+import { Confirm } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 import { trackOverlay } from "../../ui/overlay"
 import { modeOptions } from "../conversation/composer"
+import { CustomDialog } from "./relay-dialog"
 import { updateState } from "../update/state"
 
 const fail = (error: Error) => {
@@ -128,121 +129,9 @@ function General() {
   )
 }
 
-/**
- * Custom provider: an OpenAI-compatible API (e.g. a local Ollama or LM Studio, or an internal gateway).
- * The URL and models go into the global config; the key is stored locally like any other provider's.
- */
-function Custom(props: { open: boolean; onClose: () => void }) {
-  const [name, setName] = createSignal("")
-  const [url, setUrl] = createSignal("")
-  const [key, setKey] = createSignal("")
-  const [models, setModels] = createSignal("")
-  const [busy, setBusy] = createSignal(false)
-  const ids = () =>
-    models()
-      .split(/[\s,]+/)
-      .filter(Boolean)
-  const save = async () => {
-    const taken = new Set([
-      ...(state.providers?.all ?? []).map((provider) => provider.id),
-      ...Object.keys(state.config?.provider ?? {}),
-    ])
-    const slug =
-      name()
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "custom"
-    let id = slug
-    for (let n = 2; taken.has(id); n++) id = `${slug}-${n}`
-    // Local models rarely need a key, but the engine only lists providers that have one: store a placeholder
-    await call(client(project()).auth.set({ providerID: id, auth: { type: "api", key: key().trim() || "none" } }))
-    const enabled = state.config?.enabled_providers
-    await updateConfig({
-      provider: {
-        [id]: {
-          name: name().trim(),
-          npm: "@ai-sdk/openai-compatible",
-          options: { baseURL: url().trim() },
-          models: Object.fromEntries(ids().map((model) => [model, { name: model }])),
-        },
-      },
-      ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
-    })
-    await loadProviders(project())
-    setName("")
-    setUrl("")
-    setKey("")
-    setModels("")
-    props.onClose()
-  }
-  return (
-    <Dialog
-      open={props.open}
-      onOpenChange={(open) => !open && props.onClose()}
-      title={t("settings.custom.title")}
-      description={t("settings.custom.desc")}
-      footer={
-        <>
-          <button class="button secondary" onClick={() => props.onClose()}>
-            {t("common.cancel")}
-          </button>
-          <button
-            class="button primary"
-            disabled={busy() || !name().trim() || !url().trim() || !ids().length}
-            onClick={() => {
-              setBusy(true)
-              void save()
-                .catch(fail)
-                .finally(() => setBusy(false))
-            }}
-          >
-            {t("common.add")}
-          </button>
-        </>
-      }
-    >
-      <div class="dialog-body form">
-        <label class="field">
-          {t("settings.custom.name")}
-          <input class="input" value={name()} onInput={(event) => setName(event.currentTarget.value)} autofocus />
-        </label>
-        <label class="field">
-          {t("settings.custom.url")}
-          <input
-            class="input mono"
-            placeholder="http://localhost:11434/v1"
-            value={url()}
-            onInput={(event) => setUrl(event.currentTarget.value)}
-          />
-        </label>
-        <label class="field">
-          {t("settings.provider.key")}
-          <input
-            class="input"
-            type="password"
-            placeholder={t("settings.custom.keyPlaceholder")}
-            value={key()}
-            onInput={(event) => setKey(event.currentTarget.value)}
-          />
-        </label>
-        <label class="field">
-          {t("settings.custom.models")}
-          <textarea
-            class="input mono"
-            rows={2}
-            placeholder={t("settings.custom.modelsPlaceholder")}
-            value={models()}
-            onInput={(event) => setModels(event.currentTarget.value)}
-          />
-        </label>
-      </div>
-    </Dialog>
-  )
-}
-
 function Models() {
   const [adding, setAdding] = createSignal(false)
+  const [station, setStation] = createSignal<{ id: string; name: string; baseURL: string }>()
   const [editing, setEditing] = createSignal<string>()
   const [key, setKey] = createSignal("")
   const [query, setQuery] = createSignal("")
@@ -279,25 +168,32 @@ function Models() {
     await Promise.all([loadConfig(), loadProviders(project())])
   }
   const options = () =>
-    available().map((item) => ({ value: item.key, label: item.model.name, description: item.provider.name }))
+    available().map((item) => ({
+      value: item.key,
+      label: item.model.name,
+      description: item.provider.name,
+      providerID: item.provider.id,
+    }))
   return (
     <Section title={t("settings.models")} lead={t("settings.providers.desc")}>
       <div class="card">
         <Row label={t("settings.defaultModel")} desc={t("settings.defaultModel.desc")}>
           <Select
-            class="chip outlined"
+            class="select-field"
             label={t("settings.defaultModel")}
             options={options()}
-            value={state.config?.model}
+            value={shownDefaultModel()}
+            placeholder={t("model.none")}
             onChange={(model) => void updateConfig({ model }).catch(fail)}
           />
         </Row>
         <Row label={t("settings.smallModel")} desc={t("settings.smallModel.desc")}>
           <Select
-            class="chip outlined"
+            class="select-field"
             label={t("settings.smallModel")}
             options={options()}
-            value={state.config?.small_model}
+            value={shownSmallModel()}
+            placeholder={t("settings.smallModel.auto")}
             onChange={(small_model) => void updateConfig({ small_model }).catch(fail)}
           />
         </Row>
@@ -311,7 +207,13 @@ function Models() {
           value={query()}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-        <button class="button secondary sm" onClick={() => setAdding(true)}>
+        <button
+          class="button secondary sm"
+          onClick={() => {
+            setStation(undefined)
+            setAdding(true)
+          }}
+        >
           {t("settings.custom.add")}
         </button>
       </div>
@@ -371,6 +273,23 @@ function Models() {
                       </button>
                     }
                   >
+                    <Show when={state.config?.provider?.[provider.id]?.relay}>
+                      <button
+                        class="button ghost sm"
+                        onClick={() => {
+                          const current = state.config?.provider?.[provider.id]
+                          if (!current?.relay) return
+                          setStation({
+                            id: current.relay.station,
+                            name: provider.name.split(" · ")[0] || provider.name,
+                            baseURL: current.api || current.options?.baseURL || "",
+                          })
+                          setAdding(true)
+                        }}
+                      >
+                        {t("settings.relay.group")}
+                      </button>
+                    </Show>
                     <button
                       class="icon-button"
                       aria-label={t("settings.removeItem", { name: provider.name })}
@@ -385,7 +304,16 @@ function Models() {
           }}
         </For>
       </div>
-      <Custom open={adding()} onClose={() => setAdding(false)} />
+      <Show when={adding()}>
+        <CustomDialog
+          open
+          station={station()}
+          onClose={() => {
+            setAdding(false)
+            setStation(undefined)
+          }}
+        />
+      </Show>
     </Section>
   )
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "merakcode-workspace",
   "version": "0.1.0",
-  "description": "AI coding agent for the terminal and desktop",
+  "description": "AI coding tool: desktop app, command line and SDK",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.14.0",
@@ -38,11 +38,8 @@
     "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
   },
   "devDependencies": {
-    "@babel/core": "7.29.7",
-    "@babel/preset-typescript": "7.29.7",
     "@merakcode/util": "workspace:*",
     "@types/node": "catalog:",
-    "babel-preset-solid": "1.9.12",
     "knip": "6.42.0",
     "oxc-parser": "0.154.0",
     "prettier": "3.9.10",

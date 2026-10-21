@@ -13,7 +13,7 @@ function safe(value) {
 
 function root() {
   if (process.env.MERAKCODE_LOG_ROOT) return process.env.MERAKCODE_LOG_ROOT.replaceAll("\0", "")
-  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "merakcode", "log")
+  return path.join(process.env.MERAKCODE_HOME?.replaceAll("\0", "") || path.join(os.homedir(), ".merakcode"), "logs")
 }
 
 // Only extracted, bounded identifiers reach disk. Never persist arbitrary stderr, argv, URLs or report payloads.

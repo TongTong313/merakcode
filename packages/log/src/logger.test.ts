@@ -170,7 +170,7 @@ test("rotates and retains only the configured number of log files", async () => 
   await Filesystem.write(
     script,
     `import { Log } from ${JSON.stringify(source)}
-await Log.init({ print: false, dev: true, name: "rotation-test", rotate: { size: 512, files: 5 } })
+await Log.init({ print: false, dev: true, component: "rotation-test", rotate: { size: 512, files: 5 } })
 const log = Log.create({ service: "rotation-test", source: "product" })
 for (let index = 0; index < 100; index++) log.info("entry", { index, value: "x".repeat(80) })
 console.log(Log.file())
@@ -182,11 +182,7 @@ process.exit(0)
   const child = spawn([...runtime, script], {
     env: {
       ...process.env,
-      XDG_DATA_HOME: path.join(root, "data"),
-      XDG_CACHE_HOME: path.join(root, "cache"),
-      XDG_CONFIG_HOME: path.join(root, "config"),
-      XDG_STATE_HOME: path.join(root, "state"),
-      MERAKCODE_LOG_ROOT: path.join(root, "logs"),
+      MERAKCODE_HOME: root,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -292,7 +288,7 @@ test("routes CLI update, approval and audit events into dedicated structured fil
     await Filesystem.write(
       script,
       `import { Log } from ${JSON.stringify(source)}
-await Log.init({ print: true, component: "tui-worker", trackRun: false })
+await Log.init({ print: true, component: "cli", trackRun: false })
 Log.create({ service: "updater", channel: "update" }).error("update failed", { updateID: "update-1", exitCode: 17, requestBody: "private" })
 Log.create({ service: "sandbox.approval", channel: "approval" }).info("approval choice recorded", { approvalId: "approval-1", choice: "deny", path: "C:\\\\secret\\\\file.txt" })
 Log.create({ service: "sandbox.audit", channel: "audit" }).info("file audit recorded", { taskId: "task-1", controlMode: "BLOCK", path: "C:\\\\secret\\\\file.txt", operation: "C:\\\\secret\\\\file.txt", sessionID: "C:\\\\secret\\\\file.txt" })
@@ -317,13 +313,13 @@ await Log.shutdown()
       return JSON.parse((await Filesystem.readText(path.join(dir, files[0]!))).trim())
     }
     expect(await read(path.join(root, "production", "cli", "update"))).toMatchObject({
-      component: "tui-worker",
+      component: "cli",
       service: "updater",
       attributes: { updateID: "update-1", exitCode: 17, requestBody: "<redacted>" },
     })
     expect(await read(path.join(root, "production", "cli"))).toMatchObject({
       message: "ordinary event",
-      attributes: { process_role: "worker" },
+      attributes: { process_role: "main" },
     })
     expect(await read(path.join(root, "production", "cli", "sdk"))).toMatchObject({
       service: "default",

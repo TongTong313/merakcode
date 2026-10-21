@@ -5,7 +5,7 @@ import { Log } from "@merakcode/log/logger"
 
 Log.init({ print: false })
 
-test("port 0 lets the OS pick a port instead of 4096, as the SDK, terminal UI and desktop engines start", async () => {
+test("port 0 lets the OS pick a port instead of 4096, as the SDK, CLI and desktop engines start", async () => {
   const listener = await Server.listen({ hostname: "127.0.0.1", port: 0 })
   try {
     expect(listener.port).toBeGreaterThan(0)

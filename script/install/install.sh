@@ -8,13 +8,13 @@
 #
 # Environment variables:
 #   MERAKCODE_VERSION        version to install (default: latest release)
-#   MERAKCODE_INSTALL_DIR    install directory (default: ~/.merakcode)
+#   MERAKCODE_INSTALL_DIR    install directory (default: MERAKCODE_HOME, else ~/.merakcode)
 #   MERAKCODE_BIN_DIR        where the command goes (default: ~/.local/bin)
 #   MERAKCODE_DOWNLOAD_BASE  download location (default: GitHub Releases; set it to use a mirror)
 set -eu
 
 repository="{{REPOSITORY}}"
-home="${MERAKCODE_INSTALL_DIR:-$HOME/.merakcode}"
+home="${MERAKCODE_INSTALL_DIR:-${MERAKCODE_HOME:-$HOME/.merakcode}}"
 bin="${MERAKCODE_BIN_DIR:-$HOME/.local/bin}"
 
 fail() {
@@ -85,7 +85,7 @@ fi
 
 printf '\nMerakCode %s is installed: %s\n' "$version" "$bin/merak"
 case ":$PATH:" in
-  *":$bin:"*) printf "Run 'merak' to get started.\n" ;;
+  *":$bin:"*) printf "Run 'merak --help' to see the commands.\n" ;;
   *)
     printf '\n%s is not on your PATH. Add this line to your shell profile (~/.bashrc, ~/.zshrc, ...) and open a new terminal:\n' "$bin"
     printf '  export PATH="%s:$PATH"\n' "$bin"

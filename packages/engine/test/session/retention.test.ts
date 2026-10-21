@@ -1,13 +1,13 @@
 import { expect, test } from "vitest"
-import fs from "fs/promises"
 import { Identifier } from "@merakcode/util/id"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Session } from "@merakcode/engine/session/index"
+import { SessionStore } from "@merakcode/engine/session/store"
 import { Transcript } from "@merakcode/engine/session/transcript"
+import { Database } from "@merakcode/engine/storage/db"
 import { Storage } from "@merakcode/engine/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
-import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
 
@@ -15,8 +15,8 @@ Log.init({ print: false })
 
 const DAY = 86_400_000
 
-async function age(session: Session.Info, time: number) {
-  await Storage.update<Session.Info>(["session", session.projectID, session.id], (draft) => {
+function age(session: Session.Info, time: number) {
+  SessionStore.update(session.projectID, session.id, (draft) => {
     draft.time.updated = time
   })
 }
@@ -44,25 +44,25 @@ test("expired session trees are deleted whole; trees with an active child or fre
       const stale = await Session.create({})
       const staleChild = await Session.create({ parentID: stale.id })
       await say(stale.id)
-      await age(stale, old)
-      await age(staleChild, old)
-      await fs.utimes(Transcript.file(stale.id), new Date(old), new Date(old))
+      age(stale, old)
+      age(staleChild, old)
+      Database.query("UPDATE message SET written = ? WHERE session_id = ?").run(old, stale.id)
 
       // Root expired but the child was used recently: the whole tree is kept.
       const parent = await Session.create({})
       await Session.create({ parentID: parent.id })
-      await age(parent, old)
+      age(parent, old)
 
-      // Old time.updated but the transcript was just written: kept.
+      // Old time.updated but the content was just written: kept.
       const busy = await Session.create({})
-      await age(busy, old)
+      age(busy, old)
       await say(busy.id)
 
       // Other files in the same test process may leave old sessions behind, so only this test's trees are asserted.
       expect(await Session.expire(cutoff)).toBeGreaterThanOrEqual(2)
       await expect(Session.get(stale.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
       await expect(Session.get(staleChild.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
-      expect(await Filesystem.isFile(Transcript.file(stale.id))).toBe(false)
+      expect(Transcript.written(stale.id)).toBe(0)
       expect((await Session.get(parent.id)).id).toBe(parent.id)
       expect((await Session.get(busy.id)).id).toBe(busy.id)
     },

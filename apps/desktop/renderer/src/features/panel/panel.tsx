@@ -16,6 +16,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   const data = useReview(
     () => props.sessionID,
     () => props.directory,
+    () => ui.tab === "review",
   )
   const count = () => progress(data.data()).total
   const tabs: { id: Tab; label: () => string; icon: typeof Code }[] = [

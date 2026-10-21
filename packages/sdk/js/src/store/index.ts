@@ -182,7 +182,7 @@ export function applyEvent(state: SessionsState, event: Event): Change {
       const branch = event.properties.branch
       // There is no branch name outside a git repository or with a detached HEAD
       if (state.vcs?.branch === branch) return "none"
-      state.vcs = branch === undefined ? undefined : { branch }
+      state.vcs = branch === undefined ? undefined : { staged: 0, unstaged: 0, untracked: 0, ...state.vcs, branch }
       return "replace"
     }
   }

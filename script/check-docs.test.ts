@@ -13,7 +13,7 @@ test("finds merak and pnpm dev commands only inside code", () => {
     "await merak.close()",
     "```",
     "```text",
-    "apps/cli   the merak program and terminal UI",
+    "apps/cli   the merak program",
     "```",
   ].join("\n")
   expect(mentioned(markdown)).toEqual([["doctor"], ["sandbox", "setup"], ["upgrade"], ["run"], ["serve"]])
@@ -23,7 +23,6 @@ test("reads command names and aliases from yargs help", () => {
   const help = [
     "Commands:",
     "  merak completion          generate completion script",
-    "  merak [project]           start MerakCode TUI                              [default]",
     "  merak upgrade [target]    Check for updates and upgrade MerakCode to the latest version",
     "                                                                     [aliases: update]",
     "  merak plugin              manage plugins                  [aliases: plugins, plug]",

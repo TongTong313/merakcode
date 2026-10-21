@@ -144,15 +144,9 @@ export namespace SkillInstall {
     return path.join(Global.Path.config, "skills")
   }
 
-  /**
-   * All supported global skill directories.
-   *
-   * Global skills live only in ~/.config/merakcode/skills (same as globalSkillsDir). ~/.merakcode/skills is excluded:
-   * when started from home it is the same directory as the project install location <home>/.merakcode/skills, so
-   * "install to project" would show up as a global skill and disagree with the receipt.
-   */
+  /** All supported global skill directories */
   export function globalSkillsDirs(): string[] {
-    return Array.from(new Set([globalSkillsDir(), path.join(Global.Path.home, ".config", "merakcode", "skills")]))
+    return [globalSkillsDir()]
   }
 
   /** Lists installable skills */

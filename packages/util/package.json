@@ -22,7 +22,6 @@
     "remeda": "catalog:",
     "tinyglobby": "0.2.17",
     "undici": "catalog:",
-    "xdg-basedir": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

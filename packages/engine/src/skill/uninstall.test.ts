@@ -32,7 +32,7 @@ describe("resolveSkillInstallRoot", () => {
   })
 
   test("picks the matching root among several allowed roots", () => {
-    const global = path.resolve("/home/.config/merakcode/skills")
+    const global = path.resolve("/home/.merakcode/skills")
     const location = path.join(global, "shared", "inner", "SKILL.md")
     expect(resolveSkillInstallRoot(location, [root, global])).toBe(path.join(global, "shared"))
   })

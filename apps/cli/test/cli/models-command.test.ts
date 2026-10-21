@@ -1,7 +1,7 @@
 /**
  * merak models: lists the models of connected providers; --refresh first fetches the latest catalog from its source.
- * The catalog source is a local fake server (MERAKCODE_MODELS_URL); the provider connects through a key in the
- * environment
+ * The catalog source is a local fake server (MERAKCODE_MODELS_URL) serving an official provider (only those are kept)
+ * with made-up models; the provider connects through an API key in the project config
  */
 import { expect, test } from "vitest"
 import http from "node:http"
@@ -11,10 +11,10 @@ import { cli, tmpdir } from "../fixture/fixture"
 
 function catalog(models: string[]) {
   return {
-    "fake-cloud": {
-      id: "fake-cloud",
-      name: "Fake Cloud",
-      env: ["FAKE_CLOUD_API_KEY"],
+    deepseek: {
+      id: "deepseek",
+      name: "DeepSeek",
+      env: ["DEEPSEEK_API_KEY"],
       npm: "@ai-sdk/openai-compatible",
       api: "http://127.0.0.1:9/v1",
       models: Object.fromEntries(
@@ -58,7 +58,6 @@ async function merak(cwd: string, url: string, ...args: string[]) {
     ...process.env,
     MERAKCODE_LOCALE: "en",
     MERAKCODE_MODELS_URL: url,
-    FAKE_CLOUD_API_KEY: "sk-test",
   }
   // Skip the fixture's fixed catalog so the command goes through the cache to the catalog source
   delete env.MERAKCODE_MODELS_PATH
@@ -73,21 +72,19 @@ async function merak(cwd: string, url: string, ...args: string[]) {
 }
 
 test("--refresh lists new models after fetching them from the catalog", { timeout: 90_000 }, async () => {
-  await using tmp = await tmpdir()
+  await using tmp = await tmpdir({ config: { provider: { deepseek: { options: { apiKey: "sk-test" } } } } })
   await using models = await source()
 
-  const first = await merak(tmp.path, models.url, "models", "fake-cloud", "--refresh")
+  const first = await merak(tmp.path, models.url, "models", "deepseek", "--refresh")
   expect(first.code, first.stderr).toBe(0)
   expect(first.stderr).toContain("Models cache refreshed")
-  expect(first.stdout.split(/\r?\n/).filter((line) => line.startsWith("fake-cloud/"))).toEqual([
-    "fake-cloud/fake-coder-1",
-  ])
+  expect(first.stdout.split(/\r?\n/).filter((line) => line.startsWith("deepseek/"))).toEqual(["deepseek/fake-coder-1"])
 
   models.state.models = ["fake-coder-1", "fake-coder-2"]
-  const second = await merak(tmp.path, models.url, "models", "fake-cloud", "--refresh")
-  expect(second.stdout.split(/\r?\n/).filter((line) => line.startsWith("fake-cloud/"))).toEqual([
-    "fake-cloud/fake-coder-1",
-    "fake-cloud/fake-coder-2",
+  const second = await merak(tmp.path, models.url, "models", "deepseek", "--refresh")
+  expect(second.stdout.split(/\r?\n/).filter((line) => line.startsWith("deepseek/"))).toEqual([
+    "deepseek/fake-coder-1",
+    "deepseek/fake-coder-2",
   ])
 })
 

@@ -1,10 +1,9 @@
 import ArrowLeft from "lucide-solid/icons/arrow-left"
 import Bot from "lucide-solid/icons/bot"
-import CircleCheck from "lucide-solid/icons/circle-check"
 import Columns2 from "lucide-solid/icons/columns-2"
-import FileCode from "lucide-solid/icons/file-code"
 import Minimize2 from "lucide-solid/icons/minimize-2"
 import Rows2 from "lucide-solid/icons/rows-2"
+import type { ReviewFile } from "@merakcode/sdk/client"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { session } from "../../state/store"
@@ -12,9 +11,21 @@ import { setUi } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
 import { toast } from "../../ui/toast"
 import { send } from "../conversation/send"
+import { CommentComposer } from "./compose"
 import { Commit } from "./commit"
+import { present } from "./present"
+import { ReviewTree } from "./tree"
 import { BulkActions, LastDecision, ReviewFiles, ScopeBar } from "./review"
-import { clearComments, commentMessage, commentsOf, removeComment, review, setReview, useReview } from "./state"
+import {
+  clearComments,
+  commentMessage,
+  commentingOn,
+  commentsOf,
+  removeComment,
+  review,
+  setReview,
+  useReview,
+} from "./state"
 
 /**
  * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments and
@@ -27,40 +38,68 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
   )
   const [active, setActive] = createSignal<string>()
   const files = () => data.data()?.files ?? []
+  // Every hunk in order; a file whose hunks are not loaded yet stands in as one entry without an id
   const hunks = createMemo(() =>
-    files().flatMap((file) => file.hunks.map((hunk) => ({ file: file.file, id: hunk.id }))),
+    files().flatMap((file) => {
+      const loaded = data.detail(file).detail
+      return loaded
+        ? loaded.hunks.map((hunk) => ({ file, id: hunk.id as string | undefined }))
+        : [{ file, id: undefined }]
+    }),
   )
   const comments = () => commentsOf(props.sessionID)
 
-  const focus = (id: string | undefined) => {
+  const focus = (file: ReviewFile, id: string | undefined) => {
     setActive(id)
-    if (id)
-      document
-        .querySelector(`[data-hunk="${CSS.escape(id)}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    if (!id) return
+    data.setOpen(file, true)
+    data.showAll(file)
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-hunk="${CSS.escape(id)}"] .hunk-bar`)
+      if (el) present(el)
+    })
+  }
+  /** Opens a file from the list: centers the file header and highlights it */
+  const openFile = async (file: ReviewFile) => {
+    data.setOpen(file, true)
+    const detail = await data.loadDetail(file)
+    const id = detail?.hunks[0]?.id
+    if (id) setActive(id)
+    const el = document.querySelector(`[data-file="${CSS.escape(file.file)}"] .diff-file-head`)
+    if (el) present(el)
+  }
+  /** Opens a file, loads its hunks if needed, then centers the requested hunk */
+  const reveal = async (file: ReviewFile, last = false) => {
+    data.setOpen(file, true)
+    const detail = await data.loadDetail(file)
+    focus(file, (last ? detail?.hunks.at(-1) : detail?.hunks[0])?.id)
   }
   const move = (step: number) => {
     const list = hunks()
-    const index = list.findIndex((item) => item.id === active())
-    focus(list[Math.min(list.length - 1, Math.max(0, index + step))]?.id)
+    const index = list.findIndex((item) => item.id !== undefined && item.id === active())
+    const target = list[Math.min(list.length - 1, Math.max(0, index + step))]
+    if (!target) return
+    if (target.id) return focus(target.file, target.id)
+    void reveal(target.file, step < 0)
   }
 
   onMount(() => {
     const listener = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       if (target.closest("input, textarea, [contenteditable]") || event.ctrlKey || event.metaKey || event.altKey) return
-      const current = hunks().find((item) => item.id === active())
+      const current = hunks().find((item) => item.id !== undefined && item.id === active())
       const key = event.key.toLowerCase()
       if (key === "j") move(1)
       else if (key === "k") move(-1)
-      else if (key === "a" && current && data.data()?.actions.accept)
-        void data.decide("accept", [{ file: current.file, hunks: [current.id] }])
-      else if (key === "r" && current && data.data()?.actions.reject)
-        void data.decide("reject", [{ file: current.file, hunks: [current.id] }])
-      else if (key === "c" && current) setReview("commenting", current.id)
+      else if (key === "a" && current?.id && data.data()?.actions.accept)
+        void data.decide("accept", [{ file: current.file.file, hunks: [current.id] }])
+      else if (key === "r" && current?.id && data.data()?.actions.reject)
+        void data.decide("reject", [{ file: current.file.file, hunks: [current.id] }])
+      else if (key === "c" && current?.id) setReview("commenting", current.id)
       else if (key === "]") {
-        const index = files().findIndex((file) => file.file === current?.file)
-        focus(files()[(index + 1) % Math.max(1, files().length)]?.hunks[0]?.id)
+        const index = files().findIndex((file) => file.file === current?.file.file)
+        const file = files()[(index + 1) % Math.max(1, files().length)]
+        if (file) void openFile(file)
       } else if (key === "escape") setUi("maximized", false)
       else return
       event.preventDefault()
@@ -105,26 +144,11 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
       </div>
       <div class="review-full-body">
         <aside class="review-tree" aria-label={t("review.files")}>
-          <div class="review-tree-list scroll">
-            <For each={files()}>
-              {(file) => (
-                <button
-                  class="rt-file"
-                  classList={{ on: hunks().find((item) => item.id === active())?.file === file.file }}
-                  onClick={() => focus(file.hunks[0]?.id)}
-                >
-                  <Show
-                    when={file.accepted === file.hunks.length && file.hunks.length}
-                    fallback={<FileCode class="icon icon-sm subtle" />}
-                  >
-                    <CircleCheck class="icon icon-sm add" />
-                  </Show>
-                  <span class="name ellipsis">{file.file}</span>
-                  <span class="hunks">{t("review.hunks", { count: file.hunks.length })}</span>
-                </button>
-              )}
-            </For>
-          </div>
+          <ReviewTree
+            files={files()}
+            activeFile={hunks().find((item) => item.id !== undefined && item.id === active())?.file.file}
+            onOpen={(file) => void openFile(file)}
+          />
           <div class="keys">
             <span>
               <kbd>J</kbd>
@@ -157,6 +181,7 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
         </section>
         <aside class="review-side" aria-label={t("review.comments")}>
           <div class="side-head">{t("review.comments")}</div>
+          <CommentComposer sessionID={props.sessionID} target={commentingOn(files(), (file) => data.detail(file))} />
           <div class="side-list scroll">
             <Show when={comments().length} fallback={<p class="subtle side-empty">{t("review.noComments")}</p>}>
               <For each={comments()}>
@@ -189,6 +214,7 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
               <Commit
                 directory={props.directory}
                 all={review.scope === "unstaged"}
+                pending={files().length > 0}
                 onDone={() => void data.refetch()}
               />
             </Show>

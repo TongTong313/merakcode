@@ -16,7 +16,7 @@ describe("command and package names", () => {
     expect(platformPackage("linux", "arm64")).toBe("merakcode-linux-arm64")
   })
 
-  test("help without arguments shows the TUI under merak", async () => {
+  test("help lists the commands under merak", async () => {
     const proc = Process.spawn([...cli, "--help"], {
       stdout: "pipe",
       stderr: "pipe",
@@ -27,7 +27,7 @@ describe("command and package names", () => {
       proc.exited,
     ])
     expect(code, stderr).toBe(0)
-    expect(stdout).toContain("merak [project]")
-    expect(stdout).not.toContain("merakcode [project]")
+    expect(stdout).toContain("merak serve")
+    expect(stdout).not.toContain("merakcode serve")
   })
 })

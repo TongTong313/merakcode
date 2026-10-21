@@ -29,6 +29,7 @@
     "electron-updater": "6.8.9",
     "esbuild": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "repository": {

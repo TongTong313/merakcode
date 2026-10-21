@@ -11,7 +11,7 @@ test(`I1 S06.06 service/MCP ${fault ? "failure detector" : "error correction and
     const session = await kit.api("/session", "POST", { title: "I1 S06.06" })
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",
-      model: { providerID: "alibaba", modelID: "qwen-plus" },
+      model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: "I1_MCP lookup the current synthetic marker." }],
     })
     const userID = await kit.submitted(session.id, "I1_MCP lookup the current synthetic marker.")

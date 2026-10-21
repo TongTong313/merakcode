@@ -298,7 +298,7 @@ export namespace MemoryExtract {
       })
       return false
     }
-    // Notify the TUI only when the index mtime advanced, so a "nothing to extract" run does not show a toast
+    // Notify the clients only when the index mtime advanced, so a "nothing to extract" run does not show a toast
     const statAfter = await fs.stat(MemoryPath.entrypoint()).catch(() => undefined)
     const mtimeAfter = statAfter?.mtimeMs ?? 0
     if (mtimeAfter > mtimeBefore) {

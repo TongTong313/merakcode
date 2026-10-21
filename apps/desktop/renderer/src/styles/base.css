@@ -284,6 +284,64 @@ pre,
   opacity: 0.7;
 }
 
+/* Settings model picker: current value on the left, menu chevron on the right */
+.select-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 240px;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.select-field:hover {
+  background: var(--surface-hover);
+}
+.select-field[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.select-field .select-value {
+  flex: 1;
+  min-width: 0;
+}
+.select-field .chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  opacity: 0.7;
+}
+.menu-item-copy {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+.provider-logo {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background: currentColor;
+  mask: var(--logo) center / contain no-repeat;
+}
+.provider-logo.letter {
+  display: grid;
+  place-items: center;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  mask: none;
+}
+
 /* Segmented control (radiogroup) */
 .segmented {
   display: inline-flex;
@@ -294,7 +352,8 @@ pre,
   border: 1px solid var(--border);
   flex: none;
 }
-.segmented > button {
+/* Descendants, not children: a hint wraps its option, and a dropdown can sit in the group as one more option */
+.segmented button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -308,13 +367,26 @@ pre,
   color: var(--text-muted);
   white-space: nowrap;
 }
-.segmented > button:hover {
+.segmented button:hover {
   color: var(--text);
 }
-.segmented > button[aria-checked="true"] {
+.segmented button[aria-checked="true"],
+.segmented button.on {
   background: var(--segment-on);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+}
+.segmented button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.segmented button[aria-disabled="true"]:hover {
+  color: var(--text-muted);
+}
+.segmented .chevron {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
 }
 
 /* Inputs */
@@ -533,6 +605,12 @@ kbd {
   z-index: 50;
   outline: none;
 }
+/* Kobalte listbox is a ul; Chromium indents it 40px and adds 1em of vertical margin. */
+.popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .menu-item {
   display: flex;
   align-items: center;
@@ -614,8 +692,23 @@ kbd {
   outline: none;
   overflow: hidden;
 }
-.dialog.wide {
+.dialog.stable {
   width: min(640px, 100%);
+  /* Custom relay group is the tallest step. 800px fits it; shorter windows keep a 24px margin. */
+  height: min(800px, calc(100vh - 48px));
+}
+/* The 14px form gap makes that step overflow the default window. */
+.dialog.stable .form {
+  gap: 8px;
+}
+.dialog.stable .dialog-head,
+.dialog.stable .dialog-foot {
+  flex: none;
+}
+.dialog.stable .dialog-body {
+  flex: 1;
+  min-height: 0;
+  align-content: start;
 }
 .dialog-head {
   display: flex;
@@ -627,6 +720,11 @@ kbd {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 600;
+}
+.dialog-desc {
+  padding: 8px 18px 4px;
+  color: var(--text-muted);
+  flex: none;
 }
 .dialog-body {
   padding: 8px 18px 4px;

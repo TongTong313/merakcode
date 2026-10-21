@@ -13,7 +13,10 @@ import { Installation } from "../installation"
 import { Storage } from "../storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { Message } from "./message"
+import { SessionStore } from "./store"
 import { Transcript } from "./transcript"
+import { ReviewBaseline } from "../review/baseline"
+import { SessionMemoryPath } from "../session-memory/path"
 import { Instance } from "../project/instance"
 import { SessionRunner } from "./runner"
 import { SessionDispatch } from "./dispatch"
@@ -27,6 +30,7 @@ import { PermissionMode } from "../permission/mode"
 import { Global } from "../global"
 import { failure } from "@merakcode/log"
 import { SessionTitle } from "@merakcode/util/session-title"
+import { Filesystem } from "@merakcode/util/filesystem"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -35,7 +39,7 @@ export namespace Session {
     "SessionReadError",
     z.object({
       sessionID: z.string(),
-      reason: z.enum(["invalid_json", "invalid_data", "io"]),
+      reason: z.literal("invalid_data"),
       message: z.string(),
     }),
   )
@@ -374,7 +378,7 @@ export namespace Session {
       metadata: input.metadata,
     }
     log.info("created", result)
-    await Storage.write(["session", Instance.project.id, result.id], result)
+    SessionStore.put(result)
     Bus.publish(Event.Created, {
       sessionID: result.id,
       info: result,
@@ -391,43 +395,27 @@ export namespace Session {
   }
 
   /**
-   * Accepts only canonical session files: readable, valid JSON, and the last key segment equals session.id.
-   * Returns undefined when missing; read failures keep their error category so they are never reported as deleted.
-   * Tolerant reads for listings and ancestry skip bad records. No full schema validation.
+   * Returns undefined when the session does not exist. Damaged stored data is a read failure, never reported as
+   * deleted; tolerant reads (ancestry) skip it instead. No full schema validation.
    */
-  async function readCanonicalFromKey(key: string[], tolerant = false): Promise<Info | undefined> {
-    const filenameId = key.at(-1)
-    if (!filenameId) return undefined
-    const session = await Storage.read<Info>(key).catch((error: unknown) => {
-      if (error instanceof Storage.NotFoundError) return undefined
-      const reason = error instanceof SyntaxError ? "invalid_json" : "io"
+  function readCanonicalSession(projectID: string, id: string, tolerant = false): Info | undefined {
+    try {
+      const session = SessionStore.get(projectID, id)
+      return session && (migrateRevertToUndoRedo(session) as Info)
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error
       log[tolerant ? "warn" : "error"]("session read failed", {
-        sessionID: filenameId,
-        projectID: key.at(-2),
-        reason,
+        sessionID: id,
+        projectID,
+        reason: "invalid_data",
         ...failure(error),
       })
       if (tolerant) return undefined
       throw new ReadError(
-        { sessionID: filenameId, reason, message: "Unable to read session data. The session has not been deleted." },
+        { sessionID: id, reason: "invalid_data", message: "Invalid session data. The session has not been deleted." },
         { cause: error },
       )
-    })
-    if (session === undefined) return undefined
-    if (!session || session.id !== filenameId) {
-      if (tolerant) return undefined
-      log.error("session read failed", { sessionID: filenameId, projectID: key.at(-2), reason: "invalid_data" })
-      throw new ReadError({
-        sessionID: filenameId,
-        reason: "invalid_data",
-        message: "Invalid session data. The session has not been deleted.",
-      })
     }
-    return migrateRevertToUndoRedo(session) as Info
-  }
-
-  async function readCanonicalSession(projectID: string, id: string): Promise<Info | undefined> {
-    return readCanonicalFromKey(["session", projectID, id])
   }
 
   function ghostInfo(id: string, projectID?: string): Info {
@@ -459,7 +447,7 @@ export namespace Session {
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
-    const session = await readCanonicalSession(Instance.project.id, id)
+    const session = readCanonicalSession(Instance.project.id, id)
     if (!session) {
       logMissing(id)
       throw notFound(id)
@@ -484,7 +472,7 @@ export namespace Session {
     for (let depth = 0; depth < MAX_DEPTH; depth++) {
       if (visited.has(current)) break
       visited.add(current)
-      const session = await readCanonicalFromKey(["session", Instance.project.id, current], true)
+      const session = readCanonicalSession(Instance.project.id, current, true)
       if (!session?.parentID) return current
       current = session.parentID
     }
@@ -494,7 +482,7 @@ export namespace Session {
   export const getByProject = fn(
     z.object({ id: Identifier.schema("session"), projectID: z.string() }),
     async (input) => {
-      const session = await readCanonicalSession(input.projectID, input.id)
+      const session = readCanonicalSession(input.projectID, input.id)
       if (!session) {
         logMissing(input.id, input.projectID)
         throw notFound(input.id)
@@ -513,17 +501,7 @@ export namespace Session {
     editor: (session: Info) => void,
     options?: { touch?: boolean },
   ) {
-    const existing = await readCanonicalSession(projectID, id)
-    if (!existing) {
-      logMissing(id, projectID)
-      throw notFound(id)
-    }
-    const result = await Storage.update<Info>(["session", projectID, id], (draft) => {
-      editor(draft)
-      if (options?.touch !== false) {
-        draft.time.updated = Date.now()
-      }
-    })
+    const result = edit(projectID, id, editor, options)
     Bus.publish(Event.Updated, {
       sessionID: result.id,
       info: result,
@@ -548,19 +526,27 @@ export namespace Session {
     return read
   }
 
-  export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
-    const project = Instance.project
-    const existing = await readCanonicalSession(project.id, id)
-    if (!existing) {
-      logMissing(id)
+  /** Reads, edits and writes the session in one transaction */
+  function edit(projectID: string, id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
+    if (!readCanonicalSession(projectID, id)) {
+      logMissing(id, projectID)
       throw notFound(id)
     }
-    const result = await Storage.update<Info>(["session", project.id, id], (draft) => {
+    const result = SessionStore.update(projectID, id, (draft) => {
       editor(draft)
       if (options?.touch !== false) {
         draft.time.updated = Date.now()
       }
     })
+    if (!result) {
+      logMissing(id, projectID)
+      throw notFound(id)
+    }
+    return result
+  }
+
+  export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
+    const result = edit(Instance.project.id, id, editor, options)
     Bus.publish(Event.Updated, {
       sessionID: result.id,
       info: result,
@@ -650,55 +636,55 @@ export namespace Session {
   )
 
   export async function* list() {
-    const project = Instance.project
-    let skipped = 0
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await readCanonicalFromKey(item, true)
-      if (!session) {
-        skipped++
-        continue
-      }
-      yield session
-    }
-    if (skipped > 0) log.warn("session list reconciled", { projectID: project.id, skipped })
+    for (const session of SessionStore.list(Instance.project.id)) yield migrateRevertToUndoRedo(session) as Info
+  }
+
+  export const SearchResult = z
+    .object({
+      session: Info,
+      match: z
+        .object({ messageID: z.string(), text: z.string() })
+        .optional()
+        .meta({ description: "The latest conversation text containing the search, shortened around it" }),
+    })
+    .meta({ ref: "SessionSearchResult" })
+  export type SearchResult = z.infer<typeof SearchResult>
+
+  /** One line around the first occurrence of term: a little before it and more after */
+  function snippet(text: string, term: string) {
+    const flat = text.replace(/\s+/g, " ").trim()
+    const at = Math.max(0, flat.toLowerCase().indexOf(term.toLowerCase()))
+    const start = Math.max(0, at - 20)
+    const end = Math.min(flat.length, at + term.length + 60)
+    return (start > 0 ? "…" : "") + flat.slice(start, end) + (end < flat.length ? "…" : "")
+  }
+
+  /** Sessions of this project whose title or conversation text contains the search, most recently updated first */
+  export function search(input: { search: string; directory?: string; roots?: boolean; limit?: number }) {
+    return SessionStore.search({ term: input.search, projectID: Instance.project.id, roots: input.roots })
+      .filter(
+        (item) => input.directory === undefined || Filesystem.sameDirectory(item.session.directory, input.directory),
+      )
+      .slice(0, input.limit)
+      .map((item): SearchResult => ({
+        session: migrateRevertToUndoRedo(item.session) as Info,
+        ...(item.match && { match: { messageID: item.match.messageID, text: snippet(item.match.text, input.search) } }),
+      }))
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const project = Instance.project
-    const result = [] as Session.Info[]
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await readCanonicalFromKey(item, true)
-      if (!session) continue
-      if (session.parentID !== parentID) continue
-      result.push(session)
-    }
-    return result
+    const projectID = Instance.project.id
+    return SessionStore.children(parentID).filter((session) => session.projectID === projectID)
   })
 
-  /** All descendant sessions (children, their children, and so on), reading the session list only once */
-  export const descendants = fn(Identifier.schema("session"), async (sessionID) => {
-    const all: Info[] = []
-    for (const item of await Storage.list(["session", Instance.project.id])) {
-      const session = await readCanonicalFromKey(item, true)
-      if (session?.parentID) all.push(session)
-    }
-    const result: Info[] = []
-    const visit = (parentID: string) =>
-      all.filter((item) => item.parentID === parentID).forEach((item) => (result.push(item), visit(item.id)))
-    visit(sessionID)
-    return result
-  })
+  /** All descendant sessions (children, their children, and so on) */
+  export const descendants = fn(Identifier.schema("session"), async (sessionID) =>
+    collectTree(sessionID).filter((session) => session.projectID === Instance.project.id),
+  )
 
-  async function collectTree(session: Info): Promise<Info[]> {
-    const result: Info[] = []
-    for (const item of await Storage.list(["session", session.projectID], { strict: true })) {
-      const child = await readCanonicalFromKey(item, true)
-      if (!child) continue
-      if (child.parentID !== session.id) continue
-      result.push(...(await collectTree(child)))
-    }
-    result.push(session)
-    return result
+  /** Every session below the given one, each parent before its children */
+  function collectTree(sessionID: string): Info[] {
+    return SessionStore.children(sessionID).flatMap((child) => [child, ...collectTree(child.id)])
   }
 
   async function clearSession(session: Info) {
@@ -709,6 +695,7 @@ export namespace Session {
       ["session_notification", sessionID],
       ["workflow", sessionID],
       ["workflow_run", sessionID],
+      ["cron", sessionID],
     ]) {
       await Storage.removePrefix(prefix)
     }
@@ -721,31 +708,34 @@ export namespace Session {
       await Storage.remove(key)
     }
 
-    const backupDir = path.join(Global.Path.data, "storage", "snapshot", sessionID)
-    await fs.rm(backupDir, { recursive: true, force: true })
+    ReviewBaseline.drop(sessionID)
+    await Snapshot.drop(sessionID)
+    await fs.rm(plan(session), { force: true })
     const { RuleSession } = await import("../rule/session-state")
     RuleSession.invalidate(sessionID)
   }
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
-    const session = await readCanonicalSession(Instance.project.id, sessionID)
+    const session = readCanonicalSession(Instance.project.id, sessionID)
     await SessionRunner.cancelTree(sessionID)
+    const { LoopScheduler } = await import("../scheduler/loop")
+    await LoopScheduler.removeBySession(sessionID)
     if (!session) {
       await clearSession(ghostInfo(sessionID))
-      await Storage.remove(["session", Instance.project.id, sessionID])
+      await fs.rm(SessionMemoryPath.directory(sessionID), { recursive: true, force: true })
+      SessionStore.remove(sessionID)
       log.info("ghost session removed", { sessionID, projectID: Instance.project.id })
       notifyMissing(sessionID)
       return
     }
-    const tree = await collectTree(session)
+    const tree = [...collectTree(session.id), session]
 
     // Keep every primary record until the entire tree's related data has been cleared.
-    for (const item of tree.toReversed()) {
-      await clearSession(item)
-    }
     for (const item of tree) {
-      await Storage.remove(["session", item.projectID, item.id])
+      await clearSession(item)
+      await fs.rm(SessionMemoryPath.directory(item.id), { recursive: true, force: true })
     }
+    for (const item of tree) SessionStore.remove(item.id)
     for (const item of tree) {
       Bus.publish(Event.Deleted, { sessionID: item.id, info: item })
     }
@@ -754,31 +744,21 @@ export namespace Session {
   /**
    * Retention cleanup (off by default, enabled by `storage.retention_days`).
    * Deletes root sessions whose whole tree has been inactive past the cutoff and returns the number of sessions
-   * deleted. Activity is the later of the session `time.updated` and the content file mtime, because not every message
-   * write updates `time.updated` and relying on it alone would delete sessions in use.
+   * deleted. Activity is the later of the session `time.updated` and the last content write, because not every
+   * message write updates `time.updated` and relying on it alone would delete sessions in use.
    * Does not depend on the current instance, cancel run loops or publish events: expired sessions are long inactive.
    */
   export async function expire(cutoff: number) {
     let count = 0
-    for (const key of await Storage.list(["session"])) {
-      const session = await readCanonicalFromKey(key, true)
-      if (!session || session.parentID) continue
-      const tree = await collectTree(session)
-      const latest = Math.max(...(await Promise.all(tree.map(activity))))
+    for (const session of SessionStore.all().filter((item) => !item.parentID)) {
+      const tree = [...collectTree(session.id), session]
+      const latest = Math.max(...tree.map((item) => Math.max(item.time.updated, Transcript.written(item.id))))
       if (latest >= cutoff) continue
-      for (const item of tree.toReversed()) await clearSession(item)
-      for (const item of tree) await Storage.remove(["session", item.projectID, item.id])
+      for (const item of tree) await clearSession(item)
+      for (const item of tree) SessionStore.remove(item.id)
       count += tree.length
     }
     return count
-  }
-
-  async function activity(session: Info) {
-    const modified = await fs.stat(Transcript.file(session.id)).then(
-      (stat) => stat.mtimeMs,
-      () => 0,
-    )
-    return Math.max(session.time.updated, modified)
   }
 
   export const updateInfo = fn(Message.Info, async (info) => {

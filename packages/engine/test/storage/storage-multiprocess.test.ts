@@ -1,21 +1,17 @@
 import { expect, test } from "vitest"
 import path from "node:path"
-import fs from "node:fs/promises"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir, runtime } from "../fixture/fixture"
-import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 import { setTimeout as delay } from "node:timers/promises"
 
-test("another process never reads a partial JSON record during Storage.write or update", async () => {
-  await using tmp = await tmpdir()
-  const key = ["diagnostic", `multiprocess-${crypto.randomUUID()}`]
-  const value = { id: "session-fixture", revision: 0, payload: "x".repeat(512 * 1024) }
-  await Storage.write(key, value)
+type Value = { id: string; revision: number; payload: string }
+
+function spawn(cwd: string, key: string[], mode?: string) {
   const child = Process.spawn(
-    [...runtime, path.join(import.meta.dirname, "storage-multiprocess-fixture.ts"), JSON.stringify(key)],
+    [...runtime, path.join(import.meta.dirname, "storage-multiprocess-fixture.ts"), JSON.stringify(key), mode ?? ""],
     {
-      cwd: tmp.path,
+      cwd,
       env: { ...process.env, NODE_OPTIONS: "" },
       stdin: "pipe",
       stdout: "pipe",
@@ -23,15 +19,27 @@ test("another process never reads a partial JSON record during Storage.write or 
     },
   )
   const errors = new Response(child.stderr).text()
+  const ready = child
+    .stdout!.getReader()
+    .read()
+    .then((chunk) => expect(new TextDecoder().decode(chunk.value).trim()).toBe("ready"))
+  return { child, errors, ready }
+}
+
+test("another process never reads a partial record during Storage.write or update", async () => {
+  await using tmp = await tmpdir()
+  const key = ["diagnostic", `multiprocess-${crypto.randomUUID()}`]
+  const value = { id: "session-fixture", revision: 0, payload: "x".repeat(512 * 1024) }
+  await Storage.write(key, value)
+  const { child, errors, ready } = spawn(tmp.path, key)
   const timer = setTimeout(() => child.kill(), 20_000)
   const failures: Array<{ name: string; code?: string }> = []
   let reads = 0
   try {
-    const ready = await child.stdout!.getReader().read()
-    expect(new TextDecoder().decode(ready.value).trim()).toBe("ready")
+    await ready
     child.stdin!.write("go\n")
     while (child.exitCode === null) {
-      await Storage.read<typeof value>(key).then(
+      await Storage.read<Value>(key).then(
         (read) => {
           expect(read.id).toBe(value.id)
           expect(read.payload).toBe(value.payload)
@@ -48,7 +56,7 @@ test("another process never reads a partial JSON record during Storage.write or 
     expect(await child.exited, await errors).toBe(0)
     expect(reads).toBeGreaterThan(0)
     expect(failures).toEqual([])
-    expect((await Storage.read<typeof value>(key)).revision).toBe(60)
+    expect((await Storage.read<Value>(key)).revision).toBe(60)
   } finally {
     clearTimeout(timer)
     if (child.exitCode === null) child.kill()
@@ -57,34 +65,22 @@ test("another process never reads a partial JSON record during Storage.write or 
   }
 }, 30_000)
 
-test("storage listing ignores temporary files left by an interrupted writer", async () => {
-  const key = ["diagnostic", `listing-${crypto.randomUUID()}`]
-  await Storage.write(key, { ready: true })
-  const temporary = `${await Storage.targetPath(key)}.interrupted.tmp`
+test("updates from several processes at once never lose each other's change", async () => {
+  await using tmp = await tmpdir()
+  const key = ["diagnostic", `increment-${crypto.randomUUID()}`]
+  await Storage.write(key, { id: "counter", revision: 0, payload: "" })
+  const workers = [spawn(tmp.path, key, "increment"), spawn(tmp.path, key, "increment")]
   try {
-    await Filesystem.write(temporary, '{"incomplete":')
-    const listed = await Storage.list(["diagnostic"])
-    expect(listed).toContainEqual(key)
-    expect(listed.some((item) => item.at(-1)?.includes("interrupted"))).toBe(false)
+    await Promise.all(workers.map((worker) => worker.ready))
+    for (const worker of workers) worker.child.stdin!.write("go\n")
+    for (let index = 0; index < 40; index++)
+      await Storage.update<Value>(key, (draft) => {
+        draft.revision++
+      })
+    for (const worker of workers) expect(await worker.child.exited, await worker.errors).toBe(0)
+    expect((await Storage.read<Value>(key)).revision).toBe(120)
   } finally {
-    await fs.unlink(temporary)
+    for (const worker of workers) if (worker.child.exitCode === null) worker.child.kill()
     await Storage.remove(key)
   }
-})
-
-test("failed replacement preserves the destination and removes its temporary file", async () => {
-  const key = ["diagnostic", `blocked-${crypto.randomUUID()}`]
-  const target = await Storage.targetPath(key)
-  await fs.mkdir(target, { recursive: true })
-  const marker = path.join(target, "original")
-  await Filesystem.write(marker, "must survive")
-  try {
-    await expect(Storage.write(key, { replacement: true })).rejects.toThrow()
-    expect(await Filesystem.readText(marker)).toBe("must survive")
-    const siblings = await fs.readdir(path.dirname(target))
-    expect(siblings.some((name) => name.startsWith(`${path.basename(target)}.`))).toBe(false)
-  } finally {
-    await fs.unlink(marker)
-    await fs.rmdir(target)
-  }
-})
+}, 30_000)

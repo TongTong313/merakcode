@@ -52,8 +52,8 @@ test(
     await using fake = await model()
     await using tmp = await tmpdir({
       config: {
-        enabled_providers: ["alibaba"],
-        provider: { alibaba: { options: { apiKey: "test-key", baseURL: fake.url } } },
+        enabled_providers: ["alibaba-cn"],
+        provider: { "alibaba-cn": { options: { apiKey: "test-key", baseURL: fake.url } } },
       },
     })
 
@@ -70,7 +70,7 @@ test(
       "--tools",
       "read,grep",
       "--model",
-      "alibaba/qwen-plus",
+      "alibaba-cn/qwen-plus",
     )
     expect(created.code).toBe(0)
     const file = created.stdout.trim()

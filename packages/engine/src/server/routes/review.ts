@@ -23,7 +23,7 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Get review",
         description:
-          "List the changes in a review scope as files and hunks: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base.",
+          "List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.",
         operationId: "review.get",
         responses: {
           200: { description: "Review", content: { "application/json": { schema: resolver(Review.Result) } } },
@@ -33,6 +33,25 @@ export const ReviewRoutes = lazy(() =>
       }),
       validator("query", Review.Input),
       async (c) => c.json(await Review.get(c.req.valid("query"))),
+    )
+    .get(
+      "/file",
+      describeRoute({
+        summary: "Get review file",
+        description:
+          "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.",
+        operationId: "review.file",
+        responses: {
+          200: {
+            description: "File hunks",
+            content: { "application/json": { schema: resolver(Review.Detail) } },
+          },
+          400: failures()[400],
+          409: failures()[409],
+        },
+      }),
+      validator("query", Review.FileInput),
+      async (c) => c.json(await Review.file(c.req.valid("query"))),
     )
     .post(
       "/",

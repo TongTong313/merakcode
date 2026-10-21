@@ -57,19 +57,3 @@ export function FormatError(input: unknown) {
   const named = input as { name: string; code?: string; data?: unknown }
   return `[${named.code ?? ErrorCode.of(named.name, named.data)}] ${text}`
 }
-
-export function FormatUnknownError(input: unknown): string {
-  if (input instanceof Error) {
-    return input.stack ?? `${input.name}: ${input.message}`
-  }
-
-  if (typeof input === "object" && input !== null) {
-    try {
-      return JSON.stringify(input, null, 2)
-    } catch {
-      return "Unexpected error (unserializable)"
-    }
-  }
-
-  return String(input)
-}

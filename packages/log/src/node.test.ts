@@ -43,45 +43,44 @@ async function evaluate(source: string, env?: NodeJS.ProcessEnv) {
   return { code: code as number | null, stdout, stderr }
 }
 
-test("preserves the legacy data log root on every platform with explicit override priority", () => {
+test("logs live under the MerakCode root on every platform; MERAKCODE_HOME moves it, MERAKCODE_LOG_ROOT wins", () => {
   const cases = [
     {
       platform: "win32",
       home: "C:\\Users\\me",
-      data: "D:\\data",
-      expected: "C:\\Users\\me\\.local\\share\\merakcode\\log",
-      custom: "D:\\data\\merakcode\\log",
+      root: "D:\\merak",
+      expected: "C:\\Users\\me\\.merakcode\\logs",
+      custom: "D:\\merak\\logs",
     },
     {
       platform: "darwin",
       home: "/Users/me",
-      data: "/data",
-      expected: "/Users/me/.local/share/merakcode/log",
-      custom: "/data/merakcode/log",
+      root: "/data/merak",
+      expected: "/Users/me/.merakcode/logs",
+      custom: "/data/merak/logs",
     },
     {
       platform: "linux",
       home: "/home/me",
-      data: "/data",
-      expected: "/home/me/.local/share/merakcode/log",
-      custom: "/data/merakcode/log",
+      root: "/data/merak",
+      expected: "/home/me/.merakcode/logs",
+      custom: "/data/merak/logs",
     },
   ] as const
   for (const item of cases) {
-    const env = { LOCALAPPDATA: "C:\\unused", XDG_STATE_HOME: "/unused" }
-    expect(resolveLogRoot({ ...item, env })).toBe(item.expected)
-    expect(resolveLogRoot({ ...item, env: { ...env, XDG_DATA_HOME: "" } })).toBe(item.expected)
-    expect(resolveLogRoot({ ...item, env: { ...env, XDG_DATA_HOME: item.data } })).toBe(item.custom)
-    expect(
-      resolveLogRoot({ ...item, env: { ...env, XDG_DATA_HOME: item.data, MERAKCODE_LOG_ROOT: "explicit-root" } }),
-    ).toBe("explicit-root")
+    expect(resolveLogRoot({ ...item, env: {} })).toBe(item.expected)
+    expect(resolveLogRoot({ ...item, env: { MERAKCODE_HOME: "" } })).toBe(item.expected)
+    expect(resolveLogRoot({ ...item, env: { MERAKCODE_HOME: item.root } })).toBe(item.custom)
+    expect(resolveLogRoot({ ...item, env: { MERAKCODE_HOME: item.root, MERAKCODE_LOG_ROOT: "explicit-root" } })).toBe(
+      "explicit-root",
+    )
   }
 })
 
-test("standalone crash helper and runtime share the XDG root and explicit override", async () => {
+test("standalone crash helper and runtime share the MerakCode root and explicit override", async () => {
   const dir = root()
   for (const override of ["", join(dir, "override")]) {
-    const env = { ...process.env, XDG_DATA_HOME: dir, MERAKCODE_LOG_ROOT: override }
+    const env = { ...process.env, MERAKCODE_HOME: dir, MERAKCODE_LOG_ROOT: override }
     const {
       code,
       stdout: output,

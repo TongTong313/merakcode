@@ -15,13 +15,14 @@ export interface LogRootOptions {
   home?: string
 }
 
+/** logs/ under the MerakCode root (~/.merakcode, moved by MERAKCODE_HOME); MERAKCODE_LOG_ROOT puts logs anywhere */
 export function resolveLogRoot(options: LogRootOptions = {}) {
   const platform = options.platform ?? process.platform
   const env = options.env ?? process.env
   const home = options.home ?? homedir()
   if (env.MERAKCODE_LOG_ROOT) return env.MERAKCODE_LOG_ROOT.replaceAll("\0", "")
   const paths = platform === "win32" ? win32 : posix
-  return paths.join(env.XDG_DATA_HOME || paths.join(home, ".local", "share"), "merakcode", "log")
+  return paths.join(env.MERAKCODE_HOME?.replaceAll("\0", "") || paths.join(home, ".merakcode"), "logs")
 }
 
 function safe(value: string) {

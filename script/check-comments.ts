@@ -5,7 +5,7 @@
  *   node --import ./script/node/register.mjs script/check-comments.ts --report [path prefix ...]   count per file
  */
 import { execFileSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { parseSync } from "oxc-parser"
 
@@ -95,6 +95,7 @@ export function files(root: string) {
   })
     .split("\n")
     .filter(Boolean)
+    .filter((file) => existsSync(path.join(root, file)))
     .filter((file) => SCRIPT.test(file) || HASH.test(file))
     .filter((file) => !/(^|\/)(locales|i18n)\//.test(file) && !file.includes("/gen/") && !file.endsWith(".d.ts"))
 }

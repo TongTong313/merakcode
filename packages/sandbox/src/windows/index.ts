@@ -18,6 +18,7 @@ import source from "./helper.cs" with { type: "text" }
 import setupScript from "./setup.ps1" with { type: "text" }
 import resetScript from "./reset.ps1" with { type: "text" }
 import { ChildEnv } from "@merakcode/util/child-env"
+import { Paths } from "@merakcode/util/paths"
 import type { Backend, Status } from "../backend"
 import { Policy } from "../policy"
 import { WindowsCommand } from "./command"
@@ -63,8 +64,7 @@ export namespace WindowsSandbox {
   }
 
   export function create(options: { root?: string; home?: string } = {}): Backend {
-    const local = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local")
-    const root = options.root ?? path.join(local, "merakcode", "sandbox")
+    const root = options.root ?? path.join(Paths.data, "sandbox")
     const home = options.home ?? os.homedir()
     const file = {
       state: path.join(root, "state.json"),

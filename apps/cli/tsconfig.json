@@ -2,11 +2,8 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "noUncheckedIndexedAccess": false,
-    "customConditions": ["browser"]
+    "noUncheckedIndexedAccess": false
   },
   // 引擎源码会被一并检查，它的文本导入声明在 runtime.d.ts 里，不被 import，要显式带上
   "include": ["**/*", "../../packages/engine/src/runtime.d.ts"],

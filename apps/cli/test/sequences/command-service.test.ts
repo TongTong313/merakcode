@@ -14,7 +14,7 @@ test("S04.03 P/M synchronous context report is consumed by its real follow-up re
       command: "context",
       arguments: input,
       agent: "build",
-      model: "alibaba/qwen-plus",
+      model: "alibaba-cn/qwen-plus",
     })
     const userID = await kit.submitted(session.id, input)
     const current = await kit.assertResult(session.id, userID, "S04_CONTEXT_DONE")

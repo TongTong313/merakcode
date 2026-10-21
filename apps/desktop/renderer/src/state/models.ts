@@ -47,6 +47,18 @@ function defaultModel(): ModelRef | undefined {
   return first ? { providerID: first.provider.id, modelID: first.model.id } : undefined
 }
 
+/** Model key shown in the default-model setting. A new conversation uses this same model. */
+export function shownDefaultModel(): string | undefined {
+  const model = defaultModel()
+  return model ? modelKey(model) : undefined
+}
+
+/** Model key shown in the small-model setting. Empty when nothing usable is configured. */
+export function shownSmallModel(): string | undefined {
+  const parsed = parseModel(state.config?.small_model)
+  if (parsed && find(parsed)) return modelKey(parsed)
+}
+
 /** Composer choices, kept per conversation (per directory for a new conversation) */
 type Choice = { model?: ModelRef; variant?: string; mode?: PermissionMode }
 const [choices, setChoices] = createStore<Record<string, Choice>>({})

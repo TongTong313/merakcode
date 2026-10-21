@@ -8,7 +8,7 @@ import { tmpdir } from "../fixture/fixture"
 Log.init({ print: false })
 
 /**
- * CLI/TUI contract: without folders, behavior matches a single working directory. Guards the CLI against desktop
+ * CLI contract: without folders, behavior matches a single working directory. Guards the CLI against desktop
  * multi-root changes leaking in.
  */
 describe("CLI single-root contract", () => {

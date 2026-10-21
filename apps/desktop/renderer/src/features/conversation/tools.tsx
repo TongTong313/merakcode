@@ -15,7 +15,7 @@ import SquareCheck from "lucide-solid/icons/square-check"
 import Terminal from "lucide-solid/icons/terminal"
 import WorkflowIcon from "lucide-solid/icons/workflow"
 import Wrench from "lucide-solid/icons/wrench"
-import { createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { t } from "../../i18n"
 import { relative, sessionPath, decodeDir } from "../../lib/route"
@@ -111,7 +111,7 @@ export function Explore(props: { parts: ToolPart[]; directory: string }) {
   )
 }
 
-/** A shell command and its output (the last lines stream live while it runs) */
+/** A shell command and its output */
 function Bash(props: { part: ToolPart }) {
   const output = () => {
     const state = props.part.state
@@ -124,29 +124,52 @@ function Bash(props: { part: ToolPart }) {
     const state = props.part.state
     return state.status === "completed" && typeof state.metadata.exit === "number" ? state.metadata.exit : undefined
   }
-  const [expanded, setExpanded] = createSignal(false)
-  const lines = () => output().replace(/\s+$/, "").split("\n")
-  const shown = () => (expanded() ? lines() : lines().slice(-12))
+  const command = () => text(props.part.state.input.command)
+  const [open, setOpen] = createSignal(true)
+  let result: HTMLPreElement | undefined
+  // Stay on the latest line until the reader scrolls up
+  let pinned = true
+  const stick = () => {
+    if (!result || !pinned) return
+    result.scrollTop = result.scrollHeight
+  }
+  const onScroll = () => {
+    if (!result) return
+    pinned = result.scrollHeight - result.clientHeight - result.scrollTop <= 8
+  }
+  createEffect(() => {
+    output()
+    open()
+    stick()
+  })
   return (
     <div class="tool-card">
-      <div class="tool-card-head">
+      <button
+        type="button"
+        class="tool-card-head"
+        aria-expanded={output().trim() ? open() : undefined}
+        aria-label={t("tool.bash")}
+        onClick={() => output().trim() && setOpen((value) => !value)}
+      >
+        <ChevronRight class="icon icon-sm chevron" />
         <Terminal class="icon icon-sm muted" />
-        <span class="muted">{t("tool.bash")}</span>
-        <code class="name ellipsis selectable">{text(props.part.state.input.command)}</code>
+        <code class="name ellipsis selectable" title={command()}>
+          {command()}
+        </code>
         <span class="spacer" />
         <Show when={exit() !== undefined && exit() !== 0}>
           <span class="badge danger">{t("tool.exit", { code: exit()! })}</span>
         </Show>
         <StatusBadge part={props.part} />
         <span class="subtle">{duration(props.part)}</span>
-      </div>
-      <Show when={output().trim()}>
-        <pre class="code-block tool-output selectable">{shown().join("\n")}</pre>
-        <Show when={lines().length > 12}>
-          <button class="button ghost sm more" onClick={() => setExpanded(!expanded())}>
-            {expanded() ? t("review.collapse") : t("review.expand")} ({lines().length})
-          </button>
-        </Show>
+      </button>
+      <Show when={open() && output().trim()}>
+        <pre
+          ref={result}
+          class="code-block tool-output selectable"
+          onScroll={onScroll}
+          textContent={output().replace(/\s+$/, "")}
+        />
       </Show>
     </div>
   )

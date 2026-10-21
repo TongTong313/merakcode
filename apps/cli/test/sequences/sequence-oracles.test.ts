@@ -1,10 +1,10 @@
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { mkdir } from "node:fs/promises"
-import { alive, sequence, until } from "../fixture/sdk-sequence"
-import { assertPersisted } from "../fixture/sequence-persistence"
-import { pty } from "../fixture/sequence-pty"
+import { alive, sequence } from "../fixture/sdk-sequence"
+import { assertPersisted, stored } from "../fixture/sequence-persistence"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Process } from "@merakcode/util/process"
 
 test("persistence oracle rejects dropped text and tool output from an actual completed turn", async () => {
   const kit = await sequence("read")
@@ -14,16 +14,11 @@ test("persistence oracle rejects dropped text and tool output from an actual com
     const input = "I1_READ read the actual marker"
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",
-      model: { providerID: "alibaba", modelID: "qwen-plus" },
+      model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: input }],
     })
     const current = await kit.assertResult(session.id, await kit.submitted(session.id, input))
-    const records = (
-      await Filesystem.readText(join(kit.root, "data/merakcode/storage/transcript", `${session.id}.jsonl`))
-    )
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line))
+    const records = stored(kit.root, session.id)
     expect(() => assertPersisted(current, records)).not.toThrow()
     for (const type of ["text", "tool"]) {
       const part = current.flatMap((item) => item.parts).find((part) => part.type === type)!
@@ -44,29 +39,16 @@ test("persistence oracle rejects dropped text and tool output from an actual com
   }
 }, 60_000)
 
-test("PTY normal-exit oracle rejects an actual nonzero process exit", async () => {
-  const kit = await sequence("read")
-  let success = false
-  try {
-    const session = await kit.api("/session", "POST", { title: "Oracle exit" })
-    const terminal = await pty(kit, session.id, "Oracle exit")
-    process.kill(terminal.pid, "SIGKILL")
-    await until(() => terminal.exit() !== undefined && !alive(terminal.pid), "negative PTY actual exit")
-    expect(() => terminal.exited()).toThrow("PTY normal exit failed")
-    expect(terminal.exit()?.source).toBe("natural")
-    success = true
-  } finally {
-    await kit.finish(success)
-  }
-}, 60_000)
-
-test("PTY receipt failure preserves original error and still closes backend and provider", async () => {
+test("a failed resource cleanup preserves the original error and still closes backend and provider", async () => {
   const kit = await sequence("read")
   const original = new Error("Owned synthetic assertion failure")
   try {
-    const session = await kit.api("/session", "POST", { title: "Oracle cleanup" })
-    const terminal = await pty(kit, session.id, "Oracle cleanup")
-    await mkdir(join(kit.artifacts, `terminal-summary-${terminal.pid}.json`), { recursive: true })
+    const child = Process.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdout: "ignore" })
+    kit.registerCleanup("Synthetic resource", child.pid!, async () => {
+      child.kill()
+      await child.exited
+      throw new Error("Synthetic resource cleanup failure")
+    })
     const result = await kit.finish(false, original).then(
       () => undefined,
       (error: unknown) => error,
@@ -76,7 +58,7 @@ test("PTY receipt failure preserves original error and still closes backend and 
     const summary = await Filesystem.readJson(join(kit.artifacts, "summary.json"))
     expect(summary.cleanupSucceeded).toBe(false)
     expect(summary.overallSuccess).toBe(false)
-    expect(summary.cleanup.some((value: string) => value.startsWith("PTY cleanup failed"))).toBe(true)
+    expect(summary.cleanup.some((value: string) => value.startsWith("Synthetic resource cleanup failed"))).toBe(true)
     expect(summary.remainingPIDs).toEqual([])
     expect(alive(summary.backendPID)).toBe(false)
     await expect(fetch(`${kit.url}/session`, { signal: AbortSignal.timeout(2000) })).rejects.toThrow()
@@ -93,7 +75,7 @@ test("post-success evidence failure stays red despite successful resource cleanu
     const input = "I1_READ read actual marker before evidence finalization"
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",
-      model: { providerID: "alibaba", modelID: "qwen-plus" },
+      model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: input }],
     })
     await kit.assertResult(session.id, await kit.submitted(session.id, input))

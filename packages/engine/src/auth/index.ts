@@ -4,8 +4,6 @@ import z from "zod"
 import fs from "fs/promises"
 import { Filesystem } from "@merakcode/util/filesystem"
 
-export const OAUTH_DUMMY_KEY = "merakcode-oauth-dummy-key"
-
 export namespace Auth {
   export const Oauth = z
     .object({

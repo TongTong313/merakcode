@@ -4,6 +4,7 @@ import { test, expect, type Kit } from "./fixture"
 
 // Review: after the agent edits files, accept or reject hunks in the side panel (rejecting writes back to disk) with
 // undo; send a comment on a hunk to the agent; review in full window; review unstaged git changes (accept = stage)
+// and pick a base branch from the branch dropdown; many files start collapsed and load a file when it is opened
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
 const changed = lines(30).replace("line 2\n", "two\n").replace("line 20\n", "twenty\n")
@@ -113,15 +114,24 @@ test("a comment on a hunk is sent to the agent with the file, lines and comment"
   await expect(kit.text("收到评论：带文件")).toBeVisible({ timeout: 60_000 })
 })
 
-test("reviewing unstaged git changes: accepting a whole file stages it", async ({ kit }) => {
+test("reviewing unstaged git changes: accepting a whole file stages it; another branch can be the base", async ({
+  kit,
+}) => {
   current = kit
   await prepare(kit)
   kit.git("add", ".")
   kit.git("commit", "--quiet", "-m", "math")
-  await kit.send("改一下 math.js")
-  await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
+  kit.git("branch", "feature")
 
   const panel = kit.panel()
+  // Before the conversation starts, this turn and the whole conversation are unavailable and say why
+  await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  const turn = panel.getByRole("radio", { name: "本轮" })
+  await expect(turn).toHaveAttribute("aria-disabled", "true")
+  await expect(turn).toHaveAccessibleDescription(/开始对话后可用/)
+
+  await kit.send("改一下 math.js")
+  await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
   // The Review button on this turn's change card opens review in the side panel
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   await panel.getByRole("radio", { name: "未暂存" }).click()
@@ -131,4 +141,30 @@ test("reviewing unstaged git changes: accepting a whole file stages it", async (
   await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
   await panel.getByRole("radio", { name: "已暂存" }).click()
   await expect(panel.getByRole("region", { name: "src/new.js" })).toBeVisible()
+
+  // The branch scope is a dropdown: the current branch cannot be picked, another branch becomes the base
+  await panel.getByRole("button", { name: /^分支/ }).click()
+  await expect(kit.page.getByRole("option", { name: /^(main|master)$/ })).toHaveAttribute("aria-disabled", "true")
+  await kit.page.getByRole("option", { name: "feature" }).click()
+  await expect(panel.getByRole("button", { name: /分支.*feature/ })).toBeVisible()
+  await expect(panel.getByRole("region", { name: "src/math.js" })).toBeVisible()
+})
+
+test("many changed files start collapsed, and opening one loads its hunks", async ({ kit }) => {
+  current = kit
+  await prepare(kit)
+  kit.git("add", ".")
+  kit.git("commit", "--quiet", "-m", "math")
+  for (const name of ["a", "b", "c", "d", "e", "f"]) await writeFile(path.join(kit.project, `${name}.txt`), `${name}\n`)
+  await kit.send("改一下 math.js")
+  await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
+
+  const panel = kit.panel()
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  await panel.getByRole("radio", { name: "未暂存" }).click()
+  const math = panel.getByRole("region", { name: "src/math.js" })
+  await expect(math).toBeVisible()
+  await expect(math.getByRole("group")).toHaveCount(0)
+  await math.getByRole("button", { name: "展开" }).click()
+  await expect(math.getByRole("group")).toHaveCount(2)
 })

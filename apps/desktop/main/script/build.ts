@@ -1,4 +1,4 @@
-import { build } from "esbuild"
+import { build, context, type BuildOptions } from "esbuild"
 import { rm } from "node:fs/promises"
 import path from "node:path"
 
@@ -10,8 +10,7 @@ const root = path.resolve(import.meta.dirname, "..")
 const dist = path.join(root, "dist")
 const watch = process.argv.includes("--watch")
 
-export async function bundle(options: { minify?: boolean } = {}) {
-  await rm(dist, { recursive: true, force: true })
+function entries(options: { minify?: boolean }): BuildOptions[] {
   const common = {
     bundle: true,
     platform: "node" as const,
@@ -22,8 +21,8 @@ export async function bundle(options: { minify?: boolean } = {}) {
     logLevel: "warning" as const,
     legalComments: "none" as const,
   }
-  await Promise.all([
-    build({
+  return [
+    {
       ...common,
       entryPoints: { main: path.join(root, "src", "index.ts") },
       outdir: dist,
@@ -33,15 +32,61 @@ export async function bundle(options: { minify?: boolean } = {}) {
       banner: {
         js: 'import { createRequire as __createRequire } from "node:module";const require = __createRequire(import.meta.url);',
       },
-    }),
-    build({
+    },
+    {
       ...common,
       entryPoints: { preload: path.join(root, "src", "preload.ts") },
       outdir: dist,
       format: "cjs",
       outExtension: { ".js": ".cjs" },
+    },
+  ]
+}
+
+export async function bundle(options: { minify?: boolean } = {}) {
+  await rm(dist, { recursive: true, force: true })
+  await Promise.all(entries(options).map((entry) => build(entry)))
+}
+
+/**
+ * Builds, then rebuilds whenever a source changes; rebuilt runs after each later build without errors. Resolves once
+ * the first build is done (rejects if it failed) with a function that stops watching.
+ */
+export async function watchBundle(rebuilt: () => void) {
+  await rm(dist, { recursive: true, force: true })
+  const first: Promise<boolean>[] = []
+  const contexts = await Promise.all(
+    entries({}).map((entry) => {
+      let done!: (ok: boolean) => void
+      first.push(new Promise((resolve) => (done = resolve)))
+      let initial = true
+      return context({
+        ...entry,
+        plugins: [
+          {
+            name: "merakcode:rebuilt",
+            setup(build) {
+              build.onEnd((result) => {
+                const ok = result.errors.length === 0
+                if (initial) {
+                  initial = false
+                  return done(ok)
+                }
+                if (ok) rebuilt()
+              })
+            },
+          },
+        ],
+      })
     }),
-  ])
+  )
+  await Promise.all(contexts.map((item) => item.watch()))
+  const stop = () => Promise.all(contexts.map((item) => item.dispose())).then(() => {})
+  if ((await Promise.all(first)).includes(false)) {
+    await stop()
+    throw new Error("the main process does not build")
+  }
+  return stop
 }
 
 if (import.meta.main) {

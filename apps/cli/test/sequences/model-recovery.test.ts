@@ -16,7 +16,7 @@ test("S02.06 P/M selected model endpoint refuses connections then same model com
         signal: AbortSignal.timeout(100_000),
         body: JSON.stringify({
           agent: "build",
-          model: { providerID: "alibaba", modelID: "qwen-max" },
+          model: { providerID: "alibaba-cn", modelID: "qwen-max" },
           parts: [{ type: "text", text }],
         }),
       })

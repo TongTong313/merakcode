@@ -15,8 +15,8 @@ import { I18n } from "../i18n"
  *   <home>/versions/<version>/  extracted release (bin/ node/ lib/)
  *   <bin>/merak                 command pointing at the current version (symlink on Unix, forwarding .cmd on Windows)
  *
- * home defaults to ~/.merakcode on Unix and %LOCALAPPDATA%\merakcode on Windows; bin defaults to ~/.local/bin on Unix
- * and <home>\bin on Windows. Upgrading downloads the new version directory and repoints the command; only the current
+ * home defaults to the MerakCode root (MERAKCODE_HOME, else ~/.merakcode); bin defaults to ~/.local/bin on Unix and
+ * <home>\bin on Windows. Upgrading downloads the new version directory and repoints the command; only the current
  * and previous versions are kept, so the command can be pointed back if something goes wrong.
  */
 export namespace Release {
@@ -27,10 +27,7 @@ export namespace Release {
 
   export function layout(): Layout {
     const home =
-      process.env.MERAKCODE_INSTALL_DIR ||
-      (process.platform === "win32"
-        ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "merakcode")
-        : path.join(os.homedir(), ".merakcode"))
+      process.env.MERAKCODE_INSTALL_DIR || process.env.MERAKCODE_HOME || path.join(os.homedir(), ".merakcode")
     const bin =
       process.env.MERAKCODE_BIN_DIR ||
       (process.platform === "win32" ? path.join(home, "bin") : path.join(os.homedir(), ".local", "bin"))

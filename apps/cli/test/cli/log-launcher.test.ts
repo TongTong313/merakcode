@@ -8,10 +8,10 @@ import { Process } from "@merakcode/util/process"
 
 for (const custom of [true, false]) {
   test.skipIf(process.platform !== "win32")(
-    `Windows launcher dispatches override once, drains stderr and diagnoses next launch (${custom ? "explicit root" : "XDG data root"})`,
+    `Windows launcher dispatches override once, drains stderr and diagnoses next launch (${custom ? "explicit root" : "MerakCode root"})`,
     async () => {
       await using tmp = await tmpdir()
-      const root = custom ? join(tmp.path, "logs") : join(tmp.path, "merakcode", "log")
+      const root = custom ? join(tmp.path, "logs") : join(tmp.path, "merakcode", "logs")
       // Reproduce the published CommonJS package, not the ESM source workspace.
       const launcher = join(tmp.path, "bin", "merakcode")
       await Filesystem.write(join(tmp.path, "package.json"), JSON.stringify({ name: "merakcode", type: "commonjs" }))
@@ -32,7 +32,7 @@ for (const custom of [true, false]) {
           env: {
             ...process.env,
             MERAKCODE_BIN_PATH: process.execPath,
-            XDG_DATA_HOME: tmp.path,
+            MERAKCODE_HOME: join(tmp.path, "merakcode"),
             MERAKCODE_LOG_ROOT: custom ? root : "",
           },
           stdout: "pipe",

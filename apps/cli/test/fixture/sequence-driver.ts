@@ -16,7 +16,7 @@ export async function drive(
     .api(`/session/${sessionID}/message`, "POST", {
       agent,
       ...(permissionMode ? { permissionMode } : {}),
-      model: { providerID: "alibaba", modelID: "qwen-plus" },
+      model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: input }],
     })
     .then(

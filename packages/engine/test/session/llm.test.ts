@@ -228,9 +228,9 @@ describe("session.llm.stream", () => {
       throw new Error("Server not initialized")
     }
 
-    const providerID = "alibaba"
+    const providerID = "compatible"
     const modelID = "qwen-plus"
-    const fixture = await loadFixture(providerID, modelID)
+    const fixture = await loadFixture("alibaba", modelID)
     const model = fixture.model
 
     const request = waitRequest(
@@ -250,6 +250,9 @@ describe("session.llm.stream", () => {
             enabled_providers: [providerID],
             provider: {
               [providerID]: {
+                name: "Compatible",
+                npm: fixture.provider.npm ?? "@ai-sdk/openai-compatible",
+                models: { [modelID]: model },
                 options: {
                   apiKey: "test-key",
                   baseURL: `${server.url.origin}/v1`,

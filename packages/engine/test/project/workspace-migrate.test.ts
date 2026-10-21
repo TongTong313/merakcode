@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Session } from "@merakcode/engine/session/index"
-import { Storage } from "@merakcode/engine/storage/storage"
+import { SessionStore } from "@merakcode/engine/session/store"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -40,9 +40,7 @@ describe("Workspace container and migrateFromGlobal", () => {
     })
     expect(wsIDs.ids).not.toContain(globalSession.id)
 
-    const still = await Storage.read(["session", "global", globalSession.id]).catch(() => undefined)
-    expect(still).toBeDefined()
-    expect((still as { id: string }).id).toBe(globalSession.id)
+    expect(SessionStore.get("global", globalSession.id)?.id).toBe(globalSession.id)
 
     await Instance.provide({
       directory: a.path,

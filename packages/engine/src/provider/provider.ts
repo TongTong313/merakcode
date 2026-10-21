@@ -1,7 +1,6 @@
 import z from "zod"
 import { Network } from "@merakcode/util/network"
 import { Project } from "@merakcode/util/project"
-import os from "os"
 import { createHash } from "crypto"
 import fuzzysort from "fuzzysort"
 import { Config } from "../config/config"
@@ -11,40 +10,24 @@ import { Log } from "@merakcode/log/logger"
 import { Npm } from "../npm"
 import { Plugin } from "../plugin"
 import { ModelsDev, ReasoningOption } from "./models"
+import { OFFICIAL_PROVIDER_IDS } from "./official"
 import { NamedError } from "@merakcode/util/error"
 import { Auth } from "../auth"
-import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { iife } from "../util/iife"
-import { Global } from "../global"
-import path from "path"
+import { Storage } from "../storage/storage"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
 
 // Direct imports for bundled providers
-import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { createAzure } from "@ai-sdk/azure"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createVertex } from "@ai-sdk/google-vertex"
-import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
-import { createXai } from "@ai-sdk/xai"
-import { createMistral } from "@ai-sdk/mistral"
-import { createGroq } from "@ai-sdk/groq"
-import { createDeepInfra } from "@ai-sdk/deepinfra"
-import { createCerebras } from "@ai-sdk/cerebras"
-import { createCohere } from "@ai-sdk/cohere"
-import { createGateway } from "@ai-sdk/gateway"
-import { createTogetherAI } from "@ai-sdk/togetherai"
-import { createPerplexity } from "@ai-sdk/perplexity"
-import { createGitLab, VERSION as GITLAB_PROVIDER_VERSION } from "gitlab-ai-provider"
 import { ProviderTransform } from "./transform"
-import { Installation } from "../installation"
-import { Filesystem } from "@merakcode/util/filesystem"
+import { Relay } from "./relay"
 import { Text } from "../util/text"
 import { Agent } from "undici"
 import { parseModel as parseModelRef, sortModels } from "@merakcode/util/model"
@@ -74,29 +57,15 @@ export namespace Provider {
     return Bus.publishGlobal(Event.Changed, properties)
   }
 
-  /** Instance created by a provider package; spec versions differ (GitLab is still on v2), all work with streamText */
+  /** Instance created by a bundled provider package */
   type SDK = { languageModel(modelId: string): Exclude<LanguageModel, string> }
 
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
-    "@ai-sdk/amazon-bedrock": createAmazonBedrock,
     "@ai-sdk/anthropic": createAnthropic,
-    "@ai-sdk/azure": createAzure,
     "@ai-sdk/google": createGoogleGenerativeAI,
-    "@ai-sdk/google-vertex": createVertex,
-    "@ai-sdk/google-vertex/anthropic": createVertexAnthropic,
     "@ai-sdk/openai": createOpenAI,
     "@ai-sdk/openai-compatible": createOpenAICompatible,
     "@openrouter/ai-sdk-provider": createOpenRouter,
-    "@ai-sdk/xai": createXai,
-    "@ai-sdk/mistral": createMistral,
-    "@ai-sdk/groq": createGroq,
-    "@ai-sdk/deepinfra": createDeepInfra,
-    "@ai-sdk/cerebras": createCerebras,
-    "@ai-sdk/cohere": createCohere,
-    "@ai-sdk/gateway": createGateway,
-    "@ai-sdk/togetherai": createTogetherAI,
-    "@ai-sdk/perplexity": createPerplexity,
-    "gitlab-ai-provider": createGitLab,
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -118,29 +87,6 @@ export namespace Provider {
         },
       }
     },
-    "alibaba-cn": async (input) => {
-      const config = await Config.get()
-      const opts = config.provider?.["alibaba-cn"]?.options ?? {}
-
-      // API key lookup order: environment variable, then Auth, then the config file
-      const apiKey = await (async () => {
-        const envKey = Env.get("DASHSCOPE_API_KEY")
-        if (envKey) return envKey
-        const auth = await Auth.get(input.id)
-        if (auth?.type === "api") {
-          try {
-            const p = JSON.parse(auth.key)
-            if (p.apiKey) return p.apiKey
-          } catch {}
-        }
-        return opts.apiKey
-      })()
-      if (!apiKey) return { autoload: false }
-
-      const baseURL = opts.baseURL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
-      return { autoload: true, options: { apiKey, baseURL } }
-    },
     openai: async () => {
       return {
         autoload: false,
@@ -150,187 +96,6 @@ export namespace Provider {
         options: {},
       }
     },
-    azure: async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
-        },
-        options: {},
-      }
-    },
-    "azure-cognitive-services": async () => {
-      const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
-        },
-        options: {
-          baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
-        },
-      }
-    },
-    "amazon-bedrock": async () => {
-      const config = await Config.get()
-      const providerConfig = config.provider?.["amazon-bedrock"]
-
-      const auth = await Auth.get("amazon-bedrock")
-
-      // Region precedence: 1) config file, 2) env var, 3) default
-      const configRegion = providerConfig?.options?.region
-      const envRegion = Env.get("AWS_REGION")
-      const defaultRegion = configRegion ?? envRegion ?? "us-east-1"
-
-      // Profile: config file takes precedence over env var
-      const configProfile = providerConfig?.options?.profile
-      const envProfile = Env.get("AWS_PROFILE")
-      const profile = configProfile ?? envProfile
-
-      const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
-
-      // TODO: Using process.env directly because Env.set only updates a process.env shallow copy,
-      // until the scope of the Env API is clarified (test only or runtime?)
-      const awsBearerToken = iife(() => {
-        const envToken = process.env.AWS_BEARER_TOKEN_BEDROCK
-        if (envToken) return envToken
-        if (auth?.type === "api") {
-          process.env.AWS_BEARER_TOKEN_BEDROCK = auth.key
-          return auth.key
-        }
-        return undefined
-      })
-
-      const awsWebIdentityTokenFile = Env.get("AWS_WEB_IDENTITY_TOKEN_FILE")
-
-      const containerCreds = Boolean(
-        process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI || process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI,
-      )
-
-      if (!profile && !awsAccessKeyId && !awsBearerToken && !awsWebIdentityTokenFile && !containerCreds)
-        return { autoload: false }
-
-      const providerOptions: AmazonBedrockProviderSettings = {
-        region: defaultRegion,
-      }
-
-      // Only use credential chain if no bearer token exists
-      // Bearer token takes precedence over credential chain (profiles, access keys, IAM roles, web identity tokens)
-      if (!awsBearerToken) {
-        const { fromNodeProviderChain } = await import(
-          await Npm.entry(await Npm.cached("@aws-sdk/credential-providers"))
-        )
-
-        // Build credential provider options (only pass profile if specified)
-        const credentialProviderOptions = profile ? { profile } : {}
-
-        providerOptions.credentialProvider = fromNodeProviderChain(credentialProviderOptions)
-      }
-
-      // Add custom endpoint if specified (endpoint takes precedence over baseURL)
-      const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
-      if (endpoint) {
-        providerOptions.baseURL = endpoint
-      }
-
-      return {
-        autoload: true,
-        options: providerOptions,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          // Skip region prefixing if model already has a cross-region inference profile prefix
-          // Models from models.dev may already include prefixes like us., eu., global., etc.
-          const crossRegionPrefixes = ["global.", "us.", "eu.", "jp.", "apac.", "au."]
-          if (crossRegionPrefixes.some((prefix) => modelID.startsWith(prefix))) {
-            return sdk.languageModel(modelID)
-          }
-
-          // Region resolution precedence (highest to lowest):
-          // 1. options.region from merakcode.json provider config
-          // 2. defaultRegion from AWS_REGION environment variable
-          // 3. Default "us-east-1" (baked into defaultRegion)
-          const region = options?.region ?? defaultRegion
-
-          let regionPrefix = region.split("-")[0]
-
-          switch (regionPrefix) {
-            case "us": {
-              const modelRequiresPrefix = [
-                "nova-micro",
-                "nova-lite",
-                "nova-pro",
-                "nova-premier",
-                "nova-2",
-                "claude",
-                "deepseek",
-              ].some((m) => modelID.includes(m))
-              const isGovCloud = region.startsWith("us-gov")
-              if (modelRequiresPrefix && !isGovCloud) {
-                modelID = `${regionPrefix}.${modelID}`
-              }
-              break
-            }
-            case "eu": {
-              const regionRequiresPrefix = [
-                "eu-west-1",
-                "eu-west-2",
-                "eu-west-3",
-                "eu-north-1",
-                "eu-central-1",
-                "eu-south-1",
-                "eu-south-2",
-              ].some((r) => region.includes(r))
-              const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "llama3", "pixtral"].some((m) =>
-                modelID.includes(m),
-              )
-              if (regionRequiresPrefix && modelRequiresPrefix) {
-                modelID = `${regionPrefix}.${modelID}`
-              }
-              break
-            }
-            case "ap": {
-              const isAustraliaRegion = ["ap-southeast-2", "ap-southeast-4"].includes(region)
-              const isTokyoRegion = region === "ap-northeast-1"
-              if (
-                isAustraliaRegion &&
-                ["anthropic.claude-sonnet-4-5", "anthropic.claude-haiku"].some((m) => modelID.includes(m))
-              ) {
-                regionPrefix = "au"
-                modelID = `${regionPrefix}.${modelID}`
-              } else if (isTokyoRegion) {
-                // Tokyo region uses jp. prefix for cross-region inference
-                const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-                  modelID.includes(m),
-                )
-                if (modelRequiresPrefix) {
-                  regionPrefix = "jp"
-                  modelID = `${regionPrefix}.${modelID}`
-                }
-              } else {
-                // Other APAC regions use apac. prefix
-                const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-                  modelID.includes(m),
-                )
-                if (modelRequiresPrefix) {
-                  regionPrefix = "apac"
-                  modelID = `${regionPrefix}.${modelID}`
-                }
-              }
-              break
-            }
-          }
-
-          return sdk.languageModel(modelID)
-        },
-      }
-    },
     openrouter: async () => {
       return {
         autoload: false,
@@ -338,201 +103,6 @@ export namespace Provider {
           headers: {
             "HTTP-Referer": Project.HOMEPAGE,
             "X-Title": Project.NAME,
-          },
-        },
-      }
-    },
-    vercel: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "http-referer": Project.HOMEPAGE,
-            "x-title": Project.NAME,
-          },
-        },
-      }
-    },
-    "google-vertex": async () => {
-      const project = Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")
-      const location = Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "us-east5"
-      const autoload = Boolean(project)
-      if (!autoload) return { autoload: false }
-      return {
-        autoload: true,
-        options: {
-          project,
-          location,
-        },
-        async getModel(sdk: any, modelID: string) {
-          const id = String(modelID).trim()
-          return sdk.languageModel(id)
-        },
-      }
-    },
-    "google-vertex-anthropic": async () => {
-      const project = Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")
-      const location = Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "global"
-      const autoload = Boolean(project)
-      if (!autoload) return { autoload: false }
-      return {
-        autoload: true,
-        options: {
-          project,
-          location,
-        },
-        async getModel(sdk: any, modelID) {
-          const id = String(modelID).trim()
-          return sdk.languageModel(id)
-        },
-      }
-    },
-    "sap-ai-core": async () => {
-      const auth = await Auth.get("sap-ai-core")
-      // TODO: Using process.env directly because Env.set only updates a shallow copy (not process.env),
-      // until the scope of the Env API is clarified (test only or runtime?)
-      const envServiceKey = iife(() => {
-        const envAICoreServiceKey = process.env.AICORE_SERVICE_KEY
-        if (envAICoreServiceKey) return envAICoreServiceKey
-        if (auth?.type === "api") {
-          process.env.AICORE_SERVICE_KEY = auth.key
-          return auth.key
-        }
-        return undefined
-      })
-      const deploymentId = process.env.AICORE_DEPLOYMENT_ID
-      const resourceGroup = process.env.AICORE_RESOURCE_GROUP
-
-      return {
-        autoload: !!envServiceKey,
-        options: envServiceKey ? { deploymentId, resourceGroup } : {},
-        async getModel(sdk: any, modelID: string) {
-          return sdk(modelID)
-        },
-      }
-    },
-    zenmux: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "HTTP-Referer": Project.HOMEPAGE,
-            "X-Title": Project.NAME,
-          },
-        },
-      }
-    },
-    gitlab: async (input) => {
-      const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
-
-      const auth = await Auth.get(input.id)
-      const apiKey = await (async () => {
-        if (auth?.type === "oauth") return auth.access
-        if (auth?.type === "api") return auth.key
-        return Env.get("GITLAB_TOKEN")
-      })()
-
-      const config = await Config.get()
-      const providerConfig = config.provider?.["gitlab"]
-
-      const aiGatewayHeaders = {
-        "User-Agent": `merakcode/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
-        ...(providerConfig?.options?.aiGatewayHeaders || {}),
-      }
-
-      return {
-        autoload: !!apiKey,
-        options: {
-          instanceUrl,
-          apiKey,
-          aiGatewayHeaders,
-          featureFlags: {
-            duo_agent_platform_agentic_chat: true,
-            duo_agent_platform: true,
-            ...(providerConfig?.options?.featureFlags || {}),
-          },
-        },
-        async getModel(sdk: ReturnType<typeof createGitLab>, modelID: string) {
-          return sdk.agenticChat(modelID, {
-            aiGatewayHeaders,
-            featureFlags: {
-              duo_agent_platform_agentic_chat: true,
-              duo_agent_platform: true,
-              ...(providerConfig?.options?.featureFlags || {}),
-            },
-          })
-        },
-      }
-    },
-    "cloudflare-workers-ai": async (input) => {
-      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
-      if (!accountId) return { autoload: false }
-
-      const apiKey = await iife(async () => {
-        const envToken = Env.get("CLOUDFLARE_API_KEY")
-        if (envToken) return envToken
-        const auth = await Auth.get(input.id)
-        if (auth?.type === "api") return auth.key
-        return undefined
-      })
-
-      return {
-        autoload: !!apiKey,
-        options: {
-          apiKey,
-          baseURL: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`,
-        },
-        async getModel(sdk: any, modelID: string) {
-          return sdk.languageModel(modelID)
-        },
-      }
-    },
-    "cloudflare-ai-gateway": async (input) => {
-      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
-      const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
-
-      if (!accountId || !gateway) return { autoload: false }
-
-      // Get API token from env or auth - required for authenticated gateways
-      const apiToken = await (async () => {
-        const envToken = Env.get("CLOUDFLARE_API_TOKEN") || Env.get("CF_AIG_TOKEN")
-        if (envToken) return envToken
-        const auth = await Auth.get(input.id)
-        if (auth?.type === "api") return auth.key
-        return undefined
-      })()
-
-      if (!apiToken) {
-        throw new Error(
-          await Text.pick({
-            zh: "Cloudflare AI Gateway 需要 CLOUDFLARE_API_TOKEN 或 CF_AIG_TOKEN，请通过环境变量配置。",
-            en: "Cloudflare AI Gateway requires CLOUDFLARE_API_TOKEN or CF_AIG_TOKEN; set it as an environment variable.",
-          }),
-        )
-      }
-
-      // Use official ai-gateway-provider package (v2.x for AI SDK v5 compatibility)
-      const { createAiGateway } = await import("ai-gateway-provider")
-      const { createUnified } = await import("ai-gateway-provider/providers/unified")
-
-      const aigateway = createAiGateway({ accountId, gateway, apiKey: apiToken })
-      const unified = createUnified()
-
-      return {
-        autoload: true,
-        async getModel(_sdk: any, modelID: string, _options?: Record<string, any>) {
-          // Model IDs use Unified API format: provider/model (e.g., "anthropic/claude-sonnet-4-5")
-          return aigateway(unified(modelID))
-        },
-        options: {},
-      }
-    },
-    cerebras: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "X-Cerebras-3rd-Party-Integration": "merakcode",
           },
         },
       }
@@ -710,28 +280,13 @@ export namespace Provider {
     return sortBy(providers, [(p) => p.name ?? p.id, "asc"])
   }
 
-  /** Order of common providers, matching the desktop connect-provider dialog */
-  const PREFERRED = [
-    "alibaba-cn",
-    "zhipuai",
-    "moonshotai-cn",
-    "deepseek",
-    "siliconflow-cn",
-    "openai",
-    "anthropic",
-    "openrouter",
-    "google",
-    "xai",
-  ]
-
-  /**
-   * Order of connected providers; the default model comes from the first one. Providers the user configured (saved
-   * key, login, config file) come before those detected from environment variables, because one variable often
-   * connects several providers while the key works for only one of them. Then common order, then name.
-   */
-  export function rank<T extends Pick<Info, "id" | "name" | "source">>(providers: readonly T[]): T[] {
-    const preferred = (p: T) => (PREFERRED.includes(p.id) ? PREFERRED.indexOf(p.id) : PREFERRED.length)
-    return sortBy(providers, [(p) => (p.source === "env" ? 1 : 0), "asc"], [preferred, "asc"], [(p) => p.name, "asc"])
+  /** Order of connected providers; the default model comes from the first one. Official providers use their catalog order, then name. */
+  export function rank<T extends Pick<Info, "id" | "name">>(providers: readonly T[]): T[] {
+    const preferred = (p: T) => {
+      const index = OFFICIAL_PROVIDER_IDS.findIndex((id) => id === p.id)
+      return index === -1 ? OFFICIAL_PROVIDER_IDS.length : index
+    }
+    return sortBy(providers, [preferred, "asc"], [(p) => p.name, "asc"])
   }
 
   /**
@@ -807,8 +362,6 @@ export namespace Provider {
 
     const mapStarted = Date.now()
     const database = mapValues(modelsDev, fromModelsDevProvider)
-    // GitHub Copilot only works with GitHub's own sign-in flow, which MerakCode does not ship
-    for (const id of ["github-copilot", "github-copilot-enterprise"]) delete database[id]
     log.info("provider.models.map.completed", {
       duration: Date.now() - mapStarted,
       providers: Object.keys(database).length,
@@ -932,19 +485,7 @@ export namespace Provider {
       database[providerID] = parsed
     }
 
-    // load env
-    const env = Env.all()
-    for (const [providerID, provider] of Object.entries(database)) {
-      if (disabled.has(providerID)) continue
-      const apiKey = provider.env.map((item) => env[item]).find(Boolean)
-      if (!apiKey) continue
-      mergeProvider(providerID, {
-        source: "env",
-        key: provider.env.length === 1 ? apiKey : undefined,
-      })
-    }
-
-    // load apikeys
+    // load apikeys the user saved. Environment variables are not credentials.
     for (const [providerID, provider] of Object.entries(await Auth.all())) {
       if (disabled.has(providerID)) continue
       if (provider.type === "api") {
@@ -1004,14 +545,12 @@ export namespace Provider {
         continue
       }
 
-      // Without usable credentials the provider is not listed, so custom models without a key never appear.
-      // Hosted official providers, Bedrock profiles, etc. pass via loaderAuthorized; multi-env providers may not set
-      // provider.key
+      // Without a key the user entered, the provider is not listed. Plugin loaders that already confirmed
+      // credentials pass via loaderAuthorized.
       const optionKey = provider.options?.apiKey
       const hasApiKey = !!(provider.key || (typeof optionKey === "string" && optionKey.length > 0))
       const hasAuthFetch = typeof provider.options?.fetch === "function"
-      const hasEnvCredential = (provider.env ?? []).some((name) => Boolean(Env.get(name) || env[name]))
-      if (!hasApiKey && !hasAuthFetch && !hasEnvCredential && !loaderAuthorized.has(providerID)) {
+      if (!hasApiKey && !hasAuthFetch && !loaderAuthorized.has(providerID)) {
         delete providers[providerID]
         continue
       }
@@ -1121,12 +660,6 @@ export namespace Provider {
     cachedState.invalidateAll()
   }
 
-  /** Collects the environment variable names of all providers; the single source of keys for Env.reload() */
-  export async function getAllEnvKeys(): Promise<string[]> {
-    const modelsDev = await ModelsDev.get()
-    return [...new Set(Object.values(modelsDev).flatMap((provider) => provider.env))]
-  }
-
   async function getSDK(model: Model) {
     try {
       using _ = log.time("getSDK", {
@@ -1153,6 +686,22 @@ export namespace Provider {
           ...options["headers"],
           ...model.headers,
         }
+      const relay = (await Config.get()).provider?.[model.providerID]?.relay
+      const anthropic = model.api.npm.includes("@ai-sdk/anthropic")
+      const bearer = relay?.kind === "claude-code" || (relay?.kind === "custom" && relay.auth === "bearer")
+      if (anthropic && bearer) {
+        const key = options["apiKey"] ?? provider.key
+        if (typeof key === "string") {
+          options["authToken"] = key
+          delete options["apiKey"]
+        }
+      }
+      if (relay?.kind === "claude-code") {
+        options["headers"] = {
+          ...options["headers"],
+          "anthropic-beta": Relay.CLAUDE_CODE_BETA,
+        }
+      }
 
       const key = createHash("sha1")
         .update(JSON.stringify({ providerID: model.providerID, npm: model.api.npm, options }))
@@ -1172,6 +721,17 @@ export namespace Provider {
         const fetchFn = wrappedFetch
         let opts = init ?? {}
 
+        // The AI SDK and the chat path replace User-Agent after the provider is built. Put the Claude Code
+        // identity on the request that is about to leave, so a relay can still see claude-cli first.
+        if (relay?.kind === "claude-code") {
+          const headers = new Headers(opts.headers)
+          const current = headers.get("user-agent") ?? ""
+          if (!current.startsWith("claude-cli/")) {
+            headers.set("user-agent", [Relay.CLAUDE_CODE_USER_AGENT, current].filter(Boolean).join(" "))
+          }
+          opts = { ...opts, headers }
+        }
+
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
           const signals: AbortSignal[] = []
           if (opts.signal) signals.push(opts.signal)
@@ -1185,16 +745,11 @@ export namespace Provider {
         // Strip openai itemId metadata following what codex does
         // Codex uses #[serde(skip_serializing)] on id fields for all item types:
         // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
-        // IDs are only re-attached for Azure with store=true
         if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
           const body = JSON.parse(opts.body as string)
-          const isAzure = model.providerID.includes("azure")
-          const keepIds = isAzure && body.store === true
-          if (!keepIds && Array.isArray(body.input)) {
+          if (Array.isArray(body.input)) {
             for (const item of body.input) {
-              if ("id" in item) {
-                delete item.id
-              }
+              if ("id" in item) delete item.id
             }
             opts.body = JSON.stringify(body)
           }
@@ -1345,36 +900,27 @@ export namespace Provider {
       }
 
       for (const item of priority) {
-        if (providerID === "amazon-bedrock") {
-          const crossRegionPrefixes = ["global.", "us.", "eu."]
-          const candidates = Object.keys(provider.models).filter((m) => m.includes(item))
-
-          // Model selection priority:
-          // 1. global. prefix (works everywhere)
-          // 2. User's region prefix (us., eu.)
-          // 3. Unprefixed model
-          const globalMatch = candidates.find((m) => m.startsWith("global."))
-          if (globalMatch) return getModel(providerID, globalMatch)
-
-          const region = provider.options?.region
-          if (region) {
-            const regionPrefix = region.split("-")[0]
-            if (regionPrefix === "us" || regionPrefix === "eu") {
-              const regionalMatch = candidates.find((m) => m.startsWith(`${regionPrefix}.`))
-              if (regionalMatch) return getModel(providerID, regionalMatch)
-            }
-          }
-
-          const unprefixed = candidates.find((m) => !crossRegionPrefixes.some((p) => m.startsWith(p)))
-          if (unprefixed) return getModel(providerID, unprefixed)
-        } else {
-          for (const model of Object.keys(provider.models)) {
-            if (model.includes(item)) return getModel(providerID, model)
-          }
+        for (const model of Object.keys(provider.models)) {
+          if (model.includes(item)) return getModel(providerID, model)
         }
       }
     }
     return undefined
+  }
+
+  type Ref = { providerID: string; modelID: string }
+  const RECENT = ["model", "recent"]
+
+  function recent() {
+    return Storage.read<Ref[]>(RECENT).catch(() => [] as Ref[])
+  }
+
+  /** Records a model the user picked for a prompt; defaultModel falls back to the recent ones, newest first */
+  export async function remember(model: Ref) {
+    const others = (await recent()).filter(
+      (item) => item.providerID !== model.providerID || item.modelID !== model.modelID,
+    )
+    await Storage.write(RECENT, [model, ...others].slice(0, 10))
   }
 
   export async function defaultModel() {
@@ -1387,10 +933,7 @@ export namespace Provider {
       if (providers[parsed.providerID]?.models[parsed.modelID]) return parsed
       if (Object.keys(providers).length === 0) return parsed
     }
-    const recent = (await Filesystem.readJson(path.join(Global.Path.state, "model.json"))
-      .then((x) => (Array.isArray(x.recent) ? x.recent : []))
-      .catch(() => [])) as { providerID: string; modelID: string }[]
-    for (const entry of recent) {
+    for (const entry of await recent()) {
       const provider = providers[entry.providerID]
       if (!provider) continue
       if (!provider.models[entry.modelID]) continue

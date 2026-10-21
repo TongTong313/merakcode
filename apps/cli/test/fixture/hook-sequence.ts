@@ -47,7 +47,7 @@ export async function hooks(kind: "before" | "after" | "context" | "params") {
       const config = await Filesystem.readJson(file)
       config.plugin = [pathToFileURL(plugin).href]
       if (kind === "params") {
-        const baseURL = config.provider.alibaba.options.baseURL
+        const baseURL = config.provider["alibaba-cn"].options.baseURL
         proxy = await Http.serve({
           hostname: "127.0.0.1",
           port: 0,
@@ -66,7 +66,7 @@ export async function hooks(kind: "before" | "after" | "context" | "params") {
             })
           },
         })
-        config.provider.alibaba.options.baseURL = `${proxy.url.origin}/v1`
+        config.provider["alibaba-cn"].options.baseURL = `${proxy.url.origin}/v1`
       }
       await Filesystem.write(file, JSON.stringify(config))
     },

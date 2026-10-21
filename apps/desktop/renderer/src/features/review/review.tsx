@@ -1,19 +1,34 @@
 import CheckCheck from "lucide-solid/icons/check-check"
+import LoaderCircle from "lucide-solid/icons/loader-circle"
 import MessageSquare from "lucide-solid/icons/message-square"
 import Undo2 from "lucide-solid/icons/undo-2"
-import { createEffect, createResource, For, Match, on, Show, Switch } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+} from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
-import { folderOf } from "../../state/store"
+import { folderOf, state } from "../../state/store"
 import { Segmented } from "../../ui/segmented"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
 import { send } from "../conversation/send"
+import { CommentComposer } from "./compose"
 import { Commit } from "./commit"
 import { FileDiff } from "./diff"
 import {
   clearComments,
   commentMessage,
+  commentingOn,
   commentsOf,
   progress,
   review,
@@ -24,25 +39,57 @@ import {
 
 export type ReviewData = ReturnType<typeof useReview>
 
-/** Scope picker (the branch scope can change its base branch) and progress */
+/** True once when() has held for ms, so quick loads do not flash a spinner */
+function delayed(when: () => boolean, ms = 300) {
+  const [shown, setShown] = createSignal(false)
+  createEffect(() => {
+    if (!when()) return setShown(false)
+    const timer = setTimeout(() => setShown(true), ms)
+    onCleanup(() => clearTimeout(timer))
+  })
+  return shown
+}
+
+/**
+ * Scope picker and progress. The branch scope is a dropdown in the same group: picking a base branch switches to it.
+ * The current branch is listed but cannot be picked, since a branch compared with itself shows nothing new.
+ */
 export function ScopeBar(props: { folder: string; directory: string; data: ReviewData; sessionID?: string }) {
   const git = () => folderOf(props.folder)?.project?.vcs === "git"
   const count = () => progress(props.data.data())
+  const refreshing = delayed(props.data.refreshing)
   // Before a conversation starts, only the git scopes apply
   createEffect(() => {
     if (!props.sessionID && git() && (review.scope === "turn" || review.scope === "session"))
       setReview("scope", "unstaged")
   })
-  const [branches] = createResource(
-    () => review.scope === "branch" && props.directory,
+  const [branches, { refetch }] = createResource(
+    () => git() && props.directory,
     (directory) => call(client(directory).vcs.branches()).catch(() => [] as string[]),
   )
-  const base = () => review.base ?? props.data.data()?.base
-  const bases = () => {
-    const list = branches() ?? []
-    const current = base()
-    return [...(current && !list.includes(current) ? [current] : []), ...list].map((value) => ({ value, label: value }))
-  }
+  const preferred = () => state.defaultBranch[props.directory]
+  const base = () => review.base ?? (review.scope === "branch" ? props.data.data()?.base : undefined) ?? preferred()
+  const latest = createMemo(() => {
+    const current = state.branch[props.directory]
+    const list = branches.latest ?? []
+    const first = preferred() && list.includes(preferred()!) ? [preferred()!] : []
+    return [...new Set([...first, ...list])].map((name) => ({
+      value: name,
+      label: name,
+      description:
+        name === current ? t("review.currentBranch") : name === preferred() ? t("review.defaultBranch") : undefined,
+      disabled: name === current,
+    }))
+  })
+  // The items are refreshed before the dropdown opens and after it closes, but not while it is open (new branches,
+  // or the current and default branch arriving): replacing them moves focus out of it, which closes it. Filling an
+  // empty list is safe, so the first fetch always shows.
+  const [open, setOpen] = createSignal(false)
+  const [options, setOptions] = createSignal<ReturnType<typeof latest>>([])
+  createEffect(() => {
+    const next = latest()
+    if (!open() || !untrack(options).length) setOptions(next)
+  })
   return (
     <>
       <Segmented
@@ -50,18 +97,30 @@ export function ScopeBar(props: { folder: string; directory: string; data: Revie
         options={scopeOptions(git(), !!props.sessionID)}
         value={review.scope}
         onChange={(scope) => setReview({ scope, messageID: undefined, last: undefined })}
-      />
-      <Show when={review.scope === "branch" && bases().length}>
-        <Select
-          class="chip outlined"
-          label={t("review.base")}
-          options={bases()}
-          value={base()}
-          onChange={(value) => setReview({ base: value, last: undefined })}
-          display={(option) => <span class="ellipsis">{option?.label}</span>}
-        />
-      </Show>
+      >
+        <Show when={git()}>
+          <Select
+            class={review.scope === "branch" ? "on" : "off"}
+            label={t("review.scope.branch")}
+            options={options()}
+            value={review.scope === "branch" ? base() : undefined}
+            placeholder={t("review.scope.branch")}
+            onPrepare={() => void refetch()}
+            onOpenChange={(value) => {
+              setOpen(value)
+              if (!value) void refetch()
+            }}
+            onChange={(value) => setReview({ scope: "branch", base: value, messageID: undefined, last: undefined })}
+            display={(option) => (
+              <span class="ellipsis">{t("review.branchOn", { base: option?.label ?? base() ?? "" })}</span>
+            )}
+          />
+        </Show>
+      </Segmented>
       <span class="spacer" />
+      <Show when={refreshing()}>
+        <LoaderCircle class="icon icon-sm spinner muted" role="status" aria-label={t("review.refreshing")} />
+      </Show>
       <Show when={review.scope === "branch" && count().total}>
         <span class="progress">
           {t("review.progress", count())}
@@ -133,14 +192,17 @@ export function ReviewFiles(props: {
   let scroller!: HTMLDivElement
   const result = () => props.data.data()
   const files = () => (result()?.files ?? []).filter((file) => !props.files || props.files.includes(file.file))
-  // Scroll to the file requested when the review was opened
+  const waiting = delayed(props.data.loading)
+  // Open and scroll to the file requested when the review was opened
   createEffect(
     on(
       () => [review.focus, result()] as const,
-      ([focus]) => {
-        if (!focus) return
-        queueMicrotask(() =>
-          scroller?.querySelector(`[data-file="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "start" }),
+      ([focus, current]) => {
+        const file = focus ? current?.files.find((item) => item.file === focus) : undefined
+        if (!file) return
+        props.data.setOpen(file, true)
+        requestAnimationFrame(() =>
+          scroller?.querySelector(`[data-file="${CSS.escape(file.file)}"]`)?.scrollIntoView({ block: "start" }),
         )
       },
     ),
@@ -148,8 +210,14 @@ export function ReviewFiles(props: {
   return (
     <div class="diff scroll" ref={scroller}>
       <Switch>
-        <Match when={props.data.data.error}>
-          <div class="empty-state subtle">{(props.data.data.error as Error).message}</div>
+        <Match when={!result() && props.data.error()}>
+          {(error) => <div class="empty-state subtle">{error().message}</div>}
+        </Match>
+        <Match when={waiting()}>
+          <div class="empty-state subtle" role="status">
+            <LoaderCircle class="icon spinner" />
+            {t("review.loading")}
+          </div>
         </Match>
         <Match when={result() && !files().length}>
           <div class="empty-state subtle">{review.scope === "turn" ? t("review.emptyTurn") : t("review.empty")}</div>
@@ -159,6 +227,7 @@ export function ReviewFiles(props: {
         {(file) => (
           <FileDiff
             file={file}
+            data={props.data}
             sessionID={props.sessionID}
             actions={result()!.actions}
             scope={review.scope}
@@ -195,12 +264,16 @@ export function BulkActions(props: { data: ReviewData }) {
 
 /** The review in the side panel */
 export function ReviewPanel(props: { sessionID?: string; directory: string; folder: string; data: ReviewData }) {
+  const target = () => commentingOn(props.data.data()?.files ?? [], (file) => props.data.detail(file))
   return (
     <>
       <div class="review-sub">
         <ScopeBar folder={props.folder} directory={props.directory} data={props.data} sessionID={props.sessionID} />
       </div>
       <ReviewFiles sessionID={props.sessionID} data={props.data} style="unified" />
+      <Show when={props.sessionID}>
+        <CommentComposer sessionID={props.sessionID} target={target()} />
+      </Show>
       <PendingComments sessionID={props.sessionID} directory={props.directory} />
       <div class="review-foot">
         <LastDecision data={props.data} />
@@ -212,6 +285,7 @@ export function ReviewPanel(props: { sessionID?: string; directory: string; fold
           <Commit
             directory={props.directory}
             all={review.scope === "unstaged"}
+            pending={(props.data.data()?.files.length ?? 0) > 0}
             onDone={() => void props.data.refetch()}
           />
         </div>

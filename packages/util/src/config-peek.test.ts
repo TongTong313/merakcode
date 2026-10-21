@@ -17,15 +17,15 @@ describe("peekGlobalConfig", () => {
     expect(peekGlobalConfig(join(dir, "missing.jsonc"))).toEqual({})
   })
 
-  test("reads locale and autoupdate from JSONC with comments and trailing commas", async () => {
+  test("reads only the locale, from JSONC with comments and trailing commas", async () => {
     const file = join(dir, "ok.jsonc")
-    await writeFile(file, '{\n  // UI language\n  "locale": "en-US",\n  "autoupdate": "notify",\n}\n')
-    expect(peekGlobalConfig(file)).toEqual({ locale: "en-US", autoupdate: "notify" })
+    await writeFile(file, '{\n  // UI language\n  "locale": "en-US",\n  "model": "a/b",\n}\n')
+    expect(peekGlobalConfig(file)).toEqual({ locale: "en-US" })
   })
 
-  test("drops values of the wrong type and survives a broken file", async () => {
+  test("drops a locale of the wrong type and survives a broken file", async () => {
     const wrong = join(dir, "wrong.json")
-    await writeFile(wrong, '{ "locale": 3, "autoupdate": "yes" }')
+    await writeFile(wrong, '{ "locale": 3 }')
     expect(peekGlobalConfig(wrong)).toEqual({})
     const broken = join(dir, "broken.json")
     await writeFile(broken, "{ not json")

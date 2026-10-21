@@ -4,13 +4,17 @@ import Check from "lucide-solid/icons/check"
 import { createSignal, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { trackOverlay } from "./overlay"
+import { ProviderLogo } from "./provider-logo"
 
 export type Option<T extends string = string> = {
   value: T
   label: string
   description?: string
   icon?: (props: { class?: string }) => JSX.Element
+  /** Provider id. Built-in providers show their logo; any other id shows a letter. */
+  providerID?: string
   group?: string
+  disabled?: boolean
 }
 
 /**
@@ -27,6 +31,9 @@ export function Select<T extends string>(props: {
   /** Content of the trigger button; defaults to the selected option's icon and text */
   display?: (option: Option<T> | undefined) => JSX.Element
   disabled?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Pointer or focus reached the trigger, so the list may open soon: a chance to refresh the options */
+  onPrepare?: () => void
 }) {
   const [open, setOpen] = createSignal(false)
   trackOverlay(open)
@@ -36,38 +43,53 @@ export function Select<T extends string>(props: {
       options={props.options}
       optionValue="value"
       optionTextValue="label"
+      optionDisabled="disabled"
       value={selected() ?? null}
       onChange={(option) => option && props.onChange(option.value)}
       open={open()}
-      onOpenChange={setOpen}
+      onOpenChange={(value) => {
+        setOpen(value)
+        props.onOpenChange?.(value)
+      }}
       disabled={props.disabled}
       placeholder={props.placeholder}
       gutter={4}
       placement="bottom-start"
       itemComponent={(item) => (
         <Kobalte.Item item={item.item} class="menu-item">
+          <Show when={item.item.rawValue.providerID}>
+            {(id) => <ProviderLogo id={id()} name={item.item.rawValue.description ?? ""} />}
+          </Show>
           <Show when={item.item.rawValue.icon}>
             {(icon) => <Dynamic component={icon()} class="icon icon-sm muted" />}
           </Show>
-          <span>
-            <Kobalte.ItemLabel>{item.item.rawValue.label}</Kobalte.ItemLabel>
+          <div class="menu-item-copy">
+            <Kobalte.ItemLabel class="ellipsis">{item.item.rawValue.label}</Kobalte.ItemLabel>
             <Show when={item.item.rawValue.description}>
-              <Kobalte.ItemDescription class="desc">{item.item.rawValue.description}</Kobalte.ItemDescription>
+              <Kobalte.ItemDescription class="desc ellipsis">{item.item.rawValue.description}</Kobalte.ItemDescription>
             </Show>
-          </span>
+          </div>
           <Kobalte.ItemIndicator class="check">
             <Check class="icon icon-sm" />
           </Kobalte.ItemIndicator>
         </Kobalte.Item>
       )}
     >
-      <Kobalte.Trigger class={props.class ?? "chip"} aria-label={props.label}>
+      <Kobalte.Trigger
+        class={props.class ?? "chip"}
+        aria-label={props.label}
+        onPointerEnter={() => props.onPrepare?.()}
+        onFocus={() => props.onPrepare?.()}
+      >
         <Kobalte.Value<Option<T>> class="select-value">
           {(state) =>
             props.display ? (
               props.display(state.selectedOption())
             ) : (
               <>
+                <Show when={state.selectedOption()?.providerID}>
+                  {(id) => <ProviderLogo id={id()} name={state.selectedOption()?.description ?? ""} />}
+                </Show>
                 <Show when={state.selectedOption()?.icon}>
                   {(icon) => <Dynamic component={icon()} class="icon icon-sm" />}
                 </Show>

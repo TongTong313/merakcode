@@ -33,10 +33,6 @@ function stop(proc: Process.Child) {
 
 // Timeout for ordinary commands (--help and the like return within seconds; generous margin to catch hangs).
 const DEFAULT_TIMEOUT = 30_000
-// The default command is a long-running TUI: it passes if it survives this startup window without crashing.
-const TUI_GRACE = 8_000
-// Fallback wait for the process to exit after kill (SIGTERM cleanup is asynchronous and could hang again).
-const KILL_GRACE = 5_000
 // Timeout for the real model call: models can be slow.
 const MODEL_TIMEOUT = 180_000
 
@@ -80,35 +76,6 @@ async function spawn(args: string[], timeout: number): Promise<RunResult> {
   // After a timeout the kill was already sent; wait for the actual exit so the child is reaped.
   const code = await proc.exited
   return { code, out: await out, err: await err, timedOut }
-}
-
-// The default command (merak with no arguments) is an interactive TUI that never exits on its own, so it cannot be
-// smoke-tested by running it to completion. Instead it must stay alive: exiting non-zero within the grace window fails;
-// still running means the TUI booted (including its dynamic chunks), so it is killed, awaited and passes.
-// Only called when stdout is a TTY (see the call site): without one, OpenTUI may exit non-zero for lack of a terminal
-// size, a false failure in CI.
-async function aliveCheck(args: string[], grace: number): Promise<RunResult> {
-  const proc = Process.spawn([bin!, ...args], { stdin: "inherit", stdout: "inherit", stderr: "pipe" })
-  let graceTimer: ReturnType<typeof setTimeout>
-  const alive = new Promise<"alive">((resolve) => {
-    graceTimer = setTimeout(() => resolve("alive"), grace)
-  })
-  const exited = proc.exited.then((code) => ({ done: true, code }) as const)
-  const race = await Promise.race([exited, alive])
-  clearTimeout(graceTimer!)
-  if (race === "alive") {
-    stop(proc)
-    // SIGTERM exits asynchronously: await the real exit, with a short fallback timeout so it cannot hang again.
-    let killTimer: ReturnType<typeof setTimeout>
-    const killed = new Promise<void>((resolve) => {
-      killTimer = setTimeout(resolve, KILL_GRACE)
-    })
-    await Promise.race([proc.exited, killed])
-    clearTimeout(killTimer!)
-    return { code: 0, out: "", err: "", timedOut: false }
-  }
-  const err = (await new Response(proc.stderr).text()).trim()
-  return { code: race.code, out: "", err, timedOut: false }
 }
 
 // Collected failures decide the exit code at the end.
@@ -177,10 +144,7 @@ async function smokeServer() {
     env: {
       ...process.env,
       MERAKCODE_TEST_HOME: path.join(tmp, "home"),
-      XDG_DATA_HOME: path.join(tmp, "share"),
-      XDG_CACHE_HOME: path.join(tmp, "cache"),
-      XDG_CONFIG_HOME: path.join(tmp, "config"),
-      XDG_STATE_HOME: path.join(tmp, "state"),
+      MERAKCODE_HOME: path.join(tmp, "merakcode"),
       MERAKCODE_DISABLE_MODELS_FETCH: "1",
       MERAKCODE_DISABLE_CONFIG_WATCH: "1",
       MERAKCODE_DISABLE_SKILL_WATCH: "1",
@@ -208,24 +172,19 @@ async function smokeServer() {
   } finally {
     stop(proc)
     await proc.exited.catch(() => {})
-    await fs.rm(tmp, { recursive: true, force: true })
+    // On Windows the engine's database files stay locked for a moment after its process tree is killed
+    await fs.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 }
 
-// 1. Default command: starting the TUI must not crash (stays-alive check).
-// Without a TTY (typical CI) the OpenTUI renderer may exit non-zero for lack of a terminal size, a false failure, so
-// this only runs on a TTY.
-if (process.stdout.isTTY) {
-  const dflt = await aliveCheck([], TUI_GRACE)
-  if (dflt.code !== 0) {
-    fail("default ([]) starts the TUI", `exit code ${dflt.code} ${dflt.err}`)
-  } else {
-    ok("default ([]) starts the TUI")
-  }
+// 1. No command: prints the help listing the commands and exits on its own
+const dflt = await run([], DEFAULT_TIMEOUT)
+if (dflt.code !== 0) {
+  fail("default ([]) prints the help", `exit code ${dflt.code} ${dflt.err.trim()}`)
+} else if (!dflt.out.includes(" serve")) {
+  fail("default ([]) prints the help", "the output does not list the serve command")
 } else {
-  process.stdout.write(
-    "• Skipped the default ([]) TUI check: stdout is not a TTY (OpenTUI has no terminal size in CI; skipped to avoid a false failure)\n",
-  )
+  ok("default ([]) prints the help")
 }
 
 // 2. Basic commands: --help, --version and the like must succeed

@@ -725,8 +725,7 @@ export namespace ACP {
           return true
 
         case "undo": {
-          // Revert to before the latest message the user typed; if already reverted, search back from the revert point
-          // (same as undo in the TUI).
+          // Revert to before the latest message the user typed; if already reverted, search back from the revert point.
           const [messages, info] = await Promise.all([
             this.config.sdk.session
               .messages({ sessionID: sessionId, directory }, { throwOnError: true })

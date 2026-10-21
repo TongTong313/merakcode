@@ -1,29 +1,28 @@
 import { describe, expect, test } from "vitest"
-import fs from "fs/promises"
-import path from "path"
+import { DatabaseSync } from "node:sqlite"
 import { Identifier } from "@merakcode/util/id"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Session } from "@merakcode/engine/session/index"
 import { Message } from "@merakcode/engine/session/message"
 import { Transcript } from "@merakcode/engine/session/transcript"
+import { Database } from "@merakcode/engine/storage/db"
 import { Storage } from "@merakcode/engine/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
-import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
 
 /**
- * JSONL session storage. Assertions check both the raw lines on disk (the format rules are followed) and the replayed
- * result (callers see the same semantics as the previous per-file storage).
+ * Session content in the message and part tables. Assertions check both the stored rows (what is persisted when) and
+ * what callers read back.
  */
 
-async function lines(sessionID: string) {
-  const text = await Filesystem.readText(Transcript.file(sessionID))
-  return text
-    .split("\n")
-    .filter(Boolean)
-    .map((raw) => JSON.parse(raw))
+function stored(sessionID: string) {
+  const rows = (table: string) =>
+    (
+      Database.query(`SELECT data FROM ${table} WHERE session_id = ? ORDER BY id`).all(sessionID) as { data: string }[]
+    ).map((row) => JSON.parse(row.data))
+  return { messages: rows("message"), parts: rows("part") }
 }
 
 function user(sessionID: string, id = Identifier.ascending("message")): Message.UserInfo {
@@ -65,9 +64,9 @@ function within(fn: () => Promise<void>) {
   }
 }
 
-describe("write and replay", () => {
+describe("write and read", () => {
   test(
-    "message snapshots merge by ID, keeping stored values for omitted fields; every line has time and version",
+    "message snapshots merge by ID, keeping stored values for omitted fields",
     within(async () => {
       const session = await Session.create({})
       const info = await Session.updateInfo(user(session.id))
@@ -77,18 +76,14 @@ describe("write and replay", () => {
       const read = await Message.get({ sessionID: session.id, messageID: info.id })
       expect(read.info.metadata).toEqual({ tag: "x" })
       expect((read.info as Message.UserInfo).permissionMode).toBe("auto")
-
-      const written = await lines(session.id)
-      expect(written.map((line) => line.type)).toEqual(["message", "message", "message"])
-      for (const line of written) {
-        expect(typeof line.time).toBe("number")
-        expect(typeof line.version).toBe("string")
-      }
+      expect(stored(session.id).messages).toMatchObject([
+        { id: info.id, permissionMode: "auto", metadata: { tag: "x" } },
+      ])
     }),
   )
 
   test(
-    "streamed text is readable in-process without hitting disk and is written when the assistant message completes",
+    "streamed text is readable in-process without being written and is written when the assistant message completes",
     within(async () => {
       const session = await Session.create({})
       const asked = await Session.updateInfo(user(session.id))
@@ -100,20 +95,18 @@ describe("write and replay", () => {
         await Session.updatePart({ part, delta: chunk })
       }
 
-      expect((await lines(session.id)).map((line) => line.type)).toEqual(["message", "message"])
+      expect(stored(session.id).parts).toEqual([])
       expect(await Message.parts({ sessionID: session.id, messageID: reply.id })).toEqual([
         { ...part, text: "你好，世界" },
       ])
 
       await Session.updateInfo({ ...reply, time: { created: reply.time.created, completed: Date.now() } })
-      const written = await lines(session.id)
-      expect(written.map((line) => line.type)).toEqual(["message", "message", "part", "message"])
-      expect(written[2].part.text).toBe("你好，世界")
+      expect(stored(session.id).parts.map((item) => item.text)).toEqual(["你好，世界"])
     }),
   )
 
   test(
-    "1000 running updates of a tool write one line, and the final state writes one more",
+    "1000 running updates of a tool are not written; only each new state is",
     within(async () => {
       const session = await Session.create({})
       const info = await Session.updateInfo(user(session.id))
@@ -126,13 +119,13 @@ describe("write and replay", () => {
         callID: "call-1",
         state: { status: "pending", input: {}, raw: "" },
       }
-      const count = async () => (await lines(session.id)).filter((line) => line.type === "part").length
+      const state = () => stored(session.id).parts[0]?.state
       await Session.updatePart(tool)
       await Session.updatePart({
         ...tool,
         state: { status: "pending", input: { command: "ls" }, raw: '{"command":"ls"' },
       })
-      expect(await count()).toBe(1)
+      expect(state()).toEqual({ status: "pending", input: {}, raw: "" })
 
       for (let index = 0; index < 1000; index++)
         await Session.updatePart({
@@ -144,8 +137,8 @@ describe("write and replay", () => {
             time: { start: 1 },
           },
         })
-      expect(await count()).toBe(2)
-      // In-process reads see the latest progress, not the first copy written to disk.
+      expect(state()).toMatchObject({ status: "running", metadata: { output: "" } })
+      // In-process reads see the latest progress, not the copy written first.
       const [live] = await Message.parts({ sessionID: session.id, messageID: info.id })
       expect((live as Message.ToolPart).state).toMatchObject({
         status: "running",
@@ -163,7 +156,7 @@ describe("write and replay", () => {
           time: { start: 1, end: 2 },
         },
       })
-      expect(await count()).toBe(3)
+      expect(state()).toMatchObject({ status: "completed", output: "ok" })
     }),
   )
 
@@ -183,6 +176,7 @@ describe("write and replay", () => {
         Storage.NotFoundError,
       )
       expect(await Message.parts({ sessionID: session.id, messageID: info.id })).toEqual([])
+      expect(stored(session.id)).toEqual({ messages: [], parts: [] })
 
       await Session.updateInfo(info)
       expect((await Message.get({ sessionID: session.id, messageID: info.id })).parts).toEqual([])
@@ -211,7 +205,7 @@ describe("write and replay", () => {
   )
 
   test(
-    "returned objects are detached from the cache, so caller mutations don't affect later reads",
+    "returned objects are detached, so caller mutations don't affect later reads",
     within(async () => {
       const session = await Session.create({})
       const info = await Session.updateInfo(user(session.id))
@@ -227,97 +221,45 @@ describe("write and replay", () => {
 
 describe("fault tolerance and multiple writers", () => {
   test(
-    "torn tail lines and unknown record types are skipped, and the first append adds a newline after a torn line",
+    "a damaged message is skipped and the rest of the session still reads",
     within(async () => {
       const session = await Session.create({})
-      const info = user(session.id)
-      const file = Transcript.file(session.id)
-      await fs.mkdir(path.dirname(file), { recursive: true })
-      await Filesystem.write(
-        file,
-        [
-          JSON.stringify({ type: "message", time: 1, version: "1.3.9", info }),
-          JSON.stringify({ type: "future-kind", time: 1, version: "9.9.9", payload: 1 }),
-          '{"type":"part","time":1,"part":{"id":"prt_torn',
-        ].join("\n"),
+      const info = await Session.updateInfo(user(session.id))
+      const part = await Session.updatePart(text(session.id, info.id, "after"))
+      const damaged = await Session.updateInfo(user(session.id))
+      Database.query("UPDATE message SET data = ? WHERE session_id = ? AND id = ?").run(
+        '{"role":"user",',
+        session.id,
+        damaged.id,
       )
 
-      const part = await Session.updatePart(text(session.id, info.id, "after"))
-      const read = await Message.get({ sessionID: session.id, messageID: info.id })
-      expect(read.info.id).toBe(info.id)
-      expect(read.parts.map((p) => p.id)).toEqual([part.id])
-
-      const raw = (await Filesystem.readText(file)).split("\n")
-      expect(raw.at(-2)).toSatisfy((value: string) => value.startsWith('{"type":"part"'))
-      expect(raw.at(-2)).toContain('"after"')
+      const all = await Session.messages({ sessionID: session.id })
+      expect(all.map((item) => item.info.id)).toEqual([info.id])
+      expect(all[0]!.parts.map((p) => p.id)).toEqual([part.id])
+      await expect(Message.get({ sessionID: session.id, messageID: damaged.id })).rejects.toBeInstanceOf(
+        Storage.NotFoundError,
+      )
     }),
   )
 
   test(
-    "lines appended by another process are visible to this process",
+    "rows written through another connection (another process) are visible at once",
     within(async () => {
       const session = await Session.create({})
       const info = await Session.updateInfo(user(session.id))
       expect(await Message.parts({ sessionID: session.id, messageID: info.id })).toEqual([])
 
       const part = text(session.id, info.id, "来自别的进程")
-      await fs.appendFile(
-        Transcript.file(session.id),
-        JSON.stringify({ type: "part", time: 1, version: "x", part }) + "\n",
-      )
+      using other = new DatabaseSync(Database.file(), { timeout: 10_000 })
+      other
+        .prepare("INSERT INTO part (session_id, id, message_id, written, data) VALUES (?, ?, ?, ?, ?)")
+        .run(session.id, part.id, info.id, Date.now(), JSON.stringify(part))
       expect(await Message.parts({ sessionID: session.id, messageID: info.id })).toEqual([part])
     }),
   )
 
   test(
-    "concurrent reads of one session apply delta lines once and advance the read offset once",
-    within(async () => {
-      const session = await Session.create({})
-      const info = await Session.updateInfo(user(session.id))
-      const part = await Session.updatePart(text(session.id, info.id, "起"))
-      // Read once to fill the cache, then have "another process" append two legacy-format delta lines (found in
-      // files written before this format); the concurrent reads must all parse from the same offset.
-      await Message.parts({ sessionID: session.id, messageID: info.id })
-      const tail = ["承", "转"]
-        .map((delta) =>
-          JSON.stringify({
-            type: "delta",
-            time: 1,
-            version: "x",
-            messageID: info.id,
-            partID: part.id,
-            field: "text",
-            delta,
-          }),
-        )
-        .join("\n")
-      await fs.appendFile(Transcript.file(session.id), tail + "\n")
-
-      const reads = await Promise.all(
-        Array.from({ length: 4 }, () => Message.parts({ sessionID: session.id, messageID: info.id })),
-      )
-      for (const read of reads) expect((read[0] as Message.TextPart).text).toBe("起承转")
-
-      await fs.appendFile(
-        Transcript.file(session.id),
-        JSON.stringify({
-          type: "delta",
-          time: 1,
-          version: "x",
-          messageID: info.id,
-          partID: part.id,
-          field: "text",
-          delta: "合",
-        }) + "\n",
-      )
-      expect(((await Message.parts({ sessionID: session.id, messageID: info.id }))[0] as Message.TextPart).text).toBe(
-        "起承转合",
-      )
-    }),
-  )
-
-  test(
-    "concurrent transcript creation for one session lets one win; the other returns false without overwriting",
+    "concurrent content creation for one session lets one win; the other returns false without overwriting",
     within(async () => {
       const session = await Session.create({})
       const a = user(session.id)

@@ -1,5 +1,5 @@
-// Approval bar options and display, shared by the TUI and the desktop app. Only provides choices, translation keys and
-// variables; each UI translates and renders them itself.
+// Approval bar options and display for the desktop app. Only provides choices, translation keys and variables; the UI
+// translates and renders them itself.
 
 export type PermissionScope = "file" | "directory" | "prefix" | "agent" | "tool" | "domain"
 

@@ -2844,6 +2844,7 @@ export namespace SessionRunner {
     if (!agent) throw new Error(`Agent not found: ${selection.agentID}`)
 
     const model = input.model ?? agent.model ?? (await SessionExecution.wait(async () => lastModel(input.sessionID)))
+    if (input.model) await Provider.remember(input.model)
     const full =
       !input.variant && agent.variant
         ? await SessionExecution.wait(async () =>

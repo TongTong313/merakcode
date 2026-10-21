@@ -82,7 +82,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
-  test("should set promptCacheKey for providers using the openai package", () => {
+  test("a non-official provider using the openai package does not get a prompt cache key", () => {
     const openaiModel = {
       ...mockModel,
       providerID: "custom-openai",
@@ -93,7 +93,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
       },
     }
     const result = ProviderTransform.options({ model: openaiModel, sessionID, providerOptions: {} })
-    expect(result.promptCacheKey).toBe(sessionID)
+    expect(result.promptCacheKey).toBeUndefined()
   })
 
   test("should pass promptCacheRetention for openai package providers", () => {
@@ -1229,42 +1229,6 @@ describe("ProviderTransform.message - providerOptions key remapping", () => {
       headers: {},
     }) as any
 
-  test("azure keeps 'azure' key and does not remap to 'openai'", () => {
-    const model = createModel("azure", "@ai-sdk/azure")
-    const msgs = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Hello" }],
-        providerOptions: {
-          azure: { someOption: "value" },
-        },
-      },
-    ] as any[]
-
-    const result = ProviderTransform.message(msgs, model, {})
-
-    expect(result[0].providerOptions?.azure).toEqual({ someOption: "value" })
-    expect(result[0].providerOptions?.openai).toBeUndefined()
-  })
-
-  test("bedrock remaps providerID to 'bedrock' key", () => {
-    const model = createModel("my-bedrock", "@ai-sdk/amazon-bedrock")
-    const msgs = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Hello" }],
-        providerOptions: {
-          "my-bedrock": { someOption: "value" },
-        },
-      },
-    ] as any[]
-
-    const result = ProviderTransform.message(msgs, model, {})
-
-    expect(result[0].providerOptions?.bedrock).toEqual({ someOption: "value" })
-    expect(result[0].providerOptions?.["my-bedrock"]).toBeUndefined()
-  })
-
   test("openai-compatible models add cache_control markers", () => {
     const model = createModel("minimax", "@ai-sdk/openai-compatible")
     const msgs = [
@@ -1370,41 +1334,6 @@ describe("ProviderTransform.message - providerOptions key remapping", () => {
     expect(result[0].providerOptions?.openai).toBeUndefined()
     expect(result[1].content[0].providerOptions?.openaiCompatible).toBeUndefined()
     expect(result[1].content[0].providerOptions?.openai).toBeUndefined()
-  })
-})
-
-describe("ProviderTransform.message - claude w/bedrock custom inference profile", () => {
-  test("adds cachePoint", () => {
-    const model = {
-      id: "amazon-bedrock/custom-claude-sonnet-4.5",
-      providerID: "amazon-bedrock",
-      api: {
-        id: "arn:aws:bedrock:xxx:yyy:application-inference-profile/zzz",
-        url: "https://api.test.com",
-        npm: "@ai-sdk/amazon-bedrock",
-      },
-      name: "Custom inference profile",
-      capabilities: {},
-      options: {},
-      headers: {},
-    } as any
-
-    const msgs = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Hello" }],
-      },
-    ] as any[]
-
-    const result = ProviderTransform.message(msgs, model, {})
-
-    expect(result[0].providerOptions?.bedrock).toEqual(
-      expect.objectContaining({
-        cachePoint: {
-          type: "default",
-        },
-      }),
-    )
   })
 })
 
@@ -1583,110 +1512,6 @@ describe("ProviderTransform.variants", () => {
     })
   })
 
-  describe("@ai-sdk/gateway", () => {
-    test("returns OPENAI_EFFORTS with reasoningEffort", () => {
-      const model = createMockModel({
-        id: "gateway/gateway-model",
-        providerID: "gateway",
-        api: {
-          id: "gateway-model",
-          url: "https://gateway.ai",
-          npm: "@ai-sdk/gateway",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
-      expect(result.low).toEqual({ reasoningEffort: "low" })
-      expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
-  describe("@ai-sdk/cerebras", () => {
-    test("returns WIDELY_SUPPORTED_EFFORTS with reasoningEffort", () => {
-      const model = createMockModel({
-        id: "cerebras/llama-4",
-        providerID: "cerebras",
-        api: {
-          id: "llama-4-sc",
-          url: "https://api.cerebras.ai",
-          npm: "@ai-sdk/cerebras",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
-      expect(result.low).toEqual({ reasoningEffort: "low" })
-      expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
-  describe("@ai-sdk/togetherai", () => {
-    test("returns WIDELY_SUPPORTED_EFFORTS with reasoningEffort", () => {
-      const model = createMockModel({
-        id: "togetherai/llama-4",
-        providerID: "togetherai",
-        api: {
-          id: "llama-4-sc",
-          url: "https://api.togetherai.com",
-          npm: "@ai-sdk/togetherai",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
-      expect(result.low).toEqual({ reasoningEffort: "low" })
-      expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
-  describe("@ai-sdk/xai", () => {
-    test("grok-3 returns empty object", () => {
-      const model = createMockModel({
-        id: "xai/grok-3",
-        providerID: "xai",
-        api: {
-          id: "grok-3",
-          url: "https://api.x.ai",
-          npm: "@ai-sdk/xai",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(result).toEqual({})
-    })
-
-    test("grok-3-mini returns low and high with reasoningEffort", () => {
-      const model = createMockModel({
-        id: "xai/grok-3-mini",
-        providerID: "xai",
-        api: {
-          id: "grok-3-mini",
-          url: "https://api.x.ai",
-          npm: "@ai-sdk/xai",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "high"])
-      expect(result.low).toEqual({ reasoningEffort: "low" })
-      expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
-  describe("@ai-sdk/deepinfra", () => {
-    test("returns WIDELY_SUPPORTED_EFFORTS with reasoningEffort", () => {
-      const model = createMockModel({
-        id: "deepinfra/llama-4",
-        providerID: "deepinfra",
-        api: {
-          id: "llama-4-sc",
-          url: "https://api.deepinfra.com",
-          npm: "@ai-sdk/deepinfra",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
-      expect(result.low).toEqual({ reasoningEffort: "low" })
-      expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
   describe("@ai-sdk/openai-compatible", () => {
     test("returns WIDELY_SUPPORTED_EFFORTS with reasoningEffort", () => {
       const model = createMockModel({
@@ -1702,55 +1527,6 @@ describe("ProviderTransform.variants", () => {
       expect(Object.keys(result)).toEqual(["low", "medium", "high"])
       expect(result.low).toEqual({ reasoningEffort: "low" })
       expect(result.high).toEqual({ reasoningEffort: "high" })
-    })
-  })
-
-  describe("@ai-sdk/azure", () => {
-    test("o1-mini returns empty object", () => {
-      const model = createMockModel({
-        id: "o1-mini",
-        providerID: "azure",
-        api: {
-          id: "o1-mini",
-          url: "https://azure.com",
-          npm: "@ai-sdk/azure",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(result).toEqual({})
-    })
-
-    test("standard azure models return custom efforts with reasoningSummary", () => {
-      const model = createMockModel({
-        id: "o1",
-        providerID: "azure",
-        api: {
-          id: "o1",
-          url: "https://azure.com",
-          npm: "@ai-sdk/azure",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
-      expect(result.low).toEqual({
-        reasoningEffort: "low",
-        reasoningSummary: "auto",
-        include: ["reasoning.encrypted_content"],
-      })
-    })
-
-    test("gpt-5 adds minimal effort", () => {
-      const model = createMockModel({
-        id: "gpt-5",
-        providerID: "azure",
-        api: {
-          id: "gpt-5",
-          url: "https://azure.com",
-          npm: "@ai-sdk/azure",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
     })
   })
 
@@ -1848,28 +1624,6 @@ describe("ProviderTransform.variants", () => {
     })
   })
 
-  describe("@ai-sdk/amazon-bedrock", () => {
-    test("returns WIDELY_SUPPORTED_EFFORTS with reasoningConfig", () => {
-      const model = createMockModel({
-        id: "bedrock/llama-4",
-        providerID: "bedrock",
-        api: {
-          id: "llama-4-sc",
-          url: "https://bedrock.amazonaws.com",
-          npm: "@ai-sdk/amazon-bedrock",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
-      expect(result.low).toEqual({
-        reasoningConfig: {
-          type: "enabled",
-          maxReasoningEffort: "low",
-        },
-      })
-    })
-  })
-
   describe("@ai-sdk/google", () => {
     test("gemini-2.5 returns high and max with thinkingConfig and thinkingBudget", () => {
       const model = createMockModel({
@@ -1919,90 +1673,28 @@ describe("ProviderTransform.variants", () => {
       })
     })
   })
+})
 
-  describe("@ai-sdk/google-vertex", () => {
-    test("gemini-2.5 returns high and max with thinkingConfig and thinkingBudget", () => {
-      const model = createMockModel({
-        id: "google-vertex/gemini-2.5-pro",
-        providerID: "google-vertex",
-        api: {
-          id: "gemini-2.5-pro",
-          url: "https://vertexai.googleapis.com",
-          npm: "@ai-sdk/google-vertex",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["high", "max"])
-    })
+describe("ProviderTransform.maxOutputTokens", () => {
+  const model = (limit: { context: number; output: number }) => ({ limit }) as any
 
-    test("other vertex models return low and high with thinkingLevel", () => {
-      const model = createMockModel({
-        id: "google-vertex/gemini-2.0-pro",
-        providerID: "google-vertex",
-        api: {
-          id: "gemini-2.0-pro",
-          url: "https://vertexai.googleapis.com",
-          npm: "@ai-sdk/google-vertex",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["low", "high"])
-    })
+  test("uses the model's output limit when that limit fits inside the context window", () => {
+    expect(ProviderTransform.maxOutputTokens(model({ context: 1_000_000, output: 128_000 }))).toBe(128_000)
   })
 
-  describe("@ai-sdk/cohere", () => {
-    test("returns empty object", () => {
-      const model = createMockModel({
-        id: "cohere/command-r",
-        providerID: "cohere",
-        api: {
-          id: "command-r",
-          url: "https://api.cohere.com",
-          npm: "@ai-sdk/cohere",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(result).toEqual({})
-    })
+  test("keeps an output limit that is already under 32_000", () => {
+    expect(ProviderTransform.maxOutputTokens(model({ context: 128_000, output: 8_192 }))).toBe(8_192)
   })
 
-  describe("@ai-sdk/groq", () => {
-    test("returns none and WIDELY_SUPPORTED_EFFORTS with thinkingLevel", () => {
-      const model = createMockModel({
-        id: "groq/llama-4",
-        providerID: "groq",
-        api: {
-          id: "llama-4-sc",
-          url: "https://api.groq.com",
-          npm: "@ai-sdk/groq",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high"])
-      expect(result.none).toEqual({
-        includeThoughts: true,
-        thinkingLevel: "none",
-      })
-      expect(result.low).toEqual({
-        includeThoughts: true,
-        thinkingLevel: "low",
-      })
-    })
+  test("uses 32_000 when the model does not state an output limit", () => {
+    expect(ProviderTransform.maxOutputTokens(model({ context: 200_000, output: 0 }))).toBe(32_000)
   })
 
-  describe("@ai-sdk/perplexity", () => {
-    test("returns empty object", () => {
-      const model = createMockModel({
-        id: "perplexity/sonar-plus",
-        providerID: "perplexity",
-        api: {
-          id: "sonar-plus",
-          url: "https://api.perplexity.ai",
-          npm: "@ai-sdk/perplexity",
-        },
-      })
-      const result = ProviderTransform.variants(model)
-      expect(result).toEqual({})
-    })
+  test("uses 32_000 when the output limit fills the context window", () => {
+    expect(ProviderTransform.maxOutputTokens(model({ context: 262_144, output: 262_144 }))).toBe(32_000)
+  })
+
+  test("keeps a small model's own output limit when that limit fills its window", () => {
+    expect(ProviderTransform.maxOutputTokens(model({ context: 8_192, output: 8_192 }))).toBe(8_192)
   })
 })

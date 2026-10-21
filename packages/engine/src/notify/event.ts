@@ -2,8 +2,8 @@ import { BusEvent } from "../bus/bus-event"
 import z from "zod"
 
 /**
- * General notification events, not specific to the TUI. Backend modules such as LSP, MCP and server routes push
- * toasts through them; both the TUI and the web client consume them.
+ * General notification events. Backend modules such as LSP, MCP and server routes push toasts through them for the
+ * clients to show.
  */
 export const NotifyEvent = {
   ToastShow: BusEvent.define(

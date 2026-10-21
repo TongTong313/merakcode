@@ -103,7 +103,7 @@ try {
 }
 ```
 
-It uses the default model of a provider you have already connected (for example, Qwen when `DASHSCOPE_API_KEY` is set). If you haven't connected one yet, run `merak` and type `/provider`, or put it in the `config` option (see section 5).
+It uses the default model of a provider you have already connected (an `options.apiKey` in config, or a key saved with `/provider`). If you haven't connected one yet, run `merak` and type `/provider`, or put it in the `config` option (see section 5).
 
 The repo has three runnable examples in [`packages/sdk/js/examples`](../../packages/sdk/js/examples):
 
@@ -382,7 +382,7 @@ await merak.close()
 
 ### Project tools
 
-Put a `.ts` or `.js` file in the project's `.merakcode/tool/` folder (or the global `~/.config/merakcode/tool/`). The default export becomes a tool named after the file; other named exports become `file_export`. Turn one off with `"tools": { "file": false }` in the config.
+Put a `.ts` or `.js` file in the project's `.merakcode/tool/` folder (or the global `~/.merakcode/tool/`). The default export becomes a tool named after the file; other named exports become `file_export`. Turn one off with `"tools": { "file": false }` in the config.
 
 You don't need to install `@merakcode/sdk/plugin` or zod: the engine puts `@merakcode/sdk/plugin` in the `.merakcode` folder and installs zod with npm if it is missing (this needs the network the first time).
 
@@ -417,7 +417,7 @@ The return value (type `ToolResult`) is either a string or `{ title, output, met
 
 Plugins are loaded from three places:
 
-- `.ts` / `.js` files in the project's `.merakcode/plugin/` or the global `~/.config/merakcode/plugin/` folder;
+- `.ts` / `.js` files in the project's `.merakcode/plugin/` or the global `~/.merakcode/plugin/` folder;
 - the `plugin` array in the config, with npm package names (optionally versioned), such as `"plugin": ["my-merak-plugin@1.0.0"]`;
 - with options: `"plugin": [["my-merak-plugin", { "level": "strict" }]]`.
 

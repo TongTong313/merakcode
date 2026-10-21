@@ -57,7 +57,7 @@ export async function commands() {
       const path = join(project, "merakcode.json")
       const config = await Filesystem.readJson(path)
       config.command = {
-        sequence: { template: "S04_TEMPLATE\n$ARGUMENTS", agent: "build", model: "alibaba/qwen-plus" },
+        sequence: { template: "S04_TEMPLATE\n$ARGUMENTS", agent: "build", model: "alibaba-cn/qwen-plus" },
       }
       await Filesystem.write(path, JSON.stringify(config))
     },

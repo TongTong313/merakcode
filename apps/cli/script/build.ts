@@ -21,7 +21,6 @@ import { createHash } from "node:crypto"
 import { createReadStream, existsSync } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { compile, runtime, terminal } from "../../../script/node/solid.mjs"
 import { Archive } from "../../../script/lib/archive"
 import * as Licenses from "../../../script/lib/licenses"
 import { commandName } from "../bin/cli-name.cjs"
@@ -35,7 +34,7 @@ const pkg = await Filesystem.readJson(path.join(dir, "package.json"))
 const version: string = pkg.version
 // Stable releases use the "latest" channel; prereleases (0.2.0-beta.1) use their tag, and upgrade checks follow it
 const channel = version.match(/-([a-z]+)/)?.[1] ?? "latest"
-const nodeVersion = "26.12.0"
+const nodeVersion = (await Filesystem.readText(path.join(root, ".node-version"))).trim()
 const mirror = process.env.MERAKCODE_NODE_MIRROR ?? "https://nodejs.org/dist"
 
 type Target = { os: "linux" | "darwin" | "win32"; arch: "x64" | "arm64" }
@@ -57,13 +56,11 @@ const platform = (target: Target) => `${target.os === "win32" ? "windows" : targ
  * (see engine util/canvas-native.ts)
  */
 const shipped = [
-  "@opentui/core",
   "@lydell/node-pty",
   "@parcel/watcher",
   "pdfjs-dist",
   "web-tree-sitter",
   "tree-sitter-bash",
-  "clipboardy",
   "open",
   // The SDK client loads it by name at runtime (to keep it out of the web bundle), so the bundler cannot resolve it;
   // the engine and the SDK share this copy
@@ -108,26 +105,8 @@ async function prune(modules: string) {
     if (entry.isFile() && junk.test(entry.name)) await fs.rm(path.join(entry.parentPath, entry.name))
 }
 
-/**
- * Plugins doing what the source loader does in development: Solid JSX for the terminal UI, the Solid client build and
- * text imports
- */
+/** Plugins doing what the source loader does in development: text imports */
 const plugins: Plugin[] = [
-  {
-    name: "terminal-solid",
-    setup(build) {
-      build.onLoad({ filter: /\.tsx$/ }, async (args) => {
-        if (!terminal(args.path)) return
-        return { contents: compile(await fs.readFile(args.path, "utf8"), args.path), loader: "js" }
-      })
-      build.onResolve({ filter: /^solid-js(\/store)?$/ }, (args) =>
-        build.resolve((runtime as Record<string, string>)[args.path]!, {
-          kind: args.kind,
-          resolveDir: args.resolveDir,
-        }),
-      )
-    },
-  },
   {
     name: "text",
     setup(build) {
@@ -306,7 +285,8 @@ async function dependencies(target: Target, lib: string) {
       "--no-audit",
       "--no-fund",
       "--no-package-lock",
-      // Skip peer dependencies: bun-ffi-structs lists typescript as a peer, which is never used at runtime
+      // Skip peer dependencies: tree-sitter-bash lists the native tree-sitter, which is never used (the engine loads
+      // its wasm grammar with web-tree-sitter)
       "--legacy-peer-deps",
       `--os=${target.os}`,
       `--cpu=${target.arch}`,

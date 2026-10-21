@@ -5,12 +5,15 @@ import PanelRight from "lucide-solid/icons/panel-right"
 import Plus from "lucide-solid/icons/plus"
 import Settings from "lucide-solid/icons/settings"
 import SquareTerminal from "lucide-solid/icons/square-terminal"
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import TextSearch from "lucide-solid/icons/text-search"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
+import type { SessionSearchResult } from "@merakcode/sdk/client"
 import { t } from "../../i18n"
 import { baseName, decodeDir, sessionPath } from "../../lib/route"
-import { sessionsOf, state } from "../../state/store"
+import { call, client } from "../../state/client"
+import { sessionsOf, state, type Folder } from "../../state/store"
 import { setUi, togglePanel, ui } from "../../state/ui"
 import { Dialog } from "../../ui/dialog"
 import { openReview } from "../review/state"
@@ -25,13 +28,49 @@ type Item = {
   run: () => void
 }
 
-/** Command palette (Ctrl/⌘+K): search conversations and commands, arrow keys to select, Enter to run */
+type Found = SessionSearchResult & { folder: Folder }
+
+/** Root conversations of the open projects whose text contains term, looked up on the engine */
+async function searchContent(term: string) {
+  const lists = await Promise.all(
+    state.folders.map(async (folder) => {
+      const project = folder.project
+      if (!project) return []
+      const results = await call(
+        client(folder.directory).session.search({
+          search: term,
+          roots: true,
+          limit: 10,
+          ...(project.id === "global" ? { directory: folder.directory } : {}),
+        }),
+      ).catch(() => [])
+      return results.filter((item) => item.match).map((item) => ({ ...item, folder }))
+    }),
+  )
+  return lists.flat()
+}
+
+/** Command palette (Ctrl/⌘+K): search conversations (titles and content) and commands, arrow keys to select, Enter to run */
 export function Palette() {
   const navigate = useNavigate()
   const location = useLocation()
   const [query, setQuery] = createSignal("")
   const [active, setActive] = createSignal(0)
+  const [found, setFound] = createSignal<Found[]>([])
   const directory = () => decodeDir(location.pathname.split("/")[1] ?? "") || state.folders[0]?.directory
+
+  // Content is searched a moment after typing stops; an answer to an older query is dropped
+  createEffect(() => {
+    const term = query().trim()
+    setFound([])
+    if (!term) return
+    let stale = false
+    const timer = setTimeout(() => void searchContent(term).then((items) => stale || setFound(items)), 200)
+    onCleanup(() => {
+      stale = true
+      clearTimeout(timer)
+    })
+  })
 
   const items = createMemo<Item[]>(() => {
     const commands: Item[] = [
@@ -87,7 +126,19 @@ export function Palette() {
     const words = query().toLowerCase().split(/\s+/).filter(Boolean)
     const match = (item: Item) =>
       words.every((word) => `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(word))
-    return [...commands.filter(match), ...conversations.filter(match)]
+    const titled = conversations.filter(match)
+    const shown = new Set(titled.map((item) => item.id))
+    const content: Item[] = found()
+      .filter((item) => !shown.has(item.session.id))
+      .map((item) => ({
+        id: `content-${item.session.id}`,
+        label: item.session.title || t("sidebar.untitled"),
+        detail: item.match!.text,
+        icon: TextSearch,
+        group: t("palette.content"),
+        run: () => navigate(sessionPath(item.folder.directory, item.session.id)),
+      }))
+    return [...commands.filter(match), ...titled, ...content]
   })
 
   const close = () => {
@@ -157,7 +208,7 @@ export function Palette() {
                   <Dynamic component={item.icon} class="icon icon-sm muted" />
                   <span class="ellipsis">{item.label}</span>
                   <Show when={item.detail}>
-                    <span class="desc">{item.detail}</span>
+                    <span class="desc ellipsis">{item.detail}</span>
                   </Show>
                 </div>
               </>

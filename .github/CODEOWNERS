@@ -1,0 +1,20 @@
+# Product code reaches the engine only through the SDK (see "Boundary rules" in CONTRIBUTING.md). These files define
+# and enforce that boundary, so changing them needs the code owner's review.
+
+# The rules and the checks that run them
+/script/check-deps.ts @TongTong313
+/script/check-deps.test.ts @TongTong313
+/package.json @TongTong313
+/.github/workflows/ @TongTong313
+/.github/CODEOWNERS @TongTong313
+
+# The engine's public entry and the only CLI files that load it
+/packages/engine/package.json @TongTong313
+/packages/engine/src/host/ @TongTong313
+/apps/cli/src/cli/cmd/serve.ts @TongTong313
+/apps/cli/src/cli/cmd/generate.ts @TongTong313
+/apps/cli/src/cli/cmd/debug/host.ts @TongTong313
+
+# What clients may read of the engine's files before it starts
+/packages/util/src/config-peek.ts @TongTong313
+/packages/util/src/paths.ts @TongTong313

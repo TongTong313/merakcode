@@ -713,23 +713,39 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   height: 34px;
   padding: 0 10px;
+  border: 0;
   background: var(--surface-muted);
+  color: inherit;
   font-size: var(--text-sm);
+  text-align: left;
   min-width: 0;
+}
+.tool-card-head .chevron {
+  color: var(--text-subtle);
+  transition: transform 0.15s;
+}
+.tool-card-head[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+.tool-card-head:not([aria-expanded]) .chevron {
+  visibility: hidden;
 }
 .tool-card-head .name {
   font-weight: 600;
   min-width: 0;
 }
+.tool-card-head .badge,
+.tool-card-head .subtle {
+  flex: none;
+}
 .tool-card .code-block {
   border: 0;
+  border-top: 1px solid var(--border);
   border-radius: 0;
   max-height: 320px;
-}
-.tool-card .more {
-  margin: 4px 6px 6px;
 }
 .tool-output {
   max-height: 320px;
@@ -1113,6 +1129,33 @@
 .rule-editor .end {
   justify-content: flex-end;
 }
+.relay-kind {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.relay-kind .desc,
+.relay-model .desc {
+  display: block;
+}
+.relay-models {
+  display: grid;
+  gap: 8px;
+}
+.relay-model {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 6.5rem 6.5rem;
+  gap: 8px;
+  align-items: center;
+}
+.relay-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
 .rule-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1203,6 +1246,7 @@
 }
 .palette-list .menu-item .desc {
   margin-left: auto;
+  max-width: 60%;
 }
 
 /* Terminal */

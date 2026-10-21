@@ -2,6 +2,7 @@ import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { Config } from "@merakcode/engine/config/config"
+import { Global } from "@merakcode/engine/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 
@@ -59,6 +60,20 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     extra: extra as T,
   }
   return result
+}
+
+/**
+ * Points the global config root (Global.Path.config) at dir until disposed, so the global config and skills a test
+ * writes do not leak into the other tests of the process
+ */
+export function globalConfig(dir: string) {
+  const previous = Global.Path.config
+  const point = (to: string) => {
+    Global.Path.config = to
+    Config.global.reset()
+  }
+  point(dir)
+  return { [Symbol.dispose]: () => point(previous) }
 }
 
 /**

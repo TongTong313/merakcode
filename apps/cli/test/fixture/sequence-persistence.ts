@@ -1,3 +1,5 @@
+import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { isDeepStrictEqual } from "node:util"
 import { z } from "zod"
 
@@ -5,7 +7,23 @@ const record = z.record(z.string(), z.unknown())
 const entity = record.and(z.object({ id: z.string() }))
 const observed = z.array(z.object({ info: entity, parts: z.array(entity) }))
 
-/** Replay the documented JSONL contract without consulting the live API cache. */
+/**
+ * A session's stored messages and parts, read straight from the kit's database (`data/merakcode.db` under the
+ * MerakCode root) as message and part records.
+ */
+export function stored(root: string, sessionID: string): Record<string, any>[] {
+  using db = new DatabaseSync(join(root, "data", "merakcode.db"), { timeout: 10_000 })
+  const rows = (table: string) =>
+    (db.prepare(`SELECT data FROM ${table} WHERE session_id = ? ORDER BY id`).all(sessionID) as { data: string }[]).map(
+      (row) => JSON.parse(row.data),
+    )
+  return [
+    ...rows("message").map((info) => ({ type: "message", info })),
+    ...rows("part").map((part) => ({ type: "part", part })),
+  ]
+}
+
+/** Apply stored records (plus any test edits) without consulting the live API cache. */
 export function assertPersisted(current: unknown, lines: unknown[]) {
   const messages = new Map<string, Record<string, unknown>>()
   const parts = new Map<string, Record<string, unknown>>()
@@ -25,12 +43,6 @@ export function assertPersisted(current: unknown, lines: unknown[]) {
         messages.delete(String(line.messageID))
         for (const [id, part] of parts) if (part.messageID === line.messageID) parts.delete(id)
       }
-    }
-    if (line.type === "delta") {
-      const part = parts.get(String(line.partID))
-      if (!part || line.field !== "text" || typeof line.delta !== "string")
-        throw new Error("I1_ORACLE: invalid persisted text delta")
-      part.text = String(part.text ?? "") + line.delta
     }
   }
   for (const item of observed.parse(current)) {

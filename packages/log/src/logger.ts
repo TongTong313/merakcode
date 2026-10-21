@@ -65,8 +65,6 @@ export namespace Log {
     level?: Level
     /** Runtime component. Known components are grouped into user-facing product directories. */
     component?: string
-    /** Compatibility alias for component, used by existing worker initialization. */
-    name?: string
     version?: string
     trackRun?: boolean
     /** Size-based rotation. The file count includes the active file. */
@@ -90,7 +88,6 @@ export namespace Log {
 
   function role(options: Options) {
     if (options.component) return options.component
-    if (options.name) return options.name
     if (process.env.MERAKCODE_LOG_COMPONENT) return process.env.MERAKCODE_LOG_COMPONENT
     if (process.env.MERAKCODE_CLIENT === "desktop") return "backend"
     return "cli"
@@ -98,7 +95,6 @@ export namespace Log {
 
   function placement(value: string) {
     if (value === "cli") return { directory: ["cli"], name: "main", role: "main" }
-    if (value === "tui-worker") return { directory: ["cli"], name: "worker", role: "worker" }
     if (value === "desktop") return { directory: ["desktop"], name: "main", role: "main" }
     if (value === "backend") {
       return process.env.MERAKCODE_CLIENT === "desktop"

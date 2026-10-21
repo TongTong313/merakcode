@@ -64,6 +64,21 @@ describe("directory request header", () => {
   })
 })
 
+describe("GET /path", () => {
+  test("returns the engine's folders and the instance's directories, as its schema declares", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await Server.App().request("/path", {
+      headers: { "x-merakcode-directory": encodeURIComponent(tmp.path) },
+    })
+    const fields = ["config", "data", "directory", "home", "workspace", "worktree"]
+    expect(Object.keys((await response.json()) as object).sort()).toEqual(fields)
+    const doc = (await (await Server.App().request("/doc")).json()) as {
+      components: { schemas: Record<string, { properties: object }> }
+    }
+    expect(Object.keys(doc.components.schemas.Path!.properties).sort()).toEqual(fields)
+  })
+})
+
 describe("Session.metadata", () => {
   test("create stores it, get returns it and update replaces the whole field", async () => {
     await using tmp = await tmpdir({ git: true })

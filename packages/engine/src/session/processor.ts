@@ -248,7 +248,7 @@ export namespace SessionProcessor {
     const publishError = (error: ReturnType<typeof Message.fromError>) => {
       input.assistantInfo.error = error
       // Set idle before publishing the error so session.error arrives after state.busy is false; otherwise the WebView
-      // reducer's busy guard drops it (the TUI and web clients have no such guard, so the order does not matter there)
+      // reducer's busy guard drops it
       SessionStatus.set(input.sessionID, { type: "idle" })
       Bus.publish(Session.Event.Error, {
         sessionID: input.assistantInfo.sessionID,
@@ -569,7 +569,7 @@ export namespace SessionProcessor {
                     const patch = await Snapshot.patch(snapshot, input.sessionID)
                     if (patch.files.length) {
                       // finishSnapshot is already active: write the current workspace into it for SessionSummary and
-                      // the TUI session.diff
+                      // session.diff
                       if (finishSnapshot) await Snapshot.captureWorkspaceFiles(patch.files, input.sessionID)
                       await Session.updatePart({
                         id: Identifier.ascending("part"),

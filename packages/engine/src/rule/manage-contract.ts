@@ -88,7 +88,7 @@ export namespace RuleManageContract {
       /** Whether form mode is available (an `.mdc` whose frontmatter parses) */
       structured: z.boolean(),
       /**
-       * Whether the settings page may save it. Global instruction files (such as `~/.config/merakcode/AGENTS.md`)
+       * Whether the settings page may save it. Global instruction files (such as `~/.merakcode/AGENTS.md`)
        * affect all projects, so a project settings page only previews them.
        */
       editable: z.boolean(),

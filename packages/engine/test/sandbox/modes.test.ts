@@ -15,6 +15,7 @@ import { PermissionPolicy } from "@merakcode/engine/permission/policy"
 import { Bus } from "@merakcode/engine/bus/index"
 import type { Tool } from "@merakcode/engine/tool/tool"
 import type { Backend } from "@merakcode/sandbox"
+import { ErrorCode } from "@merakcode/util/error-code"
 import { tmpdir } from "../fixture/fixture"
 
 const previous = process.env.MERAKCODE_SANDBOX_MODE
@@ -118,11 +119,18 @@ test("preferred, sandbox not ready: a read-only command does not ask", async () 
   expect(requests).toHaveLength(0)
 })
 
-test("required, sandbox not ready: commands are refused with MRK-5007", async () => {
+test("required, sandbox not ready: commands are refused with MRK-5007, pointing to the desktop settings first", async () => {
   const { error, requests } = await run("required", missing, "git status", "ses_mode_required")
   expect(requests).toHaveLength(0)
   expect(Sandbox.SetupRequiredError.isInstance(error)).toBe(true)
-  expect((error as InstanceType<typeof Sandbox.SetupRequiredError>).toObject().code).toBe("MRK-5007")
+  const refused = error as InstanceType<typeof Sandbox.SetupRequiredError>
+  expect(refused.toObject().code).toBe("MRK-5007")
+  expect(refused.data.message).toContain("Settings → Permissions & security")
+  expect(refused.data.message).toContain("merak sandbox setup")
+  const hint = ErrorCode.CATALOG.SANDBOX_SETUP_REQUIRED.hint
+  expect(hint.zh).toContain("设置 → 权限与安全")
+  expect(hint.en).toContain("Settings → Permissions & security")
+  for (const text of [hint.zh, hint.en]) expect(text).toContain("merak sandbox setup")
 })
 
 test("off: commands run as usual without asking", async () => {

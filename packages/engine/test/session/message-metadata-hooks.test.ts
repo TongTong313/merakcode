@@ -9,6 +9,7 @@ import { Agent } from "@merakcode/engine/agent/agent"
 import { Identifier } from "@merakcode/util/id"
 import type { Provider } from "@merakcode/engine/provider/provider"
 import { tmpdir } from "../fixture/fixture"
+import { Auth } from "@merakcode/engine/auth/index"
 
 /**
  * Message.metadata write paths.
@@ -34,8 +35,7 @@ describe("chat.message hook writes UserMessage.metadata", () => {
     }) as typeof Plugin.trigger)
 
     await using tmp = await tmpdir({ git: true, config: { model: "openai/gpt-5.2" } })
-    const prev = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = "test-openai-key"
+    await Auth.set("openai", { type: "api", key: "test-openai-key" })
     try {
       await Instance.provide({
         directory: tmp.path,
@@ -57,15 +57,13 @@ describe("chat.message hook writes UserMessage.metadata", () => {
         },
       })
     } finally {
-      if (prev === undefined) delete process.env.OPENAI_API_KEY
-      else process.env.OPENAI_API_KEY = prev
+      await Auth.remove("openai")
     }
   })
 
   test("UserMessage.metadata is absent without plugins", async () => {
     await using tmp = await tmpdir({ git: true, config: { model: "openai/gpt-5.2" } })
-    const prev = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = "test-openai-key"
+    await Auth.set("openai", { type: "api", key: "test-openai-key" })
     try {
       await Instance.provide({
         directory: tmp.path,
@@ -82,8 +80,7 @@ describe("chat.message hook writes UserMessage.metadata", () => {
         },
       })
     } finally {
-      if (prev === undefined) delete process.env.OPENAI_API_KEY
-      else process.env.OPENAI_API_KEY = prev
+      await Auth.remove("openai")
     }
   })
 })

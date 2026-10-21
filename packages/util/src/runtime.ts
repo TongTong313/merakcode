@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url"
  * Runtime arguments to pass when spawning a child process with the current runtime.
  *
  * The child must inherit the parent's runtime arguments (such as the dev source loader `--import ...`), otherwise it
- * behaves differently. Relative module paths become absolute: the child's cwd is usually the session directory, and
- * the parent may already have been chdir'ed by the TUI.
+ * behaves differently. Relative module paths become absolute: the child's cwd is usually the session directory, not
+ * the parent's.
  */
 export namespace Runtime {
   type Current = Pick<NodeJS.Process, "execArgv" | "argv" | "cwd">

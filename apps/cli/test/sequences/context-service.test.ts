@@ -21,7 +21,7 @@ test("S07.03 P/M selected file renamed before submission reports missing content
     const submit = (text: string, file: typeof part) =>
       kit.api(`/session/${session.id}/message`, "POST", {
         agent: "build",
-        model: { providerID: "alibaba", modelID: "qwen-plus" },
+        model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
         parts: [{ type: "text", text }, file],
       })
     await submit("S07_MISSING 读取已选文件", part)

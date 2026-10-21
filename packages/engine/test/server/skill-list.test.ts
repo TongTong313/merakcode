@@ -3,7 +3,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Server } from "@merakcode/engine/server/server"
 import { Log } from "@merakcode/log/logger"
-import { tmpdir } from "../fixture/fixture"
+import { globalConfig, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
@@ -32,8 +32,9 @@ describe("skill routes", () => {
     await using project = await tmpdir({ git: true })
 
     process.env.MERAKCODE_TEST_HOME = home.path
+    using _ = globalConfig(path.join(home.path, ".merakcode"))
 
-    const globalDir = path.join(home.path, ".config", "merakcode", "skills", "user-mgmt")
+    const globalDir = path.join(home.path, ".merakcode", "skills", "user-mgmt")
     const projectDir = path.join(project.path, ".merakcode", "skills", "user-mgmt")
     await fs.mkdir(globalDir, { recursive: true })
     await fs.mkdir(projectDir, { recursive: true })
@@ -65,8 +66,9 @@ describe("skill routes", () => {
     })
 
     process.env.MERAKCODE_TEST_HOME = home.path
+    using _ = globalConfig(path.join(home.path, ".merakcode"))
 
-    const globalDir = path.join(home.path, ".config", "merakcode", "skills", "tool-design")
+    const globalDir = path.join(home.path, ".merakcode", "skills", "tool-design")
     await fs.mkdir(globalDir, { recursive: true })
     await Filesystem.write(path.join(globalDir, "SKILL.md"), skillMd("Tool Design Agent"))
 
@@ -95,8 +97,9 @@ describe("skill routes", () => {
 
     process.env.MERAKCODE_TEST_HOME = home.path
     process.env.MERAKCODE_DISABLE_PROJECT_CONFIG = "true"
+    using _ = globalConfig(path.join(home.path, ".merakcode"))
 
-    const globalDir = path.join(home.path, ".config", "merakcode", "skills", "tool-design")
+    const globalDir = path.join(home.path, ".merakcode", "skills", "tool-design")
     await fs.mkdir(globalDir, { recursive: true })
     await Filesystem.write(path.join(globalDir, "SKILL.md"), skillMd("shared-alias"))
 

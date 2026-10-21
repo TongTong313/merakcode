@@ -3,7 +3,6 @@ import { pathToFileURL } from "node:url"
 import path from "path"
 import { Identifier } from "@merakcode/util/id"
 import { Message } from "@merakcode/engine/session/message"
-import { Transcript } from "@merakcode/engine/session/transcript"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir, runtime } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -12,11 +11,10 @@ import { Process } from "@merakcode/util/process"
 Log.init({ print: false })
 
 /**
- * Several processes (product instances on one machine) append to the same transcript at once, including MB-sized
- * lines; every line must be complete and never interleaved. The child process inherits XDG_DATA_HOME, so both write
- * the same data directory.
+ * Several processes (product instances on one machine) write to the same session at once, including MB-sized parts;
+ * every part must be stored complete. The child processes inherit MERAKCODE_HOME, so they share this database.
  */
-test("two processes appending to one session keep every line complete and replay shows all content", async () => {
+test("two processes writing to one session store every part complete", async () => {
   await using tmp = await tmpdir()
   const sessionID = Identifier.descending("session")
   const messageID = Identifier.ascending("message")
@@ -48,17 +46,12 @@ for (let index = 0; index < Number(count); index++) {
   const errors = await Promise.all(children.map((child) => new Response(child.stderr).text()))
   expect(codes, errors.join("\n")).toEqual([0, 0])
 
-  const raw = (await Filesystem.readText(Transcript.file(sessionID))).split("\n").filter(Boolean)
-  expect(raw).toHaveLength(count * 2)
-  const parsed = raw.map((line) => JSON.parse(line) as { part: Message.TextPart })
-  for (const tag of ["a", "b"]) {
-    const mine = parsed.filter((line) => line.part.id.startsWith("prt_" + tag))
-    expect(mine).toHaveLength(count)
-    // Within one process, line order matches call order.
-    expect(mine.map((line) => line.part.id)).toEqual(mine.map((line) => line.part.id).toSorted())
-    for (const line of mine.filter((_, index) => index % 20 === 0)) expect(line.part.text).toHaveLength(big)
-  }
-
-  const parts = await Message.parts({ sessionID, messageID })
+  const parts = (await Message.parts({ sessionID, messageID })) as Message.TextPart[]
   expect(parts).toHaveLength(count * 2)
+  for (const tag of ["a", "b"]) {
+    const mine = parts.filter((part) => part.id.startsWith("prt_" + tag))
+    expect(mine).toHaveLength(count)
+    for (const [index, part] of mine.entries())
+      expect(part.text).toBe(index % 20 === 0 ? tag.repeat(big) : tag + "-" + index)
+  }
 }, 120_000)

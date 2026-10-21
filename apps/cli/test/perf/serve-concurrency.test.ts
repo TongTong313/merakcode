@@ -80,27 +80,14 @@ test("10 concurrent conversations in one engine process: no mutual slowdown, bou
   await using tmp = await tmpdir()
   const root = tmp.path
   const project = join(root, "project")
-  for (const dir of [
-    "project",
-    "home",
-    "config/merakcode/node_modules",
-    "cache/merakcode",
-    "data",
-    "state",
-    "logs",
-    "tmp",
-  ])
+  for (const dir of ["project", "home", "node_modules", "cache", "data", "logs", "tmp"])
     await mkdir(join(root, dir), { recursive: true })
   const git = Process.spawn(["git", "init", "--quiet", project], { stdout: "ignore", stderr: "pipe" })
   if (await git.exited) throw new Error("git init failed")
-  await Filesystem.write(join(root, "cache/merakcode/version"), "21")
+  await Filesystem.write(join(root, "cache/version"), "21")
   // The dependency check must resolve zod, which cannot be installed offline, so link it in (junctions need no admin
   // rights on Windows)
-  await symlink(
-    dirname(fileURLToPath(import.meta.resolve("zod"))),
-    join(root, "config/merakcode/node_modules/zod"),
-    "junction",
-  )
+  await symlink(dirname(fileURLToPath(import.meta.resolve("zod"))), join(root, "node_modules/zod"), "junction")
 
   await using model = await Http.serve({
     hostname: "127.0.0.1",
@@ -113,10 +100,10 @@ test("10 concurrent conversations in one engine process: no mutual slowdown, bou
   await Filesystem.write(
     join(project, "merakcode.json"),
     JSON.stringify({
-      model: "alibaba/qwen-plus",
-      small_model: "alibaba/qwen-plus",
-      enabled_providers: ["alibaba"],
-      provider: { alibaba: { options: { apiKey: "perf", baseURL: `${model.url.origin}/v1` } } },
+      model: "alibaba-cn/qwen-plus",
+      small_model: "alibaba-cn/qwen-plus",
+      enabled_providers: ["alibaba-cn"],
+      provider: { "alibaba-cn": { options: { apiKey: "perf", baseURL: `${model.url.origin}/v1` } } },
       memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
       lsp: false,
     }),
@@ -134,14 +121,9 @@ test("10 concurrent conversations in one engine process: no mutual slowdown, bou
         process.platform === "win32" && process.env[name] ? [[name, process.env[name]]] : [],
       ),
     ),
-    XDG_DATA_HOME: join(root, "data"),
-    XDG_CONFIG_HOME: join(root, "config"),
-    XDG_CACHE_HOME: join(root, "cache"),
-    XDG_STATE_HOME: join(root, "state"),
+    MERAKCODE_HOME: root,
     MERAKCODE_TEST_HOME: join(root, "home"),
-    MERAKCODE_LOG_ROOT: join(root, "logs"),
     MERAKCODE_I1_NETWORK_LOG: join(root, "blocked-network.txt"),
-    MERAKCODE_DISABLE_AUTOUPDATE: "1",
     MERAKCODE_DISABLE_MODELS_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
@@ -196,9 +178,9 @@ test("10 concurrent conversations in one engine process: no mutual slowdown, bou
     await backend.exited
     await Promise.all(drains)
   }
+  // The global config directory is the root itself; the quoted path matches it and not the directories below it
   const installs = (await logLines(join(root, "logs"))).filter(
-    (line) =>
-      line.includes("dependency.install.") && line.includes(join("config", "merakcode").replaceAll("\\", "\\\\")),
+    (line) => line.includes("dependency.install.") && line.includes(JSON.stringify(root)),
   )
   expect(installs).toHaveLength(1)
 }, 180_000)

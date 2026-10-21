@@ -4,16 +4,19 @@ import Check from "lucide-solid/icons/check"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import CircleCheck from "lucide-solid/icons/circle-check"
+import LoaderCircle from "lucide-solid/icons/loader-circle"
 import MessageSquare from "lucide-solid/icons/message-square"
 import MessageSquarePlus from "lucide-solid/icons/message-square-plus"
 import SquarePen from "lucide-solid/icons/square-pen"
 import Trash2 from "lucide-solid/icons/trash"
 import X from "lucide-solid/icons/x"
-import { createMemo, createResource, createSignal, For, Index, Show } from "solid-js"
+import { createEffect, createMemo, For, Index, Match, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
-import { highlightLines, languageOf } from "../../lib/highlight"
+import { languageOf } from "../../lib/highlight"
 import { openInCode } from "../../state/ui"
-import { addComment, commentsOf, isSeen, removeComment, review, setReview, toggleSeen, type Comment } from "./state"
+import { budget } from "./cache"
+import type { ReviewData } from "./review"
+import { commentsOf, isSeen, removeComment, review, setReview, toggleSeen, type Comment } from "./state"
 
 type Tokens = { before?: ThemedToken[][]; after?: ThemedToken[][] }
 
@@ -34,10 +37,13 @@ const sign = (kind: ReviewLine["kind"]) => (kind === "add" ? "+" : kind === "del
 const tokensOf = (tokens: Tokens, line: ReviewLine) =>
   line.kind === "add" ? tokens.after?.[line.new! - 1] : tokens.before?.[(line.old ?? 1) - 1]
 
-function Unified(props: { hunk: ReviewHunk; tokens: Tokens }) {
+/** The hunk's lines, or only the first limit of them */
+const linesOf = (hunk: ReviewHunk, limit?: number) => (limit === undefined ? hunk.lines : hunk.lines.slice(0, limit))
+
+function Unified(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
   return (
     <div class="lines unified">
-      <For each={props.hunk.lines}>
+      <For each={linesOf(props.hunk, props.limit)}>
         {(line) => (
           <div class={`line ${line.kind}`}>
             <span class="n">{line.old ?? ""}</span>
@@ -71,8 +77,8 @@ function rows(lines: ReviewLine[]) {
   return result
 }
 
-function Split(props: { hunk: ReviewHunk; tokens: Tokens }) {
-  const list = createMemo(() => rows(props.hunk.lines))
+function Split(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
+  const list = createMemo(() => rows(linesOf(props.hunk, props.limit)))
   const cell = (line: ReviewLine | undefined, side: "left" | "right") => (
     <Show when={line} fallback={<div class="line empty" />}>
       {(value) => (
@@ -101,35 +107,6 @@ function Split(props: { hunk: ReviewHunk; tokens: Tokens }) {
           </div>
         )}
       </For>
-    </div>
-  )
-}
-
-function CommentBox(props: { onAdd: (text: string) => void; onCancel: () => void }) {
-  const [text, setText] = createSignal("")
-  return (
-    <div class="comment-box">
-      <textarea
-        class="input"
-        aria-label={t("review.commentLabel")}
-        placeholder={t("review.commentPlaceholder")}
-        value={text()}
-        onInput={(event) => setText(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && text().trim()) props.onAdd(text().trim())
-          if (event.key === "Escape") props.onCancel()
-        }}
-        autofocus
-      />
-      <div class="row">
-        <span class="spacer" />
-        <button class="button ghost sm" onClick={props.onCancel}>
-          {t("common.cancel")}
-        </button>
-        <button class="button primary sm" disabled={!text().trim()} onClick={() => props.onAdd(text().trim())}>
-          {t("common.add")}
-        </button>
-      </div>
     </div>
   )
 }
@@ -165,6 +142,8 @@ function Hunk(props: {
   rejectLabel: string
   style: "unified" | "split"
   tokens: Tokens
+  /** Lines to render; the rest wait for "show the rest" */
+  limit?: number
   active: boolean
   onDecide: Decide
 }) {
@@ -201,6 +180,7 @@ function Hunk(props: {
           <button
             class="button ghost sm"
             aria-label={t("review.comment")}
+            aria-pressed={review.commenting === props.hunk.id}
             onClick={() => setReview("commenting", props.hunk.id)}
           >
             <MessageSquarePlus class="icon icon-xs" />
@@ -227,24 +207,26 @@ function Hunk(props: {
         </Show>
       </div>
       <Show when={props.hunk.lines.length}>
-        <Show when={props.style === "split"} fallback={<Unified hunk={props.hunk} tokens={props.tokens} />}>
-          <Split hunk={props.hunk} tokens={props.tokens} />
+        <Show
+          when={props.style === "split"}
+          fallback={<Unified hunk={props.hunk} tokens={props.tokens} limit={props.limit} />}
+        >
+          <Split hunk={props.hunk} tokens={props.tokens} limit={props.limit} />
         </Show>
       </Show>
       <For each={comments()}>{(comment) => <CommentView comment={comment} sessionID={props.sessionID!} />}</For>
-      <Show when={props.sessionID && review.commenting === props.hunk.id}>
-        <CommentBox
-          onAdd={(text) => addComment(props.sessionID!, props.file, props.hunk, text)}
-          onCancel={() => setReview("commenting", undefined)}
-        />
-      </Show>
     </div>
   )
 }
 
-/** Changes to one file: a header (accept / reject the whole file) followed by its hunks */
+/**
+ * Changes to one file: a header (accept / reject the whole file) followed by its hunks. The hunks are fetched when
+ * the file is opened (often already prefetched), highlighted in a worker, and only the first lines render until the
+ * rest is asked for.
+ */
 export function FileDiff(props: {
   file: ReviewFile
+  data: ReviewData
   sessionID?: string
   actions: { accept: boolean; reject: boolean }
   scope: string
@@ -252,22 +234,23 @@ export function FileDiff(props: {
   active?: string
   onDecide: Decide
 }) {
-  // Files marked as viewed start collapsed; once toggled by hand, the manual state wins
-  const [open, setOpen] = createSignal<boolean>()
-  const collapsed = () => !(open() ?? !isSeen(props.file))
-  const setCollapsed = (value: boolean) => setOpen(!value)
+  const collapsed = () => !props.data.open(props.file)
+  const setCollapsed = (value: boolean) => props.data.setOpen(props.file, !value)
   const lang = () => languageOf(props.file.file)
-  const [tokens] = createResource(
-    () => ({ before: props.file.before, after: props.file.after, lang: lang() }),
-    async (input): Promise<Tokens> => {
-      if (!input.lang || (input.before?.length ?? 0) + (input.after?.length ?? 0) > 400_000) return {}
-      const [before, after] = await Promise.all([
-        input.before !== undefined ? highlightLines(input.before, input.lang) : undefined,
-        input.after !== undefined ? highlightLines(input.after, input.lang) : undefined,
-      ])
-      return { before, after }
-    },
-  )
+  const detail = () => props.data.detail(props.file)
+  createEffect(() => {
+    if (!collapsed()) void props.data.loadDetail(props.file)
+  })
+  createEffect(() => {
+    if (!collapsed() && detail().detail) void props.data.loadTokens(props.file, lang())
+  })
+  const hunks = () => detail().detail?.hunks ?? []
+  const shown = createMemo(() => (props.data.all(props.file) ? undefined : budget(hunks())))
+  const rest = () => {
+    const counts = shown()
+    if (!counts) return 0
+    return hunks().reduce((sum, hunk, index) => sum + hunk.lines.length - counts[index]!, 0)
+  }
   const rejectLabel = () => (props.scope === "staged" ? t("review.unstage") : t("review.reject"))
   const whole = (decision: "accept" | "reject") => void props.onDecide(decision, [{ file: props.file.file }])
   return (
@@ -306,7 +289,7 @@ export function FileDiff(props: {
             checked={isSeen(props.file)}
             onChange={() => {
               toggleSeen(props.file)
-              setOpen(undefined)
+              props.data.setOpen(props.file, undefined)
             }}
           />
           {t("review.seen")}
@@ -326,22 +309,39 @@ export function FileDiff(props: {
         <Show when={props.file.binary || props.file.truncated}>
           <div class="diff-note subtle">{props.file.binary ? t("review.binary") : t("review.truncated")}</div>
         </Show>
-        <For each={props.file.hunks}>
+        <Switch>
+          <Match when={detail().error}>{(error) => <div class="diff-note subtle">{error().message}</div>}</Match>
+          <Match when={!detail().detail}>
+            <div class="diff-note subtle row" role="status">
+              <LoaderCircle class="icon icon-sm spinner" />
+              {t("review.loadingFile")}
+            </div>
+          </Match>
+        </Switch>
+        <For each={hunks()}>
           {(hunk, index) => (
-            <Hunk
-              file={props.file}
-              hunk={hunk}
-              n={index() + 1}
-              sessionID={props.sessionID}
-              actions={props.actions}
-              rejectLabel={rejectLabel()}
-              style={props.style}
-              tokens={tokens() ?? {}}
-              active={props.active === hunk.id}
-              onDecide={props.onDecide}
-            />
+            <Show when={!hunk.lines.length || (shown()?.[index()] ?? hunk.lines.length) > 0}>
+              <Hunk
+                file={props.file}
+                hunk={hunk}
+                n={index() + 1}
+                sessionID={props.sessionID}
+                actions={props.actions}
+                rejectLabel={rejectLabel()}
+                style={props.style}
+                tokens={detail().tokens ?? {}}
+                limit={shown()?.[index()]}
+                active={props.active === hunk.id}
+                onDecide={props.onDecide}
+              />
+            </Show>
           )}
         </For>
+        <Show when={rest() > 0}>
+          <button class="button ghost sm show-rest" onClick={() => props.data.showAll(props.file)}>
+            {t("review.showRest", { count: rest() })}
+          </button>
+        </Show>
       </Show>
     </section>
   )
