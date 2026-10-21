@@ -105,6 +105,8 @@ export function ScopeBar(props: { folder: string; directory: string; data: Revie
             options={options()}
             value={review.scope === "branch" ? base() : undefined}
             placeholder={t("review.scope.branch")}
+            // Opening before the first list arrives shows an empty menu, and filling it while open closes the menu
+            disabled={branches.state !== "ready" && branches.state !== "refreshing"}
             onPrepare={() => void refetch()}
             onOpenChange={(value) => {
               setOpen(value)

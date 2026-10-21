@@ -9,6 +9,7 @@ All notable changes to MerakCode are listed here. The format follows [Keep a Cha
 - Review lists files relative to the project, including when Windows gives the tool the short `RUNNER~1` directory name.
 - Choosing a custom group in the add-provider dialog scrolls the extra headers field into view on the default window size.
 - A turn's file changes can be reviewed while that turn is still marked running.
+- The review branch menu stays disabled until the branch list has loaded, so it does not open empty.
 
 ## [0.1.0] - 2026-10-22
 
