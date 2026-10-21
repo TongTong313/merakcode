@@ -2,7 +2,7 @@
  * Past-chat references: turns another session into context for the current turn.
  *
  * Works exactly like @file: the client only sends a lightweight pointer file part (`session://<sessionID>`) and the
- * engine expands it into a transcript in createUserMessage. So it works for every client (desktop, TUI, direct SDK
+ * engine expands it into a transcript in createUserMessage. So it works for every client (desktop, CLI, direct SDK
  * callers) without client-specific logic.
  */
 import { formatMessage, type MessageWithParts } from "@merakcode/sdk/transcript"

@@ -42,7 +42,6 @@ export namespace Flag {
   /** Overrides sandbox.mode for this run: preferred, required or off */
   export declare const MERAKCODE_SANDBOX_MODE: string | undefined
   export declare const MERAKCODE_CONFIG_CONTENT: string | undefined
-  export const MERAKCODE_DISABLE_AUTOUPDATE = truthy("DISABLE_AUTOUPDATE")
   export const MERAKCODE_DISABLE_PRUNE = truthy("DISABLE_PRUNE")
   export declare const MERAKCODE_PERMISSION: string | undefined
   /**

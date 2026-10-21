@@ -6,6 +6,7 @@ import { reject, validator } from "../validator"
 import z from "zod"
 import { Session } from "../../session"
 import { Message } from "../../session/message"
+import { SessionStore } from "../../session/store"
 import { Transcript } from "../../session/transcript"
 import { SessionRunner } from "../../session/runner"
 import { SessionDispatch } from "../../session/dispatch"
@@ -25,7 +26,6 @@ import { lazy } from "../../util/lazy"
 import { Bus } from "../../bus"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { NamedError } from "@merakcode/util/error"
-import { Storage } from "../../storage/storage"
 import { Instance } from "../../project/instance"
 import { Identifier } from "@merakcode/util/id"
 
@@ -81,6 +81,41 @@ export const SessionRoutes = lazy(() =>
           if (query.limit !== undefined && sessions.length >= query.limit) break
         }
         return c.json(sessions)
+      },
+    )
+    .get(
+      "/search",
+      describeRoute({
+        summary: "Search sessions",
+        description:
+          "Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.",
+        operationId: "session.search",
+        responses: {
+          200: {
+            description: "Matching sessions",
+            content: {
+              "application/json": {
+                schema: resolver(Session.SearchResult.array()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          search: z.string().min(1).meta({ description: "Text to look for (case-insensitive)" }),
+          directory: z.string().optional().meta({ description: "Filter sessions by project directory" }),
+          roots: z.coerce.boolean().optional().meta({ description: "Only return root sessions (no parentID)" }),
+          limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        // As in the session list, a workspace's sessions are not filtered by directory
+        const directory = Instance.project.kind === "workspace" ? undefined : query.directory
+        return c.json(Session.search({ ...query, directory }))
       },
     )
     .get(
@@ -689,8 +724,8 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const params = c.req.valid("param")
-        // Check the message exists first: Storage.remove succeeds silently for missing keys, so a wrong ID would
-        // return true.
+        // Check the message exists first: deleting a missing message succeeds silently, so a wrong ID would return
+        // true.
         await Message.get({ sessionID: params.sessionID, messageID: params.messageID })
         await Session.removeMessage({ sessionID: params.sessionID, messageID: params.messageID })
         return c.json(true)
@@ -816,8 +851,8 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         // Check the session exists first so NotFound goes through Hono onError as a 404 JSON. A throw inside the
-        // stream callback comes after the 200 has started, onError cannot catch it, and the worker's unhandled
-        // rejection would be printed to the terminal the TUI is using.
+        // stream callback comes after the 200 has started, onError cannot catch it, and it would end up as an unhandled
+        // rejection.
         await Session.get(sessionID)
 
         c.status(200)
@@ -1174,7 +1209,7 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
   // Write the whole transcript before the session index, so a failure halfway never leaves a visible but incomplete
   // session.
   await Transcript.create(newSessionID, lines)
-  await Storage.write(["session", Instance.project.id, info.id], info)
+  SessionStore.put(info)
 
   Bus.publish(Session.Event.Updated, { sessionID: info.id, info })
 

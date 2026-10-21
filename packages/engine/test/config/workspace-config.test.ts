@@ -33,7 +33,7 @@ describe("Config workspace layer", () => {
     await Filesystem.write(
       path.join(wsDir, "merakcode.json"),
       JSON.stringify({
-        theme: "from-workspace",
+        default_agent: "from-workspace",
         model: "ws/model",
       }),
     )
@@ -49,7 +49,7 @@ describe("Config workspace layer", () => {
       workspace: { folders },
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("from-workspace")
+        expect(config.default_agent).toBe("from-workspace")
         expect(config.model).toBe("primary/model")
       },
     })
@@ -65,15 +65,15 @@ describe("Config workspace layer", () => {
       },
       fn: async () => {
         const id = Instance.project.id
-        await Config.updateProjectMerakCode({ theme: "ws-write" })
+        await Config.updateProjectMerakCode({ default_agent: "ws-write" })
         const wsFile = path.join(Global.Path.data, "workspace", id, "merakcode.json")
         expect(await Filesystem.isFile(wsFile)).toBe(true)
         const body = await Filesystem.readJson(wsFile)
-        expect(body.theme).toBe("ws-write")
+        expect(body.default_agent).toBe("ws-write")
         expect(await Filesystem.isFile(path.join(a.path, "merakcode.json"))).toBe(false)
         expect(await Filesystem.isFile(path.join(a.path, ".merakcode", "merakcode.json"))).toBe(false)
         const config = await Config.get()
-        expect(config.theme).toBe("ws-write")
+        expect(config.default_agent).toBe("ws-write")
       },
     })
   })
@@ -83,11 +83,11 @@ describe("Config workspace layer", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        await Config.updateProjectMerakCode({ theme: "solo-write" })
+        await Config.updateProjectMerakCode({ default_agent: "solo-write" })
         const projectFile = path.join(tmp.path, ".merakcode", "merakcode.json")
         expect(await Filesystem.isFile(projectFile)).toBe(true)
         const body = await Filesystem.readJson(projectFile)
-        expect(body.theme).toBe("solo-write")
+        expect(body.default_agent).toBe("solo-write")
       },
     })
   })

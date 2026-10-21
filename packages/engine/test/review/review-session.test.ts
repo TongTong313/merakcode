@@ -14,6 +14,7 @@ import { tmpdir } from "../fixture/fixture"
 // are not listed.
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
+const hunksOf = async (input: Review.Input, file: string) => (await Review.file({ ...input, file })).hunks
 
 /** Edits a file the way agent edit tools do, backing it up first. */
 async function edit(sessionID: string, file: string, content: string) {
@@ -54,14 +55,14 @@ test("session: lists files changed by the agent and subsessions; accepted hunks 
 
       const input = { scope: "session" as const, sessionID: session.id }
       const review = await Review.get(input)
-      expect(review.files.map((file) => [file.file, file.status, file.hunks.length])).toEqual([
+      expect(review.files.map((file) => [file.file, file.status, file.hunks])).toEqual([
         ["a.txt", "modified", 2],
         ["src/b.txt", "added", 1],
       ])
-      const [first, second] = review.files[0]!.hunks
+      const [first, second] = await hunksOf(input, "a.txt")
 
       await Review.decide({ ...input, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
-      expect((await Review.get(input)).files[0]!.hunks.map((hunk) => hunk.id)).toEqual([second!.id])
+      expect((await hunksOf(input, "a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
       expect(await Filesystem.readText(a)).toBe(lines(30).replace("line 2\n", "two\n").replace("line 20\n", "twenty\n"))
 
       await Review.decide({ ...input, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
@@ -72,9 +73,8 @@ test("session: lists files changed by the agent and subsessions; accepted hunks 
 
       // When the agent edits an accepted file again, only the new change is listed.
       await edit(session.id, a, lines(30).replace("line 2\n", "two\n").replace("line 29\n", "twenty-nine\n"))
-      const next = await Review.get(input)
       expect(
-        next.files[0]!.hunks.flatMap((hunk) =>
+        (await hunksOf(input, "a.txt")).flatMap((hunk) =>
           hunk.lines.filter((line) => line.kind === "add").map((line) => line.text),
         ),
       ).toEqual(["twenty-nine"])

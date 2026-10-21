@@ -13,7 +13,7 @@ export function ruleFlags() {
 
 /**
  * Rule scanning reads the global config (`rules.user`) and $HOME. Without isolation the machine's real
- * ~/.config/merakcode/merakcode.json leaks into assertions and results differ between machines.
+ * ~/.merakcode/merakcode.json leaks into assertions and results differ between machines.
  * Project rule files must be .mdc files with alwaysApply frontmatter.
  */
 export async function isolate<T>(fn: (globalDir: string) => Promise<T>) {

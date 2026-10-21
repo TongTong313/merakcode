@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "vitest"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Server } from "@merakcode/engine/server/server"
 import { Session } from "@merakcode/engine/session/index"
+import { Database } from "@merakcode/engine/storage/db"
 import { Storage } from "@merakcode/engine/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
-import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
 
@@ -66,22 +66,27 @@ describe("global.session.search", () => {
     expect(ids).toContain(child.id)
   })
 
-  test("skips a corrupt session file without losing other results", async () => {
+  test("skips a damaged session record without losing other results", async () => {
     await using tmp = await tmpdir({ git: true })
 
     const session = await Instance.provide({
       directory: tmp.path,
       fn: () => Session.create({ title: "survives-corruption" }),
     })
-    const target = await Storage.targetPath(["session", session.projectID, "corrupt"])
-    await Filesystem.write(target, "{not-json")
+    Database.query("INSERT INTO session (id, project_id, title, updated, data) VALUES (?, ?, ?, ?, ?)").run(
+      "ses_damaged",
+      session.projectID,
+      "survives-damaged",
+      Date.now(),
+      "{not-json",
+    )
 
     const app = Server.App()
     const response = await app.request(`/global/session/search?search=${encodeURIComponent("survives")}`)
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as Array<{ id: string }>
-    expect(body.some((item) => item.id === session.id)).toBe(true)
+    expect(body.map((item) => item.id)).toEqual([session.id])
   })
 
   test("finds sessions even when project metadata is missing", async () => {

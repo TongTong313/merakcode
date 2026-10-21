@@ -4,10 +4,13 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The release workflow runs all of CI on the commit it releases
+  workflow_call:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # The event is part of the group so a release's CI run never cancels or queues behind the CI of a push to main
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -16,14 +19,15 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: 12.14.0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: 26.12.0
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
@@ -46,14 +50,15 @@ jobs:
           - apps/desktop/main
           - apps/desktop/renderer
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: 12.14.0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: 26.12.0
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # File search needs rg; without it on PATH every test process would download its own copy from GitHub
@@ -63,7 +68,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
-            macOS) brew install ripgrep ;;
+            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
             Windows) choco install ripgrep -y --no-progress ;;
           esac
       - run: pnpm test
@@ -76,14 +81,15 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: 12.14.0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: 26.12.0
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Set up the sandbox (Windows needs a one-time setup; the runner is already an administrator)
@@ -96,3 +102,77 @@ jobs:
       - name: Reset leaves nothing behind
         if: runner.os == 'Windows'
         run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts reset
+
+  build:
+    name: Build and smoke test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      # Building and running the package needs no dependency install scripts (they would download Electron)
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --dir apps/cli run build --single
+      - name: Smoke test
+        shell: bash
+        run: |
+          cd apps/cli/dist/merakcode-*/bin
+          if [ "$RUNNER_OS" = "Windows" ]; then bin=$(cygpath -w "$PWD/merak.cmd"); else bin="$PWD/merak"; fi
+          cd "$GITHUB_WORKSPACE"
+          MERAKCODE_SMOKE_BIN="$bin" node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
+
+  e2e-cli:
+    name: End-to-end (engine through the SDK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+      - run: pnpm test:e2e
+        working-directory: apps/cli
+
+  e2e-desktop:
+    name: End-to-end (desktop)
+    # Electron on Linux runners needs a virtual display and a way around Ubuntu 24.04's sandbox restriction
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: choco install ripgrep -y --no-progress
+      - run: pnpm --dir apps/desktop/renderer run build
+      - run: pnpm --dir apps/desktop/main run build
+      - run: pnpm test:e2e
+        working-directory: apps/desktop/main
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: desktop-e2e-results
+          path: apps/desktop/main/e2e/.results
+          include-hidden-files: true
+          retention-days: 7

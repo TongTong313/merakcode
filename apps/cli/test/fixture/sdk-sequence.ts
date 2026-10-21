@@ -9,7 +9,7 @@ import { createInterface } from "node:readline"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
 import { runtime, tmpdir } from "./fixture"
-import { assertPersisted } from "./sequence-persistence"
+import { assertPersisted, stored } from "./sequence-persistence"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Glob } from "@merakcode/util/glob"
 import { Process } from "@merakcode/util/process"
@@ -20,8 +20,8 @@ const cli = resolve(import.meta.dirname, "../..")
 /**
  * The real product command run from source: `[...product("serve", ...)]`.
  * Loads sdk-sequence-network.ts first, which blocks and records every non-local fetch in the process. The model
- * server is a local fake; other outbound traffic (auto-update, models.dev, LSP downloads, external skills) is turned
- * off by the MERAKCODE_DISABLE_* variables in sequence().
+ * server is a local fake; other outbound traffic (models.dev, LSP downloads, external skills) is turned off by the
+ * MERAKCODE_DISABLE_* variables in sequence().
  */
 export function product(...args: string[]): [string, ...string[]] {
   const [command, ...rest] = runtime
@@ -82,17 +82,6 @@ export function server(command: string[], options: { cwd: string; env: Record<st
   }
 }
 
-/**
- * Line-based commands from the controller (stdin). stdin is released when the loop ends: it would otherwise keep the
- * event loop alive and the process would never exit
- */
-export async function* controlLines() {
-  try {
-    yield* createInterface({ input: process.stdin })
-  } finally {
-    process.stdin.destroy()
-  }
-}
 const messages = z.array(
   z.object({
     role: z.string(),
@@ -174,7 +163,7 @@ export function response(text: string, args?: Record<string, unknown>) {
 }
 
 /** Strict synthetic model, real product server/tools/permissions/storage and stdio MCP.
- * Reuses d6a20546 breadth protocol and PTY ideas; never imports Core or drives the engine directly.
+ * Reuses the d6a20546 breadth protocol; never imports Core or drives the engine directly.
  */
 export interface ModelTurn {
   model: string
@@ -199,27 +188,13 @@ export async function sequence(
   const tmp = await tmpdir()
   const root = tmp.path
   const project = join(root, "project")
-  for (const dir of [
-    "project",
-    "home",
-    "config/merakcode/node_modules",
-    "cache/merakcode",
-    "data",
-    "state",
-    "logs",
-    "managed",
-    "tmp",
-  ])
+  for (const dir of ["project", "home", "node_modules", "cache", "data", "logs", "managed", "tmp"])
     await mkdir(join(root, dir), { recursive: true })
   const git = Process.spawn(["git", "init", "--quiet", project], { stdout: "ignore", stderr: "pipe" })
   if (await git.exited) throw new Error("I1 project git init failed")
-  await Filesystem.write(join(root, "cache/merakcode/version"), "21")
+  await Filesystem.write(join(root, "cache/version"), "21")
   // On Windows directory symlinks need admin rights and junctions do not; other platforms ignore this argument
-  await symlink(
-    dirname(fileURLToPath(import.meta.resolve("zod"))),
-    join(root, "config/merakcode/node_modules/zod"),
-    "junction",
-  )
+  await symlink(dirname(fileURLToPath(import.meta.resolve("zod"))), join(root, "node_modules/zod"), "junction")
   const marker = `MARKER_${crypto.randomUUID()}`
   await Filesystem.write(join(project, "input.txt"), marker)
   await Filesystem.write(join(project, "keep.txt"), "KEEP_UNCHANGED")
@@ -331,10 +306,10 @@ export async function sequence(
     },
   })
   const config = {
-    model: "alibaba/qwen-plus",
-    small_model: "alibaba/qwen-plus",
-    enabled_providers: ["alibaba"],
-    provider: { alibaba: { options: { apiKey: "synthetic-i1", baseURL: `${model.url.origin}/v1` } } },
+    model: "alibaba-cn/qwen-plus",
+    small_model: "alibaba-cn/qwen-plus",
+    enabled_providers: ["alibaba-cn"],
+    provider: { "alibaba-cn": { options: { apiKey: "synthetic-i1", baseURL: `${model.url.origin}/v1` } } },
     memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
     permission: { read: "allow", write: "ask", mcp: "allow" },
     lsp: false,
@@ -364,24 +339,20 @@ export async function sequence(
     TMPDIR: join(root, "tmp"),
     // On Windows os.homedir() reads USERPROFILE, so it points to the isolated directory too.
     // TEMP/TMP stay shared: tsx keeps its transpile cache in the system temp directory, and isolating it would make
-    // every child transpile from scratch and double the TUI startup time
+    // every child transpile from scratch and double the backend startup time
     USERPROFILE: join(root, "home"),
-    // libuv fills in system variables such as SystemRoot when spawning children, node-pty does not. Without
-    // SystemRoot, OpenSSL on Windows cannot get entropy and Node crashes on startup
+    // libuv fills in system variables such as SystemRoot when spawning children, node-pty (the engine's terminal)
+    // does not. Without SystemRoot, OpenSSL on Windows cannot get entropy and Node crashes on startup
     ...Object.fromEntries(
       ["SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT"].flatMap((name) =>
         process.platform === "win32" && process.env[name] ? [[name, process.env[name]]] : [],
       ),
     ),
-    XDG_DATA_HOME: join(root, "data"),
-    XDG_CONFIG_HOME: join(root, "config"),
-    XDG_CACHE_HOME: join(root, "cache"),
-    XDG_STATE_HOME: join(root, "state"),
+    // The kit root is the MerakCode root: global config at its top, data/, cache/, logs/ and clients/ below
+    MERAKCODE_HOME: root,
     MERAKCODE_TEST_HOME: join(root, "home"),
     MERAKCODE_TEST_MANAGED_CONFIG_DIR: join(root, "managed"),
-    MERAKCODE_LOG_ROOT: join(root, "logs"),
     MERAKCODE_I1_NETWORK_LOG: join(root, "blocked-network.txt"),
-    MERAKCODE_DISABLE_AUTOUPDATE: "1",
     MERAKCODE_DISABLE_MODELS_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
@@ -689,11 +660,7 @@ export async function sequence(
           )
             throw new Error("I1_ORACLE: unresolved or misowned part")
       }
-      const disk = (await Filesystem.readText(join(root, "data/merakcode/storage/transcript", `${sessionID}.jsonl`)))
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line))
-      assertPersisted(current, disk)
+      assertPersisted(current, stored(root, sessionID))
       if (
         kind === "write" &&
         options.verifyFileEffect !== false &&

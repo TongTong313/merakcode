@@ -128,7 +128,8 @@ export namespace Sandbox {
     if (status.status === "on") return false
     if (configured === "required")
       throw new SetupRequiredError({
-        message: "The sandbox is required but not ready. Run merak sandbox setup, or set sandbox.mode to preferred.",
+        message:
+          "The sandbox is required but not ready. Set it up in the desktop app under Settings → Permissions & security (or run merak sandbox setup), or set sandbox.mode to preferred.",
         reason: status.reason,
       })
     return true

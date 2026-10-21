@@ -48,8 +48,21 @@ type State = {
   sessions: SessionsState
   /** Directory → current branch */
   branch: Record<string, string | undefined>
-  /** Directory → push remote and commits ahead of upstream (vcs.get) */
-  remote: Record<string, { name?: string; ahead?: number } | undefined>
+  /** Directory → the repository's default branch (vcs.get) */
+  defaultBranch: Record<string, string | undefined>
+  /** Directory → push remote, ahead/behind, and staged / unstaged / untracked file counts (vcs.get) */
+  remote: Record<
+    string,
+    | {
+        name?: string
+        ahead?: number
+        behind?: number
+        staged?: number
+        unstaged?: number
+        untracked?: number
+      }
+    | undefined
+  >
   /** Session id → messages loaded */
   loaded: Record<string, boolean>
   /** Default permission mode for new conversations */
@@ -63,6 +76,7 @@ export const [state, setState] = createStore<State>({
   folders: [],
   sessions: createSessionsState(),
   branch: {},
+  defaultBranch: {},
   remote: {},
   loaded: {},
   mode: "ask",
@@ -174,11 +188,36 @@ export async function loadProviders(directory = state.folders[0]?.directory) {
   return providers
 }
 
-/** Reloads a directory's git state (branch, remote, commits ahead) after a commit or push */
+type GitInfo = {
+  branch?: string
+  default_branch?: string
+  remote?: string
+  ahead?: number
+  behind?: number
+  staged?: number
+  unstaged?: number
+  untracked?: number
+}
+
+/** Keeps the fields the review bar shows. Extra fields arrive with the generated client after a status change. */
+function remembered(vcs: GitInfo | undefined) {
+  if (!vcs) return undefined
+  return {
+    name: vcs.remote,
+    ahead: vcs.ahead,
+    behind: vcs.behind,
+    staged: vcs.staged,
+    unstaged: vcs.unstaged,
+    untracked: vcs.untracked,
+  }
+}
+
+/** Reloads a directory's git state after a commit, push, or when the review bar opens */
 export async function refreshVcs(directory: string) {
   const vcs = await call(client(directory).vcs.get()).catch(() => undefined)
   setState("branch", directory, vcs?.branch || undefined)
-  setState("remote", directory, vcs && { name: vcs.remote, ahead: vcs.ahead })
+  setState("defaultBranch", directory, vcs?.default_branch)
+  setState("remote", directory, remembered(vcs))
 }
 
 /** At least one model is usable */
@@ -267,7 +306,8 @@ async function refresh(directory: string, limit = PAGE) {
     )
     for (const item of instances) {
       setState("branch", item.dir, item.vcs?.branch)
-      setState("remote", item.dir, item.vcs && { name: item.vcs.remote, ahead: item.vcs.ahead })
+      setState("defaultBranch", item.dir, item.vcs?.default_branch)
+      setState("remote", item.dir, remembered(item.vcs))
     }
   })
 }

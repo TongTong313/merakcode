@@ -165,7 +165,7 @@ export namespace AutoDream {
 
     // inFlight stays set meanwhile, so a concurrent schedule cannot start a second run
     await runConsolidation(input, sessionIds, lockMtime)
-    // Notify the TUI; this is rare enough to need no throttling
+    // Notify the clients; this is rare enough to need no throttling
     const lang = await Text.lang()
     await Bus.publish(NotifyEvent.ToastShow, {
       title: Text.format({ zh: "记忆巩固", en: "Memory consolidation" }, lang),

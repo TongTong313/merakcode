@@ -13,7 +13,7 @@ test.each([false, true])(
   async (failure) => {
     await using tmp = await tmpdir({ dispose: (dir) => rm(dir, { recursive: true, force: true }) })
     const root = path.join(tmp.path, "logs")
-    const modules = path.join(tmp.path, "config/merakcode/node_modules")
+    const modules = path.join(tmp.path, "merakcode/node_modules")
     await mkdir(modules, { recursive: true })
     await symlink(
       path.dirname(fileURLToPath(import.meta.resolve("zod"))),
@@ -38,10 +38,7 @@ test.each([false, true])(
           USERPROFILE: path.join(tmp.path, "home"),
           APPDATA: path.join(tmp.path, "roaming"),
           LOCALAPPDATA: path.join(tmp.path, "local"),
-          XDG_DATA_HOME: path.join(tmp.path, "data"),
-          XDG_CACHE_HOME: path.join(tmp.path, "cache"),
-          XDG_CONFIG_HOME: path.join(tmp.path, "config"),
-          XDG_STATE_HOME: path.join(tmp.path, "state"),
+          MERAKCODE_HOME: path.join(tmp.path, "merakcode"),
           MERAKCODE_TEST_HOME: path.join(tmp.path, "home"),
           MERAKCODE_TEST_MANAGED_CONFIG_DIR: path.join(tmp.path, "managed"),
           MERAKCODE_LOG_ROOT: root,

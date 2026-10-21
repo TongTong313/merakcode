@@ -25,7 +25,7 @@ test("a permission rule added in settings is saved to project config and removed
 })
 
 test("switching to English in settings changes the UI and writes en-US to global config", async ({ kit }) => {
-  const config = path.join(kit.root, "config", "merakcode", "merakcode.json")
+  const config = path.join(kit.root, "merakcode.json")
   await kit.settings()
   await kit.page
     .getByRole("button", { name: /^(语言|Language)/ })

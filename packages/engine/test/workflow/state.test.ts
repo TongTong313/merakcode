@@ -277,7 +277,7 @@ describe("WorkflowState", () => {
         })
         WorkflowState.registerRun(sid, "run-live", new AbortController())
 
-        // Repeated listRuns while running (like TUI polling) must not mark the run aborted
+        // Repeated listRuns while running (like a client polling) must not mark the run aborted
         for (let i = 0; i < 3; i++) {
           const runs = await WorkflowState.listRuns(sid)
           expect(runs[0]?.status).toBe("running")

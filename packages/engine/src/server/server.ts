@@ -74,6 +74,7 @@ import { rm } from "fs/promises"
 import { connectProvider, disconnectProvider } from "../provider/auth-mutate"
 import { EventStream } from "./event-stream"
 import { appAssetHeaders, isFrontendStaticAssetPath, resolveAssetContentType } from "./app-security"
+import { AppDev } from "./app-dev"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -458,7 +459,6 @@ export namespace Server {
                       .object({
                         home: z.string(),
                         data: z.string(),
-                        state: z.string(),
                         config: z.string(),
                         worktree: z.string(),
                         directory: z.string(),
@@ -491,7 +491,6 @@ export namespace Server {
           return c.json({
             home: Global.Path.home,
             data: Global.Path.data,
-            state: Global.Path.state,
             config: Global.Path.config,
             worktree: Instance.worktree,
             directory: Instance.directory,
@@ -524,7 +523,7 @@ export namespace Server {
             },
           },
         }),
-        async (c) => c.json((await Vcs.status()) ?? { branch: "" }),
+        async (c) => c.json((await Vcs.status()) ?? { branch: "", staged: 0, unstaged: 0, untracked: 0 }),
       )
       .get(
         "/vcs/branches",
@@ -553,6 +552,23 @@ export namespace Server {
           },
         }),
         async (c) => c.json(await Vcs.push()),
+      )
+      .post(
+        "/vcs/run",
+        describeRoute({
+          summary: "Run a git command",
+          description:
+            "Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.",
+          operationId: "vcs.run",
+          responses: {
+            200: {
+              description: "Command output",
+              content: { "application/json": { schema: resolver(Vcs.RunResult) } },
+            },
+          },
+        }),
+        validator("json", z.object({ args: z.array(z.string().max(2000)).min(1).max(64) })),
+        async (c) => c.json(await Vcs.runGit(c.req.valid("json").args)),
       )
       .get(
         "/sandbox",
@@ -1109,6 +1125,8 @@ export namespace Server {
     const extended = extend ? extend(routed) : routed
 
     return extended.use("/*", async (c, next) => {
+      const dev = devApp()
+      if (dev) return c.req.method === "GET" || c.req.method === "HEAD" ? AppDev.forward(c.req.raw, dev) : next()
       const dist = await Server.appDist()
       if (!dist) return next()
       const reqPath = decodeURIComponent(new URL(c.req.url).pathname)
@@ -1151,6 +1169,14 @@ export namespace Server {
   }
 
   export const App = lazy(() => compose(new Hono()))
+
+  const devApp = lazy(() => {
+    const url = AppDev.url()
+    if (url) log.info("forwarding UI requests to the dev server", { url: url.href })
+    else if (process.env.MERAKCODE_APP_DEV_URL)
+      log.warn("ignoring MERAKCODE_APP_DEV_URL: only http on a loopback address is accepted")
+    return url
+  })
 
   export async function openapi() {
     // Cast to break excessive type recursion from long route chains

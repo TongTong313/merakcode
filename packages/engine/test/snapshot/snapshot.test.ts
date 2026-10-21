@@ -4,6 +4,7 @@ import path from "path"
 import { Snapshot } from "@merakcode/engine/snapshot/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Global } from "@merakcode/engine/global/index"
+import { SessionStore } from "@merakcode/engine/session/store"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -26,7 +27,7 @@ test("track creates backup directory", async () => {
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       expect(backupID).toBeTruthy()
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const stat = await fs.stat(backupDir).catch(() => null)
       expect(stat?.isDirectory()).toBe(true)
     },
@@ -41,7 +42,7 @@ test("trackFile backs up existing files", async () => {
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       await Snapshot.trackFile(path.join(tmp.path, "a.txt"), tmp.extra.sessionID)
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const backupContent = await Filesystem.readText(path.join(backupDir, "a.txt"))
       expect(backupContent).toBe("A")
     },
@@ -56,7 +57,7 @@ test("trackFile marks non-existent files for deletion", async () => {
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       await Snapshot.trackFile(path.join(tmp.path, "new.txt"), tmp.extra.sessionID)
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const deletedMarker = await Filesystem.isFile(path.join(backupDir, "new.txt.__deleted__"))
       expect(deletedMarker).toBe(true)
     },
@@ -295,7 +296,7 @@ test("backupCurrentFiles restores files when worktree is / (non-git)", async () 
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       await Snapshot.backupCurrentFiles(backupID, tmp.extra.sessionID, [file])
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const encoded = await collectRelativeFiles(backupDir)
       expect(encoded.some((p) => p.replace(/\\/g, "/").includes("hello.html"))).toBe(true)
       for (const rel of encoded) {
@@ -324,7 +325,7 @@ test("backupCurrentFiles accepts slash-prefixed Windows drive path", async () =>
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       await Snapshot.backupCurrentFiles(backupID, tmp.extra.sessionID, [slashPrefixed])
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const encoded = await collectRelativeFiles(backupDir)
       for (const rel of encoded) {
         expect(rel.includes(":")).toBe(false)
@@ -349,7 +350,7 @@ test("backupCurrentFiles encodes Windows drive paths without colon", async () =>
       const slashPrefixed = "\\d:\\UUABC_L\\Desktop\\20260907\\1\\hello.html"
       await Snapshot.backupCurrentFiles(backupID, tmp.extra.sessionID, [fake, slashPrefixed])
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const encoded = await collectRelativeFiles(backupDir)
       expect(encoded.length).toBeGreaterThan(0)
       for (const rel of encoded) {
@@ -368,7 +369,7 @@ test("backupCurrentFiles records mtime for manual change detection", async () =>
       const backupID = await Snapshot.track(tmp.extra.sessionID)
       await Snapshot.backupCurrentFiles(backupID, tmp.extra.sessionID, ["a.txt"])
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", tmp.extra.sessionID, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", tmp.extra.sessionID, backupID)
       const mtimeExists = await Filesystem.isFile(path.join(backupDir, ".__mtime__.json"))
       expect(mtimeExists).toBe(true)
 
@@ -397,7 +398,7 @@ test("cleanup skips active session backups", async () => {
 
       await Snapshot.cleanup()
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", session.id, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(
         await fs
           .stat(backupDir)
@@ -431,7 +432,7 @@ test("cleanup removes expired session backups", async () => {
 
       await Snapshot.cleanup()
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", session.id, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(await fs.stat(backupDir).catch(() => null)).toBeNull()
 
       await Session.remove(session.id)
@@ -477,7 +478,7 @@ test("cleanup discards undoRedo before removing expired backups", async () => {
 
       await Snapshot.cleanup()
 
-      const sessionBackupDir = path.join(Global.Path.data, "storage", "snapshot", session.id)
+      const sessionBackupDir = path.join(Global.Path.data, "backup", session.id)
       expect(await fs.stat(sessionBackupDir).catch(() => null)).toBeNull()
 
       const after = await Session.get(session.id)
@@ -494,7 +495,7 @@ test("cleanup removes orphaned backup directories", async () => {
     directory: tmp.path,
     fn: async () => {
       const orphanID = "orphan-session-cleanup-test"
-      const orphanDir = path.join(Global.Path.data, "storage", "snapshot", orphanID)
+      const orphanDir = path.join(Global.Path.data, "backup", orphanID)
       await fs.mkdir(path.join(orphanDir, "backup-1"), { recursive: true })
       await Filesystem.write(path.join(orphanDir, "backup-1", "file.txt"), "orphan")
 
@@ -518,7 +519,7 @@ test("cleanup skips when already running", async () => {
       await Promise.all([Snapshot.cleanup(), Snapshot.cleanup()])
 
       // The session is active, so its backup must survive.
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", session.id, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(
         await fs
           .stat(backupDir)
@@ -541,19 +542,13 @@ test("cleanup does not delete backup when session belongs to another project", a
       const backupID = await Snapshot.track(session.id)
       await Snapshot.trackFile(path.join(tmp.path, "a.txt"), session.id)
 
-      // Move the session file under another project's directory.
-      const currentProjectID = Instance.project.id
-      const otherProjectID = "other-project-cleanup-test"
-      const sessionSrc = path.join(Global.Path.data, "storage", "session", currentProjectID, session.id + ".json")
-      const sessionDst = path.join(Global.Path.data, "storage", "session", otherProjectID, session.id + ".json")
-      await fs.mkdir(path.dirname(sessionDst), { recursive: true })
-      await fs.copyFile(sessionSrc, sessionDst)
-      await fs.unlink(sessionSrc)
+      // Move the session to another project.
+      SessionStore.put({ ...session, projectID: "other-project-cleanup-test" })
 
       // The backup must survive because the session is still found in the other project.
       await Snapshot.cleanup()
 
-      const backupDir = path.join(Global.Path.data, "storage", "snapshot", session.id, backupID)
+      const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(
         await fs
           .stat(backupDir)
@@ -561,8 +556,8 @@ test("cleanup does not delete backup when session belongs to another project", a
           .catch(() => false),
       ).toBe(true)
 
-      await fs.rm(path.join(Global.Path.data, "storage", "session", otherProjectID), { recursive: true, force: true })
-      await fs.rm(path.join(Global.Path.data, "storage", "snapshot", session.id), { recursive: true, force: true })
+      SessionStore.remove(session.id)
+      await fs.rm(path.join(Global.Path.data, "backup", session.id), { recursive: true, force: true })
     },
   })
 })

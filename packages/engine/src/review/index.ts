@@ -13,6 +13,9 @@
  * Accept moves the base to compose(base, current, accepted hunks); reject reverts the current version to
  * compose(base, current, remaining hunks). Binary, oversized or non-UTF-8 files are a single hunk and can only be
  * accepted or rejected as a whole.
+ *
+ * get lists files with counts only; file returns one file's hunks. Each file has a version (a hash of base and
+ * current), so a client can keep details it already has and the server can tell a stale request apart.
  */
 import path from "path"
 import fs from "fs/promises"
@@ -26,6 +29,7 @@ import { Bus } from "../bus"
 import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { Storage } from "../storage/storage"
+import { ReviewBaseline } from "./baseline"
 import { Snapshot } from "../snapshot"
 import { Session } from "../session"
 import { compose, hunks, revert } from "./hunks"
@@ -35,6 +39,8 @@ export namespace Review {
 
   /** Files larger than this are not diffed line by line; they are a single hunk */
   const MAX_BYTES = 1024 * 1024
+  /** File details carry the full base and current text (for highlighting) only up to this combined size */
+  const TEXT_LIMIT = 400_000
 
   export const Scope = z.enum(["session", "turn", "unstaged", "staged", "branch"]).meta({ ref: "ReviewScope" })
   export type Scope = z.infer<typeof Scope>
@@ -72,16 +78,28 @@ export namespace Review {
       binary: z.literal(true).optional(),
       /** Too large: no lines, the whole file is one hunk */
       truncated: z.literal(true).optional(),
-      /** Full text of base and current; absent when the file is missing, binary or too large */
-      before: z.string().optional(),
-      after: z.string().optional(),
       additions: z.number(),
       deletions: z.number(),
-      hunks: Hunk.array(),
+      /** Number of hunks; their lines come from Review.file */
+      hunks: z.number(),
       accepted: z.number(),
+      /** Hash of base and current: changes whenever either changes */
+      version: z.string(),
     })
     .meta({ ref: "ReviewFile" })
   export type File = z.infer<typeof File>
+
+  export const Detail = z
+    .object({
+      file: z.string(),
+      version: z.string(),
+      hunks: Hunk.array(),
+      /** Full text of base and current; absent when the file is missing, cannot be diffed or is large */
+      before: z.string().optional(),
+      after: z.string().optional(),
+    })
+    .meta({ ref: "ReviewFileDetail" })
+  export type Detail = z.infer<typeof Detail>
 
   export const Result = z
     .object({
@@ -111,6 +129,13 @@ export namespace Review {
     files: z.object({ file: z.string(), hunks: z.string().array().optional() }).array().optional(),
   })
   export type Decision = z.infer<typeof Decision>
+
+  export const FileInput = Input.extend({
+    file: z.string(),
+    /** Version from the list; when the file has changed since, the request is stale */
+    version: z.string().optional(),
+  })
+  export type FileInput = z.infer<typeof FileInput>
 
   /** The target file or hunk no longer exists (the client's list is stale); fetch again before retrying */
   export const StaleError = NamedError.create("ReviewStaleError", z.object({ message: z.string() }))
@@ -156,18 +181,38 @@ export namespace Review {
   }
 
   type Text = { before?: string; after?: string }
+  type Kind = "binary" | "truncated"
 
-  /** Returns the text when the file can be diffed line by line, otherwise the reason it cannot */
-  function textual(entry: Entry): Text | "binary" | "truncated" {
+  /** Why the file cannot be diffed line by line; undefined when it can */
+  function undiffable(entry: Entry): Kind | undefined {
     const blobs = [entry.before, entry.after].filter((blob): blob is Buffer => blob !== undefined)
     if (blobs.some((blob) => blob.length > MAX_BYTES)) return "truncated"
     if (blobs.some((blob) => blob.subarray(0, 8000).includes(0))) return "binary"
     // Invalid UTF-8 (e.g. GBK) would be corrupted if written back as text, so it is handled as a whole
     if (!blobs.every((blob) => Buffer.from(blob.toString("utf8")).equals(blob))) return "binary"
-    return { before: entry.before?.toString("utf8"), after: entry.after?.toString("utf8") }
   }
 
-  const digest = (blob: Blob) => (blob ? createHash("sha1").update(blob).digest("hex") : "-")
+  const text = (entry: Entry): Text => ({
+    before: entry.before?.toString("utf8"),
+    after: entry.after?.toString("utf8"),
+  })
+
+  const digests = new WeakMap<Buffer, string>()
+  function digest(blob: Blob) {
+    if (!blob) return "-"
+    const known = digests.get(blob)
+    if (known) return known
+    const value = createHash("sha1").update(blob).digest("hex")
+    digests.set(blob, value)
+    return value
+  }
+
+  /** Hash of base and current: the file's version, and the key of computed hunks */
+  const version = (entry: Entry) =>
+    createHash("sha1")
+      .update(`${digest(entry.before)}\u0000${digest(entry.after)}`)
+      .digest("hex")
+      .slice(0, 16)
 
   /** A file that cannot be diffed line by line: one hunk with no lines */
   function whole(entry: Entry): Hunk {
@@ -184,36 +229,75 @@ export namespace Review {
     }
   }
 
-  function blocks(entry: Entry) {
-    const text = textual(entry)
-    if (typeof text === "string") return { text: undefined, kind: text, list: [whole(entry)] }
-    return { text, kind: undefined, list: hunks(text.before, text.after) }
+  type Blocks = { kind?: Kind; list: Hunk[] }
+
+  /** Hunks by version, most recently used last: refreshing a review only diffs the files that changed */
+  const computed = new Map<string, Blocks>()
+  const COMPUTED = 2000
+
+  function compute(entry: Entry): Blocks {
+    const kind = undiffable(entry)
+    if (kind) return { kind, list: [whole(entry)] }
+    const { before, after } = text(entry)
+    return { list: hunks(before, after) }
+  }
+
+  /** Hunks of a file (shared with the cache, so never modified) */
+  function blocks(entry: Entry): Blocks {
+    const key = version(entry)
+    const known = computed.get(key)
+    if (known) {
+      computed.delete(key)
+      computed.set(key, known)
+      return known
+    }
+    const value = compute(entry)
+    computed.set(key, value)
+    if (computed.size > COMPUTED) computed.delete(computed.keys().next().value!)
+    return value
   }
 
   /** The base content after accepting ids, or the current content after rejecting ids */
   function apply(entry: Entry, decision: "accept" | "reject", ids: Set<string>): Blob {
-    const { text, list } = blocks(entry)
-    if (!text) return list[0] && ids.has(list[0].id) === (decision === "accept") ? entry.after : entry.before
-    const result = decision === "accept" ? compose(text.before, text.after, ids) : revert(text.before, text.after, ids)
+    const { kind, list } = blocks(entry)
+    if (kind) return list[0] && ids.has(list[0].id) === (decision === "accept") ? entry.after : entry.before
+    const { before, after } = text(entry)
+    const result = decision === "accept" ? compose(before, after, ids) : revert(before, after, ids)
     return result === undefined ? undefined : Buffer.from(result)
   }
 
-  function view(entry: Entry): File {
-    const { text, kind, list } = blocks(entry)
+  /** Hunks with their accepted mark (branch scope) */
+  function marked(entry: Entry): Hunk[] {
     const accepted = entry.accepted ?? new Set()
-    const items: Hunk[] = list.map((hunk) => (accepted.has(hunk.id) ? { ...hunk, state: "accepted" } : hunk))
+    return blocks(entry).list.map((hunk) => (accepted.has(hunk.id) ? { ...hunk, state: "accepted" } : hunk))
+  }
+
+  function summary(entry: Entry): File {
+    const { kind } = blocks(entry)
+    const items = marked(entry)
     const rows = items.flatMap((hunk) => hunk.lines)
     return {
       file: entry.file,
       status: entry.before === undefined ? "added" : entry.after === undefined ? "deleted" : "modified",
       ...(kind === "binary" ? { binary: true as const } : {}),
       ...(kind === "truncated" ? { truncated: true as const } : {}),
-      ...(text?.before !== undefined ? { before: text.before } : {}),
-      ...(text?.after !== undefined ? { after: text.after } : {}),
       additions: rows.filter((line) => line.kind === "add").length,
       deletions: rows.filter((line) => line.kind === "del").length,
-      hunks: items,
+      hunks: items.length,
       accepted: items.filter((hunk) => hunk.state === "accepted").length,
+      version: version(entry),
+    }
+  }
+
+  function detail(entry: Entry): Detail {
+    const size = (entry.before?.length ?? 0) + (entry.after?.length ?? 0)
+    const full = !blocks(entry).kind && size <= TEXT_LIMIT ? text(entry) : {}
+    return {
+      file: entry.file,
+      version: version(entry),
+      hunks: marked(entry),
+      ...(full.before !== undefined ? { before: full.before } : {}),
+      ...(full.after !== undefined ? { after: full.after } : {}),
     }
   }
 
@@ -443,11 +527,16 @@ export namespace Review {
     }
   }
 
-  type Baseline = { exists: boolean; data?: string }
-  type Baselines = { baselines: Record<string, Baseline> }
-
-  const encode = (blob: Blob): Baseline => (blob ? { exists: true, data: blob.toString("base64") } : { exists: false })
-  const decode = (item: Baseline): Blob => (item.exists ? Buffer.from(item.data ?? "", "base64") : undefined)
+  /** Changes a file's review baseline and records how to undo it; only review writes baselines, so there is no check */
+  async function onBaseline(sessionID: string, file: string, next: Blob): Promise<Undo> {
+    const before = ReviewBaseline.get(sessionID, file)
+    ReviewBaseline.put(sessionID, file, next)
+    return {
+      check: async () => true,
+      run: async () =>
+        before ? ReviewBaseline.put(sessionID, file, before.content) : ReviewBaseline.remove(sessionID, file),
+    }
+  }
 
   /** Time range of the turn: from this user message to the next one */
   async function window(sessionID: string, messageID: string) {
@@ -462,16 +551,14 @@ export namespace Review {
     const sessionID = input.sessionID
     if (!sessionID) throw new InvalidError({ message: `scope ${input.scope} requires sessionID` })
     if (input.scope === "turn" && !input.messageID) throw new InvalidError({ message: "scope turn requires messageID" })
-    const key = ["review", sessionID]
-    const stored = () => Storage.read<Baselines>(key).catch(() => ({ baselines: {} }) as Baselines)
     return {
       actions: { accept: true, reject: true },
       async entries() {
-        const [history, baselines, range] = await Promise.all([
+        const [history, range] = await Promise.all([
           Session.descendants(sessionID).then((list) => Snapshot.history([sessionID, ...list.map((item) => item.id)])),
-          stored().then((item) => item.baselines),
           input.scope === "turn" ? window(sessionID, input.messageID!) : undefined,
         ])
+        const baselines = ReviewBaseline.all(sessionID)
         // The earliest backup of each file is its content before the agent first changed it
         const first = new Map<string, (typeof history)[number]>()
         for (const item of history) if (!first.has(item.file)) first.set(item.file, item)
@@ -479,21 +566,18 @@ export namespace Review {
           ? new Set(
               history.filter((item) => item.time >= range.start && item.time < range.end).map((item) => item.file),
             )
-          : new Set([...first.keys(), ...Object.keys(baselines)])
+          : new Set([...first.keys(), ...baselines.keys()])
         const entries = await Promise.all(
           [...files].map(async (file) => ({
             file: display(file),
             path: file,
-            before: baselines[file] ? decode(baselines[file]) : await first.get(file)!.read(),
+            before: baselines.has(file) ? baselines.get(file) : await first.get(file)!.read(),
             after: await readDisk(file),
           })),
         )
         return entries.filter(changed).toSorted((a, b) => a.file.localeCompare(b.file))
       },
-      accept: (plan) =>
-        onStorage<Baselines>(key, { baselines: {} }, (current) => ({
-          baselines: { ...current.baselines, [plan.entry.path]: encode(plan.next) },
-        })),
+      accept: (plan) => onBaseline(sessionID, plan.entry.path, plan.next),
       reject: (plan) => onDisk(plan.entry.path, () => writeDisk(plan.entry.path, plan.next)),
     }
   }
@@ -515,15 +599,50 @@ export namespace Review {
     return branch(input)
   }
 
+  /**
+   * The entries behind the latest list of each review, so Review.file answers from the list the client is showing.
+   * Entries hold file contents, so only a few reviews are kept.
+   */
+  const snapshots = new Map<string, Entry[]>()
+  const SNAPSHOTS = 4
+
+  function snapshotKey(input: Input) {
+    return [Instance.directory, input.scope, input.sessionID ?? "", input.messageID ?? "", input.base ?? ""].join(
+      "\u0000",
+    )
+  }
+
+  function remember(input: Input, entries: Entry[]) {
+    const key = snapshotKey(input)
+    snapshots.delete(key)
+    snapshots.set(key, entries)
+    if (snapshots.size > SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!)
+  }
+
   export async function get(input: Input): Promise<Result> {
     const source = await open(input)
     const entries = await source.entries()
+    remember(input, entries)
     return {
       scope: input.scope,
       ...(source.base ? { base: source.base } : {}),
       actions: source.actions,
-      files: entries.map(view),
+      files: entries.map(summary),
     }
+  }
+
+  /** Hunks of one file at the version the client listed; stale when the file has changed since */
+  export async function file(input: FileInput): Promise<Detail> {
+    const pick = (entries: Entry[] | undefined) => entries?.find((entry) => entry.file === input.file)
+    const matches = (entry: Entry | undefined) => !!entry && (!input.version || version(entry) === input.version)
+    const listed = input.version ? pick(snapshots.get(snapshotKey(input))) : undefined
+    if (matches(listed)) return detail(listed!)
+    const entries = await (await open(input)).entries()
+    remember(input, entries)
+    const entry = pick(entries)
+    if (!entry) throw new StaleError({ message: `${input.file} has no changes in scope ${input.scope}` })
+    if (!matches(entry)) throw new StaleError({ message: `${input.file} changed after version ${input.version}` })
+    return detail(entry)
   }
 
   // One decision at a time: two decisions reading the same base and writing back would overwrite each other
@@ -565,11 +684,11 @@ export namespace Review {
       const plans = targets.map((target): Plan => {
         const entry = entries.find((item) => item.file === target.file)
         if (!entry) throw new StaleError({ message: `${target.file} has no changes in scope ${input.scope}` })
-        const { text, list } = blocks(entry)
+        const { kind, list } = blocks(entry)
         const ids = target.hunks ?? list.map((hunk) => hunk.id)
         const missing = ids.filter((id) => !list.some((hunk) => hunk.id === id))
         if (missing.length) throw new StaleError({ message: `${target.file}: hunk ${missing.join(", ")} not found` })
-        return { entry, ids, next: apply(entry, input.decision, new Set(ids)), whole: !text }
+        return { entry, ids, next: apply(entry, input.decision, new Set(ids)), whole: !!kind }
       })
       const undos: Undo[] = []
       for (const plan of plans)

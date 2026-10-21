@@ -12,6 +12,7 @@ import { tmpdir } from "../fixture/fixture"
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
 const git = (cwd: string, ...args: string[]) => Process.run(["git", ...args], { cwd }).then((r) => r.text())
+const hunksOf = async (input: Review.Input, file: string) => (await Review.file({ ...input, file })).hunks
 
 async function repo() {
   const tmp = await tmpdir({ git: true })
@@ -30,10 +31,8 @@ test("unstaged: accepting a hunk stages only that hunk and rejecting discards on
     fn: async () => {
       const review = await Review.get({ scope: "unstaged" })
       expect(review.actions).toEqual({ accept: true, reject: true })
-      expect(review.files.map((file) => [file.file, file.status, file.hunks.length])).toEqual([
-        ["a.txt", "modified", 2],
-      ])
-      const [first, second] = review.files[0]!.hunks
+      expect(review.files.map((file) => [file.file, file.status, file.hunks])).toEqual([["a.txt", "modified", 2]])
+      const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
 
       const after = await Review.decide({
         scope: "unstaged",
@@ -41,11 +40,83 @@ test("unstaged: accepting a hunk stages only that hunk and rejecting discards on
         files: [{ file: "a.txt", hunks: [first!.id] }],
       })
       expect(await git(tmp.path, "show", ":a.txt")).toBe(lines(30).replace("line 2\n", "two\n"))
-      expect(after.files[0]!.hunks.map((hunk) => hunk.id)).toEqual([second!.id])
+      expect(after.files[0]!.hunks).toBe(1)
+      expect((await hunksOf({ scope: "unstaged" }, "a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
 
       await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
       expect(await Filesystem.readText(path.join(tmp.path, "a.txt"))).toBe(lines(30).replace("line 2\n", "two\n"))
       expect((await Review.get({ scope: "unstaged" })).files).toEqual([])
+    },
+  })
+})
+
+test("the list has counts and a version per file; details answer for the listed version and are stale after a change", async () => {
+  await using tmp = await repo()
+  const file = path.join(tmp.path, "a.txt")
+  await Filesystem.write(file, lines(30).replace("line 2\n", "two\n"))
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const input = { scope: "unstaged" as const }
+      const [listed] = (await Review.get(input)).files
+      expect(listed).toMatchObject({ file: "a.txt", additions: 1, deletions: 1, hunks: 1, accepted: 0 })
+      const detail = await Review.file({ ...input, file: "a.txt", version: listed!.version })
+      expect(detail).toMatchObject({ file: "a.txt", version: listed!.version, before: lines(30) })
+      expect(detail.after).toBe(lines(30).replace("line 2\n", "two\n"))
+      expect(detail.hunks[0]!.lines.filter((line) => line.kind !== "context").map((line) => line.text)).toEqual([
+        "line 2",
+        "two",
+      ])
+
+      await Filesystem.write(file, lines(30).replace("line 3\n", "three\n"))
+      const [next] = (await Review.get(input)).files
+      expect(next!.version).not.toBe(listed!.version)
+      await expect(Review.file({ ...input, file: "a.txt", version: listed!.version })).rejects.toMatchObject({
+        name: "ReviewStaleError",
+      })
+
+      // Until the list is fetched again, details match the list the client is showing
+      await Filesystem.write(file, "changed again\n")
+      const shown = await Review.file({ ...input, file: "a.txt", version: next!.version })
+      expect(shown.after).toBe(lines(30).replace("line 3\n", "three\n"))
+    },
+  })
+})
+
+test("the version depends only on content: restoring earlier content gives the same version and hunks", async () => {
+  await using tmp = await repo()
+  const file = path.join(tmp.path, "a.txt")
+  const first = lines(30).replace("line 2\n", "two\n")
+  await Filesystem.write(file, first)
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const input = { scope: "unstaged" as const }
+      const before = (await Review.get(input)).files[0]!
+      const ids = (await hunksOf(input, "a.txt")).map((hunk) => hunk.id)
+      await Filesystem.write(file, lines(30).replace("line 9\n", "nine\n"))
+      expect((await Review.get(input)).files[0]!.version).not.toBe(before.version)
+      await Filesystem.write(file, first)
+      expect((await Review.get(input)).files[0]!.version).toBe(before.version)
+      expect((await hunksOf(input, "a.txt")).map((hunk) => hunk.id)).toEqual(ids)
+    },
+  })
+})
+
+test("large files have hunks but no full text", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const big = Array.from({ length: 6000 }, (_, i) => `${"x".repeat(80)} ${i}\n`).join("")
+  await Filesystem.write(path.join(tmp.path, "big.txt"), big)
+  await git(tmp.path, "add", ".")
+  await git(tmp.path, "commit", "-m", "big")
+  await Filesystem.write(path.join(tmp.path, "big.txt"), big.replace(`${"x".repeat(80)} 10\n`, "ten\n"))
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const detail = await Review.file({ scope: "unstaged", file: "big.txt" })
+      expect(detail.before).toBeUndefined()
+      expect(detail.after).toBeUndefined()
+      expect(detail.hunks[0]!.lines.some((line) => line.kind === "add" && line.text === "ten")).toBe(true)
     },
   })
 })
@@ -81,7 +152,7 @@ test("staged: hunks can only be unstaged, one at a time, leaving the worktree un
     fn: async () => {
       const review = await Review.get({ scope: "staged" })
       expect(review.actions).toEqual({ accept: false, reject: true })
-      const [first] = review.files[0]!.hunks
+      const [first] = await hunksOf({ scope: "staged" }, "a.txt")
       await Review.decide({ scope: "staged", decision: "reject", files: [{ file: "a.txt", hunks: [first!.id] }] })
       expect(await git(tmp.path, "show", ":a.txt")).toBe(lines(30).replace("line 20\n", "twenty\n"))
       expect(await Filesystem.readText(path.join(tmp.path, "a.txt"))).toBe(changed)
@@ -125,7 +196,7 @@ test("branch: diffs committed and uncommitted changes against the merge base; ac
     fn: async () => {
       const review = await Review.get({ scope: "branch", base: main })
       expect(review.base).toBe(main)
-      const [first, second] = review.files[0]!.hunks
+      const [first, second] = await hunksOf({ scope: "branch", base: main }, "a.txt")
       expect([first, second].map((hunk) => hunk!.lines.find((line) => line.kind === "add")?.text)).toEqual([
         "two",
         "twenty",
@@ -138,8 +209,11 @@ test("branch: diffs committed and uncommitted changes against the merge base; ac
         files: [{ file: "a.txt", hunks: [first!.id] }],
       })
       const again = await Review.get({ scope: "branch", base: main })
-      expect(again.files[0]!.hunks.map((hunk) => hunk.state)).toEqual(["accepted", undefined])
       expect(again.files[0]!.accepted).toBe(1)
+      expect((await hunksOf({ scope: "branch", base: main }, "a.txt")).map((hunk) => hunk.state)).toEqual([
+        "accepted",
+        undefined,
+      ])
 
       await Review.decide({
         scope: "branch",
@@ -162,7 +236,8 @@ test("with autocrlf and a CRLF worktree, only real changes are listed; the index
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const [first, second] = (await Review.get({ scope: "unstaged" })).files[0]!.hunks
+      await Review.get({ scope: "unstaged" })
+      const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
       expect(first!.lines.filter((line) => line.kind !== "context").map((line) => line.text)).toEqual(["line 2", "two"])
       await Review.decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
       expect(await git(tmp.path, "cat-file", "blob", ":a.txt")).toBe(lines(30).replace("line 2\n", "two\n"))
@@ -183,8 +258,10 @@ test("a binary file is a single hunk that is staged or restored as a whole", asy
     directory: tmp.path,
     fn: async () => {
       const [file] = (await Review.get({ scope: "unstaged" })).files
-      expect(file).toMatchObject({ file: "logo.bin", binary: true, status: "modified" })
-      expect(file!.hunks).toHaveLength(1)
+      expect(file).toMatchObject({ file: "logo.bin", binary: true, status: "modified", hunks: 1 })
+      const detail = await Review.file({ scope: "unstaged", file: "logo.bin", version: file!.version })
+      expect(detail.hunks.map((hunk) => hunk.lines)).toEqual([[]])
+      expect(detail.before).toBeUndefined()
       await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "logo.bin" }] })
       expect([...(await Filesystem.readBytes(image))]).toEqual([0, 1, 2, 3])
     },
@@ -199,7 +276,7 @@ test("undo unstages accepted hunks and restores rejected ones, and reports stale
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const [first, second] = (await Review.get({ scope: "unstaged" })).files[0]!.hunks
+      const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
       await Review.decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
       await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
 
@@ -207,10 +284,7 @@ test("undo unstages accepted hunks and restores rejected ones, and reports stale
       expect(await Filesystem.readText(file)).toBe(changed)
       await Review.undo({ scope: "unstaged" })
       expect(await git(tmp.path, "show", ":a.txt")).toBe(lines(30))
-      expect((await Review.get({ scope: "unstaged" })).files[0]!.hunks.map((hunk) => hunk.id)).toEqual([
-        first!.id,
-        second!.id,
-      ])
+      expect((await hunksOf({ scope: "unstaged" }, "a.txt")).map((hunk) => hunk.id)).toEqual([first!.id, second!.id])
       await expect(Review.undo({ scope: "unstaged" })).rejects.toMatchObject({ name: "ReviewStaleError" })
 
       await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })

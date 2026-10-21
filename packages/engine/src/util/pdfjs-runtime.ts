@@ -52,7 +52,7 @@ function assets(): Assets {
 /**
  * In releases canvas does not sit next to pdfjs (it is downloaded into the data directory on demand and the globals
  * are installed beforehand), so pdfjs's warnings about not finding it are expected and must not leak into the
- * terminal UI.
+ * engine's output.
  */
 async function silenceOptionalCanvasWarnings<T>(fn: () => Promise<T>) {
   const original = console.warn

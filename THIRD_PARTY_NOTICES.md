@@ -9,7 +9,7 @@ release together with its license text.
 ## opencode
 
 - Project: https://github.com/anomalyco/opencode
-- Used in: the engine (sessions, tools, providers, server), the terminal UI and its color themes
+- Used in: the engine (sessions, tools, providers, server)
 - License: MIT
 
 ```

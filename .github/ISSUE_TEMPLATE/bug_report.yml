@@ -44,7 +44,6 @@ body:
       label: Where / 在哪里用的
       multiple: true
       options:
-        - Terminal UI / 终端界面
         - merak run
         - Desktop app / 桌面端
         - SDK

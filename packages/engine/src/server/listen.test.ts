@@ -7,7 +7,7 @@ import { Process } from "@merakcode/util/process"
 
 test("a real listener serves HTTP and terminal WebSockets and refuses connections after stop", async () => {
   await using root = await tmpdir({ git: true })
-  const modules = path.join(root.path, "config/merakcode/node_modules")
+  const modules = path.join(root.path, "node_modules")
   await fs.mkdir(modules, { recursive: true })
   await fs.symlink(
     path.dirname(fileURLToPath(import.meta.resolve("zod"))),
@@ -20,11 +20,7 @@ test("a real listener serves HTTP and terminal WebSockets and refuses connection
     nothrow: true,
     env: {
       ...process.env,
-      XDG_DATA_HOME: path.join(root.path, "data"),
-      XDG_CACHE_HOME: path.join(root.path, "cache"),
-      XDG_CONFIG_HOME: path.join(root.path, "config"),
-      XDG_STATE_HOME: path.join(root.path, "state"),
-      MERAKCODE_LOG_ROOT: path.join(root.path, "logs"),
+      MERAKCODE_HOME: root.path,
       MERAKCODE_TEST_HOME: path.join(root.path, "home"),
       MERAKCODE_TEST_MANAGED_CONFIG_DIR: path.join(root.path, "managed"),
       MERAKCODE_DISABLE_MODELS_FETCH: "1",

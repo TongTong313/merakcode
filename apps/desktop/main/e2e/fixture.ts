@@ -102,6 +102,11 @@ function stream(reply: Reply) {
 async function model(script: Script) {
   let count = 0
   const server: Server = createServer(async (request, response) => {
+    if (request.method === "GET" && (request.url ?? "").includes("/models")) {
+      response.writeHead(200, { "content-type": "application/json" })
+      response.end(JSON.stringify({ data: [{ id: "e2e-relay", context_length: 32_000, max_output_tokens: 1_024 }] }))
+      return
+    }
     const chunks: Buffer[] = []
     for await (const chunk of request) chunks.push(chunk as Buffer)
     const body = JSON.parse(Buffer.concat(chunks).toString() || "{}") as { messages?: Message[]; model?: string }
@@ -142,7 +147,18 @@ export const test = base.extend<{
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
     await writeFile(path.join(project, "notes.txt"), "hello from e2e\n")
-    const run = (...args: string[]) => execFileSync("git", args, { cwd: project, encoding: "utf8" })
+    // The app refreshes git diffs in the background, and git diff briefly holds .git/index.lock while it caches file
+    // stats (it ignores GIT_OPTIONAL_LOCKS); a test's own git command that meets it fails, so it tries again
+    const run = (...args: string[]): string => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return execFileSync("git", args, { cwd: project, encoding: "utf8" })
+        } catch (error) {
+          if (attempt >= 20 || !(error instanceof Error) || !error.message.includes("index.lock")) throw error
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+        }
+      }
+    }
     if (git) {
       run("init", "--quiet")
       // A global autocrlf would check files out with CRLF, while assertions expect LF
@@ -153,18 +169,15 @@ export const test = base.extend<{
       run("commit", "--quiet", "-m", "init")
     }
     const fake = await model(script.reply)
-    const configDir = path.join(root, "config", "merakcode")
-    await mkdir(configDir, { recursive: true })
     await writeFile(
-      path.join(configDir, "merakcode.json"),
+      path.join(root, "merakcode.json"),
       JSON.stringify({
-        model: "alibaba/qwen-plus",
-        small_model: "alibaba/qwen-plus",
-        enabled_providers: ["alibaba"],
-        provider: { alibaba: { options: { apiKey: "e2e", baseURL: fake.url } } },
+        model: "alibaba-cn/qwen-plus",
+        small_model: "alibaba-cn/qwen-plus",
+        enabled_providers: ["alibaba-cn"],
+        provider: { "alibaba-cn": { options: { apiKey: "e2e", baseURL: fake.url } } },
         memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
         lsp: false,
-        autoupdate: false,
         ...config,
       }),
     )
@@ -186,10 +199,7 @@ export const test = base.extend<{
       ],
       env: {
         ...env,
-        XDG_CONFIG_HOME: path.join(root, "config"),
-        XDG_DATA_HOME: path.join(root, "data"),
-        XDG_STATE_HOME: path.join(root, "state"),
-        XDG_CACHE_HOME: path.join(root, "cache"),
+        MERAKCODE_HOME: root,
         MERAKCODE_DISABLE_AUTOUPDATE: "1",
         MERAKCODE_DISABLE_MODELS_FETCH: "1",
         MERAKCODE_SANDBOX_MODE: "off",

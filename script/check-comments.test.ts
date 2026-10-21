@@ -1,7 +1,16 @@
 import { describe, expect, test } from "vitest"
-import { issues } from "./check-comments"
+import { existsSync } from "node:fs"
+import path from "node:path"
+import { files, issues } from "./check-comments"
 
 const kinds = (file: string, text: string) => issues(file, text).map((issue) => `${issue.line}:${issue.kind}`)
+
+describe("files", () => {
+  test("skips tracked files that are no longer on disk", () => {
+    const root = path.resolve(import.meta.dirname, "..")
+    for (const file of files(root)) expect(existsSync(path.join(root, file)), file).toBe(true)
+  })
+})
 
 describe("issues", () => {
   test("Chinese in line and block comments", () => {

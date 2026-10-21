@@ -36,6 +36,14 @@ describe("ErrorCode catalog", () => {
     }
   })
 
+  // merak without a command only prints its help, so restarting it is no advice
+  test("no hint tells the user to restart merak on its own", () => {
+    for (const [name, spec] of entries) {
+      expect(spec.hint.zh, name).not.toMatch(/重启 merak/)
+      expect(spec.hint.en, name).not.toMatch(/restart merak/i)
+    }
+  })
+
   test("an error class name maps to at most one code", () => {
     const names = entries.flatMap(([, spec]) => spec.errors ?? [])
     expect(new Set(names).size).toBe(names.length)

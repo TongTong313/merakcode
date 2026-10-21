@@ -28,6 +28,7 @@ already fills in from `createMerakCodeClient({ directory })`, so it is left out 
 - [question](#question)
 - [provider](#provider)
 - [provider.catalog](#providercatalog)
+- [provider.relay](#providerrelay)
 - [provider.oauth](#provideroauth)
 - [plugin](#plugin)
 - [workflow](#workflow)
@@ -113,7 +114,7 @@ Returns: `boolean`
 
 Search sessions across all projects.
 
-Search session titles across every persisted MerakCode project, including closed workspaces.
+Search session titles and conversation text across every persisted MerakCode project, including closed workspaces.
 
 | Parameter | Type      | Required | Description |
 | --------- | --------- | -------- | ----------- |
@@ -143,7 +144,7 @@ Returns: `ConfigOutput`
 
 Update global configuration.
 
-Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the TUI model choice).
+Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the default model).
 
 | Parameter     | Type                              | Required | Description |
 | ------------- | --------------------------------- | -------- | ----------- |
@@ -559,6 +560,22 @@ Create a new MerakCode session for interacting with AI assistants and managing c
 | `metadata`   | `Record<string, unknown>` | no       |             |
 
 Returns: `SessionOutput`
+
+### client.session.search
+
+`GET /session/search` · operationId `session.search`
+
+Search sessions.
+
+Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.
+
+| Parameter | Type      | Required | Description                             |
+| --------- | --------- | -------- | --------------------------------------- |
+| `search`  | `string`  | yes      | Text to look for (case-insensitive)     |
+| `roots`   | `boolean` | no       | Only return root sessions (no parentID) |
+| `limit`   | `number`  | no       | Maximum number of sessions to return    |
+
+Returns: `SessionSearchResult[]`
 
 ### client.session.status
 
@@ -1237,9 +1254,9 @@ Returns: `Record<string, ProviderAuthMethod[]>`
 
 `POST /provider/refresh` · operationId `provider.refresh`
 
-Refresh provider environment.
+Refresh providers.
 
-Re-read provider-related env vars from system and invalidate provider cache.
+Rebuild the provider list from the saved credentials and config.
 
 No parameters.
 
@@ -1272,6 +1289,24 @@ Fetch the latest model catalog (models.dev) into the local cache and rebuild pro
 No parameters.
 
 Returns: `boolean`
+
+## provider.relay
+
+### client.provider.relay.discover
+
+`POST /provider/relay/discover` · operationId `provider.relay.discover`
+
+List models at a relay.
+
+Ask a relay for the models a key can use, and fill in limits the relay did not return.
+
+| Parameter | Type                                                 | Required | Description |
+| --------- | ---------------------------------------------------- | -------- | ----------- |
+| `baseURL` | `string`                                             | yes      |             |
+| `key`     | `string`                                             | yes      |             |
+| `kind`    | `"claude-code" \| "codex" \| "standard" \| "custom"` | yes      |             |
+
+Returns: `{ models: ({ id: string; context?: number; output?: number; contextFrom?: "relay" \| "catalog" \| "fallback"; outputFrom?: "relay" \| "catalog" \| "fallback"; endpoint?: "anthropic" \| "openai-responses" \| "openai-chat"; image?: boolean; reasoning?: boolean; toolcall?: boolean })[] } \| { error: string }`
 
 ## provider.oauth
 
@@ -1421,7 +1456,7 @@ Returns: `boolean`
 
 Get review.
 
-List the changes in a review scope as files and hunks: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base.
+List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.
 
 | Parameter   | Type          | Required | Description |
 | ----------- | ------------- | -------- | ----------- |
@@ -1450,6 +1485,25 @@ Accept or reject whole files or single hunks. Accepting moves the baseline (stag
 | `files`     | `({ file: string; hunks?: string[] })[]` | no       |             |
 
 Returns: `ReviewResult`
+
+### client.review.file
+
+`GET /review/file` · operationId `review.file`
+
+Get review file.
+
+Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.
+
+| Parameter   | Type          | Required | Description |
+| ----------- | ------------- | -------- | ----------- |
+| `scope`     | `ReviewScope` | yes      |             |
+| `sessionID` | `string`      | no       |             |
+| `messageID` | `string`      | no       |             |
+| `base`      | `string`      | no       |             |
+| `file`      | `string`      | yes      |             |
+| `version`   | `string`      | no       |             |
+
+Returns: `ReviewFileDetail`
 
 ### client.review.undo
 
@@ -1867,6 +1921,20 @@ Push the current branch to its upstream, or to the remote (origin or the only re
 No parameters.
 
 Returns: `VcsPushResult`
+
+### client.vcs.run
+
+`POST /vcs/run` · operationId `vcs.run`
+
+Run a git command.
+
+Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| `args`    | `string[]` | yes      |             |
+
+Returns: `VcsRunResult`
 
 ### client.vcs.diff
 

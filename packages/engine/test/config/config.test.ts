@@ -33,7 +33,7 @@ test("loads config with defaults when no files exist", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.keybinds).toBeDefined()
+      expect(config.plugin).toEqual([])
     },
   })
 })
@@ -64,7 +64,7 @@ test("loads JSON config file", async () => {
       await writeConfig(dir, {
         $schema: Config.SCHEMA,
         model: "test/model",
-        theme: "testuser",
+        default_agent: "testuser",
       })
     },
   })
@@ -73,7 +73,7 @@ test("loads JSON config file", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.model).toBe("test/model")
-      expect(config.theme).toBe("testuser")
+      expect(config.default_agent).toBe("testuser")
     },
   })
 })
@@ -87,7 +87,7 @@ test("loads JSONC config file", async () => {
         // This is a comment
         "$schema": "${Config.SCHEMA}",
         "model": "test/model",
-        "theme": "testuser"
+        "default_agent": "testuser"
       }`,
       )
     },
@@ -97,7 +97,7 @@ test("loads JSONC config file", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.model).toBe("test/model")
-      expect(config.theme).toBe("testuser")
+      expect(config.default_agent).toBe("testuser")
     },
   })
 })
@@ -110,7 +110,7 @@ test("merges multiple config files with correct precedence", async () => {
         {
           $schema: Config.SCHEMA,
           model: "base",
-          theme: "base",
+          default_agent: "base",
         },
         "merakcode.jsonc",
       )
@@ -125,7 +125,7 @@ test("merges multiple config files with correct precedence", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.model).toBe("override")
-      expect(config.theme).toBe("base")
+      expect(config.default_agent).toBe("base")
     },
   })
 })
@@ -139,7 +139,7 @@ test("handles environment variable substitution", async () => {
       init: async (dir) => {
         await writeConfig(dir, {
           $schema: Config.SCHEMA,
-          theme: "{env:TEST_VAR}",
+          default_agent: "{env:TEST_VAR}",
         })
       },
     })
@@ -147,7 +147,7 @@ test("handles environment variable substitution", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("test_theme")
+        expect(config.default_agent).toBe("test_theme")
       },
     })
   } finally {
@@ -170,7 +170,7 @@ test("preserves env variables when adding $schema to config", async () => {
         await Filesystem.write(
           path.join(dir, "merakcode.json"),
           JSON.stringify({
-            theme: "{env:PRESERVE_VAR}",
+            default_agent: "{env:PRESERVE_VAR}",
           }),
         )
       },
@@ -179,7 +179,7 @@ test("preserves env variables when adding $schema to config", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("secret_value")
+        expect(config.default_agent).toBe("secret_value")
 
         // Read the file to verify the env variable was preserved
         const content = await Filesystem.readText(path.join(tmp.path, "merakcode.json"))
@@ -203,7 +203,7 @@ test("handles file inclusion substitution", async () => {
       await Filesystem.write(path.join(dir, "included.txt"), "test_theme")
       await writeConfig(dir, {
         $schema: Config.SCHEMA,
-        theme: "{file:included.txt}",
+        default_agent: "{file:included.txt}",
       })
     },
   })
@@ -211,7 +211,7 @@ test("handles file inclusion substitution", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.theme).toBe("test_theme")
+      expect(config.default_agent).toBe("test_theme")
     },
   })
 })
@@ -222,7 +222,7 @@ test("handles file inclusion with replacement tokens", async () => {
       await Filesystem.write(path.join(dir, "included.md"), "const out = await $`echo hi`")
       await writeConfig(dir, {
         $schema: Config.SCHEMA,
-        theme: "{file:included.md}",
+        default_agent: "{file:included.md}",
       })
     },
   })
@@ -230,7 +230,7 @@ test("handles file inclusion with replacement tokens", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.theme).toBe("const out = await $`echo hi`")
+      expect(config.default_agent).toBe("const out = await $`echo hi`")
     },
   })
 })
@@ -240,7 +240,7 @@ test("degrades missing file inclusion without rewriting config", async () => {
   const source = {
     $schema: Config.SCHEMA,
     model: "keep/me",
-    theme: "{file:missing.md}",
+    default_agent: "{file:missing.md}",
   }
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -253,7 +253,7 @@ test("degrades missing file inclusion without rewriting config", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.model).toBe("keep/me")
-      expect(config.theme).toBe("")
+      expect(config.default_agent).toBe("")
       const onDisk = await Filesystem.readText(configPath.value)
       expect(JSON.parse(onDisk)).toEqual(source)
       const warnings = await Config.warnings()
@@ -272,7 +272,7 @@ test("degrade warnings follow the configured UI language", async () => {
         await writeConfig(dir, {
           $schema: Config.SCHEMA,
           ...(locale ? { locale } : {}),
-          theme: "{file:missing.md}",
+          default_agent: "{file:missing.md}",
         })
       },
     })
@@ -531,7 +531,7 @@ test("degrades invalid JSON to empty config without rewriting the file", async (
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.keybinds).toBeDefined()
+      expect(config.plugin).toEqual([])
 
       const onDisk = await Filesystem.readText(configPath.value)
       expect(onDisk).toBe(broken)
@@ -1413,7 +1413,7 @@ test("managed settings override user settings", async () => {
       await writeConfig(dir, {
         $schema: Config.SCHEMA,
         model: "user/model",
-        theme: "testuser",
+        default_agent: "testuser",
       })
     },
   })
@@ -1428,7 +1428,7 @@ test("managed settings override user settings", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.model).toBe("managed/model")
-      expect(config.theme).toBe("testuser")
+      expect(config.default_agent).toBe("testuser")
     },
   })
 })
@@ -1438,16 +1438,16 @@ test("managed settings override project settings", async () => {
     init: async (dir) => {
       await writeConfig(dir, {
         $schema: Config.SCHEMA,
-        autoupdate: true,
+        snapshot: true,
         disabled_providers: [],
-        theme: "dark",
+        default_agent: "dark",
       })
     },
   })
 
   await writeManagedSettings({
     $schema: Config.SCHEMA,
-    autoupdate: false,
+    snapshot: false,
     disabled_providers: ["openai"],
   })
 
@@ -1455,9 +1455,9 @@ test("managed settings override project settings", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.autoupdate).toBe(false)
+      expect(config.snapshot).toBe(false)
       expect(config.disabled_providers).toEqual(["openai"])
-      expect(config.theme).toBe("dark")
+      expect(config.default_agent).toBe("dark")
     },
   })
 })
@@ -2091,8 +2091,8 @@ test("modern JSONC config is not rewritten beyond the requested partial", async 
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // Triggers the write-back path with a partial that only adds theme
-      await Config.updateProjectMerakCode({ theme: "tester" }, { skipDispose: true })
+      // Triggers the write-back path with a partial that only adds default_agent
+      await Config.updateProjectMerakCode({ default_agent: "tester" }, { skipDispose: true })
       const content = await Filesystem.readText(path.join(tmp.path, "merakcode.jsonc"))
 
       expect(content).toMatch(/"read"\s*:\s*"allow"/)
@@ -2100,14 +2100,14 @@ test("modern JSONC config is not rewritten beyond the requested partial", async 
       expect(content).toMatch(/"subagent"\s*:\s*"ask"/)
       expect(content).toMatch(/"question"\s*:\s*"ask"/)
 
-      expect(content).toMatch(/"theme"\s*:\s*"tester"/)
+      expect(content).toMatch(/"default_agent"\s*:\s*"tester"/)
 
       // Nested agent.permission is left intact
       expect(content).toMatch(/"ls"\s*:\s*"deny"/)
       expect(content).toMatch(/"subagent"\s*:\s*"deny"/)
 
       const config = await Config.loadProjectMerakCodeFile()
-      expect(config.theme).toBe("tester")
+      expect(config.default_agent).toBe("tester")
       expect(config.permission?.read).toBe("allow")
       expect(config.permission?.ls).toBe("allow")
       expect(config.permission?.subagent).toBe("ask")
@@ -2148,7 +2148,7 @@ test("normalizes deprecated JSONC fields on project config write", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      await Config.updateProjectMerakCode({ theme: "tester" }, { skipDispose: true })
+      await Config.updateProjectMerakCode({ default_agent: "tester" }, { skipDispose: true })
       const content = await Filesystem.readText(path.join(tmp.path, "merakcode.jsonc"))
 
       // Deprecated top-level keys are migrated (list -> ls, task -> subagent) or removed (todowrite); bash deny stays.
@@ -2161,7 +2161,7 @@ test("normalizes deprecated JSONC fields on project config write", async () => {
       expect(content).toMatch(/"subagent"\s*:\s*"allow"/)
 
       const config = await Config.loadProjectMerakCodeFile()
-      expect(config.theme).toBe("tester")
+      expect(config.default_agent).toBe("tester")
       expect(config.permission?.ls).toBe("deny")
       expect(config.permission?.subagent).toBe("allow")
       expect(config.permission?.bash).toBe("deny")
@@ -2556,7 +2556,7 @@ describe("MERAKCODE_DISABLE_PROJECT_CONFIG", () => {
             JSON.stringify({
               $schema: Config.SCHEMA,
               model: "project/model",
-              theme: "project-user",
+              default_agent: "project-user",
             }),
           )
         },
@@ -2567,7 +2567,7 @@ describe("MERAKCODE_DISABLE_PROJECT_CONFIG", () => {
           const config = await Config.get()
           // Project config should NOT be loaded - model should be default, not "project/model"
           expect(config.model).not.toBe("project/model")
-          expect(config.theme).not.toBe("project-user")
+          expect(config.default_agent).not.toBe("project-user")
         },
       })
     } finally {
@@ -2622,7 +2622,7 @@ describe("MERAKCODE_DISABLE_PROJECT_CONFIG", () => {
           // Should still get default config (from global or defaults)
           const config = await Config.get()
           expect(config).toBeDefined()
-          expect(config.keybinds).toBeDefined()
+          expect(config.plugin).toEqual([])
         },
       })
     } finally {

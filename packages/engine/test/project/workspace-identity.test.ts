@@ -6,7 +6,7 @@ import { Workspace } from "@merakcode/engine/project/workspace"
  * - Saved workspace: the .code-workspace file; adding or removing folders keeps the identity.
  * - Untitled workspace: a fingerprint of the sorted folders. VS Code uses an untitled URI that is forgotten on close;
  *   a fingerprint lets reopening or saving find it again (see microsoft/vscode#301793).
- * - Single root (including CLI/TUI): no workspace identity; the regular project path is used.
+ * - Single root (including the CLI): no workspace identity; the regular project path is used.
  */
 describe("Workspace.identity", () => {
   test("single root has no workspace identity", () => {

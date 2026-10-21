@@ -1,21 +1,11 @@
 import { afterEach, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
-import type { Tool as AITool } from "ai"
-import type { Provider } from "@merakcode/engine/provider/provider"
 import { Config } from "@merakcode/engine/config/config"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Session } from "@merakcode/engine/session/index"
-import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
-import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Bus } from "@merakcode/engine/bus/index"
-import { tmpdir } from "../fixture/fixture"
+import { globalConfig, tmpdir } from "../fixture/fixture"
 
 const originalHome = process.env.MERAKCODE_TEST_HOME
 
@@ -30,7 +20,7 @@ function ideDirectory(dir: string) {
   return `${canonical}${path.sep}.`
 }
 
-test("child git project does not inherit permission from $HOME/.merakcode", async () => {
+test("the upward scan stops at the git root: a .merakcode above a child git project is not loaded", async () => {
   await using home = await tmpdir({
     init: async (dir) => {
       const ghost = path.join(dir, ".merakcode")
@@ -122,142 +112,36 @@ test("ancestor .merakcode inside the repo is still merged into subdirectories", 
   })
 })
 
-test("non-git subdirectory does not inherit permission from $HOME/.merakcode when home is a git repo", async () => {
+test("home as a git repo: the global root reached by the upward scan stays global, once and below the project", async () => {
   await using home = await tmpdir({
     git: true,
     init: async (dir) => {
-      const ghost = path.join(dir, ".merakcode")
-      await fs.mkdir(ghost)
       await Filesystem.write(
-        path.join(ghost, "merakcode.json"),
-        JSON.stringify({
-          $schema: Config.SCHEMA,
-          permission: { write: "allow", edit: "allow" },
-        }),
+        path.join(dir, ".merakcode", "merakcode.json"),
+        JSON.stringify({ $schema: Config.SCHEMA, permission: { write: "deny", edit: "allow" } }),
       )
       const child = path.join(dir, "child")
-      await fs.mkdir(child)
+      await Filesystem.write(
+        path.join(child, "merakcode.json"),
+        JSON.stringify({ $schema: Config.SCHEMA, permission: { write: "allow" } }),
+      )
       return child
     },
   })
 
   process.env.MERAKCODE_TEST_HOME = home.path
+  using _ = globalConfig(path.join(home.path, ".merakcode"))
 
   await Instance.provide({
     directory: home.extra,
     fn: async () => {
       expect(Filesystem.sameDirectory(Instance.worktree, home.path)).toBe(true)
       const config = await Config.get()
-      expect(config.permission?.write).not.toBe("allow")
-      expect(config.permission?.edit).not.toBe("allow")
-    },
-  })
-})
-
-const probeModel = {
-  id: "gpt-4",
-  providerID: "openai",
-  modelID: "gpt-4",
-  api: { id: "gpt-4" },
-} as unknown as Provider.Model
-
-function executeTool(tool: AITool | undefined, args: Record<string, unknown>) {
-  expect(tool).toBeDefined()
-  expect(tool!.execute).toBeDefined()
-  return tool!.execute!(args, {
-    toolCallId: Identifier.ascending("part"),
-    abortSignal: new AbortController().signal,
-    messages: [],
-    context: {},
-  })
-}
-
-test("with auto mode off, stray home config does not leak into a subdirectory (write neither asks nor is denied)", async () => {
-  await using home = await tmpdir({
-    git: true,
-    init: async (dir) => {
-      const ghost = path.join(dir, ".merakcode")
-      await fs.mkdir(ghost)
-      await Filesystem.write(
-        path.join(ghost, "merakcode.json"),
-        JSON.stringify({
-          $schema: Config.SCHEMA,
-          permission: { write: "deny", edit: "deny" },
-        }),
-      )
-      const child = path.join(dir, "child")
-      await fs.mkdir(child)
-      return child
-    },
-  })
-
-  process.env.MERAKCODE_TEST_HOME = home.path
-  const child = home.extra
-
-  await Instance.provide({
-    directory: ideDirectory(child),
-    fn: async () => {
-      const session = await Session.setPermissionMode({
-        sessionID: (await Session.create({})).id,
-        permissionMode: "ask",
-      })
-      const user = await Session.updateInfo({
-        id: Identifier.ascending("message"),
-        role: "user",
-        sessionID: session.id,
-        agent: "build",
-        permissionMode: "ask",
-        model: { providerID: "openai", modelID: "gpt-4" },
-        time: { created: Date.now() },
-      })
-      const agent = await Agent.get("build")
-      expect(agent).toBeDefined()
-      const assistantInfo = (await Session.updateInfo({
-        id: Identifier.ascending("message"),
-        role: "assistant",
-        sessionID: session.id,
-        mode: "build",
-        agent: "build",
-        path: { cwd: child, root: child },
-        cost: 0,
-        tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        modelID: probeModel.id,
-        providerID: probeModel.providerID,
-        parentID: user.id,
-        time: { created: Date.now() },
-      })) as Message.AssistantInfo
-      const processor = SessionProcessor.create({
-        assistantInfo,
-        sessionID: session.id,
-        model: probeModel,
-        abort: new AbortController().signal,
-      })
-      const live = await Session.get(session.id)
-      const { tools } = await SessionRunner.resolveTools({
-        agent: agent!,
-        model: probeModel,
-        session: live,
-        processor,
-        bypassAgentCheck: false,
-        messages: [{ info: user, parts: [] }],
-        permissionMode: "ask",
-      })
-
-      // The stray config in $HOME/.merakcode must not be inherited by the subdirectory. Write no longer asks by
-      // default, so the stricter check is that its `write: "deny"` is not applied: the write must succeed without
-      // a permission prompt.
-      const filePath = path.join(child, "ghost-not-inherited.txt")
-      let asked = false
-      const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => {
-        asked = true
-      })
-      try {
-        await executeTool(tools.write, { filePath, content: "x" }).catch(() => undefined)
-      } finally {
-        unsub()
-      }
-      expect(asked).toBe(false)
-      expect(await Filesystem.readText(filePath)).toBe("x")
+      expect(config.permission?.write).toBe("allow")
+      expect(config.permission?.edit).toBe("allow")
+      const dirs = await Config.directories()
+      const root = path.join(home.path, ".merakcode")
+      expect(dirs.filter((dir) => Filesystem.sameDirectory(dir, root))).toHaveLength(1)
     },
   })
 })

@@ -29,11 +29,11 @@
 
 ### 各系统的实现和限制
 
-| 系统    | 实现                                                                                   | 需要做什么                                         |
-| ------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Windows | 一个隐藏的本地账户 `merakcode-sbx`，用 NTFS 权限限制读写，用防火墙规则拦截它的出站连接 | 运行一次 `merak sandbox setup`，同意一次管理员确认 |
-| Linux   | Landlock（内核 5.13 以上）                                                             | 不用设置                                           |
-| macOS   | 系统自带的 Seatbelt（`sandbox-exec`）                                                  | 不用设置                                           |
+| 系统    | 实现                                                                                   | 需要做什么                                                                                    |
+| ------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Windows | 一个隐藏的本地账户 `merakcode-sbx`，用 NTFS 权限限制读写，用防火墙规则拦截它的出站连接 | 在桌面端"设置 → 权限与安全"里初始化一次（或者运行 `merak sandbox setup`），同意一次管理员确认 |
+| Linux   | Landlock（内核 5.13 以上）                                                             | 不用设置                                                                                      |
+| macOS   | 系统自带的 Seatbelt（`sandbox-exec`）                                                  | 不用设置                                                                                      |
 
 已知的限制（`merak sandbox status` 也会列出来）：
 
@@ -57,11 +57,11 @@
 - `required`：沙箱用不了就不执行命令，提示你先初始化。
 - `off`：关掉沙箱，只靠权限审批。
 
-Windows 上要撤销沙箱，运行 `merak sandbox reset`：删掉沙箱账户和防火墙规则，收回给过的文件夹权限。
+Windows 上要撤销沙箱，在桌面端"设置 → 权限与安全"里点"重置"，或者运行 `merak sandbox reset`：删掉沙箱账户和防火墙规则，收回给过的文件夹权限。
 
 ### 引擎的接口
 
-终端界面、桌面端和 SDK 启动引擎时，只监听 `127.0.0.1`，每次用一个随机端口和随机口令，口令只通过环境变量传给引擎，引擎读到后就从环境变量里删掉。改配置、装 MCP、开终端这些高风险接口，还会检查请求是不是来自启动它的那个程序。
+桌面端、命令行和 SDK 启动引擎时，只监听 `127.0.0.1`，每次用一个随机端口和随机口令，口令只通过环境变量传给引擎，引擎读到后就从环境变量里删掉。改配置、装 MCP、开终端这些高风险接口，还会检查请求是不是来自启动它的那个程序。
 
 自己运行 `merak serve` 时，如果没设置 `MERAKCODE_SERVER_PASSWORD`，这台电脑上的任何程序都能调用引擎的接口，包括批准审批请求。请设置口令；不要在没有口令的情况下用 `--hostname` 把引擎开放到局域网或公网。
 
@@ -96,11 +96,11 @@ The sandbox is our own code, built only on what each operating system provides. 
 
 ### Per-system details and limits
 
-| System  | How it works                                                                                                                             | What you need to do                                                 |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Windows | A hidden local account `merakcode-sbx`; NTFS permissions limit what it reads and writes; a firewall rule blocks its outbound connections | Run `merak sandbox setup` once and approve one administrator prompt |
-| Linux   | Landlock (kernel 5.13 or newer)                                                                                                          | Nothing                                                             |
-| macOS   | The built-in Seatbelt (`sandbox-exec`)                                                                                                   | Nothing                                                             |
+| System  | How it works                                                                                                                             | What you need to do                                                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows | A hidden local account `merakcode-sbx`; NTFS permissions limit what it reads and writes; a firewall rule blocks its outbound connections | Set it up once under Settings → Permissions & security in the desktop app (or run `merak sandbox setup`) and approve one administrator prompt |
+| Linux   | Landlock (kernel 5.13 or newer)                                                                                                          | Nothing                                                                                                                                       |
+| macOS   | The built-in Seatbelt (`sandbox-exec`)                                                                                                   | Nothing                                                                                                                                       |
 
 Known limits (`merak sandbox status` lists them too):
 
@@ -124,10 +124,10 @@ The `sandbox.mode` config option (override it for one run with the `MERAKCODE_SA
 - `required`: if the sandbox doesn't work, refuse to run commands and ask you to set it up.
 - `off`: no sandbox; rely on permission checks only.
 
-To undo the Windows setup, run `merak sandbox reset`. It deletes the sandbox account and firewall rule and takes back the folder permissions.
+To undo the Windows setup, click "Reset" under Settings → Permissions & security in the desktop app, or run `merak sandbox reset`. It deletes the sandbox account and firewall rule and takes back the folder permissions.
 
 ### The engine's API
 
-When the terminal UI, the desktop app or the SDK starts the engine, it listens only on `127.0.0.1`, on a random port with a random password. The password reaches the engine only through an environment variable, which the engine removes as soon as it has read it. High-risk endpoints (changing config, installing MCP servers, opening terminals) also check that the request comes from the program that started the engine.
+When the desktop app, the command line or the SDK starts the engine, it listens only on `127.0.0.1`, on a random port with a random password. The password reaches the engine only through an environment variable, which the engine removes as soon as it has read it. High-risk endpoints (changing config, installing MCP servers, opening terminals) also check that the request comes from the program that started the engine.
 
 If you run `merak serve` yourself without setting `MERAKCODE_SERVER_PASSWORD`, any program on this computer can call the engine's API, including approving requests. Set a password, and never expose the engine to your network or the internet with `--hostname` without one.

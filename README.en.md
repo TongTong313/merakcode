@@ -4,7 +4,7 @@
 
 <h1 align="center">MerakCode</h1>
 
-<p align="center">An open-source AI coding agent for the terminal, the desktop and your own code.</p>
+<p align="center">Aiming to be the best AI coding tool to work with</p>
 
 <p align="center">
   <a href="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml"><img src="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -17,21 +17,43 @@
 
 ---
 
-MerakCode is an open-source AI coding agent for every kind of task. It reads your project, writes and fixes code, runs commands and tests, and handles everyday office work such as documents, spreadsheets and PDFs. The name comes from Merak, the star in the Big Dipper that points to Polaris. Like that star, MerakCode aims to point each of your ideas in the right direction, with as little friction as possible.
+MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. AI now writes far faster than people can read, so MerakCode puts a lot of care into how people and the agent work together: a better way to review what the agent produces and a smoother experience overall, so that its output is what you expect.
+
+We open-sourced this project to make up for a regret we have carried, and in the hope that the community can keep it going. The name comes from Merak, the star in the Big Dipper that, together with Dubhe, points to Polaris. We hope MerakCode does the same and points each of your ideas in the right direction.
 
 ## What it does
 
-- **Any model you like**: over 200 model providers built in (Claude, GPT, Gemini, Qwen, DeepSeek and more), plus local models through LM Studio or Ollama, or any OpenAI-compatible API.
-- **One engine, three ways to use it**: the terminal UI, the desktop app and the TypeScript SDK all run the same engine and behave the same way.
-- **Asks before it changes things**: a permission mode decides what runs right away and what needs your OK. Commands run in a built-in OS sandbox that cannot read your key folders, cannot write outside the workspace, and needs your approval to reach new websites.
-- **Extensible**: MCP servers, skills, plugins, custom agents and slash commands.
-- **More than code**: reads Word and PDF files, reads and writes Excel spreadsheets.
-- **Chinese and English**: the UI starts in Chinese; switch to English with one setting (see [Configuration](#configuration)).
-- **No telemetry**: nothing about your usage is collected. Logs stay on your own computer.
+- **AI coding**: strong project-level coding across many languages, frameworks, paradigms and styles. Honestly, this part is no different from other AI coding products. You be the judge, and if you like it, a Star is the best way to support us.
+- **Human-AI collaboration**: MerakCode is designed around people and the agent working together. It has a review interface built specifically for checking what the agent produces (desktop app only) and a complete permission system for what the agent may do.
+- **Model setup**: connect all kinds of model providers (only 8 for now, more to come) as well as local models. MerakCode can also use models through API relay services.
+- **Security**: commands the agent runs go into our own OS sandbox. They cannot read your key folders, cannot write outside the workspace, and need your approval to reach unfamiliar websites.
+- **Extensible**: MCP, skills, plugins, custom agents and slash commands.
+- **Beyond code**: AI coding is one of the hardest kinds of task there is, so using MerakCode for other things works just fine.
+- **No telemetry**: a small product built by a few people, with no server side (no time to build one...). We don't collect, and couldn't collect, any usage data, so there is nothing of yours to leak.
+- **Build on it**: MerakCode ships an agent SDK, and every MerakCode product is built on it. You can build your own AI coding tool on the same engine.
 
-## Install
+## How to install
+
+### Desktop app
+
+Download from the [Releases](https://github.com/TongTong313/merakcode/releases) page:
+
+| System  | File                                                                              |
+| ------- | --------------------------------------------------------------------------------- |
+| Windows | `MerakCode-<version>-windows-x64.exe`                                             |
+| macOS   | `MerakCode-<version>-darwin-arm64.dmg` (Apple silicon), `-darwin-x64.dmg` (Intel) |
+| Linux   | `MerakCode-<version>-linux-x64.AppImage` or `.deb`                                |
+
+The desktop app ships with its own engine; you do not need the command-line version as well.
+
+The installers are not code-signed yet, so the system stops them the first time:
+
+- **Windows**: when you see "Windows protected your PC", click "More info", then "Run anyway".
+- **macOS**: if the app "cannot be opened", go to System Settings → Privacy & Security and click "Open Anyway" near the bottom. Unsigned macOS builds cannot update themselves; the app tells you when a new version is out and opens the download page.
 
 ### Command line
+
+The command-line version has no UI. It is for one-off tasks in a terminal, scripts, and editors (through ACP). It shares its config and keys with the desktop app.
 
 macOS / Linux:
 
@@ -65,42 +87,20 @@ shasum -a 256 -c SHA256SUMS --ignore-missing      # macOS
 (Get-FileHash .\merakcode-<version>-windows-x64.zip).Hash.ToLower()
 ```
 
-### Desktop app
-
-Download from the [Releases](https://github.com/TongTong313/merakcode/releases) page:
-
-| System  | File                                                                              |
-| ------- | --------------------------------------------------------------------------------- |
-| Windows | `MerakCode-<version>-windows-x64.exe`                                             |
-| macOS   | `MerakCode-<version>-darwin-arm64.dmg` (Apple silicon), `-darwin-x64.dmg` (Intel) |
-| Linux   | `MerakCode-<version>-linux-x64.AppImage` or `.deb`                                |
-
-The desktop app ships with its own engine; you do not need the command-line version as well.
-
-The installers are not code-signed yet, so the system stops them the first time:
-
-- **Windows**: when you see "Windows protected your PC", click "More info", then "Run anyway".
-- **macOS**: if the app "cannot be opened", go to System Settings → Privacy & Security and click "Open Anyway" near the bottom. Unsigned macOS builds cannot update themselves; the app tells you when a new version is out and opens the download page.
-
 ### Uninstall
 
-On Windows, if you set up the sandbox, run `merak sandbox reset` first. It removes the sandbox account and firewall rule and takes back the folder permissions it was given.
+On Windows, if you set up the sandbox, first click "Reset" under Settings → Permissions & security in the desktop app (or run `merak sandbox reset`). It removes the sandbox account and firewall rule and takes back the folder permissions it was given.
 
-- Installed with the script: on macOS / Linux delete `~/.merakcode` and `~/.local/bin/merak`; on Windows delete `%LOCALAPPDATA%\merakcode` and remove its `bin` folder from your user PATH.
-- Installed with npm: `npm uninstall -g merakcode`.
 - Desktop app: uninstall it from the system's app list.
-- Config, sessions and logs live in `~/.config/merakcode`, `~/.local/share/merakcode`, `~/.local/state/merakcode` and `~/.cache/merakcode` (on Windows `~` is `C:\Users\<you>`). Delete them too if you no longer need them.
+- Installed with the script: on macOS / Linux delete `~/.local/bin/merak`; on Windows remove `~\.merakcode\bin` from your user PATH.
+- Installed with npm: `npm uninstall -g merakcode`.
+- Config, sessions, logs and caches all live in one folder, `~/.merakcode` (on Windows `~` is `C:\Users\<you>`; the `MERAKCODE_HOME` environment variable moves it). Delete it if you no longer need it.
 
 ## Quick start
 
-Run it in your project folder:
+Open the desktop app and click "Open folder" to pick your project.
 
-```sh
-cd your-project
-merak
-```
-
-The first time, connect a model provider: type `/provider`, pick one and paste your API key. Keys already in your environment (such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`) are picked up automatically.
+The first time, connect a model provider: on the onboarding screen, pick a provider and enter its API key (change it later under Settings → Models & providers). The built-in catalog is OpenAI, Anthropic, Google, Alibaba Cloud Model Studio, Zhipu AI, DeepSeek, Moonshot AI and OpenRouter. Any other service is an OpenAI-compatible provider in your config, with its URL, model ids and API key.
 
 Then just say what you want:
 
@@ -108,35 +108,33 @@ Then just say what you want:
 Add unit tests for formatDate in utils/date.ts
 ```
 
-Run a single task without the UI:
+Handy actions (`⌘` on macOS, `Ctrl` on Windows and Linux):
 
-```sh
-merak run "Explain how src/index.ts starts up"
-```
-
-Handy inside the UI:
-
-| Type           | What it does                                            |
-| -------------- | ------------------------------------------------------- |
-| `/provider`    | Connect or switch model providers                       |
-| `/models`      | Pick a model                                            |
-| `/new`         | Start a new session                                     |
-| `/sessions`    | Open an earlier session                                 |
-| `/compact`     | Shrink a long conversation                              |
-| `/undo`        | Undo the last turn's changes                            |
-| `/permissions` | Permission rules and the sandbox (`/sandbox` works too) |
-| `/language`    | Switch between Chinese and English                      |
-| `/help`        | All commands and shortcuts                              |
-| `Shift+Tab`    | Switch permission mode                                  |
+| Action                | What it does                                                                  |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `⌘/Ctrl+K`            | Command palette: search conversation titles, conversation content or commands |
+| `⌘/Ctrl+N`            | New conversation                                                              |
+| `⌘/Ctrl+,`            | Open settings                                                                 |
+| `⌘/Ctrl+J`            | Open or close the terminal                                                    |
+| `⌘/Ctrl+B`            | Show or hide the side panel                                                   |
+| `Shift+Tab`           | Switch permission mode                                                        |
+| Type `/` in the input | Pick a slash command, such as `/compact` to shrink a long conversation        |
+| Type `@` in the input | Reference a file in the project                                               |
 
 ## Commands
 
+The command-line version runs in a terminal. If you have not connected a model provider in the desktop app, run `merak provider login` first. Then run a task in your project folder and get the result printed:
+
+```sh
+cd your-project
+merak run "Explain how src/index.ts starts up"
+```
+
 | Command                       | What it does                                                                      |
 | ----------------------------- | --------------------------------------------------------------------------------- |
-| `merak`                       | Open the terminal UI                                                              |
 | `merak run "<task>"`          | Run one task and print the result                                                 |
-| `merak serve --port 4096`     | Start only the engine, for the desktop app, the SDK or another terminal           |
-| `merak attach <url>`          | Open the terminal UI against an engine that is already running                    |
+| `merak provider login`        | Connect a model provider; `list` shows the connected ones, `logout` removes one   |
+| `merak serve --port 4096`     | Start only the engine, for the SDK or other programs                              |
 | `merak upgrade` (or `update`) | Upgrade. `--check` only looks for a new version, `--yes` skips the question       |
 | `merak models`                | List the models you can use                                                       |
 | `merak mcp list`              | Show MCP server status                                                            |
@@ -164,21 +162,21 @@ Editors that speak [ACP](https://agentclientprotocol.com) can use MerakCode as t
 
 MerakCode edits files and runs commands on your computer, so every action goes through the permission mode first: do it, ask you, or refuse.
 
-| Mode          | Good for                      | What happens                                                                                                                                                    |
-| ------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read-only     | Exploring code, making a plan | Only reads files and runs read-only commands (such as `git status` or `ls`). No edits, no other commands                                                        |
-| Ask (default) | Everyday work                 | Reads files and edits inside the workspace right away; asks before running commands, editing outside the workspace, reading sensitive files or going online     |
-| Auto          | Letting it get on with it     | Does most things right away; still asks before risky commands (such as `git push` or `sudo`), edits outside the workspace, sensitive files and unknown websites |
+| Mode          | Good for                              | What happens                                                                                                                                                    |
+| ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read-only     | Designs and plans                     | Only reads files and runs read-only commands (such as `git status` or `ls`). No edits, no other commands                                                        |
+| Ask (default) | Everyday work                         | Reads files and edits inside the workspace right away; asks before running commands, editing outside the workspace, reading sensitive files or going online     |
+| Auto          | Large projects, when you trust the AI | Does most things right away; still asks before risky commands (such as `git push` or `sudo`), edits outside the workspace, sensitive files and unknown websites |
 
-Press `Shift+Tab` in the UI to switch modes. When it asks, you can allow once, allow for this session, always allow (saved to the project config) or deny. By default, commands such as `rm -rf /` or formatting a disk never run, in any mode.
+Switch modes next to the input in the desktop app, or press `Shift+Tab`. When it asks, you can allow once, allow for this session, always allow (saved to the project config) or deny. By default, commands such as `rm -rf /` or formatting a disk never run, in any mode.
 
 Commands the agent runs also go into an **OS sandbox**: they can only write the workspace, temp folders and package manager caches; they cannot read key folders such as `~/.ssh` or `~/.aws`; they cannot change `.git/hooks` or `.git/config`; and network traffic goes through a local proxy that asks you about sites it has not seen. The sandbox is our own code on top of what each OS provides:
 
-| System  | Built on                                                      | What you need to do                                                                         |
-| ------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Windows | A separate low-rights account, NTFS permissions, the firewall | Run `merak sandbox setup` once and approve one administrator prompt; it takes a few minutes |
-| Linux   | Landlock (kernel 5.13 or newer)                               | Nothing. Network rules need kernel 6.7 or newer                                             |
-| macOS   | The built-in Seatbelt (sandbox-exec)                          | Nothing                                                                                     |
+| System  | Built on                                                      | What you need to do                                                                                                                                |
+| ------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows | A separate low-rights account, NTFS permissions, the firewall | Click "Set up" under Settings → Permissions & security in the desktop app (or run `merak sandbox setup` once) and approve one administrator prompt |
+| Linux   | Landlock (kernel 5.13 or newer)                               | Nothing. Network rules need kernel 6.7 or newer                                                                                                    |
+| macOS   | The built-in Seatbelt (sandbox-exec)                          | Nothing                                                                                                                                            |
 
 While the sandbox is not ready (for example before setup on Windows), commands that may change things ask first, even in auto mode. For what the sandbox does and does not protect against, see [SECURITY.md](SECURITY.md).
 
@@ -186,7 +184,7 @@ While the sandbox is not ready (for example before setup on Windows), commands t
 
 | Location                                               | Purpose                                                        |
 | ------------------------------------------------------ | -------------------------------------------------------------- |
-| `~/.config/merakcode/merakcode.json`                   | Global config (model, language, permission rules...)           |
+| `~/.merakcode/merakcode.json`                          | Global config (model, language, permission rules...)           |
 | `<project>/.merakcode/merakcode.json`                  | Project config, overrides the global one                       |
 | `<project>/AGENTS.md`                                  | Notes about your project for MerakCode (`CLAUDE.md` works too) |
 | `<project>/.merakcode/agents/`, `skills/`, `commands/` | Custom agents, skills and slash commands                       |
@@ -205,7 +203,7 @@ Config files can be plain JSON or JSONC with comments. Add `"$schema"` at the to
 }
 ```
 
-To use English: switch in `/language`, set `"locale": "en-US"` in the config, or set the environment variable `MERAKCODE_LOCALE=en-US`.
+To switch to English: in the desktop app, use Settings → General → Language; for the command line, set `"locale": "en-US"` in the config or the environment variable `MERAKCODE_LOCALE=en-US`.
 
 ## SDK
 
@@ -241,15 +239,15 @@ pnpm hooks:install          # check formatting before each commit
 
 ### Run from source
 
-| To                                   | Run                                                                              |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| Open the terminal UI                 | `pnpm dev`                                                                       |
-| Pass arguments                       | `pnpm dev run "Explain this project"`                                            |
-| Start only the engine                | `pnpm dev serve --port 4096`                                                     |
-| Connect to it from a second terminal | `pnpm dev attach http://127.0.0.1:4096`                                          |
-| Debug the engine                     | `node --inspect --import ./script/node/register.mjs apps/cli/src/index.ts serve` |
-| Print detailed logs                  | `pnpm dev --print-logs --log-level DEBUG`                                        |
-| Work on the desktop app              | `pnpm --dir apps/desktop/main dev` (add `--renderer` to rebuild the UI first)    |
+| To                         | Run                                                                              |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| Work on the desktop app    | `pnpm --dir apps/desktop/main dev`                                               |
+| Run a command-line command | `pnpm dev run "Explain this project"`                                            |
+| Start only the engine      | `pnpm dev serve --port 4096`                                                     |
+| Debug the engine           | `node --inspect --import ./script/node/register.mjs apps/cli/src/index.ts serve` |
+| Print detailed logs        | `pnpm dev serve --print-logs --log-level DEBUG`                                  |
+
+**Note**: desktop development reloads the UI as you save and restarts the main process and the engine when their code changes, which makes debugging much easier.
 
 `pnpm dev` runs the source directly; there is nothing to build first. Change the code and run it again.
 
@@ -290,17 +288,17 @@ const merak = await createMerakCode({
 ### Layout
 
 ```text
-apps/cli              the merak command and terminal UI; merak serve is the engine
+apps/cli              the merak command; merak serve is the engine, and the desktop app ships the same one
 apps/desktop/main     desktop app main process (Electron)
 apps/desktop/renderer desktop app UI (SolidJS)
 packages/engine       the engine: sessions, models, tools, permissions, HTTP server
 packages/sandbox      the OS sandbox (Windows / Linux / macOS)
 packages/sdk/js       TypeScript SDK
 packages/util, log    shared helpers and logging
-packages/client-core  approval options shared by the terminal and desktop UIs
+packages/client-core  approval options for the desktop app
 ```
 
-Neither the terminal UI nor the desktop app imports engine code. Both start a `merak serve` process through the SDK and talk to it over HTTP and an event stream. `pnpm check` enforces this. See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest of the conventions.
+Neither the desktop app nor the command-line commands import engine code. They start a `merak serve` process through the SDK and talk to it over HTTP and an event stream. `pnpm check` enforces this. See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest of the conventions.
 
 ## When something goes wrong
 
@@ -313,10 +311,14 @@ Neither the terminal UI nor the desktop app imports engine code. Both start a `m
 
 Please do not report security problems in public issues. See [SECURITY.md](SECURITY.md) for how to report them privately.
 
+## Contributing
+
+Issues and pull requests are welcome; let's make MerakCode better together. See [CONTRIBUTING.md](CONTRIBUTING.md) for the guidelines.
+
 ## License
 
 [MIT](LICENSE)
 
 ## Thanks
 
-Thanks to [opencode](https://github.com/anomalyco/opencode) and the other open-source projects MerakCode uses. Their license notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Parts of this project are based on code from [opencode](https://github.com/anomalyco/opencode), and we thank them for it. Their license notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

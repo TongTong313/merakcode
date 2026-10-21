@@ -1,6 +1,6 @@
 /**
  * In-app routes loaded by windows. Matches the renderer routes: `/:dir/session/:id?`, where dir is the base64url of
- * the directory (same as base64Encode in packages/util: URL-safe characters, no padding).
+ * the directory (URL-safe characters, no padding; the renderer's lib/route.ts decodes it).
  */
 export namespace Route {
   export function of(opts: { directory?: string; sessionID?: string } = {}) {

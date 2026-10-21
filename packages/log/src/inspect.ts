@@ -124,7 +124,7 @@ export function readRecords(file: string): LogRecord[] {
   })
 }
 
-/** Runs whose id starts with `id`; the CLI and its worker share one run id */
+/** Runs whose id starts with `id`; processes started for one run (MERAKCODE_RUN_ID) share its id */
 export function filterRun(runs: Run[], id: string): Run[] {
   if (!id) return []
   return runs.filter((run) => run.id.startsWith(id))

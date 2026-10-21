@@ -9,11 +9,10 @@ import { Session } from "@merakcode/engine/session/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Identifier } from "@merakcode/util/id"
 import { Message } from "@merakcode/engine/session/message"
-import { Transcript } from "@merakcode/engine/session/transcript"
 import { LLM } from "@merakcode/engine/session/llm"
+import { Database } from "@merakcode/engine/storage/db"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
-import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
 
@@ -85,20 +84,17 @@ test("stopping mid-stream writes the partial text to the transcript when the mes
         model,
       })
 
-      // Read the raw lines on disk, bypassing the in-process copy, to prove the text was actually written.
-      const written = (await Filesystem.readText(Transcript.file(session.id)))
-        .split("\n")
-        .filter(Boolean)
-        .map((raw) => JSON.parse(raw))
-      const texts = written
-        .filter((line) => line.type === "part" && line.part.type === "text")
-        .map((line) => line.part.text)
-      expect(texts.at(-1)).toBe("已经生成的半段回复")
-      expect(written.some((line) => line.type === "delta")).toBe(false)
+      // Read the stored rows, bypassing the in-process copy, to prove the text was actually written.
+      const rows = (sql: string) =>
+        (Database.query(sql).all(session.id, assistantInfo.id) as { data: string }[]).map((row) => JSON.parse(row.data))
+      const texts = rows("SELECT data FROM part WHERE session_id = ? AND message_id = ?")
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+      expect(texts).toEqual(["已经生成的半段回复"])
 
-      const last = written.filter((line) => line.type === "message").at(-1)
-      expect(last.info.time.completed).toBeTypeOf("number")
-      expect(last.info.error?.name).toBe("MessageAbortedError")
+      const [stored] = rows("SELECT data FROM message WHERE session_id = ? AND id = ?")
+      expect(stored.time.completed).toBeTypeOf("number")
+      expect(stored.error?.name).toBe("MessageAbortedError")
     },
   })
 })

@@ -7,6 +7,7 @@ import os from "os"
 import z from "zod"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { ModelsDev } from "../provider/models"
+import { Relay } from "../provider/relay"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
@@ -148,7 +149,7 @@ export namespace Config {
 
     // Config loading order (low -> high precedence):
     // 1) Remote .well-known/merakcode (org defaults)
-    // 2) Global config (~/.config/merakcode/merakcode.json{,c})
+    // 2) Global config (~/.merakcode/merakcode.json{,c})
     // 3) Custom config (MERAKCODE_CONFIG)
     // 3.5) Workspace config (multi-root: `<data>/workspace/<ws_id>/merakcode.json`, never .code-workspace)
     // 4) Project config (merakcode.json{,c}) — primary only
@@ -211,35 +212,26 @@ export namespace Config {
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
 
+    // Only scan project .merakcode/ directories when project discovery is enabled
+    const scanned = Flag.MERAKCODE_DISABLE_PROJECT_CONFIG
+      ? []
+      : await Array.fromAsync(
+          Filesystem.up({
+            targets: [".merakcode"],
+            start: Instance.directory,
+            // Git projects scan up to the git root (monorepos keep config at the root). Non-git projects
+            // (worktree="/") scan only the current directory; walking up would pick up the .merakcode of
+            // ancestors such as home and load their skills into this project, breaking project isolation.
+            stop: Instance.worktree === "/" ? Instance.directory : Instance.worktree,
+          }),
+        )
+    // The global directory (~/.merakcode) is laid out like a project's .merakcode/. When home is inside the project,
+    // the scan finds it again (possibly spelled differently on Windows); it stays global and loads once.
     const directories = unique(
-      [
-        Global.Path.config,
-        // Always scan ~/.config/merakcode/ (common on Linux/WSL)
-        path.join(Global.Path.home, ".config", "merakcode"),
-        // Only scan project .merakcode/ directories when project discovery is enabled
-        ...(!Flag.MERAKCODE_DISABLE_PROJECT_CONFIG
-          ? await Array.fromAsync(
-              Filesystem.up({
-                targets: [".merakcode"],
-                start: Instance.directory,
-                // Git projects scan up to the git root (monorepos keep config at the root). Non-git projects
-                // (worktree="/") scan only the current directory; walking up would pick up the .merakcode of
-                // ancestors such as home and load their skills into this project, breaking project isolation.
-                stop: Instance.worktree === "/" ? Instance.directory : Instance.worktree,
-              }),
-            )
-          : []),
-        // ~/.merakcode is not a global config source: it is the runtime/install directory (argv.json, extensions,
-        // update-status.json, ...), unlike opencode's ~/.opencode. The project scan can still escape the git root
-        // when the directory/worktree strings differ and pick up <home>/.merakcode as an ancestor; it is dropped
-        // below unless home itself is the open directory.
-      ].map(sanitizePath),
-    )
-      .filter((dir) => existsSync(dir))
-      .filter((dir) => {
-        if (!Filesystem.sameDirectory(dir, path.join(Global.Path.home, ".merakcode"))) return true
-        return Filesystem.sameDirectory(Instance.directory, Global.Path.home)
-      })
+      [Global.Path.config, ...scanned.filter((dir) => !Filesystem.sameDirectory(dir, Global.Path.config))].map(
+        sanitizePath,
+      ),
+    ).filter((dir) => existsSync(dir))
 
     // .merakcode directory config overrides (project and global) config sources.
     if (Flag.MERAKCODE_CONFIG_DIR) {
@@ -250,7 +242,9 @@ export namespace Config {
     const deps = []
 
     for (const dir of directories) {
-      if (dir.endsWith(".merakcode") || dir === Flag.MERAKCODE_CONFIG_DIR) {
+      // The global merakcode.json was merged above with global precedence, below the project config
+      const globalDir = Filesystem.sameDirectory(dir, Global.Path.config)
+      if ((dir.endsWith(".merakcode") && !globalDir) || dir === Flag.MERAKCODE_CONFIG_DIR) {
         for (const file of ["merakcode.jsonc", "merakcode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
@@ -361,8 +355,6 @@ export namespace Config {
     }
 
     // Deprecated permission fields are detected and stripped in load() (see DEPRECATED_SAFETY_FIELDS).
-
-    if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
     // Apply flag overrides for compaction settings
     if (Flag.MERAKCODE_DISABLE_AUTOCOMPACT) {
@@ -1058,182 +1050,6 @@ export namespace Config {
     })
   export type Agent = z.infer<typeof Agent>
 
-  export const Keybinds = z
-    .object({
-      leader: z.string().optional().default("ctrl+x").describe("Leader key for keybind combinations"),
-      app_exit: z.string().optional().default("ctrl+c,ctrl+d,<leader>q").describe("Exit the application"),
-      theme_list: z.string().optional().default("<leader>t").describe("List available themes"),
-      sidebar_toggle: z.string().optional().default("<leader>b").describe("Toggle sidebar"),
-      scrollbar_toggle: z.string().optional().default("none").describe("Toggle session scrollbar"),
-      status_view: z.string().optional().default("<leader>s").describe("View status"),
-      session_export: z.string().optional().default("<leader>x").describe("Export session to editor"),
-      session_export_full: z.string().optional().default("<leader>e").describe("Export full session data as JSON"),
-      session_import_full: z.string().optional().default("<leader>i").describe("Import full session data from JSON"),
-      session_new: z.string().optional().default("<leader>n").describe("Create a new session"),
-      session_list: z.string().optional().default("<leader>l").describe("List all sessions"),
-      session_timeline: z.string().optional().default("<leader>g").describe("Show session timeline"),
-      session_fork: z.string().optional().default("none").describe("Fork session from message"),
-      session_rename: z.string().optional().default("ctrl+r").describe("Rename session"),
-      session_delete: z.string().optional().default("ctrl+d").describe("Delete session"),
-      session_pin_toggle: z.string().optional().default("ctrl+f").describe("Pin or unpin session in the session list"),
-      stash_delete: z.string().optional().default("ctrl+d").describe("Delete stash entry"),
-      model_provider_list: z.string().optional().default("ctrl+a").describe("Open provider list from model dialog"),
-      model_favorite_toggle: z.string().optional().default("ctrl+f").describe("Toggle model favorite status"),
-      session_interrupt: z.string().optional().default("escape").describe("Interrupt current session"),
-      session_compact: z.string().optional().default("<leader>c").describe("Compact the session"),
-      messages_page_up: z.string().optional().default("pageup,ctrl+alt+b").describe("Scroll messages up by one page"),
-      messages_page_down: z
-        .string()
-        .optional()
-        .default("pagedown,ctrl+alt+f")
-        .describe("Scroll messages down by one page"),
-      messages_line_up: z.string().optional().default("ctrl+alt+y").describe("Scroll messages up by one line"),
-      messages_line_down: z.string().optional().default("ctrl+alt+e").describe("Scroll messages down by one line"),
-      messages_half_page_up: z.string().optional().default("ctrl+alt+u").describe("Scroll messages up by half page"),
-      messages_half_page_down: z
-        .string()
-        .optional()
-        .default("ctrl+alt+d")
-        .describe("Scroll messages down by half page"),
-      messages_first: z.string().optional().default("ctrl+g,home").describe("Navigate to first message"),
-      messages_last: z.string().optional().default("ctrl+alt+g,end").describe("Navigate to last message"),
-      messages_next: z.string().optional().default("none").describe("Navigate to next message"),
-      messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
-      messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
-      messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
-      messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
-      messages_redo: z.string().optional().default("<leader>r").describe("Redo message"),
-      messages_toggle_conceal: z
-        .string()
-        .optional()
-        .default("<leader>h")
-        .describe("Toggle code block concealment in messages"),
-      tool_details: z.string().optional().default("none").describe("Toggle tool details visibility"),
-      model_list: z.string().optional().default("<leader>m").describe("List available models"),
-      model_cycle_recent: z.string().optional().default("f2").describe("Next recently used model"),
-      model_cycle_recent_reverse: z.string().optional().default("shift+f2").describe("Previous recently used model"),
-      model_cycle_favorite: z.string().optional().default("none").describe("Next favorite model"),
-      model_cycle_favorite_reverse: z.string().optional().default("none").describe("Previous favorite model"),
-      command_list: z.string().optional().default("ctrl+p").describe("List available commands"),
-      agent_list: z.string().optional().default("<leader>a").describe("List agents"),
-      agent_cycle: z.string().optional().default("tab").describe("Next agent"),
-      agent_cycle_reverse: z.string().optional().default("none").describe("Previous agent"),
-      permission_mode_cycle: z
-        .string()
-        .optional()
-        .default("shift+tab")
-        .describe("Cycle permission mode (read-only, ask, auto)"),
-      variant_cycle: z.string().optional().default("ctrl+t").describe("Cycle model variants"),
-      input_clear: z.string().optional().default("ctrl+c").describe("Clear input field"),
-      input_paste: z.string().optional().default("ctrl+v").describe("Paste from clipboard"),
-      input_submit: z.string().optional().default("return").describe("Submit input"),
-      input_newline: z
-        .string()
-        .optional()
-        .default("shift+return,ctrl+return,alt+return,ctrl+j")
-        .describe("Insert newline in input"),
-      input_move_left: z.string().optional().default("left,ctrl+b").describe("Move cursor left in input"),
-      input_move_right: z.string().optional().default("right,ctrl+f").describe("Move cursor right in input"),
-      input_move_up: z.string().optional().default("up").describe("Move cursor up in input"),
-      input_move_down: z.string().optional().default("down").describe("Move cursor down in input"),
-      input_select_left: z.string().optional().default("shift+left").describe("Select left in input"),
-      input_select_right: z.string().optional().default("shift+right").describe("Select right in input"),
-      input_select_up: z.string().optional().default("shift+up").describe("Select up in input"),
-      input_select_down: z.string().optional().default("shift+down").describe("Select down in input"),
-      input_line_home: z.string().optional().default("ctrl+a").describe("Move to start of line in input"),
-      input_line_end: z.string().optional().default("ctrl+e").describe("Move to end of line in input"),
-      input_select_line_home: z
-        .string()
-        .optional()
-        .default("ctrl+shift+a")
-        .describe("Select to start of line in input"),
-      input_select_line_end: z.string().optional().default("ctrl+shift+e").describe("Select to end of line in input"),
-      input_visual_line_home: z.string().optional().default("alt+a").describe("Move to start of visual line in input"),
-      input_visual_line_end: z.string().optional().default("alt+e").describe("Move to end of visual line in input"),
-      input_select_visual_line_home: z
-        .string()
-        .optional()
-        .default("alt+shift+a")
-        .describe("Select to start of visual line in input"),
-      input_select_visual_line_end: z
-        .string()
-        .optional()
-        .default("alt+shift+e")
-        .describe("Select to end of visual line in input"),
-      input_buffer_home: z.string().optional().default("home").describe("Move to start of buffer in input"),
-      input_buffer_end: z.string().optional().default("end").describe("Move to end of buffer in input"),
-      input_select_buffer_home: z
-        .string()
-        .optional()
-        .default("shift+home")
-        .describe("Select to start of buffer in input"),
-      input_select_buffer_end: z.string().optional().default("shift+end").describe("Select to end of buffer in input"),
-      input_delete_line: z.string().optional().default("ctrl+shift+d").describe("Delete line in input"),
-      input_delete_to_line_end: z.string().optional().default("ctrl+k").describe("Delete to end of line in input"),
-      input_delete_to_line_start: z.string().optional().default("ctrl+u").describe("Delete to start of line in input"),
-      input_backspace: z.string().optional().default("backspace,shift+backspace").describe("Backspace in input"),
-      input_delete: z.string().optional().default("ctrl+d,delete,shift+delete").describe("Delete character in input"),
-      input_undo: z.string().optional().default("ctrl+-,super+z").describe("Undo in input"),
-      input_redo: z.string().optional().default("ctrl+.,super+shift+z").describe("Redo in input"),
-      input_word_forward: z
-        .string()
-        .optional()
-        .default("alt+f,alt+right,ctrl+right")
-        .describe("Move word forward in input"),
-      input_word_backward: z
-        .string()
-        .optional()
-        .default("alt+b,alt+left,ctrl+left")
-        .describe("Move word backward in input"),
-      input_select_word_forward: z
-        .string()
-        .optional()
-        .default("alt+shift+f,alt+shift+right")
-        .describe("Select word forward in input"),
-      input_select_word_backward: z
-        .string()
-        .optional()
-        .default("alt+shift+b,alt+shift+left")
-        .describe("Select word backward in input"),
-      input_delete_word_forward: z
-        .string()
-        .optional()
-        .default("alt+d,alt+delete,ctrl+delete")
-        .describe("Delete word forward in input"),
-      input_delete_word_backward: z
-        .string()
-        .optional()
-        .default("ctrl+w,ctrl+backspace,alt+backspace")
-        .describe("Delete word backward in input"),
-      history_previous: z.string().optional().default("up").describe("Previous history item"),
-      history_next: z.string().optional().default("down").describe("Next history item"),
-      session_child_cycle: z.string().optional().default("<leader>right").describe("Next child session"),
-      session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
-      session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
-      terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
-      terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
-      tips_toggle: z.string().optional().default("<leader>h").describe("Toggle tips on home screen"),
-      display_thinking: z.string().optional().default("none").describe("Toggle thinking blocks visibility"),
-    })
-    .strict()
-    .meta({
-      ref: "KeybindsConfig",
-    })
-
-  export const TUI = z.object({
-    scroll_speed: z.number().min(0.001).optional().describe("TUI scroll speed"),
-    scroll_acceleration: z
-      .object({
-        enabled: z.boolean().describe("Enable scroll acceleration"),
-      })
-      .optional()
-      .describe("Scroll acceleration settings"),
-    diff_style: z
-      .enum(["auto", "stacked"])
-      .optional()
-      .describe("Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column"),
-  })
-
   export const Server = z
     .object({
       port: z.number().int().positive().optional().describe("Port to listen on"),
@@ -1256,6 +1072,14 @@ export namespace Config {
     .extend({
       whitelist: z.array(z.string()).optional(),
       blacklist: z.array(z.string()).optional(),
+      relay: z
+        .object({
+          station: z.string().min(1),
+          group: z.string().min(1),
+          kind: Relay.Kind,
+          auth: z.enum(["bearer", "x-api-key"]).optional(),
+        })
+        .optional(),
       models: z
         .record(
           z.string(),
@@ -1311,11 +1135,8 @@ export namespace Config {
   const SharedInfo = z
     .object({
       $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
-      theme: z.string().optional().describe("Theme name to use for the interface"),
       locale: z.enum(["zh-CN", "en-US"]).optional().describe("UI language (zh-CN or en-US)"),
-      keybinds: Keybinds.optional().describe("Custom keybind configurations"),
       logLevel: Log.Level.optional().describe("Log level"),
-      tui: TUI.optional().describe("TUI specific settings"),
       server: Server.optional().describe("Server configuration for merak serve and web commands"),
       command: z.record(z.string(), Command).optional().describe("Command configuration"),
       skills: Skills.optional().describe("Additional skill folder paths"),
@@ -1334,12 +1155,6 @@ export namespace Config {
        */
       plugin: z.array(z.union([z.string(), z.tuple([z.string(), z.record(z.string(), z.unknown())])])).optional(),
       snapshot: z.boolean().optional(),
-      autoupdate: z
-        .union([z.boolean(), z.literal("notify")])
-        .optional()
-        .describe(
-          "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-        ),
       disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
       enabled_providers: z
         .array(z.string())

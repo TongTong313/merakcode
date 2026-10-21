@@ -1,6 +1,7 @@
 /**
- * SDK contract: after the agent edits files, the client reviews them hunk by hunk through the review API. Accepted
- * hunks are no longer listed, rejected hunks are reverted on disk, decisions on a stale list fail with 409, and
+ * SDK contract: after the agent edits files, the client reviews them hunk by hunk through the review API. The list
+ * has counts and a version per file and review.file returns a file's hunks. Accepted hunks are no longer listed,
+ * rejected hunks are reverted on disk, decisions on a stale list and details of an old version fail with 409, and
  * review changes publish a review.updated event.
  */
 import { afterAll, beforeAll, expect, test } from "vitest"
@@ -46,12 +47,19 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
 
   const { client } = merak
   const input = { scope: "session" as const, sessionID: session.id }
+  const hunksOf = async (file: string) =>
+    (await client.review.file({ ...input, file }, { throwOnError: true })).data.hunks
   const review = (await client.review.get(input, { throwOnError: true })).data
-  expect(review.files.map((file) => [file.file, file.status, file.hunks.length])).toEqual([
+  expect(review.files.map((file) => [file.file, file.status, file.hunks])).toEqual([
     ["a.txt", "modified", 2],
     ["b.txt", "added", 1],
   ])
-  const [first, second] = review.files[0]!.hunks
+  const listed = review.files[0]!
+  const detail = (
+    await client.review.file({ ...input, file: "a.txt", version: listed.version }, { throwOnError: true })
+  ).data
+  expect(detail.version).toBe(listed.version)
+  const [first, second] = detail.hunks
 
   const abort = new AbortController()
   const events = await client.event.subscribe(undefined, { signal: abort.signal })
@@ -63,9 +71,15 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
     { ...input, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] },
     { throwOnError: true },
   )
-  expect(accepted.data.files.find((file) => file.file === "a.txt")!.hunks.map((hunk) => hunk.id)).toEqual([second!.id])
+  expect(accepted.data.files.find((file) => file.file === "a.txt")!.hunks).toBe(1)
+  expect((await hunksOf("a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
   expect(await updated).toEqual({ scope: "session", sessionID: session.id })
   abort.abort()
+
+  // Accepting moved the base, so the version listed before is stale
+  const old = await client.review.file({ ...input, file: "a.txt", version: listed.version })
+  expect(old.response.status).toBe(409)
+  expect(old.error).toMatchObject({ name: "ReviewStaleError" })
 
   await client.review.decide(
     { ...input, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] },
@@ -85,5 +99,6 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
   // Undoing the rejection puts the hunk back into the file, ready for review again
   const undone = await client.review.undo(input, { throwOnError: true })
   expect(await Filesystem.readText(a)).toBe(changed)
-  expect(undone.data.files.find((file) => file.file === "a.txt")!.hunks.map((hunk) => hunk.id)).toEqual([second!.id])
+  expect(undone.data.files.find((file) => file.file === "a.txt")!.hunks).toBe(1)
+  expect((await hunksOf("a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
 }, 120_000)

@@ -140,7 +140,6 @@ async function invoke(
       env: {
         ...process.env,
         MERAKCODE_DISABLE_MODELS_FETCH: "1",
-        MERAKCODE_DISABLE_AUTOUPDATE: "1",
         MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
         MERAKCODE_DISABLE_PROJECT_CONFIG: "1",
       },

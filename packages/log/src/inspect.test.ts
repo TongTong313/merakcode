@@ -87,7 +87,7 @@ describe("readRecords", () => {
 })
 
 describe("filterRun", () => {
-  test("matches a run id by prefix and keeps the CLI and its worker together", () => {
+  test("matches a run id by prefix and keeps the processes of one run together", () => {
     const dir = root()
     write(
       join(dir, "production", "cli"),
@@ -97,8 +97,8 @@ describe("filterRun", () => {
     )
     write(
       join(dir, "production", "cli"),
-      "worker--2026-10-20T00-00-00-000Z--101--a2.ndjson",
-      line("abc123", 1, "w"),
+      "backend--2026-10-20T00-00-00-000Z--101--a2.ndjson",
+      line("abc123", 1, "b"),
       1001,
     )
     write(
@@ -111,7 +111,7 @@ describe("filterRun", () => {
       filterRun(listRuns(dir), "abc")
         .map((run) => run.name)
         .sort(),
-    ).toEqual(["main", "worker"])
+    ).toEqual(["backend", "main"])
     expect(filterRun(listRuns(dir), "nope")).toEqual([])
   })
 })

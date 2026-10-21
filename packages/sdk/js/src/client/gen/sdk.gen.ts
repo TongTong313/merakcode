@@ -169,6 +169,8 @@ import type {
   ProviderOauthPromptResponses,
   ProviderRefreshErrors,
   ProviderRefreshResponses,
+  ProviderRelayDiscoverErrors,
+  ProviderRelayDiscoverResponses,
   ProviderVerifyErrors,
   ProviderVerifyResponses,
   PtyConnectErrors,
@@ -192,6 +194,8 @@ import type {
   QuestionReplyResponses,
   ReviewDecideErrors,
   ReviewDecideResponses,
+  ReviewFileErrors,
+  ReviewFileResponses,
   ReviewGetErrors,
   ReviewGetResponses,
   ReviewScope,
@@ -245,6 +249,8 @@ import type {
   SessionPromptResponses,
   SessionRevertErrors,
   SessionRevertResponses,
+  SessionSearchErrors,
+  SessionSearchResponses,
   SessionSetPermissionModeErrors,
   SessionSetPermissionModeResponses,
   SessionShellErrors,
@@ -287,6 +293,8 @@ import type {
   VcsGetResponses,
   VcsPushErrors,
   VcsPushResponses,
+  VcsRunErrors,
+  VcsRunResponses,
   WorkflowCancelErrors,
   WorkflowCancelResponses,
   WorkflowGetErrors,
@@ -357,7 +365,7 @@ export class Session extends HeyApiClient {
   /**
    * Search sessions across all projects
    *
-   * Search session titles across every persisted MerakCode project, including closed workspaces.
+   * Search session titles and conversation text across every persisted MerakCode project, including closed workspaces.
    */
   public search<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -405,7 +413,7 @@ export class Config extends HeyApiClient {
   /**
    * Update global configuration
    *
-   * Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the TUI model choice).
+   * Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the default model).
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1459,6 +1467,40 @@ export class Session2 extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Search sessions
+   *
+   * Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      search: string
+      roots?: boolean
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionSearchResponses, SessionSearchErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "search" },
+            { in: "query", key: "roots" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionSearchResponses, SessionSearchErrors, ThrowOnError>({
+      url: "/session/search",
+      ...options,
+      ...params,
     })
   }
 
@@ -2878,6 +2920,51 @@ export class Catalog extends HeyApiClient {
   }
 }
 
+export class Relay extends HeyApiClient {
+  /**
+   * List models at a relay
+   *
+   * Ask a relay for the models a key can use, and fill in limits the relay did not return.
+   */
+  public discover<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      baseURL: string
+      key: string
+      kind: "claude-code" | "codex" | "standard" | "custom"
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<ProviderRelayDiscoverResponses, ProviderRelayDiscoverErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "baseURL" },
+            { in: "body", key: "key" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderRelayDiscoverResponses,
+      ProviderRelayDiscoverErrors,
+      ThrowOnError
+    >({
+      url: "/provider/relay/discover",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * Next OAuth prompt
@@ -3051,9 +3138,9 @@ export class Provider extends HeyApiClient {
   }
 
   /**
-   * Refresh provider environment
+   * Refresh providers
    *
-   * Re-read provider-related env vars from system and invalidate provider cache.
+   * Rebuild the provider list from the saved credentials and config.
    */
   public refresh<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3102,6 +3189,11 @@ export class Provider extends HeyApiClient {
   private _catalog?: Catalog
   get catalog(): Catalog {
     return (this._catalog ??= new Catalog({ client: this.client }))
+  }
+
+  private _relay?: Relay
+  get relay(): Relay {
+    return (this._relay ??= new Relay({ client: this.client }))
   }
 
   private _oauth?: Oauth
@@ -3300,7 +3392,7 @@ export class Review extends HeyApiClient {
   /**
    * Get review
    *
-   * List the changes in a review scope as files and hunks: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base.
+   * List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3378,6 +3470,46 @@ export class Review extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get review file
+   *
+   * Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.
+   */
+  public file<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scope: ReviewScope
+      sessionID?: string
+      messageID?: string
+      base?: string
+      file: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<ReviewFileResponses, ReviewFileErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scope" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "base" },
+            { in: "query", key: "file" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ReviewFileResponses, ReviewFileErrors, ThrowOnError>({
+      url: "/review/file",
+      ...options,
+      ...params,
     })
   }
 
@@ -4313,6 +4445,41 @@ export class Vcs extends HeyApiClient {
       url: "/vcs/push",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Run a git command
+   *
+   * Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
+   */
+  public run<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      args: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsRunResponses, VcsRunErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "args" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsRunResponses, VcsRunErrors, ThrowOnError>({
+      url: "/vcs/run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

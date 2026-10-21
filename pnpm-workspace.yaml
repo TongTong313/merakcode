@@ -14,7 +14,6 @@ catalog:
   "@lydell/node-pty": "1.1.0"
   "@modelcontextprotocol/sdk": "1.32.1"
   "@playwright/test": "1.64.1"
-  "@solid-primitives/event-bus": "1.1.4"
   "@solidjs/router": "1.0.0"
   "@tsconfig/node26": "26.0.1"
   "@types/cross-spawn": "6.0.6"
@@ -35,14 +34,12 @@ catalog:
   remeda: "2.52.0"
   shiki: "4.5.0"
   solid-js: "1.9.12"
-  strip-ansi: "7.2.0"
   typescript: "7.0.2"
   ulid: "3.0.2"
   undici: "8.12.2"
   vite: "8.3.4"
   vite-plugin-solid: "2.11.14"
   vitest: "5.0.5"
-  xdg-basedir: "5.1.0"
   zod: "4.6.7"
 
 # Dependency install scripts: true runs them (native modules to build); false skips them (prebuilt binaries ship in
@@ -59,26 +56,10 @@ allowBuilds:
   msgpackr-extract: false
   protobufjs: false
 
-# The terminal UI renderer @opentui/solid needs solid-js and babel-preset-solid at exactly 1.9.12; the desktop app
-# shares the same copy
+# The desktop UI's JSX compiler (babel-preset-solid, through vite-plugin-solid) stays at the solid-js version, 1.9.12
 overrides:
   babel-preset-solid: "1.9.12"
-  # It also pins @babel/preset-typescript to 7.27.1; both are Babel 7, so use the newest 7.x and install one copy.
-  # Babel 8 is out for now: the latest babel-preset-solid and babel-plugin-jsx-dom-expressions only accept @babel/core 7
-  "@babel/preset-typescript": "7.29.7"
-  # ai-gateway-provider's optional dependency is still on openrouter 2.x (which wants ai 6); it only calls
-  # createOpenRouter, which works the same in 3.x
-  "ai-gateway-provider>@openrouter/ai-sdk-provider": "3.1.0"
   "@types/node": "catalog:"
-
-# Only the declared ranges are behind: the latest opentui-spinner (0.0.7) still lists opentui 0.3 and TypeScript 5,
-# and bun-ffi-structs, which opentui depends on, lists only TypeScript 5 (it uses types only)
-peerDependencyRules:
-  allowedVersions:
-    "opentui-spinner>@opentui/core": "0.6"
-    "opentui-spinner>@opentui/solid": "0.6"
-    "opentui-spinner>typescript": "7"
-    "bun-ffi-structs>typescript": "7"
 
 patchedDependencies:
   "ghostty-web@0.4.0": patches/ghostty-web@0.4.0.patch

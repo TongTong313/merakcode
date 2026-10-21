@@ -28,17 +28,17 @@ test("writes a zip without keys and says where to send it", { timeout: 120_000 }
       attributes: { apiKey: "sk-123" },
     }) + "\n",
   )
-  const config = path.join(tmp.path, "config")
-  await fs.mkdir(path.join(config, "merakcode"), { recursive: true })
+  const config = path.join(tmp.path, "merakcode")
+  await fs.mkdir(config, { recursive: true })
   await fs.writeFile(
-    path.join(config, "merakcode", "merakcode.json"),
+    path.join(config, "merakcode.json"),
     JSON.stringify({ provider: { openai: { options: { apiKey: "sk-999" } } } }),
   )
   const out = path.join(tmp.path, "report.zip")
 
   const proc = Process.spawn([...cli, "bug-report", "--out", out], {
     cwd: tmp.path,
-    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_LOG_ROOT: root, XDG_CONFIG_HOME: config },
+    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_LOG_ROOT: root, MERAKCODE_HOME: config },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

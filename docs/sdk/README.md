@@ -103,7 +103,7 @@ try {
 }
 ```
 
-用的模型是你已经连接好的模型服务的默认模型（比如环境变量里有 `DASHSCOPE_API_KEY` 就用通义千问）。还没连接过的话，先用 `merak` 在终端里输入 `/provider` 连一个，或者在 `config` 选项里写上（见第 5 节）。
+用的模型是你已经连接好的模型服务的默认模型（在配置里写过 `options.apiKey`，或在 `/provider` 里填过密钥）。还没连接过的话，先用 `merak` 在终端里输入 `/provider` 连一个，或者在 `config` 选项里写上（见第 5 节）。
 
 仓库里有三个可以直接跑的示例，在 [`packages/sdk/js/examples`](../../packages/sdk/js/examples)：
 
@@ -382,7 +382,7 @@ await merak.close()
 
 ### 项目工具
 
-在项目的 `.merakcode/tool/` 目录（或全局的 `~/.config/merakcode/tool/`）放一个 `.ts` 或 `.js` 文件。默认导出的工具名就是文件名；其他具名导出的工具名是 `文件名_导出名`。在配置里写 `"tools": { "文件名": false }` 可以关掉它。
+在项目的 `.merakcode/tool/` 目录（或全局的 `~/.merakcode/tool/`）放一个 `.ts` 或 `.js` 文件。默认导出的工具名就是文件名；其他具名导出的工具名是 `文件名_导出名`。在配置里写 `"tools": { "文件名": false }` 可以关掉它。
 
 `@merakcode/sdk/plugin` 和 zod 不用自己装：引擎会在 `.merakcode` 目录里放好 `@merakcode/sdk/plugin`，缺 zod 时会自动用 npm 装上（第一次需要联网）。
 
@@ -417,7 +417,7 @@ export default tool({
 
 插件可以从三个地方加载：
 
-- 项目的 `.merakcode/plugin/` 或全局的 `~/.config/merakcode/plugin/` 目录里的 `.ts` / `.js` 文件；
+- 项目的 `.merakcode/plugin/` 或全局的 `~/.merakcode/plugin/` 目录里的 `.ts` / `.js` 文件；
 - 配置里的 `plugin` 数组，写 npm 包名（可以带版本），比如 `"plugin": ["my-merak-plugin@1.0.0"]`；
 - 带参数的写法：`"plugin": [["my-merak-plugin", { "level": "strict" }]]`。
 

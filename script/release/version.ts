@@ -2,14 +2,17 @@
  * One version for the whole product: every package.json in the workspace carries the same version.
  *   pnpm release:version 0.2.0         set it everywhere
  *   pnpm release:version 0.2.0-beta.1  a pre-release (published under the "beta" npm tag)
- *   pnpm check:versions                fail if any package differs from the root
+ *   pnpm check:versions                fail if the root version is invalid or any package differs from it
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 export namespace Version {
-  const PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$/
+  // The pre-release name is the npm tag and the update channel (build.ts, pack.ts, installation), so it must be a
+  // lowercase word: npm rejects tags that look like versions, such as "1"
+  const PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[a-z]+\.(0|[1-9]\d*))?$/
   const FIELD = /^(\s*"version":\s*")([^"]*)(")/m
+  export const EXPECTED = "x.y.z, or x.y.z-name.n for a pre-release such as 0.2.0-beta.1"
 
   export function valid(version: string) {
     return PATTERN.test(version)
@@ -33,7 +36,7 @@ export namespace Version {
   const read = (file: string) => (JSON.parse(readFileSync(file, "utf8")) as { version?: string }).version ?? ""
 
   export function set(root: string, version: string): string[] {
-    if (!valid(version)) throw new Error(`Not a valid version: ${version} (expected x.y.z or x.y.z-tag.n)`)
+    if (!valid(version)) throw new Error(`Not a valid version: ${version} (expected ${EXPECTED})`)
     return files(root).flatMap((file) => {
       const text = readFileSync(file, "utf8")
       if (!FIELD.test(text) || read(file) === version) return []
@@ -47,7 +50,7 @@ export namespace Version {
     const mismatched = files(root)
       .map((file) => ({ file: path.relative(root, file).replaceAll("\\", "/"), version: read(file) }))
       .filter((item) => item.version !== version)
-    return { ok: mismatched.length === 0, version, mismatched }
+    return { ok: valid(version) && mismatched.length === 0, valid: valid(version), version, mismatched }
   }
 }
 
@@ -56,12 +59,14 @@ if (import.meta.main) {
   const arg = process.argv[2]
   if (arg === "--check" || !arg) {
     const result = Version.check(root)
-    if (!result.ok) {
+    if (!result.valid) console.error(`The root version ${result.version} is not valid (expected ${Version.EXPECTED})`)
+    if (result.mismatched.length)
       console.error(
         `Package versions differ from the root (${result.version}):\n` +
-          result.mismatched.map((item) => `  ${item.file}: ${item.version}`).join("\n") +
-          "\nRun: pnpm release:version <version>",
+          result.mismatched.map((item) => `  ${item.file}: ${item.version}`).join("\n"),
       )
+    if (!result.ok) {
+      console.error("Run: pnpm release:version <version>")
       process.exitCode = 1
     }
   } else {

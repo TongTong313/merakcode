@@ -1,5 +1,5 @@
 /**
- * sdk/store: the same event sequence yields the same session state. Both the TUI and the desktop app reduce engine
+ * sdk/store: the same event sequence yields the same session state. Clients such as the desktop app reduce engine
  * events with it.
  */
 import { describe, expect, test } from "vitest"
@@ -127,7 +127,7 @@ describe("permissions, questions, todos, status and branch", () => {
     expect(state.todo.ses_a).toHaveLength(1)
     expect(state.session_diff.ses_a!.map((item) => item.file)).toEqual(["a.ts"])
     expect(state.session_status.ses_a).toEqual({ type: "idle" })
-    expect(state.vcs).toEqual({ branch: "main" })
+    expect(state.vcs).toEqual({ branch: "main", staged: 0, unstaged: 0, untracked: 0 })
   })
 
   test("the return value says what happened, for the product's own bookkeeping (session count, trimming)", () => {

@@ -1,4 +1,5 @@
 import { resolveLogRoot } from "@merakcode/log/node"
+import { Paths } from "@merakcode/util/paths"
 import { Project } from "@merakcode/util/project"
 import { app, dialog, nativeTheme, session, shell } from "electron"
 import { readFileSync } from "node:fs"
@@ -23,10 +24,10 @@ const dev = !app.isPackaged
 const here = import.meta.dirname
 
 app.setName("MerakCode")
-// Development builds use a separate data directory so they do not mix with an installed release; an explicit
-// --user-data-dir (used by tests) wins
-if (dev && !app.commandLine.hasSwitch("user-data-dir"))
-  app.setPath("userData", path.join(app.getPath("appData"), "MerakCode Dev"))
+// Under clients/ of the MerakCode root. Development builds use their own directory so they do not mix with an installed
+// release; an explicit --user-data-dir (used by tests) wins
+if (!app.commandLine.hasSwitch("user-data-dir"))
+  app.setPath("userData", path.join(Paths.clients, dev ? "desktop-dev" : "desktop"))
 if (process.platform === "win32") app.setAppUserModelId(dev ? "dev.merakcode.desktop.dev" : "dev.merakcode.desktop")
 
 // Linux: recent Electron defaults to Wayland, where Chinese input methods are unreliable on many distributions, so
@@ -67,7 +68,7 @@ function main() {
   const settings = new Settings(storage)
   nativeTheme.themeSource = settings.theme
   const layout = Engine.layout({ packaged: app.isPackaged, resources, here, env: process.env })
-  const missing = Engine.missing(layout, resources)
+  const missing = Engine.missing(layout, resources, process.env)
   if (missing.length) {
     log.error("engine files missing", { missing })
     dialog.showErrorBox(
@@ -239,6 +240,12 @@ function main() {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit()
   })
+  // script/dev.ts restarts the app when the main process is rebuilt, and the backend when engine sources change
+  if (dev && process.send)
+    process.on("message", (message) => {
+      if (message === "quit") app.quit()
+      if (message === "restart-backend") void backend.restart().catch(() => {})
+    })
   let quitting = false
   app.on("before-quit", (event) => {
     if (quitting) return

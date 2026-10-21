@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest"
-import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import type { Tool } from "@merakcode/engine/tool/tool"
@@ -25,7 +24,6 @@ describe("tool.skill", () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await fs.mkdir(path.join(dir, ".config", "merakcode"), { recursive: true })
         const skillDir = path.join(dir, ".merakcode", "skill", "tool-skill")
         await Filesystem.write(
           path.join(skillDir, "SKILL.md"),
@@ -65,7 +63,6 @@ description: Skill for tool tests.
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await fs.mkdir(path.join(dir, ".config", "merakcode"), { recursive: true })
         const imageSkillDir = path.join(dir, ".merakcode", "skill", "image-skill")
         await Filesystem.write(
           path.join(imageSkillDir, "SKILL.md"),
@@ -122,7 +119,6 @@ description: Design database schemas.
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await fs.mkdir(path.join(dir, ".config", "merakcode"), { recursive: true })
         const skillDir = path.join(dir, ".merakcode", "skill", "tool-skill")
         await Filesystem.write(
           path.join(skillDir, "SKILL.md"),

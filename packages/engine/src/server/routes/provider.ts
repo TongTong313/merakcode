@@ -7,7 +7,7 @@ import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
 import { ProviderAuth } from "../../provider/auth"
 import { ProviderVerify } from "../../provider/verify"
-import { Env } from "../../env"
+import { Relay } from "../../provider/relay"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -100,8 +100,8 @@ export const ProviderRoutes = lazy(() =>
     .post(
       "/refresh",
       describeRoute({
-        summary: "Refresh provider environment",
-        description: "Re-read provider-related env vars from system and invalidate provider cache.",
+        summary: "Refresh providers",
+        description: "Rebuild the provider list from the saved credentials and config.",
         operationId: "provider.refresh",
         responses: {
           200: {
@@ -111,14 +111,58 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const keys = await Provider.getAllEnvKeys()
-        await Env.reload(keys)
         Provider.invalidateAll()
         // Rebuild the loaders now.
         await Provider.list()
         await Provider.publishChanged({ reason: "refreshed" })
         return c.json(true)
       },
+    )
+    .post(
+      "/relay/discover",
+      describeRoute({
+        summary: "List models at a relay",
+        description: "Ask a relay for the models a key can use, and fill in limits the relay did not return.",
+        operationId: "provider.relay.discover",
+        responses: {
+          200: {
+            description: "Models the relay returned",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([
+                    z.object({
+                      models: z.array(
+                        z.object({
+                          id: z.string(),
+                          context: z.number().optional(),
+                          output: z.number().optional(),
+                          contextFrom: z.enum(["relay", "catalog", "fallback"]).optional(),
+                          outputFrom: z.enum(["relay", "catalog", "fallback"]).optional(),
+                          endpoint: z.enum(["anthropic", "openai-responses", "openai-chat"]).optional(),
+                          image: z.boolean().optional(),
+                          reasoning: z.boolean().optional(),
+                          toolcall: z.boolean().optional(),
+                        }),
+                      ),
+                    }),
+                    z.object({ error: z.string() }),
+                  ]),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          baseURL: z.string(),
+          key: z.string(),
+          kind: Relay.Kind,
+        }),
+      ),
+      async (c) => c.json(await Relay.discover(c.req.valid("json"))),
     )
     .post(
       "/:providerID/verify",

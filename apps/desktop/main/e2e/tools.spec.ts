@@ -34,7 +34,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 test("MCP: a local server shows its tool count once connected; deleting removes it from config", async ({ kit }) => {
   const server = path.join(kit.root, "mcp-server.mjs")
   await writeFile(server, MCP_SERVER)
-  const config = path.join(kit.root, "config", "merakcode", "merakcode.json")
+  const config = path.join(kit.root, "merakcode.json")
   await kit.settings(/^MCP 服务器$/)
   const panel = kit.page.getByRole("region", { name: "MCP 服务器" })
   await panel.getByRole("textbox", { name: "名称" }).fill("e2e")
@@ -107,7 +107,7 @@ test.describe("rules", () => {
   test("personal rules are saved to global config and sent with the next message; edits and deletes too", async ({
     kit,
   }) => {
-    const config = path.join(kit.root, "config", "merakcode", "merakcode.json")
+    const config = path.join(kit.root, "merakcode.json")
     const rules = async () => (await json(config)).rules?.user ?? []
     const panel = kit.page.getByRole("region", { name: "规则" })
     await kit.settings(/^规则$/)
@@ -151,7 +151,7 @@ test.describe("rules", () => {
 test("memory: lists, opens and deletes project memories (file and index); auto-remember can be enabled", async ({
   kit,
 }) => {
-  const config = path.join(kit.root, "config", "merakcode", "merakcode.json")
+  const config = path.join(kit.root, "merakcode.json")
   const panel = kit.page.getByRole("region", { name: "记忆" })
   await kit.settings(/^记忆$/)
   await expect(panel.getByText("还没有记忆")).toBeVisible()

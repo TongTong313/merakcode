@@ -107,7 +107,6 @@ async function run(releasesApi: string, ...args: string[]) {
       ...process.env,
       MERAKCODE_LOCALE: "en",
       MERAKCODE_RELEASES_API: releasesApi,
-      MERAKCODE_DISABLE_AUTOUPDATE: "1",
     },
     stdin: "ignore",
     stdout: "pipe",

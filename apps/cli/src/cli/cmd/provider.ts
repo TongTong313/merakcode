@@ -58,11 +58,131 @@ async function oauth(sdk: MerakCodeClient, providerID: string, method: number) {
   prompts.outro(I18n.t("cli.done"))
 }
 
+const GROUP_LABEL = {
+  "claude-code": "cli.provider.relay.claudeCode",
+  codex: "cli.provider.relay.codex",
+  standard: "cli.provider.relay.standard",
+  custom: "cli.provider.relay.custom",
+} as const
+
+const RELAY_KINDS = ["claude-code", "codex", "standard", "custom"] as const
+type RelayKind = (typeof RELAY_KINDS)[number]
+
+function relayKind(value: string): RelayKind | undefined {
+  return (RELAY_KINDS as readonly string[]).includes(value) ? (value as RelayKind) : undefined
+}
+
+function relaySlug(name: string, taken: Set<string>) {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "relay"
+  let id = base
+  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
+  return id
+}
+
+function relayRoot(url: string) {
+  const trimmed = url.trim().replace(/\/+$/, "")
+  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
+}
+
+function relayNpm(endpoint: string | undefined, kind: string) {
+  const chosen =
+    kind === "claude-code" ? "anthropic" : kind === "codex" ? "openai-responses" : (endpoint ?? "openai-chat")
+  if (chosen === "anthropic") return "@ai-sdk/anthropic"
+  if (chosen === "openai-responses") return "@ai-sdk/openai"
+  return "@ai-sdk/openai-compatible"
+}
+
+export const ProviderRelayCommand = cmd({
+  command: "relay",
+  describe: I18n.t("cli.provider.relay.describe"),
+  builder: (yargs) =>
+    yargs
+      .option("name", { type: "string", demandOption: true, describe: I18n.t("cli.provider.relay.name") })
+      .option("url", { type: "string", demandOption: true, describe: I18n.t("cli.provider.relay.url") })
+      .option("key", { type: "string", demandOption: true, describe: I18n.t("cli.provider.apiKey") })
+      .option("kind", {
+        type: "string",
+        demandOption: true,
+        choices: ["claude-code", "codex", "standard", "custom"],
+        describe: I18n.t("cli.provider.relay.kind"),
+      }),
+  async handler(args) {
+    const kind = relayKind(args.kind)
+    if (!kind) {
+      process.exitCode = 1
+      return
+    }
+    await withEngine(async (sdk) => {
+      const found = await sdk.provider.relay
+        .discover({ baseURL: args.url, key: args.key, kind }, { throwOnError: true })
+        .then((result) => result.data)
+      if (!found || "error" in found) {
+        prompts.log.error(
+          I18n.t("cli.provider.relay.failed", { message: found && "error" in found ? found.error : "" }),
+        )
+        process.exitCode = 1
+        return
+      }
+      const current = await sdk.global.config.get({ throwOnError: true }).then((result) => result.data)
+      const taken = new Set(Object.keys(current?.provider ?? {}))
+      const station = relaySlug(args.name, taken)
+      const id = relaySlug(`${station}-${kind}`, taken)
+      const label = I18n.t(GROUP_LABEL[kind])
+      await sdk.auth.set({ providerID: id, auth: { type: "api", key: args.key } }, { throwOnError: true })
+      const enabled = current?.enabled_providers
+      await sdk.global.config.update(
+        {
+          config: {
+            provider: {
+              [id]: {
+                name: `${args.name} · ${label}`,
+                npm: relayNpm(found.models[0]?.endpoint, kind),
+                api: relayRoot(args.url),
+                relay: { station, group: kind, kind },
+                models: Object.fromEntries(
+                  found.models.map((model) => [
+                    model.id,
+                    {
+                      name: model.id,
+                      limit: { context: model.context ?? 128_000, output: model.output ?? 16_000 },
+                      tool_call: model.toolcall ?? true,
+                      reasoning: model.reasoning ?? false,
+                      attachment: model.image ?? false,
+                      modalities: {
+                        input: model.image ? ["text", "image"] : ["text"],
+                        output: ["text"],
+                      },
+                      provider: { npm: relayNpm(model.endpoint, kind) },
+                    },
+                  ]),
+                ),
+              },
+            },
+            ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
+          },
+        },
+        { throwOnError: true },
+      )
+      prompts.log.success(I18n.t("cli.provider.relay.added", { name: args.name }))
+    })
+  },
+})
+
 export const ProviderCommand = cmd({
   command: "provider",
   describe: I18n.t("cli.provider.describe"),
   builder: (yargs) =>
-    yargs.command(ProviderListCommand).command(ProviderLoginCommand).command(ProviderLogoutCommand).demandCommand(),
+    yargs
+      .command(ProviderListCommand)
+      .command(ProviderLoginCommand)
+      .command(ProviderLogoutCommand)
+      .command(ProviderRelayCommand)
+      .demandCommand(),
   async handler() {},
 })
 
@@ -87,20 +207,6 @@ export const ProviderListCommand = cmd({
       prompts.log.info(`${names.get(providerID) || providerID} ${UI.Style.TEXT_DIM}${type}`)
     }
     prompts.outro(I18n.t("cli.provider.credentialCount", { count: stored.credentials.length }))
-
-    const activeEnvVars = providers.flatMap((provider) =>
-      provider.env.filter((envVar) => process.env[envVar]).map((envVar) => ({ provider: provider.name, envVar })),
-    )
-    if (activeEnvVars.length > 0) {
-      UI.empty()
-      prompts.intro(I18n.t("cli.provider.environment"))
-
-      for (const { provider, envVar } of activeEnvVars) {
-        prompts.log.info(`${provider} ${UI.Style.TEXT_DIM}${envVar}`)
-      }
-
-      prompts.outro(I18n.t("cli.provider.envVars", { count: activeEnvVars.length }))
-    }
   },
 })
 
@@ -204,7 +310,7 @@ export const ProviderLogoutCommand = cmd({
         prompts.log.error(I18n.t("cli.provider.noCredentials"))
         return
       }
-      // Providers defined in the user's config cannot be disconnected, matching the web UI and TUI.
+      // Providers defined in the user's config cannot be disconnected, matching the desktop app.
       const configured = new Set(Object.keys(config.provider ?? {}))
       const removable = stored.filter((item) => !configured.has(item.providerID))
       if (removable.length === 0) {

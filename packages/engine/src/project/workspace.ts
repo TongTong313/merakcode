@@ -51,7 +51,7 @@ export namespace Workspace {
     return digest(parts.join("\0"))
   }
 
-  /** Returns undefined for a single root (including CLI/TUI), which never takes the workspace path */
+  /** Returns undefined for a single root (including the CLI), which never takes the workspace path */
   export function identity(input: { directory: string; folders?: FolderInput[] }): Identity | undefined {
     const paths = normalizeFolderPaths(input.directory, input.folders)
     if (paths.length <= 1) return undefined

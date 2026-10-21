@@ -71,8 +71,8 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "引擎口令不对", en: "Wrong engine password" },
       hint: {
-        zh: "客户端和引擎的口令对不上，多半是连到了别的进程启动的引擎。重启 merak 即可；自己连引擎时检查 MERAKCODE_SERVER_PASSWORD。",
-        en: "The client and the engine disagree on the password, usually because you reached an engine another process started. Restart merak; if you connect yourself, check MERAKCODE_SERVER_PASSWORD.",
+        zh: "客户端和引擎的口令对不上，多半是连到了别的进程启动的引擎。重启桌面端，或者重新运行刚才的命令；自己连引擎时检查 MERAKCODE_SERVER_PASSWORD。",
+        en: "The client and the engine disagree on the password, usually because you reached an engine another process started. Restart the desktop app or run the command again; if you connect yourself, check MERAKCODE_SERVER_PASSWORD.",
       },
     },
     FORBIDDEN: {
@@ -104,8 +104,8 @@ export namespace ErrorCode {
       retryable: true,
       title: { zh: "和引擎的连接断了", en: "Lost the connection to the engine" },
       hint: {
-        zh: "引擎可能已经退出。重启 merak；反复出现时运行 merak bug-report 反馈给我们。",
-        en: "The engine may have exited. Restart merak; if it keeps happening, run merak bug-report and send us the bundle.",
+        zh: "引擎可能已经退出。重启桌面端，或者重新运行刚才的命令；反复出现时运行 merak bug-report 反馈给我们。",
+        en: "The engine may have exited. Restart the desktop app or run the command again; if it keeps happening, run merak bug-report and send us the bundle.",
       },
     },
     BAD_REQUEST: {
@@ -408,7 +408,10 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "沙箱还没初始化", en: "The sandbox has not been set up" },
       errors: ["SandboxSetupRequiredError"],
-      hint: { zh: "运行 merak sandbox setup。", en: "Run merak sandbox setup." },
+      hint: {
+        zh: "在桌面端「设置 → 权限与安全」里点「初始化」，或者运行 merak sandbox setup。",
+        en: "In the desktop app, open Settings → Permissions & security and click Set up, or run merak sandbox setup.",
+      },
     },
     TOOL_FAILED: {
       code: "MRK-5010",

@@ -703,16 +703,14 @@ export namespace Message {
     // for providers that don't support media in tool results.
     //
     // OpenAI-compatible APIs only support string content in tool results, so we need
-    // to extract media and inject as user messages. Other SDKs (anthropic, google,
-    // bedrock) handle type: "content" with media parts natively.
+    // to extract media and inject as user messages. Anthropic and Google handle media
+    // parts in tool results directly.
     //
     // Only apply this workaround if the model actually supports image input -
     // otherwise there's no point extracting images.
     const supportsMediaInToolResults = (() => {
       if (model.api.npm === "@ai-sdk/anthropic") return true
       if (model.api.npm === "@ai-sdk/openai") return true
-      if (model.api.npm === "@ai-sdk/amazon-bedrock") return true
-      if (model.api.npm === "@ai-sdk/google-vertex/anthropic") return true
       if (model.api.npm === "@ai-sdk/google") {
         const id = model.api.id.toLowerCase()
         return id.includes("gemini-3") && !id.includes("gemini-2")

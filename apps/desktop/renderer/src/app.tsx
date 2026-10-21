@@ -1,5 +1,5 @@
 import FolderOpen from "lucide-solid/icons/folder-open"
-import { createEffect, createMemo, createResource, onCleanup, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { Navigate, Route, Router, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { t } from "./i18n"
 import { bridge, log, mac } from "./lib/bridge"
@@ -103,7 +103,7 @@ function Root(props: { children?: JSX.Element }) {
 }
 
 /** Home: opens the most recent project, or asks the user to open a folder when there is none */
-function Home() {
+export function Home() {
   const navigate = useNavigate()
   return (
     <Show
@@ -131,12 +131,17 @@ function Home() {
 }
 
 /** Inside a project: the sidebar plus a new or existing conversation */
-function Workspace() {
+export function Workspace() {
   const params = useParams()
   const directory = createMemo(() => decodeDir(params.dir ?? ""))
+  // The route decides which project is open. Reading the sidebar list must not subscribe this effect,
+  // or removing the open project puts it straight back.
   createEffect(() => {
     const dir = directory()
-    if (dir) void openFolder(dir).catch((error: Error) => log("error", "open folder failed", { error: error.message }))
+    if (!dir) return
+    untrack(() => {
+      void openFolder(dir).catch((error: Error) => log("error", "open folder failed", { error: error.message }))
+    })
   })
   return (
     <Show when={directory()} fallback={<Navigate href="/" />}>

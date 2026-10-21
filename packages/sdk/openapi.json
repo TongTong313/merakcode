@@ -3615,579 +3615,6 @@
         "required": ["directory", "payload"],
         "additionalProperties": false
       },
-      "KeybindsConfigOutput": {
-        "description": "Custom keybind configurations",
-        "type": "object",
-        "properties": {
-          "leader": {
-            "default": "ctrl+x",
-            "description": "Leader key for keybind combinations",
-            "type": "string"
-          },
-          "app_exit": {
-            "default": "ctrl+c,ctrl+d,<leader>q",
-            "description": "Exit the application",
-            "type": "string"
-          },
-          "theme_list": {
-            "default": "<leader>t",
-            "description": "List available themes",
-            "type": "string"
-          },
-          "sidebar_toggle": {
-            "default": "<leader>b",
-            "description": "Toggle sidebar",
-            "type": "string"
-          },
-          "scrollbar_toggle": {
-            "default": "none",
-            "description": "Toggle session scrollbar",
-            "type": "string"
-          },
-          "status_view": {
-            "default": "<leader>s",
-            "description": "View status",
-            "type": "string"
-          },
-          "session_export": {
-            "default": "<leader>x",
-            "description": "Export session to editor",
-            "type": "string"
-          },
-          "session_export_full": {
-            "default": "<leader>e",
-            "description": "Export full session data as JSON",
-            "type": "string"
-          },
-          "session_import_full": {
-            "default": "<leader>i",
-            "description": "Import full session data from JSON",
-            "type": "string"
-          },
-          "session_new": {
-            "default": "<leader>n",
-            "description": "Create a new session",
-            "type": "string"
-          },
-          "session_list": {
-            "default": "<leader>l",
-            "description": "List all sessions",
-            "type": "string"
-          },
-          "session_timeline": {
-            "default": "<leader>g",
-            "description": "Show session timeline",
-            "type": "string"
-          },
-          "session_fork": {
-            "default": "none",
-            "description": "Fork session from message",
-            "type": "string"
-          },
-          "session_rename": {
-            "default": "ctrl+r",
-            "description": "Rename session",
-            "type": "string"
-          },
-          "session_delete": {
-            "default": "ctrl+d",
-            "description": "Delete session",
-            "type": "string"
-          },
-          "session_pin_toggle": {
-            "default": "ctrl+f",
-            "description": "Pin or unpin session in the session list",
-            "type": "string"
-          },
-          "stash_delete": {
-            "default": "ctrl+d",
-            "description": "Delete stash entry",
-            "type": "string"
-          },
-          "model_provider_list": {
-            "default": "ctrl+a",
-            "description": "Open provider list from model dialog",
-            "type": "string"
-          },
-          "model_favorite_toggle": {
-            "default": "ctrl+f",
-            "description": "Toggle model favorite status",
-            "type": "string"
-          },
-          "session_interrupt": {
-            "default": "escape",
-            "description": "Interrupt current session",
-            "type": "string"
-          },
-          "session_compact": {
-            "default": "<leader>c",
-            "description": "Compact the session",
-            "type": "string"
-          },
-          "messages_page_up": {
-            "default": "pageup,ctrl+alt+b",
-            "description": "Scroll messages up by one page",
-            "type": "string"
-          },
-          "messages_page_down": {
-            "default": "pagedown,ctrl+alt+f",
-            "description": "Scroll messages down by one page",
-            "type": "string"
-          },
-          "messages_line_up": {
-            "default": "ctrl+alt+y",
-            "description": "Scroll messages up by one line",
-            "type": "string"
-          },
-          "messages_line_down": {
-            "default": "ctrl+alt+e",
-            "description": "Scroll messages down by one line",
-            "type": "string"
-          },
-          "messages_half_page_up": {
-            "default": "ctrl+alt+u",
-            "description": "Scroll messages up by half page",
-            "type": "string"
-          },
-          "messages_half_page_down": {
-            "default": "ctrl+alt+d",
-            "description": "Scroll messages down by half page",
-            "type": "string"
-          },
-          "messages_first": {
-            "default": "ctrl+g,home",
-            "description": "Navigate to first message",
-            "type": "string"
-          },
-          "messages_last": {
-            "default": "ctrl+alt+g,end",
-            "description": "Navigate to last message",
-            "type": "string"
-          },
-          "messages_next": {
-            "default": "none",
-            "description": "Navigate to next message",
-            "type": "string"
-          },
-          "messages_previous": {
-            "default": "none",
-            "description": "Navigate to previous message",
-            "type": "string"
-          },
-          "messages_last_user": {
-            "default": "none",
-            "description": "Navigate to last user message",
-            "type": "string"
-          },
-          "messages_copy": {
-            "default": "<leader>y",
-            "description": "Copy message",
-            "type": "string"
-          },
-          "messages_undo": {
-            "default": "<leader>u",
-            "description": "Undo message",
-            "type": "string"
-          },
-          "messages_redo": {
-            "default": "<leader>r",
-            "description": "Redo message",
-            "type": "string"
-          },
-          "messages_toggle_conceal": {
-            "default": "<leader>h",
-            "description": "Toggle code block concealment in messages",
-            "type": "string"
-          },
-          "tool_details": {
-            "default": "none",
-            "description": "Toggle tool details visibility",
-            "type": "string"
-          },
-          "model_list": {
-            "default": "<leader>m",
-            "description": "List available models",
-            "type": "string"
-          },
-          "model_cycle_recent": {
-            "default": "f2",
-            "description": "Next recently used model",
-            "type": "string"
-          },
-          "model_cycle_recent_reverse": {
-            "default": "shift+f2",
-            "description": "Previous recently used model",
-            "type": "string"
-          },
-          "model_cycle_favorite": {
-            "default": "none",
-            "description": "Next favorite model",
-            "type": "string"
-          },
-          "model_cycle_favorite_reverse": {
-            "default": "none",
-            "description": "Previous favorite model",
-            "type": "string"
-          },
-          "command_list": {
-            "default": "ctrl+p",
-            "description": "List available commands",
-            "type": "string"
-          },
-          "agent_list": {
-            "default": "<leader>a",
-            "description": "List agents",
-            "type": "string"
-          },
-          "agent_cycle": {
-            "default": "tab",
-            "description": "Next agent",
-            "type": "string"
-          },
-          "agent_cycle_reverse": {
-            "default": "none",
-            "description": "Previous agent",
-            "type": "string"
-          },
-          "permission_mode_cycle": {
-            "default": "shift+tab",
-            "description": "Cycle permission mode (read-only, ask, auto)",
-            "type": "string"
-          },
-          "variant_cycle": {
-            "default": "ctrl+t",
-            "description": "Cycle model variants",
-            "type": "string"
-          },
-          "input_clear": {
-            "default": "ctrl+c",
-            "description": "Clear input field",
-            "type": "string"
-          },
-          "input_paste": {
-            "default": "ctrl+v",
-            "description": "Paste from clipboard",
-            "type": "string"
-          },
-          "input_submit": {
-            "default": "return",
-            "description": "Submit input",
-            "type": "string"
-          },
-          "input_newline": {
-            "default": "shift+return,ctrl+return,alt+return,ctrl+j",
-            "description": "Insert newline in input",
-            "type": "string"
-          },
-          "input_move_left": {
-            "default": "left,ctrl+b",
-            "description": "Move cursor left in input",
-            "type": "string"
-          },
-          "input_move_right": {
-            "default": "right,ctrl+f",
-            "description": "Move cursor right in input",
-            "type": "string"
-          },
-          "input_move_up": {
-            "default": "up",
-            "description": "Move cursor up in input",
-            "type": "string"
-          },
-          "input_move_down": {
-            "default": "down",
-            "description": "Move cursor down in input",
-            "type": "string"
-          },
-          "input_select_left": {
-            "default": "shift+left",
-            "description": "Select left in input",
-            "type": "string"
-          },
-          "input_select_right": {
-            "default": "shift+right",
-            "description": "Select right in input",
-            "type": "string"
-          },
-          "input_select_up": {
-            "default": "shift+up",
-            "description": "Select up in input",
-            "type": "string"
-          },
-          "input_select_down": {
-            "default": "shift+down",
-            "description": "Select down in input",
-            "type": "string"
-          },
-          "input_line_home": {
-            "default": "ctrl+a",
-            "description": "Move to start of line in input",
-            "type": "string"
-          },
-          "input_line_end": {
-            "default": "ctrl+e",
-            "description": "Move to end of line in input",
-            "type": "string"
-          },
-          "input_select_line_home": {
-            "default": "ctrl+shift+a",
-            "description": "Select to start of line in input",
-            "type": "string"
-          },
-          "input_select_line_end": {
-            "default": "ctrl+shift+e",
-            "description": "Select to end of line in input",
-            "type": "string"
-          },
-          "input_visual_line_home": {
-            "default": "alt+a",
-            "description": "Move to start of visual line in input",
-            "type": "string"
-          },
-          "input_visual_line_end": {
-            "default": "alt+e",
-            "description": "Move to end of visual line in input",
-            "type": "string"
-          },
-          "input_select_visual_line_home": {
-            "default": "alt+shift+a",
-            "description": "Select to start of visual line in input",
-            "type": "string"
-          },
-          "input_select_visual_line_end": {
-            "default": "alt+shift+e",
-            "description": "Select to end of visual line in input",
-            "type": "string"
-          },
-          "input_buffer_home": {
-            "default": "home",
-            "description": "Move to start of buffer in input",
-            "type": "string"
-          },
-          "input_buffer_end": {
-            "default": "end",
-            "description": "Move to end of buffer in input",
-            "type": "string"
-          },
-          "input_select_buffer_home": {
-            "default": "shift+home",
-            "description": "Select to start of buffer in input",
-            "type": "string"
-          },
-          "input_select_buffer_end": {
-            "default": "shift+end",
-            "description": "Select to end of buffer in input",
-            "type": "string"
-          },
-          "input_delete_line": {
-            "default": "ctrl+shift+d",
-            "description": "Delete line in input",
-            "type": "string"
-          },
-          "input_delete_to_line_end": {
-            "default": "ctrl+k",
-            "description": "Delete to end of line in input",
-            "type": "string"
-          },
-          "input_delete_to_line_start": {
-            "default": "ctrl+u",
-            "description": "Delete to start of line in input",
-            "type": "string"
-          },
-          "input_backspace": {
-            "default": "backspace,shift+backspace",
-            "description": "Backspace in input",
-            "type": "string"
-          },
-          "input_delete": {
-            "default": "ctrl+d,delete,shift+delete",
-            "description": "Delete character in input",
-            "type": "string"
-          },
-          "input_undo": {
-            "default": "ctrl+-,super+z",
-            "description": "Undo in input",
-            "type": "string"
-          },
-          "input_redo": {
-            "default": "ctrl+.,super+shift+z",
-            "description": "Redo in input",
-            "type": "string"
-          },
-          "input_word_forward": {
-            "default": "alt+f,alt+right,ctrl+right",
-            "description": "Move word forward in input",
-            "type": "string"
-          },
-          "input_word_backward": {
-            "default": "alt+b,alt+left,ctrl+left",
-            "description": "Move word backward in input",
-            "type": "string"
-          },
-          "input_select_word_forward": {
-            "default": "alt+shift+f,alt+shift+right",
-            "description": "Select word forward in input",
-            "type": "string"
-          },
-          "input_select_word_backward": {
-            "default": "alt+shift+b,alt+shift+left",
-            "description": "Select word backward in input",
-            "type": "string"
-          },
-          "input_delete_word_forward": {
-            "default": "alt+d,alt+delete,ctrl+delete",
-            "description": "Delete word forward in input",
-            "type": "string"
-          },
-          "input_delete_word_backward": {
-            "default": "ctrl+w,ctrl+backspace,alt+backspace",
-            "description": "Delete word backward in input",
-            "type": "string"
-          },
-          "history_previous": {
-            "default": "up",
-            "description": "Previous history item",
-            "type": "string"
-          },
-          "history_next": {
-            "default": "down",
-            "description": "Next history item",
-            "type": "string"
-          },
-          "session_child_cycle": {
-            "default": "<leader>right",
-            "description": "Next child session",
-            "type": "string"
-          },
-          "session_child_cycle_reverse": {
-            "default": "<leader>left",
-            "description": "Previous child session",
-            "type": "string"
-          },
-          "session_parent": {
-            "default": "<leader>up",
-            "description": "Go to parent session",
-            "type": "string"
-          },
-          "terminal_suspend": {
-            "default": "ctrl+z",
-            "description": "Suspend terminal",
-            "type": "string"
-          },
-          "terminal_title_toggle": {
-            "default": "none",
-            "description": "Toggle terminal title",
-            "type": "string"
-          },
-          "tips_toggle": {
-            "default": "<leader>h",
-            "description": "Toggle tips on home screen",
-            "type": "string"
-          },
-          "display_thinking": {
-            "default": "none",
-            "description": "Toggle thinking blocks visibility",
-            "type": "string"
-          }
-        },
-        "required": [
-          "leader",
-          "app_exit",
-          "theme_list",
-          "sidebar_toggle",
-          "scrollbar_toggle",
-          "status_view",
-          "session_export",
-          "session_export_full",
-          "session_import_full",
-          "session_new",
-          "session_list",
-          "session_timeline",
-          "session_fork",
-          "session_rename",
-          "session_delete",
-          "session_pin_toggle",
-          "stash_delete",
-          "model_provider_list",
-          "model_favorite_toggle",
-          "session_interrupt",
-          "session_compact",
-          "messages_page_up",
-          "messages_page_down",
-          "messages_line_up",
-          "messages_line_down",
-          "messages_half_page_up",
-          "messages_half_page_down",
-          "messages_first",
-          "messages_last",
-          "messages_next",
-          "messages_previous",
-          "messages_last_user",
-          "messages_copy",
-          "messages_undo",
-          "messages_redo",
-          "messages_toggle_conceal",
-          "tool_details",
-          "model_list",
-          "model_cycle_recent",
-          "model_cycle_recent_reverse",
-          "model_cycle_favorite",
-          "model_cycle_favorite_reverse",
-          "command_list",
-          "agent_list",
-          "agent_cycle",
-          "agent_cycle_reverse",
-          "permission_mode_cycle",
-          "variant_cycle",
-          "input_clear",
-          "input_paste",
-          "input_submit",
-          "input_newline",
-          "input_move_left",
-          "input_move_right",
-          "input_move_up",
-          "input_move_down",
-          "input_select_left",
-          "input_select_right",
-          "input_select_up",
-          "input_select_down",
-          "input_line_home",
-          "input_line_end",
-          "input_select_line_home",
-          "input_select_line_end",
-          "input_visual_line_home",
-          "input_visual_line_end",
-          "input_select_visual_line_home",
-          "input_select_visual_line_end",
-          "input_buffer_home",
-          "input_buffer_end",
-          "input_select_buffer_home",
-          "input_select_buffer_end",
-          "input_delete_line",
-          "input_delete_to_line_end",
-          "input_delete_to_line_start",
-          "input_backspace",
-          "input_delete",
-          "input_undo",
-          "input_redo",
-          "input_word_forward",
-          "input_word_backward",
-          "input_select_word_forward",
-          "input_select_word_backward",
-          "input_delete_word_forward",
-          "input_delete_word_backward",
-          "history_previous",
-          "history_next",
-          "session_child_cycle",
-          "session_child_cycle_reverse",
-          "session_parent",
-          "terminal_suspend",
-          "terminal_title_toggle",
-          "tips_toggle",
-          "display_thinking"
-        ],
-        "additionalProperties": false
-      },
       "PermissionConfigOutput": {
         "type": "object",
         "propertyNames": {
@@ -4560,6 +3987,29 @@
               "type": "string"
             }
           },
+          "relay": {
+            "type": "object",
+            "properties": {
+              "station": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["claude-code", "codex", "standard", "custom"]
+              },
+              "auth": {
+                "type": "string",
+                "enum": ["bearer", "x-api-key"]
+              }
+            },
+            "required": ["station", "group", "kind"],
+            "additionalProperties": false
+          },
           "options": {
             "type": "object",
             "properties": {
@@ -4607,49 +4057,13 @@
             "description": "JSON schema reference for configuration validation",
             "type": "string"
           },
-          "theme": {
-            "description": "Theme name to use for the interface",
-            "type": "string"
-          },
           "locale": {
             "description": "UI language (zh-CN or en-US)",
             "type": "string",
             "enum": ["zh-CN", "en-US"]
           },
-          "keybinds": {
-            "$ref": "#/components/schemas/KeybindsConfigOutput"
-          },
           "logLevel": {
             "$ref": "#/components/schemas/LogLevel"
-          },
-          "tui": {
-            "description": "TUI specific settings",
-            "type": "object",
-            "properties": {
-              "scroll_speed": {
-                "description": "TUI scroll speed",
-                "type": "number",
-                "minimum": 0.001
-              },
-              "scroll_acceleration": {
-                "description": "Scroll acceleration settings",
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean",
-                    "description": "Enable scroll acceleration"
-                  }
-                },
-                "required": ["enabled"],
-                "additionalProperties": false
-              },
-              "diff_style": {
-                "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
-                "type": "string",
-                "enum": ["auto", "stacked"]
-              }
-            },
-            "additionalProperties": false
           },
           "server": {
             "$ref": "#/components/schemas/ServerConfig"
@@ -4746,18 +4160,6 @@
           },
           "snapshot": {
             "type": "boolean"
-          },
-          "autoupdate": {
-            "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "string",
-                "const": "notify"
-              }
-            ]
           },
           "disabled_providers": {
             "description": "Disable providers that are loaded automatically",
@@ -5452,483 +4854,6 @@
         "required": ["name", "code", "data"],
         "additionalProperties": false
       },
-      "KeybindsConfig": {
-        "description": "Custom keybind configurations",
-        "type": "object",
-        "properties": {
-          "leader": {
-            "default": "ctrl+x",
-            "description": "Leader key for keybind combinations",
-            "type": "string"
-          },
-          "app_exit": {
-            "default": "ctrl+c,ctrl+d,<leader>q",
-            "description": "Exit the application",
-            "type": "string"
-          },
-          "theme_list": {
-            "default": "<leader>t",
-            "description": "List available themes",
-            "type": "string"
-          },
-          "sidebar_toggle": {
-            "default": "<leader>b",
-            "description": "Toggle sidebar",
-            "type": "string"
-          },
-          "scrollbar_toggle": {
-            "default": "none",
-            "description": "Toggle session scrollbar",
-            "type": "string"
-          },
-          "status_view": {
-            "default": "<leader>s",
-            "description": "View status",
-            "type": "string"
-          },
-          "session_export": {
-            "default": "<leader>x",
-            "description": "Export session to editor",
-            "type": "string"
-          },
-          "session_export_full": {
-            "default": "<leader>e",
-            "description": "Export full session data as JSON",
-            "type": "string"
-          },
-          "session_import_full": {
-            "default": "<leader>i",
-            "description": "Import full session data from JSON",
-            "type": "string"
-          },
-          "session_new": {
-            "default": "<leader>n",
-            "description": "Create a new session",
-            "type": "string"
-          },
-          "session_list": {
-            "default": "<leader>l",
-            "description": "List all sessions",
-            "type": "string"
-          },
-          "session_timeline": {
-            "default": "<leader>g",
-            "description": "Show session timeline",
-            "type": "string"
-          },
-          "session_fork": {
-            "default": "none",
-            "description": "Fork session from message",
-            "type": "string"
-          },
-          "session_rename": {
-            "default": "ctrl+r",
-            "description": "Rename session",
-            "type": "string"
-          },
-          "session_delete": {
-            "default": "ctrl+d",
-            "description": "Delete session",
-            "type": "string"
-          },
-          "session_pin_toggle": {
-            "default": "ctrl+f",
-            "description": "Pin or unpin session in the session list",
-            "type": "string"
-          },
-          "stash_delete": {
-            "default": "ctrl+d",
-            "description": "Delete stash entry",
-            "type": "string"
-          },
-          "model_provider_list": {
-            "default": "ctrl+a",
-            "description": "Open provider list from model dialog",
-            "type": "string"
-          },
-          "model_favorite_toggle": {
-            "default": "ctrl+f",
-            "description": "Toggle model favorite status",
-            "type": "string"
-          },
-          "session_interrupt": {
-            "default": "escape",
-            "description": "Interrupt current session",
-            "type": "string"
-          },
-          "session_compact": {
-            "default": "<leader>c",
-            "description": "Compact the session",
-            "type": "string"
-          },
-          "messages_page_up": {
-            "default": "pageup,ctrl+alt+b",
-            "description": "Scroll messages up by one page",
-            "type": "string"
-          },
-          "messages_page_down": {
-            "default": "pagedown,ctrl+alt+f",
-            "description": "Scroll messages down by one page",
-            "type": "string"
-          },
-          "messages_line_up": {
-            "default": "ctrl+alt+y",
-            "description": "Scroll messages up by one line",
-            "type": "string"
-          },
-          "messages_line_down": {
-            "default": "ctrl+alt+e",
-            "description": "Scroll messages down by one line",
-            "type": "string"
-          },
-          "messages_half_page_up": {
-            "default": "ctrl+alt+u",
-            "description": "Scroll messages up by half page",
-            "type": "string"
-          },
-          "messages_half_page_down": {
-            "default": "ctrl+alt+d",
-            "description": "Scroll messages down by half page",
-            "type": "string"
-          },
-          "messages_first": {
-            "default": "ctrl+g,home",
-            "description": "Navigate to first message",
-            "type": "string"
-          },
-          "messages_last": {
-            "default": "ctrl+alt+g,end",
-            "description": "Navigate to last message",
-            "type": "string"
-          },
-          "messages_next": {
-            "default": "none",
-            "description": "Navigate to next message",
-            "type": "string"
-          },
-          "messages_previous": {
-            "default": "none",
-            "description": "Navigate to previous message",
-            "type": "string"
-          },
-          "messages_last_user": {
-            "default": "none",
-            "description": "Navigate to last user message",
-            "type": "string"
-          },
-          "messages_copy": {
-            "default": "<leader>y",
-            "description": "Copy message",
-            "type": "string"
-          },
-          "messages_undo": {
-            "default": "<leader>u",
-            "description": "Undo message",
-            "type": "string"
-          },
-          "messages_redo": {
-            "default": "<leader>r",
-            "description": "Redo message",
-            "type": "string"
-          },
-          "messages_toggle_conceal": {
-            "default": "<leader>h",
-            "description": "Toggle code block concealment in messages",
-            "type": "string"
-          },
-          "tool_details": {
-            "default": "none",
-            "description": "Toggle tool details visibility",
-            "type": "string"
-          },
-          "model_list": {
-            "default": "<leader>m",
-            "description": "List available models",
-            "type": "string"
-          },
-          "model_cycle_recent": {
-            "default": "f2",
-            "description": "Next recently used model",
-            "type": "string"
-          },
-          "model_cycle_recent_reverse": {
-            "default": "shift+f2",
-            "description": "Previous recently used model",
-            "type": "string"
-          },
-          "model_cycle_favorite": {
-            "default": "none",
-            "description": "Next favorite model",
-            "type": "string"
-          },
-          "model_cycle_favorite_reverse": {
-            "default": "none",
-            "description": "Previous favorite model",
-            "type": "string"
-          },
-          "command_list": {
-            "default": "ctrl+p",
-            "description": "List available commands",
-            "type": "string"
-          },
-          "agent_list": {
-            "default": "<leader>a",
-            "description": "List agents",
-            "type": "string"
-          },
-          "agent_cycle": {
-            "default": "tab",
-            "description": "Next agent",
-            "type": "string"
-          },
-          "agent_cycle_reverse": {
-            "default": "none",
-            "description": "Previous agent",
-            "type": "string"
-          },
-          "permission_mode_cycle": {
-            "default": "shift+tab",
-            "description": "Cycle permission mode (read-only, ask, auto)",
-            "type": "string"
-          },
-          "variant_cycle": {
-            "default": "ctrl+t",
-            "description": "Cycle model variants",
-            "type": "string"
-          },
-          "input_clear": {
-            "default": "ctrl+c",
-            "description": "Clear input field",
-            "type": "string"
-          },
-          "input_paste": {
-            "default": "ctrl+v",
-            "description": "Paste from clipboard",
-            "type": "string"
-          },
-          "input_submit": {
-            "default": "return",
-            "description": "Submit input",
-            "type": "string"
-          },
-          "input_newline": {
-            "default": "shift+return,ctrl+return,alt+return,ctrl+j",
-            "description": "Insert newline in input",
-            "type": "string"
-          },
-          "input_move_left": {
-            "default": "left,ctrl+b",
-            "description": "Move cursor left in input",
-            "type": "string"
-          },
-          "input_move_right": {
-            "default": "right,ctrl+f",
-            "description": "Move cursor right in input",
-            "type": "string"
-          },
-          "input_move_up": {
-            "default": "up",
-            "description": "Move cursor up in input",
-            "type": "string"
-          },
-          "input_move_down": {
-            "default": "down",
-            "description": "Move cursor down in input",
-            "type": "string"
-          },
-          "input_select_left": {
-            "default": "shift+left",
-            "description": "Select left in input",
-            "type": "string"
-          },
-          "input_select_right": {
-            "default": "shift+right",
-            "description": "Select right in input",
-            "type": "string"
-          },
-          "input_select_up": {
-            "default": "shift+up",
-            "description": "Select up in input",
-            "type": "string"
-          },
-          "input_select_down": {
-            "default": "shift+down",
-            "description": "Select down in input",
-            "type": "string"
-          },
-          "input_line_home": {
-            "default": "ctrl+a",
-            "description": "Move to start of line in input",
-            "type": "string"
-          },
-          "input_line_end": {
-            "default": "ctrl+e",
-            "description": "Move to end of line in input",
-            "type": "string"
-          },
-          "input_select_line_home": {
-            "default": "ctrl+shift+a",
-            "description": "Select to start of line in input",
-            "type": "string"
-          },
-          "input_select_line_end": {
-            "default": "ctrl+shift+e",
-            "description": "Select to end of line in input",
-            "type": "string"
-          },
-          "input_visual_line_home": {
-            "default": "alt+a",
-            "description": "Move to start of visual line in input",
-            "type": "string"
-          },
-          "input_visual_line_end": {
-            "default": "alt+e",
-            "description": "Move to end of visual line in input",
-            "type": "string"
-          },
-          "input_select_visual_line_home": {
-            "default": "alt+shift+a",
-            "description": "Select to start of visual line in input",
-            "type": "string"
-          },
-          "input_select_visual_line_end": {
-            "default": "alt+shift+e",
-            "description": "Select to end of visual line in input",
-            "type": "string"
-          },
-          "input_buffer_home": {
-            "default": "home",
-            "description": "Move to start of buffer in input",
-            "type": "string"
-          },
-          "input_buffer_end": {
-            "default": "end",
-            "description": "Move to end of buffer in input",
-            "type": "string"
-          },
-          "input_select_buffer_home": {
-            "default": "shift+home",
-            "description": "Select to start of buffer in input",
-            "type": "string"
-          },
-          "input_select_buffer_end": {
-            "default": "shift+end",
-            "description": "Select to end of buffer in input",
-            "type": "string"
-          },
-          "input_delete_line": {
-            "default": "ctrl+shift+d",
-            "description": "Delete line in input",
-            "type": "string"
-          },
-          "input_delete_to_line_end": {
-            "default": "ctrl+k",
-            "description": "Delete to end of line in input",
-            "type": "string"
-          },
-          "input_delete_to_line_start": {
-            "default": "ctrl+u",
-            "description": "Delete to start of line in input",
-            "type": "string"
-          },
-          "input_backspace": {
-            "default": "backspace,shift+backspace",
-            "description": "Backspace in input",
-            "type": "string"
-          },
-          "input_delete": {
-            "default": "ctrl+d,delete,shift+delete",
-            "description": "Delete character in input",
-            "type": "string"
-          },
-          "input_undo": {
-            "default": "ctrl+-,super+z",
-            "description": "Undo in input",
-            "type": "string"
-          },
-          "input_redo": {
-            "default": "ctrl+.,super+shift+z",
-            "description": "Redo in input",
-            "type": "string"
-          },
-          "input_word_forward": {
-            "default": "alt+f,alt+right,ctrl+right",
-            "description": "Move word forward in input",
-            "type": "string"
-          },
-          "input_word_backward": {
-            "default": "alt+b,alt+left,ctrl+left",
-            "description": "Move word backward in input",
-            "type": "string"
-          },
-          "input_select_word_forward": {
-            "default": "alt+shift+f,alt+shift+right",
-            "description": "Select word forward in input",
-            "type": "string"
-          },
-          "input_select_word_backward": {
-            "default": "alt+shift+b,alt+shift+left",
-            "description": "Select word backward in input",
-            "type": "string"
-          },
-          "input_delete_word_forward": {
-            "default": "alt+d,alt+delete,ctrl+delete",
-            "description": "Delete word forward in input",
-            "type": "string"
-          },
-          "input_delete_word_backward": {
-            "default": "ctrl+w,ctrl+backspace,alt+backspace",
-            "description": "Delete word backward in input",
-            "type": "string"
-          },
-          "history_previous": {
-            "default": "up",
-            "description": "Previous history item",
-            "type": "string"
-          },
-          "history_next": {
-            "default": "down",
-            "description": "Next history item",
-            "type": "string"
-          },
-          "session_child_cycle": {
-            "default": "<leader>right",
-            "description": "Next child session",
-            "type": "string"
-          },
-          "session_child_cycle_reverse": {
-            "default": "<leader>left",
-            "description": "Previous child session",
-            "type": "string"
-          },
-          "session_parent": {
-            "default": "<leader>up",
-            "description": "Go to parent session",
-            "type": "string"
-          },
-          "terminal_suspend": {
-            "default": "ctrl+z",
-            "description": "Suspend terminal",
-            "type": "string"
-          },
-          "terminal_title_toggle": {
-            "default": "none",
-            "description": "Toggle terminal title",
-            "type": "string"
-          },
-          "tips_toggle": {
-            "default": "<leader>h",
-            "description": "Toggle tips on home screen",
-            "type": "string"
-          },
-          "display_thinking": {
-            "default": "none",
-            "description": "Toggle thinking blocks visibility",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
       "LogLevel": {
         "description": "Log level",
         "type": "string",
@@ -6450,6 +5375,28 @@
               "type": "string"
             }
           },
+          "relay": {
+            "type": "object",
+            "properties": {
+              "station": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["claude-code", "codex", "standard", "custom"]
+              },
+              "auth": {
+                "type": "string",
+                "enum": ["bearer", "x-api-key"]
+              }
+            },
+            "required": ["station", "group", "kind"]
+          },
           "options": {
             "type": "object",
             "properties": {
@@ -6617,47 +5564,13 @@
             "description": "JSON schema reference for configuration validation",
             "type": "string"
           },
-          "theme": {
-            "description": "Theme name to use for the interface",
-            "type": "string"
-          },
           "locale": {
             "description": "UI language (zh-CN or en-US)",
             "type": "string",
             "enum": ["zh-CN", "en-US"]
           },
-          "keybinds": {
-            "$ref": "#/components/schemas/KeybindsConfig"
-          },
           "logLevel": {
             "$ref": "#/components/schemas/LogLevel"
-          },
-          "tui": {
-            "description": "TUI specific settings",
-            "type": "object",
-            "properties": {
-              "scroll_speed": {
-                "description": "TUI scroll speed",
-                "type": "number",
-                "minimum": 0.001
-              },
-              "scroll_acceleration": {
-                "description": "Scroll acceleration settings",
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean",
-                    "description": "Enable scroll acceleration"
-                  }
-                },
-                "required": ["enabled"]
-              },
-              "diff_style": {
-                "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
-                "type": "string",
-                "enum": ["auto", "stacked"]
-              }
-            }
           },
           "server": {
             "$ref": "#/components/schemas/ServerConfig"
@@ -6751,18 +5664,6 @@
           },
           "snapshot": {
             "type": "boolean"
-          },
-          "autoupdate": {
-            "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "string",
-                "const": "notify"
-              }
-            ]
           },
           "disabled_providers": {
             "description": "Disable providers that are loaded automatically",
@@ -7999,6 +6900,30 @@
           }
         },
         "required": ["name", "uri", "client"],
+        "additionalProperties": false
+      },
+      "SessionSearchResult": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionOutput"
+          },
+          "match": {
+            "description": "The latest conversation text containing the search, shortened around it",
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["messageID", "text"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["session"],
         "additionalProperties": false
       },
       "PermissionAction": {
@@ -10385,65 +9310,6 @@
         ],
         "additionalProperties": false
       },
-      "ReviewLine": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["context", "add", "del"]
-          },
-          "text": {
-            "type": "string"
-          },
-          "old": {
-            "type": "number"
-          },
-          "new": {
-            "type": "number"
-          },
-          "noNewline": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": ["kind", "text"],
-        "additionalProperties": false
-      },
-      "ReviewHunk": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "oldStart": {
-            "type": "number"
-          },
-          "oldLines": {
-            "type": "number"
-          },
-          "newStart": {
-            "type": "number"
-          },
-          "newLines": {
-            "type": "number"
-          },
-          "heading": {
-            "type": "string"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReviewLine"
-            }
-          },
-          "state": {
-            "type": "string",
-            "const": "accepted"
-          }
-        },
-        "required": ["id", "oldStart", "oldLines", "newStart", "newLines", "lines"],
-        "additionalProperties": false
-      },
       "ReviewFile": {
         "type": "object",
         "properties": {
@@ -10462,12 +9328,6 @@
             "type": "boolean",
             "const": true
           },
-          "before": {
-            "type": "string"
-          },
-          "after": {
-            "type": "string"
-          },
           "additions": {
             "type": "number"
           },
@@ -10475,16 +9335,16 @@
             "type": "number"
           },
           "hunks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReviewHunk"
-            }
+            "type": "number"
           },
           "accepted": {
             "type": "number"
+          },
+          "version": {
+            "type": "string"
           }
         },
-        "required": ["file", "status", "additions", "deletions", "hunks", "accepted"],
+        "required": ["file", "status", "additions", "deletions", "hunks", "accepted", "version"],
         "additionalProperties": false
       },
       "ReviewResult": {
@@ -10570,6 +9430,90 @@
       "ReviewScope": {
         "type": "string",
         "enum": ["session", "turn", "unstaged", "staged", "branch"]
+      },
+      "ReviewLine": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["context", "add", "del"]
+          },
+          "text": {
+            "type": "string"
+          },
+          "old": {
+            "type": "number"
+          },
+          "new": {
+            "type": "number"
+          },
+          "noNewline": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["kind", "text"],
+        "additionalProperties": false
+      },
+      "ReviewHunk": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "oldStart": {
+            "type": "number"
+          },
+          "oldLines": {
+            "type": "number"
+          },
+          "newStart": {
+            "type": "number"
+          },
+          "newLines": {
+            "type": "number"
+          },
+          "heading": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewLine"
+            }
+          },
+          "state": {
+            "type": "string",
+            "const": "accepted"
+          }
+        },
+        "required": ["id", "oldStart", "oldLines", "newStart", "newLines", "lines"],
+        "additionalProperties": false
+      },
+      "ReviewFileDetail": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "hunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewHunk"
+            }
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": ["file", "version", "hunks"],
+        "additionalProperties": false
       },
       "McpScope": {
         "type": "string",
@@ -11237,9 +10181,6 @@
           "data": {
             "type": "string"
           },
-          "state": {
-            "type": "string"
-          },
           "config": {
             "type": "string"
           },
@@ -11282,7 +10223,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["home", "data", "state", "config", "worktree", "directory"],
+        "required": ["home", "data", "config", "worktree", "directory"],
         "additionalProperties": false
       },
       "VcsInfo": {
@@ -11299,9 +10240,27 @@
           },
           "ahead": {
             "type": "number"
+          },
+          "behind": {
+            "type": "number"
+          },
+          "staged": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unstaged": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "untracked": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           }
         },
-        "required": ["branch"],
+        "required": ["branch", "staged", "unstaged", "untracked"],
         "additionalProperties": false
       },
       "VcsPushResult": {
@@ -11338,6 +10297,21 @@
             "additionalProperties": false
           }
         ]
+      },
+      "VcsRunResult": {
+        "type": "object",
+        "properties": {
+          "exitCode": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "output": {
+            "type": "string"
+          }
+        },
+        "required": ["exitCode", "output"],
+        "additionalProperties": false
       },
       "SandboxStatus": {
         "type": "object",
@@ -11650,7 +10624,7 @@
       "get": {
         "operationId": "global.session.search",
         "summary": "Search sessions across all projects",
-        "description": "Search session titles across every persisted MerakCode project, including closed workspaces.",
+        "description": "Search session titles and conversation text across every persisted MerakCode project, including closed workspaces.",
         "responses": {
           "200": {
             "description": "Matching sessions sorted by most recently updated",
@@ -11836,7 +10810,7 @@
       "patch": {
         "operationId": "global.config.update",
         "summary": "Update global configuration",
-        "description": "Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the TUI model choice).",
+        "description": "Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the default model).",
         "responses": {
           "200": {
             "description": "Successfully updated global config",
@@ -13718,6 +12692,80 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/search": {
+      "get": {
+        "operationId": "session.search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter sessions by project directory"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Text to look for (case-insensitive)"
+          },
+          {
+            "in": "query",
+            "name": "roots",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only return root sessions (no parentID)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Maximum number of sessions to return"
+          }
+        ],
+        "summary": "Search sessions",
+        "description": "Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.",
+        "responses": {
+          "200": {
+            "description": "Matching sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionSearchResult"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.search({\n  ...\n})"
           }
         ]
       }
@@ -17503,8 +16551,8 @@
             }
           }
         ],
-        "summary": "Refresh provider environment",
-        "description": "Re-read provider-related env vars from system and invalidate provider cache.",
+        "summary": "Refresh providers",
+        "description": "Rebuild the provider list from the saved credentials and config.",
         "responses": {
           "200": {
             "description": "Refresh completed",
@@ -17543,6 +16591,143 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.provider.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/relay/discover": {
+      "post": {
+        "operationId": "provider.relay.discover",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List models at a relay",
+        "description": "Ask a relay for the models a key can use, and fill in limits the relay did not return.",
+        "responses": {
+          "200": {
+            "description": "Models the relay returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "models": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "number"
+                              },
+                              "output": {
+                                "type": "number"
+                              },
+                              "contextFrom": {
+                                "type": "string",
+                                "enum": ["relay", "catalog", "fallback"]
+                              },
+                              "outputFrom": {
+                                "type": "string",
+                                "enum": ["relay", "catalog", "fallback"]
+                              },
+                              "endpoint": {
+                                "type": "string",
+                                "enum": ["anthropic", "openai-responses", "openai-chat"]
+                              },
+                              "image": {
+                                "type": "boolean"
+                              },
+                              "reasoning": {
+                                "type": "boolean"
+                              },
+                              "toolcall": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": ["id"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": ["models"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseURL": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["claude-code", "codex", "standard", "custom"]
+                  }
+                },
+                "required": ["baseURL", "key", "kind"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.provider.relay.discover({\n  ...\n})"
           }
         ]
       }
@@ -18382,7 +17567,7 @@
           }
         ],
         "summary": "Get review",
-        "description": "List the changes in a review scope as files and hunks: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base.",
+        "description": "List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.",
         "responses": {
           "200": {
             "description": "Review",
@@ -18518,6 +17703,104 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.review.decide({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/review/file": {
+      "get": {
+        "operationId": "review.file",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewScope"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "messageID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get review file",
+        "description": "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.",
+        "responses": {
+          "200": {
+            "description": "File hunks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFileDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The scope does not support this decision, or a required parameter is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewInvalidError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The file or hunk is no longer in the review (the list is stale); fetch it again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewStaleError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.review.file({\n  ...\n})"
           }
         ]
       }
@@ -21008,6 +20291,84 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.push({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/vcs/run": {
+      "post": {
+        "operationId": "vcs.run",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Run a git command",
+        "description": "Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.",
+        "responses": {
+          "200": {
+            "description": "Command output",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VcsRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "args": {
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  }
+                },
+                "required": ["args"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.run({\n  ...\n})"
           }
         ]
       }

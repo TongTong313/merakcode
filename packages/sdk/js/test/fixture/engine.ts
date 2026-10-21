@@ -32,40 +32,35 @@ export type Sandbox = {
 export async function sandbox(model: string, extra: Record<string, unknown> = {}): Promise<Sandbox> {
   const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-sdk-"))
   const project = path.join(root, "project")
-  for (const dir of ["project", "home", "config/merakcode/node_modules", "cache/merakcode", "data", "state", "logs"])
+  for (const dir of ["project", "home", "node_modules", "cache", "data", "logs"])
     await mkdir(path.join(root, dir), { recursive: true })
   execFileSync("git", ["init", "--quiet", project])
-  await Filesystem.write(path.join(root, "cache/merakcode/version"), "21")
+  await Filesystem.write(path.join(root, "cache/version"), "21")
   // The config directory's dependency check must resolve zod, which cannot be installed offline, so link it (a
   // junction needs no admin rights on Windows)
   await symlink(
     path.join(repo, "packages/engine/node_modules/zod"),
-    path.join(root, "config/merakcode/node_modules/zod"),
+    path.join(root, "node_modules/zod"),
     "junction",
   ).catch(() => undefined)
   await Filesystem.write(
-    path.join(root, "config/merakcode/merakcode.json"),
+    path.join(root, "merakcode.json"),
     JSON.stringify({
-      model: "alibaba/qwen-plus",
-      small_model: "alibaba/qwen-plus",
-      enabled_providers: ["alibaba"],
-      provider: { alibaba: { options: { apiKey: "fake", baseURL: model } } },
+      model: "alibaba-cn/qwen-plus",
+      small_model: "alibaba-cn/qwen-plus",
+      enabled_providers: ["alibaba-cn"],
+      provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model } } },
       memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
       lsp: false,
-      autoupdate: false,
       ...extra,
     }),
   )
   const env: Record<string, string> = {
     HOME: path.join(root, "home"),
     USERPROFILE: path.join(root, "home"),
-    XDG_DATA_HOME: path.join(root, "data"),
-    XDG_CONFIG_HOME: path.join(root, "config"),
-    XDG_CACHE_HOME: path.join(root, "cache"),
-    XDG_STATE_HOME: path.join(root, "state"),
+    MERAKCODE_HOME: root,
     MERAKCODE_TEST_HOME: path.join(root, "home"),
     MERAKCODE_LOG_ROOT: path.join(root, "logs"),
-    MERAKCODE_DISABLE_AUTOUPDATE: "1",
     MERAKCODE_DISABLE_MODELS_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",

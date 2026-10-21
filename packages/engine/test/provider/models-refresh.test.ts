@@ -12,8 +12,8 @@ import { Process } from "@merakcode/util/process"
 test("background refresh does not exit the process when the model cache cannot be written", async () => {
   await using tmp = await tmpdir()
   // A directory occupies the cache file path, so the write always fails.
-  await fs.mkdir(path.join(tmp.path, "cache", "merakcode", "models.json"), { recursive: true })
-  await fs.writeFile(path.join(tmp.path, "cache", "merakcode", "version"), "21")
+  await fs.mkdir(path.join(tmp.path, "cache", "models.json"), { recursive: true })
+  await fs.writeFile(path.join(tmp.path, "cache", "version"), "21")
   const server = createServer((_req, res) => res.end("{}"))
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   try {
@@ -25,7 +25,7 @@ test("background refresh does not exit the process when the model cache cannot b
       {
         env: {
           ...process.env,
-          XDG_CACHE_HOME: path.join(tmp.path, "cache"),
+          MERAKCODE_HOME: tmp.path,
           MERAKCODE_MODELS_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
           MERAKCODE_DISABLE_MODELS_FETCH: "",
         },

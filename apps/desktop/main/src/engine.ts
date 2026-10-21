@@ -46,11 +46,14 @@ export namespace Engine {
   }
 
   /** Lists missing files up front, which is clearer than a child process failing and a log to read */
-  export function missing(layout: Layout, resources: string): string[] {
+  export function missing(layout: Layout, resources: string, env: NodeJS.ProcessEnv = {}): string[] {
     const files =
       layout.kind === "packaged"
         ? [command(layout)[0]!, path.join(layout.root, "lib", "index.js")]
         : [path.join(layout.repo, "apps", "cli", "src", "index.ts")]
-    return [...files, path.join(appDist(layout, resources), "index.html")].filter((file) => !existsSync(file))
+    // script/dev.ts serves the UI from the Vite dev server (MERAKCODE_APP_DEV_URL), so nothing has to be built
+    const ui =
+      layout.kind === "source" && env.MERAKCODE_APP_DEV_URL ? [] : [path.join(appDist(layout, resources), "index.html")]
+    return [...files, ...ui].filter((file) => !existsSync(file))
   }
 }

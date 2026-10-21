@@ -5,8 +5,7 @@ import path from "path"
 import { Storage } from "../storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { Flag } from "../flag/flag"
-import { Session } from "../session"
-import { work } from "../util/queue"
+import { SessionStore } from "../session/store"
 import { fn } from "@merakcode/util/fn"
 import { BusEvent } from "../bus/bus-event"
 import { iife } from "../util/iife"
@@ -288,24 +287,16 @@ export namespace Project {
     const globalProject = await Storage.read<Info>(["project", "global"]).catch(() => undefined)
     if (!globalProject) return
 
-    const globalSessions = await Storage.list(["session", "global"]).catch(() => [])
+    const globalSessions = SessionStore.list("global")
     if (globalSessions.length === 0) return
 
     log.info("migrating sessions from global", { newProjectID, worktree, count: globalSessions.length })
 
-    await work(10, globalSessions, async (key) => {
-      const sessionID = key[key.length - 1]
-      const session = await Storage.read<Session.Info>(key).catch(() => undefined)
-      if (!session) return
-      if (session.directory && Filesystem.normalize(session.directory) !== Filesystem.normalize(worktree)) return
-
-      session.projectID = newProjectID
-      log.info("migrating session", { sessionID, from: "global", to: newProjectID })
-      await Storage.write(["session", newProjectID, sessionID], session)
-      await Storage.remove(key)
-    }).catch((error) => {
-      log.error("failed to migrate sessions from global to project", { error, projectId: newProjectID })
-    })
+    for (const session of globalSessions) {
+      if (session.directory && Filesystem.normalize(session.directory) !== Filesystem.normalize(worktree)) continue
+      log.info("migrating session", { sessionID: session.id, from: "global", to: newProjectID })
+      SessionStore.put({ ...session, projectID: newProjectID })
+    }
   }
 
   export async function setInitialized(projectID: string) {

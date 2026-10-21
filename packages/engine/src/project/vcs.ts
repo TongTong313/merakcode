@@ -27,17 +27,25 @@ export namespace Vcs {
       remote: z.string().optional(),
       /** Commits ahead of the upstream; absent without an upstream */
       ahead: z.number().optional(),
+      /** Commits behind the upstream; absent without an upstream */
+      behind: z.number().optional(),
+      /** Files with staged changes */
+      staged: z.number().int(),
+      /** Tracked files with unstaged changes */
+      unstaged: z.number().int(),
+      /** Files not yet tracked */
+      untracked: z.number().int(),
     })
     .meta({
       ref: "VcsInfo",
     })
   export type Info = z.infer<typeof Info>
 
-  /** Diff of the git working tree or the branch; last-turn is served by session.diff in the TUI, not here */
+  /** Diff of the git working tree or the branch; last-turn is served by session.diff, not here */
   export const Mode = z.enum(["git", "branch", "last-turn"])
   export type Mode = z.infer<typeof Mode>
 
-  /** Matches OpenCode's VcsFileDiff; separate from Snapshot.FileDiff, used by /vcs/diff and the TUI viewer */
+  /** Matches OpenCode's VcsFileDiff; separate from Snapshot.FileDiff, returned by /vcs/diff */
   export const FileDiff = z
     .object({
       file: z.string(),
@@ -245,6 +253,14 @@ export namespace Vcs {
     return { map, capped: outputTruncated }
   }
 
+  /**
+   * Without optional locks git status does not rewrite .git/index under index.lock; polling it in the background would
+   * otherwise make the user's own git add or commit fail meanwhile. git diff ignores the setting.
+   */
+  function withoutOptionalLocks() {
+    return { ...process.env, GIT_OPTIONAL_LOCKS: "0" }
+  }
+
   async function patchAll(cwd: string, ref: string, context: number) {
     return (
       await Process.run(
@@ -357,6 +373,7 @@ export namespace Vcs {
     const statusRaw = (
       await Process.run(["git", "status", "--porcelain=v1", "--untracked-files=all", "--no-renames", "-z", "--", "."], {
         cwd,
+        env: withoutOptionalLocks(),
         nothrow: true,
       })
     ).text()
@@ -382,6 +399,7 @@ export namespace Vcs {
       }).then((x) => x.text()),
       Process.run(["git", "status", "--porcelain=v1", "--untracked-files=all", "--no-renames", "-z", "--", "."], {
         cwd,
+        env: withoutOptionalLocks(),
         nothrow: true,
       }).then((x) => x.text()),
       patchAll(cwd, ref, context),
@@ -499,8 +517,18 @@ export namespace Vcs {
     .meta({ ref: "VcsPushResult" })
   export type PushResult = z.infer<typeof PushResult>
 
+  export const RunResult = z
+    .object({
+      exitCode: z.number().int(),
+      output: z.string(),
+    })
+    .meta({ ref: "VcsRunResult" })
+  export type RunResult = z.infer<typeof RunResult>
+
+  const OUTPUT_LIMIT = 16_000
+
   function run(args: string[]) {
-    return Process.run(["git", ...args], { cwd: Instance.worktree, nothrow: true })
+    return Process.run(["git", ...args], { cwd: Instance.worktree, env: withoutOptionalLocks(), nothrow: true })
   }
 
   /** Upstream of the current branch (e.g. origin/main), if any */
@@ -520,23 +548,67 @@ export namespace Vcs {
     return fromUpstream || (remotes.includes("origin") ? "origin" : remotes.length === 1 ? remotes[0] : undefined)
   }
 
-  /** Branch, default branch, push remote and commits ahead of the upstream */
+  /** porcelain v2 --branch: branch, ahead/behind, and staged / unstaged / untracked file counts */
+  function summarize(raw: string) {
+    const summary: {
+      branch: string
+      upstream?: string
+      ahead?: number
+      behind?: number
+      staged: number
+      unstaged: number
+      untracked: number
+    } = { branch: "", staged: 0, unstaged: 0, untracked: 0 }
+    for (const entry of raw.split("\n")) {
+      const line = entry.replace(/\r$/, "")
+      if (line.startsWith("# branch.head ")) {
+        const name = line.slice("# branch.head ".length).trim()
+        summary.branch = name === "(detached)" ? "HEAD" : name
+        continue
+      }
+      if (line.startsWith("# branch.upstream ")) {
+        summary.upstream = line.slice("# branch.upstream ".length).trim()
+        continue
+      }
+      if (line.startsWith("# branch.ab ")) {
+        const match = line.match(/\+(\d+) -(\d+)/)
+        if (match) {
+          summary.ahead = Number(match[1])
+          summary.behind = Number(match[2])
+        }
+        continue
+      }
+      if (line.startsWith("? ")) {
+        summary.untracked++
+        continue
+      }
+      if (line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u ")) {
+        const index = line[2]
+        const worktree = line[3]
+        if (index && index !== "." && index !== "?") summary.staged++
+        if (worktree && worktree !== "." && worktree !== "?") summary.unstaged++
+      }
+    }
+    return summary
+  }
+
+  /** Branch, default branch, push remote, commits ahead of and behind upstream, and change counts */
   export async function status(): Promise<Info | undefined> {
     if (Instance.project.vcs !== "git") return undefined
-    const [branch, root, tracking] = await Promise.all([
-      currentBranch(),
+    const [porcelain, root] = await Promise.all([
+      run(["status", "--porcelain=v2", "--branch", "--untracked-files=all", "--no-renames"]),
       readDefaultBranch(Instance.worktree),
-      upstream(),
     ])
-    const remote = await pushRemote(tracking)
-    const ahead = tracking
-      ? Number.parseInt((await run(["rev-list", "--count", `${tracking}..HEAD`])).text().trim(), 10)
-      : undefined
+    const summary = summarize(porcelain.text())
+    const remote = await pushRemote(summary.upstream)
     return {
-      branch: branch ?? "",
+      branch: summary.branch,
+      staged: summary.staged,
+      unstaged: summary.unstaged,
+      untracked: summary.untracked,
       ...(root ? { default_branch: root.name } : {}),
       ...(remote ? { remote } : {}),
-      ...(ahead !== undefined && Number.isFinite(ahead) ? { ahead } : {}),
+      ...(summary.ahead !== undefined ? { ahead: summary.ahead, behind: summary.behind ?? 0 } : {}),
     }
   }
 
@@ -555,6 +627,19 @@ export namespace Vcs {
     if (result.exitCode !== 0) return { ok: false, error: (result.stderr.toString() || result.text()).trim() }
     log.info("pushed", { branch, remote })
     return { ok: true, branch, remote }
+  }
+
+  /** Runs git with the given arguments in the worktree. Arguments are not passed through a shell. */
+  export async function runGit(args: string[]): Promise<RunResult> {
+    if (Instance.project.vcs !== "git") return { exitCode: 1, output: "not a git repository" }
+    if (args.length === 0 || args.some((arg) => arg.includes("\0"))) return { exitCode: 1, output: "empty command" }
+    const result = await run(args)
+    const error = result.stderr.toString().trim()
+    const output = [result.text().trim(), error].filter(Boolean).join("\n")
+    return {
+      exitCode: result.exitCode,
+      output: output.length > OUTPUT_LIMIT ? `${output.slice(0, OUTPUT_LIMIT)}\n…` : output,
+    }
   }
 
   /** Local branches, sorted by name */

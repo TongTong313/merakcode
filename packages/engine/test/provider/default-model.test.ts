@@ -1,26 +1,26 @@
 import { expect, test } from "vitest"
 import { tmpdir } from "../fixture/fixture"
 import { Auth } from "@merakcode/engine/auth/index"
-import { Env } from "@merakcode/engine/env/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Provider } from "@merakcode/engine/provider/provider"
 import { ErrorCode } from "@merakcode/util/error-code"
 
-// One environment variable can connect several providers (DASHSCOPE_API_KEY connects both the China and
-// international Alibaba Model Studio), yet a key only works on one of them, so the default model must be predictable.
-
-test("with only env vars, the default model comes from the highest-ranked provider (alibaba-cn before alibaba)", async () => {
+test("the default model comes from the highest-ranked connected provider", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
-    directory: tmp.path,
-    init: async () => Env.set("DASHSCOPE_API_KEY", "test-key"),
-    fn: async () => {
-      const providers = await Provider.list()
-      expect(Object.keys(providers)).toEqual(expect.arrayContaining(["alibaba", "alibaba-cn"]))
-      expect((await Provider.defaultModel()).providerID).toBe("alibaba-cn")
-      expect(Provider.rank(Object.values(providers)).map((p) => p.id)[0]).toBe("alibaba-cn")
-    },
-  })
+  await Auth.set("openai", { type: "api", key: "openai-key" })
+  await Auth.set("alibaba-cn", { type: "api", key: "dashscope-key" })
+  try {
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        expect((await Provider.defaultModel()).providerID).toBe("alibaba-cn")
+        expect(Provider.rank(Object.values(await Provider.list())).map((p) => p.id)[0]).toBe("alibaba-cn")
+      },
+    })
+  } finally {
+    await Auth.remove("openai")
+    await Auth.remove("alibaba-cn")
+  }
 })
 
 test("with no provider connected there is no default model, and the error says so with its own code", async () => {
@@ -33,20 +33,4 @@ test("with no provider connected there is no default model, and the error says s
       expect(ErrorCode.of((error as Error).name)).toBe(ErrorCode.CATALOG.NO_MODEL.code)
     },
   })
-})
-
-test("providers with a user-saved key rank ahead of ones detected from env vars", async () => {
-  await using tmp = await tmpdir()
-  await Auth.set("alibaba", { type: "api", key: "saved-key" })
-  try {
-    await Instance.provide({
-      directory: tmp.path,
-      init: async () => Env.set("DASHSCOPE_API_KEY", "test-key"),
-      fn: async () => {
-        expect((await Provider.defaultModel()).providerID).toBe("alibaba")
-      },
-    })
-  } finally {
-    await Auth.remove("alibaba")
-  }
 })

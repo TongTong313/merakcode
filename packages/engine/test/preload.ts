@@ -1,5 +1,5 @@
 // IMPORTANT: Set env vars BEFORE any imports from src/ directory
-// xdg-basedir reads env vars at import time, so we must set these first
+// @merakcode/util/paths reads MERAKCODE_HOME at import time, so we must set these first
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
@@ -23,6 +23,9 @@ afterAll(async () => {
   await closeParcelWatchers()
   const { removing } = await import("./fixture/fixture")
   await removing()
+  // An open database keeps its files locked on Windows
+  const { Database } = await import("../src/storage/db")
+  Database.close()
   try {
     fsSync.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   } catch {}
@@ -39,18 +42,15 @@ process.env["MERAKCODE_TEST_HOME"] = testHome
 const testManagedConfigDir = path.join(dir, "managed")
 process.env["MERAKCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 
-process.env["XDG_DATA_HOME"] = path.join(dir, "share")
-process.env["XDG_CACHE_HOME"] = path.join(dir, "cache")
-process.env["XDG_CONFIG_HOME"] = path.join(dir, "config")
-process.env["XDG_STATE_HOME"] = path.join(dir, "state")
-process.env["MERAKCODE_LOG_ROOT"] = path.join(dir, "logs")
+const root = path.join(dir, "root")
+process.env["MERAKCODE_HOME"] = root
 process.env["MERAKCODE_MODELS_PATH"] = path.join(import.meta.dirname, "tool", "fixtures", "models-api.json")
 // Tests behave the same on every system; the sandbox modes have their own tests (test/sandbox)
 process.env["MERAKCODE_SANDBOX_MODE"] = "off"
 
 // Reuse the workspace's installed zod package in the isolated global config.
 // Config still writes and validates its plugin shim without repeating `npm install zod` in every test process.
-const modules = path.join(dir, "config", "merakcode", "node_modules")
+const modules = path.join(root, "node_modules")
 await fs.mkdir(modules, { recursive: true })
 await fs.symlink(
   path.dirname(fileURLToPath(import.meta.resolve("zod"))),
@@ -59,18 +59,16 @@ await fs.symlink(
 )
 
 // Write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(dir, "cache", "merakcode")
+const cacheDir = path.join(root, "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "21")
 
-// Clear model keys from the dev machine: providers connect automatically from env vars, so tests would otherwise hit
-// real accounts
+// Clear model keys from the dev machine so a developer key cannot leak into a test process.
 for (const key of Object.keys(process.env))
   if (/_API_KEY$/.test(key) || /^AWS_(ACCESS_KEY_ID|PROFILE|REGION|BEARER_TOKEN_BEDROCK)$/.test(key))
     delete process.env[key]
 
-// Engine tests do not load the TUI (`@opentui/solid/preload` is only in the apps/cli preload), and no remote config
-// source is injected, so tests never contact one.
+// No remote config source is injected, so tests never contact one.
 
 // Now safe to import from src/
 const { Log } = await import("@merakcode/log/logger")

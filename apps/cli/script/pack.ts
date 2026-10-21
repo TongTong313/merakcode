@@ -7,12 +7,15 @@
  *   dist/npm/sdk/                          @merakcode/sdk: same version as the main package, its engine uses the
  *                                          same platform packages
  *   dist/merakcode-<version>-<platform>/   platform package (from build.ts; the directory itself is an npm package)
- *   dist/npm/publish.sh                    publishes the platform packages, then the SDK and the main package;
- *                                          skips versions already published
+ *   dist/npm/*.tgz                         every package above, packed by npm pack
+ *   dist/npm/publish.sh                    publishes the .tgz files: the platform packages, then the SDK and the main
+ *                                          package; skips versions already published
  *
- * Nothing is published here: publishing needs an npm login, so a maintainer reviews and runs publish.sh by hand.
- * Usage (in apps/cli): pnpm pack:npm [--tgz]
- *   --tgz  also packs a .tgz per package, to try it locally with npm install -g <tgz> before publishing
+ * Publishing the packed files (not the directories) keeps file modes: CI moves them between jobs as artifacts, which
+ * would drop the executable bit of node/bin/node, and the release smoke test installs the same files.
+ * Nothing is published here; the release workflow runs publish.sh. To try the packages locally, install the main
+ * package's .tgz together with this machine's platform package .tgz.
+ * Usage (in apps/cli): pnpm pack:npm
  */
 import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
@@ -23,6 +26,9 @@ import { build as buildSdk } from "../../../packages/sdk/js/script/build"
 
 type Manifest = { name: string; version: string; license?: string; repository?: unknown }
 
+/** A package packed by npm pack: file is the .tgz name next to publish.sh */
+export type Packed = { name: string; version: string; file: string }
+
 /**
  * Main package: only the command entry. Every platform package is an optional dependency, and npm installs only the
  * one matching the host's os/cpu
@@ -31,7 +37,7 @@ export function mainPackage(cli: Manifest, platforms: Record<string, string>) {
   return {
     name: cli.name,
     version: cli.version,
-    description: "AI coding agent for the terminal",
+    description: "MerakCode command line: run tasks, start the engine, ACP for editors",
     license: cli.license,
     repository: cli.repository,
     bin: binMap(),
@@ -75,8 +81,9 @@ export function npmTag(version: string) {
  * `packages` depend on `platforms`, so platforms are published first: by the time users install the SDK or the main
  * package, the platform packages they depend on exist
  */
-export function publishScript(platforms: string[], packages: string[], tag = "latest") {
-  const run = (dir: string) => `publish ${JSON.stringify(dir)}`
+export function publishScript(platforms: Packed[], packages: Packed[], tag = "latest") {
+  const run = (item: Packed) =>
+    `publish ${[item.name, item.version, item.file].map((v) => JSON.stringify(v)).join(" ")}`
   return [
     "#!/bin/sh",
     "# Platform packages go first, then the SDK and main package that depend on them: once the main package is out,",
@@ -85,14 +92,12 @@ export function publishScript(platforms: string[], packages: string[], tag = "la
     'cd "$(dirname "$0")"',
     "",
     "publish() {",
-    '  name=$(node -p "require(process.argv[1]).name" "$1/package.json")',
-    '  version=$(node -p "require(process.argv[1]).version" "$1/package.json")',
-    '  if npm view "$name@$version" version >/dev/null 2>&1; then',
-    '    echo "==> $name@$version is already published, skipping"',
+    '  if npm view "$1@$2" version >/dev/null 2>&1; then',
+    '    echo "==> $1@$2 is already published, skipping"',
     "    return",
     "  fi",
-    '  echo "==> publishing $name@$version"',
-    `  npm publish --access public --tag ${tag} "$1"`,
+    '  echo "==> publishing $1@$2"',
+    `  npm publish --access public --tag ${tag} "./$3"`,
     "}",
     "",
     ...platforms.map(run),
@@ -138,15 +143,23 @@ if (import.meta.main) {
   await fs.writeFile(path.join(main, "package.json"), JSON.stringify(mainPackage(manifest, versions), null, 2) + "\n")
   const sdk = path.join(npm, "sdk")
   await buildSdk({ outdir: sdk, version: manifest.version, platforms: Object.keys(platforms) })
-  const relative = (dir: string) => path.relative(npm, dir).replaceAll("\\", "/")
+
+  const pack = (dir: string): Packed => {
+    const output = execFileSync(
+      process.execPath,
+      [npmCli(), "pack", dir, "--pack-destination", npm, "--ignore-scripts", "--json"],
+      { encoding: "utf8" },
+    )
+    const [result] = JSON.parse(output) as { name: string; version: string; filename: string }[]
+    return { name: result!.name, version: result!.version, file: path.basename(result!.filename) }
+  }
   await fs.writeFile(
     path.join(npm, "publish.sh"),
-    publishScript(Object.values(platforms).map(relative), ["sdk", manifest.name], npmTag(manifest.version)),
+    publishScript(Object.values(platforms).map(pack), [sdk, main].map(pack), npmTag(manifest.version)),
     { mode: 0o755 },
   )
-
-  if (process.argv.includes("--tgz"))
-    for (const dir of [...Object.values(platforms), sdk, main])
-      execFileSync(process.execPath, [npmCli(), "pack", dir, "--pack-destination", npm], { stdio: "inherit" })
-  console.log(`Prepared the main package, the SDK and ${Object.keys(platforms).length} platform packages: ${npm}`)
+  // npm pack takes file modes from the file system, and Windows has no executable bit
+  if (process.platform === "win32" && Object.keys(platforms).some((name) => !name.startsWith("merakcode-windows-")))
+    console.warn("Packed on Windows: the Linux and macOS packages cannot run; publish them from CI only")
+  console.log(`Packed the main package, the SDK and ${Object.keys(platforms).length} platform packages: ${npm}`)
 }

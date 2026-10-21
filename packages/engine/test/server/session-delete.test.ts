@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "vitest"
 import fs from "fs/promises"
+import path from "path"
 import { Bus } from "@merakcode/engine/bus/index"
+import { Global } from "@merakcode/engine/global/index"
+import { ReviewBaseline } from "@merakcode/engine/review/baseline"
+import { SessionMemoryPath } from "@merakcode/engine/session-memory/path"
 import { Identifier } from "@merakcode/util/id"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Server } from "@merakcode/engine/server/server"
@@ -36,7 +40,8 @@ async function seed(sessionID: string, text: string) {
   return { message, part }
 }
 
-async function seedAssociated(sessionID: string) {
+async function seedAssociated(session: Session.Info) {
+  const sessionID = session.id
   const keys = [
     ["session_diff", sessionID],
     ["todo", sessionID],
@@ -44,9 +49,17 @@ async function seedAssociated(sessionID: string) {
     ["session_notification", sessionID, "notification-test"],
     ["workflow", sessionID, "run-test"],
     ["workflow_run", sessionID, "run-test"],
+    ["cron", sessionID, "task-test"],
   ]
   await Promise.all(keys.map((key) => Storage.write(key, { sessionID })))
-  return keys
+  ReviewBaseline.put(sessionID, "/file.txt", Buffer.from("accepted"))
+  const files = [
+    path.join(Global.Path.data, "backup", sessionID, "1", "file.txt"),
+    Session.plan(session),
+    SessionMemoryPath.file(sessionID),
+  ]
+  for (const file of files) await Filesystem.write(file, "x")
+  return { keys, files }
 }
 
 describe("DELETE /session/:sessionID", () => {
@@ -63,7 +76,7 @@ describe("DELETE /session/:sessionID", () => {
         const child = await Session.create({ parentID: parent.id, title: "child" })
         const parentData = await seed(parent.id, "parent message")
         const childData = await seed(child.id, "child message")
-        const associated = [...(await seedAssociated(parent.id)), ...(await seedAssociated(child.id))]
+        const associated = [await seedAssociated(parent), await seedAssociated(child)]
         const deleted: string[] = []
         const unsubscribe = Bus.subscribe(Session.Event.Deleted, (event) => {
           deleted.push(event.properties.info.id)
@@ -90,10 +103,12 @@ describe("DELETE /session/:sessionID", () => {
               Storage.NotFoundError,
             )
             expect(await Message.parts({ sessionID, messageID: data.message.id })).toEqual([])
-            expect(await Filesystem.isFile(Transcript.file(sessionID))).toBe(false)
+            expect(Transcript.written(sessionID)).toBe(0)
+            expect(ReviewBaseline.all(sessionID).size).toBe(0)
           }
-          for (const key of associated) {
-            await expect(Storage.read(key)).rejects.toBeInstanceOf(Storage.NotFoundError)
+          for (const { keys, files } of associated) {
+            for (const key of keys) await expect(Storage.read(key)).rejects.toBeInstanceOf(Storage.NotFoundError)
+            for (const file of files) expect(await Filesystem.exists(file)).toBe(false)
           }
 
           const listResponse = await app.request(`http://localhost/session?directory=${encodeURIComponent(tmp.path)}`)
@@ -109,7 +124,7 @@ describe("DELETE /session/:sessionID", () => {
     })
   })
 
-  test("returns 200 and publishes session.deleted when the session ID is valid but the file is missing", async () => {
+  test("returns 200 and publishes session.deleted when the session ID is valid but the session is missing", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -143,7 +158,8 @@ describe("DELETE /session/:sessionID", () => {
       fn: async () => {
         const parent = await Session.create({ title: "blocked parent delete" })
         const child = await Session.create({ parentID: parent.id, title: "child" })
-        const blocked = await Storage.targetPath(["todo", parent.id])
+        // A directory where the plan document goes cannot be removed as a file
+        const blocked = Session.plan(parent)
         await fs.mkdir(blocked, { recursive: true })
         const deleted: string[] = []
         const unsubscribe = Bus.subscribe(Session.Event.Deleted, (event) => {

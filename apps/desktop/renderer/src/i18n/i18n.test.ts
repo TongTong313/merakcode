@@ -23,6 +23,13 @@ describe("界面文字", () => {
     expect(fromConfig(undefined)).toBeUndefined()
   })
 
+  test("小模型没选时的占位有中英文", () => {
+    setLocale("zh")
+    expect(t("settings.smallModel.auto")).toBe("按供应商自动选")
+    setLocale("en")
+    expect(t("settings.smallModel.auto")).toBe("Automatic per provider")
+  })
+
   test("变量替换，切换语言后取对应的文字，html 的 lang 跟着变", () => {
     setLocale("zh")
     expect(t("review.hunk", { file: "a.ts", n: 2 })).toBe("a.ts 第 2 块")

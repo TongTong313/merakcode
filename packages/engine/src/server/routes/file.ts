@@ -100,7 +100,7 @@ export const FileRoutes = lazy(() =>
         const limit = c.req.valid("query").limit
         const results = await File.search({
           query,
-          // Matches the API max(200) and TUI completion; the default of 10 would cut off later files (e.g. svg/txt).
+          // Matches the API max(200); the default of 10 would cut off later files (e.g. svg/txt).
           limit: limit ?? 200,
           dirs: dirs !== "false",
           type,

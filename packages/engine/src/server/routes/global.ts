@@ -14,44 +14,10 @@ import { errors } from "../error"
 import { Agent } from "../../agent/agent"
 import { Session } from "../../session"
 import { SessionStats } from "../../session/stats"
-import { Storage } from "../../storage/storage"
-import { createSessionListCache, shouldInvalidateSessionListCache } from "../session-list-cache"
+import { SessionStore } from "../../session/store"
 import { EventStream } from "../event-stream"
 
 const log = Log.create({ service: "server" })
-
-/** Consecutive searches reuse the list instead of reading everything again; session events or the TTL invalidate it */
-const SESSION_LIST_CACHE_TTL_MS = 3_000
-
-/**
- * Reads all locally stored sessions, independent of the open workspace.
- * An unreadable project record or session file is skipped so one bad entry does not break the whole search.
- */
-async function loadAllSessions(): Promise<Session.Info[]> {
-  const keys = await Storage.list(["session"])
-  const sessions = await Promise.all(
-    keys.map(async (key) => {
-      const parsed = Session.Info.safeParse(await Storage.read<unknown>(key).catch(() => undefined))
-      if (!parsed.success) return undefined
-      if (parsed.data.id !== key.at(-1)) return undefined
-      return parsed.data
-    }),
-  )
-  return sessions.filter((session): session is Session.Info => !!session)
-}
-
-const sessionListCache = createSessionListCache({
-  ttlMs: SESSION_LIST_CACHE_TTL_MS,
-  load: loadAllSessions,
-})
-
-GlobalBus.on("event", (event) => {
-  if (shouldInvalidateSessionListCache(event?.payload?.type)) sessionListCache.invalidate()
-})
-
-function listAllSessions(): Promise<Session.Info[]> {
-  return sessionListCache.get()
-}
 
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
@@ -82,7 +48,8 @@ export const GlobalRoutes = () =>
       "/session/search",
       describeRoute({
         summary: "Search sessions across all projects",
-        description: "Search session titles across every persisted MerakCode project, including closed workspaces.",
+        description:
+          "Search session titles and conversation text across every persisted MerakCode project, including closed workspaces.",
         operationId: "global.session.search",
         responses: {
           200: {
@@ -105,14 +72,8 @@ export const GlobalRoutes = () =>
       ),
       async (c) => {
         const query = c.req.valid("query")
-        const term = query.search?.toLowerCase()
-        const sessions = (await listAllSessions()).sort((a, b) => b.time.updated - a.time.updated)
-        const filtered = sessions.filter((session) => {
-          if (query.roots && session.parentID) return false
-          if (term !== undefined && !session.title.toLowerCase().includes(term)) return false
-          return true
-        })
-        return c.json(query.limit === undefined ? filtered : filtered.slice(0, query.limit))
+        const found = SessionStore.search({ term: query.search, roots: query.roots }).map((item) => item.session)
+        return c.json(found.slice(0, query.limit))
       },
     )
     .get(
@@ -134,7 +95,7 @@ export const GlobalRoutes = () =>
         },
       }),
       validator("query", SessionStats.Query),
-      async (c) => c.json(await SessionStats.aggregate(await listAllSessions(), c.req.valid("query"))),
+      async (c) => c.json(await SessionStats.aggregate(SessionStore.all(), c.req.valid("query"))),
     )
     .get(
       "/event",
@@ -216,7 +177,7 @@ export const GlobalRoutes = () =>
         description:
           "Update global MerakCode configuration settings and preferences. " +
           "With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), " +
-          "for small changes that take effect without restarting sessions (such as the TUI model choice).",
+          "for small changes that take effect without restarting sessions (such as the default model).",
         operationId: "global.config.update",
         responses: {
           200: {

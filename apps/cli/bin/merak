@@ -13,7 +13,7 @@ const { platformPackage } = require("./cli-name.cjs")
 
 function logRoot(env) {
   if (env.MERAKCODE_LOG_ROOT) return env.MERAKCODE_LOG_ROOT.replaceAll("\0", "")
-  return path.join(env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "merakcode", "log")
+  return path.join(env.MERAKCODE_HOME?.replaceAll("\0", "") || path.join(os.homedir(), ".merakcode"), "logs")
 }
 
 function runDirect(command, args, env) {
@@ -95,6 +95,6 @@ if (process.env.MERAKCODE_BIN_PATH) {
     process.exit(1)
   }
   const node = path.join(pkg, "node", process.platform === "win32" ? "node.exe" : "bin/node")
-  // node:ffi (used by the terminal UI) prints an ExperimentalWarning on every start
+  // node:ffi (used by the engine) prints an ExperimentalWarning on every start
   run(node, ["--disable-warning=ExperimentalWarning", path.join(pkg, "lib", "index.js"), ...args], env)
 }

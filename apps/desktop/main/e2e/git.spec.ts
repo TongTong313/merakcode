@@ -35,8 +35,13 @@ test("stages a file written by the agent, commits it and pushes to the remote", 
   await panel.getByRole("radio", { name: "已暂存" }).click()
   await expect(panel.getByRole("region", { name: "new.txt" })).toBeVisible()
 
+  await panel.getByRole("button", { name: "快捷命令" }).click()
+  await panel.getByRole("textbox", { name: "快捷命令" }).fill("status --porcelain")
+  await panel.getByRole("button", { name: "运行" }).click()
+  await expect(panel.locator(".git-output")).toContainText("new.txt")
+
   await panel.getByRole("textbox", { name: "提交信息" }).fill("add new")
-  await panel.getByRole("button", { name: "提交", exact: true }).click()
+  await panel.getByRole("button", { name: "提交 Commit" }).click()
   await expect.poll(() => kit.git("log", "-1", "--format=%s").trim()).toBe("add new")
   await expect(panel.getByRole("region", { name: "new.txt" })).toHaveCount(0)
 
@@ -51,6 +56,7 @@ test("stages a file written by the agent, commits it and pushes to the remote", 
     }
   }
   await expect.poll(pushed).toBe("add new")
+  await expect(panel.getByRole("button", { name: /^推送/ })).toBeDisabled()
 })
 
 test("branch review lists only changes against the chosen base branch and opens files from changes", async ({
@@ -71,11 +77,14 @@ test("branch review lists only changes against the chosen base branch and opens 
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
   await panel.getByRole("tab", { name: /^审阅/ }).click()
-  await panel.getByRole("radio", { name: "分支" }).click()
+  // The branch scope is a dropdown of base branches; the current branch is listed but cannot be picked
+  await panel.getByRole("button", { name: /^分支/ }).click()
+  await expect(kit.page.getByRole("option", { name: "feature" })).toHaveAttribute("aria-disabled", "true")
+  await kit.page.getByRole("option", { name: main }).click()
   await expect(panel.getByRole("region", { name: "dev.txt" })).toBeVisible()
   await expect(panel.getByRole("region", { name: "src/f.txt" })).toBeVisible()
 
-  await panel.getByRole("button", { name: new RegExp(`^基准分支 ${main}`) }).click()
+  await panel.getByRole("button", { name: /^分支/ }).click()
   await kit.page.getByRole("option", { name: "dev" }).click()
   await expect(panel.getByRole("region", { name: "dev.txt" })).toHaveCount(0)
   await expect(panel.getByRole("region", { name: "src/f.txt" })).toBeVisible()

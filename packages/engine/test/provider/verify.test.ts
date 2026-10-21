@@ -31,8 +31,8 @@ const project = () =>
       Filesystem.write(
         path.join(dir, "merakcode.json"),
         JSON.stringify({
-          enabled_providers: ["alibaba"],
-          provider: { alibaba: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
         }),
       ),
   })
@@ -52,7 +52,7 @@ test("returns ok using the provider's small model when the key works", async () 
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      expect(await ProviderVerify.run("alibaba")).toEqual({ ok: true, model: "qwen-flash" })
+      expect(await ProviderVerify.run("alibaba-cn")).toEqual({ ok: true, model: "qwen-flash" })
       expect(requests).toEqual(["/v1/chat/completions qwen-flash"])
     },
   })
@@ -69,7 +69,7 @@ test("returns the provider's error as-is without retrying when the key is wrong"
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const result = await ProviderVerify.run("alibaba")
+      const result = await ProviderVerify.run("alibaba-cn")
       expect(result.ok).toBe(false)
       expect(!result.ok && result.error).toContain("Incorrect API key provided")
       expect(requests).toHaveLength(1)

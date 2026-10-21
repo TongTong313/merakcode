@@ -1,7 +1,7 @@
 /**
- * Tool inputs and metadata as read by the terminal UI and `run`. Only fields the UI uses are listed, and any of them
- * may be missing (mid-stream, old messages). Engine events carry them as untyped objects (see the SDK's ToolPart);
- * this module gives the UI's view of them per tool name.
+ * Tool inputs and metadata as read by `run`. Only fields it prints are listed, and any of them may be missing
+ * (mid-stream, old messages). Engine events carry them as untyped objects (see the SDK's ToolPart); this module gives
+ * the command's view of them per tool name.
  */
 import type { Todo } from "@merakcode/sdk/client"
 

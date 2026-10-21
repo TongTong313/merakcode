@@ -63,6 +63,27 @@ test("stays failed after repeated crashes and recovers on manual retry", async (
   expect((await fetch(endpoint.url)).status).toBe(200)
 })
 
+test("a restart during the first start waits for it instead of starting a second backend on the same port", async () => {
+  const created = backend()
+  const states: State[] = []
+  created.on("state", (state) => states.push(state))
+  const [first, second] = await Promise.all([created.start(), created.restart()])
+  expect(second.port).toBe(first.port)
+  expect(states).not.toContain("failed")
+  expect(created.state).toBe("ready")
+  expect((await fetch(second.url, { headers: second.headers })).status).toBe(200)
+})
+
+test("restart requests made while restarting merge into one more restart", async () => {
+  const created = backend()
+  await created.start()
+  const states: State[] = []
+  created.on("state", (state) => states.push(state))
+  await Promise.all([created.restart(), created.restart(), created.restart()])
+  expect(states.filter((state) => state === "starting")).toHaveLength(2)
+  expect(created.state).toBe("ready")
+})
+
 test("a failed first start reports the error and stays failed without a restart loop", async () => {
   const created = backend({ FAKE_FAIL: "1" })
   const states: State[] = []

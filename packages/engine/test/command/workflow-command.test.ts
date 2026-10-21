@@ -7,7 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 describe("workflow slash commands", () => {
-  test("reserve /workflow for the TUI panel and keep named workflow launch commands", async () => {
+  test("there is no generic /workflow command; each named workflow gets its own launch command", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
         await fs.mkdir(path.join(dir, ".merakcode", "workflows"), { recursive: true })

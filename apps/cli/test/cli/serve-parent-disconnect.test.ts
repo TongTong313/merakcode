@@ -14,8 +14,7 @@ test("serve started over IPC exits on its own once the parent disconnects", asyn
     env: {
       ...process.env,
       MERAKCODE_DISABLE_MODELS_FETCH: "1",
-      XDG_DATA_HOME: path.join(tmp.path, "data"),
-      XDG_STATE_HOME: path.join(tmp.path, "state"),
+      MERAKCODE_HOME: path.join(tmp.path, "merakcode"),
     },
   })
   let output = ""

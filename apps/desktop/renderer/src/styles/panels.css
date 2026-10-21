@@ -133,6 +133,9 @@
 .diff-note {
   padding: 10px 14px;
 }
+.diff .show-rest {
+  margin: 8px 12px;
+}
 .hunk {
   border-bottom: 1px solid var(--border);
 }
@@ -145,6 +148,10 @@
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
   min-width: 0;
+}
+.hunk-bar button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 .hunk-bar .where {
   font-family: var(--font-mono);
@@ -241,11 +248,21 @@
     color-mix(in srgb, var(--border) 70%, transparent) 5px 6px
   );
 }
-.comment-box {
+.comment-compose {
   display: grid;
   gap: 6px;
-  margin: 6px 12px 8px 40px;
-  font-family: var(--font-sans);
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex: none;
+}
+.comment-compose .loc {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.comment-compose textarea.input {
+  min-height: 64px;
 }
 .line-comment {
   margin: 4px 12px 6px 40px;
@@ -334,10 +351,33 @@
   border-right: 1px solid var(--border);
   background: var(--bg-sidebar);
 }
+.review-tree-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.review-tree-search {
+  padding: 8px 8px 0;
+  flex: none;
+}
 .review-tree-list {
   flex: 1;
   min-height: 0;
   padding: 6px;
+}
+.diff-file-head.flash,
+.hunk-bar.flash {
+  animation: review-flash 1.5s ease;
+}
+@keyframes review-flash {
+  0% {
+    background: var(--accent);
+    color: var(--text-inverse);
+  }
+  100% {
+    background: transparent;
+  }
 }
 .rt-file {
   display: flex;
@@ -629,4 +669,38 @@
 .commit-input textarea.input {
   min-height: 32px;
   resize: none;
+}
+.vcs-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.commit-guard {
+  display: inline-flex;
+}
+.git-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.git-command .input {
+  flex: 1;
+  min-width: 0;
+}
+.git-prefix {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.git-output {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
 }

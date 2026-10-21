@@ -3,7 +3,7 @@ import { Skill } from "@merakcode/engine/skill/index"
 import { Command } from "@merakcode/engine/command/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Global } from "@merakcode/engine/global/index"
-import { tmpdir } from "../fixture/fixture"
+import { globalConfig, tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -402,19 +402,20 @@ description: A skill in the .merakcode/skills directory.
 
 // Scope and slash commands: Claude Code skills stay readable and invokable at both project and global level.
 
-test("home as git worktree: global config dir skill carries scope global", async () => {
-  // Common on Mac/Linux: with ~/ as a git root, ~/.config/merakcode sits inside the worktree but is not project.
+test("home as git worktree: a skill in the global root carries scope global and is listed once", async () => {
+  // Common on Mac/Linux: with ~/ as a git root, ~/.merakcode is both the global root and the home project's .merakcode
   await using home = await tmpdir({ git: true })
   const prevHome = process.env.MERAKCODE_TEST_HOME
   process.env.MERAKCODE_TEST_HOME = home.path
+  using _ = globalConfig(path.join(home.path, ".merakcode"))
 
-  const skillDir = path.join(home.path, ".config", "merakcode", "skills", "home-global-skill")
+  const skillDir = path.join(home.path, ".merakcode", "skills", "home-global-skill")
   await fs.mkdir(skillDir, { recursive: true })
   await Filesystem.write(
     path.join(skillDir, "SKILL.md"),
     `---
 name: home-global-skill
-description: Global skill under home .config/merakcode/skills.
+description: Global skill under ~/.merakcode/skills.
 ---
 
 # Home Global Skill
@@ -425,9 +426,9 @@ description: Global skill under home .config/merakcode/skills.
     await Instance.provide({
       directory: home.path,
       fn: async () => {
-        const skill = userSkills(await Skill.all()).find((s) => s.name === "home-global-skill")
-        expect(skill).toBeDefined()
-        expect(skill!.scope).toBe("global")
+        const skills = userSkills(await Skill.all()).filter((s) => s.name === "home-global-skill")
+        expect(skills).toHaveLength(1)
+        expect(skills[0]!.scope).toBe("global")
       },
     })
   } finally {
@@ -444,7 +445,7 @@ test("non-git project: global config dir skill carries scope global", async () =
     path.join(skillDir, "SKILL.md"),
     `---
 name: global-config-skill
-description: Installed to ~/.config/merakcode/skills via global target.
+description: Installed to ~/.merakcode/skills via global target.
 ---
 
 # Global Config Skill
@@ -592,9 +593,10 @@ description: Project copy.
 
   const originalHome = process.env.MERAKCODE_TEST_HOME
   process.env.MERAKCODE_TEST_HOME = home.path
+  using _ = globalConfig(path.join(home.path, ".merakcode"))
 
   try {
-    const globalDir = path.join(home.path, ".config", "merakcode", "skills", "dual-scope-skill")
+    const globalDir = path.join(home.path, ".merakcode", "skills", "dual-scope-skill")
     await fs.mkdir(globalDir, { recursive: true })
     await Filesystem.write(
       path.join(globalDir, "SKILL.md"),

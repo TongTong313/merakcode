@@ -1,5 +1,6 @@
-// Network flag definitions (--port, --hostname, etc.): just the option table, no config reads, so the TUI can use it.
-import type { Argv, InferredOptionTypes } from "yargs"
+// Network flag definitions (--port, --hostname, etc.): just the option table, no config reads, so clients such as acp
+// can use it without loading the engine.
+import type { Argv } from "yargs"
 import { I18n } from "./i18n"
 
 const options = {
@@ -29,8 +30,6 @@ const options = {
     default: [] as string[],
   },
 }
-
-export type NetworkOptions = InferredOptionTypes<typeof options>
 
 export function withNetworkOptions<T>(yargs: Argv<T>) {
   return yargs.options(options)

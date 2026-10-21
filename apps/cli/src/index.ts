@@ -21,8 +21,6 @@ import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
-import { AttachCommand } from "./cli/cmd/tui/attach"
-import { TuiThreadCommand } from "./cli/cmd/tui/thread"
 import { AcpCommand } from "./cli/cmd/acp"
 import { EOL, release, cpus } from "os"
 import { SessionCommand } from "./cli/cmd/session"
@@ -141,10 +139,15 @@ const cli = yargs(hideBin(process.argv))
   })
   .usage("\n" + UI.logo())
   .completion("completion", I18n.t("cli.root.completion"))
+  .command({
+    command: "$0",
+    describe: false,
+    handler: () => {
+      cli.showHelp("log")
+    },
+  })
   .command(AcpCommand)
   .command(McpCommand)
-  .command(TuiThreadCommand)
-  .command(AttachCommand)
   .command(RunCommand)
   .command(GenerateCommand)
   .command(DebugCommand)

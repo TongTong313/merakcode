@@ -11,7 +11,7 @@ export type ReasoningCaps = {
   budget: { min?: number; max?: number } | null
 }
 
-/** Variant keys of the thinking toggle, shared by the UI switch and the TUI cycle */
+/** Variant keys of the thinking toggle in the clients */
 export const TOGGLE_OFF = "off"
 export const TOGGLE_ON = "on"
 
@@ -54,14 +54,14 @@ export function isNativeThinkingProvider(model: Provider.Model): boolean {
   if (model.api.npm !== "@ai-sdk/openai-compatible") return false
   // deepseek: the official API (api.deepseek.com) uses the thinking.type toggle (verified). Matching by providerID
   // only, so deepseek served by other providers (proxies, etc.) is unaffected.
-  return ["alibaba-cn", "zhipuai", "zai", "moonshotai", "moonshotai-cn", "deepseek"].includes(model.providerID)
+  return ["alibaba-cn", "zhipuai", "moonshotai-cn", "deepseek"].includes(model.providerID)
 }
 
 /**
  * Encodes variants from models.dev reasoning_options for Chinese providers whose parameters are known to work:
  * - alibaba-cn (DashScope): enable_thinking / thinking_budget (the endpoint ignores effort, so it is not sent)
- * - zhipuai / zai: thinking.type (with clear_thinking: false)
- * - moonshotai(-cn): thinking.type
+ * - zhipuai: thinking.type (with clear_thinking: false)
+ * - moonshotai-cn: thinking.type
  *
  * Other providers get {}: models.dev does not say the correct SDK parameter format, so no invalid parameters are sent.
  */
@@ -73,7 +73,7 @@ export function encodeVariantsFromReasoning(model: Provider.Model): Record<strin
   const providerID = model.providerID
 
   if (providerID === "alibaba-cn") return encodeDashScope(caps)
-  if (providerID === "zhipuai" || providerID === "zai") return encodeThinkingToggle(caps, { clearThinking: true })
+  if (providerID === "zhipuai") return encodeThinkingToggle(caps, { clearThinking: true })
   return encodeThinkingToggle(caps, {})
 }
 

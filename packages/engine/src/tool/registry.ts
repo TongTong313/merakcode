@@ -182,7 +182,7 @@ export namespace ToolRegistry {
    * as skipped instead of blocking.
    */
   function interactive() {
-    return ["cli", "desktop", "tui", "sdk"].includes(Flag.MERAKCODE_CLIENT) && !Flag.MERAKCODE_NONINTERACTIVE
+    return ["cli", "desktop", "sdk"].includes(Flag.MERAKCODE_CLIENT) && !Flag.MERAKCODE_NONINTERACTIVE
   }
 
   async function all(): Promise<Entry[]> {

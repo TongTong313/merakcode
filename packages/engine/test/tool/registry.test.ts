@@ -77,7 +77,6 @@ test("ToolRegistry registers interactive tools by client and noninteractive flag
   const cases = [
     { client: "sdk", noninteractive: false, enabled: true },
     { client: "desktop", noninteractive: false, enabled: true },
-    { client: "tui", noninteractive: false, enabled: true },
     { client: "cli", noninteractive: false, enabled: true },
     { client: "acp", noninteractive: false, enabled: false },
     { client: "unknown", noninteractive: false, enabled: false },

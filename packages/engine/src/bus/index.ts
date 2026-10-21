@@ -65,7 +65,7 @@ export namespace Bus {
 
   /**
    * Publishes a global event without an Instance context. Used for process-wide, cross-project events such as OIDC
-   * state changes. Subscribers receive it through GlobalBus (SSE / TUI RPC).
+   * state changes. Subscribers receive it through GlobalBus (SSE).
    */
   export async function publishGlobal<Definition extends BusEvent.Definition>(
     def: Definition,

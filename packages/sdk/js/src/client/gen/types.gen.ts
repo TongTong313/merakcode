@@ -1215,388 +1215,6 @@ export type GlobalEvent = {
   payload: Event
 }
 
-/**
- * Custom keybind configurations
- */
-export type KeybindsConfigOutput = {
-  /**
-   * Leader key for keybind combinations
-   */
-  leader: string
-  /**
-   * Exit the application
-   */
-  app_exit: string
-  /**
-   * List available themes
-   */
-  theme_list: string
-  /**
-   * Toggle sidebar
-   */
-  sidebar_toggle: string
-  /**
-   * Toggle session scrollbar
-   */
-  scrollbar_toggle: string
-  /**
-   * View status
-   */
-  status_view: string
-  /**
-   * Export session to editor
-   */
-  session_export: string
-  /**
-   * Export full session data as JSON
-   */
-  session_export_full: string
-  /**
-   * Import full session data from JSON
-   */
-  session_import_full: string
-  /**
-   * Create a new session
-   */
-  session_new: string
-  /**
-   * List all sessions
-   */
-  session_list: string
-  /**
-   * Show session timeline
-   */
-  session_timeline: string
-  /**
-   * Fork session from message
-   */
-  session_fork: string
-  /**
-   * Rename session
-   */
-  session_rename: string
-  /**
-   * Delete session
-   */
-  session_delete: string
-  /**
-   * Pin or unpin session in the session list
-   */
-  session_pin_toggle: string
-  /**
-   * Delete stash entry
-   */
-  stash_delete: string
-  /**
-   * Open provider list from model dialog
-   */
-  model_provider_list: string
-  /**
-   * Toggle model favorite status
-   */
-  model_favorite_toggle: string
-  /**
-   * Interrupt current session
-   */
-  session_interrupt: string
-  /**
-   * Compact the session
-   */
-  session_compact: string
-  /**
-   * Scroll messages up by one page
-   */
-  messages_page_up: string
-  /**
-   * Scroll messages down by one page
-   */
-  messages_page_down: string
-  /**
-   * Scroll messages up by one line
-   */
-  messages_line_up: string
-  /**
-   * Scroll messages down by one line
-   */
-  messages_line_down: string
-  /**
-   * Scroll messages up by half page
-   */
-  messages_half_page_up: string
-  /**
-   * Scroll messages down by half page
-   */
-  messages_half_page_down: string
-  /**
-   * Navigate to first message
-   */
-  messages_first: string
-  /**
-   * Navigate to last message
-   */
-  messages_last: string
-  /**
-   * Navigate to next message
-   */
-  messages_next: string
-  /**
-   * Navigate to previous message
-   */
-  messages_previous: string
-  /**
-   * Navigate to last user message
-   */
-  messages_last_user: string
-  /**
-   * Copy message
-   */
-  messages_copy: string
-  /**
-   * Undo message
-   */
-  messages_undo: string
-  /**
-   * Redo message
-   */
-  messages_redo: string
-  /**
-   * Toggle code block concealment in messages
-   */
-  messages_toggle_conceal: string
-  /**
-   * Toggle tool details visibility
-   */
-  tool_details: string
-  /**
-   * List available models
-   */
-  model_list: string
-  /**
-   * Next recently used model
-   */
-  model_cycle_recent: string
-  /**
-   * Previous recently used model
-   */
-  model_cycle_recent_reverse: string
-  /**
-   * Next favorite model
-   */
-  model_cycle_favorite: string
-  /**
-   * Previous favorite model
-   */
-  model_cycle_favorite_reverse: string
-  /**
-   * List available commands
-   */
-  command_list: string
-  /**
-   * List agents
-   */
-  agent_list: string
-  /**
-   * Next agent
-   */
-  agent_cycle: string
-  /**
-   * Previous agent
-   */
-  agent_cycle_reverse: string
-  /**
-   * Cycle permission mode (read-only, ask, auto)
-   */
-  permission_mode_cycle: string
-  /**
-   * Cycle model variants
-   */
-  variant_cycle: string
-  /**
-   * Clear input field
-   */
-  input_clear: string
-  /**
-   * Paste from clipboard
-   */
-  input_paste: string
-  /**
-   * Submit input
-   */
-  input_submit: string
-  /**
-   * Insert newline in input
-   */
-  input_newline: string
-  /**
-   * Move cursor left in input
-   */
-  input_move_left: string
-  /**
-   * Move cursor right in input
-   */
-  input_move_right: string
-  /**
-   * Move cursor up in input
-   */
-  input_move_up: string
-  /**
-   * Move cursor down in input
-   */
-  input_move_down: string
-  /**
-   * Select left in input
-   */
-  input_select_left: string
-  /**
-   * Select right in input
-   */
-  input_select_right: string
-  /**
-   * Select up in input
-   */
-  input_select_up: string
-  /**
-   * Select down in input
-   */
-  input_select_down: string
-  /**
-   * Move to start of line in input
-   */
-  input_line_home: string
-  /**
-   * Move to end of line in input
-   */
-  input_line_end: string
-  /**
-   * Select to start of line in input
-   */
-  input_select_line_home: string
-  /**
-   * Select to end of line in input
-   */
-  input_select_line_end: string
-  /**
-   * Move to start of visual line in input
-   */
-  input_visual_line_home: string
-  /**
-   * Move to end of visual line in input
-   */
-  input_visual_line_end: string
-  /**
-   * Select to start of visual line in input
-   */
-  input_select_visual_line_home: string
-  /**
-   * Select to end of visual line in input
-   */
-  input_select_visual_line_end: string
-  /**
-   * Move to start of buffer in input
-   */
-  input_buffer_home: string
-  /**
-   * Move to end of buffer in input
-   */
-  input_buffer_end: string
-  /**
-   * Select to start of buffer in input
-   */
-  input_select_buffer_home: string
-  /**
-   * Select to end of buffer in input
-   */
-  input_select_buffer_end: string
-  /**
-   * Delete line in input
-   */
-  input_delete_line: string
-  /**
-   * Delete to end of line in input
-   */
-  input_delete_to_line_end: string
-  /**
-   * Delete to start of line in input
-   */
-  input_delete_to_line_start: string
-  /**
-   * Backspace in input
-   */
-  input_backspace: string
-  /**
-   * Delete character in input
-   */
-  input_delete: string
-  /**
-   * Undo in input
-   */
-  input_undo: string
-  /**
-   * Redo in input
-   */
-  input_redo: string
-  /**
-   * Move word forward in input
-   */
-  input_word_forward: string
-  /**
-   * Move word backward in input
-   */
-  input_word_backward: string
-  /**
-   * Select word forward in input
-   */
-  input_select_word_forward: string
-  /**
-   * Select word backward in input
-   */
-  input_select_word_backward: string
-  /**
-   * Delete word forward in input
-   */
-  input_delete_word_forward: string
-  /**
-   * Delete word backward in input
-   */
-  input_delete_word_backward: string
-  /**
-   * Previous history item
-   */
-  history_previous: string
-  /**
-   * Next history item
-   */
-  history_next: string
-  /**
-   * Next child session
-   */
-  session_child_cycle: string
-  /**
-   * Previous child session
-   */
-  session_child_cycle_reverse: string
-  /**
-   * Go to parent session
-   */
-  session_parent: string
-  /**
-   * Suspend terminal
-   */
-  terminal_suspend: string
-  /**
-   * Toggle terminal title
-   */
-  terminal_title_toggle: string
-  /**
-   * Toggle tips on home screen
-   */
-  tips_toggle: string
-  /**
-   * Toggle thinking blocks visibility
-   */
-  display_thinking: string
-}
-
 export type PermissionConfigOutput = {
   [key: string]: PermissionRuleConfig
 }
@@ -1737,6 +1355,12 @@ export type ProviderConfigOutput = {
   }
   whitelist?: Array<string>
   blacklist?: Array<string>
+  relay?: {
+    station: string
+    group: string
+    kind: "claude-code" | "codex" | "standard" | "custom"
+    auth?: "bearer" | "x-api-key"
+  }
   options?: {
     apiKey?: string
     baseURL?: string
@@ -1762,37 +1386,10 @@ export type ConfigOutput = {
    */
   $schema?: string
   /**
-   * Theme name to use for the interface
-   */
-  theme?: string
-  /**
    * UI language (zh-CN or en-US)
    */
   locale?: "zh-CN" | "en-US"
-  keybinds?: KeybindsConfigOutput
   logLevel?: LogLevel
-  /**
-   * TUI specific settings
-   */
-  tui?: {
-    /**
-     * TUI scroll speed
-     */
-    scroll_speed?: number
-    /**
-     * Scroll acceleration settings
-     */
-    scroll_acceleration?: {
-      /**
-       * Enable scroll acceleration
-       */
-      enabled: boolean
-    }
-    /**
-     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
-     */
-    diff_style?: "auto" | "stacked"
-  }
   server?: ServerConfig
   /**
    * Command configuration
@@ -1832,10 +1429,6 @@ export type ConfigOutput = {
       ]
   >
   snapshot?: boolean
-  /**
-   * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
-   */
-  autoupdate?: boolean | "notify"
   /**
    * Disable providers that are loaded automatically
    */
@@ -2195,388 +1788,6 @@ export type ErrorResponse = {
 }
 
 /**
- * Custom keybind configurations
- */
-export type KeybindsConfig = {
-  /**
-   * Leader key for keybind combinations
-   */
-  leader?: string
-  /**
-   * Exit the application
-   */
-  app_exit?: string
-  /**
-   * List available themes
-   */
-  theme_list?: string
-  /**
-   * Toggle sidebar
-   */
-  sidebar_toggle?: string
-  /**
-   * Toggle session scrollbar
-   */
-  scrollbar_toggle?: string
-  /**
-   * View status
-   */
-  status_view?: string
-  /**
-   * Export session to editor
-   */
-  session_export?: string
-  /**
-   * Export full session data as JSON
-   */
-  session_export_full?: string
-  /**
-   * Import full session data from JSON
-   */
-  session_import_full?: string
-  /**
-   * Create a new session
-   */
-  session_new?: string
-  /**
-   * List all sessions
-   */
-  session_list?: string
-  /**
-   * Show session timeline
-   */
-  session_timeline?: string
-  /**
-   * Fork session from message
-   */
-  session_fork?: string
-  /**
-   * Rename session
-   */
-  session_rename?: string
-  /**
-   * Delete session
-   */
-  session_delete?: string
-  /**
-   * Pin or unpin session in the session list
-   */
-  session_pin_toggle?: string
-  /**
-   * Delete stash entry
-   */
-  stash_delete?: string
-  /**
-   * Open provider list from model dialog
-   */
-  model_provider_list?: string
-  /**
-   * Toggle model favorite status
-   */
-  model_favorite_toggle?: string
-  /**
-   * Interrupt current session
-   */
-  session_interrupt?: string
-  /**
-   * Compact the session
-   */
-  session_compact?: string
-  /**
-   * Scroll messages up by one page
-   */
-  messages_page_up?: string
-  /**
-   * Scroll messages down by one page
-   */
-  messages_page_down?: string
-  /**
-   * Scroll messages up by one line
-   */
-  messages_line_up?: string
-  /**
-   * Scroll messages down by one line
-   */
-  messages_line_down?: string
-  /**
-   * Scroll messages up by half page
-   */
-  messages_half_page_up?: string
-  /**
-   * Scroll messages down by half page
-   */
-  messages_half_page_down?: string
-  /**
-   * Navigate to first message
-   */
-  messages_first?: string
-  /**
-   * Navigate to last message
-   */
-  messages_last?: string
-  /**
-   * Navigate to next message
-   */
-  messages_next?: string
-  /**
-   * Navigate to previous message
-   */
-  messages_previous?: string
-  /**
-   * Navigate to last user message
-   */
-  messages_last_user?: string
-  /**
-   * Copy message
-   */
-  messages_copy?: string
-  /**
-   * Undo message
-   */
-  messages_undo?: string
-  /**
-   * Redo message
-   */
-  messages_redo?: string
-  /**
-   * Toggle code block concealment in messages
-   */
-  messages_toggle_conceal?: string
-  /**
-   * Toggle tool details visibility
-   */
-  tool_details?: string
-  /**
-   * List available models
-   */
-  model_list?: string
-  /**
-   * Next recently used model
-   */
-  model_cycle_recent?: string
-  /**
-   * Previous recently used model
-   */
-  model_cycle_recent_reverse?: string
-  /**
-   * Next favorite model
-   */
-  model_cycle_favorite?: string
-  /**
-   * Previous favorite model
-   */
-  model_cycle_favorite_reverse?: string
-  /**
-   * List available commands
-   */
-  command_list?: string
-  /**
-   * List agents
-   */
-  agent_list?: string
-  /**
-   * Next agent
-   */
-  agent_cycle?: string
-  /**
-   * Previous agent
-   */
-  agent_cycle_reverse?: string
-  /**
-   * Cycle permission mode (read-only, ask, auto)
-   */
-  permission_mode_cycle?: string
-  /**
-   * Cycle model variants
-   */
-  variant_cycle?: string
-  /**
-   * Clear input field
-   */
-  input_clear?: string
-  /**
-   * Paste from clipboard
-   */
-  input_paste?: string
-  /**
-   * Submit input
-   */
-  input_submit?: string
-  /**
-   * Insert newline in input
-   */
-  input_newline?: string
-  /**
-   * Move cursor left in input
-   */
-  input_move_left?: string
-  /**
-   * Move cursor right in input
-   */
-  input_move_right?: string
-  /**
-   * Move cursor up in input
-   */
-  input_move_up?: string
-  /**
-   * Move cursor down in input
-   */
-  input_move_down?: string
-  /**
-   * Select left in input
-   */
-  input_select_left?: string
-  /**
-   * Select right in input
-   */
-  input_select_right?: string
-  /**
-   * Select up in input
-   */
-  input_select_up?: string
-  /**
-   * Select down in input
-   */
-  input_select_down?: string
-  /**
-   * Move to start of line in input
-   */
-  input_line_home?: string
-  /**
-   * Move to end of line in input
-   */
-  input_line_end?: string
-  /**
-   * Select to start of line in input
-   */
-  input_select_line_home?: string
-  /**
-   * Select to end of line in input
-   */
-  input_select_line_end?: string
-  /**
-   * Move to start of visual line in input
-   */
-  input_visual_line_home?: string
-  /**
-   * Move to end of visual line in input
-   */
-  input_visual_line_end?: string
-  /**
-   * Select to start of visual line in input
-   */
-  input_select_visual_line_home?: string
-  /**
-   * Select to end of visual line in input
-   */
-  input_select_visual_line_end?: string
-  /**
-   * Move to start of buffer in input
-   */
-  input_buffer_home?: string
-  /**
-   * Move to end of buffer in input
-   */
-  input_buffer_end?: string
-  /**
-   * Select to start of buffer in input
-   */
-  input_select_buffer_home?: string
-  /**
-   * Select to end of buffer in input
-   */
-  input_select_buffer_end?: string
-  /**
-   * Delete line in input
-   */
-  input_delete_line?: string
-  /**
-   * Delete to end of line in input
-   */
-  input_delete_to_line_end?: string
-  /**
-   * Delete to start of line in input
-   */
-  input_delete_to_line_start?: string
-  /**
-   * Backspace in input
-   */
-  input_backspace?: string
-  /**
-   * Delete character in input
-   */
-  input_delete?: string
-  /**
-   * Undo in input
-   */
-  input_undo?: string
-  /**
-   * Redo in input
-   */
-  input_redo?: string
-  /**
-   * Move word forward in input
-   */
-  input_word_forward?: string
-  /**
-   * Move word backward in input
-   */
-  input_word_backward?: string
-  /**
-   * Select word forward in input
-   */
-  input_select_word_forward?: string
-  /**
-   * Select word backward in input
-   */
-  input_select_word_backward?: string
-  /**
-   * Delete word forward in input
-   */
-  input_delete_word_forward?: string
-  /**
-   * Delete word backward in input
-   */
-  input_delete_word_backward?: string
-  /**
-   * Previous history item
-   */
-  history_previous?: string
-  /**
-   * Next history item
-   */
-  history_next?: string
-  /**
-   * Next child session
-   */
-  session_child_cycle?: string
-  /**
-   * Previous child session
-   */
-  session_child_cycle_reverse?: string
-  /**
-   * Go to parent session
-   */
-  session_parent?: string
-  /**
-   * Suspend terminal
-   */
-  terminal_suspend?: string
-  /**
-   * Toggle terminal title
-   */
-  terminal_title_toggle?: string
-  /**
-   * Toggle tips on home screen
-   */
-  tips_toggle?: string
-  /**
-   * Toggle thinking blocks visibility
-   */
-  display_thinking?: string
-}
-
-/**
  * Log level
  */
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
@@ -2832,6 +2043,12 @@ export type ProviderConfig = {
   }
   whitelist?: Array<string>
   blacklist?: Array<string>
+  relay?: {
+    station: string
+    group: string
+    kind: "claude-code" | "codex" | "standard" | "custom"
+    auth?: "bearer" | "x-api-key"
+  }
   options?: {
     apiKey?: string
     baseURL?: string
@@ -2943,37 +2160,10 @@ export type Config = {
    */
   $schema?: string
   /**
-   * Theme name to use for the interface
-   */
-  theme?: string
-  /**
    * UI language (zh-CN or en-US)
    */
   locale?: "zh-CN" | "en-US"
-  keybinds?: KeybindsConfig
   logLevel?: LogLevel
-  /**
-   * TUI specific settings
-   */
-  tui?: {
-    /**
-     * TUI scroll speed
-     */
-    scroll_speed?: number
-    /**
-     * Scroll acceleration settings
-     */
-    scroll_acceleration?: {
-      /**
-       * Enable scroll acceleration
-       */
-      enabled: boolean
-    }
-    /**
-     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
-     */
-    diff_style?: "auto" | "stacked"
-  }
   server?: ServerConfig
   /**
    * Command configuration
@@ -3013,10 +2203,6 @@ export type Config = {
       ]
   >
   snapshot?: boolean
-  /**
-   * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
-   */
-  autoupdate?: boolean | "notify"
   /**
    * Disable providers that are loaded automatically
    */
@@ -3567,6 +2753,17 @@ export type McpResource = {
   description?: string
   mimeType?: string
   client: string
+}
+
+export type SessionSearchResult = {
+  session: SessionOutput
+  /**
+   * The latest conversation text containing the search, shortened around it
+   */
+  match?: {
+    messageID: string
+    text: string
+  }
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -4370,36 +3567,16 @@ export type WorkflowRun = {
   sessionID: string
 }
 
-export type ReviewLine = {
-  kind: "context" | "add" | "del"
-  text: string
-  old?: number
-  new?: number
-  noNewline?: true
-}
-
-export type ReviewHunk = {
-  id: string
-  oldStart: number
-  oldLines: number
-  newStart: number
-  newLines: number
-  heading?: string
-  lines: Array<ReviewLine>
-  state?: "accepted"
-}
-
 export type ReviewFile = {
   file: string
   status: "added" | "deleted" | "modified"
   binary?: true
   truncated?: true
-  before?: string
-  after?: string
   additions: number
   deletions: number
-  hunks: Array<ReviewHunk>
+  hunks: number
   accepted: number
+  version: string
 }
 
 export type ReviewResult = {
@@ -4429,6 +3606,33 @@ export type ReviewStaleError = {
 }
 
 export type ReviewScope = "session" | "turn" | "unstaged" | "staged" | "branch"
+
+export type ReviewLine = {
+  kind: "context" | "add" | "del"
+  text: string
+  old?: number
+  new?: number
+  noNewline?: true
+}
+
+export type ReviewHunk = {
+  id: string
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  heading?: string
+  lines: Array<ReviewLine>
+  state?: "accepted"
+}
+
+export type ReviewFileDetail = {
+  file: string
+  version: string
+  hunks: Array<ReviewHunk>
+  before?: string
+  after?: string
+}
 
 export type McpScope = "project" | "global"
 
@@ -4681,7 +3885,6 @@ export type McpAuthRemove = {
 export type Path = {
   home: string
   data: string
-  state: string
   config: string
   worktree: string
   directory: string
@@ -4701,6 +3904,10 @@ export type VcsInfo = {
   default_branch?: string
   remote?: string
   ahead?: number
+  behind?: number
+  staged: number
+  unstaged: number
+  untracked: number
 }
 
 export type VcsPushResult =
@@ -4713,6 +3920,11 @@ export type VcsPushResult =
       ok: false
       error: string
     }
+
+export type VcsRunResult = {
+  exitCode: number
+  output: string
+}
 
 export type SandboxStatus = {
   status: "on" | "off" | "unsupported"
@@ -5865,6 +5077,48 @@ export type SessionCreateResponses = {
 }
 
 export type SessionCreateResponse = SessionCreateResponses[keyof SessionCreateResponses]
+
+export type SessionSearchData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Filter sessions by project directory
+     */
+    directory?: string
+    /**
+     * Text to look for (case-insensitive)
+     */
+    search: string
+    /**
+     * Only return root sessions (no parentID)
+     */
+    roots?: boolean
+    /**
+     * Maximum number of sessions to return
+     */
+    limit?: number
+  }
+  url: "/session/search"
+}
+
+export type SessionSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type SessionSearchError = SessionSearchErrors[keyof SessionSearchErrors]
+
+export type SessionSearchResponses = {
+  /**
+   * Matching sessions
+   */
+  200: Array<SessionSearchResult>
+}
+
+export type SessionSearchResponse = SessionSearchResponses[keyof SessionSearchResponses]
 
 export type SessionStatusData = {
   body?: never
@@ -7627,6 +6881,57 @@ export type ProviderRefreshResponses = {
 
 export type ProviderRefreshResponse = ProviderRefreshResponses[keyof ProviderRefreshResponses]
 
+export type ProviderRelayDiscoverData = {
+  body: {
+    baseURL: string
+    key: string
+    kind: "claude-code" | "codex" | "standard" | "custom"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/relay/discover"
+}
+
+export type ProviderRelayDiscoverErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type ProviderRelayDiscoverError = ProviderRelayDiscoverErrors[keyof ProviderRelayDiscoverErrors]
+
+export type ProviderRelayDiscoverResponses = {
+  /**
+   * Models the relay returned
+   */
+  200:
+    | {
+        models: Array<{
+          id: string
+          context?: number
+          output?: number
+          contextFrom?: "relay" | "catalog" | "fallback"
+          outputFrom?: "relay" | "catalog" | "fallback"
+          endpoint?: "anthropic" | "openai-responses" | "openai-chat"
+          image?: boolean
+          reasoning?: boolean
+          toolcall?: boolean
+        }>
+      }
+    | {
+        error: string
+      }
+}
+
+export type ProviderRelayDiscoverResponse = ProviderRelayDiscoverResponses[keyof ProviderRelayDiscoverResponses]
+
 export type ProviderVerifyData = {
   body?: never
   path: {
@@ -8088,6 +7393,43 @@ export type ReviewDecideResponses = {
 }
 
 export type ReviewDecideResponse = ReviewDecideResponses[keyof ReviewDecideResponses]
+
+export type ReviewFileData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scope: ReviewScope
+    sessionID?: string
+    messageID?: string
+    base?: string
+    file: string
+    version?: string
+  }
+  url: "/review/file"
+}
+
+export type ReviewFileErrors = {
+  /**
+   * The scope does not support this decision, or a required parameter is missing
+   */
+  400: ReviewInvalidError
+  /**
+   * The file or hunk is no longer in the review (the list is stale); fetch it again
+   */
+  409: ReviewStaleError
+}
+
+export type ReviewFileError = ReviewFileErrors[keyof ReviewFileErrors]
+
+export type ReviewFileResponses = {
+  /**
+   * File hunks
+   */
+  200: ReviewFileDetail
+}
+
+export type ReviewFileResponse = ReviewFileResponses[keyof ReviewFileResponses]
 
 export type ReviewUndoData = {
   body: {
@@ -9182,6 +8524,39 @@ export type VcsPushResponses = {
 }
 
 export type VcsPushResponse = VcsPushResponses[keyof VcsPushResponses]
+
+export type VcsRunData = {
+  body: {
+    args: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/run"
+}
+
+export type VcsRunErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type VcsRunError = VcsRunErrors[keyof VcsRunErrors]
+
+export type VcsRunResponses = {
+  /**
+   * Command output
+   */
+  200: VcsRunResult
+}
+
+export type VcsRunResponse = VcsRunResponses[keyof VcsRunResponses]
 
 export type SandboxStatusData = {
   body?: never

@@ -55,11 +55,6 @@ export namespace SkillWatch {
         path.join(home, ".agents", "skills"),
         path.join(Global.Path.config, "skill"),
         path.join(Global.Path.config, "skills"),
-        path.join(home, ".config", "merakcode", "skill"),
-        path.join(home, ".config", "merakcode", "skills"),
-        // ~/.merakcode/skill(s) is not a global skill directory: it coincides with the project directory when started
-        // from home (see Config.directories). In that case projectRoots() watches it through the project branch of
-        // Config.directories(), so it does not fire twice.
       ]),
     ]
   }

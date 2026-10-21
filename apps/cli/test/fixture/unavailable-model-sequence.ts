@@ -23,11 +23,11 @@ export async function unavailableModel() {
     async ({ project }) => {
       const file = join(project, "merakcode.json")
       const config = await Filesystem.readJson(file)
-      base = config.provider.alibaba.options.baseURL
+      base = config.provider["alibaba-cn"].options.baseURL
       port = await Network.freePort()
-      config.model = "alibaba/qwen-max"
-      config.small_model = "alibaba/qwen-max"
-      config.provider.alibaba.options.baseURL = `http://127.0.0.1:${port}/v1`
+      config.model = "alibaba-cn/qwen-max"
+      config.small_model = "alibaba-cn/qwen-max"
+      config.provider["alibaba-cn"].options.baseURL = `http://127.0.0.1:${port}/v1`
       await Filesystem.write(file, JSON.stringify(config))
     },
     { models: ["qwen-max"] },

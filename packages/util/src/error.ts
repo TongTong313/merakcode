@@ -65,16 +65,6 @@ export function errorCode(error: unknown): string | undefined {
   if (typeof value.name === "string" && !(error instanceof Error)) return ErrorCode.of(value.name, value.data)
 }
 
-/** Whether the error is a user-initiated abort (MessageAbortedError); shared by the TUI and the web UI */
-export function isMessageAbortedError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    (error as { name: unknown }).name === "MessageAbortedError"
-  )
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
@@ -174,88 +164,4 @@ export function readableErrorText(value: unknown, fallback = "", depth = 0): str
   }
 
   return fallback
-}
-
-/**
- * Translates a session.error event from its code, params and message.
- * @param error - the error object of the session.error event
- * @param t - i18n translate function (TUI: locale.t, Web: i18n.t)
- * @returns the translated message when a code exists and translates, otherwise the readable fallback message
- */
-export function localizeError(error: unknown, t: (key: string, params?: Record<string, any>) => string): string {
-  if (!error || typeof error !== "object") return typeof error === "string" ? error : String(error)
-
-  const errorObj = error as Record<string, unknown>
-  const data = isRecord(errorObj.data) ? errorObj.data : undefined
-
-  if (data) {
-    const code = typeof data.messageKey === "string" ? data.messageKey : undefined
-    const params = isRecord(data.params) ? data.params : undefined
-
-    if (code) {
-      let keyToTry = code
-      if (params) {
-        if (typeof params.suggestions === "string" && params.suggestions.trim()) {
-          keyToTry = code + ".withSuggestions"
-        } else if (typeof params.available === "string" && params.available.trim()) {
-          keyToTry = code + ".withAvailable"
-        }
-      }
-      try {
-        const translated = t(keyToTry, params ?? {})
-        if (translated && translated !== keyToTry) return translated
-        if (keyToTry !== code) {
-          const fallbackTranslated = t(code, params ?? {})
-          if (fallbackTranslated && fallbackTranslated !== code) return fallbackTranslated
-        }
-      } catch {
-        // fall back to the readable message
-      }
-    }
-  }
-
-  return readableErrorText(error)
-}
-
-/**
- * Translates a NotifyEvent.ToastShow event from its codes, params and original text.
- * @param toast - the NotifyEvent.ToastShow event
- * @param t - i18n translate function (TUI: locale.t, Web: i18n.t)
- * @returns the translated { title, message }
- */
-export function localizeToast(
-  toast: {
-    title?: string
-    message: string
-    titleCode?: string
-    messageCode?: string
-    params?: Record<string, any>
-  },
-  t: (key: string, params?: Record<string, any>) => string,
-): { title: string; message: string } {
-  const params = toast.params ?? {}
-
-  let title = toast.title
-  if (toast.titleCode && typeof toast.titleCode === "string") {
-    try {
-      const translated = t(toast.titleCode, params)
-      // i18n may return the key itself when it is missing; keep the original title then
-      if (translated && translated !== toast.titleCode) title = translated
-    } catch {
-      // keep the original title
-    }
-  }
-
-  let message = toast.message
-  if (toast.messageCode && typeof toast.messageCode === "string") {
-    try {
-      const translated = t(toast.messageCode, params)
-      // i18n may return the key itself when it is missing; keep the original message then
-      if (translated && translated !== toast.messageCode) message = translated
-    } catch {
-      // keep the original message
-    }
-  }
-
-  return { title: title ?? "", message }
 }

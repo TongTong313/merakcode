@@ -44,8 +44,8 @@ describe("describes where output is shown based on the client", () => {
     expect(qwen).toContain("displayed in the MerakCode desktop app")
   })
 
-  test("terminal: says output is shown in a terminal", () => {
-    process.env.MERAKCODE_CLIENT = "tui"
+  test("command line: says output is shown in a terminal", () => {
+    process.env.MERAKCODE_CLIENT = "cli"
     const [qwen] = SystemPrompt.provider(model("qwen3-coder"))
     expect(qwen).toContain("displayed in a terminal")
     expect(qwen).not.toContain("{{")

@@ -47,7 +47,7 @@ test("S04.06 P/MM registered command template failure remains a command error an
         command: "command:broken",
         arguments: "S04_BROKEN",
         agent: "build",
-        model: "alibaba/qwen-plus",
+        model: "alibaba-cn/qwen-plus",
       }),
       signal: AbortSignal.timeout(15_000),
     })

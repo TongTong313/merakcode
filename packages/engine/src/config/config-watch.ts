@@ -187,10 +187,12 @@ export namespace ConfigWatch {
             (err, evts) => {
               if (err) return
               for (const evt of evts) {
-                if (GLOBAL_FILES.includes(path.basename(evt.path))) queueGlobal(evt.path)
+                if (path.dirname(evt.path) === dir && GLOBAL_FILES.includes(path.basename(evt.path)))
+                  queueGlobal(evt.path)
               }
             },
-            { backend, ignore: [] },
+            // The root also holds data, worktrees, logs and caches; the subscription is recursive
+            { backend, ignore: ["data", "worktrees", "logs", "cache", "clients", "versions", "bin", "node_modules"] },
           )
           log.info("config watch: global native", { dir, backend })
         } catch (error) {

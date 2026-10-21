@@ -31,9 +31,14 @@ const layout = {
 
 describe("Version.valid", () => {
   test("x.y.z with an optional pre-release like beta.1", () => {
-    for (const version of ["0.2.0", "1.10.3", "0.2.0-beta.1", "1.0.0-rc.2"])
+    for (const version of ["0.2.0", "1.10.3", "0.2.0-beta.1", "1.0.0-rc.2", "1.0.0-alpha.0"])
       expect(Version.valid(version), version).toBe(true)
     for (const version of ["v0.2.0", "0.2", "0.2.0-", "0.2.0-beta..1", "01.2.3", "1.2.3+build"])
+      expect(Version.valid(version), version).toBe(false)
+  })
+
+  test("the pre-release name must be a lowercase word followed by a number: it becomes the npm tag", () => {
+    for (const version of ["0.2.0-1", "0.2.0-RC.1", "0.2.0-beta", "0.2.0-beta.01", "0.2.0-beta1.1", "0.2.0-beta.1.2"])
       expect(Version.valid(version), version).toBe(false)
   })
 })
@@ -56,7 +61,7 @@ describe("Version.set", () => {
       expect(JSON.parse(text).version).toBe("0.2.0-beta.1")
       expect(JSON.parse(text).dependencies.x).toBe("1.0.0")
     }
-    expect(Version.check(root)).toEqual({ ok: true, version: "0.2.0-beta.1", mismatched: [] })
+    expect(Version.check(root)).toEqual({ ok: true, valid: true, version: "0.2.0-beta.1", mismatched: [] })
   })
 
   test("refuses an invalid version and changes nothing", () => {
@@ -76,5 +81,10 @@ describe("Version.check", () => {
     const result = Version.check(root)
     expect(result.ok).toBe(false)
     expect(result.mismatched).toEqual([{ file: "packages/util/package.json", version: "0.1.1" }])
+  })
+
+  test("fails when every package agrees on a version that is not valid", () => {
+    const result = Version.check(workspace(Object.fromEntries(Object.keys(layout).map((dir) => [dir, "0.2.0-RC1"]))))
+    expect(result).toEqual({ ok: false, valid: false, version: "0.2.0-RC1", mismatched: [] })
   })
 })

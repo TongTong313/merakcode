@@ -1,8 +1,6 @@
 /**
  * An ACP session without a model uses the engine's own default: the first connected provider in the engine's order,
- * then that provider's default model. One key (DASHSCOPE_API_KEY) connects both the China and the international
- * Bailian sites, but only the China site accepts it; picking from all providers' models at once could land on the
- * international site's model of the same name
+ * then that provider's default model.
  */
 import { afterAll, beforeAll, expect, test } from "vitest"
 import type { AgentSideConnection } from "@agentclientprotocol/sdk"
@@ -19,7 +17,8 @@ beforeAll(async () => {
   engine = await startEngine({
     cwd: project.path,
     executablePath: cli,
-    env: { DASHSCOPE_API_KEY: "sk-test", MERAKCODE_DISABLE_MODELS_FETCH: "1" },
+    env: { MERAKCODE_DISABLE_MODELS_FETCH: "1" },
+    config: { provider: { "alibaba-cn": { options: { apiKey: "sk-test" } } } },
   })
 }, 120_000)
 

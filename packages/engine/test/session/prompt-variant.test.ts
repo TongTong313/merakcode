@@ -3,11 +3,11 @@ import { Instance } from "@merakcode/engine/project/instance"
 import { Session } from "@merakcode/engine/session/index"
 import { SessionRunner } from "@merakcode/engine/session/runner"
 import { tmpdir } from "../fixture/fixture"
+import { Auth } from "@merakcode/engine/auth/index"
 
 describe("session.prompt agent variant", () => {
   test("applies agent variant only when using agent model", async () => {
-    const prev = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = "test-openai-key"
+    await Auth.set("openai", { type: "api", key: "test-openai-key" })
 
     try {
       await using tmp = await tmpdir({
@@ -61,8 +61,7 @@ describe("session.prompt agent variant", () => {
         },
       })
     } finally {
-      if (prev === undefined) delete process.env.OPENAI_API_KEY
-      else process.env.OPENAI_API_KEY = prev
+      await Auth.remove("openai")
     }
   })
 })

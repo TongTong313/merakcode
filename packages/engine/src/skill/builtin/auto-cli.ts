@@ -148,14 +148,14 @@ Copy the generated SKILL.md to the global skills directory so it is available in
 
 **macOS / Linux:**
 \`\`\`sh
-mkdir -p ~/.config/merakcode/skills/<name>
-cp .merakcode/skills/<name>/SKILL.md ~/.config/merakcode/skills/<name>/SKILL.md
+mkdir -p ~/.merakcode/skills/<name>
+cp .merakcode/skills/<name>/SKILL.md ~/.merakcode/skills/<name>/SKILL.md
 \`\`\`
 
 **Windows:**
 \`\`\`powershell
-New-Item -ItemType Directory -Force "$Env:LOCALAPPDATA\\merakcode\\skills\\<name>"
-Copy-Item ".merakcode\\skills\\<name>\\SKILL.md" "$Env:LOCALAPPDATA\\merakcode\\skills\\<name>\\SKILL.md"
+New-Item -ItemType Directory -Force "$HOME\\.merakcode\\skills\\<name>"
+Copy-Item ".merakcode\\skills\\<name>\\SKILL.md" "$HOME\\.merakcode\\skills\\<name>\\SKILL.md"
 \`\`\`
 
 Confirm the file exists at the destination before reporting the skill as installed.

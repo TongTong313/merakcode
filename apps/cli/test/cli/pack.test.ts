@@ -39,24 +39,33 @@ describe("npm release preparation", () => {
     expect(() => platformPackages(tmp.path, "1.2.0")).toThrow("does not match the CLI version 1.2.0")
   })
 
-  test("the publish script publishes platform packages first, then the SDK, then the main package", () => {
+  const packed = (name: string) => ({
+    name,
+    version: "1.2.0",
+    file: `${name.replace("@", "").replace("/", "-")}-1.2.0.tgz`,
+  })
+
+  test("the publish script publishes the packed files: platform packages first, then the SDK, then the main package", () => {
     const script = publishScript(
-      ["../merakcode-1.2.0-linux-x64", "../merakcode-1.2.0-darwin-arm64"],
-      ["sdk", "merakcode"],
+      [packed("merakcode-linux-x64"), packed("merakcode-darwin-arm64")],
+      [packed("@merakcode/sdk"), packed("merakcode")],
     )
-    const order = ["../merakcode-1.2.0-linux-x64", "../merakcode-1.2.0-darwin-arm64", "sdk", "merakcode"].map((dir) =>
-      script.indexOf(`publish "${dir}"`),
-    )
+    const order = [
+      'publish "merakcode-linux-x64" "1.2.0" "merakcode-linux-x64-1.2.0.tgz"',
+      'publish "merakcode-darwin-arm64" "1.2.0" "merakcode-darwin-arm64-1.2.0.tgz"',
+      'publish "@merakcode/sdk" "1.2.0" "merakcode-sdk-1.2.0.tgz"',
+      'publish "merakcode" "1.2.0" "merakcode-1.2.0.tgz"',
+    ].map((line) => script.indexOf(line))
     expect(order.every((at) => at > 0)).toBe(true)
     expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(script).toContain('npm publish --access public --tag latest "./$3"')
   })
 
   test("releases go out under latest, pre-releases under their channel name", () => {
     expect(npmTag("1.2.0")).toBe("latest")
     expect(npmTag("1.2.0-beta.1")).toBe("beta")
     expect(npmTag("2.0.0-rc.3")).toBe("rc")
-    expect(publishScript(["../p"], ["merakcode"], "beta")).toContain('npm publish --access public --tag beta "$1"')
-    expect(publishScript(["../p"], ["merakcode"], "latest")).toContain('npm publish --access public --tag latest "$1"')
+    expect(publishScript([packed("p")], [packed("merakcode")], "beta")).toContain("--tag beta ")
   })
 
   test("the SDK must have the CLI's version, otherwise nothing is prepared", () => {

@@ -129,7 +129,7 @@ describe("Vcs.diff", () => {
     })
   })
 
-  test("last-turn mode returns empty because the TUI uses session.diff", async () => {
+  test("last-turn mode returns empty because the last turn is served by session.diff", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,

@@ -1,8 +1,9 @@
 name: Release
 
-# Pushing a tag like v0.2.0 builds everything, creates a draft GitHub release and publishes to npm.
-# Running it by hand builds everything as a dry run (no release, no npm) unless dry-run is switched off.
-# A maintainer then tries the installers from the draft and publishes it.
+# Pushing a tag like v0.2.0 runs all of CI, builds everything and creates a draft GitHub release. The npm job waits for
+# approval (the "npm" environment requires a reviewer): a maintainer tries the installers from the draft, approves npm
+# and publishes the draft.
+# Running it by hand builds everything as a dry run (no release, no npm); switching dry-run off only works on a tag.
 
 on:
   push:
@@ -15,95 +16,136 @@ on:
         default: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  NODE_VERSION: 26.12.0
-  PNPM_VERSION: 12.14.0
-
 jobs:
   verify:
-    name: Verify version and checks
+    name: Verify version and changelog
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm check:versions
       - id: version
-        name: Tag and package versions match
+        name: Tag, version and changelog match
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
         run: |
           version=$(node -p "require('./package.json').version")
+          publish=false
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$DRY_RUN" = "false" ]; then publish=true; fi
+          if [ "$publish" = "true" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "Publishing needs a version tag: run the workflow on the tag v$version, or keep dry-run on"
+            exit 1
+          fi
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
             echo "Tag $GITHUB_REF_NAME does not match the package version $version"
             exit 1
           fi
+          if [ "$publish" = "true" ]; then
+            node --import ./script/node/register.mjs script/release/notes.ts "$version" --require > /dev/null
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
           case "$version" in
             *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
-      - run: pnpm check
+
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
 
   cli:
     name: Command-line packages
     needs: verify
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --dir apps/cli run build --archive
       - run: pnpm --dir apps/cli run pack:npm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: cli-dist
-          path: apps/cli/dist
+          name: cli-release
+          path: |
+            apps/cli/dist/*.tar.gz
+            apps/cli/dist/*.zip
+            apps/cli/dist/SHA256SUMS
+            apps/cli/dist/install.sh
+            apps/cli/dist/install.ps1
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      # Only the packed .tgz files travel to the npm job: artifacts drop file modes, which would leave node/bin/node
+      # in the platform directories without its executable bit
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-npm
+          path: |
+            apps/cli/dist/npm/*.tgz
+            apps/cli/dist/npm/publish.sh
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
   smoke:
     name: Smoke test (${{ matrix.platform }})
-    needs: cli
+    needs: [verify, cli]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, platform: linux-x64, archive: tar.gz }
-          - { os: macos-latest, platform: darwin-arm64, archive: tar.gz }
-          - { os: windows-latest, platform: windows-x64, archive: zip }
+          - { os: ubuntu-24.04, platform: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+          - { os: macos-latest, platform: darwin-arm64 }
+          - { os: macos-15-intel, platform: darwin-x64 }
+          - { os: windows-latest, platform: windows-x64 }
+          - { os: windows-11-arm, platform: windows-arm64 }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@v8
         with:
-          name: cli-dist
+          name: cli-release
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: cli-npm
+          path: npm
       - name: Unpack (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -128,6 +170,20 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then export MERAKCODE_SMOKE_BIN="$BIN_DIR\\merak.cmd"; else export MERAKCODE_SMOKE_BIN="$BIN_DIR/merak"; fi
           node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
+      # The npm packages that get published: the main package's launcher must find and start this platform's package.
+      # On a first release the other platform packages are not on npm yet; npm skips them as optional dependencies.
+      - name: Install from the npm packages
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          mkdir npm-install && cd npm-install && echo "{}" > package.json
+          npm install --no-audit --no-fund ../npm/merakcode-${{ matrix.platform }}-[0-9]*.tgz ../npm/merakcode-[0-9]*.tgz
+          if [ "$RUNNER_OS" = "Windows" ]; then out=$(cmd //c "node_modules\\.bin\\merak.cmd" --version); else out=$(node_modules/.bin/merak --version); fi
+          if [ "$out" != "$VERSION" ]; then
+            echo "merak from npm printed '$out', expected $VERSION"
+            exit 1
+          fi
 
   desktop:
     name: Desktop (${{ matrix.name }})
@@ -141,26 +197,28 @@ jobs:
           - { os: macos-latest, name: darwin, targets: "--target darwin-arm64 --target darwin-x64" }
           - { os: ubuntu-24.04, name: linux-x64, targets: "--target linux-x64" }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir apps/desktop/main run package ${{ matrix.targets }}
         env:
           # Optional: with a Developer ID certificate the Mac app is signed (and notarized with APPLE_TEAM_ID),
-          # which is what lets it update itself
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      - uses: actions/upload-artifact@v4
+          # which is what lets it update itself. Only the Mac job gets it: without WIN_CSC_LINK, electron-builder on
+          # Windows would sign the installer with CSC_LINK
+          CSC_LINK: ${{ matrix.name == 'darwin' && secrets.MAC_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.name == 'darwin' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.name == 'darwin' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.name == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.name }}
           path: |
@@ -172,25 +230,34 @@ jobs:
             apps/desktop/main/release/*.blockmap
             apps/desktop/main/release/latest*.yml
           if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
   release:
     name: Draft GitHub release
-    needs: [verify, cli, smoke, desktop]
-    if: github.event_name == 'push' || !inputs.dry-run
+    needs: [verify, ci, cli, smoke, desktop]
+    if: needs.verify.outputs.publish == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@v8
         with:
+          name: cli-release
+          path: artifacts/cli-release
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
           path: artifacts
       - name: Create the draft and upload every file
         env:
@@ -199,26 +266,37 @@ jobs:
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
           node --import ./script/node/register.mjs script/release/notes.ts "$VERSION" > notes.md
-          files=$(ls artifacts/cli-dist/*.tar.gz artifacts/cli-dist/*.zip artifacts/cli-dist/SHA256SUMS artifacts/cli-dist/install.sh artifacts/cli-dist/install.ps1 artifacts/desktop-*/*)
+          files=$(ls artifacts/cli-release/* artifacts/desktop-*/*)
           flags=""
           if [ "$PRERELEASE" = "true" ]; then flags="--prerelease"; fi
-          gh release create "v$VERSION" --draft --title "v$VERSION" --notes-file notes.md $flags $files
+          gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION" --notes-file notes.md $flags $files
 
   npm:
     name: Publish to npm
-    needs: [verify, cli, smoke, release]
-    if: github.event_name == 'push' || !inputs.dry-run
+    needs: [verify, release]
+    if: needs.verify.outputs.publish == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: read
+      # Lets npm use trusted publishing (OIDC) instead of NPM_TOKEN once it is set up for the packages on npmjs.com
+      id-token: write
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          persist-credentials: false
+          sparse-checkout: .node-version
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
           registry-url: https://registry.npmjs.org
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
-          name: cli-dist
-          path: dist
+          name: cli-npm
+          path: npm
       - name: Publish the platform packages, the SDK and merakcode
-        run: sh dist/npm/publish.sh
+        run: sh npm/publish.sh
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

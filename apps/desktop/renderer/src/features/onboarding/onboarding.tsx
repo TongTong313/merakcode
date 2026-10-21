@@ -14,6 +14,7 @@ const FEATURED: { id: string; zh: string; en: string }[] = [
   { id: "moonshotai-cn", zh: "月之暗面", en: "Moonshot AI" },
   { id: "openai", zh: "OpenAI", en: "OpenAI" },
   { id: "anthropic", zh: "Anthropic", en: "Anthropic" },
+  { id: "google", zh: "Google", en: "Google" },
   { id: "openrouter", zh: "OpenRouter", en: "OpenRouter" },
 ]
 

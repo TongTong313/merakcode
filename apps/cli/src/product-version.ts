@@ -9,5 +9,5 @@ import cli from "../package.json"
 const scope = globalThis as { MERAKCODE_VERSION?: string }
 scope.MERAKCODE_VERSION ??= cli.version
 
-/** Product version, used directly by client code (the terminal UI) without going through the engine. */
+/** Product version, used directly by client code (installation, acp) without going through the engine. */
 export const VERSION: string = scope.MERAKCODE_VERSION

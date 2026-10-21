@@ -159,7 +159,10 @@ export class Windows {
     })
   }
 
-  /** Backend is ready: loads waiting windows and moves windows on an old port to the new address, keeping the page */
+  /**
+   * Backend is ready: loads waiting windows and moves windows on an old port to the new address, keeping the page. A
+   * window whose UI never rendered (the backend restarted while its scripts were loading) loads again.
+   */
   ready(endpoint: Endpoint) {
     for (const win of this.all()) {
       const waiting = this.pending.get(win)
@@ -175,8 +178,18 @@ export class Windows {
           return
         }
       })()
-      if (url && url.origin !== endpoint.origin) this.load(win, url.pathname + url.search + url.hash)
+      if (!url) continue
+      const route = url.pathname + url.search + url.hash
+      if (url.origin !== endpoint.origin) this.load(win, route)
+      else void this.rendered(win).then((rendered) => rendered || win.isDestroyed() || this.load(win, route))
     }
+  }
+
+  private rendered(win: BrowserWindow) {
+    return win.webContents
+      .executeJavaScript("!!document.getElementById('root')?.firstElementChild")
+      .then((value: unknown) => value === true)
+      .catch(() => false)
   }
 
   /** Theme changed: updates the window background and the Windows caption buttons */

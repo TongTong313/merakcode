@@ -2,6 +2,7 @@ import { expect, test } from "vitest"
 import { join } from "node:path"
 import { hooks } from "../fixture/hook-sequence"
 import { drive } from "../fixture/sequence-driver"
+import { stored } from "../fixture/sequence-persistence"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 for (const [id, kind] of [
@@ -26,12 +27,7 @@ for (const [id, kind] of [
           .filter((part: { type: string; synthetic?: boolean }) => part.type === "text" && !part.synthetic)
           .map((part: { text: string }) => part.text),
       ).toEqual([input])
-      const disk = (
-        await Filesystem.readText(join(kit.root, "data/merakcode/storage/transcript", `${session.id}.jsonl`))
-      )
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line))
+      const disk = stored(kit.root, session.id)
       const textParts = user.parts.filter(
         (part: { type: string; synthetic?: boolean }) => part.type === "text" && !part.synthetic,
       )
