@@ -178,6 +178,9 @@ export const test = base.extend<{
         provider: { "alibaba-cn": { options: { apiKey: "e2e", baseURL: fake.url } } },
         memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
         lsp: false,
+        // The renderer follows the OS language until this is set, and GitHub-hosted Windows is English. The tests
+        // assert Chinese copy. bootstrap() applies the config before the splash goes away.
+        locale: "zh-CN",
         ...config,
       }),
     )
