@@ -357,8 +357,10 @@ export function Messages(props: {
                     />
                   )}
                 </For>
+                {/* Review stays available once edits exist. The turn can still be marked running after the reply is on
+                    screen, and hiding the card then leaves no Review button. */}
+                <Changes turn={turn} directory={props.directory} onReview={props.onReviewTurn} />
                 <Show when={!last() || !running()}>
-                  <Changes turn={turn} directory={props.directory} onReview={props.onReviewTurn} />
                   <Show when={turn.replies.length && !turn.replies.some((message) => message.summary)}>
                     <TurnActions turn={turn} last={last()} sessionID={props.sessionID} directory={props.directory} />
                   </Show>
