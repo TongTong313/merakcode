@@ -1,4 +1,5 @@
 import { expect, test } from "vitest"
+import { execFileSync } from "node:child_process"
 import path from "path"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -105,6 +106,36 @@ test("turn: lists only files touched in that turn, including subsessions, with t
       await expect(Review.get({ scope: "turn", sessionID: session.id })).rejects.toMatchObject({
         name: "ReviewInvalidError",
       })
+    },
+  })
+})
+
+/** Windows 8.3 name of a path, or the path itself when there is no short name */
+function windowsShort(file: string) {
+  if (process.platform !== "win32") return file
+  const listed = execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-Command",
+      `(New-Object -ComObject Scripting.FileSystemObject).GetFile(${JSON.stringify(file)}).ShortPath`,
+    ],
+    { encoding: "utf8", windowsHide: true },
+  ).trim()
+  return listed || file
+}
+
+test("session: a Windows short path to the same file is still listed relative to the project", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const file = path.join(tmp.path, "a.txt")
+  await Filesystem.write(file, "a\n")
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      await edit(session.id, windowsShort(file), "A\n")
+      const review = await Review.get({ scope: "session", sessionID: session.id })
+      expect(review.files.map((item) => item.file)).toEqual(["a.txt"])
     },
   })
 })
