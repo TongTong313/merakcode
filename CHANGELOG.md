@@ -4,6 +4,11 @@ All notable changes to MerakCode are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed
+
+- Review lists files relative to the project, including when Windows gives the tool the short `RUNNER~1` directory name.
+- Choosing a custom group in the add-provider dialog scrolls the extra headers field into view on the default window size.
+
 ## [0.1.0] - 2026-10-22
 
 The first public release.
