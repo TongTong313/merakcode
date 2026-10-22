@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createRequire } from "node:module"
+import path from "node:path"
 import { Log } from "@merakcode/log/logger"
 import { lazy } from "../util/lazy"
 
@@ -22,11 +23,14 @@ const active = new Set<Subscription>()
  * produces events, which triggers exactly this.
  * So on both, cancelling first stops the callback and queues the native cancel; queued cancels run one by one once
  * no watcher has had events for QUIET_MS. Linux cancels immediately.
+ * Quiet has to be measured on everything the native watcher handles: it reports steady changes only every 500 ms, and
+ * changes in ignored paths keep it just as busy without ever reaching the callback. So QUIET_MS is longer than that
+ * interval, and on these systems plain ignored paths are filtered here instead of natively (see splitIgnore).
  */
 const deferred = process.platform === "win32" || process.platform === "darwin"
 /** Windows only: exiting with live subscriptions is safe there, while a native cancel during exit crashes */
 const leaveAtExit = process.platform === "win32"
-const QUIET_MS = 200
+const QUIET_MS = 1_000
 /** Maximum wait before exit for queued cancels; then Windows leaves the rest to the process exit, macOS cancels them */
 const EXIT_WAIT_MS = 2_000
 /**
@@ -79,15 +83,19 @@ export const parcelWatcher = lazy((): Watcher | undefined => {
       // Native callbacks lose the AsyncLocalStorage context of the subscriber (instance and request); capture it on
       // subscribe and restore it in the callback
       const within = AsyncLocalStorage.snapshot()
+      const split = splitIgnore(dir, options)
       let closed = false
       last = Date.now()
       const inner = await binding.subscribe(
         dir,
         (error, events) => {
           last = Date.now()
-          if (!closed) within(() => callback(error, events))
+          if (closed) return
+          const kept = events.filter((event) => !split.ignored(event.path))
+          if (!error && events.length > 0 && kept.length === 0) return
+          within(() => callback(error, kept))
         },
-        options,
+        split.options,
       )
       const subscription: Subscription = {
         unsubscribe: () => {
@@ -105,8 +113,32 @@ export const parcelWatcher = lazy((): Watcher | undefined => {
   }
 })
 
+/** Names and relative paths without glob characters, which @parcel/watcher matches as paths rather than globs */
+const PLAIN_PATH = /^[\w. -]+(?:[\\/][\w. -]+)*$/
+
+/**
+ * On Windows and macOS takes the plain paths out of the native ignore list and matches them here the way the native
+ * module does (the path itself or anything under it), so their changes still count as events (see QUIET_MS). Globs and
+ * regular expressions stay native.
+ */
+function splitIgnore(dir: string, options: Parameters<Watcher["subscribe"]>[2]) {
+  const ignore = options?.ignore
+  if (!deferred || !ignore) return { options, ignored: (_: string) => false }
+  const plain = ignore.filter((entry): entry is string => typeof entry === "string" && PLAIN_PATH.test(entry))
+  const roots = plain.map((entry) => path.resolve(dir, entry))
+  return {
+    options: { ...options, ignore: ignore.filter((entry) => !plain.includes(entry as string)) },
+    ignored: (file: string) => roots.some((root) => file === root || file.startsWith(root + path.sep)),
+  }
+}
+
 export function activeParcelWatchers() {
   return active.size
+}
+
+/** Native cancels queued until the watchers are quiet (Windows and macOS) */
+export function pendingParcelCancels() {
+  return pending.length
 }
 
 /**
