@@ -7,6 +7,7 @@ import {
   parseWmicValueParents,
   pidFromTcpOwners,
   readWindowsParentMapFromToolhelp,
+  readWindowsProcessCreation,
   setPeerPidLookupForTest,
 } from "./peer-pid"
 
@@ -93,6 +94,18 @@ describe("isPidInTree", () => {
     },
     5_000,
   )
+})
+
+describe("readWindowsProcessCreation", () => {
+  test.skipIf(process.platform !== "win32")("reads that the parent was created before this process", () => {
+    const own = readWindowsProcessCreation(process.pid)
+    const parent = readWindowsProcessCreation(process.ppid)
+    expect(own).toBeGreaterThan(0)
+    expect(parent).toBeGreaterThan(0)
+    expect(parent!).toBeLessThanOrEqual(own!)
+    expect(own!).toBeLessThanOrEqual(Date.now())
+    expect(readWindowsProcessCreation(0x7ffffff0)).toBeUndefined()
+  })
 })
 
 describe("readWindowsParentMapFromToolhelp", () => {

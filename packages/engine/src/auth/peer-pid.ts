@@ -21,6 +21,8 @@ export type TcpOwner = {
 export type PeerPidLookup = {
   owners(): Promise<TcpOwner[]>
   parentPid(pid: number): Promise<number | undefined>
+  /** When the process was created (ms); only Windows needs it, see verifiedParent */
+  created?(pid: number): Promise<number | undefined>
 }
 
 let lookup: PeerPidLookup = platformLookup()
@@ -84,7 +86,7 @@ export async function isPidInTree(pid: number | undefined, rootPid: number): Pro
     if (current === rootPid) return true
     if (seen.has(current)) return false
     seen.add(current)
-    const parent = await cachedParent(current)
+    const parent = await verifiedParent(current)
     if (!parent || parent <= 0) return false
     current = parent
   }
@@ -95,7 +97,7 @@ export async function isPidInTree(pid: number | undefined, rootPid: number): Pro
 export async function ancestry(pid: number, limit = 12): Promise<number[]> {
   const chain = [pid]
   for (let current = pid; chain.length < limit;) {
-    const parent = await cachedParent(current).catch(() => undefined)
+    const parent = await verifiedParent(current).catch(() => undefined)
     if (!parent || parent <= 0 || chain.includes(parent)) break
     chain.push(parent)
     current = parent
@@ -113,6 +115,22 @@ async function cachedOwners(): Promise<TcpOwner[]> {
   } catch {
     return ownerCache?.owners ?? []
   }
+}
+
+/**
+ * The parent of pid. Windows keeps the parent pid a process was created with and reuses pids, so once that parent has
+ * exited its pid can belong to an unrelated, newer process (on CI it was the engine itself). A parent created after
+ * its child is such a process, and the chain ends there.
+ */
+async function verifiedParent(pid: number): Promise<number | undefined> {
+  const parent = await cachedParent(pid)
+  if (!parent || parent <= 0 || !lookup.created) return parent
+  const [child, candidate] = await Promise.all([
+    lookup.created(pid).catch(() => undefined),
+    lookup.created(parent).catch(() => undefined),
+  ])
+  if (child !== undefined && candidate !== undefined && candidate > child) return undefined
+  return parent
 }
 
 async function cachedParent(pid: number): Promise<number | undefined> {
@@ -142,6 +160,40 @@ function windowsLookup(): PeerPidLookup {
       const map = await cachedWindowsParentMap()
       return map.get(pid)
     },
+    async created(pid) {
+      return readWindowsProcessCreation(pid)
+    },
+  }
+}
+
+/** Milliseconds between the FILETIME epoch (1601) and the Unix epoch */
+const FILETIME_UNIX_MS = 11_644_473_600_000
+
+/** When a running Windows process was created (Unix ms); undefined when it has exited or cannot be opened */
+export function readWindowsProcessCreation(pid: number): number | undefined {
+  const lib = native()
+  if (!lib || process.platform !== "win32") return
+  try {
+    // PROCESS_QUERY_LIMITED_INFORMATION is granted for most processes, other users' included
+    const handle = lib.call("kernel32.dll", "OpenProcess", ["u32", "i32", "u32"], "ptr", [0x1000, 0, pid])
+    if (!handle || BigInt(handle) === 0n) return
+    try {
+      const times = Buffer.alloc(32)
+      const base = lib.pointer(times)
+      const ok = lib.call("kernel32.dll", "GetProcessTimes", ["ptr", "ptr", "ptr", "ptr", "ptr"], "i32", [
+        handle,
+        base,
+        base + 8n,
+        base + 16n,
+        base + 24n,
+      ])
+      if (!ok) return
+      return Number(times.readBigUInt64LE(0) / 10_000n) - FILETIME_UNIX_MS
+    } finally {
+      lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
+    }
+  } catch {
+    return
   }
 }
 
