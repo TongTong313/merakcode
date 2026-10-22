@@ -27,17 +27,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 `
 
-const NOTICE = `
----
-
-Parts of this software are derived from other open-source projects, most notably
-opencode (https://github.com/anomalyco/opencode), Copyright (c) 2025 opencode, MIT License.
-See THIRD_PARTY_NOTICES.md for their copyright notices and licenses.
-`
-
 export function license(input: { author: string; since: number; year: number }) {
   const years = input.year > input.since ? `${input.since}-${input.year}` : `${input.since}`
-  return `MIT License\n\nCopyright (c) ${years} ${input.author}\n\n${MIT}${NOTICE}`
+  return `MIT License\n\nCopyright (c) ${years} ${input.author}\n\n${MIT}`
 }
 
 type Pkg = Record<string, unknown>

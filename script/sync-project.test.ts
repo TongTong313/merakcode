@@ -12,10 +12,10 @@ describe("license", () => {
     expect(license({ author: "Jane Doe", since: 2026, year: 2026 })).toContain("Copyright (c) 2026 Jane Doe\n")
   })
 
-  test("ends by pointing at the notices for code derived from other projects", () => {
+  test("stays a plain MIT license so GitHub can identify it", () => {
     const text = license({ author: "Jane Doe", since: 2026, year: 2026 })
-    expect(text.trimEnd().endsWith("See THIRD_PARTY_NOTICES.md for their copyright notices and licenses.")).toBe(true)
-    expect(text).toContain("opencode")
+    expect(text.trimEnd().endsWith("SOFTWARE.")).toBe(true)
+    expect(text).not.toContain("THIRD_PARTY_NOTICES")
   })
 })
 
