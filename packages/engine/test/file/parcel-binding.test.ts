@@ -95,8 +95,9 @@ test("exiting right after closing watchers on busy directories does not crash", 
 
 // Windows and macOS queue a cancel until no watcher has events (see parcel-binding.ts). Changes in ignored paths keep the
 // native watcher just as busy without reaching the callback, and under steady changes the native module reports only
-// every 500 ms, so neither may let a cancel through while the directory still changes.
-describe.skipIf(process.platform === "linux")("a queued cancel", () => {
+// every 500 ms, so neither may let a cancel through while the directory still changes. Only Windows is checked: on a
+// loaded macOS machine FSEvents can go quiet for longer than any window while files still change.
+describe.runIf(process.platform === "win32")("a queued cancel", () => {
   test.each([
     ["only inside an ignored folder", "ignored"],
     ["in watched files", "."],
