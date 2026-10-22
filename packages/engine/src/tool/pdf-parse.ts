@@ -8,7 +8,7 @@ import DESCRIPTION from "./pdf-parse.txt"
 import { Instance } from "../project/instance"
 import { Workspace } from "../project/workspace"
 import { Identifier } from "@merakcode/util/id"
-import { prepareCanvasForPdfjs } from "../util/canvas-native"
+import { loadSystemFonts, prepareCanvasForPdfjs } from "../util/canvas-native"
 import { loadPdfjsRuntime } from "../util/pdfjs-runtime"
 import { PermissionPolicy } from "../permission/policy"
 
@@ -370,6 +370,7 @@ async function renderPagesToImages(
     throw new CanvasUnavailableError(prepared.reason)
   }
   const canvas = prepared.canvas
+  loadSystemFonts(canvas)
   const { task, doc } = await open(filePath, createPdfCanvasFactory(canvas))
 
   const tmpDir = path.join(os.tmpdir(), "mc-pdf-images")
