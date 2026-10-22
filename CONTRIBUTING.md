@@ -134,7 +134,7 @@ type(scope): summary
 1. 从 `main` 新建分支。
 2. 改完跑 `pnpm check` 和你改到的包的测试。
 3. PR 标题按上面的提交说明格式写。PR 里写清楚改了什么、为什么改、怎么验证的。改了界面就附截图。
-4. 用户能感觉到的改动，在 `CHANGELOG.md` 的 `Unreleased` 下面加一行。
+4. 用户能感觉到的改动，在 `CHANGELOG.md` 的 `Unreleased` 下面中英文各写一行：英文写在英文小节（比如 `### Fixed`），中文写在对应的中文小节（比如 `### 修复`；`Added` 对应 `新增`，以此类推）。
 
 ## 发布（维护者）
 
@@ -300,7 +300,7 @@ After `pnpm hooks:install`, `script/hooks/commit-msg` checks the title of each c
 1. Branch off `main`.
 2. Run `pnpm check` and the tests of the packages you touched.
 3. Title the pull request in the commit message format above. Say what changed, why, and how you checked it. Add screenshots for UI changes.
-4. For changes users will notice, add a line under `Unreleased` in `CHANGELOG.md`.
+4. For changes users will notice, add a line under `Unreleased` in `CHANGELOG.md` in both English and Chinese: the English line under the English heading (such as `### Fixed`) and the Chinese line under its Chinese counterpart (such as `### 修复`; `新增` for `Added`, and so on).
 
 ## Releasing (maintainers)
 
