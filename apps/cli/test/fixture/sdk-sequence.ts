@@ -483,7 +483,8 @@ export async function sequence(
     summary.overallSuccess = summary.assertionsPassed && summary.cleanupSucceeded && summary.finalizationSucceeded
     await save()
     if (!summary.cleanupSucceeded) throw new Error(`I1 cleanup failed; summary=${join(artifacts, "summary.json")}`)
-    if (summary.overallSuccess) await rm(root, { recursive: true, force: true })
+    // A product process that has only just exited can still be closing files under root, so rmdir meets ENOTEMPTY
+    if (summary.overallSuccess) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
   try {
     await until(
