@@ -1,6 +1,7 @@
 import fs from "fs/promises"
 import { constants, existsSync } from "fs"
 import path from "path"
+import { setTimeout as sleep } from "timers/promises"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Paths } from "@merakcode/util/paths"
 
@@ -28,22 +29,44 @@ async function mkdirp(dir: string) {
 }
 
 const CACHE_VERSION = "21"
+/**
+ * Held by the engine clearing the cache. Engines started together (the desktop app and the command line) would
+ * otherwise each clear it and remove what another had just created; the others wait and then read the new version.
+ */
+const RESET_LOCK = ".reset"
+/** A lock this old was left by an engine that died while clearing */
+const RESET_STALE_MS = 30_000
 
-const version = await Filesystem.readText(path.join(Global.Path.cache, "version")).catch(() => "0")
+const cacheVersion = () => Filesystem.readText(path.join(Global.Path.cache, "version")).catch(() => "0")
 
-if (version !== CACHE_VERSION) {
-  try {
-    const contents = await fs.readdir(Global.Path.cache)
-    await Promise.all(
-      contents.map((item) =>
-        fs.rm(path.join(Global.Path.cache, item), {
-          recursive: true,
-          force: true,
-        }),
-      ),
+while ((await cacheVersion()) !== CACHE_VERSION) {
+  await mkdirp(Global.Path.cache)
+  const lock = path.join(Global.Path.cache, RESET_LOCK)
+  const held = await fs.mkdir(lock).then(
+    () => true,
+    () => false,
+  )
+  if (!held) {
+    const since = await fs.stat(lock).then(
+      (stat) => stat.mtimeMs,
+      () => undefined,
     )
-  } catch (e) {}
-  await Filesystem.write(path.join(Global.Path.cache, "version"), CACHE_VERSION)
+    if (since !== undefined && Date.now() - since > RESET_STALE_MS) await fs.rm(lock, { recursive: true, force: true })
+    await sleep(20)
+    continue
+  }
+  try {
+    if ((await cacheVersion()) === CACHE_VERSION) break
+    const contents = await fs.readdir(Global.Path.cache).catch(() => [])
+    await Promise.all(
+      contents
+        .filter((item) => item !== RESET_LOCK)
+        .map((item) => fs.rm(path.join(Global.Path.cache, item), { recursive: true, force: true }).catch(() => {})),
+    )
+    await Filesystem.write(path.join(Global.Path.cache, "version"), CACHE_VERSION)
+  } finally {
+    await fs.rm(lock, { recursive: true, force: true })
+  }
 }
 
 const fresh = !existsSync(Global.Path.data)
