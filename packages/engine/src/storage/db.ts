@@ -91,13 +91,27 @@ export namespace Database {
     return path.join(Global.Path.data, "merakcode.db")
   }
 
+  /** SQLITE_BUSY, including extended codes such as SQLITE_BUSY_RECOVERY */
+  const busy = (error: unknown) => ((error as { errcode?: number }).errcode ?? 0) % 256 === 5
+
   function open() {
     mkdirSync(Global.Path.data, { recursive: true })
-    const next = new DatabaseSync(file(), { timeout: BUSY_TIMEOUT_MS })
-    next.exec("PRAGMA journal_mode = WAL")
-    next.exec("PRAGMA synchronous = NORMAL")
-    migrate(next)
-    return next
+    // Switching to WAL while another process creates or recovers the database fails as busy at once, without the busy
+    // timeout, so the whole opening sequence is retried until the same deadline
+    const deadline = Date.now() + BUSY_TIMEOUT_MS
+    for (;;) {
+      const next = new DatabaseSync(file(), { timeout: BUSY_TIMEOUT_MS })
+      try {
+        next.exec("PRAGMA journal_mode = WAL")
+        next.exec("PRAGMA synchronous = NORMAL")
+        migrate(next)
+        return next
+      } catch (error) {
+        next.close()
+        if (!busy(error) || Date.now() >= deadline) throw error
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+      }
+    }
   }
 
   function migrate(target: DatabaseSync) {
