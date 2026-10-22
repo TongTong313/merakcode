@@ -176,3 +176,19 @@ jobs:
           path: apps/desktop/main/e2e/.results
           include-hidden-files: true
           retention-days: 7
+
+  # The main ruleset requires this one check, so a pull request merges only when every job above succeeded. A failed,
+  # cancelled or skipped job fails it; always() makes it report even then instead of being skipped itself.
+  passed:
+    name: CI passed
+    needs: [check, test, sandbox, build, e2e-cli, e2e-desktop]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do [ "$result" = success ] || exit 1; done
