@@ -1,7 +1,8 @@
 import { expect, test } from "vitest"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { Storage } from "../../src/storage/storage"
-import { tmpdir, runtime } from "../fixture/fixture"
+import { evaluate, tmpdir, runtime } from "../fixture/fixture"
 import { Process } from "@merakcode/util/process"
 import { setTimeout as delay } from "node:timers/promises"
 
@@ -64,6 +65,27 @@ test("another process never reads a partial record during Storage.write or updat
     await Storage.remove(key)
   }
 }, 30_000)
+
+// Setting WAL on a database another process was creating or recovering failed as busy without waiting, so one of two
+// engines started together (the desktop app and the command line) could not open the database at all
+test("processes opening a new database at the same time all get to write", async () => {
+  const db = pathToFileURL(path.join(import.meta.dirname, "../../src/storage/db.ts")).href
+  const code = `const { Database } = await import(${JSON.stringify(db)})
+Database.transaction(() => Database.query("INSERT INTO record (key, data) VALUES (?, ?)").run(process.argv[1], "x"))
+Database.close()`
+  for (let round = 0; round < 8; round++) {
+    await using home = await tmpdir()
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        Process.run([...evaluate(code), `writer-${index}`], {
+          env: { ...process.env, MERAKCODE_HOME: home.path },
+          nothrow: true,
+        }),
+      ),
+    )
+    for (const result of results) expect(result.exitCode, result.stderr.toString()).toBe(0)
+  }
+}, 120_000)
 
 test("updates from several processes at once never lose each other's change", async () => {
   await using tmp = await tmpdir()
