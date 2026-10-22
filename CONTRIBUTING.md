@@ -109,18 +109,38 @@ pnpm hooks:install   # 提交前自动检查格式
 - 打日志用 `Log.create({ service: "名字" })`，不要用 `console.*` 记诊断信息。日志里不能出现密钥、口令和对话内容。
 - 日志写在 `~/.merakcode/logs` 下，每个进程一个 NDJSON 文件。`merak logs` 能列出来，`merak bug-report` 会打包并去掉敏感信息。
 
+## 提交说明
+
+提交说明用英文，写成这个格式：
+
+```text
+type(scope): summary
+
+- what changed and why
+- one point per line
+```
+
+- `type` 从这些里选：`feat`（新功能）、`fix`（修 Bug）、`docs`（文档）、`test`（测试）、`refactor`（不改行为的重构）、`perf`（性能）、`build`（构建和依赖）、`ci`（CI 配置）、`chore`（其他杂事）、`revert`（撤销之前的提交）。
+- `scope` 写改动在哪一块，比如 `desktop`、`cli`、`engine`、`sdk`、`sandbox`、`review`、`changelog`、`contributing`。跨了好几块就不写，直接 `type: summary`。
+- 标题用祈使句，小写开头，结尾不加句号，整行不超过 100 个字符。
+- 标题和列表之间空一行，不然 GitHub 和 `git log --oneline` 会把列表拼进标题。列表每行以 `- ` 开头，写改了什么、为什么改。
+- 发版的提交写成 `release: vx.y.z`，不带 scope，列表概括这个版本的变化。
+- PR 标题也用这个格式。合并 PR 用 "Squash and merge"（PR 标题就是提交标题）或 "Rebase and merge"，不用 GitHub 默认的合并提交，`main` 上的提交才能保持这个格式。
+
+跑过 `pnpm hooks:install` 之后，`script/hooks/commit-msg` 会在提交时检查标题。
+
 ## 提交 PR
 
 1. 从 `main` 新建分支。
 2. 改完跑 `pnpm check` 和你改到的包的测试。
-3. PR 里写清楚改了什么、为什么改、怎么验证的。改了界面就附截图。
+3. PR 标题按上面的提交说明格式写。PR 里写清楚改了什么、为什么改、怎么验证的。改了界面就附截图。
 4. 用户能感觉到的改动，在 `CHANGELOG.md` 的 `Unreleased` 下面加一行。
 
 ## 发布（维护者）
 
 所有包用同一个版本号，格式是 `主版本.次版本.修订号`：只修 Bug 加修订号，加功能加次版本，有不兼容的改动加主版本。带 `-` 的版本（比如 `0.2.0-beta.1`）是测试版，只有选了 beta 渠道的人才会收到；`-` 后面必须是"小写字母组成的渠道名.数字"。
 
-1. 运行 `pnpm release:version x.y.z`，把 `CHANGELOG.md` 里的 `Unreleased` 改成 `## [x.y.z] - 日期`，提交并合并到 `main`。`CHANGELOG.md` 里没有这个版本的一节就不能发布。
+1. 运行 `pnpm release:version x.y.z`，把 `CHANGELOG.md` 里的 `Unreleased` 改成 `## [x.y.z] - 日期`，提交（标题写 `release: vx.y.z`）并合并到 `main`。`CHANGELOG.md` 里没有这个版本的一节就不能发布。
 2. 在 `main` 上打 tag 并推送：`git tag vx.y.z && git push origin vx.y.z`。
 3. `.github/workflows/release.yml` 会自动：
    - 检查 tag、版本号和 `CHANGELOG.md` 对得上，并把 CI 完整跑一遍；
@@ -255,18 +275,38 @@ Changes to these rules (`script/check-deps.ts`) and to the files that load the e
 - Log with `Log.create({ service: "name" })`, not `console.*`. Logs must never contain keys, passwords or conversation content.
 - Logs go to `~/.merakcode/logs`, one NDJSON file per process. `merak logs` lists them and `merak bug-report` zips them with sensitive data removed.
 
+## Commit messages
+
+Write commit messages in English, in this format:
+
+```text
+type(scope): summary
+
+- what changed and why
+- one point per line
+```
+
+- `type` is one of `feat` (new feature), `fix` (bug fix), `docs`, `test`, `refactor` (no behavior change), `perf`, `build` (build and dependencies), `ci`, `chore` (anything else) and `revert`.
+- `scope` names the part you changed, such as `desktop`, `cli`, `engine`, `sdk`, `sandbox`, `review`, `changelog` or `contributing`. Leave it out when the change spans several parts: `type: summary`.
+- Write the title in the imperative, starting lowercase, with no final period, at most 100 characters in all.
+- Leave a blank line between the title and the list, or GitHub and `git log --oneline` join the list onto the title. Each list line starts with `- ` and says what changed and why.
+- A release commit is `release: vx.y.z`, with no scope; its list sums up the version.
+- Pull request titles use the same format. Merge with "Squash and merge" (the pull request title becomes the commit title) or "Rebase and merge", not GitHub's default merge commit, so the commits on `main` keep this format.
+
+After `pnpm hooks:install`, `script/hooks/commit-msg` checks the title of each commit.
+
 ## Pull requests
 
 1. Branch off `main`.
 2. Run `pnpm check` and the tests of the packages you touched.
-3. Say what changed, why, and how you checked it. Add screenshots for UI changes.
+3. Title the pull request in the commit message format above. Say what changed, why, and how you checked it. Add screenshots for UI changes.
 4. For changes users will notice, add a line under `Unreleased` in `CHANGELOG.md`.
 
 ## Releasing (maintainers)
 
 All packages share one version number, written `major.minor.patch`: bug fixes raise the patch, new features the minor, incompatible changes the major. Versions with a `-` (such as `0.2.0-beta.1`) are test releases that only reach people on that channel, such as beta; after the `-` comes a lowercase channel name, a dot and a number.
 
-1. Run `pnpm release:version x.y.z`, rename `Unreleased` in `CHANGELOG.md` to `## [x.y.z] - date`, then commit and merge into `main`. A version without its section in `CHANGELOG.md` cannot be published.
+1. Run `pnpm release:version x.y.z`, rename `Unreleased` in `CHANGELOG.md` to `## [x.y.z] - date`, then commit (titled `release: vx.y.z`) and merge into `main`. A version without its section in `CHANGELOG.md` cannot be published.
 2. Tag `main` and push the tag: `git tag vx.y.z && git push origin vx.y.z`.
 3. `.github/workflows/release.yml` then:
    - checks that the tag, the version and `CHANGELOG.md` agree, and runs all of CI;

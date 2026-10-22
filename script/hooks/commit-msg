@@ -1,0 +1,13 @@
+#!/bin/sh
+# Check the commit title against "Commit messages" in CONTRIBUTING.md
+title=$(head -n 1 "$1" | tr -d '\r')
+case "$title" in
+  "Merge "* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+types='feat|fix|docs|test|refactor|perf|build|ci|chore|revert'
+if [ "${#title}" -le 100 ] && printf '%s\n' "$title" | grep -Eq "^(($types)(\([a-z0-9-]+\))?!?: [^ ].*|release: v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?)$"; then
+  exit 0
+fi
+echo "Commit title must be 'type(scope): summary' or 'release: vx.y.z', at most 100 characters (see CONTRIBUTING.md)" >&2
+echo "  got: $title" >&2
+exit 1
