@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest"
 import fs from "node:fs/promises"
+import { createServer } from "node:http"
+import type { AddressInfo, Socket } from "node:net"
 import path from "node:path"
 import { Npm } from "../../src/npm"
 import { Process } from "@merakcode/util/process"
@@ -20,6 +22,21 @@ async function pack(root: string, name: string, version: string) {
   )
   const result = await Process.run([...Npm.command(), "pack", "--pack-destination", root], { cwd: dir })
   return path.join(root, result.text().trim().split("\n").at(-1)!)
+}
+
+/** A registry that accepts connections and never answers, so anything that waits on the registry hangs */
+async function silentRegistry() {
+  const sockets = new Set<Socket>()
+  const server = createServer(() => {})
+  server.on("connection", (socket) => sockets.add(socket))
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+    [Symbol.asyncDispose]: async () => {
+      for (const socket of sockets) socket.destroy()
+      await new Promise((resolve) => server.close(resolve))
+    },
+  }
 }
 
 describe("Npm.command", () => {
@@ -63,10 +80,17 @@ describe("Npm.install", () => {
 })
 
 describe("Npm.exec", () => {
-  test("runs the package's CLI and passes arguments through", async () => {
+  // After installing into the npx cache, npm waits for an audit report from the registry before running the bin,
+  // unless auditing is off. Formatters and language servers start through Npm.exec, so a slow registry stalled them.
+  test("runs the package's CLI and passes arguments through without waiting on the registry", async () => {
     await using dir = await tmpdir()
+    await using registry = await silentRegistry()
     const tarball = await pack(dir.path, "mc-tool", "0.0.1")
-    const result = await Process.run([...Npm.exec(tarball, "mc-tool"), "hello", "world"], { cwd: dir.path })
+    const result = await Process.run([...Npm.exec(tarball, "mc-tool"), "hello", "world"], {
+      cwd: dir.path,
+      env: { ...process.env, npm_config_registry: registry.url },
+      timeout: 30_000,
+    })
     expect(result.text().trim().split("\n").at(-1)).toBe("mc-tool hello world")
   }, 60_000)
 })

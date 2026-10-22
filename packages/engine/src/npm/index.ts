@@ -45,9 +45,12 @@ export namespace Npm {
     ].find((file) => existsSync(file))
   }
 
-  /** Runs a package's command line tool (like npx); returns the command prefix for the caller to append arguments to */
+  /**
+   * Runs a package's command line tool (like npx); returns the command prefix for the caller to append arguments to.
+   * Without --no-audit, npm waits for an audit report from the registry before running the tool it just installed.
+   */
   export function exec(pkg: string, bin?: string): string[] {
-    return [...command(), "exec", "--yes", `--package=${pkg}`, "--", bin ?? pkg]
+    return [...command(), "exec", "--yes", "--no-audit", `--package=${pkg}`, "--", bin ?? pkg]
   }
 
   /**
