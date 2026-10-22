@@ -113,6 +113,11 @@ export function readRecords(file: string): LogRecord[] {
       return ""
     }
   })()
+  return parseRecords(text)
+}
+
+/** Records in NDJSON text; lines that are not records are skipped */
+export function parseRecords(text: string): LogRecord[] {
   return text.split("\n").flatMap((line) => {
     if (!line.trim()) return []
     try {
