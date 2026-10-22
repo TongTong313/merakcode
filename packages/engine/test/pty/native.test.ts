@@ -81,4 +81,30 @@ child.kill()
     expect(result.text()).not.toContain("uncaught")
     expect(result.exitCode).toBe(0)
   }, 20_000)
+
+  // node-pty rethrows an output socket error other than EIO unless the terminal has a second error listener. An EPIPE
+  // there failed the Windows CI and would take the engine down
+  test("an error on the terminal's output socket does not reach the host as a throw", async () => {
+    const nodePty = import.meta.resolve("@lydell/node-pty")
+    const broken = `
+const { NativePty } = await import(${JSON.stringify(native)})
+const pty = await import(${JSON.stringify(nodePty)})
+process.on("uncaughtException", (error) => { console.log("uncaught: " + error.message); process.exit(1) })
+const [command, args] = ${shell}
+const child = pty.spawn(command, args, {})
+NativePty.attach(child)
+try {
+  child._socket.emit("error", Object.assign(new Error("This socket has been ended by the other party"), { code: "EPIPE" }))
+} catch (error) {
+  console.log("thrown: " + error.message)
+  process.exit(1)
+}
+console.log("clean")
+setTimeout(() => process.exit(0), 1000)
+`
+    const result = await run(broken)
+    expect(result.text()).toContain("clean")
+    expect(result.text()).not.toMatch(/thrown|uncaught/)
+    expect(result.exitCode).toBe(0)
+  }, 20_000)
 })
