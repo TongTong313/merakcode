@@ -100,6 +100,38 @@ describe("authorizeLocalRequest", () => {
     expect(await from(60000, "POST", "/permission/req-1/reply")).toBe("ok")
   })
 
+  // The desktop window's first config read was refused at startup: the connection or the process was not visible to
+  // the lookup yet, and the window stayed on its splash screen
+  test("a peer the lookup misses at first is looked up again before a risky request is refused", async () => {
+    let calls = 0
+    setPeerPidLookupForTest({
+      async owners() {
+        calls++
+        if (calls <= 2) return []
+        return [{ localAddr: "127.0.0.1", localPort: 4096, remoteAddr: "127.0.0.1", remotePort: 60000, pid: 22 }]
+      },
+      async parentPid(pid) {
+        return pid === 22 ? 11 : 1
+      },
+    })
+    expect(await fromPort(60000, "GET", "/global/config")).toBe("ok")
+  })
+
+  test("a parent the lookup does not know yet is looked up again", async () => {
+    let calls = 0
+    setPeerPidLookupForTest({
+      async owners() {
+        return [{ localAddr: "127.0.0.1", localPort: 4096, remoteAddr: "127.0.0.1", remotePort: 60000, pid: 22 }]
+      },
+      async parentPid(pid) {
+        calls++
+        if (pid === 22 && calls > 1) return 11
+        return undefined
+      },
+    })
+    expect(await fromPort(60000, "GET", "/global/config")).toBe("ok")
+  })
+
   test("denies without throwing when the parent process lookup fails", async () => {
     setPeerPidLookupForTest({
       async owners() {
