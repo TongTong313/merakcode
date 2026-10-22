@@ -12,17 +12,22 @@ type Subscription = Awaited<ReturnType<Watcher["subscribe"]>>
 const active = new Set<Subscription>()
 
 /**
- * Cancelling a native subscription on Windows has a use-after-free bug (parcel-bundler/watcher#262, still in 2.6.0):
- * after the subscription is freed, the completion callback of the pending directory read in the kernel still reads
- * it. When the watcher is busy handling events (allocating memory), the freed memory is reused quickly and the
- * process crashes (0xC0000005). Every config write rebuilds the instance, cancels and resubscribes the config
- * directory, and the write itself produces events, which triggers exactly this.
- * So on Windows, cancelling first stops the callback and queues the native cancel; queued cancels run one by one once
- * no watcher has had events for QUIET_MS. Linux and macOS cancel immediately.
+ * Cancelling a native subscription while its directory still produces events crashes on Windows and macOS:
+ * - Windows has a use-after-free (parcel-bundler/watcher#262, still in 2.6.0): after the subscription is freed, the
+ *   completion callback of the pending directory read in the kernel still reads it. When the watcher is busy handling
+ *   events (allocating memory), the freed memory is reused quickly and the process crashes (0xC0000005).
+ * - On macOS the FSEvents callback runs on the watcher's own thread and reads the subscription state without a lock,
+ *   while a cancel from the JS thread stops the stream and clears that state, so the two race (SIGSEGV, exit 139).
+ * Every config write rebuilds the instance, cancels and resubscribes the config directory, and the write itself
+ * produces events, which triggers exactly this.
+ * So on both, cancelling first stops the callback and queues the native cancel; queued cancels run one by one once
+ * no watcher has had events for QUIET_MS. Linux cancels immediately.
  */
-const deferred = process.platform === "win32"
+const deferred = process.platform === "win32" || process.platform === "darwin"
+/** Windows only: exiting with live subscriptions is safe there, while a native cancel during exit crashes */
+const leaveAtExit = process.platform === "win32"
 const QUIET_MS = 200
-/** Maximum wait before exit; subscriptions still pending end with the process (safe on Windows) */
+/** Maximum wait before exit for queued cancels; then Windows leaves the rest to the process exit, macOS cancels them */
 const EXIT_WAIT_MS = 2_000
 /**
  * Time of the latest subscribe or of any event: after subscribing the directory may already be changing, with events
@@ -37,7 +42,7 @@ let exiting = false
 
 function drain() {
   draining ??= (async () => {
-    while (pending.length > 0 && !exiting) {
+    while (pending.length > 0 && !(exiting && leaveAtExit)) {
       const quiet = Date.now() - last
       if (quiet < QUIET_MS) {
         await new Promise((resolve) => setTimeout(resolve, QUIET_MS - quiet))
@@ -106,16 +111,23 @@ export function activeParcelWatchers() {
 
 /**
  * Stops every subscription; call once, right before the process exits.
- * Linux and macOS cancel natively: exiting with live subscriptions makes the inotify backend free memory twice in
- * static destructors (exit 134). Windows is the opposite: a native cancel while the directory is busy crashes, while
- * exiting with live subscriptions does not, so callbacks stop, no new native cancel starts, and only a cancel that is
- * already running is awaited (exiting in the middle of it crashes too). The caller must then exit the process
- * (process.exit), since the subscriptions left open on Windows keep it alive.
+ * - Linux cancels natively right away: exiting with live subscriptions makes the inotify backend free memory twice in
+ *   static destructors (exit 134).
+ * - macOS waits up to EXIT_WAIT_MS for the queued cancels to run once the directories are quiet, then cancels the rest
+ *   immediately: nothing shows that exiting with live FSEvents streams is safe.
+ * - Windows is the opposite of Linux: a native cancel while the directory is busy crashes, while exiting with live
+ *   subscriptions does not, so callbacks stop, no new native cancel starts, and only a cancel that is already running
+ *   is awaited (exiting in the middle of it crashes too). The caller must then exit the process (process.exit), since
+ *   the subscriptions left open on Windows keep it alive.
  */
 export async function closeParcelWatchers() {
-  if (deferred) exiting = true
+  exiting = true
   await Promise.all([...active].map((subscription) => subscription.unsubscribe().catch(() => undefined)))
   if (draining) await Promise.race([draining, new Promise((resolve) => setTimeout(resolve, EXIT_WAIT_MS).unref())])
+  if (leaveAtExit) return
+  const rest = pending.splice(0)
+  await Promise.all(rest.map((inner) => inner.unsubscribe().catch(() => undefined)))
+  await draining
 }
 
 export function parcelWatcherBackend(): "windows" | "fs-events" | "inotify" | undefined {
