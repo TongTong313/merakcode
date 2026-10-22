@@ -131,8 +131,9 @@ describe.skipIf(process.platform === "linux")("a queued cancel", () => {
       const deadline = Date.now() + 10_000
       while (pendingParcelCancels() > 0 && Date.now() < deadline) await sleep(50)
       expect(pendingParcelCancels()).toBe(0)
-      if (folder === "ignored") expect(seen).toEqual([])
-      else expect(seen.length).toBeGreaterThan(0)
+      // macOS also reports the watched directory itself ("") when files inside it change
+      if (folder === "ignored") expect(seen.filter((file) => file.split(path.sep)[0] === "ignored")).toEqual([])
+      else expect(seen.filter((file) => file.startsWith("f")).length).toBeGreaterThan(0)
     },
     30_000,
   )
