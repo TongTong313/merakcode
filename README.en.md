@@ -24,13 +24,12 @@ We open-sourced this project to make up for a regret we have carried, and in the
 ## What it does
 
 - **AI coding**: strong project-level coding across many languages, frameworks, paradigms and styles. Honestly, this part is no different from other AI coding products. You be the judge, and if you like it, a Star is the best way to support us.
-- **Human-AI collaboration**: MerakCode is designed around people and the agent working together. It has a review interface built specifically for checking what the agent produces (desktop app only) and a complete permission system for what the agent may do.
+- **Collaboration across products**: MerakCode is designed around people and the agent working together. It has a review interface built specifically for checking what the agent produces (desktop app only) and a complete permission system for what the agent may do. It can also work alongside other AI coding products that ship a CLI, so the collaboration reaches across products.
 - **Model setup**: connect all kinds of model providers (only 8 for now, more to come) as well as local models. MerakCode can also use models through API relay services.
-- **Security**: commands the agent runs go into our own OS sandbox. They cannot read your key folders, cannot write outside the workspace, and need your approval to reach unfamiliar websites.
+- **Secure and reliable**: commands the agent runs go into our own OS sandbox. They cannot read your key folders, cannot write outside the workspace, and need your approval to reach unfamiliar websites. This is a small product built by a few people, with no server side (no time to build one...). We don't collect, and couldn't collect, any usage data, so there is nothing of yours to leak.
 - **Extensible**: MCP, skills, plugins, custom agents and slash commands.
-- **Beyond code**: AI coding is one of the hardest kinds of task there is, so using MerakCode for other things works just fine.
-- **No telemetry**: a small product built by a few people, with no server side (no time to build one...). We don't collect, and couldn't collect, any usage data, so there is nothing of yours to leak.
-- **Build on it**: MerakCode ships an agent SDK, and every MerakCode product is built on it. You can build your own AI coding tool on the same engine.
+- **Beyond coding**: AI coding is one of the hardest kinds of task there is, so using MerakCode for other things works just fine.
+- **Build your own**: MerakCode ships an agent SDK, and every MerakCode product is built on it. You can build your own AI coding tool on the same engine.
 
 ## How to install
 
