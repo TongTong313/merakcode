@@ -7,9 +7,17 @@
  * process and the UI first:
  *   pnpm build && pnpm --dir ../renderer build
  */
-import { test as base, expect, _electron, type ElectronApplication, type Locator, type Page } from "@playwright/test"
+import {
+  test as base,
+  expect,
+  _electron,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test"
 import { createServer, type Server } from "node:http"
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
@@ -131,6 +139,29 @@ async function model(script: Script) {
   return { url: `http://127.0.0.1:${address.port}/v1`, count: () => count, close: () => server.close() }
 }
 
+/**
+ * Startup never reached the input: attaches what the window showed and what the app logged. The failure happens
+ * inside this fixture, before Playwright's own failure screenshot, and the logs stay in the runner's temp directory.
+ */
+async function evidence(page: Page, root: string, output: string[], info: TestInfo) {
+  const shot = await page.screenshot().catch(() => undefined)
+  if (shot) await info.attach("startup-screenshot", { body: shot, contentType: "image/png" })
+  const shown = await page
+    .evaluate(() => `${location.href}\n\n${document.body?.innerText ?? ""}`)
+    .catch((error: Error) => `page unavailable: ${error.message}`)
+  await info.attach("startup-page", {
+    body: `${shown}\n\n--- console ---\n${output.join("\n")}`,
+    contentType: "text/plain",
+  })
+  const logs = path.join(root, "logs")
+  const files = await readdir(logs, { recursive: true }).catch(() => [] as string[])
+  for (const file of files.filter((name) => name.endsWith(".ndjson"))) {
+    const text = await readFile(path.join(logs, file), "utf8").catch(() => "")
+    const tail = text.split("\n").slice(-400).join("\n")
+    await info.attach(`log-${file.replaceAll(/[\\/]/g, "_")}`, { body: tail, contentType: "text/plain" })
+  }
+}
+
 export const test = base.extend<{
   script: { reply: Script }
   config: Record<string, unknown>
@@ -212,6 +243,9 @@ export const test = base.extend<{
       timeout: 60_000,
     })
     const page = await app.firstWindow()
+    const output: string[] = []
+    page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
+    page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
     // Behavior spec shared by the old and new UI: locate only by role, accessible name and visible text, never by
     // class names or data-* attributes
     const input = () =>
@@ -221,7 +255,14 @@ export const test = base.extend<{
         .first()
     // Without an available model, onboarding opens first as a modal over the input: skip it
     const later = page.getByRole("button", { name: /^(跳过|Skip)$/ })
-    await input().or(later).first().waitFor({ timeout: 120_000 })
+    await input()
+      .or(later)
+      .first()
+      .waitFor({ timeout: 120_000 })
+      .catch(async (error: unknown) => {
+        await evidence(page, root, output, info)
+        throw error
+      })
     if (await later.isVisible().catch(() => false)) await later.click()
     await input().waitFor()
     const send = async (value: string) => {
