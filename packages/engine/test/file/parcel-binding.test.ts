@@ -1,5 +1,7 @@
-import { expect, test } from "vitest"
+import { describe, expect, test } from "vitest"
+import fs from "fs/promises"
 import path from "path"
+import { setTimeout as sleep } from "timers/promises"
 import { pathToFileURL } from "url"
 import { evaluate, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -90,6 +92,51 @@ test("exiting right after closing watchers on busy directories does not crash", 
     expect(result.exitCode, `run ${run}: ${result.stderr.toString()}`).toBe(0)
   }
 }, 180_000)
+
+// Windows and macOS queue a cancel until no watcher has events (see parcel-binding.ts). Changes in ignored paths keep the
+// native watcher just as busy without reaching the callback, and under steady changes the native module reports only
+// every 500 ms, so neither may let a cancel through while the directory still changes.
+describe.skipIf(process.platform === "linux")("a queued cancel", () => {
+  test.each([
+    ["only inside an ignored folder", "ignored"],
+    ["in watched files", "."],
+  ])(
+    "waits while the directory keeps changing %s",
+    async (_, folder) => {
+      await using tmp = await tmpdir()
+      await fs.mkdir(path.join(tmp.path, "ignored"))
+      const { parcelWatcher, pendingParcelCancels } = await import("@merakcode/engine/file/parcel-binding")
+      const seen: string[] = []
+      const subscription = await parcelWatcher()!.subscribe(
+        tmp.path,
+        (_, events) => seen.push(...events.map((event) => path.relative(tmp.path, event.path))),
+        { ignore: ["ignored"] },
+      )
+      let writing = true
+      const writer = (async () => {
+        for (let i = 0; writing; i++) {
+          await fs.writeFile(path.join(tmp.path, folder, `f${i % 20}.txt`), String(i))
+          await sleep(5)
+        }
+      })()
+      try {
+        await sleep(1_000)
+        await subscription.unsubscribe()
+        await sleep(2_000)
+        expect(pendingParcelCancels()).toBe(1)
+      } finally {
+        writing = false
+        await writer
+      }
+      const deadline = Date.now() + 10_000
+      while (pendingParcelCancels() > 0 && Date.now() < deadline) await sleep(50)
+      expect(pendingParcelCancels()).toBe(0)
+      if (folder === "ignored") expect(seen).toEqual([])
+      else expect(seen.length).toBeGreaterThan(0)
+    },
+    30_000,
+  )
+})
 
 // On Linux, subscriptions still active at exit make the @parcel/watcher inotify backend double free in static
 // destructors, exiting with 134. All subscriptions must be cancellable at once before exit.
