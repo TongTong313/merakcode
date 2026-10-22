@@ -630,6 +630,7 @@ kbd {
 .menu-item .desc {
   color: var(--text-muted);
   font-size: var(--text-sm);
+  white-space: normal;
 }
 .menu-item .check {
   margin-left: auto;

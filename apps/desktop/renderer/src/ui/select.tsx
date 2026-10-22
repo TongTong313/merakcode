@@ -66,7 +66,7 @@ export function Select<T extends string>(props: {
           <div class="menu-item-copy">
             <Kobalte.ItemLabel class="ellipsis">{item.item.rawValue.label}</Kobalte.ItemLabel>
             <Show when={item.item.rawValue.description}>
-              <Kobalte.ItemDescription class="desc ellipsis">{item.item.rawValue.description}</Kobalte.ItemDescription>
+              <Kobalte.ItemDescription class="desc">{item.item.rawValue.description}</Kobalte.ItemDescription>
             </Show>
           </div>
           <Kobalte.ItemIndicator class="check">

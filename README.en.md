@@ -18,7 +18,7 @@
 
 ---
 
-MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. AI now writes far faster than people can read, so MerakCode puts a lot of care into how people and the agent work together: a better way to review what the agent produces and a smoother experience overall, so that its output is what you expect.
+MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. Now that AI writes far faster than people can read, MerakCode puts a lot of care into how people and the agent work together. The author is building a multi-product, multi-agent collaboration mode, and refining how you review what the agent produces, so that its output is what you expect. The aim is to be the best AI coding tool to use, not the most powerful one.
 
 We open-sourced this project to make up for a regret we have carried, and in the hope that the community can keep it going. The name comes from Merak, the star in the Big Dipper that, together with Dubhe, points to Polaris. We hope MerakCode does the same and points each of your ideas in the right direction.
 
@@ -27,7 +27,7 @@ We open-sourced this project to make up for a regret we have carried, and in the
 - **AI coding**: strong project-level coding across many languages, frameworks, paradigms and styles. Honestly, this part is no different from other AI coding products. You be the judge, and if you like it, a Star is the best way to support us.
 - **Collaboration across products**: MerakCode is designed around people and the agent working together. It has a review interface built specifically for checking what the agent produces (desktop app only) and a complete permission system for what the agent may do. It can also work alongside other AI coding products that ship a CLI, so the collaboration reaches across products.
 - **Model setup**: connect all kinds of model providers (only 8 for now, more to come) as well as local models. MerakCode can also use models through API relay services.
-- **Secure and reliable**: commands the agent runs go into our own OS sandbox. They cannot read your key folders, cannot write outside the workspace, and need your approval to reach unfamiliar websites. This is a small product built by a few people, with no server side (no time to build one...). We don't collect, and couldn't collect, any usage data, so there is nothing of yours to leak.
+- **Secure and reliable**: commands the agent runs go into our own OS sandbox. They cannot read key folders such as `~/.ssh` or `~/.aws`, can write only the workspace, temp folders and package manager caches, and need your approval for hosts that are not on the allowlist. This is a small product built by a few people, with no server side (no time to build one...). We don't collect, and couldn't collect, any usage data, so there is nothing of yours to leak.
 - **Extensible**: MCP, skills, plugins, custom agents and slash commands.
 - **Beyond coding**: AI coding is one of the hardest kinds of task there is, so using MerakCode for other things works just fine.
 - **Build your own**: MerakCode ships an agent SDK, and every MerakCode product is built on it. You can build your own AI coding tool on the same engine.
@@ -49,7 +49,9 @@ The desktop app ships with its own engine; you do not need the command-line vers
 The installers are not code-signed yet, so the system stops them the first time:
 
 - **Windows**: when you see "Windows protected your PC", click "More info", then "Run anyway".
-- **macOS**: if the app "cannot be opened", go to System Settings → Privacy & Security and click "Open Anyway" near the bottom. Unsigned macOS builds cannot update themselves; the app tells you when a new version is out and opens the download page.
+- **macOS**: if the app "cannot be opened", go to System Settings → Privacy & Security and click "Open Anyway" near the bottom.
+
+Unsigned macOS builds, and Linux installs from a `.deb`, cannot update themselves. When a new version is out, the app sends you to the download page.
 
 ### Command line
 
@@ -78,9 +80,12 @@ The command is `merak`. Upgrade later with `merak upgrade` (or `merak update`).
 To check a download yourself, put the release's `SHA256SUMS` in the same folder as the file and run:
 
 ```sh
-sha256sum -c SHA256SUMS --ignore-missing          # Linux
-shasum -a 256 -c SHA256SUMS --ignore-missing      # macOS
+sha256sum -c SHA256SUMS --ignore-missing                 # Linux
+grep 'darwin-arm64.tar.gz' SHA256SUMS | shasum -a 256 -c # macOS (Apple silicon)
+grep 'darwin-x64.tar.gz' SHA256SUMS | shasum -a 256 -c   # macOS (Intel)
 ```
+
+The `shasum` that ships with macOS has no `--ignore-missing`, so the commands above check only the line for the file you downloaded.
 
 ```powershell
 # Windows: the output must equal the value on this file's line in SHA256SUMS
@@ -160,17 +165,23 @@ Editors that speak [ACP](https://agentclientprotocol.com) can use MerakCode as t
 
 ## Permissions and the sandbox
 
-MerakCode edits files and runs commands on your computer, so every action goes through the permission mode first: do it, ask you, or refuse.
+MerakCode edits files and runs commands on your computer, so every action goes through the permission mode first: do it, ask you, or refuse. There is no category called an ordinary file. The rules are:
 
-| Mode          | Good for                              | What happens                                                                                                                                                    |
-| ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read-only     | Designs and plans                     | Only reads files and runs read-only commands (such as `git status` or `ls`). No edits, no other commands                                                        |
-| Ask (default) | Everyday work                         | Reads files and edits inside the workspace right away; asks before running commands, editing outside the workspace, reading sensitive files or going online     |
-| Auto          | Large projects, when you trust the AI | Does most things right away; still asks before risky commands (such as `git push` or `sudo`), edits outside the workspace, sensitive files and unknown websites |
+- **Edits inside the workspace.** If no directory or file name on the path relative to the workspace starts with `.`, ask mode and auto mode edit it immediately. If any segment starts with `.` (`.git`, `.github`, `.env`, `src/.hidden/a.ts`), ask mode asks first and auto mode edits it immediately. Read-only mode never edits, and an allow rule in the config cannot override that.
+- **Reads.** A file inside the workspace that is not a secret is read immediately in every mode. A non-secret file outside the workspace asks in read-only and ask mode, and is read immediately in auto mode. Secrets always ask. A secret is a file named `.env`, or `.env.*` other than `.env.example`, `.env.sample`, `.env.template` and `.env.dist`; `id_rsa`, `id_dsa`, `id_ecdsa` or `id_ed25519`, with an optional extra suffix; `credentials` or `credentials.json`; an extension of `.pem`, `.key`, `.p12`, `.pfx`, `.keystore` or `.jks`; or `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials` or `.pgpass`. Files under `.ssh`, `.aws`, `.azure`, `.kube`, `.gnupg`, `.docker`, `.config/gcloud` or `.config/gh` in your home directory count too.
+- **Commands.** Commands that certainly do not change files (`ls`, `git status`, `git diff`, `rg`, and the rest of that fixed list) run in every mode. Anything that might change files counts as a file-changing command. File-changing commands, and `rm`, `rmdir`, `unlink`, `shred`, `git clean`, `git reset --hard` and `find -delete`, are refused in read-only mode, asked about in ask mode, and run immediately in auto mode. Risky commands are refused in read-only mode and asked about in ask and auto mode: `sudo`, `su`, `doas`, `pkexec`, `runas`, `dd` when it does not target a whole disk, `shutdown`, `reboot`, `chown`, and `git push`, `npm publish`, `npm unpublish`, `pnpm publish`, `yarn publish`, `bun publish`, `cargo publish`, `gem push`, `twine upload`, `docker push`, `gh release`, `gh pr`, `helm push`. `rm -rf /` (and the home directory), recursively chmodding those locations to `777`, `mkfs`, `dd` onto a whole disk, `format`, `diskpart` and a fork bomb are refused by default. In ask and auto mode they run only when the config explicitly allows them. In read-only mode an allow rule still does not.
+- **Websites.** The allowlist matches hostnames exactly; a subdomain does not count. These hosts are reached immediately: `registry.npmjs.org`, `registry.yarnpkg.com`, `registry.npmmirror.com`, `cdn.npmmirror.com`, `pypi.org`, `files.pythonhosted.org`, `pypi.tuna.tsinghua.edu.cn`, `crates.io`, `index.crates.io`, `static.crates.io`, `static.rust-lang.org`, `rsproxy.cn`, `proxy.golang.org`, `sum.golang.org`, `goproxy.cn`, `repo.maven.apache.org`, `repo1.maven.org`, `maven.aliyun.com`, `services.gradle.org`, `plugins.gradle.org`, `rubygems.org`, `github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `gitlab.com`, `gitee.com`, `mirrors.aliyun.com`, `mirrors.tuna.tsinghua.edu.cn`. Every other host asks, in every mode.
+- **The rest.** Subagents, workflows, scheduled tasks, MCP and tools registered by plugins ask in read-only and ask mode, and run immediately in auto mode. Leaving the sandbox always asks. While the sandbox is not ready, a command that may change things asks even in auto mode. In ask and auto mode, allow and deny rules in the project config override the defaults above. Read-only mode still cannot edit files or run anything except read-only commands.
 
-Switch modes next to the input in the desktop app, or press `Shift+Tab`. When it asks, you can allow once, allow for this session, always allow (saved to the project config) or deny. By default, commands such as `rm -rf /` or formatting a disk never run, in any mode.
+| Mode          | Good for                              | What happens                                                                                                                                                                                                           |
+| ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read-only     | Designs and plans                     | No edits, only read-only commands. Still asks before a non-secret read outside the workspace, a secret, or a host off the allowlist                                                                                    |
+| Ask (default) | Everyday work                         | Edits a workspace file immediately when no path segment starts with `.`. Asks before edits to dot paths, file-changing commands and deletes, reads or edits outside the workspace, secrets, or hosts off the allowlist |
+| Auto          | Large projects, when you trust the AI | Edits inside the workspace (including dot paths), file-changing commands and deletes run immediately. Still asks before writes outside, risky commands, secret reads, hosts off the allowlist, or leaving the sandbox  |
 
-Commands the agent runs also go into an **OS sandbox**: they can only write the workspace, temp folders and package manager caches; they cannot read key folders such as `~/.ssh` or `~/.aws`; they cannot change `.git/hooks` or `.git/config`; and network traffic goes through a local proxy that asks you about sites it has not seen. The sandbox is our own code on top of what each OS provides:
+Switch modes next to the input in the desktop app, or press `Shift+Tab`. When it asks, you can allow once, allow for this session, always allow (saved to the project config) or deny.
+
+Commands the agent runs also go into an **OS sandbox**: they can only write the workspace, temp folders and package manager caches; they cannot read key folders such as `~/.ssh` or `~/.aws`; they cannot change `.git/hooks` or `.git/config`; and network traffic goes through a local proxy that asks you about hosts off the allowlist that you have not approved. The sandbox is our own code on top of what each OS provides:
 
 | System  | Built on                                                      | What you need to do                                                                                                                                |
 | ------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -203,7 +214,7 @@ Config files can be plain JSON or JSONC with comments. Add `"$schema"` at the to
 }
 ```
 
-To switch to English: in the desktop app, use Settings → General → Language; for the command line, set `"locale": "en-US"` in the config or the environment variable `MERAKCODE_LOCALE=en-US`.
+To change the language: in the desktop app, use Settings → General → Language. On the command line, set `"locale"` in the config (`zh-CN` or `en-US`) or the environment variable `MERAKCODE_LOCALE`.
 
 ## SDK
 

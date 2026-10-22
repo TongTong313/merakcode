@@ -70,11 +70,11 @@ export const zh = {
 
   "mode.label": "权限模式",
   "mode.plan": "只读",
-  "mode.plan.desc": "不改文件、不跑有副作用的命令",
+  "mode.plan.desc": "不改文件，只跑只读命令。读工作区外、读密钥、访问名单外的网站仍要问",
   "mode.default": "询问",
-  "mode.default.desc": "改文件、跑命令前先问你",
+  "mode.default.desc": "工作区里不以 . 开头的路径直接改。改以 . 开头的路径、命令、工作区外、读密钥和名单外网站要问",
   "mode.auto": "自动",
-  "mode.auto.desc": "只拦高风险操作",
+  "mode.auto.desc": "工作区里的修改和会改文件的命令直接做。写到工作区外、高风险命令、读密钥、名单外网站仍要问",
 
   "model.label": "模型",
   "model.search": "搜索模型",

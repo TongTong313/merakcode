@@ -72,11 +72,14 @@ export const en: Record<keyof typeof zh, string> = {
 
   "mode.label": "Permission mode",
   "mode.plan": "Read-only",
-  "mode.plan.desc": "No file changes or commands with side effects",
+  "mode.plan.desc":
+    "No edits, only read-only commands. Still asks before reads outside the workspace, reads of secret files, or hosts off the allowlist",
   "mode.default": "Ask",
-  "mode.default.desc": "Asks before changing files or running commands",
+  "mode.default.desc":
+    "Edits workspace paths with no dot segment immediately. Asks before edits to dot paths, commands, anything outside, reads of secret files, or hosts off the allowlist",
   "mode.auto": "Auto",
-  "mode.auto.desc": "Only stops risky actions",
+  "mode.auto.desc":
+    "Edits inside the workspace and file-changing commands run immediately. Still asks before writes outside, risky commands, secret reads, or hosts off the allowlist",
 
   "model.label": "Model",
   "model.search": "Search models",
