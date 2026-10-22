@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest"
-import fs from "node:fs/promises"
 import path from "node:path"
 import { prepareBashCommand } from "@merakcode/engine/tool/bash"
 import { PermissionNext } from "@merakcode/engine/permission/next"
@@ -11,7 +10,6 @@ import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 const shellPath = (value: string) => value.replace(/\\/g, "/")
-const dispose = (directory: string) => fs.rm(directory, { recursive: true, force: true })
 
 /** The fallback no longer asks; only explicit ask rules do, so the fixture adds one for bash to expose its patterns */
 const ASK_BASH = PermissionNext.fromConfig({ bash: "ask" })
@@ -25,8 +23,8 @@ async function fixture(
     asked: PermissionNext.Request[]
   }) => Promise<void>,
 ) {
-  await using outer = await tmpdir({ dispose })
-  await using project = await tmpdir({ git: true, dispose })
+  await using outer = await tmpdir()
+  await using project = await tmpdir({ git: true })
   const outside = path.join(outer.path, "outside folder")
   const target = path.join(outside, "file with spaces.txt")
   await Filesystem.write(target, "unchanged fixture")
