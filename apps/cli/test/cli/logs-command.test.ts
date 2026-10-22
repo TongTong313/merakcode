@@ -88,9 +88,27 @@ test("--run with an unknown id fails and says so", { timeout: 60_000 }, async ()
   expect(result.stderr).toContain("nope")
 })
 
-test("--tail prints the last lines of the newest run and keeps following it", { timeout: 60_000 }, async () => {
-  await using tmp = await fixture()
-  const proc = merak(tmp.path, tmp.root, "--tail", "1")
+/** A later record of server-run-2, as one line without the newline */
+const later = (message: string) =>
+  JSON.stringify({
+    schema: "merakcode.log.v1",
+    timestamp: "2026-10-20T00:00:09.000Z",
+    level: "WARN",
+    component: "server",
+    service: "test",
+    message,
+    run_id: "server-run-2",
+    sequence: 3,
+    pid: 102,
+  })
+
+async function serverFile(root: string) {
+  const dir = path.join(root, "production", "server")
+  return path.join(dir, (await fs.readdir(dir))[0]!)
+}
+
+/** Reads a running command's output; on a timeout says what it printed and which log files it could see */
+function reading(proc: ReturnType<typeof merak>, root: string) {
   const reader = proc.stdout!.getReader()
   let text = ""
   let errors = ""
@@ -99,7 +117,6 @@ test("--tail prints the last lines of the newest run and keeps following it", { 
     for (let chunk = await stderr.read(); !chunk.done; chunk = await stderr.read())
       errors += new TextDecoder().decode(chunk.value)
   })()
-  // On a timeout, say what the command printed and which log files it could see: it fails on macOS CI only
   const until = async (expected: string, ms: number) => {
     const deadline = Date.now() + ms
     while (!text.includes(expected) && Date.now() < deadline) {
@@ -107,27 +124,46 @@ test("--tail prints the last lines of the newest run and keeps following it", { 
       if (!chunk || chunk.done) break
       text += new TextDecoder().decode(chunk.value)
     }
-    const files = await fs.readdir(tmp.root, { recursive: true }).catch(() => [])
+    const files = await fs.readdir(root, { recursive: true }).catch(() => [])
     expect(text, `stderr:\n${errors}\nfiles:\n${files.join("\n")}`).toContain(expected)
   }
-  await until("request completed", 40_000)
-  expect(text).not.toContain("server started")
-  const file = (await fs.readdir(path.join(tmp.root, "production", "server")))[0]!
-  await fs.appendFile(
-    path.join(tmp.root, "production", "server", file),
-    JSON.stringify({
-      schema: "merakcode.log.v1",
-      timestamp: "2026-10-20T00:00:09.000Z",
-      level: "WARN",
-      component: "server",
-      service: "test",
-      message: "appended later",
-      run_id: "server-run-2",
-      sequence: 3,
-      pid: 102,
-    }) + "\n",
-  )
-  await until("appended later", 15_000)
-  proc.kill()
-  await proc.exited
+  return { until, text: () => text }
+}
+
+test("--tail prints the last lines of the newest run and keeps following it", { timeout: 60_000 }, async () => {
+  await using tmp = await fixture()
+  const proc = merak(tmp.path, tmp.root, "--tail", "1")
+  try {
+    const output = reading(proc, tmp.root)
+    await output.until("request completed", 40_000)
+    expect(output.text()).not.toContain("server started")
+    await fs.appendFile(await serverFile(tmp.root), later("appended later") + "\n")
+    await output.until("appended later", 15_000)
+  } finally {
+    proc.kill()
+    await proc.exited
+  }
 })
+
+// Following started where the file ended when it was read again, after the last lines were printed: a line written in
+// between was skipped, and so was a line still half written (on macOS CI the gap was long enough to lose a line)
+test(
+  "--tail prints a line that was half written when it started, once it is complete",
+  { timeout: 60_000 },
+  async () => {
+    await using tmp = await fixture()
+    const file = await serverFile(tmp.root)
+    const line = later("written in two parts")
+    await fs.appendFile(file, line.slice(0, 40))
+    const proc = merak(tmp.path, tmp.root, "--tail", "1")
+    try {
+      const output = reading(proc, tmp.root)
+      await output.until("request completed", 40_000)
+      await fs.appendFile(file, line.slice(40) + "\n")
+      await output.until("written in two parts", 15_000)
+    } finally {
+      proc.kill()
+      await proc.exited
+    }
+  },
+)

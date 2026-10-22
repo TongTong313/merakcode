@@ -3,13 +3,13 @@
  * Reads files only; never starts the engine.
  */
 import type { Argv } from "yargs"
-import { closeSync, openSync, readSync, statSync } from "fs"
+import { closeSync, openSync, readFileSync, readSync, statSync } from "fs"
 import { EOL } from "os"
 import { setTimeout as sleep } from "timers/promises"
 import open from "open"
 import { formatText, type LogRecord } from "@merakcode/log"
 import { Log } from "@merakcode/log/logger"
-import { filterRun, listRuns, readRecords } from "@merakcode/log/inspect"
+import { filterRun, listRuns, parseRecords, readRecords } from "@merakcode/log/inspect"
 import { resolveLogRoot } from "@merakcode/log/node"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
@@ -30,9 +30,25 @@ function print(records: LogRecord[], json: boolean) {
   for (const record of records) write(json ? JSON.stringify(record) + EOL : formatText(record))
 }
 
-/** Prints lines appended to `file` until the process is stopped; starts over when the file is rotated */
-async function follow(file: string, json: boolean) {
-  let offset = statSync(file, { throwIfNoEntry: false })?.size ?? 0
+/**
+ * The records on the complete lines of `file` and the offset where those lines end, from one read: following from
+ * that offset prints every line written after it, including one that was still half written
+ */
+function snapshot(file: string) {
+  const content = (() => {
+    try {
+      return readFileSync(file)
+    } catch {
+      return Buffer.alloc(0)
+    }
+  })()
+  const end = content.lastIndexOf("\n") + 1
+  return { records: parseRecords(content.subarray(0, end).toString("utf8")), offset: end }
+}
+
+/** Prints lines appended to `file` after `offset` until the process is stopped; starts over when the file is rotated */
+async function follow(file: string, json: boolean, start: number) {
+  let offset = start
   let rest = ""
   for (;;) {
     await sleep(300)
@@ -112,8 +128,9 @@ export const LogsCommand = cmd({
         return
       }
       UI.println(UI.Style.TEXT_DIM + I18n.t("cli.logs.following", { run: run.id }) + UI.Style.TEXT_NORMAL)
-      print(run.files.flatMap(readRecords).slice(-count), json)
-      await follow(run.files.at(-1)!, json)
+      const last = snapshot(run.files.at(-1)!)
+      print([...run.files.slice(0, -1).flatMap(readRecords), ...last.records].slice(-count), json)
+      await follow(run.files.at(-1)!, json, last.offset)
       return
     }
 
