@@ -526,4 +526,5 @@ export const zh = {
   "error.request": "请求失败：{message}",
   "error.copyDetails": "复制详情（反馈问题时附上）",
   "error.offline": "连不上本地服务",
+  "error.retry": "重试",
 }
