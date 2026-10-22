@@ -91,6 +91,18 @@ export async function isPidInTree(pid: number | undefined, rootPid: number): Pro
   return false
 }
 
+/** pid and its parents, nearest first, as far as the lookup knows them; for logging a refusal */
+export async function ancestry(pid: number, limit = 12): Promise<number[]> {
+  const chain = [pid]
+  for (let current = pid; chain.length < limit;) {
+    const parent = await cachedParent(current).catch(() => undefined)
+    if (!parent || parent <= 0 || chain.includes(parent)) break
+    chain.push(parent)
+    current = parent
+  }
+  return chain
+}
+
 async function cachedOwners(): Promise<TcpOwner[]> {
   const now = Date.now()
   if (ownerCache && now - ownerCache.at < OWNER_CACHE_MS) return ownerCache.owners

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Log } from "@merakcode/log/logger"
-import { isPidInTree, pidForPeer, refreshPeerLookup } from "./peer-pid"
+import { ancestry, isPidInTree, pidForPeer, refreshPeerLookup } from "./peer-pid"
 import { currentPeer } from "./peer-context"
 
 export type LocalAuthDecision = "ok" | "unauthorized" | "forbidden"
@@ -10,8 +10,8 @@ const log = Log.create({ service: "auth.guard" })
 
 /**
  * The connection table and the Windows process snapshot are cached briefly and can miss a connection or a process
- * that has only just appeared, so a peer that cannot be placed in the desktop process tree is looked up again before
- * the request is refused
+ * that has only just appeared, and on Windows CI the desktop window's own request was once placed under the engine.
+ * So any refusal is looked up again with fresh tables before it stands.
  */
 const ATTEMPTS = 3
 const RETRY_MS = 100
@@ -74,13 +74,15 @@ export async function authorizeLocalRequest(input: {
   for (let attempt = 1; ; attempt++) {
     const verdict = await judge(input)
     if (verdict.result === "ok") return "ok"
-    // A child of the engine was identified for certain; only an unplaced peer is worth another look
-    if (verdict.reason === "engine child" || attempt >= ATTEMPTS) {
+    if (attempt >= ATTEMPTS) {
       log.warn("refused guarded request", {
         method: input.method,
         path: input.path,
         reason: verdict.reason,
         pid: verdict.pid,
+        chain: verdict.pid ? await ancestry(verdict.pid) : undefined,
+        engine: input.engine,
+        desktop: input.parentPid,
       })
       return "forbidden"
     }
