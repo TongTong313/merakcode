@@ -132,6 +132,34 @@ describe("authorizeLocalRequest", () => {
     expect(await fromPort(60000, "GET", "/global/config")).toBe("ok")
   })
 
+  // On Windows CI the desktop window's config read was once placed under the engine and refused as an engine child
+  test("a peer placed under the engine at first is looked up again", async () => {
+    let calls = 0
+    setPeerPidLookupForTest({
+      async owners() {
+        return [{ localAddr: "127.0.0.1", localPort: 4096, remoteAddr: "127.0.0.1", remotePort: 60000, pid: 22 }]
+      },
+      async parentPid(pid) {
+        if (pid !== 22) return pid === 50 ? 11 : 1
+        calls++
+        return calls === 1 ? 50 : 11
+      },
+    })
+    const result = await runWithPeer({ address: "127.0.0.1", port: 60000 }, () =>
+      authorizeLocalRequest({
+        method: "GET",
+        path: "/global/config",
+        headers: basic(),
+        secret,
+        username,
+        parentPid: 11,
+        engine: 50,
+        listenPort: 4096,
+      }),
+    )
+    expect(result).toBe("ok")
+  })
+
   test("denies without throwing when the parent process lookup fails", async () => {
     setPeerPidLookupForTest({
       async owners() {
