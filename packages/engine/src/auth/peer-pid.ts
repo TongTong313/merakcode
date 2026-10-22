@@ -30,6 +30,11 @@ const parentCache = new Map<number, number | undefined>()
 
 export function setPeerPidLookupForTest(next: PeerPidLookup | undefined): void {
   lookup = next ?? platformLookup()
+  refreshPeerLookup()
+}
+
+/** Drops cached connections and parents, so the next lookup sees connections and processes that appeared since */
+export function refreshPeerLookup(): void {
   ownerCache = undefined
   windowsParentMapCache = undefined
   parentCache.clear()
