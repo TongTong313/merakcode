@@ -160,6 +160,43 @@ describe("authorizeLocalRequest", () => {
     expect(result).toBe("ok")
   })
 
+  // Windows keeps the parent pid a process was created with, and reuses pids: high up the desktop window's chain an
+  // old process still named a long-gone parent whose pid the engine had been given, so the window was refused as an
+  // engine child and showed "Can't reach the local service". A real parent is always created before its child.
+  test("an ancestor's stale parent pid that now belongs to the engine does not make the window an engine child", async () => {
+    const parents: Record<number, number> = { 22: 11, 11: 5, 5: 3, 3: 50, 50: 11, 77: 50 }
+    const created: Record<number, number> = { 3: 100, 5: 200, 11: 300, 22: 350, 50: 400, 77: 500 }
+    setPeerPidLookupForTest({
+      async owners() {
+        return [
+          { localAddr: "127.0.0.1", localPort: 4096, remoteAddr: "127.0.0.1", remotePort: 60000, pid: 22 },
+          { localAddr: "127.0.0.1", localPort: 4096, remoteAddr: "127.0.0.1", remotePort: 60002, pid: 77 },
+        ]
+      },
+      async parentPid(pid) {
+        return parents[pid]
+      },
+      async created(pid) {
+        return created[pid]
+      },
+    })
+    const from = (port: number) =>
+      runWithPeer({ address: "127.0.0.1", port }, () =>
+        authorizeLocalRequest({
+          method: "GET",
+          path: "/global/config",
+          headers: basic(),
+          secret,
+          username,
+          parentPid: 11,
+          engine: 50,
+          listenPort: 4096,
+        }),
+      )
+    expect(await from(60000)).toBe("ok")
+    expect(await from(60002)).toBe("forbidden")
+  })
+
   test("denies without throwing when the parent process lookup fails", async () => {
     setPeerPidLookupForTest({
       async owners() {
