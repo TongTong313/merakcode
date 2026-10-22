@@ -8,7 +8,7 @@ import path from "path"
 import fs from "fs/promises"
 import fsSync from "fs"
 import { fileURLToPath } from "url"
-import { afterAll } from "vitest"
+import { afterAll, afterEach, beforeEach } from "vitest"
 
 const dir = path.join(os.tmpdir(), "merakcode-test-data-" + process.pid)
 // Remove before creating: the directory is named after the pid. If a test process exits before afterAll (crash or
@@ -39,6 +39,48 @@ process.env["MERAKCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 
 const root = path.join(dir, "root")
 process.env["MERAKCODE_HOME"] = root
+
+/** Warnings and errors from log files written since `since`, newest last, a few per file */
+function problems(since: number) {
+  const logs = path.join(root, "logs")
+  const files = (() => {
+    try {
+      return fsSync.readdirSync(logs, { recursive: true, encoding: "utf8" })
+    } catch {
+      return []
+    }
+  })()
+  const out: string[] = []
+  for (const name of files.filter((file) => file.endsWith(".ndjson"))) {
+    const file = path.join(logs, name)
+    if (fsSync.statSync(file).mtimeMs < since) continue
+    const lines = fsSync
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .flatMap((line) => {
+        try {
+          const record = JSON.parse(line) as { level?: string; timestamp?: string; service?: string; message?: string }
+          return record.level === "WARN" || record.level === "ERROR" || record.level === "FATAL" ? [line] : []
+        } catch {
+          return []
+        }
+      })
+    if (lines.length) out.push(`--- ${name}`, ...lines.slice(-40))
+  }
+  return out.join("\n")
+}
+
+// A failed test prints what the engines it started logged as warnings and errors. The log directory is removed with
+// this test process, so on CI nothing else would be left to explain a crashed or refusing engine.
+let started = 0
+beforeEach(() => {
+  started = Date.now()
+})
+afterEach((context) => {
+  if (context.task.result?.state !== "fail") return
+  const found = problems(started)
+  if (found) process.stderr.write(`\nEngine warnings and errors during "${context.task.name}":\n${found}\n`)
+})
 // Engines started by the tests behave the same on every system (the sandbox has its own tests)
 process.env["MERAKCODE_SANDBOX_MODE"] = "off"
 // Share the model catalog fixture with the engine tests
