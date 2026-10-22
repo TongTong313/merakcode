@@ -866,6 +866,8 @@ type RuleChange = Parameters<ReturnType<typeof client>["ruleManagement"]["change
 
 function Rules() {
   const [snapshot, { mutate, refetch }] = createResource(() => call(client(project()).ruleManagement.read()))
+  // Creating a file needs the targets from the snapshot; before it loads, a click on New did nothing at all
+  const loaded = () => snapshot.state === "ready" || snapshot.state === "refreshing"
   const [draft, setDraft] = createSignal("")
   const [filename, setFilename] = createSignal("")
   /** Entry being edited: user:<index> for a personal rule, the file path for a rule file */
@@ -1022,9 +1024,9 @@ function Rules() {
             placeholder={t("settings.rules.filenamePlaceholder")}
             value={filename()}
             onInput={(event) => setFilename(event.currentTarget.value)}
-            onKeyDown={(event) => event.key === "Enter" && filename().trim() && void create()}
+            onKeyDown={(event) => event.key === "Enter" && filename().trim() && loaded() && void create()}
           />
-          <button class="button secondary" disabled={!filename().trim()} onClick={() => void create()}>
+          <button class="button secondary" disabled={!filename().trim() || !loaded()} onClick={() => void create()}>
             {t("settings.rules.create")}
           </button>
         </div>
