@@ -75,8 +75,11 @@ export const LogsCommand = cmd({
   handler: async (args) => {
     const root = resolveLogRoot()
     const json = args.json ?? false
+    const own = Log.file()
     const runs = listRuns(root)
-      .filter((run) => run.id !== Log.id())
+      // This command's own log file exists before its first record (the one carrying the run id) is written, so it
+      // is matched by path too; otherwise --tail can pick it as the newest run and follow an empty file
+      .filter((run) => run.id !== Log.id() && !run.files.includes(own))
       .filter((run) => !args.component || run.component === args.component)
 
     if (args.open) {
