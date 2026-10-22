@@ -1,4 +1,5 @@
 import * as fs from "fs"
+import * as os from "os"
 import * as path from "path"
 import crypto from "node:crypto"
 import { createRequire } from "node:module"
@@ -158,14 +159,15 @@ function cleanupStaleCanvasCache(tag: string, currentVersion: string): void {
   }
 }
 
-// Holding the module (even though dynamic import is cached) gives direct access to DOMMatrix/ImageData/Path2D for
-// the polyfill.
+// Holding the module (even though require is cached) gives direct access to DOMMatrix/ImageData/Path2D for the
+// polyfill.
 let canvasModule: CanvasModule | null = null
 let canvasGlobalsReady = false
 
 /**
  * Prepares the canvas runtime for pdfjs: puts the native library in place (sets NAPI_RS_NATIVE_LIBRARY_PATH),
- * imports canvas and installs DOMMatrix/ImageData/Path2D on globalThis.
+ * imports canvas without its system fonts (rendering loads them, see loadSystemFonts) and installs
+ * DOMMatrix/ImageData/Path2D on globalThis.
  *
  * Why polyfill here: pdfjs-dist's pdf.mjs requires "@napi-rs/canvas" at **module top level** (on import) to install
  * DOMMatrix/ImageData/Path2D on globalThis. That happens once and is not retried at render time. If canvas is not in
@@ -190,12 +192,12 @@ export async function prepareCanvasForPdfjs(
   if (!result.ok) return result
 
   if (!canvasModule) {
-    const mod = await loadCanvasModule(result.entry).catch((error) => {
-      canvasModule = null
-      return error instanceof Error ? error : new Error(String(error))
-    })
-    if (mod instanceof Error) return { ok: false, reason: `failed to load @napi-rs/canvas: ${mod.message}` }
-    canvasModule = mod
+    try {
+      canvasModule = loadCanvasModule(result.entry)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, reason: `failed to load @napi-rs/canvas: ${message}` }
+    }
   }
 
   // pdfjs does the same at top level but its timing is unreliable, so install the globals before pdfjs loads.
@@ -212,13 +214,40 @@ export async function prepareCanvasForPdfjs(
   return { ok: true, canvas: canvasModule }
 }
 
-async function loadCanvasModule(entry?: string): Promise<CanvasModule> {
-  if (entry) {
-    const require = createRequire(import.meta.url)
-    return require(entry) as CanvasModule
+function loadCanvasModule(entry?: string): CanvasModule {
+  // On import canvas reads every installed font synchronously, which freezes the engine for seconds on a cold disk,
+  // and only rendering needs them (see loadSystemFonts). require is synchronous, so the variable is restored before
+  // the engine can start another process that would inherit it.
+  const previous = process.env.DISABLE_SYSTEM_FONTS_LOAD
+  process.env.DISABLE_SYSTEM_FONTS_LOAD = "1"
+  try {
+    return createRequire(import.meta.url)(entry ?? CANVAS_MAIN_PACKAGE) as CanvasModule
+  } finally {
+    if (previous === undefined) delete process.env.DISABLE_SYSTEM_FONTS_LOAD
+    else process.env.DISABLE_SYSTEM_FONTS_LOAD = previous
   }
-  const mod = await import("./canvas-runtime")
-  return mod.canvas as CanvasModule
+}
+
+let systemFontsLoaded = false
+
+/**
+ * Loads the fonts that loadCanvasModule skips: the system fonts and the user font directory canvas would add on
+ * import. pdfjs draws text in fonts a PDF does not embed with them, so this runs before the first page is rendered.
+ */
+export function loadSystemFonts(canvas: CanvasModule) {
+  if (systemFontsLoaded) return
+  systemFontsLoaded = true
+  // canvas calls this on import but leaves it out of its type declarations
+  const fonts = canvas.GlobalFonts as CanvasModule["GlobalFonts"] & { loadSystemFonts(): number }
+  fonts.loadSystemFonts()
+  for (const dir of userFontDirs()) fonts.loadFontsFromDir(dir)
+}
+
+function userFontDirs() {
+  const home = os.homedir()
+  if (process.platform === "win32") return [path.join(home, "AppData", "Local", "Microsoft", "Windows", "Fonts")]
+  if (process.platform === "darwin") return [path.join(home, "Library", "Fonts")]
+  return ["/usr/local/share/fonts", path.join(home, ".fonts")]
 }
 
 async function ensureCachedPackage(opts: {
