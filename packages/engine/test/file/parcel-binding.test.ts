@@ -17,9 +17,9 @@ test("file watcher native module loads under Node", async () => {
   expect(result.text().trim(), result.stderr.toString()).toBe("function")
 })
 
-// On Windows, unsubscribing while events for the directory are still arriving makes the @parcel/watcher native module
-// touch freed memory and crash (0xC0000005). Every config write rebuilds the instance and resubscribes the config
-// directory while the write itself produces events. Runs in a child process so a crash shows up as the exit code.
+// Unsubscribing while events for the directory are still arriving crashes the @parcel/watcher native module on
+// Windows (0xC0000005) and macOS (SIGSEGV, exit 139). Every config write rebuilds the instance and resubscribes the
+// config directory while the write itself produces events. Runs in a child process so a crash shows up as the exit code.
 test("repeatedly unsubscribing and resubscribing while the directory changes does not crash", async () => {
   await using tmp = await tmpdir()
   const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
