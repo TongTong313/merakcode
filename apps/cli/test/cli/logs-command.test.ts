@@ -4,6 +4,7 @@
 import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
 import { Process } from "@merakcode/util/process"
 import { cli, tmpdir } from "../fixture/fixture"
 
@@ -92,14 +93,24 @@ test("--tail prints the last lines of the newest run and keeps following it", { 
   const proc = merak(tmp.path, tmp.root, "--tail", "1")
   const reader = proc.stdout!.getReader()
   let text = ""
-  const until = async (expected: string) => {
-    while (!text.includes(expected)) {
-      const chunk = await reader.read()
-      if (chunk.done) break
+  let errors = ""
+  void (async () => {
+    const stderr = proc.stderr!.getReader()
+    for (let chunk = await stderr.read(); !chunk.done; chunk = await stderr.read())
+      errors += new TextDecoder().decode(chunk.value)
+  })()
+  // On a timeout, say what the command printed and which log files it could see: it fails on macOS CI only
+  const until = async (expected: string, ms: number) => {
+    const deadline = Date.now() + ms
+    while (!text.includes(expected) && Date.now() < deadline) {
+      const chunk = await Promise.race([reader.read(), delay(deadline - Date.now()).then(() => undefined)])
+      if (!chunk || chunk.done) break
       text += new TextDecoder().decode(chunk.value)
     }
+    const files = await fs.readdir(tmp.root, { recursive: true }).catch(() => [])
+    expect(text, `stderr:\n${errors}\nfiles:\n${files.join("\n")}`).toContain(expected)
   }
-  await until("request completed")
+  await until("request completed", 40_000)
   expect(text).not.toContain("server started")
   const file = (await fs.readdir(path.join(tmp.root, "production", "server")))[0]!
   await fs.appendFile(
@@ -116,8 +127,7 @@ test("--tail prints the last lines of the newest run and keeps following it", { 
       pid: 102,
     }) + "\n",
   )
-  await until("appended later")
-  expect(text).toContain("appended later")
+  await until("appended later", 15_000)
   proc.kill()
   await proc.exited
 })
