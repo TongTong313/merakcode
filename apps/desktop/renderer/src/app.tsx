@@ -14,6 +14,7 @@ import { Palette } from "./features/palette/palette"
 import { Settings } from "./features/settings/settings"
 import { Notify } from "./features/shell/notify"
 import { pickFolder, Sidebar } from "./features/shell/sidebar"
+import { Startup } from "./features/shell/startup"
 
 /** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, "," settings, J terminal, B side panel */
 function Shortcuts() {
@@ -64,7 +65,7 @@ function Warnings() {
 }
 
 function Root(props: { children?: JSX.Element }) {
-  const [ready] = createResource(async () => {
+  const [ready, { refetch }] = createResource(async () => {
     await Promise.all([bootstrap(), restoreLayout()])
     return true
   })
@@ -72,16 +73,7 @@ function Root(props: { children?: JSX.Element }) {
   createEffect(() => ready.error && log("error", "bootstrap failed", { error: String(ready.error) }))
   return (
     <>
-      <Show
-        when={ready()}
-        fallback={
-          <div class="splash">
-            <Show when={ready.error} fallback={<img src="/logo.svg" alt="" class="splash-logo" />}>
-              <div class="error-card">{t("error.offline")}</div>
-            </Show>
-          </div>
-        }
-      >
+      <Startup ready={ready} onRetry={() => void refetch()}>
         {props.children}
         <Shortcuts />
         <Warnings />
@@ -91,8 +83,8 @@ function Root(props: { children?: JSX.Element }) {
         <Show when={ui.settings}>
           <Settings />
         </Show>
-      </Show>
-      <Show when={!state.connected && ready()}>
+      </Startup>
+      <Show when={!state.connected && ready.state === "ready"}>
         <div class="connection" role="status">
           {t("connection.lost")}
         </div>

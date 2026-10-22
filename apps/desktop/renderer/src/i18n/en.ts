@@ -544,4 +544,5 @@ export const en: Record<keyof typeof zh, string> = {
   "error.request": "Request failed: {message}",
   "error.copyDetails": "Copy details (attach them when reporting a problem)",
   "error.offline": "Can't reach the local service",
+  "error.retry": "Retry",
 }
