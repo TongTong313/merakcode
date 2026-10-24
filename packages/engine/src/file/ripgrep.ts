@@ -169,8 +169,8 @@ export namespace Ripgrep {
 
   /**
    * rg download timeout. fetch never times out by default: offline or on an intranet without GitHub access the request
-   * hangs, and the first tool call that needs rg (glob / grep / ls) hangs with it without any feedback. The caller
-   * catches the timeout and falls back (file listing uses the walk scan), so failing fast beats waiting forever.
+   * hangs, and content search (grep), which waits for rg, hangs with it without any feedback. File listing does not wait:
+   * it walks the folders until rg is there. The caller catches the timeout, so failing fast beats waiting forever.
    */
   const DOWNLOAD_TIMEOUT_MS = 15_000
 
@@ -297,34 +297,39 @@ export namespace Ripgrep {
     yield* walk(input.cwd, 0, "")
   }
 
-  const state = lazy(async (): Promise<RipgrepState> => {
+  const downloaded = () => path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
+
+  /** rg on PATH or downloaded before, found without touching the network */
+  async function installed() {
     const system = Process.which("rg")
     if (system) {
       const stat = await fs.stat(system).catch(() => undefined)
-      if (stat?.isFile()) return { filepath: system }
+      if (stat?.isFile()) return system
       log.warn("which returned invalid rg path", { filepath: system })
     }
-    const filepath = path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
+    const filepath = downloaded()
+    return (await Filesystem.isFile(filepath)) ? filepath : undefined
+  }
 
-    if (!(await Filesystem.isFile(filepath))) {
-      // Offline or CI setups can skip the download explicitly: treated as "no rg" without touching the network, the
-      // same fallback as a failed download (file listing uses the walk scan, content search is unavailable)
-      if (process.env["MERAKCODE_RIPGREP_DISABLE_DOWNLOAD"] === "1") {
-        log.info(
-          "ripgrep download skipped (MERAKCODE_RIPGREP_DISABLE_DOWNLOAD=1), file listing falls back to walk scan",
-        )
-        return { filepath: undefined }
-      }
-      try {
-        await fs.mkdir(Global.Path.bin, { recursive: true })
-        await downloadRipgrep(filepath)
-      } catch (error) {
-        log.warn("ripgrep unavailable: file listing falls back to walk scan, content search is disabled", {
-          filepath,
-          error,
-        })
-        return { filepath: undefined }
-      }
+  const state = lazy(async (): Promise<RipgrepState> => {
+    const found = await installed()
+    if (found) return { filepath: found }
+    const filepath = downloaded()
+    // Offline or CI setups can skip the download explicitly: treated as "no rg" without touching the network, the
+    // same fallback as a failed download (file listing uses the walk scan, content search is unavailable)
+    if (process.env["MERAKCODE_RIPGREP_DISABLE_DOWNLOAD"] === "1") {
+      log.info("ripgrep download skipped (MERAKCODE_RIPGREP_DISABLE_DOWNLOAD=1), file listing falls back to walk scan")
+      return { filepath: undefined }
+    }
+    try {
+      await fs.mkdir(Global.Path.bin, { recursive: true })
+      await downloadRipgrep(filepath)
+    } catch (error) {
+      log.warn("ripgrep unavailable: file listing falls back to walk scan, content search is disabled", {
+        filepath,
+        error,
+      })
+      return { filepath: undefined }
     }
 
     if (!(await Filesystem.isFile(filepath))) {
@@ -365,8 +370,11 @@ export namespace Ripgrep {
       })
     }
 
-    const rg = await filepath()
+    // Listing files does not wait for a download, which can take until its timeout when GitHub is out of reach: it
+    // walks the folders now and leaves rg downloading for content search and the listings after it
+    const rg = await installed()
     if (!rg) {
+      void filepath()
       yield* walkFiles(input)
       return
     }
