@@ -10,7 +10,7 @@
  *   wholesale, to avoid racing with events
  */
 import { batch } from "solid-js"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import type {
   Config,
   ConfigWarning,
@@ -153,11 +153,16 @@ export function connect() {
   return () => abort.abort()
 }
 
+/**
+ * After reconnecting, what the engine reports replaces what was known: it may have restarted, so a session that was
+ * running is idle unless reported again, and open sessions reload their messages. setState merges objects, so the old
+ * entries are replaced with reconcile rather than set to {}.
+ */
 async function resync() {
-  await Promise.all(state.folders.map((folder) => refresh(folder.directory).catch(() => {})))
-  // Reload messages of sessions that were open
   const opened = Object.keys(state.loaded).filter((id) => state.loaded[id])
-  setState("loaded", {})
+  setState("loaded", reconcile({}))
+  setState("sessions", "session_status", reconcile({}))
+  await Promise.all(state.folders.map((folder) => refresh(folder.directory).catch(() => {})))
   await Promise.all(opened.map((id) => messages(id).catch(() => {})))
 }
 
