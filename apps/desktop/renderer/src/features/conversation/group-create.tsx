@@ -40,6 +40,8 @@ export function GroupCreate(props: {
         setTitle("")
         setSeats([leaderDraft()])
         setCopied(undefined)
+        // Products may have changed since the last time: none are offered until they are checked again
+        setProducts([])
         const failed = (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }) })
         void call(client(props.directory).collaboration.products()).then(setProducts).catch(failed)
         void call(client(props.directory).collaboration.list()).then(setGroups).catch(failed)
