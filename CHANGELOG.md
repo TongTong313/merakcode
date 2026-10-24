@@ -6,6 +6,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-24
+
 ### Added
 
 - Collaboration groups: MerakCode leads, and Claude Code, Codex, OpenCode and other CLIs join as members. Members are mentioned with `@`, listed in a member column, tracked in a group todo, and a group can be created with `Ctrl+G` or copied from another one.
