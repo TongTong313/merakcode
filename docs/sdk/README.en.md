@@ -555,14 +555,14 @@ If starting fails you get an `EngineStartError`: `output` holds the engine's las
 
 A UI needs to turn the stream of events into "which sessions are there, what messages does each have, what's waiting for approval". `@merakcode/sdk/store` does that. It isn't tied to any UI framework and works in browsers:
 
-| Function / type              | Meaning                                                                                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createSessionsState()`      | A new empty state (type `SessionsState`)                                                                                                           |
-| `applyEvent(state, event)`   | Merges one event into the state, changing the object you pass in. Returns a `Change`: `insert`, `update`, `remove`, `replace`, `none` or `ignored` |
-| `activity(state, sessionID)` | What a session is doing now (`Activity`): `approval`, `question`, `running` or `idle`. Child sessions count toward their top-level session         |
-| `rootOf(state, sessionID)`   | Follows `parentID` up to the top-level session                                                                                                     |
-| `forgetSession(state, id)`   | Drops everything cached for a session                                                                                                              |
-| `search(list, id, key)`      | Binary search in a list sorted by id; returns `{ found, index }`                                                                                   |
+| Function / type              | Meaning                                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `createSessionsState()`      | A new empty state (type `SessionsState`)                                                                                                                                                                     |
+| `applyEvent(state, event)`   | Merges one event into the state, changing the object you pass in. Returns a `Change`: `insert`, `update`, `remove`, `replace`, `none` or `ignored`                                                           |
+| `rootOf(state, sessionID)`   | Follows `parentID` up to the top-level session                                                                                                                                                               |
+| `forgetSession(state, id)`   | Drops everything cached for a session                                                                                                                                                                        |
+| `search(list, id, key)`      | Binary search in a list sorted by id; returns `{ found, index }`                                                                                                                                             |
+| `activity(state, sessionID)` | What a session is doing now (`Activity`): `approval`, `question`, `running` or `idle`. Child sessions count toward their top-level session, except background ones (such as memory extraction after a reply) |
 
 Every list in the state is sorted by id (engine ids increase over time). Updates merge in place and unchanged child objects keep their references, so UI frameworks only redraw what changed. With Solid you can write `setStore(produce((draft) => applyEvent(draft, event)))`.
 

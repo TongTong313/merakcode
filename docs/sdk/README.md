@@ -555,14 +555,14 @@ await engine.close()
 
 做界面时，需要把源源不断的事件整理成"有哪些会话、每个会话有哪些消息、哪些在等审批"。`@merakcode/sdk/store` 就做这件事，不依赖任何界面框架，浏览器里也能用：
 
-| 函数 / 类型                  | 说明                                                                                                                        |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `createSessionsState()`      | 新建一个空状态（类型 `SessionsState`）                                                                                      |
-| `applyEvent(state, event)`   | 把一个事件合并进状态，直接修改传入的对象。返回 `Change`：`insert`、`update`、`remove`、`replace`、`none`、`ignored`         |
-| `activity(state, sessionID)` | 会话现在的状态（`Activity`）：`approval`（等审批）、`question`（等回答）、`running`、`idle`。子会话的状态算在最上层会话头上 |
-| `rootOf(state, sessionID)`   | 顺着 `parentID` 找到最上层会话                                                                                              |
-| `forgetSession(state, id)`   | 删掉某个会话缓存的全部数据                                                                                                  |
-| `search(list, id, key)`      | 在按 id 排好序的列表里二分查找，返回 `{ found, index }`                                                                     |
+| 函数 / 类型                  | 说明                                                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createSessionsState()`      | 新建一个空状态（类型 `SessionsState`）                                                                                                                              |
+| `applyEvent(state, event)`   | 把一个事件合并进状态，直接修改传入的对象。返回 `Change`：`insert`、`update`、`remove`、`replace`、`none`、`ignored`                                                 |
+| `rootOf(state, sessionID)`   | 顺着 `parentID` 找到最上层会话                                                                                                                                      |
+| `forgetSession(state, id)`   | 删掉某个会话缓存的全部数据                                                                                                                                          |
+| `search(list, id, key)`      | 在按 id 排好序的列表里二分查找，返回 `{ found, index }`                                                                                                             |
+| `activity(state, sessionID)` | 会话现在的状态（`Activity`）：`approval`（等审批）、`question`（等回答）、`running`、`idle`。子会话的状态算在最上层会话头上，后台子会话（比如回复后的记忆提取）不算 |
 
 状态里的列表都按 id 排序（引擎的 id 随时间递增）。更新时原地合并，没变的子对象保持原来的引用，所以界面框架只会重画变了的部分。用 Solid 时可以这样写：`setStore(produce((draft) => applyEvent(draft, event)))`。
 

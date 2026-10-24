@@ -199,6 +199,8 @@ export namespace AutoDream {
         parentID: input.session.id,
         title: DREAM_TITLE,
         permission: MemoryAccess.extractorRules(),
+        // Runs after the reply; the conversation does not read as running while it does
+        metadata: { background: true },
       })
       const { SessionRunner } = await import("../../session/runner")
       await SessionRunner.promptGenerated({

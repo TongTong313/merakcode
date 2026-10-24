@@ -209,7 +209,8 @@ export type Activity = "approval" | "question" | "running" | "idle"
 
 /**
  * Awaiting approval > awaiting an answer > running > idle. Permissions, questions and activity of child sessions
- * (subagents, workflows) count toward the root conversation.
+ * (subagents, workflows) count toward the root conversation; a background child (memory extraction after a reply)
+ * does not keep it running.
  */
 export function activity(state: SessionsState, sessionID: string): Activity {
   const ours = (request: { sessionID: string; root?: string }) =>
@@ -217,7 +218,12 @@ export function activity(state: SessionsState, sessionID: string): Activity {
   if (Object.values(state.permission).some((list) => list.some(ours))) return "approval"
   if (Object.values(state.question).some((list) => list.some(ours))) return "question"
   const running = Object.entries(state.session_status).some(
-    ([key, status]) => status.type !== "idle" && rootOf(state, key) === sessionID,
+    ([key, status]) => status.type !== "idle" && !background(state, key) && rootOf(state, key) === sessionID,
   )
   return running ? "running" : "idle"
+}
+
+function background(state: SessionsState, sessionID: string) {
+  const found = search(state.session, sessionID, id)
+  return found.found && state.session[found.index]!.metadata?.background === true
 }

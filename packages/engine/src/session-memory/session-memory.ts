@@ -120,6 +120,8 @@ export namespace SessionMemory {
       parentID: input.session.id,
       title: TITLE,
       permission: sessionMemoryRules(),
+      // Runs after the reply; the conversation does not read as running while it does
+      metadata: { background: true },
     })
     const { SessionRunner } = await import("../session/runner")
     await SessionRunner.promptGenerated({
