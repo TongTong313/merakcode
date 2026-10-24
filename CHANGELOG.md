@@ -6,11 +6,19 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop development no longer restarts the engine when its code changes; use Help › Restart Local Service.
+
 ### Fixed
 
 - The sidebar no longer shows a conversation as running while memory is extracted in the background after a reply.
 - A conversation no longer stays running after the local service restarts.
 - Without GitHub access, files are found right away (in `@` references, glob and ls) instead of after the ripgrep download times out.
+
+### 变更
+
+- 桌面端开发时，引擎代码改完不再自动重启，用「帮助 › 重启本地服务」。
 
 ### 修复
 
