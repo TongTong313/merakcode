@@ -131,9 +131,10 @@ test("a one-shot command is only looked for, never run, to tell whether it is th
   await expect(fs.access(ran)).rejects.toThrow()
 }, 30_000)
 
-test("a claude.exe outside PATH is still found", async () => {
+test("a CLI in an install folder outside PATH is still found", async () => {
   await using tmp = await tmpdir()
-  const file = path.join(tmp.path, "claude.exe")
+  // As Claude Code's installer leaves it in ~/.local/bin
+  const file = path.join(tmp.path, process.platform === "win32" ? "claude.exe" : "claude")
   await fs.writeFile(file, "")
   expect(whichInstalled("claude", () => null, [tmp.path])).toBe(file)
 })
