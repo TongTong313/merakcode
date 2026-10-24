@@ -3,13 +3,17 @@ import { storage } from "../lib/bridge"
 
 export type Tab = "review" | "code" | "browser"
 export type SettingsSection =
-  "general" | "models" | "permissions" | "mcp" | "skills" | "plugins" | "rules" | "memory" | "about"
+  "general" | "models" | "permissions" | "mcp" | "collaboration" | "skills" | "plugins" | "rules" | "memory" | "about"
 
 /** UI layout state; panel width, tab and terminal height are saved and restored on the next launch */
 type UI = {
   settings?: SettingsSection
   palette: boolean
+  /** The new-team dialog is open */
+  newTeam: boolean
   panel: boolean
+  /** The member column of a group conversation shows only avatars */
+  membersCollapsed: boolean
   tab: Tab
   /** The review fills the whole window */
   maximized: boolean
@@ -24,7 +28,9 @@ type UI = {
 
 export const [ui, setUi] = createStore<UI>({
   palette: false,
+  newTeam: false,
   panel: false,
+  membersCollapsed: false,
   tab: "review",
   maximized: false,
   terminal: false,
@@ -34,7 +40,7 @@ export const [ui, setUi] = createStore<UI>({
 })
 
 const KEY = "layout"
-type Saved = Pick<UI, "panel" | "tab" | "panelWidth" | "terminalHeight">
+type Saved = Pick<UI, "panel" | "membersCollapsed" | "tab" | "panelWidth" | "terminalHeight">
 
 export async function restoreLayout() {
   const saved = await storage.get<Partial<Saved>>(KEY, {})
@@ -42,7 +48,13 @@ export async function restoreLayout() {
 }
 
 export function saveLayout() {
-  void storage.set(KEY, { panel: ui.panel, tab: ui.tab, panelWidth: ui.panelWidth, terminalHeight: ui.terminalHeight })
+  void storage.set(KEY, {
+    panel: ui.panel,
+    membersCollapsed: ui.membersCollapsed,
+    tab: ui.tab,
+    panelWidth: ui.panelWidth,
+    terminalHeight: ui.terminalHeight,
+  })
 }
 
 /** Opens a file in the side panel's code tab (from the review or a file-edit card) */

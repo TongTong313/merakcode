@@ -6,6 +6,7 @@ import Plus from "lucide-solid/icons/plus"
 import Settings from "lucide-solid/icons/settings"
 import SquareTerminal from "lucide-solid/icons/square-terminal"
 import TextSearch from "lucide-solid/icons/text-search"
+import Users from "lucide-solid/icons/users"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
@@ -80,6 +81,13 @@ export function Palette() {
         icon: Plus,
         group: t("palette.commands"),
         run: () => directory() && navigate(sessionPath(directory()!)),
+      },
+      {
+        id: "team",
+        label: t("sidebar.group"),
+        icon: Users,
+        group: t("palette.commands"),
+        run: () => directory() && setUi("newTeam", true),
       },
       {
         id: "settings",

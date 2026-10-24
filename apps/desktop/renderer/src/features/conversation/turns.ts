@@ -50,6 +50,55 @@ export function blocks(parts: readonly Part[]): Block[] {
   return result
 }
 
+/** A stretch of a group chat turn: the leader's own blocks, or one member's delegate call */
+export type Segment = { kind: "leader"; blocks: Block[] } | { kind: "seat"; part: ToolPart }
+
+/** Splits the leader's parts at each delegate call, so every member's reply reads as a message of its own */
+export function segments(parts: readonly Part[]): Segment[] {
+  const result: Segment[] = []
+  let pending: Part[] = []
+  const flush = () => {
+    const list = blocks(pending)
+    if (list.length) result.push({ kind: "leader", blocks: list })
+    pending = []
+  }
+  for (const part of parts) {
+    if (part.type !== "tool" || part.tool !== "delegate") {
+      pending.push(part)
+      continue
+    }
+    flush()
+    result.push({ kind: "seat", part })
+  }
+  flush()
+  return result
+}
+
+/**
+ * Members whose delegation has started and not finished; a queued one is still waiting. A stopped turn leaves its calls
+ * reading as running, so nobody counts as working once the turn is over.
+ */
+export function working(parts: readonly Part[], busy: boolean) {
+  const ids = new Set<string>()
+  if (!busy) return ids
+  for (const part of parts) {
+    if (part.type !== "tool" || part.tool !== "delegate" || part.state.status !== "running") continue
+    const metadata = part.state.metadata ?? {}
+    if (typeof metadata.seatID === "string" && metadata.phase !== "queued") ids.add(metadata.seatID)
+  }
+  return ids
+}
+
+/** Events by turn: slot i holds the events before turn i starts, the last slot those after the last turn started */
+export function eventsByTurn<T extends { at: number }>(events: readonly T[], starts: readonly number[]): T[][] {
+  const slots: T[][] = [...starts.map(() => []), []]
+  for (const event of events) {
+    const index = starts.findIndex((start) => start > event.at)
+    slots[index < 0 ? starts.length : index]!.push(event)
+  }
+  return slots
+}
+
 /** How many files an exploration step read and how many searches it ran */
 export function explored(parts: readonly ToolPart[]) {
   const reads = new Set(

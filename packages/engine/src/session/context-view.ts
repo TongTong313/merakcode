@@ -20,6 +20,7 @@ import { LLM } from "./llm"
 import { Message } from "./message"
 import { applyReadLifecycle, getConfiguredReadLifecycleConfig } from "./read-lifecycle"
 import { SystemPrompt } from "./system"
+import { leaderContext } from "../collaboration/context"
 
 export namespace SessionContextView {
   const PREFLIGHT_SAFETY_MARGIN = 2_000
@@ -143,6 +144,8 @@ export namespace SessionContextView {
       alwaysRules,
       catalogRules,
       activeRules,
+      group,
+      git,
     ] = await Promise.all([
       SystemPrompt.userContext(),
       SystemPrompt.systemContext(input.model),
@@ -159,10 +162,14 @@ export namespace SessionContextView {
         agent: input.agent.name,
         messages: deltaMessages,
       }),
+      leaderContext(input.sessionID),
+      SystemPrompt.gitStatus(),
     ])
     // Subdirectory instructions go into user-context, not system: a system prefix that changes every turn breaks the
-    // prompt cache.
-    const userContext = [...baseUserContext, ...reaffirm, ...activeRules.blocks]
+    // prompt cache. For the same reason, context that changes from step to step (git status, the group's todo) goes
+    // after the history rather than before it, so the history stays a cached prefix.
+    const userContext = [...baseUserContext, ...reaffirm, ...activeRules.blocks, ...group.roster]
+    const tailContext = [...git, ...group.state]
     // The input budget depends on capacity, so applyToProjection runs after Promise.all.
     const inputBudget = SessionContextBudget.resolveInputBudgetConfig(capacity.usable, inputBudgetCfg)
     const toolResults = SessionContextBudget.applyToProjection({
@@ -195,7 +202,8 @@ export namespace SessionContextView {
       ...(await Message.toModelMessages(deltaMessages, input.model)),
     ]
     const extraMessages = input.extraMessages ?? []
-    const messages = [...userContextMessages, ...extraMessages, ...contextMessages]
+    const tailMessages = toUserContextMessages(tailContext)
+    const messages = attachTail([...userContextMessages, ...extraMessages, ...contextMessages], tailMessages)
     const rules = await RulesPrompt.snapshot({
       agent: input.agent.name,
       sessionID: input.sessionID,
@@ -224,7 +232,7 @@ export namespace SessionContextView {
       context: {
         instructions: instructions.length,
         systemContext: systemContext.length,
-        userContext: userContext.length,
+        userContext: userContext.length + tailContext.length,
         extraSystem: input.extraSystem?.length ?? 0,
         extraMessages: extraMessages.length,
       },
@@ -233,7 +241,7 @@ export namespace SessionContextView {
         instructions: estimate({ system: instructions, messages: [] }),
         systemContext: estimate({ system: systemContext, messages: [] }),
         system: estimate({ system, messages: [] }),
-        userContext: estimate({ system: [], messages: userContextMessages }),
+        userContext: estimate({ system: [], messages: [...userContextMessages, ...tailMessages] }),
         tools: tools.standard.tokens,
         mcp: tools.mcp.tokens,
         messages: estimate({ system: [], messages: [...extraMessages, ...contextMessages] }),
@@ -300,6 +308,41 @@ export namespace SessionContextView {
         ],
       },
     ]
+  }
+
+  /**
+   * Attaches context that changes from step to step to the last message, after its own content: the user's request on
+   * the first step, the latest tool result after that. Everything before it stays a cached prefix, no message is
+   * added (some providers reject a user message right after a tool result), and the request stays the last user
+   * message.
+   */
+  function attachTail(messages: ModelMessage[], tail: ModelMessage[]): ModelMessage[] {
+    const reminder = tail[0]
+    const last = messages.at(-1)
+    if (!reminder || !last) return [...messages, ...tail]
+    const text = (reminder.content as { text: string }[])[0]!.text
+    const head = messages.slice(0, -1)
+    if (last.role === "user") {
+      const content = typeof last.content === "string" ? [{ type: "text" as const, text: last.content }] : last.content
+      return [...head, { ...last, content: [...content, { type: "text", text }] }]
+    }
+    const result = last.role === "tool" ? last.content.at(-1) : undefined
+    if (last.role !== "tool" || result?.type !== "tool-result") return [...messages, ...tail]
+    const output = withText(result.output, text)
+    if (!output) return [...messages, ...tail]
+    return [...head, { ...last, content: [...last.content.slice(0, -1), { ...result, output }] }]
+  }
+
+  type ToolOutput = Extract<
+    Extract<ModelMessage, { role: "tool" }>["content"][number],
+    { type: "tool-result" }
+  >["output"]
+
+  /** A tool output with text added after it, or undefined for an output that cannot carry text */
+  function withText(output: ToolOutput, text: string): ToolOutput | undefined {
+    if (output.type === "text" || output.type === "error-text")
+      return { ...output, value: `${output.value}\n\n${text}` }
+    if (output.type === "content") return { ...output, value: [...output.value, { type: "text", text }] }
   }
 
   export function estimate(input: { system: string[]; messages: ModelMessage[] }) {

@@ -16,7 +16,7 @@ import { Notify } from "./features/shell/notify"
 import { pickFolder, Sidebar } from "./features/shell/sidebar"
 import { Startup } from "./features/shell/startup"
 
-/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, "," settings, J terminal, B side panel */
+/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, G new team, "," settings, J terminal, B side panel */
 function Shortcuts() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -28,6 +28,7 @@ function Shortcuts() {
       const key = event.key.toLowerCase()
       if (key === "k") setUi("palette", !ui.palette)
       else if (key === "n" && directory()) navigate(sessionPath(directory()!))
+      else if (key === "g" && directory()) setUi("newTeam", true)
       else if (key === ",") setUi("settings", "general")
       else if (key === "j") setUi("terminal", !ui.terminal)
       else if (key === "b") togglePanel()

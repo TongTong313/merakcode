@@ -40,6 +40,7 @@ export namespace PermissionPolicy {
     lsp: allow,
     skill: allow,
     todowrite: allow,
+    delegate: allow,
     question: allow,
     plan_enter: allow,
     plan_exit: allow,

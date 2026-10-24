@@ -16,18 +16,21 @@
     "./store": "./src/store/index.ts",
     "./process": "./src/process/index.ts",
     "./plugin": "./src/plugin/index.ts",
+    "./adapter": "./src/adapter/index.ts",
     "./transcript": "./src/transcript/index.ts"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.99.0",
     "@merakcode/util": "workspace:*",
     "@tsconfig/node26": "catalog:",
+    "@types/cross-spawn": "catalog:",
     "@types/node": "catalog:",
     "esbuild": "catalog:",
     "typescript": "6.0.3",
     "vitest": "catalog:"
   },
   "dependencies": {
+    "cross-spawn": "catalog:",
     "undici": "catalog:",
     "zod": "catalog:"
   },

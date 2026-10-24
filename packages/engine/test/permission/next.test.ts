@@ -60,7 +60,7 @@ test("fromUserConfig - drops internal protocol keys and the deprecated task key,
 
 test("INTERNAL_PERMISSION_KEYS contains expected internal tools", () => {
   const keys = Array.from(PermissionNext.INTERNAL_PERMISSION_KEYS).sort()
-  expect(keys).toEqual(["doom_loop", "plan_enter", "plan_exit", "todowrite"])
+  expect(keys).toEqual(["delegate", "doom_loop", "plan_enter", "plan_exit", "todowrite"])
 })
 
 test("appendForbidNestedSubagentRule only adds a subagent deny", () => {

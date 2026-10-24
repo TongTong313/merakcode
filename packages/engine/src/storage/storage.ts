@@ -25,6 +25,10 @@ export namespace Storage {
     return JSON.parse(row.data) as T
   }
 
+  function has(key: string[]) {
+    return Database.query("SELECT 1 FROM record WHERE key = ?").get(join(key)) !== undefined
+  }
+
   function put(key: string[], content: unknown) {
     Database.query(
       "INSERT INTO record (key, data) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET data = excluded.data",
@@ -39,10 +43,10 @@ export namespace Storage {
     put(key, content)
   }
 
-  /** fn edits the stored value in place; read and write run in one transaction */
-  export async function update<T>(key: string[], fn: (draft: T) => void) {
+  /** fn edits the stored value in place; read and write run in one transaction. initial stands in for a missing key */
+  export async function update<T>(key: string[], fn: (draft: T) => void, initial?: () => T) {
     return Database.transaction(() => {
-      const draft = get<T>(key)
+      const draft = initial && !has(key) ? initial() : get<T>(key)
       fn(draft)
       put(key, draft)
       return draft

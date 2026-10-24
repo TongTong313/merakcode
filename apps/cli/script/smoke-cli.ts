@@ -169,6 +169,27 @@ async function smokeServer() {
       method: "POST",
     })
     await expectHttpStatus("provider list", `${base}/provider?directory=${directory}`, 200)
+
+    // The engine reads the adapter-generator skill from lib/skills/: its instructions name the examples there
+    const skills = (await fetch(`${base}/skill?directory=${directory}`)
+      .then((response) => response.json())
+      .catch(() => [])) as { name: string; content: string }[]
+    const generator = skills.find((item) => item.name === "adapter-generator")?.content ?? ""
+    if (generator.includes("example-claude-code.mjs")) ok("adapter-generator skill files")
+    else fail("adapter-generator skill files", generator ? "its instructions name no example" : "the skill is missing")
+
+    // The engine starts each built-in member adapter from lib/; whether a CLI is installed, the adapter must answer
+    const products = (await fetch(`${base}/collaboration/product?directory=${directory}`)
+      .then((response) => response.json())
+      .catch(() => [])) as { id: string; reason?: string }[]
+    const broken = ["claude", "codex", "opencode"].flatMap((id) => {
+      const reason = products.find((item) => item.id === id)?.reason ?? ""
+      return !products.some((item) => item.id === id) || /ended before it answered|did not answer/i.test(reason)
+        ? [`${id}: ${reason}`]
+        : []
+    })
+    if (broken.length) fail("member adapters through the engine", broken.join("; "))
+    else ok("member adapters through the engine")
   } finally {
     stop(proc)
     await proc.exited.catch(() => {})
@@ -228,8 +249,45 @@ if (sessions.code !== 0) {
   ok("session list (via SDK)")
 }
 
+// 6. Built-in member adapters, each its own program in lib/ started by the engine for a collaboration member, and the
+// adapter-generator skill's examples beside its library in lib/skills/, which run on their own: each must answer the
+// member protocol's handshake (the CLI it drives need not be installed)
+const packageRoot = path.resolve(path.dirname(bin), "..")
+const skillFolder = path.join(packageRoot, "lib", "skills", "adapter-generator")
+const adapters = [
+  ...["claude", "codex", "opencode", "command"].map((name) => [
+    `member adapter ${name}`,
+    path.join(packageRoot, "lib", `adapter-${name}.js`),
+  ]),
+  ...["claude-code", "codex", "opencode"].map((name) => [
+    `adapter-generator example ${name}`,
+    path.join(skillFolder, `example-${name}.mjs`),
+  ]),
+]
+for (const [label, script] of adapters) {
+  const node = path.join(packageRoot, "node", process.platform === "win32" ? "node.exe" : path.join("bin", "node"))
+  const child = Process.spawn([node, "--disable-warning=ExperimentalWarning", script], {
+    stdin: "pipe",
+    stdout: "pipe",
+  })
+  child.stdin?.end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocol: 1, product: { id: "smoke", title: label } },
+    }) + "\n",
+  )
+  const timer = setTimeout(() => stop(child), DEFAULT_TIMEOUT)
+  const out = await new Response(child.stdout).text()
+  clearTimeout(timer)
+  const answer = out.split("\n").find((line) => line.includes('"id":1'))
+  if (answer?.includes('"protocol":1')) ok(label)
+  else fail(label, out.trim() || `no answer (exit code ${await child.exited.catch(() => -1)})`)
+}
+
 if (process.env.MERAKCODE_SMOKE_MODEL === "1") {
-  // 6. Real model call: run "say hi" --format json, end to end.
+  // 7. Real model call: run "say hi" --format json, end to end.
   // spawn lets a timeout reap the process. Passes only with exit code 0 and a valid JSON event stream (every line
   // parses, at least one line).
   const MODEL_LABEL = 'run "say hi" --format json (real model)'

@@ -22,6 +22,7 @@ For the full list of endpoints, see the [API reference](reference.md).
 12. [Errors](#12-errors)
 13. [Logging and debugging](#13-logging-and-debugging)
 14. [Versions](#14-versions)
+15. [Member adapters (adapter)](#15-member-adapters-adapter)
 
 ## 1. Overview
 
@@ -43,6 +44,7 @@ The SDK has several entry points; pick what you need:
 | `@merakcode/sdk/store`      | Turns engine events into sessions, messages, approvals and so on, for building a UI. Works in browsers too  |
 | `@merakcode/sdk/plugin`     | Types and `tool()` for writing plugins and project tools                                                    |
 | `@merakcode/sdk/transcript` | Exports a session as Markdown                                                                               |
+| `@merakcode/sdk/adapter`    | Writes a member adapter, so collaboration groups can drive your AI coding tool                              |
 | `@merakcode/sdk/errors`     | The `MerakCodeError` class and helpers. Works in browsers too                                               |
 
 ## 2. Install and requirements
@@ -559,10 +561,10 @@ A UI needs to turn the stream of events into "which sessions are there, what mes
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `createSessionsState()`      | A new empty state (type `SessionsState`)                                                                                                                                                                     |
 | `applyEvent(state, event)`   | Merges one event into the state, changing the object you pass in. Returns a `Change`: `insert`, `update`, `remove`, `replace`, `none` or `ignored`                                                           |
+| `activity(state, sessionID)` | What a session is doing now (`Activity`): `approval`, `question`, `running` or `idle`. Child sessions count toward their top-level session, except background ones (such as memory extraction after a reply) |
 | `rootOf(state, sessionID)`   | Follows `parentID` up to the top-level session                                                                                                                                                               |
 | `forgetSession(state, id)`   | Drops everything cached for a session                                                                                                                                                                        |
 | `search(list, id, key)`      | Binary search in a list sorted by id; returns `{ found, index }`                                                                                                                                             |
-| `activity(state, sessionID)` | What a session is doing now (`Activity`): `approval`, `question`, `running` or `idle`. Child sessions count toward their top-level session, except background ones (such as memory extraction after a reply) |
 
 Every list in the state is sorted by id (engine ids increase over time). Updates merge in place and unchanged child objects keep their references, so UI frameworks only redraw what changed. With Solid you can write `setStore(produce((draft) => applyEvent(draft, event)))`.
 
@@ -667,3 +669,60 @@ The engine writes its own logs to the local log folder; read them with `merak lo
 The SDK and the engine must be the same version. When you install the SDK from npm, the engine package is pinned to the SDK's version, so there is nothing to do.
 
 When `executablePath` points at another engine, or `url` connects to a running one, keeping the versions the same is up to you. `client.global.health()` tells you the engine's version.
+
+## 15. Member adapters (adapter)
+
+A collaboration group takes Claude Code, Codex and OpenCode as members through **member adapters**: small programs MerakCode starts for each task and talks to with `@merakcode/sdk/adapter`. The adapter drives its own CLI and hands every step, every operation that needs approval and every question for the user to MerakCode. MerakCode decides under the group's permission mode (read-only, ask, auto) and the user's rules, and asks when needed, so a member follows the same rules as MerakCode's own tools.
+
+The built-in adapters for Claude Code, Codex and OpenCode are written this way too, with this library and Node built-ins only. For an AI coding tool MerakCode has no adapter for, write one the same way, or ask MerakCode in an ordinary conversation to write and register one with the built-in skill `adapter-generator`, which works from those three built-in adapters as its examples.
+
+`adapter(definition)` makes the current process an adapter. `definition` (type `Definition`) has two functions:
+
+| Function           | What it does                                                                                                                                                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | Describes the CLI without a task and returns `Info`: `name`, `version`, `path`, the recommended version `recommended`, the upgrade command `upgrade`, or `unavailable` when it cannot run. Settings shows it, so it must not start work |
+| `run(task, host)`  | Does one task and returns `Result`: the reply `text`, and `sessionId` to continue next time                                                                                                                                             |
+
+`product` (type `Product`) has the command and arguments the user configured. `task` (type `Task`) has `prompt`, `cwd`, `mode` (type `Mode`: `"readonly"`, `"ask"` or `"auto"`), the previous `resume`, `product`, and `signal`, which aborts when the user stops the group: stop the CLI then.
+
+`host` (type `Host`) is how the adapter reaches MerakCode:
+
+| Method                     | What it does                                                                                                                                                                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host.step(step)`          | Reports a step (type `Step`: `tool`, `detail`), shown in the member's bubble                                                                                                                                                        |
+| `host.permission(request)` | Asks for an operation (type `Permission`): `write`, `command`, `network`, `read` or `tool` (anything else). Returns `Verdict`: `{ allow: true }` or `{ allow: false, message }`; give `message` to the CLI so it can work around it |
+| `host.question(questions)` | Asks the user (type `Question`) and returns the options picked for each question (type `Answer`)                                                                                                                                    |
+
+The protocol is JSON-RPC 2.0 on stdin and stdout, one message per line, version `PROTOCOL`. When your CLI speaks JSON-RPC too, `connect` talks to it the same way; requests still waiting when the other side goes away fail with `ConnectionClosed`. Whatever the adapter writes with `console.log` goes to stderr, into MerakCode's log, so it cannot break the protocol.
+
+Start the CLI with `spawn` from here: it takes the same arguments and returns the same as `spawn` from `node:child_process`, and also starts a CLI that npm installed on Windows (a `.cmd` file), passing its arguments unchanged. When the user stops the group, and when the task is done, end the CLI with everything it started with `stop(child)` (on Windows a CLI npm installed is the child of its shim); it resolves once that is done, and first closes the CLI's input, if still open, to give it a moment to exit. In `inspect`, `version(command)` runs `<cli> --version` and gives the first line, or why there is none (not installed, failing, or no answer within 5 seconds).
+
+```ts
+import { adapter } from "@merakcode/sdk/adapter"
+
+adapter({
+  inspect: () => ({ name: "MyCLI", version: "1.0.0" }),
+  async run(task, host) {
+    host.step({ tool: "shell", detail: "npm test" })
+    const verdict = await host.permission({ kind: "command", command: "npm test" })
+    if (!verdict.allow) return { text: `Did not run the tests: ${verdict.message}` }
+    return { text: `Tests ran for: ${task.prompt}`, sessionId: "my-session" }
+  },
+})
+```
+
+Add a product to the config with `member` as its adapter; its command and arguments start your adapter:
+
+```json
+{
+  "collaboration": {
+    "products": {
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] }
+    }
+  }
+}
+```
+
+A command of `node` is the Node MerakCode ships with, so the adapter runs even where Node is not installed. An adapter runs with your own rights, and MerakCode only governs what it asks about. Use only adapters you trust.
+
+The single-file `merakcode-adapter.mjs` (shipped with the `adapter-generator` skill; it needs only Node) also tries an adapter: `node merakcode-adapter.mjs check -- node adapter.mjs` only does the handshake and prints the name and version; `node merakcode-adapter.mjs test -- node adapter.mjs "<task>"` runs one task in the current directory, allows every request, and prints each step and the result. Run it in an empty directory. In the SDK the same entry is `cli(argv)`.

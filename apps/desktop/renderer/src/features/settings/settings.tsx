@@ -11,6 +11,7 @@ import ScrollText from "lucide-solid/icons/scroll-text"
 import SettingsIcon from "lucide-solid/icons/settings"
 import ShieldCheck from "lucide-solid/icons/shield-check"
 import Trash2 from "lucide-solid/icons/trash"
+import Users from "lucide-solid/icons/users"
 import { createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch as Pick } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import type { Theme } from "../../desktop/bridge-contract"
@@ -30,6 +31,8 @@ import { trackOverlay } from "../../ui/overlay"
 import { modeOptions } from "../conversation/composer"
 import { CustomDialog } from "./relay-dialog"
 import { updateState } from "../update/state"
+import { Row, Section } from "./layout"
+import { Collaboration } from "./collaboration"
 
 const fail = (error: Error) => {
   toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
@@ -37,32 +40,6 @@ const fail = (error: Error) => {
 
 /** Current project directory; project-level settings are written here */
 const project = () => state.folders[0]?.directory
-
-function Section(props: { title: string; lead?: string; children: unknown }) {
-  return (
-    <section class="settings-inner" role="region" aria-label={props.title}>
-      <h1>{props.title}</h1>
-      <Show when={props.lead}>
-        <p class="lead">{props.lead}</p>
-      </Show>
-      {props.children as never}
-    </section>
-  )
-}
-
-function Row(props: { label: string; desc?: string; children: unknown }) {
-  return (
-    <div class="setting-row">
-      <div class="grow">
-        <div class="label">{props.label}</div>
-        <Show when={props.desc}>
-          <div class="desc">{props.desc}</div>
-        </Show>
-      </div>
-      {props.children as never}
-    </div>
-  )
-}
 
 function General() {
   const [theme, setTheme] = createSignal<Theme>("system")
@@ -1190,6 +1167,7 @@ const SECTIONS: { id: SettingsSection; label: () => string; icon: typeof Cpu; vi
   { id: "models", label: () => t("settings.models"), icon: Cpu, view: Models },
   { id: "permissions", label: () => t("settings.permissions"), icon: ShieldCheck, view: Permissions },
   { id: "mcp", label: () => t("settings.mcp"), icon: Plug, view: Mcp },
+  { id: "collaboration", label: () => t("settings.collaboration"), icon: Users, view: Collaboration },
   { id: "skills", label: () => t("settings.skills"), icon: Puzzle, view: Skills },
   { id: "plugins", label: () => t("settings.plugins"), icon: Blocks, view: Plugins },
   { id: "rules", label: () => t("settings.rules"), icon: ScrollText, view: Rules },

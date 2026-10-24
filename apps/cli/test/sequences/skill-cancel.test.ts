@@ -1,12 +1,12 @@
 import { expect, test } from "vitest"
 import { sequence, response, until } from "../fixture/sdk-sequence"
 
-test("aborting a running /auto-cli skill stops the model stream and records the turn as aborted", async () => {
+test("aborting a running built-in skill stops the model stream and records the turn as aborted", async () => {
   let started = false
   let cancelled = false
   let heartbeat: ReturnType<typeof setInterval> | undefined
   const kit = await sequence("read", false, ({ input }) => {
-    if (!input.includes("auto-cli")) return response("OTHER")
+    if (!input.includes("adapter-generator")) return response("OTHER")
     return new Response(
       new ReadableStream<Uint8Array>({
         start(controller) {
@@ -14,7 +14,7 @@ test("aborting a running /auto-cli skill stops the model stream and records the 
           heartbeat = setInterval(() => controller.enqueue(new TextEncoder().encode(": heartbeat\n\n")), 1000)
           controller.enqueue(
             new TextEncoder().encode(
-              `data: ${JSON.stringify({ id: "held", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "AUTO_CLI_PARTIAL" } }] })}\n\n`,
+              `data: ${JSON.stringify({ id: "held", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "SKILL_PARTIAL" } }] })}\n\n`,
             ),
           )
         },
@@ -28,11 +28,11 @@ test("aborting a running /auto-cli skill stops the model stream and records the 
   })
   let success = false
   try {
-    const session = await kit.api("/session", "POST", { title: "auto-cli-cancel" })
+    const session = await kit.api("/session", "POST", { title: "skill-cancel" })
     // The command route answers only when the turn ends, so it runs in the background until the abort
     const command = kit
       .api(`/session/${session.id}/command`, "POST", {
-        command: "auto-cli",
+        command: "adapter-generator",
         arguments: "",
         agent: "build",
         model: "alibaba-cn/qwen-plus",

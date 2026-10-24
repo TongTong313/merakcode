@@ -132,6 +132,8 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         const fileNames = Object.keys(subfiles).filter((file) => file !== "SKILL.md")
         const base = `builtin-skill://${skillName}/`
         const hasFiles = fileNames.length > 0
+        // With forward slashes: the shell on Windows is often bash, where a backslash escapes the next character
+        const onDisk = builtin?.dir ? fileNames.map((file) => path.join(builtin.dir!, file).replaceAll("\\", "/")) : []
         const filesBlock = hasFiles
           ? [
               `Base directory for this skill: ${base}`,
@@ -141,6 +143,15 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
               "<skill_files>",
               ...fileNames.map((file) => `<file>${base}${file}</file>`),
               "</skill_files>",
+              ...(onDisk.length
+                ? [
+                    "",
+                    "The same files on disk, to copy with shell commands (cp), which cannot read builtin-skill://:",
+                    "<disk_files>",
+                    ...onDisk.map((file) => `<file>${file}</file>`),
+                    "</disk_files>",
+                  ]
+                : []),
             ]
           : ["This is a builtin skill with no associated files."]
 

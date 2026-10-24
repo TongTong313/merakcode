@@ -33,7 +33,13 @@ function subject(request: PermissionRequest, directory: string) {
 }
 
 /** The agent asks for permission; options can also be picked with number keys */
-export function Approval(props: { request: PermissionRequest; more: number; directory: string }) {
+export function Approval(props: {
+  request: PermissionRequest
+  more: number
+  directory: string
+  /** The group member that asks: its name, product and role */
+  from?: string
+}) {
   const [reason, setReason] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
   const choices = () => permissionChoices(props.request)
@@ -72,6 +78,9 @@ export function Approval(props: { request: PermissionRequest; more: number; dire
 
   return (
     <section class="approval" role="region" aria-label={t("approval.label")}>
+      <Show when={props.from}>
+        {(from) => <div class="approval-from subtle">{t("approval.from", { name: from() })}</div>}
+      </Show>
       <div class="approval-head">
         <ShieldAlert class="icon" />
         <span class="what">{title(props.request)}</span>
@@ -138,7 +147,12 @@ export function Approval(props: { request: PermissionRequest; more: number; dire
  * The agent asks a question. With one single-choice question, clicking an option submits; multiple choice or several
  * questions need a final Submit.
  */
-export function Question(props: { request: QuestionRequest; directory: string }) {
+export function Question(props: {
+  request: QuestionRequest
+  directory: string
+  /** The group member that asks: its name, product and role */
+  from?: string
+}) {
   const [answers, setAnswers] = createSignal<string[][]>(props.request.questions.map(() => []))
   const [custom, setCustom] = createSignal<string[]>(props.request.questions.map(() => ""))
   const [busy, setBusy] = createSignal(false)
@@ -174,6 +188,9 @@ export function Question(props: { request: QuestionRequest; directory: string })
 
   return (
     <section class="approval question" role="region" aria-label={t("question.label")}>
+      <Show when={props.from}>
+        {(from) => <div class="approval-from subtle">{t("question.from", { name: from() })}</div>}
+      </Show>
       <For each={props.request.questions}>
         {(question, index) => (
           <div class="question-item">

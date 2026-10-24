@@ -108,7 +108,6 @@ export namespace SystemPrompt {
   export async function userContext() {
     const project = Instance.project
     const workspace = Instance.workspace
-    const git = await gitSnapshot()
     const folderLines =
       workspace.folders.length > 1
         ? [
@@ -129,11 +128,16 @@ export namespace SystemPrompt {
         `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
         `</env>`,
-        git ? ["<git-status>", git, "</git-status>"].join("\n") : "",
       ]
         .filter(Boolean)
         .join("\n"),
     ]
+  }
+
+  /** Git branch, status and recent commits; they change as files are edited, so they go after the history */
+  export async function gitStatus() {
+    const git = await gitSnapshot()
+    return git ? [["<git-status>", git, "</git-status>"].join("\n")] : []
   }
 
   async function gitSnapshot() {

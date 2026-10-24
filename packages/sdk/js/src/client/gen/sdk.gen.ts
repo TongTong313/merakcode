@@ -32,6 +32,22 @@ import type {
   AuthSetResponses,
   BashJobStopErrors,
   BashJobStopResponses,
+  CollaborationCreateErrors,
+  CollaborationCreateResponses,
+  CollaborationGetErrors,
+  CollaborationGetResponses,
+  CollaborationListErrors,
+  CollaborationListResponses,
+  CollaborationProductChangeErrors,
+  CollaborationProductChangeResponses,
+  CollaborationProductsErrors,
+  CollaborationProductsResponses,
+  CollaborationSeatAddErrors,
+  CollaborationSeatAddResponses,
+  CollaborationSeatRemoveErrors,
+  CollaborationSeatRemoveResponses,
+  CollaborationSeatUpdateErrors,
+  CollaborationSeatUpdateResponses,
   CommandListErrors,
   CommandListResponses,
   Config as Config3,
@@ -2500,6 +2516,399 @@ export class Part extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+}
+
+export class Product extends HeyApiClient {
+  /**
+   * Change collaboration products
+   *
+   * Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.
+   */
+  public change<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      body:
+        | {
+            type: "add"
+            id: string
+            product: {
+              /**
+               * Executable name or path; may be left out when overriding claude, codex or opencode
+               */
+              command?: string
+              /**
+               * Display name
+               */
+              title?: string
+              /**
+               * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+               */
+              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+              /**
+               * Arguments. The prompt is written to stdin
+               */
+              args?: Array<string>
+              /**
+               * Arguments used when the seat already has a private session. {id} is replaced with that session id
+               */
+              resumeArgs?: Array<string>
+              /**
+               * Regular expression with one capture group for the private session id, for a one-shot command
+               */
+              sessionLine?: string
+            }
+          }
+        | {
+            type: "update"
+            id: string
+            product: {
+              /**
+               * Executable name or path; may be left out when overriding claude, codex or opencode
+               */
+              command?: string
+              /**
+               * Display name
+               */
+              title?: string
+              /**
+               * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+               */
+              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+              /**
+               * Arguments. The prompt is written to stdin
+               */
+              args?: Array<string>
+              /**
+               * Arguments used when the seat already has a private session. {id} is replaced with that session id
+               */
+              resumeArgs?: Array<string>
+              /**
+               * Regular expression with one capture group for the private session id, for a one-shot command
+               */
+              sessionLine?: string
+            }
+          }
+        | {
+            type: "remove"
+            id: string
+          }
+        | {
+            type: "enabled"
+            id: string
+            enabled: boolean
+          }
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationProductChangeResponses, CollaborationProductChangeErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "body", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      CollaborationProductChangeResponses,
+      CollaborationProductChangeErrors,
+      ThrowOnError
+    >({
+      url: "/collaboration/product",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Seat extends HeyApiClient {
+  /**
+   * Add a collaboration seat
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      name: string
+      role?: string
+      duty?: string
+      product: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationSeatAddResponses, CollaborationSeatAddErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "role" },
+            { in: "body", key: "duty" },
+            { in: "body", key: "product" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      CollaborationSeatAddResponses,
+      CollaborationSeatAddErrors,
+      ThrowOnError
+    >({
+      url: "/collaboration/{sessionID}/seat",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a collaboration seat
+   *
+   * The Merak leader cannot be removed.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      seatID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationSeatRemoveResponses, CollaborationSeatRemoveErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "seatID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      CollaborationSeatRemoveResponses,
+      CollaborationSeatRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/collaboration/{sessionID}/seat/{seatID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Change a collaboration seat's name, role or duty
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      seatID: string
+      directory?: string
+      name?: string
+      role?: string
+      duty?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationSeatUpdateResponses, CollaborationSeatUpdateErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "seatID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "role" },
+            { in: "body", key: "duty" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      CollaborationSeatUpdateResponses,
+      CollaborationSeatUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/collaboration/{sessionID}/seat/{seatID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Collaboration extends HeyApiClient {
+  /**
+   * List collaboration products
+   *
+   * Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.
+   */
+  public products<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      refresh?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationProductsResponses, CollaborationProductsErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "refresh" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      CollaborationProductsResponses,
+      CollaborationProductsErrors,
+      ThrowOnError
+    >({
+      url: "/collaboration/product",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List collaboration groups
+   *
+   * Groups of every project, most recently active first, with their members for copying into a new group. Private sessions are left out.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationListResponses, CollaborationListErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<CollaborationListResponses, CollaborationListErrors, ThrowOnError>({
+      url: "/collaboration",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a collaboration group
+   *
+   * Creates a session whose leader is a Merak seat, together with the seats named up front.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      title?: string
+      leader: {
+        name: string
+        /**
+         * Short title such as product manager
+         */
+        role?: string
+        /**
+         * What the seat is for; it goes into the seat's prompt
+         */
+        duty?: string
+      }
+      seats?: Array<{
+        name: string
+        /**
+         * Short title such as product manager
+         */
+        role?: string
+        /**
+         * What the seat is for; it goes into the seat's prompt
+         */
+        duty?: string
+        product: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationCreateResponses, CollaborationCreateErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "title" },
+            { in: "body", key: "leader" },
+            { in: "body", key: "seats" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<CollaborationCreateResponses, CollaborationCreateErrors, ThrowOnError>(
+      {
+        url: "/collaboration",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Get a collaboration group
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<CollaborationGetResponses, CollaborationGetErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CollaborationGetResponses, CollaborationGetErrors, ThrowOnError>({
+      url: "/collaboration/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _product?: Product
+  get product(): Product {
+    return (this._product ??= new Product({ client: this.client }))
+  }
+
+  private _seat?: Seat
+  get seat(): Seat {
+    return (this._seat ??= new Seat({ client: this.client }))
   }
 }
 
@@ -5025,6 +5434,11 @@ export class MerakCodeClient extends HeyApiClient {
   private _part?: Part
   get part(): Part {
     return (this._part ??= new Part({ client: this.client }))
+  }
+
+  private _collaboration?: Collaboration
+  get collaboration(): Collaboration {
+    return (this._collaboration ??= new Collaboration({ client: this.client }))
   }
 
   private _memory?: Memory

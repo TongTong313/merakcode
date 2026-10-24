@@ -2604,6 +2604,7 @@ export namespace SessionRunner {
 
     for (const item of standardTools) {
       if (deferred.isPending(item.id)) continue
+      if (item.id === "delegate" && input.session.metadata?.group !== true) continue
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,

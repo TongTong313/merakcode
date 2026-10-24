@@ -671,6 +671,9 @@ importers:
 
   packages/sdk/js:
     dependencies:
+      cross-spawn:
+        specifier: 'catalog:'
+        version: 7.0.6
       undici:
         specifier: 'catalog:'
         version: 8.12.2
@@ -687,6 +690,9 @@ importers:
       '@tsconfig/node26':
         specifier: 'catalog:'
         version: 26.0.1
+      '@types/cross-spawn':
+        specifier: 'catalog:'
+        version: 6.0.6
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5

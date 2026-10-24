@@ -18,7 +18,7 @@
 
 ---
 
-MerakCode 是一个开源的 AI Coding 工具，除了具备强大的编程能力外，它还可以用于任何需要 AI 协助的场景。在 AI 生成速度远大于人类阅读速度的今天，MerakCode 非常注重人机协同交互，作者正在开发多产品多智能体协作模式，并通过优化产物审核机制，确保智能体输出的内容符合预期。最后，MerakCode 的目标不是最强大的 AI Coding 工具，而是最好用的 AI Coding 工具。
+MerakCode 是一个开源的 AI Coding 工具，除了具备强大的编程能力外，它还可以用于任何需要 AI 协助的场景。在 AI 生成速度远大于人类阅读速度的今天，MerakCode 非常注重人机协同交互，MerakCode 的协作群可以让 Claude Code、Codex、OpenCode 等产品一起干活，并通过优化产物审核机制，确保智能体输出的内容符合预期。最后，MerakCode 的目标不是最强大的 AI Coding 工具，而是最好用的 AI Coding 工具。
 
 开源这个项目是为了弥补我们心中的一个遗憾，也是想依靠社区的力量，让这个项目能够持续发展下去。产品的名字来自北斗七星里的天璇星，它和天枢一起指向北极星。我们希望 MerakCode 也像它一样，为你的每一个想法指明方向。
 
@@ -119,6 +119,7 @@ Windows 上如果初始化过沙箱，卸载前先在桌面客户端的"设置 �
 | ---------------- | ------------------------------------------ |
 | `⌘/Ctrl+K`       | 命令面板：搜索对话标题、对话内容或命令     |
 | `⌘/Ctrl+N`       | 新建对话                                   |
+| `⌘/Ctrl+G`       | 新建协作群                                 |
 | `⌘/Ctrl+,`       | 打开设置                                   |
 | `⌘/Ctrl+J`       | 打开或关闭终端                             |
 | `⌘/Ctrl+B`       | 显示或隐藏右侧面板                         |
@@ -172,6 +173,7 @@ MerakCode 会在你的电脑上改文件、跑命令，所以每次操作前按�
 - **命令**。能确定不改文件的（如 `ls`、`git status`、`git diff`、`rg`）三种模式都直接跑；看不准会不会改文件的，按会改文件算。会改文件的命令，以及 `rm`、`rmdir`、`unlink`、`shred`、`git clean`、`git reset --hard`、`find -delete`：只读模式拒绝，询问模式先问，自动模式直接跑。高风险命令在只读模式拒绝，询问和自动都先问：`sudo`、`su`、`doas`、`pkexec`、`runas`、`dd`（没有写整块磁盘时）、`shutdown`、`reboot`、`chown`，以及 `git push`、`npm publish`、`npm unpublish`、`pnpm publish`、`yarn publish`、`bun publish`、`cargo publish`、`gem push`、`twine upload`、`docker push`、`gh release`、`gh pr`、`helm push`。`rm -rf /`（也包括家目录）、递归把这些位置改成 `777`、`mkfs`、对整块磁盘 `dd`、`format`、`diskpart`、fork bomb，默认都拒绝。询问和自动模式下，只有配置里明确允许才会跑；只读模式下，配置里的允许也不行。
 - **网站**。允许名单按主机名精确匹配，子域名不算。名单内直接访问：`registry.npmjs.org`、`registry.yarnpkg.com`、`registry.npmmirror.com`、`cdn.npmmirror.com`、`pypi.org`、`files.pythonhosted.org`、`pypi.tuna.tsinghua.edu.cn`、`crates.io`、`index.crates.io`、`static.crates.io`、`static.rust-lang.org`、`rsproxy.cn`、`proxy.golang.org`、`sum.golang.org`、`goproxy.cn`、`repo.maven.apache.org`、`repo1.maven.org`、`maven.aliyun.com`、`services.gradle.org`、`plugins.gradle.org`、`rubygems.org`、`github.com`、`codeload.github.com`、`objects.githubusercontent.com`、`raw.githubusercontent.com`、`gitlab.com`、`gitee.com`、`mirrors.aliyun.com`、`mirrors.tuna.tsinghua.edu.cn`。其他主机三种模式都要先问。
 - **其他**。子智能体、工作流、定时任务、MCP，以及插件注册的工具：只读和询问先问，自动直接做。退出沙箱始终要先问。沙箱还没就绪时，会改东西的命令在自动模式下也要先问。询问和自动模式下，项目配置里的允许和拒绝盖过上面的默认；只读模式仍然不能改文件，也不能跑只读以外的命令。
+- **协作群成员**。群主把任务交给成员不用问。成员（Claude Code、Codex、OpenCode，以及接了成员适配器的产品）要改文件、跑命令、联网、读文件时，都按上面同样的规则判断，要问的出现在审批栏里，成员提的问题出现在提问框里，都会写明是哪个成员。成员跑的命令不在 MerakCode 的系统沙箱里（Codex 的命令在 Codex 自己的沙箱里），一次性命令接入的自定义产品不会来问，权限由它自己决定。
 
 | 模式         | 适合             | 怎么做                                                                                                                            |
 | ------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -190,6 +192,31 @@ MerakCode 会在你的电脑上改文件、跑命令，所以每次操作前按�
 | macOS   | 系统自带的 Seatbelt（sandbox-exec） | 不用设置                                                                                                |
 
 沙箱没准备好时（比如 Windows 还没初始化），会改东西的命令在自动模式下也会先问你。能保证什么、不能保证什么，见 [SECURITY.md](SECURITY.md)。
+
+## 协作群
+
+协作群里 MerakCode 当群主，可以拉 Claude Code、Codex、OpenCode 和其他 AI 编程工具当成员。你在群里说要做什么，群主拆好任务分给成员，成员各自完成后在群里回复。
+
+- 新建：侧边栏的「新建协作群」、`⌘/Ctrl+G` 或命令面板。也可以从已有的群复制成员。
+- 在输入框里用 `@` 点名成员；右侧成员栏可以改名字、角色和职责。
+- 成员要做的操作和提的问题会出现在审批栏和提问框里，按你选的权限模式判断。
+- 在「设置 › 协作群」里开关产品、查看版本和路径、看权限由谁决定（接了适配器的由 MerakCode 审批，一次性命令由产品自己决定）、添加自定义产品。版本比建议的旧时会提示你升级（`claude update`、`codex update`、`opencode upgrade`），但照样能用。建议版本：Claude Code 2.1.283、Codex 0.164.0、OpenCode 1.19.4 及以上。
+- 没有内置适配器的 AI 编程工具，可以点「设置 › 协作群」里的「让 MerakCode 写适配器，帮你接入自己的 AI Coding 工具」，或者在普通对话里让 MerakCode 用技能「适配器生成助手」（`adapter-generator`）写一个成员适配器并注册好。技能以内置的三个适配器为示例：工具的通信方式和其中一个相同就照着改，都不同就参考它们自己写。也可以按 [SDK 手册的成员适配器一节](docs/sdk/README.md#15-成员适配器adapter) 自己写。
+
+产品也可以写在配置里：
+
+```jsonc
+{
+  "collaboration": {
+    "products": {
+      // 内置产品只需要改想改的字段，比如命令的位置或额外启动参数
+      "codex": { "command": "/opt/codex/bin/codex", "args": ["-c", "model=\"o3\""] },
+      // 自己的适配器
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] },
+    },
+  },
+}
+```
 
 ## 配置
 

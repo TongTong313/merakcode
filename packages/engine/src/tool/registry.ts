@@ -9,6 +9,7 @@ import { PdfParseTool } from "./pdf-parse"
 import { ExcelParseTool } from "./excel-parse"
 import { ExcelWriteTool } from "./excel-write"
 import { DocxParseTool } from "./docx-parse"
+import { DelegateTool } from "./delegate"
 import { SubAgentTool } from "./subagent"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
@@ -63,6 +64,7 @@ export namespace ToolRegistry {
     "skill",
     "rule",
     "subagent",
+    "delegate",
     "write",
   ])
 
@@ -202,6 +204,7 @@ export namespace ToolRegistry {
       WriteTool,
       MultiEditTool,
       SubAgentTool,
+      DelegateTool,
       WebFetchTool,
       TodoWriteTool,
       WebSearchTool,

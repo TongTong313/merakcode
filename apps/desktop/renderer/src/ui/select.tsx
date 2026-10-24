@@ -37,6 +37,9 @@ export function Select<T extends string>(props: {
 }) {
   const [open, setOpen] = createSignal(false)
   trackOverlay(open)
+  let trigger: HTMLButtonElement | undefined
+  // Inside a modal dialog the list must open within it: the dialog hides everything outside from assistive tech
+  const mount = () => trigger?.closest("[role=dialog]") ?? undefined
   const selected = () => props.options.find((option) => option.value === props.value)
   return (
     <Kobalte<Option<T>>
@@ -76,6 +79,7 @@ export function Select<T extends string>(props: {
       )}
     >
       <Kobalte.Trigger
+        ref={trigger}
         class={props.class ?? "chip"}
         aria-label={props.label}
         onPointerEnter={() => props.onPrepare?.()}
@@ -102,7 +106,7 @@ export function Select<T extends string>(props: {
           <ChevronDown class="icon chevron" />
         </Kobalte.Icon>
       </Kobalte.Trigger>
-      <Kobalte.Portal>
+      <Kobalte.Portal mount={mount()}>
         <Kobalte.Content class="popover">
           <Kobalte.Listbox />
         </Kobalte.Content>

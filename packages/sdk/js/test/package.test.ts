@@ -54,6 +54,7 @@ describe("npm package", () => {
       "./store",
       "./process",
       "./plugin",
+      "./adapter",
       "./transcript",
     ])
     const present = new Set(
@@ -72,7 +73,7 @@ describe("npm package", () => {
   })
 
   test("pins dependencies to exact versions and excludes the repo's private packages", async () => {
-    expect(Object.keys(manifest.dependencies).sort()).toEqual(["undici", "zod"])
+    expect(Object.keys(manifest.dependencies).sort()).toEqual(["cross-spawn", "undici", "zod"])
     for (const version of Object.values(manifest.dependencies)) expect(version).toMatch(/^\d+\.\d+\.\d+$/)
     for (const file of await files(outdir)) {
       if (!/\.(js|d\.ts)$/.test(file)) continue

@@ -823,6 +823,32 @@ export namespace Config {
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
 
+  /** A collaboration product: a new one, or the fields that change claude, codex or opencode */
+  export const CollaborationProduct = z.object({
+    command: z
+      .string()
+      .optional()
+      .describe("Executable name or path; may be left out when overriding claude, codex or opencode"),
+    enabled: z.boolean().optional().describe("Offer this product for new members; default true"),
+    title: z.string().optional().describe("Display name"),
+    adapter: z
+      .enum(["claude", "codex", "opencode", "command", "member"])
+      .optional()
+      .describe(
+        "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+      ),
+    args: z.array(z.string()).optional().describe("Arguments. The prompt is written to stdin"),
+    resumeArgs: z
+      .array(z.string())
+      .optional()
+      .describe("Arguments used when the seat already has a private session. {id} is replaced with that session id"),
+    sessionLine: z
+      .string()
+      .optional()
+      .describe("Regular expression with one capture group for the private session id, for a one-shot command"),
+  })
+  export type CollaborationProduct = z.infer<typeof CollaborationProduct>
+
   export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
     ref: "PermissionActionConfig",
   })
@@ -1154,6 +1180,15 @@ export namespace Config {
        * zod reject the whole config. `plugin_options`, keyed by plugin id, is the other supported form.
        */
       plugin: z.array(z.union([z.string(), z.tuple([z.string(), z.record(z.string(), z.unknown())])])).optional(),
+      collaboration: z
+        .object({
+          products: z
+            .record(z.string(), CollaborationProduct)
+            .optional()
+            .describe("Extra products, or overrides for claude, codex and opencode"),
+        })
+        .optional()
+        .describe("Collaboration groups. The leader is always a Merak seat."),
       snapshot: z.boolean().optional(),
       disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
       enabled_providers: z

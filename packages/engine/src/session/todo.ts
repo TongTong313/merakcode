@@ -29,6 +29,19 @@ export namespace Todo {
     Bus.publish(Event.Updated, input)
   }
 
+  /** Rewrites the list from its current value in one transaction, so concurrent changes are not lost */
+  export async function patch(sessionID: string, fn: (todos: Info[]) => Info[]) {
+    const todos = await Storage.update<Info[]>(
+      ["todo", sessionID],
+      (draft) => {
+        draft.splice(0, draft.length, ...fn([...draft]))
+      },
+      () => [],
+    )
+    Bus.publish(Event.Updated, { sessionID, todos })
+    return todos
+  }
+
   export async function get(sessionID: string) {
     return Storage.read<Info[]>(["todo", sessionID])
       .then((x) => x || [])
