@@ -26,3 +26,4 @@ Monorepo for MerakCode, an AI coding tool: an Electron desktop app (the main pro
 - User-facing text needs Chinese and English: `apps/cli/src/cli/locales/{zh-CN,en-US}.json` (keys must match and be used), `apps/desktop/renderer/src/i18n/{zh,en}.ts`, and `Text.pick({ zh, en })` in the engine. Model-facing prompts and tool descriptions are English only.
 - Tests use Vitest against real behavior; avoid mocks. Use the `tmpdir()` fixture for temporary directories.
 - Prefer early returns over `else`, `const` over `let`, and small focused functions. Don't leave commented-out code.
+- Commit messages follow CONTRIBUTING.md. Never add `Co-authored-by` or other attribution lines to commits or pull request descriptions.
