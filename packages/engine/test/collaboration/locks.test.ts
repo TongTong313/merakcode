@@ -6,16 +6,27 @@ import { FileTime } from "../../src/file/time"
 import { tmpdir } from "../fixture/fixture"
 import { runAdmitted } from "../../src/collaboration/schedule"
 
-/** Whether a Merak write to file gets in while an external member holds paths */
+/**
+ * Whether a Merak write to file gets in while an external member holds paths. The member works until the check is
+ * done, so a slow machine cannot end its hold before the write is looked at.
+ */
 async function blocked(directory: string, hold: { product: string; paths: string[] }, file: string) {
   let entered = false
-  const running = runAdmitted("locks", { seatID: "seat", ...hold }, () => delay(80))
-  await delay(20)
+  let begin = () => {}
+  const working = new Promise<void>((resolve) => (begin = resolve))
+  let finish = () => {}
+  const done = new Promise<void>((resolve) => (finish = resolve))
+  const running = runAdmitted("locks", { seatID: "seat", ...hold }, async () => {
+    begin()
+    await done
+  })
+  await working
   const write = FileTime.withLock(path.join(directory, file), async () => {
     entered = true
   })
   await delay(20)
   const result = !entered
+  finish()
   await Promise.all([running, write])
   return result
 }
