@@ -62,6 +62,7 @@ test("deleting a worktree removes it with its branch and conversation, leaving t
   await kit.page.getByRole("dialog").getByRole("button", { name: "删除" }).click()
   await expect.poll(() => worktrees(kit)).toBe(0)
   await expect(kit.page.getByRole("navigation", { name: "对话" }).getByRole("link")).toHaveCount(0)
-  expect(kit.git("branch", "--list", "merakcode/*").trim()).toBe("")
+  // The branch goes last, after the worktree's folder is cleaned up, which takes a moment on Windows
+  await expect.poll(() => kit.git("branch", "--list", "merakcode/*").trim()).toBe("")
   await expect(access(path.join(kit.project, "feature.txt"))).rejects.toThrow()
 })
