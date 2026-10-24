@@ -172,7 +172,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: desktop-e2e-results
+          # Not desktop-*: the release takes every desktop-* artifact of its run as installers to upload
+          name: e2e-desktop-results
           path: apps/desktop/main/e2e/.results
           include-hidden-files: true
           retention-days: 7
