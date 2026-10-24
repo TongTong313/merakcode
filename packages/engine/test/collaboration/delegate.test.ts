@@ -20,6 +20,16 @@ const resume = process.argv.indexOf("--resume")
 const started = Date.now()
 let prompt = ""
 for await (const chunk of process.stdin) prompt += chunk
+// With SEAT_PEERS (seat logs by name) a run says it started, then works until each other peer's run has started too,
+// or 5 s have passed: runs let go together overlap however slowly each starts, and one held back does not
+const peers = (process.env.SEAT_PEERS ?? "").split(",").filter(Boolean).map((name) => path.join(path.dirname(log), name))
+if (peers.includes(log)) {
+  fs.writeFileSync(log + ".started", "")
+  const until = Date.now() + 5000
+  const others = () => peers.filter((peer) => peer !== log).every((peer) => fs.existsSync(peer + ".started"))
+  while (!others() && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 20))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+}
 await new Promise((resolve) => setTimeout(resolve, Number(process.env.SEAT_DELAY ?? 0)))
 fs.appendFileSync(log + ".times", started + " " + Date.now() + "\\n")
 fs.appendFileSync(log, prompt + "\\n<<END>>\\n")
@@ -259,7 +269,8 @@ test("a member is named by its name, not its product, and a suggestion in a repl
 const overlapping = ([a, b]: [number, number], [c, d]: [number, number]) => a < d && c < b
 
 test("members run together only when their paths cannot touch the same file", async () => {
-  process.env.SEAT_DELAY = "300"
+  // Each run of a and b works until the other's has started, or 5 s pass: they overlap exactly when let go together
+  process.env.SEAT_PEERS = "a,b"
   await using tmp = await project({
     a: { title: "A CLI", reply: "a" },
     b: { title: "B CLI", reply: "b" },
@@ -278,6 +289,8 @@ test("members run together only when their paths cannot touch the same file", as
         })
         const messageID = await turn(session.id, "开始", tmp.path)
         const pair = async (left: string[] | undefined, right: string[] | undefined) => {
+          // A pair starts with no run marked as started
+          for (const seat of ["a", "b"]) await fs.rm(path.join(tmp.path, ".cli", seat + ".started"), { force: true })
           await Promise.all([
             delegate(session.id, messageID, { seat: "小红", task: "做", paths: left }),
             delegate(session.id, messageID, { seat: "abc", task: "做", paths: right }),
@@ -298,9 +311,9 @@ test("members run together only when their paths cannot touch the same file", as
       },
     })
   } finally {
-    delete process.env.SEAT_DELAY
+    delete process.env.SEAT_PEERS
   }
-})
+}, 60_000)
 
 test("a member that waited for another one reads that one's result", async () => {
   process.env.SEAT_DELAY = "200"
