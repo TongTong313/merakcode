@@ -126,6 +126,7 @@ type(scope): summary
 - `scope` 写改动在哪一块，比如 `desktop`、`cli`、`engine`、`sdk`、`sandbox`、`review`、`changelog`、`contributing`。跨了好几块就不写，直接 `type: summary`。
 - 标题用祈使句，小写开头，结尾不加句号，整行不超过 100 个字符。
 - 标题和列表之间空一行，不然 GitHub 和 `git log --oneline` 会把列表拼进标题。列表每行以 `- ` 开头，写改了什么、为什么改。
+- 不加 `Co-authored-by` 之类的署名行，AI 工具自动加的也删掉。PR 描述同样不加。
 - 发版的提交写成 `release: vx.y.z`，不带 scope，列表概括这个版本的变化。
 - PR 标题也用这个格式。合并 PR 用 "Squash and merge"（PR 标题就是提交标题）或 "Rebase and merge"，不用 GitHub 默认的合并提交，`main` 上的提交才能保持这个格式。
 
@@ -294,6 +295,7 @@ type(scope): summary
 - `scope` names the part you changed, such as `desktop`, `cli`, `engine`, `sdk`, `sandbox`, `review`, `changelog` or `contributing`. Leave it out when the change spans several parts: `type: summary`.
 - Write the title in the imperative, starting lowercase, with no final period, at most 100 characters in all.
 - Leave a blank line between the title and the list, or GitHub and `git log --oneline` join the list onto the title. Each list line starts with `- ` and says what changed and why.
+- Leave out `Co-authored-by` and other attribution lines, including the ones AI tools add. The same goes for pull request descriptions.
 - A release commit is `release: vx.y.z`, with no scope; its list sums up the version.
 - Pull request titles use the same format. Merge with "Squash and merge" (the pull request title becomes the commit title) or "Rebase and merge", not GitHub's default merge commit, so the commits on `main` keep this format.
 
