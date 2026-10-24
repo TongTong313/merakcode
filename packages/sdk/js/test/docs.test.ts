@@ -32,6 +32,11 @@ test("only ts code blocks are compiled", () => {
   expect(snippets(markdown)).toEqual(["const a = 1\n", "const b = 2\n"])
 })
 
+test("a code block that imports the single-file adapter library is compiled against the SDK's adapter entry", () => {
+  const markdown = ["```ts", 'import { adapter, type Host } from "./merakcode-adapter.mjs"', "```"].join("\n")
+  expect(snippets(markdown)).toEqual(['import { adapter, type Host } from "@merakcode/sdk/adapter"\n'])
+})
+
 test("the guide in both languages mentions every hand-written export", () => {
   const names = exported(read("api.md"))
   expect(names.length).toBeGreaterThan(50)

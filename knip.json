@@ -16,7 +16,7 @@
       "entry": [
         "script/*.ts",
         "src/**/*-fixture.ts",
-        "src/skill/builtin/adapter-generator/*.mjs",
+        "src/skill/builtin/adapter-generator/*.{mjs,mts}",
         "test/**/fixture/**",
         "test/**/fixtures/**",
         "test/**/*-fixture.ts"

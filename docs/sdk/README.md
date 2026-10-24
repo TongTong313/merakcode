@@ -672,57 +672,292 @@ SDK 和引擎必须是同一个版本。npm 装 SDK 时，引擎包的版本已�
 
 ## 15. 成员适配器（adapter）
 
-协作群能拉 Claude Code、Codex、OpenCode 进来当成员，靠的是**成员适配器**：一个小程序，MerakCode 每派一个任务就启动它一次，通过 `@merakcode/sdk/adapter` 和它对话。适配器驱动自己的 CLI，把 CLI 做的每一步、每个要确认的操作、每个要问用户的问题都交给 MerakCode。MerakCode 按群里的权限模式（只读、询问、自动）和用户的规则判断，需要时弹出审批或提问，所以成员和 MerakCode 自己的工具守同一套规矩。
+协作群能拉 Claude Code、Codex、OpenCode 进来当成员，靠的是**成员适配器**。你的 AI 编程工具没有内置适配器的话，可以照这一节自己写一个（几十行 TypeScript），也可以在「设置 › 协作群」里点「让 MerakCode 写适配器，帮你接入自己的 AI Coding 工具」，让内置技能 `adapter-generator`（适配器生成助手）替你写好并注册。
 
-内置的 Claude Code、Codex、OpenCode 适配器也是这样写的，只用了这个库和 Node 自带的模块。你的 AI 编程工具没有内置适配器的话，可以照着写一个；也可以在普通对话里让 MerakCode 用内置技能 `adapter-generator`（适配器生成助手）替你写好并注册，这个技能就是拿这三个内置适配器当示例的。
+### 15.1 适配器是什么
 
-`adapter(definition)` 让当前进程成为一个适配器。`definition`（类型 `Definition`）有两个函数：
+适配器是一个小程序，夹在 MerakCode 和你的 CLI 中间，负责两边传话：
 
-| 函数               | 说明                                                                                                                                                                             |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect(product)` | 不带任务，只说明这个 CLI，返回 `Info`：`name`、`version`、`path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写 `unavailable`。设置页靠它显示状态，所以这里不能开始干活 |
-| `run(task, host)`  | 做一个任务，返回 `Result`：回复 `text`，以及下次续接用的 `sessionId`                                                                                                             |
-
-`product`（类型 `Product`）是用户配置的命令和参数。`task`（类型 `Task`）里有 `prompt`、`cwd`、`mode`（类型 `Mode`：`"readonly"`、`"ask"`、`"auto"`）、上次的 `resume`、`product`，还有 `signal`：用户停止群聊时会中止，这时要结束 CLI。
-
-`host`（类型 `Host`）是适配器找 MerakCode 的三个方法：
-
-| 方法                       | 说明                                                                                                                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `host.step(step)`          | 报告一步（类型 `Step`：`tool`、`detail`），显示在成员的气泡里                                                                                                                                    |
-| `host.permission(request)` | 请求一个操作（类型 `Permission`）：`write`、`command`、`network`、`read` 或 `tool`（其他）。返回 `Verdict`：`{ allow: true }` 或 `{ allow: false, message }`，把 `message` 交给 CLI 让它换个办法 |
-| `host.question(questions)` | 问用户（类型 `Question`），返回每个问题选中的选项（类型 `Answer`）                                                                                                                               |
-
-协议是标准输入输出上的 JSON-RPC 2.0，一行一条，版本号是 `PROTOCOL`。你的 CLI 也说 JSON-RPC 的话，可以用同一个 `connect` 连它；对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。适配器里 `console.log` 的内容会转到标准错误输出，写进 MerakCode 的日志，不会搞乱协议。
-
-启动 CLI 请用这里的 `spawn`：参数和返回值都和 `node:child_process` 的 `spawn` 一样，但它在 Windows 上也能启动 npm 装的 CLI（`.cmd` 文件），参数原样传过去。用户停止群聊时和任务做完后，用 `stop(child)` 结束 CLI 和它启动的所有进程（Windows 上 npm 装的 CLI 是外壳的子进程），结束后才返回；CLI 的输入还开着的话，会先关掉输入，给它一点时间自己退出。`inspect` 里用 `version(command)` 跑 `<CLI> --version`，返回第一行版本号，或者用不了的原因（没装、出错、5 秒内没回应）。
-
-```ts
-import { adapter } from "@merakcode/sdk/adapter"
-
-adapter({
-  inspect: () => ({ name: "MyCLI", version: "1.0.0" }),
-  async run(task, host) {
-    host.step({ tool: "shell", detail: "npm test" })
-    const verdict = await host.permission({ kind: "command", command: "npm test" })
-    if (!verdict.allow) return { text: `没有运行测试：${verdict.message}` }
-    return { text: `测试跑完了：${task.prompt}`, sessionId: "my-session" }
-  },
-})
+```text
+MerakCode  ⇄  适配器库 merakcode-adapter.mjs  ⇄  你写的 adapter.mts  ⇄  你的 CLI
+          （成员协议，库已经处理好）         （CLI 自己的通信方式，由你来写）
 ```
 
-在配置里加一个产品，接入方式写 `member`，命令和参数用来启动你的适配器：
+- MerakCode 每派一个任务，就启动一次适配器，任务做完适配器就退出。
+- 和 MerakCode 通信的部分由适配器库处理，你不用管协议细节。
+- 你只写右边那一半：怎么启动你的 CLI、怎么读它的输出、它要审批或提问时怎么转给 MerakCode、怎么把结果交回来。
+- 适配器自己不做任何决定。CLI 想改文件、跑命令、联网、问用户问题时，都交给 MerakCode。MerakCode 按群里的权限模式（只读、询问、自动）和用户的规则判断，需要时弹出审批栏或提问框，所以成员和 MerakCode 自己的工具守同一套规矩。
+- 内置的 Claude Code、Codex、OpenCode 适配器也是这样写的，只用了这个库和 Node 自带的模块。技能 `adapter-generator` 就是拿它们当示例的。
 
-```json
-{
-  "collaboration": {
-    "products": {
-      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] }
+### 15.2 一个任务从头到尾怎么走
+
+1. 群主把任务交给成员。MerakCode 用配置里的命令和参数启动你的适配器（比如 `node adapter.mts`），工作目录是项目目录。
+2. 适配器库先调用你写的 `inspect`，告诉 MerakCode 这个 CLI 叫什么、是什么版本。设置页显示产品状态时，也只调用这一步，不派任务。
+3. MerakCode 把任务发过来，库调用你写的 `run(task, host)`。
+4. 你在 `run` 里启动 CLI、读它的输出。CLI 每做一步、每次要审批、每次要提问，你就调用 `host` 上对应的方法（见 15.3）。
+5. CLI 做完了，`run` 返回 `{ text, sessionId }`：`text` 是成员在群里的回复；`sessionId` 是 CLI 的会话 id，下次给这个成员派任务时会作为 `task.resume` 传回来，用来接着上次的会话干。
+6. 适配器退出。用户中途点了停止的话，`task.signal` 会触发，你要把 CLI 停掉。
+
+### 15.3 host 是什么
+
+`host` 就是 MerakCode。`run(task, host)` 的两个参数：
+
+- `task` 是这次要干的活：任务内容、项目目录、权限模式等（见 15.5 的表）；
+- `host` 是干活过程中找 MerakCode 用的三个方法。
+
+| 方法                       | 作用                                                                     | 要不要等                 |
+| -------------------------- | ------------------------------------------------------------------------ | ------------------------ |
+| `host.step(step)`          | 告诉 MerakCode "我正在做什么"，成员的气泡里实时显示，比如"Bash npm test" | 不等，只是通知           |
+| `host.permission(request)` | 问 MerakCode "这件事能不能做"，请求分五种（见 15.6）                     | 要等，拿到"允许"或"拒绝" |
+| `host.question(questions)` | 请 MerakCode 弹出提问框问用户                                            | 要等，拿到用户选的答案   |
+
+以 CLI 想跑 `npm test` 为例，一次审批是这样走的：
+
+```text
+CLI → 适配器："我想跑 npm test"
+适配器 → await host.permission({ kind: "command", command: "npm test" })   ← 在这里停下来等
+         MerakCode 按权限模式判断：自动放行，或者弹出审批栏"小明 · MyCLI 请求 / 要跑命令"
+         用户点"允许"
+host.permission 返回 { allow: true }
+适配器 → CLI："可以，跑吧"
+```
+
+`host` 不用你创建，也不用导入：适配器库创建好，在调用 `run` 时作为第二个参数传进来，`run` 里直接用就行。它的类型叫 `Host`（大写），只有把 `host` 传给你自己写的函数、要给参数标类型时，才需要 `import { type Host } from "./merakcode-adapter.mjs"`。15.5 的例子里有这种写法。
+
+### 15.4 准备文件
+
+建一个文件夹，推荐放在 `~/.merakcode/adapters/<id>/`（`<id>` 是你给这个产品起的 id，比如 `mycli`），里面放三个文件：
+
+| 文件                      | 是什么                                       | 怎么来       |
+| ------------------------- | -------------------------------------------- | ------------ |
+| `merakcode-adapter.mjs`   | 适配器库，处理和 MerakCode 的通信            | 复制，不要改 |
+| `merakcode-adapter.d.mts` | 适配器库的类型声明，让编辑器有提示和类型检查 | 复制，不要改 |
+| `adapter.mts`             | 你写的适配器                                 | 照 15.5 写   |
+
+前两个文件在 MerakCode 的安装目录里，同一个文件夹下还有三个内置适配器的示例 `example-claude-code.mts`、`example-codex.mts`、`example-opencode.mts`，可以直接拿来改：
+
+- 桌面端：安装目录下的 `resources/engine/lib/skills/adapter-generator/`，macOS 上是 `/Applications/MerakCode.app/Contents/Resources/engine/lib/skills/adapter-generator/`；
+- 命令行版：`~/.merakcode/versions/<版本>/lib/skills/adapter-generator/`。
+
+不用装任何东西：MerakCode 自带的 Node 能直接运行 `.mts` 文件，编辑器从 `merakcode-adapter.d.mts` 拿到类型。想让编辑器也认识 `node:readline` 这类 Node 自带模块的类型，在文件夹里装一下 `@types/node`（`npm install --save-dev @types/node`），这只影响编辑器，运行不需要。
+
+扩展名用 `.mts`，不用 `.ts`：`.mts` 永远按 ES 模块（`import`/`export`）运行；`.ts` 要看上级目录的 `package.json` 有没有写 `"type": "module"`，而 `~/.merakcode/package.json` 没写，Node 会先按老式模块解析失败、再重新解析，每次启动都打一条警告。
+
+如果你的适配器本来就在一个 Node 项目里，也可以不复制库，改用 npm 包：`npm install @merakcode/sdk --omit=optional`（不加 `--omit=optional` 会顺带装上约 140MB 的引擎，适配器用不到），然后从 `@merakcode/sdk/adapter` 导入，用法完全一样。
+
+### 15.5 一个完整的例子
+
+下面把一个**虚构的** CLI `mycli` 接进协作群。它每行输出一个 JSON 事件，从标准输入读命令。这些消息格式是编的：写你自己的适配器时，换成你的 CLI 文档里写的格式。
+
+```ts
+// adapter.mts：把虚构的 CLI「mycli」接进协作群
+import readline from "node:readline"
+import { adapter, spawn, stop, version, type Host, type Permission } from "./merakcode-adapter.mjs"
+
+// 你的 CLI 的命令名。MerakCode 不会把它告诉适配器：配置里的命令和参数是用来启动适配器本身的
+const CLI = "mycli"
+
+// mycli 每行输出一个 JSON 事件，这里列出会用到的四种
+type MyCliEvent =
+  | { type: "tool"; name: string; detail?: string } // 它开始用一个工具
+  | { type: "approval"; id: string; action: string; path?: string; command?: string; url?: string } // 它要审批
+  | { type: "question"; id: string; text: string; choices: string[] } // 它要问用户
+  | { type: "done"; text: string; session: string } // 任务做完了
+
+// adapter() 把这个程序变成一个适配器：它接管和 MerakCode 的通信，在需要时调用下面两个函数
+adapter({
+  // inspect：只说明这个 CLI 是什么，不干活。设置页显示产品状态时也会调用它
+  inspect: async () => ({
+    name: "MyCLI",
+    recommended: "1.2.0", // 低于这个版本时，设置页提示建议升级（照样能用）
+    upgrade: "npm install -g mycli", // 提示里给出的升级命令
+    ...(await version(CLI)), // 跑 mycli --version：得到 { version }，没装或出错时得到 { unavailable: 原因 }
+  }),
+
+  // run：做一个任务。task 是这次的活，host 是 MerakCode（见 15.3），两个都由库传进来
+  async run(task, host) {
+    // 1. 按权限模式拼出 mycli 的参数：让它遇到拿不准的事都来问，由 MerakCode 决定
+    const args = ["run", "--json", "--approvals", "ask"]
+    if (task.mode === "readonly") args.push("--read-only") // 只读模式：不让它改文件
+    if (task.resume) args.push("--session", task.resume) // 接着上次的会话
+
+    // 2. 启动 mycli。用库里的 spawn：在 Windows 上，npm 装的 CLI 是 .cmd 文件，Node 自带的 spawn 启动不了
+    const cli = spawn(CLI, args, { cwd: task.cwd, stdio: ["pipe", "pipe", "inherit"], windowsHide: true })
+    // 用户在群里点停止时，task.signal 会触发：把 mycli 停掉
+    task.signal.addEventListener("abort", () => void stop(cli), { once: true })
+
+    // 往 mycli 的标准输入写一行 JSON
+    const send = (message: object) => cli.stdin.write(JSON.stringify(message) + "\n")
+    send({ prompt: task.prompt }) // 把任务交给它
+
+    try {
+      // 3. 一行一行读 mycli 的输出，按事件类型处理
+      for await (const line of readline.createInterface({ input: cli.stdout })) {
+        const event = parse(line)
+        if (!event) continue // 不是 JSON 的行（比如它打印的日志）跳过
+
+        // 它开始用一个工具：显示到成员的气泡里
+        if (event.type === "tool") host.step({ tool: event.name, detail: event.detail })
+
+        if (event.type === "approval") {
+          // 问 MerakCode 能不能做，在这里等它回复（可能要等用户在审批栏里点）
+          const verdict = await host.permission(toPermission(event))
+          // 把结果告诉 mycli；拒绝时带上理由，好让它换个办法
+          send({ approval: event.id, approved: verdict.allow, reason: verdict.allow ? undefined : verdict.message })
+        }
+
+        if (event.type === "question") await ask(host, event, send)
+
+        // 做完了：text 是成员在群里的回复，sessionId 下次作为 task.resume 传回来
+        if (event.type === "done") return { text: event.text, sessionId: event.session }
+      }
+      // 输出读完了却没等到 done：mycli 中途退出了
+      throw new Error("mycli 没给出回复就退出了")
+    } finally {
+      // 4. 不管是做完、出错还是被停止，都把 mycli 收掉
+      await stop(cli)
     }
+  },
+})
+
+/** 把一行输出解析成事件；不是 JSON 的行返回 undefined */
+function parse(line: string): MyCliEvent | undefined {
+  try {
+    return JSON.parse(line) as MyCliEvent
+  } catch {
+    return undefined
   }
+}
+
+/** 把 mycli 的审批事件翻译成 MerakCode 的五种请求之一（见 15.6），尽量选最具体的那种 */
+function toPermission(event: Extract<MyCliEvent, { type: "approval" }>): Permission {
+  if (event.action === "write") return { kind: "write", paths: [event.path ?? ""] }
+  if (event.action === "shell") return { kind: "command", command: event.command ?? "" }
+  if (event.action === "read") return { kind: "read", paths: [event.path ?? ""] }
+  if (event.action === "fetch" && event.url)
+    return { kind: "network", host: new URL(event.url).hostname, url: event.url }
+  return { kind: "tool", name: event.action } // 以上都不是的，才用 tool
+}
+
+/**
+ * 在 MerakCode 的提问框里问用户，再把用户选的答案交回给 mycli。
+ * host 传进了自己写的函数，所以参数要标上类型 Host
+ */
+async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>, send: (message: object) => void) {
+  const answers = await host.question([
+    { question: event.text, header: "提问", options: event.choices.map((label) => ({ label, description: "" })) },
+  ])
+  // answers 里每个问题一个数组，装着用户选的选项文字；这里只问了一个问题
+  send({ answer: event.id, choice: answers[0]?.[0] })
 }
 ```
 
-命令写 `node` 时用的是 MerakCode 自带的 Node，没装 Node 的电脑上也能跑。适配器是你自己装的程序，权限和你本人一样，MerakCode 只管得到它主动来问的操作。只用你信任的适配器。
+这个例子里，CLI 一次只发一个请求，所以在循环里直接 `await` 就行。如果你的 CLI 会同时发好几个请求，回复时不要在循环里等，写法参考 `example-claude-code.mts`。
 
-单文件版本 `merakcode-adapter.mjs`（技能 `adapter-generator` 自带，只需要 Node）还能直接试适配器：`node merakcode-adapter.mjs check -- node adapter.mjs` 只握手，显示名称和版本；`node merakcode-adapter.mjs test -- node adapter.mjs "<任务>"` 在当前目录跑一个任务，放行所有请求，打印每一步和结果，请在空目录里跑。SDK 里同样的入口是 `cli(argv)`。
+`adapter()` 接收的对象（类型 `Definition`）就是上面这两个函数：
+
+| 函数               | 什么时候调用               | 返回什么                                                                                                                         |
+| ------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | 设置页显示状态时，不带任务 | `Info`：名称 `name`，可选的版本 `version`、路径 `path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写原因 `unavailable` |
+| `run(task, host)`  | 每个任务一次               | `Result`：回复 `text`，以及下次续接用的 `sessionId`                                                                              |
+
+`task`（类型 `Task`）里有：
+
+| 字段           | 是什么                                                           |
+| -------------- | ---------------------------------------------------------------- |
+| `task.prompt`  | 交给成员的完整任务，包括它的职责和群里的情况                     |
+| `task.cwd`     | 项目目录，CLI 要在这里干活                                       |
+| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"readonly"`、`"ask"` 或 `"auto"` |
+| `task.resume`  | 上次任务返回的 `sessionId`，第一次是空的                         |
+| `task.product` | 用户在配置里写的这个产品（类型 `Product`）：id、名称、命令和参数 |
+| `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                               |
+
+### 15.6 五种审批请求
+
+`host.permission` 接收的请求（类型 `Permission`）分五种，尽量选最具体的那种：
+
+| `kind`    | 什么时候用 | 写法                                            |
+| --------- | ---------- | ----------------------------------------------- |
+| `write`   | 改文件     | `{ kind: "write", paths: ["src/a.ts"] }`        |
+| `command` | 跑命令     | `{ kind: "command", command: "npm test" }`      |
+| `network` | 联网       | `{ kind: "network", host: "example.com", url }` |
+| `read`    | 读文件     | `{ kind: "read", paths: [".env"] }`             |
+| `tool`    | 以上都不是 | `{ kind: "tool", name: "某工具", detail }`      |
+
+- 返回值（类型 `Verdict`）是 `{ allow: true }` 或 `{ allow: false, message }`。拒绝时把 `message` 当理由转给 CLI。
+- MerakCode 判断这些请求的规则，和它自己的工具完全一样。"本对话允许""总是允许""信任文件或目录"都由 MerakCode 处理，你的适配器只会收到"允许"或"拒绝"。
+- 路径可以是相对项目目录的，也可以是绝对路径。
+
+`host.question` 接收的问题（类型 `Question`）有 `question`（问题）、`header`（很短的标题）、`options`（选项，每个有 `label` 和 `description`），可选 `multiple`（能不能多选）。返回值里每个问题一个数组（类型 `Answer`），装着用户选的选项文字。`host.step` 接收的一步（类型 `Step`）是 `{ tool, detail }`。
+
+### 15.7 先自己测一遍
+
+在适配器文件夹里运行（`node` 用你电脑上的 Node 24 以上版本就行）：
+
+```sh
+# 只握手、不干活：应当打印名称和版本
+node merakcode-adapter.mjs check -- node adapter.mts
+
+# 真跑一个任务：会用你的 CLI 自己的模型，可能花钱。请在一个新建的空目录里运行，把路径换成适配器文件夹
+node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹>/adapter.mts "Run node --version, then create hello.txt containing hi, then reply OK"
+```
+
+测试模式会打印每一步、每个审批请求、每个提问，所有请求一律允许，提问总选第一个选项，最后打印结果和会话 id。满足下面三条才算跑通：
+
+- `node --version` 作为 `command` 请求到达；
+- 写 `hello.txt` 作为 `write` 请求到达；
+- 结果正常返回。
+
+只有 `check` 通过还不够，它只证明握手没问题。SDK 里同样的入口是 `cli(argv)`。
+
+### 15.8 注册到 MerakCode
+
+在全局配置 `~/.merakcode/merakcode.jsonc` 里加一个产品，接入方式写 `member`：
+
+```jsonc
+{
+  "collaboration": {
+    "products": {
+      "mycli": {
+        "title": "MyCLI",
+        "adapter": "member",
+        // node 是 MerakCode 自带的 Node，没装 Node 的电脑也能跑
+        "command": "node",
+        // 适配器的绝对路径
+        "args": ["/Users/你/.merakcode/adapters/mycli/adapter.mts"],
+      },
+    },
+  },
+}
+```
+
+也可以在「设置 › 协作群 › 添加产品」里加：接入方式选"成员适配器（命令和参数启动你的适配器）"，命令填 `node`，参数填适配器的路径。
+
+注册后，设置页这一行会显示 `inspect` 返回的版本，以及"权限：由 MerakCode 审批"，然后就能在群里添加这个产品的成员了。
+
+### 15.9 运行时的规则和常见的坑
+
+- **一个任务一个进程**：每个任务都启动一个新的适配器进程。要接着上次干，就靠你返回的 `sessionId`。
+- **用户点停止**：`task.signal` 触发，你负责停掉 CLI。5 秒后还没退出的话，MerakCode 会把适配器和它启动的所有进程一起结束。
+- **MerakCode 退出**：适配器的输入流被关闭，`task.signal` 随之触发，库会在 5 秒后自动退出，不会在后台留下残留。
+- **`inspect` 有时限**：10 秒内没回应，这个产品显示为不可用。
+- **不要往标准输出打印东西**：标准输出是和 MerakCode 通信专用的。`console.log` 已经被库转到了 MerakCode 的日志里，但直接写 `process.stdout` 会把通信搞乱。
+- **不要给 CLI 加跳过审批的参数**（比如"全部自动放行"）：加了以后 MerakCode 就管不到它了，权限模式和审批都会失效。
+- **适配器以你本人的权限运行，不在 MerakCode 的沙箱里**。MerakCode 只管得到 CLI 主动来问的操作，只接你信任的 CLI。
+
+### 15.10 TypeScript 写法的限制
+
+MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，所以：
+
+- 运行时不检查类型。类型错误要靠编辑器发现，或者自己跑一下 `tsc --noEmit`。
+- 只能用"删掉类型后就是 JavaScript"的写法：类型标注、`type`、`interface`、`as`、`!`、泛型都可以；**`enum`、`namespace`、构造函数参数属性（`constructor(private x)`）不行**，Node 会报语法错误。
+- 只导入类型时写 `type`，比如 `import { adapter, type Host } from "./merakcode-adapter.mjs"`。
+- 相对导入要写完整的扩展名，比如 `./merakcode-adapter.mjs`。
+
+### 15.11 库里的其他内容
+
+- `spawn`：参数和返回值都和 `node:child_process` 的 `spawn` 一样，但在 Windows 上也能启动 npm 装的 CLI（`.cmd` 文件），参数原样传过去。
+- `stop(child)`：结束 CLI 和它启动的所有进程，结束后才返回。CLI 的输入还开着的话，会先关掉输入，给它一点时间自己退出。
+- `version(command)`：跑 `<CLI> --version`，返回第一行；没装、出错或 5 秒内没回应时，返回原因。
+- `connect`：你的 CLI 也说 JSON-RPC 的话，可以用它来连，写法见 `example-codex.mts`。对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。
+- `PROTOCOL`：成员协议的版本号。协议本身是标准输入输出上的 JSON-RPC 2.0，一行一条消息，由库处理。

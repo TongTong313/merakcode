@@ -3,6 +3,17 @@
  * policy, so every command and file change Codex is unsure about comes to MerakCode first; request_user_input becomes
  * a MerakCode question. Commands still run in Codex's own sandbox. Written with the adapter library alone, the same
  * way anyone's adapter is.
+ *
+ * How one task goes (Codex talks JSON-RPC on stdin and stdout, so `connect` from the library does the messages):
+ * 1. `run` starts `codex app-server`; `turn` sends `initialize`, then `thread/start` (or `thread/resume` with
+ *    `task.resume`) with the settings from `codexThread`, then `turn/start` with the task.
+ * 2. Codex then sends requests of its own, each answered by a handler in `turn`:
+ *    - `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` become `host.permission`, and the
+ *      verdict goes back as `accept` or `decline`;
+ *    - `item/tool/requestUserInput` becomes `host.question`;
+ *    - `item/started` says what Codex is doing, shown with `host.step`.
+ * 3. `turn/completed` ends the task: the last agent message is the reply, the thread id continues it next time.
+ * 4. Done, failed or stopped by the user (`task.signal`), `stop` ends Codex.
  */
 import type { ChildProcess } from "node:child_process"
 import readline from "node:readline"

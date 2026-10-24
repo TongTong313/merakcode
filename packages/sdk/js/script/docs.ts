@@ -23,8 +23,11 @@ export function missing(names: string[], doc: string) {
   return names.filter((name) => !new RegExp(`\\b${name}\\b`).test(doc))
 }
 
+/** The ts blocks; one importing the single-file adapter library is checked against the SDK's adapter entry, its source */
 export function snippets(markdown: string) {
-  return [...markdown.matchAll(/^```ts\n([\s\S]*?)^```$/gm)].map((match) => match[1]!)
+  return [...markdown.matchAll(/^```ts\n([\s\S]*?)^```$/gm)].map((match) =>
+    match[1]!.replaceAll('from "./merakcode-adapter.mjs"', 'from "@merakcode/sdk/adapter"'),
+  )
 }
 
 async function main() {

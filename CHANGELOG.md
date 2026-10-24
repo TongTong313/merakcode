@@ -6,6 +6,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- Member adapters are written in TypeScript: Node runs an `adapter.mts` as it is, the single-file adapter library comes with its type declarations (`merakcode-adapter.d.mts`), and the `adapter-generator` skill writes TypeScript from the built-in adapters. Adapters already written in JavaScript keep working. The SDK guide explains writing one step by step.
+
+### 变更
+
+- 成员适配器改用 TypeScript 写：Node 直接运行 `adapter.mts`，单文件适配器开发库带上了类型声明（`merakcode-adapter.d.mts`），技能 `adapter-generator` 照着内置适配器写 TypeScript。已经用 JavaScript 写好的适配器照样能用。SDK 手册一步步讲了怎么写。
+
 ## [0.1.1] - 2026-10-24
 
 ### Added

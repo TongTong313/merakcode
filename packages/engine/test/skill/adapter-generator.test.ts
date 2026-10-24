@@ -21,17 +21,17 @@ test("the adapter generator is a built-in skill, and auto-cli is gone", () => {
 /** The examples, each MerakCode's own adapter for a CLI that talks in one of the three ways, and that CLI's fake */
 const EXAMPLES = [
   {
-    file: "example-claude-code.mjs",
+    file: "example-claude-code.mts",
     cli: "claude",
     env: { CLAUDE_FIXTURE: JSON.stringify([{ name: "Bash", input: { command: "npm test" } }]) },
   },
   {
-    file: "example-codex.mjs",
+    file: "example-codex.mts",
     cli: "codex",
     env: { CODEX_FIXTURE: JSON.stringify([{ type: "command", command: "npm test" }]) },
   },
   {
-    file: "example-opencode.mjs",
+    file: "example-opencode.mts",
     cli: "opencode",
     env: {
       OPENCODE_FIXTURE: JSON.stringify([
@@ -46,12 +46,13 @@ for (const example of EXAMPLES)
     const files = skill?.files ?? {}
     await using tmp = await tmpdir()
     // As the skill tells the model to do: the library, and the example as the adapter
-    await fs.writeFile(path.join(tmp.path, "merakcode-adapter.mjs"), files["merakcode-adapter.mjs"]!)
-    await fs.writeFile(path.join(tmp.path, "adapter.mjs"), files[example.file]!)
+    for (const file of ["merakcode-adapter.mjs", "merakcode-adapter.d.mts"])
+      await fs.writeFile(path.join(tmp.path, file), files[file]!)
+    await fs.writeFile(path.join(tmp.path, "adapter.mts"), files[example.file]!)
     // The CLI as npm installs it: a .cmd shim on Windows
     const command = await shim(tmp.path, example.cli, `${example.cli}.ts`)
     const product = { id: example.cli, title: example.cli, command, args: [] }
-    const launch = [process.execPath, path.join(tmp.path, "adapter.mjs")]
+    const launch = [process.execPath, path.join(tmp.path, "adapter.mts")]
     const saved = Object.fromEntries(Object.keys(example.env).map((key) => [key, process.env[key]]))
     Object.assign(process.env, example.env)
     try {
@@ -80,9 +81,43 @@ for (const example of EXAMPLES)
     }
   }, 60_000)
 
+test("an adapter written in plain JavaScript beside the library still runs, as ones written before TypeScript do", async () => {
+  await using tmp = await tmpdir()
+  await fs.writeFile(path.join(tmp.path, "merakcode-adapter.mjs"), skill?.files?.["merakcode-adapter.mjs"] ?? "")
+  await fs.writeFile(
+    path.join(tmp.path, "adapter.mjs"),
+    `import { adapter } from "./merakcode-adapter.mjs"
+adapter({
+  inspect: () => ({ name: "Plain", version: "1.0.0" }),
+  async run(task, host) {
+    const verdict = await host.permission({ kind: "command", command: "npm test" })
+    return { text: task.prompt + " " + verdict.allow }
+  },
+})
+`,
+  )
+  const asked: unknown[] = []
+  const result = await runMember({
+    launch: [process.execPath, path.join(tmp.path, "adapter.mjs")],
+    product: { id: "plain", title: "Plain" },
+    task: { prompt: "做登录", cwd: tmp.path, mode: "ask" },
+    abort: new AbortController().signal,
+    host: {
+      step: () => {},
+      permission: async (request) => {
+        asked.push(request)
+        return { allow: true }
+      },
+      question: async () => [],
+    },
+  })
+  expect(asked).toEqual([{ kind: "command", command: "npm test" }])
+  expect(result.text).toBe("做登录 true")
+}, 60_000)
+
 test("every file the skill names is one it carries, and each it carries is named", () => {
-  // adapter.mjs is the one the model writes
-  const named = new Set(skill?.content.match(/\b[\w-]+\.mjs\b/g)?.filter((file) => file !== "adapter.mjs"))
+  // adapter.mts is the one the model writes
+  const named = new Set(skill?.content.match(/\b[\w-]+(?:\.d)?\.m[jt]s\b/g)?.filter((file) => file !== "adapter.mts"))
   expect([...named].sort()).toEqual(Object.keys(skill?.files ?? {}).sort())
 })
 

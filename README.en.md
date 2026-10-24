@@ -212,7 +212,7 @@ Products can also be set in the config:
       // A built-in product needs only the fields you change, such as where its command is or extra arguments
       "codex": { "command": "/opt/codex/bin/codex", "args": ["-c", "model=\"o3\""] },
       // Your own adapter
-      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] },
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mts"] },
     },
   },
 }

@@ -212,7 +212,7 @@ MerakCode 会在你的电脑上改文件、跑命令，所以每次操作前按�
       // 内置产品只需要改想改的字段，比如命令的位置或额外启动参数
       "codex": { "command": "/opt/codex/bin/codex", "args": ["-c", "model=\"o3\""] },
       // 自己的适配器
-      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] },
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mts"] },
     },
   },
 }

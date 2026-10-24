@@ -2,6 +2,16 @@
  * Built-in member adapter for Claude Code. It runs `claude -p` with stream-json in and out and the stdio permission
  * host, so every tool Claude Code would ask about comes to MerakCode first; AskUserQuestion becomes a MerakCode
  * question. Written with the adapter library alone, the same way anyone's adapter is.
+ *
+ * How one task goes (Claude Code talks in JSON lines on stdin and stdout):
+ * 1. `run` starts `claude -p` with the arguments from `claudeArgs` and writes the task as one JSON line to its stdin.
+ * 2. `follow` reads Claude Code's output line by line:
+ *    - a `control_request` of subtype `can_use_tool` is Claude Code asking before it uses a tool. `answer` turns it into
+ *      `host.permission` (or `host.question` for its AskUserQuestion tool) and the verdict goes back as a
+ *      `control_response` line with the same `request_id`;
+ *    - an `assistant` line with `tool_use` blocks says which tools it uses, shown with `host.step`;
+ *    - the `result` line ends the task: its text is the reply, its `session_id` continues the session next time.
+ * 3. Done, failed or stopped by the user (`task.signal`), `stop` ends Claude Code.
  */
 import readline from "node:readline"
 import {

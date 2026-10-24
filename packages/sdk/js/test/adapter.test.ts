@@ -4,15 +4,16 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { bundle } from "../script/adapter-library"
+import { bundle, declarations } from "../script/adapter-library"
 
 const run = promisify(execFile)
 
-/** The single-file library and an adapter written with it, in a fresh directory removed after the test */
+/** The single-file library, its types and an adapter written with them, in a fresh directory removed after the test */
 async function workspace(adapter: string) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-adapter-"))
   await fs.writeFile(path.join(dir, "merakcode-adapter.mjs"), await bundle())
-  await fs.writeFile(path.join(dir, "adapter.mjs"), adapter)
+  await fs.writeFile(path.join(dir, "merakcode-adapter.d.mts"), await declarations())
+  await fs.writeFile(path.join(dir, "adapter.mts"), adapter)
   return { dir, [Symbol.asyncDispose]: () => fs.rm(dir, { recursive: true, force: true }) }
 }
 
@@ -32,7 +33,7 @@ test("check runs the handshake only and prints what the adapter reports", async 
   await using space = await workspace(ADAPTER)
   const { stdout } = await run(
     process.execPath,
-    ["merakcode-adapter.mjs", "check", "--", process.execPath, "adapter.mjs"],
+    ["merakcode-adapter.mjs", "check", "--", process.execPath, "adapter.mts"],
     {
       cwd: space.dir,
     },
@@ -66,7 +67,7 @@ adapter({
     })
   const { stdout } = await run(
     process.execPath,
-    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mjs", "go"],
+    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mts", "go"],
     { cwd: space.dir, env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH } },
   )
   expect(stdout).toContain(`result ${JSON.stringify(["two words", 'say "hi"'])}`)
@@ -167,7 +168,7 @@ test("test runs one task, allowing every request and picking the first option, a
   await using space = await workspace(ADAPTER)
   const { stdout } = await run(
     process.execPath,
-    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mjs", "do it"],
+    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mts", "do it"],
     { cwd: space.dir },
   )
   expect(stdout).toContain("step shell npm test")
@@ -176,3 +177,48 @@ test("test runs one task, allowing every request and picking the first option, a
   expect(stdout).toContain("result do it true A")
   expect(stdout).toContain("session s1")
 }, 30_000)
+
+/** Type-checks a file with strict settings, as an editor does; resolves to the compiler's errors, empty when none */
+async function typecheck(dir: string, file: string) {
+  const tsc = path.join(import.meta.dirname, "..", "node_modules", "typescript", "bin", "tsc")
+  const types = path.join(import.meta.dirname, "..", "node_modules", "@types")
+  const args = [tsc, "--noEmit", "--strict", "--skipLibCheck", "--module", "nodenext", "--target", "esnext"]
+  return run(process.execPath, [...args, "--typeRoots", types, "--types", "node", file], { cwd: dir }).then(
+    () => "",
+    (error: { stdout: string }) => error.stdout,
+  )
+}
+
+test("the library's type declarations let a TypeScript adapter be checked, and catch a wrong call", async () => {
+  await using space = await workspace(`import { adapter, spawn, stop, type Host } from "./merakcode-adapter.mjs"
+
+/** host passed on to a helper of the adapter's own, typed with Host */
+async function ask(host: Host, command: string) {
+  return (await host.permission({ kind: "command", command })).allow
+}
+
+adapter({
+  inspect: () => ({ name: "Typed", version: "1.0.0" }),
+  async run(task, host) {
+    const cli = spawn("mycli", [task.prompt], { cwd: task.cwd })
+    task.signal.addEventListener("abort", () => void stop(cli))
+    host.step({ tool: "shell", detail: "npm test" })
+    return { text: String(await ask(host, "npm test")), sessionId: task.resume }
+  },
+})
+`)
+  expect(await typecheck(space.dir, "adapter.mts")).toBe("")
+  await fs.writeFile(
+    path.join(space.dir, "wrong.mts"),
+    `import { adapter } from "./merakcode-adapter.mjs"
+adapter({
+  inspect: () => ({ name: "Wrong" }),
+  async run(task, host) {
+    host.step({ tool: 1 })
+    return { text: "" }
+  },
+})
+`,
+  )
+  expect(await typecheck(space.dir, "wrong.mts")).toContain("Type 'number' is not assignable to type 'string'")
+}, 60_000)

@@ -1,7 +1,8 @@
 /**
  * Builds the files of the adapter-generator skill that come from code: the adapter library as one file
- * (merakcode-adapter.mjs, from @merakcode/sdk/adapter), and the examples, which are MerakCode's own adapters for Claude
- * Code, Codex and OpenCode as plain JavaScript beside it. They need only Node, not the SDK.
+ * (merakcode-adapter.mjs, from @merakcode/sdk/adapter) with its type declarations (merakcode-adapter.d.mts), and the
+ * examples, which are MerakCode's own TypeScript adapters for Claude Code, Codex and OpenCode, importing the library
+ * beside them. Node runs them as they are; they need nothing else.
  *
  * Usage (repo root): pnpm generate:adapter-library, or pnpm check:adapter-library to fail when they are out of date.
  */
@@ -17,9 +18,9 @@ const adapters = path.join(root, "packages", "engine", "src", "collaboration", "
 const folder = path.join(root, "packages", "engine", "src", "skill", "builtin", "adapter-generator")
 /** Each example, and the built-in adapter it is */
 const EXAMPLES = {
-  "example-claude-code.mjs": "claude",
-  "example-codex.mjs": "codex",
-  "example-opencode.mjs": "opencode",
+  "example-claude-code.mts": "claude",
+  "example-codex.mts": "codex",
+  "example-opencode.mts": "opencode",
 }
 
 /** The library as one ES module */
@@ -48,13 +49,32 @@ export async function bundle() {
   return result.outputFiles[0]!.text
 }
 
-/** A built-in adapter with its types taken out and its comments kept, importing the library beside it */
+/**
+ * The library's type declarations, for merakcode-adapter.d.mts beside the library: a TypeScript adapter that imports
+ * ./merakcode-adapter.mjs gets them without installing anything
+ */
+export async function declarations() {
+  const program = ts.createProgram([source], {
+    declaration: true,
+    emitDeclarationOnly: true,
+    strict: true,
+    skipLibCheck: true,
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    esModuleInterop: true,
+    types: ["node"],
+  })
+  let text = ""
+  program.emit(program.getSourceFile(source), (_file, output) => (text = output), undefined, true)
+  if (!text) throw new Error(`No declarations were emitted for ${source}`)
+  return text
+}
+
+/** A built-in adapter as it is, importing the library beside it instead of the SDK */
 async function example(name: string) {
   const file = path.join(adapters, `${name}.ts`)
-  const { outputText } = ts.transpileModule(await Filesystem.readText(file), {
-    compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
-  })
-  const code = outputText.replaceAll('"@merakcode/sdk/adapter"', '"./merakcode-adapter.mjs"')
+  const code = (await Filesystem.readText(file)).replaceAll('"@merakcode/sdk/adapter"', '"./merakcode-adapter.mjs"')
   // A copy of the example runs on its own: it may use Node and the library, nothing else
   for (const [, specifier] of code.matchAll(/\bfrom\s+"([^"]+)"/g))
     if (!specifier!.startsWith("node:") && specifier !== "./merakcode-adapter.mjs")
@@ -62,10 +82,11 @@ async function example(name: string) {
   return `// MerakCode's own adapter, generated from packages/engine/src/collaboration/adapters/${name}.ts. Do not edit.\n${code}`
 }
 
-/** Each generated file's path and text, formatted as the repo formats JavaScript */
+/** Each generated file's path and text, formatted as the repo formats its code */
 async function render() {
   const files: Record<string, string> = {
     "merakcode-adapter.mjs": `// MerakCode adapter library (member protocol v1). Generated from @merakcode/sdk/adapter; do not edit.\n${await bundle()}`,
+    "merakcode-adapter.d.mts": `// Types of merakcode-adapter.mjs. Generated from @merakcode/sdk/adapter; do not edit.\n${await declarations()}`,
   }
   for (const [file, name] of Object.entries(EXAMPLES)) files[file] = await example(name)
   return Promise.all(

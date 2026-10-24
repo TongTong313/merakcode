@@ -175,7 +175,7 @@ async function smokeServer() {
       .then((response) => response.json())
       .catch(() => [])) as { name: string; content: string }[]
     const generator = skills.find((item) => item.name === "adapter-generator")?.content ?? ""
-    if (generator.includes("example-claude-code.mjs")) ok("adapter-generator skill files")
+    if (generator.includes("example-claude-code.mts")) ok("adapter-generator skill files")
     else fail("adapter-generator skill files", generator ? "its instructions name no example" : "the skill is missing")
 
     // The engine starts each built-in member adapter from lib/; whether a CLI is installed, the adapter must answer
@@ -261,7 +261,7 @@ const adapters = [
   ]),
   ...["claude-code", "codex", "opencode"].map((name) => [
     `adapter-generator example ${name}`,
-    path.join(skillFolder, `example-${name}.mjs`),
+    path.join(skillFolder, `example-${name}.mts`),
   ]),
 ]
 for (const [label, script] of adapters) {

@@ -17,7 +17,13 @@ function folder(here = import.meta.url) {
 
 const dir = folder()
 const read = (file: string) => readFileSync(path.join(dir, file), "utf8")
-const FILES = ["merakcode-adapter.mjs", "example-claude-code.mjs", "example-codex.mjs", "example-opencode.mjs"]
+const FILES = [
+  "merakcode-adapter.mjs",
+  "merakcode-adapter.d.mts",
+  "example-claude-code.mts",
+  "example-codex.mts",
+  "example-opencode.mts",
+]
 
 export const ADAPTER_GENERATOR_SKILL = {
   name: "adapter-generator",

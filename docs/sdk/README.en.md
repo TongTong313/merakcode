@@ -672,57 +672,292 @@ When `executablePath` points at another engine, or `url` connects to a running o
 
 ## 15. Member adapters (adapter)
 
-A collaboration group takes Claude Code, Codex and OpenCode as members through **member adapters**: small programs MerakCode starts for each task and talks to with `@merakcode/sdk/adapter`. The adapter drives its own CLI and hands every step, every operation that needs approval and every question for the user to MerakCode. MerakCode decides under the group's permission mode (read-only, ask, auto) and the user's rules, and asks when needed, so a member follows the same rules as MerakCode's own tools.
+A collaboration group takes Claude Code, Codex and OpenCode as members through **member adapters**. For an AI coding tool MerakCode has no adapter for, write one with this section (a few dozen lines of TypeScript), or click "Have MerakCode write an adapter to connect your own AI coding tool" under Settings › Collaboration and let the built-in skill `adapter-generator` write and register one for you.
 
-The built-in adapters for Claude Code, Codex and OpenCode are written this way too, with this library and Node built-ins only. For an AI coding tool MerakCode has no adapter for, write one the same way, or ask MerakCode in an ordinary conversation to write and register one with the built-in skill `adapter-generator`, which works from those three built-in adapters as its examples.
+### 15.1 What an adapter is
 
-`adapter(definition)` makes the current process an adapter. `definition` (type `Definition`) has two functions:
+An adapter is a small program between MerakCode and your CLI, passing messages both ways:
 
-| Function           | What it does                                                                                                                                                                                                                            |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect(product)` | Describes the CLI without a task and returns `Info`: `name`, `version`, `path`, the recommended version `recommended`, the upgrade command `upgrade`, or `unavailable` when it cannot run. Settings shows it, so it must not start work |
-| `run(task, host)`  | Does one task and returns `Result`: the reply `text`, and `sessionId` to continue next time                                                                                                                                             |
-
-`product` (type `Product`) has the command and arguments the user configured. `task` (type `Task`) has `prompt`, `cwd`, `mode` (type `Mode`: `"readonly"`, `"ask"` or `"auto"`), the previous `resume`, `product`, and `signal`, which aborts when the user stops the group: stop the CLI then.
-
-`host` (type `Host`) is how the adapter reaches MerakCode:
-
-| Method                     | What it does                                                                                                                                                                                                                        |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host.step(step)`          | Reports a step (type `Step`: `tool`, `detail`), shown in the member's bubble                                                                                                                                                        |
-| `host.permission(request)` | Asks for an operation (type `Permission`): `write`, `command`, `network`, `read` or `tool` (anything else). Returns `Verdict`: `{ allow: true }` or `{ allow: false, message }`; give `message` to the CLI so it can work around it |
-| `host.question(questions)` | Asks the user (type `Question`) and returns the options picked for each question (type `Answer`)                                                                                                                                    |
-
-The protocol is JSON-RPC 2.0 on stdin and stdout, one message per line, version `PROTOCOL`. When your CLI speaks JSON-RPC too, `connect` talks to it the same way; requests still waiting when the other side goes away fail with `ConnectionClosed`. Whatever the adapter writes with `console.log` goes to stderr, into MerakCode's log, so it cannot break the protocol.
-
-Start the CLI with `spawn` from here: it takes the same arguments and returns the same as `spawn` from `node:child_process`, and also starts a CLI that npm installed on Windows (a `.cmd` file), passing its arguments unchanged. When the user stops the group, and when the task is done, end the CLI with everything it started with `stop(child)` (on Windows a CLI npm installed is the child of its shim); it resolves once that is done, and first closes the CLI's input, if still open, to give it a moment to exit. In `inspect`, `version(command)` runs `<cli> --version` and gives the first line, or why there is none (not installed, failing, or no answer within 5 seconds).
-
-```ts
-import { adapter } from "@merakcode/sdk/adapter"
-
-adapter({
-  inspect: () => ({ name: "MyCLI", version: "1.0.0" }),
-  async run(task, host) {
-    host.step({ tool: "shell", detail: "npm test" })
-    const verdict = await host.permission({ kind: "command", command: "npm test" })
-    if (!verdict.allow) return { text: `Did not run the tests: ${verdict.message}` }
-    return { text: `Tests ran for: ${task.prompt}`, sessionId: "my-session" }
-  },
-})
+```text
+MerakCode  ⇄  adapter library merakcode-adapter.mjs  ⇄  your adapter.mts  ⇄  your CLI
+          (the member protocol, done by the library)      (your CLI's own way of talking, written by you)
 ```
 
-Add a product to the config with `member` as its adapter; its command and arguments start your adapter:
+- MerakCode starts the adapter for each task it hands out, and the adapter exits when the task is done.
+- The library does the talking to MerakCode; you need not know the protocol.
+- You write the right half only: how to start your CLI, how to read its output, how to pass its approvals and questions on to MerakCode, and how to hand back the result.
+- The adapter decides nothing itself. When the CLI wants to edit files, run commands, reach a website or ask the user something, it goes to MerakCode, which decides under the group's permission mode (read-only, ask, auto) and the user's rules, and shows the approval bar or the question box when needed. So a member follows the same rules as MerakCode's own tools.
+- The built-in adapters for Claude Code, Codex and OpenCode are written this way too, with this library and Node built-ins only. The `adapter-generator` skill works from them as its examples.
 
-```json
-{
-  "collaboration": {
-    "products": {
-      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] }
+### 15.2 How one task goes
+
+1. The leader hands a task to a member. MerakCode starts your adapter with the command and arguments in the config (such as `node adapter.mts`), in the project directory.
+2. The library first calls your `inspect`, which tells MerakCode what the CLI is called and which version it is. Settings only calls this to show a product's state; it hands out no task.
+3. MerakCode sends the task, and the library calls your `run(task, host)`.
+4. In `run` you start the CLI and read its output. Each time the CLI does something, needs an approval or asks a question, you call the matching method of `host` (see 15.3).
+5. When the CLI is done, `run` returns `{ text, sessionId }`: `text` is the member's reply in the group; `sessionId` is the CLI's session id, given back as `task.resume` with the member's next task so it continues where it left off.
+6. The adapter exits. If the user stops the group midway, `task.signal` fires, and you stop the CLI.
+
+### 15.3 What host is
+
+`host` is MerakCode. The two arguments of `run(task, host)`:
+
+- `task` is the work at hand: the task, the project directory, the permission mode and more (see the table in 15.5);
+- `host` holds the three methods for going to MerakCode while you work.
+
+| Method                     | What it does                                                                                       | Waits?                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `host.step(step)`          | Tells MerakCode "this is what I am doing", shown live in the member's bubble, like "Bash npm test" | No, it only tells            |
+| `host.permission(request)` | Asks MerakCode "may I do this"; requests come in five kinds (see 15.6)                             | Yes, for "allow" or "refuse" |
+| `host.question(questions)` | Has MerakCode ask the user in its question box                                                     | Yes, for the user's answers  |
+
+When the CLI wants to run `npm test`, one approval goes like this:
+
+```text
+CLI → adapter: "I want to run npm test"
+adapter → await host.permission({ kind: "command", command: "npm test" })   ← waits here
+          MerakCode decides under the permission mode: it allows, or shows "Xiaoming · MyCLI requests / run a command"
+          The user clicks "Allow"
+host.permission resolves to { allow: true }
+adapter → CLI: "go ahead"
+```
+
+You neither create nor import `host`: the library makes it and passes it to `run` as the second argument; use it there as it is. Its type is `Host` (capital H). You only import that, with `import { type Host } from "./merakcode-adapter.mjs"`, to pass `host` on to a function of your own and type its parameter, as the example in 15.5 does.
+
+### 15.4 The files
+
+Make a folder, preferably `~/.merakcode/adapters/<id>/` (`<id>` is the id you give the product, such as `mycli`), with three files in it:
+
+| File                      | What it is                                                              | Where it comes from |
+| ------------------------- | ----------------------------------------------------------------------- | ------------------- |
+| `merakcode-adapter.mjs`   | The adapter library, which talks to MerakCode                           | Copied, unchanged   |
+| `merakcode-adapter.d.mts` | The library's type declarations, for hints and type checks in an editor | Copied, unchanged   |
+| `adapter.mts`             | Your adapter                                                            | Written as in 15.5  |
+
+The first two are in MerakCode's install folder, next to three examples, the built-in adapters `example-claude-code.mts`, `example-codex.mts` and `example-opencode.mts`, which you can start from:
+
+- Desktop app: `resources/engine/lib/skills/adapter-generator/` in the install folder; on macOS `/Applications/MerakCode.app/Contents/Resources/engine/lib/skills/adapter-generator/`;
+- Command line: `~/.merakcode/versions/<version>/lib/skills/adapter-generator/`.
+
+Nothing needs installing: the Node MerakCode ships with runs `.mts` files as they are, and an editor gets the types from `merakcode-adapter.d.mts`. For an editor to know the types of Node built-ins such as `node:readline` too, install `@types/node` in the folder (`npm install --save-dev @types/node`); it only affects the editor, not running.
+
+The extension is `.mts`, not `.ts`: a `.mts` file always runs as an ES module (`import`/`export`), while a `.ts` file depends on `"type": "module"` in the nearest `package.json`. `~/.merakcode/package.json` has none, so Node would first fail to parse it the old way, parse it again, and print a warning on every start.
+
+If your adapter is part of a Node project anyway, you can use the npm package instead of copying the library: `npm install @merakcode/sdk --omit=optional` (without `--omit=optional` it also installs the engine, about 140 MB, which an adapter does not need), then import from `@merakcode/sdk/adapter` the same way.
+
+### 15.5 A complete example
+
+This connects a **made-up** CLI, `mycli`, to collaboration groups. It prints one JSON event per line and reads commands on stdin. Its messages are invented: for your own adapter, use the ones your CLI's documentation gives.
+
+```ts
+// adapter.mts: connects the made-up CLI "mycli" to MerakCode's collaboration groups
+import readline from "node:readline"
+import { adapter, spawn, stop, version, type Host, type Permission } from "./merakcode-adapter.mjs"
+
+// Your CLI's command. MerakCode does not tell the adapter: the config's command and arguments start the adapter itself
+const CLI = "mycli"
+
+// mycli prints one JSON event per line; these are the four the adapter uses
+type MyCliEvent =
+  | { type: "tool"; name: string; detail?: string } // it starts using a tool
+  | { type: "approval"; id: string; action: string; path?: string; command?: string; url?: string } // it asks first
+  | { type: "question"; id: string; text: string; choices: string[] } // it asks the user something
+  | { type: "done"; text: string; session: string } // the task is done
+
+// adapter() makes this program an adapter: it does the talking to MerakCode and calls the two functions below
+adapter({
+  // inspect: says what the CLI is, and does no work. Settings calls it to show the product's state
+  inspect: async () => ({
+    name: "MyCLI",
+    recommended: "1.2.0", // below this version, settings suggests an upgrade (it still works)
+    upgrade: "npm install -g mycli", // the upgrade command settings shows
+    ...(await version(CLI)), // runs mycli --version: { version }, or { unavailable: why } when it is missing or fails
+  }),
+
+  // run: does one task. task is the work, host is MerakCode (see 15.3); the library passes both
+  async run(task, host) {
+    // 1. mycli's arguments for the permission mode: it asks about everything it is unsure of, and MerakCode decides
+    const args = ["run", "--json", "--approvals", "ask"]
+    if (task.mode === "readonly") args.push("--read-only") // read-only: it must not edit files
+    if (task.resume) args.push("--session", task.resume) // continue the last session
+
+    // 2. Start mycli. spawn from the library also starts a CLI npm installed on Windows (a .cmd file), unlike Node's
+    const cli = spawn(CLI, args, { cwd: task.cwd, stdio: ["pipe", "pipe", "inherit"], windowsHide: true })
+    // When the user stops the group, task.signal fires: stop mycli
+    task.signal.addEventListener("abort", () => void stop(cli), { once: true })
+
+    // Writes one JSON line to mycli's stdin
+    const send = (message: object) => cli.stdin.write(JSON.stringify(message) + "\n")
+    send({ prompt: task.prompt }) // hand it the task
+
+    try {
+      // 3. Read mycli's output line by line, by event type
+      for await (const line of readline.createInterface({ input: cli.stdout })) {
+        const event = parse(line)
+        if (!event) continue // a line that is not JSON (a log line, say) is skipped
+
+        // It starts using a tool: show it in the member's bubble
+        if (event.type === "tool") host.step({ tool: event.name, detail: event.detail })
+
+        if (event.type === "approval") {
+          // Ask MerakCode whether it may, and wait for the answer (perhaps for the user to click in the approval bar)
+          const verdict = await host.permission(toPermission(event))
+          // Tell mycli; a refusal carries the reason, so it can try another way
+          send({ approval: event.id, approved: verdict.allow, reason: verdict.allow ? undefined : verdict.message })
+        }
+
+        if (event.type === "question") await ask(host, event, send)
+
+        // Done: text is the member's reply in the group, sessionId comes back as task.resume next time
+        if (event.type === "done") return { text: event.text, sessionId: event.session }
+      }
+      // The output ended without a done event: mycli exited midway
+      throw new Error("mycli exited without a reply")
+    } finally {
+      // 4. Done, failed or stopped, mycli is stopped
+      await stop(cli)
     }
+  },
+})
+
+/** The event on one line of output, or undefined for a line that is not JSON */
+function parse(line: string): MyCliEvent | undefined {
+  try {
+    return JSON.parse(line) as MyCliEvent
+  } catch {
+    return undefined
   }
+}
+
+/** mycli's approval event as one of MerakCode's five kinds of request (see 15.6), the most specific one that fits */
+function toPermission(event: Extract<MyCliEvent, { type: "approval" }>): Permission {
+  if (event.action === "write") return { kind: "write", paths: [event.path ?? ""] }
+  if (event.action === "shell") return { kind: "command", command: event.command ?? "" }
+  if (event.action === "read") return { kind: "read", paths: [event.path ?? ""] }
+  if (event.action === "fetch" && event.url)
+    return { kind: "network", host: new URL(event.url).hostname, url: event.url }
+  return { kind: "tool", name: event.action } // tool only for what is none of the others
+}
+
+/**
+ * Asks the user in MerakCode's question box and passes the answer back to mycli.
+ * host is passed on to a function of our own, so its parameter is typed Host
+ */
+async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>, send: (message: object) => void) {
+  const answers = await host.question([
+    { question: event.text, header: "Question", options: event.choices.map((label) => ({ label, description: "" })) },
+  ])
+  // answers holds one list per question, with the labels the user picked; only one question was asked here
+  send({ answer: event.id, choice: answers[0]?.[0] })
 }
 ```
 
-A command of `node` is the Node MerakCode ships with, so the adapter runs even where Node is not installed. An adapter runs with your own rights, and MerakCode only governs what it asks about. Use only adapters you trust.
+Here the CLI sends one request at a time, so `await` in the loop is fine. If your CLI sends several at once, answer them without waiting in the loop, as `example-claude-code.mts` does.
 
-The single-file `merakcode-adapter.mjs` (shipped with the `adapter-generator` skill; it needs only Node) also tries an adapter: `node merakcode-adapter.mjs check -- node adapter.mjs` only does the handshake and prints the name and version; `node merakcode-adapter.mjs test -- node adapter.mjs "<task>"` runs one task in the current directory, allows every request, and prints each step and the result. Run it in an empty directory. In the SDK the same entry is `cli(argv)`.
+The object `adapter()` takes (type `Definition`) is those two functions:
+
+| Function           | When it is called                      | What it returns                                                                                                                                   |
+| ------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | When settings shows the state, no task | `Info`: `name`, and optionally `version`, `path`, the recommended version `recommended`, the upgrade command `upgrade`, or `unavailable` with why |
+| `run(task, host)`  | Once per task                          | `Result`: the reply `text`, and the `sessionId` to continue next time                                                                             |
+
+`task` (type `Task`) holds:
+
+| Field          | What it is                                                                       |
+| -------------- | -------------------------------------------------------------------------------- |
+| `task.prompt`  | The member's whole task, with its duty and what goes on in the group             |
+| `task.cwd`     | The project directory, where the CLI works                                       |
+| `task.mode`    | The group's permission mode (type `Mode`): `"readonly"`, `"ask"` or `"auto"`     |
+| `task.resume`  | The `sessionId` the last task returned; empty the first time                     |
+| `task.product` | The product as the user configured it (type `Product`): id, title, command, args |
+| `task.signal`  | Fires when the user stops the group; stop the CLI then                           |
+
+### 15.6 The five kinds of request
+
+A request to `host.permission` (type `Permission`) is one of five kinds; use the most specific one that fits:
+
+| `kind`    | When               | How                                             |
+| --------- | ------------------ | ----------------------------------------------- |
+| `write`   | Editing files      | `{ kind: "write", paths: ["src/a.ts"] }`        |
+| `command` | Running a command  | `{ kind: "command", command: "npm test" }`      |
+| `network` | Reaching a website | `{ kind: "network", host: "example.com", url }` |
+| `read`    | Reading files      | `{ kind: "read", paths: [".env"] }`             |
+| `tool`    | None of the others | `{ kind: "tool", name: "some tool", detail }`   |
+
+- It resolves to a `Verdict`: `{ allow: true }` or `{ allow: false, message }`. On a refusal, pass `message` on to the CLI as the reason.
+- MerakCode judges these requests with exactly the rules of its own tools. "Allow for this conversation", "always allow" and trusting a file or directory are all MerakCode's business: your adapter only ever gets "allow" or "refuse".
+- A path may be relative to the project directory or absolute.
+
+A question for `host.question` (type `Question`) has `question`, a short `header`, `options` (each with `label` and `description`) and optionally `multiple` (whether several may be picked). The result holds one list per question (type `Answer`) with the labels the user picked. A step for `host.step` (type `Step`) is `{ tool, detail }`.
+
+### 15.7 Try it yourself first
+
+In the adapter's folder, run (with Node 24 or later on your machine):
+
+```sh
+# Only the handshake, no work: it prints the name and version
+node merakcode-adapter.mjs check -- node adapter.mts
+
+# A real task: it uses your CLI's own model and may cost money. Run it in a new empty directory, with your adapter folder
+node <adapter folder>/merakcode-adapter.mjs test -- node <adapter folder>/adapter.mts "Run node --version, then create hello.txt containing hi, then reply OK"
+```
+
+Test mode prints every step, permission request and question, allows each request, picks the first option of each question, then prints the result and the session id. It works when all three hold:
+
+- `node --version` arrives as a `command` request;
+- writing `hello.txt` arrives as a `write` request;
+- the result comes back.
+
+A passing `check` alone proves only the handshake. In the SDK the same entry is `cli(argv)`.
+
+### 15.8 Register it with MerakCode
+
+Add a product to the global config `~/.merakcode/merakcode.jsonc`, with `member` as its adapter:
+
+```jsonc
+{
+  "collaboration": {
+    "products": {
+      "mycli": {
+        "title": "MyCLI",
+        "adapter": "member",
+        // node is the Node MerakCode ships with, so it runs even where Node is not installed
+        "command": "node",
+        // the adapter's absolute path
+        "args": ["/Users/<you>/.merakcode/adapters/mycli/adapter.mts"],
+      },
+    },
+  },
+}
+```
+
+Or add it under Settings › Collaboration › Add product: pick "Member adapter (the command and arguments start your adapter)", enter `node` as the command and the adapter's path as the argument.
+
+Once registered, the product's row in settings shows the version `inspect` reports and "Permissions: approved in MerakCode", and members of it can be added to a group.
+
+### 15.9 Rules while it runs, and common mistakes
+
+- **One process per task**: each task starts a new adapter process. Continuing the last one is what the `sessionId` you return is for.
+- **The user stops the group**: `task.signal` fires and you stop the CLI. If the adapter is still there 5 seconds later, MerakCode ends it with everything it started.
+- **MerakCode exits**: the adapter's stdin closes, `task.signal` fires, and the library exits 5 seconds later, so nothing is left behind.
+- **`inspect` has a time limit**: with no answer within 10 seconds, the product shows as unavailable.
+- **Never print to stdout**: stdout is for talking to MerakCode. The library sends `console.log` to MerakCode's log, but writing to `process.stdout` yourself breaks the talking.
+- **Never give the CLI options that skip approvals** (such as "allow everything"): MerakCode then no longer governs it, and the permission mode and approvals stop working.
+- **An adapter runs with your own rights, outside MerakCode's sandbox.** MerakCode only governs what the CLI asks about, so connect only CLIs you trust.
+
+### 15.10 What TypeScript can be used
+
+The Node MerakCode ships with runs a `.mts` file by removing its types, so:
+
+- Types are not checked when it runs. An editor finds type errors, or run `tsc --noEmit` yourself.
+- Only TypeScript that is JavaScript once its types are removed works: type annotations, `type`, `interface`, `as`, `!` and generics are fine; **`enum`, `namespace` and constructor parameter properties (`constructor(private x)`) are not**, and Node stops with a syntax error.
+- Import what is only a type with `type`, as in `import { adapter, type Host } from "./merakcode-adapter.mjs"`.
+- Write relative imports with their full extension, such as `./merakcode-adapter.mjs`.
+
+### 15.11 More in the library
+
+- `spawn`: takes the same arguments and returns the same as `spawn` from `node:child_process`, and also starts a CLI npm installed on Windows (a `.cmd` file), passing its arguments unchanged.
+- `stop(child)`: ends a CLI and everything it started, and resolves once that is done. A CLI whose input is still open gets its input closed first, and a moment to exit.
+- `version(command)`: runs `<cli> --version` and gives the first line, or why there is none (not installed, failing, or no answer within 5 seconds).
+- `connect`: when your CLI speaks JSON-RPC too, it connects to it; see `example-codex.mts`. Requests still waiting when the other side goes away fail with `ConnectionClosed`.
+- `PROTOCOL`: the member protocol's version. The protocol is JSON-RPC 2.0 on stdin and stdout, one message per line, which the library takes care of.

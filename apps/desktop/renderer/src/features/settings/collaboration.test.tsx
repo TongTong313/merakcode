@@ -275,13 +275,13 @@ test("a custom product picks how MerakCode drives it; through an adapter it need
   expect([...host.querySelectorAll("label")].some((item) => item.textContent?.startsWith("续接参数"))).toBe(false)
   type(field(host, "ID"), "mine")
   type(field(host, "命令"), "node")
-  type(field(host, "参数"), "/home/me/.merakcode/adapters/mine/adapter.mjs")
+  type(field(host, "参数"), "/home/me/.merakcode/adapters/mine/adapter.mts")
   button(host, "保存")!.click()
   expect(changes).toEqual([
     {
       type: "add",
       id: "mine",
-      product: { command: "node", adapter: "member", args: ["/home/me/.merakcode/adapters/mine/adapter.mjs"] },
+      product: { command: "node", adapter: "member", args: ["/home/me/.merakcode/adapters/mine/adapter.mts"] },
     },
   ])
 })

@@ -3,6 +3,19 @@
  * session over HTTP: what OpenCode would decide itself is set to ask, only for this run, so each request comes to
  * MerakCode; its question tool becomes a MerakCode question. Written with the adapter library alone, the same way
  * anyone's adapter is.
+ *
+ * How one task goes (OpenCode is a local HTTP server, with an event stream for what happens):
+ * 1. `run` starts `opencode serve` on a free port with a password made for this run, and `listening` reads the
+ *    address it prints. Every request carries the password.
+ * 2. It opens the event stream (`GET /event`), then creates a session (or continues `task.resume`) and sends the task
+ *    (`POST /session/<id>/prompt_async`).
+ * 3. `follow` reads the event stream:
+ *    - `permission.asked` becomes `host.permission`; the verdict goes back with `POST /permission/<id>/reply`;
+ *    - `question.asked` becomes `host.question`; the answers go back with `POST /question/<id>/reply`;
+ *    - a running tool part is shown with `host.step`;
+ *    - the session going idle again ends the task.
+ * 4. The reply is the text of the last assistant message; the session id continues it next time.
+ * 5. Done, failed or stopped by the user (`task.signal`), `stop` ends the server: it would not end on its own.
  */
 import { randomBytes } from "node:crypto"
 import readline from "node:readline"
