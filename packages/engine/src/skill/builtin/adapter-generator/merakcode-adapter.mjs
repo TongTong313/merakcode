@@ -552,15 +552,46 @@ async function stop(child) {
   const exited = new Promise((resolve) => child.once("exit", () => resolve(true)))
   if (child.stdin && !child.stdin.writableEnded) {
     child.stdin.end()
-    const late = new Promise((resolve) => setTimeout(() => resolve(false), STOP_GRACE).unref())
-    if (await Promise.race([exited, late])) return
+    const late2 = new Promise((resolve) => setTimeout(() => resolve(false), STOP_GRACE).unref())
+    if (await Promise.race([exited, late2])) return
   }
-  if (process.platform !== "win32") return void child.kill("SIGTERM")
-  const kill = nodeSpawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
-  await new Promise((resolve) => {
-    kill.once("exit", resolve)
-    kill.once("error", resolve)
+  if (process.platform === "win32") {
+    const kill = nodeSpawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
+    await new Promise((resolve) => {
+      kill.once("exit", resolve)
+      kill.once("error", resolve)
+    })
+    return
+  }
+  for (const pid of [child.pid, ...(await descendants(child.pid))])
+    try {
+      process.kill(pid, "SIGTERM")
+    } catch {}
+  const late = new Promise((resolve) => setTimeout(() => resolve(false), STOP_GRACE).unref())
+  await Promise.race([exited, late])
+}
+async function descendants(pid) {
+  const listing = await new Promise((resolve) => {
+    const ps = nodeSpawn("ps", ["-A", "-o", "pid=", "-o", "ppid="], { stdio: ["ignore", "pipe", "ignore"] })
+    let text = ""
+    ps.stdout.on("data", (chunk) => (text += chunk))
+    ps.once("close", () => resolve(text))
+    ps.once("error", () => resolve(""))
   })
+  const children = /* @__PURE__ */ new Map()
+  for (const line of listing.split("\n")) {
+    const [child, parent] = line.trim().split(/\s+/).map(Number)
+    if (child && parent) children.set(parent, [...(children.get(parent) ?? []), child])
+  }
+  const found = []
+  const visit = (parent) => {
+    for (const child of children.get(parent) ?? []) {
+      found.push(child)
+      visit(child)
+    }
+  }
+  visit(pid)
+  return found
 }
 var VERSION_TIMEOUT = 5e3
 async function version(command) {
