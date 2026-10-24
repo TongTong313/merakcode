@@ -165,4 +165,17 @@ describe("conversation status (sidebar)", () => {
     expect(activity(run([...base, question, permission]), "ses_a")).toBe("approval")
     expect(activity(run([...base, question, permission]), "ses_b")).toBe("idle")
   })
+
+  test("a background child (memory extraction after a reply) does not keep the conversation running", () => {
+    const base = [
+      { type: "session.created", properties: { info: session("ses_a") } } as Event,
+      {
+        type: "session.created",
+        properties: { info: session("ses_m", { parentID: "ses_a", metadata: { background: true } }) },
+      } as Event,
+      child,
+    ]
+    expect(activity(run([...base, status("ses_a", "idle"), status("ses_m", "busy")]), "ses_a")).toBe("idle")
+    expect(activity(run([...base, status("ses_m", "busy"), status("ses_c", "busy")]), "ses_a")).toBe("running")
+  })
 })

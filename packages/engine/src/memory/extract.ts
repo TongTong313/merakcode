@@ -272,6 +272,8 @@ export namespace MemoryExtract {
       parentID: session.id,
       title: EXTRACTOR_TITLE,
       permission: permissions(),
+      // Runs after the reply; the conversation does not read as running while it does
+      metadata: { background: true },
     })
     const newMessageCount = visibleCountSince(mapped, cursor)
     const { SessionRunner } = await import("../session/runner")

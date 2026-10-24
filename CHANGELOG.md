@@ -8,10 +8,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- The sidebar no longer shows a conversation as running while memory is extracted in the background after a reply.
 - Without GitHub access, files are found right away (in `@` references, glob and ls) instead of after the ripgrep download times out.
 
 ### 修复
 
+- 回复结束后后台提取记忆时，侧边栏不再一直显示运行中。
 - 连不上 GitHub 时，`@` 引用、glob 和 ls 立刻就能找到文件，不再等 ripgrep 下载超时。
 
 ## [0.1.0] - 2026-10-22

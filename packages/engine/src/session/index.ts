@@ -226,6 +226,7 @@ export namespace Session {
     parentID?: string
     title: string
     permission?: PermissionNext.Ruleset
+    metadata?: Info["metadata"]
     filterCompacted?: boolean
   }): Promise<Info> {
     const original = await get(input.sessionID)
@@ -235,6 +236,7 @@ export namespace Session {
       title: input.title,
       parentID: input.parentID,
       permission: input.permission,
+      metadata: input.metadata,
     })
 
     // A sibling fork continues the same conversation, so it copies pins. Child sessions (with parentID) do not.
@@ -331,6 +333,7 @@ export namespace Session {
       parentID: Identifier.schema("session"),
       title: z.string(),
       permission: PermissionNext.Ruleset.optional(),
+      metadata: Info.shape.metadata,
     }),
     async (input) =>
       forkInto({
@@ -339,6 +342,7 @@ export namespace Session {
         parentID: input.parentID,
         title: input.title,
         permission: input.permission,
+        metadata: input.metadata,
         filterCompacted: true,
       }),
   )
