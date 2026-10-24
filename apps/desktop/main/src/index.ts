@@ -240,11 +240,10 @@ function main() {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit()
   })
-  // script/dev.ts restarts the app when the main process is rebuilt, and the backend when engine sources change
+  // script/dev.ts restarts the app when the main process is rebuilt
   if (dev && process.send)
     process.on("message", (message) => {
       if (message === "quit") app.quit()
-      if (message === "restart-backend") void backend.restart().catch(() => {})
     })
   let quitting = false
   app.on("before-quit", (event) => {

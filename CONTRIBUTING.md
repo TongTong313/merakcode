@@ -21,20 +21,20 @@ pnpm hooks:install   # 提交前自动检查格式
 
 都在仓库根目录运行：
 
-| 命令                               | 作用                                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm --dir apps/desktop/main dev` | 从源码开发桌面端（界面热更新，主进程和引擎改完自动重启）                |
-| `pnpm dev <命令>`                  | 从源码运行 `merak` 的命令，比如 `pnpm dev serve`                        |
-| `pnpm check`                       | 提交 PR 前的全套检查，见下面的说明                                      |
-| `pnpm format`                      | 格式化整个仓库                                                          |
-| `pnpm generate:sdk`                | 改了服务端接口后重新生成 SDK                                            |
-| `pnpm generate:schema`             | 改了配置项后重新生成 `schema/config.json`                               |
-| `pnpm generate:errors`             | 改了错误码后重新生成 `docs/errors.md`                                   |
-| `pnpm generate:sdk-reference`      | 改了服务端接口后重新生成 `docs/sdk/reference.md`（先跑 `generate:sdk`） |
-| `pnpm check:api --write`           | SDK 公开接口有意变动时，更新 `packages/sdk/js/api.md`                   |
-| `pnpm release:version x.y.z`       | 把所有包的版本号改成同一个（维护者发版用）                              |
+| 命令                          | 作用                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `pnpm dev <命令>`             | 从源码运行 `merak` 的命令，比如 `pnpm dev serve`                        |
+| `pnpm check`                  | 提交 PR 前的全套检查，见下面的说明                                      |
+| `pnpm format`                 | 格式化整个仓库                                                          |
+| `pnpm generate:sdk`           | 改了服务端接口后重新生成 SDK                                            |
+| `pnpm generate:schema`        | 改了配置项后重新生成 `schema/config.json`                               |
+| `pnpm generate:errors`        | 改了错误码后重新生成 `docs/errors.md`                                   |
+| `pnpm generate:sdk-reference` | 改了服务端接口后重新生成 `docs/sdk/reference.md`（先跑 `generate:sdk`） |
+| `pnpm check:api --write`      | SDK 公开接口有意变动时，更新 `packages/sdk/js/api.md`                   |
+| `pnpm release:version x.y.z`  | 把所有包的版本号改成同一个（维护者发版用）                              |
 
 `pnpm check` 依次检查：格式、品牌名、各包版本号一致、配置 Schema 和错误码文档是不是最新、类型、依赖边界、CSS 里没有 `!important`、SDK 公开接口快照、SDK 接口参考是不是最新、SDK 手册有没有漏掉公开接口和代码能不能编译、文档里写的 `merak` 命令是不是真的存在、没用到的代码和依赖。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
+| `pnpm --dir apps/desktop/main dev` | 从源码开发桌面端（界面热更新，主进程改完自动重启；引擎改完用「帮助 › 重启本地服务」） |
 
 ## 代码是怎么组织的
 
@@ -187,20 +187,20 @@ For running, debugging and packaging from source, see ["Develop from source" in 
 
 All from the repo root:
 
-| Command                            | What it does                                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `pnpm --dir apps/desktop/main dev` | Work on the desktop app from source (UI changes apply on save; main process and engine changes restart them) |
-| `pnpm dev <command>`               | Run a `merak` command from source, such as `pnpm dev serve`                                                  |
-| `pnpm check`                       | Every check a PR needs, see below                                                                            |
-| `pnpm format`                      | Format the whole repo                                                                                        |
-| `pnpm generate:sdk`                | Regenerate the SDK after changing a server route                                                             |
-| `pnpm generate:schema`             | Regenerate `schema/config.json` after changing config options                                                |
-| `pnpm generate:errors`             | Regenerate `docs/errors.md` after changing error codes                                                       |
-| `pnpm generate:sdk-reference`      | Regenerate `docs/sdk/reference.md` after changing a server route (run `generate:sdk` first)                  |
-| `pnpm check:api --write`           | Update `packages/sdk/js/api.md` when you change the SDK API on purpose                                       |
-| `pnpm release:version x.y.z`       | Set every package to the same version (for maintainers)                                                      |
+| Command                       | What it does                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `pnpm dev <command>`          | Run a `merak` command from source, such as `pnpm dev serve`                                 |
+| `pnpm check`                  | Every check a PR needs, see below                                                           |
+| `pnpm format`                 | Format the whole repo                                                                       |
+| `pnpm generate:sdk`           | Regenerate the SDK after changing a server route                                            |
+| `pnpm generate:schema`        | Regenerate `schema/config.json` after changing config options                               |
+| `pnpm generate:errors`        | Regenerate `docs/errors.md` after changing error codes                                      |
+| `pnpm generate:sdk-reference` | Regenerate `docs/sdk/reference.md` after changing a server route (run `generate:sdk` first) |
+| `pnpm check:api --write`      | Update `packages/sdk/js/api.md` when you change the SDK API on purpose                      |
+| `pnpm release:version x.y.z`  | Set every package to the same version (for maintainers)                                     |
 
 `pnpm check` runs, in order: formatting, brand names, matching package versions, whether the config schema and error list are up to date, types, dependency boundaries, no `!important` in CSS, the SDK API snapshot, whether the SDK API reference is up to date, whether the SDK guide mentions every public export and its code compiles, whether every `merak` command in the docs exists, and unused code and dependencies. Don't edit generated files by hand; change the source and run the matching `generate` command.
+| `pnpm --dir apps/desktop/main dev` | Work on the desktop app from source (UI changes apply on save, main process changes restart the app; after engine changes use Help › Restart Local Service) |
 
 ## How the code is organized
 

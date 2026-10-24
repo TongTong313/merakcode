@@ -258,7 +258,7 @@ pnpm hooks:install          # 提交前自动检查格式
 | 用调试器调引擎   | `node --inspect --import ./script/node/register.mjs apps/cli/src/index.ts serve` |
 | 打出详细日志     | `pnpm dev serve --print-logs --log-level DEBUG`                                  |
 
-**特别注意**：桌面端开发支持界面热更新，主进程和引擎的代码改完会自动重启，大家调试起来更方便了。
+**特别注意**：桌面端开发时界面热更新；主进程的代码改完会自动重启应用；引擎的代码改完不会自动重启，在菜单「帮助 › 重启本地服务」里重启即可，窗口会自动重连。
 
 `pnpm dev` 跑的是源码，不用先构建。改了代码重新运行就生效。
 

@@ -60,7 +60,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
   }
 
   /**
-   * Manual restart (Retry in the UI, or changed engine sources in development): resets the restart count and starts
+   * Manual restart (Retry in the UI, or Help › Restart Local Service): resets the restart count and starts
    * again once any start in progress is done. Requests made while restarting merge into one more restart.
    */
   restart(): Promise<Endpoint> {

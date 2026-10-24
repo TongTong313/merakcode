@@ -258,7 +258,7 @@ pnpm hooks:install          # check formatting before each commit
 | Debug the engine           | `node --inspect --import ./script/node/register.mjs apps/cli/src/index.ts serve` |
 | Print detailed logs        | `pnpm dev serve --print-logs --log-level DEBUG`                                  |
 
-**Note**: desktop development reloads the UI as you save and restarts the main process and the engine when their code changes, which makes debugging much easier.
+**Note**: desktop development reloads the UI as you save and restarts the app when main process code changes. Engine changes do not restart anything: use Help › Restart Local Service, and windows reconnect on their own.
 
 `pnpm dev` runs the source directly; there is nothing to build first. Change the code and run it again.
 
