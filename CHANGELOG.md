@@ -9,6 +9,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### Changed
 
 - Desktop development no longer restarts the engine when its code changes; use Help › Restart Local Service.
+- When automatic updates are turned off, Check for updates says so.
 
 ### Fixed
 
@@ -19,6 +20,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### 变更
 
 - 桌面端开发时，引擎代码改完不再自动重启，用「帮助 › 重启本地服务」。
+- 关闭自动更新后，「检查更新」会提示已关闭。
 
 ### 修复
 

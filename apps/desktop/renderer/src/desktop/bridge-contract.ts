@@ -140,6 +140,9 @@ export interface DesktopBridge {
   installUpdate(): Promise<void>
 }
 
+/** Why this process will not contact the update server */
+export type UpdateSkipReason = "disabled"
+
 /** What the updater is doing (main process → window); features/update/state.ts turns these into one state */
 export type UpdateEvent =
   | { type: "checking" }
@@ -150,6 +153,8 @@ export type UpdateEvent =
   | { type: "progress"; percent: number }
   | { type: "downloaded"; version: string }
   | { type: "error"; code: string; message: string }
+  /** An explicit opt-out never reaches the update server; the window still hears why */
+  | { type: "unavailable"; reason: UpdateSkipReason }
 
 /** IPC channel names between the main process and the preload */
 export const IPC = {

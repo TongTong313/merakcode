@@ -66,6 +66,17 @@ describe("update state", () => {
     })
   })
 
+  test("an explicit opt-out reports that updates are turned off", () => {
+    expect(reduce(idle, { type: "unavailable", reason: "disabled" })).toEqual({
+      kind: "unavailable",
+      reason: "disabled",
+    })
+    expect(reduce({ kind: "ready", version: "0.2.0" }, { type: "unavailable", reason: "disabled" })).toEqual({
+      kind: "ready",
+      version: "0.2.0",
+    })
+  })
+
   test("checking again after an error starts over", () => {
     expect(reduce({ kind: "error", code: "MRK-8001", message: "offline" }, { type: "checking" })).toEqual({
       kind: "checking",

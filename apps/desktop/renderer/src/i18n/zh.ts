@@ -514,6 +514,7 @@ export const zh = {
   "settings.about.manual.mac-unsigned": "{version} 已发布。这个版本没有签名，macOS 不能自动安装更新，请到发布页下载。",
   "settings.about.manual.linux-package": "{version} 已发布。用 .deb 安装的版本不能自动更新，请到发布页下载新的安装包。",
   "settings.about.error": "更新失败：[{code}] {message}",
+  "settings.about.unavailable.disabled": "自动更新已关闭。",
   "update.notice.available": "有新版本 {version}",
   "update.notice.ready": "重启即可更新到 {version}",
   "update.notice.manual": "{version} 已发布，可以下载",

@@ -1129,6 +1129,7 @@ function About() {
       if (state.kind === "manual")
         return t(`settings.about.manual.${state.reason ?? "linux-package"}`, { version: state.version })
       if (state.kind === "error") return t("settings.about.error", { code: state.code, message: state.message })
+      if (state.kind === "unavailable") return t(`settings.about.unavailable.${state.reason}`)
       return undefined
     })()
     return note ? `${current} · ${note}` : current

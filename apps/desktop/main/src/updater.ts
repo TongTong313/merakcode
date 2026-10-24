@@ -1,16 +1,20 @@
 import { shell } from "electron"
 import updater from "electron-updater"
 import { ErrorCode } from "@merakcode/util/error-code"
-import type { UpdateEvent } from "../../renderer/src/desktop/bridge-contract"
+import type { UpdateEvent, UpdateSkipReason } from "../../renderer/src/desktop/bridge-contract"
 import { UpdatePolicy } from "./update-policy"
 
 /**
- * Updates from GitHub Releases (app-update.yml is written when the app is packaged). A new version is announced
- * first and downloaded only when the user asks; once downloaded it installs on restart. Installs that cannot
- * replace themselves (see UpdatePolicy) get a link to the download page instead.
+ * Updates from GitHub Releases. A packaged app reads app-update.yml; a development run is given the same GitHub
+ * repository so the check can be tried from source. An explicit opt-out skips the server and tells the window why.
+ * A new version is announced first and downloaded only when the user asks; once downloaded it installs on restart.
+ * Installs that cannot replace themselves (see UpdatePolicy) get a link to the download page instead.
  */
 export type Options = {
-  enabled: boolean
+  /** Set when this process must not contact the update server */
+  disabled?: UpdateSkipReason
+  /** GitHub Releases to ask when the app is not packaged (there is no app-update.yml yet) */
+  feed?: { owner: string; repo: string }
   /** Download page for installs that cannot update themselves */
   releases: string
   version: string
@@ -46,8 +50,13 @@ export class Updater {
   }
 
   start() {
-    if (!this.options.enabled) return
+    if (this.options.disabled) return
     const { autoUpdater } = updater
+    // Unpackaged Electron skips the check unless this is set. The feed is the same repository the installer uses.
+    if (this.options.feed) {
+      autoUpdater.forceDevUpdateConfig = true
+      autoUpdater.setFeedURL({ provider: "github", owner: this.options.feed.owner, repo: this.options.feed.repo })
+    }
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.allowPrerelease = this.policy.allowPrerelease
@@ -90,7 +99,11 @@ export class Updater {
 
   /** Checks now; when a new version is already known, tells the windows again (a new window missed it) */
   async check() {
-    if (!this.options.enabled) return
+    if (this.options.disabled) {
+      this.options.log("info", "update check skipped", { reason: this.options.disabled })
+      this.send({ type: "unavailable", reason: this.options.disabled })
+      return
+    }
     if (this.version) return this.announce()
     this.checking ??= updater.autoUpdater
       .checkForUpdates()
@@ -101,7 +114,7 @@ export class Updater {
   }
 
   async download() {
-    if (!this.options.enabled || !this.version) return
+    if (this.options.disabled || !this.version) return
     if (this.policy.mode === "manual") return void (await shell.openExternal(this.options.releases))
     this.downloading = true
     await updater.autoUpdater.downloadUpdate().catch(() => {})
