@@ -36,6 +36,7 @@ export const STANDARD_TOOL_POOL = [
   "write",
   "multi_edit",
   "subagent",
+  "delegate",
   "webfetch",
   "todowrite",
   "websearch",
@@ -97,7 +98,7 @@ export function computeDeferred(agent: Agent.Info): Set<string> {
 }
 
 const POOL_EXPLORE = STANDARD_TOOL_POOL.filter(
-  (t) => !["write", "edit", "multi_edit", "bash_background", "plugin"].includes(t),
+  (t) => !["write", "edit", "multi_edit", "bash_background", "plugin", "delegate"].includes(t),
 )
 const POOL_COMPACTION = ["read", "glob", "grep", "ls"] as const
 const POOL_MEMORY_EXTRACTOR = ["read", "glob", "grep", "ls", "write", "edit", "multi_edit"] as const
@@ -105,7 +106,7 @@ const POOL_MEMORY_EXTRACTOR = ["read", "glob", "grep", "ls", "write", "edit", "m
 const POOL_SESSION_MEMORY = ["read", "edit"] as const
 
 const POOL_WORKFLOW_SUBAGENT = STANDARD_TOOL_POOL.filter(
-  (t) => !["subagent", "plan_enter", "plan_exit", "bash_background", "plugin"].includes(t),
+  (t) => !["subagent", "plan_enter", "plan_exit", "bash_background", "plugin", "delegate"].includes(t),
 )
 const EXPLORE_RESTRICTED = PermissionPolicy.deny(...PermissionPolicy.WRITE)
 

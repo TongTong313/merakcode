@@ -1,4 +1,12 @@
-import type { AssistantMessage, FilePart, Part, ReasoningPart, UserMessage } from "@merakcode/sdk/client"
+import type {
+  AssistantMessage,
+  CollaborationEvent,
+  FilePart,
+  Part,
+  ReasoningPart,
+  ToolPart,
+  UserMessage,
+} from "@merakcode/sdk/client"
 import Brain from "lucide-solid/icons/brain"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import CircleAlert from "lucide-solid/icons/circle-alert"
@@ -9,18 +17,43 @@ import Pencil from "lucide-solid/icons/pencil"
 import RotateCcw from "lucide-solid/icons/rotate-ccw"
 import RotateCw from "lucide-solid/icons/rotate-cw"
 import Undo2 from "lucide-solid/icons/undo-2"
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  Match,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js"
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
 import { relative } from "../../lib/route"
-import { busy, messagesOf, partsOf, state } from "../../state/store"
+import { busy, messagesOf, partsOf, state, state as store } from "../../state/store"
 import { Markdown } from "../../ui/markdown"
 import { copyDetails, toast } from "../../ui/toast"
 import { summary } from "../../state/error"
 import { fill } from "./composer"
 import { retry, revertTo, submissionOf } from "./send"
+import { Avatar, seatMeta, type Product, type Seat } from "./members"
 import { Tool, Explore } from "./tools"
-import { blocks, changes, turns, type Turn } from "./turns"
+import { blocks, changes, eventsByTurn, segments, turns, type Block, type Segment, type Turn } from "./turns"
+
+/** What a group conversation adds to the message list: who the members are and when they joined or left */
+export type GroupView = {
+  seats: readonly Seat[]
+  events: readonly CollaborationEvent[]
+  products: readonly Product[]
+  /** Opens the child session a MerakCode member worked in */
+  onOpenSession?: (sessionID: string) => void
+  /** Opens a member in the member column */
+  onOpenMember?: (seatID: string) => void
+}
 
 function Reasoning(props: { part: ReasoningPart; done: boolean }) {
   const [open, setOpen] = createSignal(false)
@@ -250,22 +283,51 @@ function Reply(props: {
         </div>
       }
     >
-      <For each={list()}>
-        {(block, index) =>
-          block.kind === "explore" ? (
-            <Explore parts={block.parts} directory={props.directory} />
-          ) : (
-            <PartView
-              part={block.part}
-              done={done(index())}
-              directory={props.directory}
-              onReviewFile={props.onReviewFile}
-            />
-          )
-        }
-      </For>
+      <Blocks blocks={list()} done={done} directory={props.directory} onReviewFile={props.onReviewFile} />
       <ErrorCard message={props.message} />
     </Show>
+  )
+}
+
+/**
+ * A reply's blocks; done(index) says whether the block at index has finished streaming. The blocks are rebuilt on
+ * every update and only ever grow at the end, so each is kept by its position: what the user opened stays open.
+ */
+function Blocks(props: {
+  blocks: Block[]
+  done: (index: number) => boolean
+  directory: string
+  onReviewFile: (file: string) => void
+  /** In a group chat the words go in a bubble; steps stay outside it, as in an ordinary conversation */
+  bubble?: boolean
+}) {
+  return (
+    <Index each={props.blocks}>
+      {(block, index) => (
+        <Switch>
+          <Match when={block().kind === "explore" && (block() as Extract<Block, { kind: "explore" }>)}>
+            {(explore) => <Explore parts={explore().parts} directory={props.directory} />}
+          </Match>
+          <Match when={block().kind === "part" && (block() as Extract<Block, { kind: "part" }>).part}>
+            {(part) => {
+              const view = () => (
+                <PartView
+                  part={part()}
+                  done={props.done(index)}
+                  directory={props.directory}
+                  onReviewFile={props.onReviewFile}
+                />
+              )
+              return (
+                <Show when={props.bubble && part().type === "text"} fallback={view()}>
+                  <div class="bubble">{view()}</div>
+                </Show>
+              )
+            }}
+          </Match>
+        </Switch>
+      )}
+    </Index>
   )
 }
 
@@ -290,16 +352,294 @@ function PartView(props: { part: Part; done: boolean; directory: string; onRevie
   )
 }
 
+/** A message from a group member: avatar, name, product and role, then the bubble */
+function Bubble(props: {
+  id: string
+  name: string
+  meta: string
+  leader?: boolean
+  /** Opens the member in the member column; absent for a member who has left */
+  onOpen?: () => void
+  children: JSX.Element
+}) {
+  return (
+    <article class="bubble-row" aria-label={props.name}>
+      <Show when={props.onOpen} fallback={<Avatar id={props.id} name={props.name} />}>
+        {(open) => (
+          <button class="bubble-avatar" aria-label={props.name} onClick={() => open()()}>
+            <Avatar id={props.id} name={props.name} />
+          </button>
+        )}
+      </Show>
+      <div class="bubble-main">
+        <div class="bubble-who">
+          <span class="bubble-name">{props.name}</span>
+          <Show when={props.leader}>
+            <span class="badge accent">{t("group.leader")}</span>
+          </Show>
+          <span class="subtle">{props.meta}</span>
+        </div>
+        {props.children}
+      </div>
+    </article>
+  )
+}
+
+type DelegateInput = { seat?: string; task?: string; paths?: string[] }
+type Step = { tool: string; detail: string }
+type DelegateMetadata = {
+  seatID?: string
+  product?: string
+  phase?: string
+  sessionId?: string
+  missing?: boolean
+  steps?: Step[]
+  /** When the member left the queue and began */
+  started?: number
+}
+
+const stepText = (step: Step) => [step.tool, step.detail].filter(Boolean).join(" ")
+
+function duration(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  const m = Math.floor(seconds / 60)
+  return m ? t("group.minutes", { m, s: seconds % 60 }) : t("group.seconds", { s: seconds })
+}
+
+/** Ticks once a second while running, so the elapsed time stays current */
+function Elapsed(props: { start: number; current?: Step }) {
+  const [now, setNow] = createSignal(Date.now())
+  const timer = setInterval(() => setNow(Date.now()), 1000)
+  onCleanup(() => clearInterval(timer))
+  return (
+    <span class="pulse muted">
+      {[t("group.elapsed", { time: duration(now() - props.start) }), props.current && stepText(props.current)]
+        .filter(Boolean)
+        .join(" · ")}
+    </span>
+  )
+}
+
+/** What an external member did, folded by default */
+function Steps(props: { steps: Step[] }) {
+  const [open, setOpen] = createSignal(false)
+  return (
+    <div class="bubble-steps-list">
+      <button class="button ghost sm" aria-expanded={open()} onClick={() => setOpen(!open())}>
+        <ChevronRight class="icon icon-xs chevron" />
+        {t("group.steps", { count: props.steps.length })}
+      </button>
+      <Show when={open()}>
+        <ol class="mono subtle">
+          <For each={props.steps}>{(step) => <li>{stepText(step)}</li>}</For>
+        </ol>
+      </Show>
+    </div>
+  )
+}
+
+/** One delegate call shown as the member's own message. The name is the one used at the time. */
+export function SeatBubble(props: { part: ToolPart; group: GroupView; stopped?: boolean }) {
+  const state = () => props.part.state
+  const input = () => state().input as DelegateInput
+  const metadata = () => {
+    const value = state()
+    return (value.status === "pending" ? undefined : value.metadata) as DelegateMetadata | undefined
+  }
+  const name = () => input().seat ?? ""
+  // A failed or stopped call keeps only its error details, so the member is found by the name it was called by
+  const seat = () => {
+    const id = metadata()?.seatID
+    return id
+      ? props.group.seats.find((item) => item.id === id)
+      : props.group.seats.find((item) => item.name === name())
+  }
+  const meta = () =>
+    seatMeta({ product: metadata()?.product ?? seat()?.product ?? "", role: seat()?.role }, props.group.products)
+  /** The task as the leader gave it: who asked, what, and where */
+  const task = () => {
+    const leader = props.group.seats.find((item) => item.leader)?.name
+    const what = [input().task, ...(input().paths?.length ? [input().paths!.join(", ")] : [])].join(" · ")
+    return input().task ? [leader, what].filter(Boolean).join("：") : ""
+  }
+  const reply = () => {
+    const value = state()
+    if (value.status !== "completed") return undefined
+    // The output is the leader's English note; the user reads it in their own language
+    const product = metadata()?.product ?? ""
+    if (metadata()?.missing) return t("group.notInstalled", { title: seatMeta({ product }, props.group.products) })
+    return value.output
+  }
+  /** The member asked the user something and waits: its requests carry this delegate call */
+  const waiting = () => {
+    const mine = (request: { tool?: { callID: string } }) => request.tool?.callID === props.part.callID
+    const listed = <T extends { tool?: { callID: string } }>(lists: Record<string, T[]>) =>
+      Object.values(lists).some((list) => list.some(mine))
+    if (listed(store.sessions.question)) return t("group.waitingAnswer")
+    if (listed(store.sessions.permission)) return t("group.waitingApproval")
+  }
+  const started = () => {
+    const value = state()
+    return value.status === "running" ? (metadata()?.started ?? value.time.start) : undefined
+  }
+  const failure = () => {
+    const value = state()
+    return value.status === "error" ? value.error : undefined
+  }
+  const open = () => {
+    const id = seat()?.id
+    const onOpen = props.group.onOpenMember
+    return id && onOpen ? () => onOpen(id) : undefined
+  }
+  return (
+    <Bubble id={seat()?.id ?? metadata()?.seatID ?? name()} name={name()} meta={meta()} onOpen={open()}>
+      <Show when={task()}>
+        <div class="bubble-task subtle ellipsis">↳ {task()}</div>
+      </Show>
+      <div class="bubble">
+        <Switch>
+          <Match when={reply()}>{(text) => <Markdown text={text()} />}</Match>
+          {/* A stopped call reads as running until the turn is reloaded, then as aborted: both are "stopped" */}
+          <Match when={props.stopped}>
+            <span class="muted">{t("group.stopped")}</span>
+          </Match>
+          <Match when={failure()}>
+            {(message) => <div class="bubble-error">{t("group.failed", { message: message() })}</div>}
+          </Match>
+          <Match when={state().status === "pending" || metadata()?.phase === "queued"}>
+            <span class="pulse muted">{t("group.queued")}</span>
+          </Match>
+          <Match when={started() && waiting()}>{(text) => <span class="pulse bubble-waiting">{text()}</span>}</Match>
+          <Match when={started()}>{(start) => <Elapsed start={start()} current={metadata()?.steps?.at(-1)} />}</Match>
+        </Switch>
+        <Show when={metadata()?.steps?.length}>
+          <Steps steps={metadata()!.steps!} />
+        </Show>
+        <Show when={metadata()?.sessionId}>
+          {(child) => (
+            <button class="button ghost sm bubble-steps" onClick={() => props.group.onOpenSession?.(child())}>
+              {t("group.process")}
+            </button>
+          )}
+        </Show>
+      </div>
+    </Bubble>
+  )
+}
+
+/** The leader's replies in a group turn, split at each delegate call into the leader's and the members' messages */
+function GroupReplies(props: {
+  replies: AssistantMessage[]
+  last: boolean
+  sessionID: string
+  directory: string
+  group: GroupView
+  onReviewFile: (file: string) => void
+}) {
+  const list = createMemo(() =>
+    segments(props.replies.filter((message) => !message.summary).flatMap((message) => partsOf(message.id))),
+  )
+  const leader = () => props.group.seats.find((seat) => seat.leader)
+  /** The turn is over and this call did not end on its own: still marked running, or ended by the turn being stopped */
+  const aborted = () => props.replies.some((message) => message.error?.name === "MessageAbortedError")
+  const stopped = (part: ToolPart) =>
+    !busy(props.sessionID) &&
+    (part.state.status === "running" || part.state.status === "pending" || (part.state.status === "error" && aborted()))
+  // Only the very last block of the turn can still be streaming
+  const done = (segment: number, blocks: number) => (index: number) =>
+    !props.last || !busy(props.sessionID) || segment < list().length - 1 || index < blocks - 1
+  return (
+    <>
+      <For each={props.replies.filter((message) => message.summary)}>
+        {(message) => (
+          <Reply
+            message={message}
+            last={false}
+            sessionID={props.sessionID}
+            directory={props.directory}
+            onReviewFile={props.onReviewFile}
+          />
+        )}
+      </For>
+      {/* Rebuilt on every update and only grows at the end: kept by position, like the blocks */}
+      <Index each={list()}>
+        {(segment, index) => (
+          <Switch>
+            <Match when={segment().kind === "seat" && (segment() as Extract<Segment, { kind: "seat" }>).part}>
+              {(part) => <SeatBubble part={part()} group={props.group} stopped={stopped(part())} />}
+            </Match>
+            <Match when={segment().kind === "leader" && (segment() as Extract<Segment, { kind: "leader" }>).blocks}>
+              {(blocks) => (
+                <Bubble
+                  id={leader()?.id ?? ""}
+                  name={leader()?.name ?? ""}
+                  meta={leader() ? seatMeta(leader()!, props.group.products) : ""}
+                  leader
+                  onOpen={
+                    leader() && props.group.onOpenMember ? () => props.group.onOpenMember!(leader()!.id) : undefined
+                  }
+                >
+                  <Blocks
+                    blocks={blocks()}
+                    done={done(index, blocks().length)}
+                    directory={props.directory}
+                    onReviewFile={props.onReviewFile}
+                    bubble
+                  />
+                </Bubble>
+              )}
+            </Match>
+          </Switch>
+        )}
+      </Index>
+      <For each={props.replies}>{(message) => <ErrorCard message={message} />}</For>
+    </>
+  )
+}
+
+function SystemLines(props: { events: readonly CollaborationEvent[] }) {
+  const text = (event: CollaborationEvent) => {
+    if (event.kind === "join") return t("group.joined", { names: event.names.join("、") })
+    if (event.kind === "leave") return t("group.left", { name: event.names[0] ?? "" })
+    return t("group.renamed", { from: event.names[0] ?? "", to: event.names[1] ?? "" })
+  }
+  return <For each={props.events}>{(event) => <div class="system-line">{text(event)}</div>}</For>
+}
+
+/** A new team: everyone in it, and how to start */
+function GroupIntro(props: { group: GroupView }) {
+  const alone = () => props.group.seats.length <= 1
+  return (
+    <div class="group-intro">
+      <div class="group-intro-faces">
+        <For each={props.group.seats}>{(seat) => <Avatar id={seat.id} name={seat.name} />}</For>
+      </div>
+      <div class="group-intro-name">
+        {t("group.ready", { names: props.group.seats.map((seat) => seat.name).join("、") })}
+      </div>
+      <div class="muted">{alone() ? t("group.empty") : t("group.start")}</div>
+    </div>
+  )
+}
+
 /** A conversation's messages, shown by turn; follows new content while scrolled to the bottom */
 export function Messages(props: {
   sessionID: string
   directory: string
   onReviewTurn: (messageID: string) => void
   onReviewFile: (file: string) => void
+  /** Shows the conversation as a group chat: the user on the right, the leader and each member on the left */
+  group?: GroupView
 }) {
   let scroller!: HTMLDivElement
   let content!: HTMLDivElement
   const grouped = createMemo(() => turns(messagesOf(props.sessionID)))
+  const events = createMemo(() =>
+    eventsByTurn(
+      props.group?.events ?? [],
+      grouped().turns.map((turn) => turn.user.time.created),
+    ),
+  )
   const [pinned, setPinned] = createSignal(true)
   const status = () => state.sessions.session_status[props.sessionID]
   const running = () => busy(props.sessionID)
@@ -329,6 +669,9 @@ export function Messages(props: {
       onScroll={() => setPinned(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40)}
     >
       <div class="messages-inner" ref={content}>
+        <Show when={props.group && !grouped().turns.length}>
+          <GroupIntro group={props.group!} />
+        </Show>
         <For each={grouped().orphans}>
           {(message) => (
             <Reply
@@ -340,35 +683,54 @@ export function Messages(props: {
             />
           )}
         </For>
-        <For each={grouped().turns}>
+        {/* Turns are rebuilt on every update and only grow at the end: kept by position, so what was opened stays open */}
+        <Index each={grouped().turns}>
           {(turn, index) => {
-            const last = () => index() === grouped().turns.length - 1
+            const last = () => index === grouped().turns.length - 1
             return (
               <section class="turn" classList={{ settled: !last() }}>
-                <UserBubble message={turn.user} sessionID={props.sessionID} directory={props.directory} />
-                <For each={turn.replies}>
-                  {(message, i) => (
-                    <Reply
-                      message={message}
-                      last={last() && i() === turn.replies.length - 1}
+                <SystemLines events={events()[index] ?? []} />
+                <UserBubble message={turn().user} sessionID={props.sessionID} directory={props.directory} />
+                <Show
+                  when={props.group}
+                  fallback={
+                    <For each={turn().replies}>
+                      {(message, i) => (
+                        <Reply
+                          message={message}
+                          last={last() && i() === turn().replies.length - 1}
+                          sessionID={props.sessionID}
+                          directory={props.directory}
+                          onReviewFile={props.onReviewFile}
+                        />
+                      )}
+                    </For>
+                  }
+                >
+                  {(group) => (
+                    <GroupReplies
+                      replies={turn().replies}
+                      last={last()}
                       sessionID={props.sessionID}
                       directory={props.directory}
+                      group={group()}
                       onReviewFile={props.onReviewFile}
                     />
                   )}
-                </For>
+                </Show>
                 {/* Review stays available once edits exist. The turn can still be marked running after the reply is on
                     screen, and hiding the card then leaves no Review button. */}
-                <Changes turn={turn} directory={props.directory} onReview={props.onReviewTurn} />
+                <Changes turn={turn()} directory={props.directory} onReview={props.onReviewTurn} />
                 <Show when={!last() || !running()}>
-                  <Show when={turn.replies.length && !turn.replies.some((message) => message.summary)}>
-                    <TurnActions turn={turn} last={last()} sessionID={props.sessionID} directory={props.directory} />
+                  <Show when={turn().replies.length && !turn().replies.some((message) => message.summary)}>
+                    <TurnActions turn={turn()} last={last()} sessionID={props.sessionID} directory={props.directory} />
                   </Show>
                 </Show>
               </section>
             )
           }}
-        </For>
+        </Index>
+        <SystemLines events={events().at(-1) ?? []} />
         <Show when={running()}>
           <div class="working muted" aria-live="polite">
             <Show when={status()?.type === "retry"} fallback={<span class="pulse">{t("conversation.working")}</span>}>

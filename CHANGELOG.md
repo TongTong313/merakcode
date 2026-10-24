@@ -6,27 +6,53 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- Collaboration groups: MerakCode leads, and Claude Code, Codex, OpenCode and other CLIs join as members. Members are mentioned with `@`, listed in a member column, tracked in a group todo, and a group can be created with `Ctrl+G` or copied from another one.
+- Members follow the group's permission mode: what Claude Code, Codex and OpenCode want to do is decided by MerakCode's rules and shows in the approval bar, and their questions open MerakCode's question box, both naming the member.
+- Settings › Collaboration: turn products on or off, see their versions and paths and who decides their permissions, add and edit custom ones, restore defaults, check again. A CLI older than recommended shows how to upgrade it.
+- Member adapters: `@merakcode/sdk/adapter` lets any AI coding CLI join a group, and the built-in skill `adapter-generator` writes and registers an adapter for one, working from MerakCode's own adapters for Claude Code, Codex and OpenCode.
+
 ### Changed
 
+- Context that changes every step (git status, the group's state) goes at the end of the conversation, so more of each prompt is cached.
 - Desktop development no longer restarts the engine when its code changes; use Help › Restart Local Service.
 - When automatic updates are turned off, Check for updates says so.
+
+### Removed
+
+- The built-in skill `auto-cli`.
 
 ### Fixed
 
 - The sidebar no longer shows a conversation as running while memory is extracted in the background after a reply.
 - A conversation no longer stays running after the local service restarts.
 - Without GitHub access, files are found right away (in `@` references, glob and ls) instead of after the ripgrep download times out.
+- Opened thinking and steps no longer close as a reply goes on.
+
+### 新增
+
+- 协作群：MerakCode 当群主，Claude Code、Codex、OpenCode 和其他 CLI 当成员。可以用 `@` 点名成员，右侧有成员栏和群待办；用 `Ctrl+G` 新建，也可以从已有的群复制。
+- 成员遵守群里的权限模式：Claude Code、Codex、OpenCode 要做的操作按 MerakCode 的规则判断，需要时出现在审批栏里；它们提的问题弹出 MerakCode 的提问框，都会写明是哪个成员。
+- 设置 › 协作群：开关产品，查看版本、路径和权限由谁决定，添加和编辑自定义产品，恢复默认，重新检测。CLI 版本比建议的旧时会提示怎么升级。
+- 成员适配器：`@merakcode/sdk/adapter` 让任何 AI 编程 CLI 都能加入协作群，内置技能 `adapter-generator`（适配器生成助手）以 MerakCode 自己的 Claude Code、Codex、OpenCode 适配器为示例，替你写好并注册适配器。
 
 ### 变更
 
+- 每一步都会变的上下文（git 状态、群状态）放到对话末尾，提示词能缓存的部分更多。
 - 桌面端开发时，引擎代码改完不再自动重启，用「帮助 › 重启本地服务」。
 - 关闭自动更新后，「检查更新」会提示已关闭。
+
+### 移除
+
+- 内置技能 `auto-cli`。
 
 ### 修复
 
 - 回复结束后后台提取记忆时，侧边栏不再一直显示运行中。
 - 本地服务重启后，对话不再卡在运行中。
 - 连不上 GitHub 时，`@` 引用、glob 和 ls 立刻就能找到文件，不再等 ripgrep 下载超时。
+- 展开的思考和步骤不会在回复继续输出时收起。
 
 ## [0.1.0] - 2026-10-22
 

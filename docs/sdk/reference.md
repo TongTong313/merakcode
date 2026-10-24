@@ -21,6 +21,9 @@ already fills in from `createMerakCodeClient({ directory })`, so it is left out 
 - [experimental.resource](#experimentalresource)
 - [session](#session)
 - [part](#part)
+- [collaboration](#collaboration)
+- [collaboration.product](#collaborationproduct)
+- [collaboration.seat](#collaborationseat)
 - [memory](#memory)
 - [bash](#bash)
 - [tool.remote](#toolremote)
@@ -1001,6 +1004,127 @@ Update a part in a message.
 | `part`      | `Part`   | yes      |             |
 
 Returns: `PartOutput`
+
+## collaboration
+
+### client.collaboration.products
+
+`GET /collaboration/product` · operationId `collaboration.products`
+
+List collaboration products.
+
+Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.
+
+| Parameter | Type                | Required | Description |
+| --------- | ------------------- | -------- | ----------- |
+| `refresh` | `"true" \| "false"` | no       |             |
+
+Returns: `CollaborationProduct[]`
+
+### client.collaboration.list
+
+`GET /collaboration` · operationId `collaboration.list`
+
+List collaboration groups.
+
+Groups of every project, most recently active first, with their members for copying into a new group. Private sessions are left out.
+
+No parameters.
+
+Returns: `CollaborationGroupSummary[]`
+
+### client.collaboration.create
+
+`POST /collaboration` · operationId `collaboration.create`
+
+Create a collaboration group.
+
+Creates a session whose leader is a Merak seat, together with the seats named up front.
+
+| Parameter | Type                                                                  | Required | Description |
+| --------- | --------------------------------------------------------------------- | -------- | ----------- |
+| `title`   | `string`                                                              | no       |             |
+| `leader`  | `{ name: string; role?: string; duty?: string }`                      | yes      |             |
+| `seats`   | `({ name: string; role?: string; duty?: string; product: string })[]` | no       |             |
+
+Returns: `{ sessionID: string; group: CollaborationGroup }`
+
+### client.collaboration.get
+
+`GET /collaboration/{sessionID}` · operationId `collaboration.get`
+
+Get a collaboration group.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `CollaborationGroup`
+
+## collaboration.product
+
+### client.collaboration.product.change
+
+`POST /collaboration/product` · operationId `collaboration.product.change`
+
+Change collaboration products.
+
+Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.
+
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Required | Description |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `body`    | `{ type: "add"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string } } \| { type: "update"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string } } \| { type: "remove"; id: string } \| { type: "enabled"; id: string; enabled: boolean }` | yes      |             |
+
+Returns: `CollaborationProduct[]`
+
+## collaboration.seat
+
+### client.collaboration.seat.add
+
+`POST /collaboration/{sessionID}/seat` · operationId `collaboration.seat.add`
+
+Add a collaboration seat.
+
+| Parameter   | Type     | Required | Description                                          |
+| ----------- | -------- | -------- | ---------------------------------------------------- |
+| `sessionID` | `string` | yes      |                                                      |
+| `name`      | `string` | yes      |                                                      |
+| `role`      | `string` | no       | Short title such as product manager                  |
+| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
+| `product`   | `string` | yes      |                                                      |
+
+Returns: `CollaborationGroup`
+
+### client.collaboration.seat.update
+
+`PATCH /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.update`
+
+Change a collaboration seat's name, role or duty.
+
+| Parameter   | Type     | Required | Description                                          |
+| ----------- | -------- | -------- | ---------------------------------------------------- |
+| `sessionID` | `string` | yes      |                                                      |
+| `seatID`    | `string` | yes      |                                                      |
+| `name`      | `string` | no       |                                                      |
+| `role`      | `string` | no       | Short title such as product manager                  |
+| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
+
+Returns: `CollaborationGroup`
+
+### client.collaboration.seat.remove
+
+`DELETE /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.remove`
+
+Remove a collaboration seat.
+
+The Merak leader cannot be removed.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `seatID`    | `string` | yes      |             |
+
+Returns: `CollaborationGroup`
 
 ## memory
 

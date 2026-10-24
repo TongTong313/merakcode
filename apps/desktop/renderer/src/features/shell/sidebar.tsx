@@ -6,22 +6,24 @@ import FolderPlus from "lucide-solid/icons/folder-plus"
 import GitBranch from "lucide-solid/icons/git-branch"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import Plus from "lucide-solid/icons/plus"
+import Users from "lucide-solid/icons/users"
 import Search from "lucide-solid/icons/search"
 import Settings from "lucide-solid/icons/settings"
 import ArrowUpCircle from "lucide-solid/icons/circle-arrow-up"
-import { createSignal, For, Match, Show, Switch } from "solid-js"
+import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
 import { baseName, sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
-import { closeFolder, loadMore, openFolder, sessionsOf, state, statusOf, type Folder } from "../../state/store"
-import { setUi } from "../../state/ui"
+import { closeFolder, listen, loadMore, openFolder, sessionsOf, state, statusOf, type Folder } from "../../state/store"
+import { setUi, ui } from "../../state/ui"
 import { updateState } from "../update/state"
 import { Confirm } from "../../ui/dialog"
 import { Menu } from "../../ui/menu"
 import { toast } from "../../ui/toast"
 import { Rename } from "./rename"
+import { GroupCreate } from "../conversation/group-create"
 
 const mod = mac ? "⌘" : "Ctrl"
 
@@ -49,6 +51,28 @@ function Status(props: { status: ReturnType<typeof statusOf> }) {
         </Match>
       </Switch>
     </span>
+  )
+}
+
+function GroupNames(props: { sessionID: string; directory: string }) {
+  const [names, setNames] = createSignal("")
+  const load = () => {
+    void call(client(props.directory).collaboration.get({ sessionID: props.sessionID, directory: props.directory }))
+      .then((group) => setNames(group.seats.map((seat) => seat.name).join("、")))
+      .catch(() => undefined)
+  }
+  onMount(() => {
+    load()
+    onCleanup(
+      listen((_directory, event) => {
+        if (event.type === "collaboration.updated" && event.properties.sessionID === props.sessionID) load()
+      }),
+    )
+  })
+  return (
+    <Show when={names()}>
+      <span class="ellipsis">{names()}</span>
+    </Show>
   )
 }
 
@@ -81,7 +105,15 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
       >
         <Status status={status()} />
         <span class="body">
-          <span class="title">{props.session.title || t("sidebar.untitled")}</span>
+          <span class="title">
+            {props.session.title || t("sidebar.untitled")}
+            <Show when={props.session.metadata?.group === true}>
+              <span class="chip group-chip">
+                <Users class="icon icon-xs" />
+                {t("sidebar.groupMark")}
+              </span>
+            </Show>
+          </span>
           <span class="meta">
             <Show when={label()}>
               <span class="state" data-state={status()}>
@@ -91,6 +123,9 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
             <Show when={worktree()}>
               <GitBranch class="icon icon-xs" />
               <span class="ellipsis">{state.branch[props.session.directory] ?? t("sidebar.worktree")}</span>
+            </Show>
+            <Show when={props.session.metadata?.group === true}>
+              <GroupNames sessionID={props.session.id} directory={props.session.directory} />
             </Show>
           </span>
         </span>
@@ -188,9 +223,10 @@ function UpdateNotice() {
 /** Sidebar: new conversation, search, conversations grouped by project (with run status), settings */
 export function Sidebar(props: { directory?: string; current?: string }) {
   const navigate = useNavigate()
+  const directory = () => props.directory ?? state.folders[0]?.directory
   const newConversation = () => {
-    const directory = props.directory ?? state.folders[0]?.directory
-    if (directory) navigate(sessionPath(directory))
+    const dir = directory()
+    if (dir) navigate(sessionPath(dir))
     else void pickFolder(navigate)
   }
   return (
@@ -206,6 +242,11 @@ export function Sidebar(props: { directory?: string; current?: string }) {
           <Plus class="icon" />
           {t("sidebar.new")}
           <kbd aria-hidden="true">{mod} N</kbd>
+        </button>
+        <button class="nav-row" disabled={!directory()} onClick={() => setUi("newTeam", true)}>
+          <Users class="icon" />
+          {t("sidebar.group")}
+          <kbd aria-hidden="true">{mod} G</kbd>
         </button>
         <button class="nav-row" onClick={() => setUi("palette", true)}>
           <Search class="icon" />
@@ -233,6 +274,16 @@ export function Sidebar(props: { directory?: string; current?: string }) {
           <FolderPlus class="icon" />
         </button>
       </div>
+      <Show when={directory()}>
+        {(dir) => (
+          <GroupCreate
+            directory={dir()}
+            open={ui.newTeam}
+            onClose={() => setUi("newTeam", false)}
+            onCreated={(sessionID) => navigate(sessionPath(dir(), sessionID))}
+          />
+        )}
+      </Show>
     </nav>
   )
 }

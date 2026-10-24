@@ -95,3 +95,20 @@ test("the closed model select shows the selected model and its provider logo", (
   expect(styles.some((style) => /svg/i.test(style))).toBe(true)
   view.cleanup()
 })
+
+test("a select inside a dialog opens its list inside the dialog, so the modal never hides it from assistive tech", async () => {
+  const { Dialog } = await import("./dialog")
+  const view = mount(() => (
+    <Dialog open title="New group" onOpenChange={() => {}}>
+      <Select label="Product" options={options} value="anthropic/claude" onChange={() => {}} />
+    </Dialog>
+  ))
+  const dialog = document.querySelector("[role=dialog]")!
+  dialog
+    .querySelector("button[aria-haspopup]")
+    ?.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+  const list = document.querySelector("[role=listbox]")
+  expect(list).not.toBeNull()
+  expect(dialog.contains(list)).toBe(true)
+  view.cleanup()
+})

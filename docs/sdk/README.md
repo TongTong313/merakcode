@@ -22,6 +22,7 @@
 12. [错误处理](#12-错误处理)
 13. [日志和调试](#13-日志和调试)
 14. [版本兼容](#14-版本兼容)
+15. [成员适配器（adapter）](#15-成员适配器adapter)
 
 ## 1. 概述
 
@@ -43,6 +44,7 @@ SDK 分成几个入口，按需要选：
 | `@merakcode/sdk/store`      | 把引擎推来的事件整理成会话、消息、审批等状态，适合做界面。浏览器里也能用         |
 | `@merakcode/sdk/plugin`     | 写插件、写项目里的自定义工具时用的类型和 `tool()`                                |
 | `@merakcode/sdk/transcript` | 把会话导出成 Markdown                                                            |
+| `@merakcode/sdk/adapter`    | 写协作群的成员适配器，让协作群驱动你的 AI 编程工具                               |
 | `@merakcode/sdk/errors`     | 错误类 `MerakCodeError` 和相关函数。浏览器里也能用                               |
 
 ## 2. 安装和要求
@@ -559,10 +561,10 @@ await engine.close()
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createSessionsState()`      | 新建一个空状态（类型 `SessionsState`）                                                                                                                              |
 | `applyEvent(state, event)`   | 把一个事件合并进状态，直接修改传入的对象。返回 `Change`：`insert`、`update`、`remove`、`replace`、`none`、`ignored`                                                 |
+| `activity(state, sessionID)` | 会话现在的状态（`Activity`）：`approval`（等审批）、`question`（等回答）、`running`、`idle`。子会话的状态算在最上层会话头上，后台子会话（比如回复后的记忆提取）不算 |
 | `rootOf(state, sessionID)`   | 顺着 `parentID` 找到最上层会话                                                                                                                                      |
 | `forgetSession(state, id)`   | 删掉某个会话缓存的全部数据                                                                                                                                          |
 | `search(list, id, key)`      | 在按 id 排好序的列表里二分查找，返回 `{ found, index }`                                                                                                             |
-| `activity(state, sessionID)` | 会话现在的状态（`Activity`）：`approval`（等审批）、`question`（等回答）、`running`、`idle`。子会话的状态算在最上层会话头上，后台子会话（比如回复后的记忆提取）不算 |
 
 状态里的列表都按 id 排序（引擎的 id 随时间递增）。更新时原地合并，没变的子对象保持原来的引用，所以界面框架只会重画变了的部分。用 Solid 时可以这样写：`setStore(produce((draft) => applyEvent(draft, event)))`。
 
@@ -667,3 +669,60 @@ await merak.close()
 SDK 和引擎必须是同一个版本。npm 装 SDK 时，引擎包的版本已经锁定成和 SDK 一样，不用操心。
 
 用 `executablePath` 指向别的引擎，或者用 `url` 连接已有的引擎时，要自己保证版本一致。可以用 `client.global.health()` 查引擎的版本。
+
+## 15. 成员适配器（adapter）
+
+协作群能拉 Claude Code、Codex、OpenCode 进来当成员，靠的是**成员适配器**：一个小程序，MerakCode 每派一个任务就启动它一次，通过 `@merakcode/sdk/adapter` 和它对话。适配器驱动自己的 CLI，把 CLI 做的每一步、每个要确认的操作、每个要问用户的问题都交给 MerakCode。MerakCode 按群里的权限模式（只读、询问、自动）和用户的规则判断，需要时弹出审批或提问，所以成员和 MerakCode 自己的工具守同一套规矩。
+
+内置的 Claude Code、Codex、OpenCode 适配器也是这样写的，只用了这个库和 Node 自带的模块。你的 AI 编程工具没有内置适配器的话，可以照着写一个；也可以在普通对话里让 MerakCode 用内置技能 `adapter-generator`（适配器生成助手）替你写好并注册，这个技能就是拿这三个内置适配器当示例的。
+
+`adapter(definition)` 让当前进程成为一个适配器。`definition`（类型 `Definition`）有两个函数：
+
+| 函数               | 说明                                                                                                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | 不带任务，只说明这个 CLI，返回 `Info`：`name`、`version`、`path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写 `unavailable`。设置页靠它显示状态，所以这里不能开始干活 |
+| `run(task, host)`  | 做一个任务，返回 `Result`：回复 `text`，以及下次续接用的 `sessionId`                                                                                                             |
+
+`product`（类型 `Product`）是用户配置的命令和参数。`task`（类型 `Task`）里有 `prompt`、`cwd`、`mode`（类型 `Mode`：`"readonly"`、`"ask"`、`"auto"`）、上次的 `resume`、`product`，还有 `signal`：用户停止群聊时会中止，这时要结束 CLI。
+
+`host`（类型 `Host`）是适配器找 MerakCode 的三个方法：
+
+| 方法                       | 说明                                                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `host.step(step)`          | 报告一步（类型 `Step`：`tool`、`detail`），显示在成员的气泡里                                                                                                                                    |
+| `host.permission(request)` | 请求一个操作（类型 `Permission`）：`write`、`command`、`network`、`read` 或 `tool`（其他）。返回 `Verdict`：`{ allow: true }` 或 `{ allow: false, message }`，把 `message` 交给 CLI 让它换个办法 |
+| `host.question(questions)` | 问用户（类型 `Question`），返回每个问题选中的选项（类型 `Answer`）                                                                                                                               |
+
+协议是标准输入输出上的 JSON-RPC 2.0，一行一条，版本号是 `PROTOCOL`。你的 CLI 也说 JSON-RPC 的话，可以用同一个 `connect` 连它；对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。适配器里 `console.log` 的内容会转到标准错误输出，写进 MerakCode 的日志，不会搞乱协议。
+
+启动 CLI 请用这里的 `spawn`：参数和返回值都和 `node:child_process` 的 `spawn` 一样，但它在 Windows 上也能启动 npm 装的 CLI（`.cmd` 文件），参数原样传过去。用户停止群聊时和任务做完后，用 `stop(child)` 结束 CLI 和它启动的所有进程（Windows 上 npm 装的 CLI 是外壳的子进程），结束后才返回；CLI 的输入还开着的话，会先关掉输入，给它一点时间自己退出。`inspect` 里用 `version(command)` 跑 `<CLI> --version`，返回第一行版本号，或者用不了的原因（没装、出错、5 秒内没回应）。
+
+```ts
+import { adapter } from "@merakcode/sdk/adapter"
+
+adapter({
+  inspect: () => ({ name: "MyCLI", version: "1.0.0" }),
+  async run(task, host) {
+    host.step({ tool: "shell", detail: "npm test" })
+    const verdict = await host.permission({ kind: "command", command: "npm test" })
+    if (!verdict.allow) return { text: `没有运行测试：${verdict.message}` }
+    return { text: `测试跑完了：${task.prompt}`, sessionId: "my-session" }
+  },
+})
+```
+
+在配置里加一个产品，接入方式写 `member`，命令和参数用来启动你的适配器：
+
+```json
+{
+  "collaboration": {
+    "products": {
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] }
+    }
+  }
+}
+```
+
+命令写 `node` 时用的是 MerakCode 自带的 Node，没装 Node 的电脑上也能跑。适配器是你自己装的程序，权限和你本人一样，MerakCode 只管得到它主动来问的操作。只用你信任的适配器。
+
+单文件版本 `merakcode-adapter.mjs`（技能 `adapter-generator` 自带，只需要 Node）还能直接试适配器：`node merakcode-adapter.mjs check -- node adapter.mjs` 只握手，显示名称和版本；`node merakcode-adapter.mjs test -- node adapter.mjs "<任务>"` 在当前目录跑一个任务，放行所有请求，打印每一步和结果，请在空目录里跑。SDK 里同样的入口是 `cli(argv)`。

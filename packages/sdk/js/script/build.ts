@@ -22,11 +22,12 @@ const entries = {
   "./store": "store/index.ts",
   "./process": "process/index.ts",
   "./plugin": "plugin/index.ts",
+  "./adapter": "adapter/index.ts",
   "./transcript": "transcript/index.ts",
 }
 
 /** Runtime dependencies, published pinned to the exact versions installed in the repo */
-const runtime = ["zod", "undici"]
+const runtime = ["zod", "undici", "cross-spawn"]
 
 function emitTypes(outdir: string) {
   const config = ts.getParsedCommandLineOfConfigFile(

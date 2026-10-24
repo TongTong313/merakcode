@@ -976,6 +976,13 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventCollaborationUpdated = {
+  type: "collaboration.updated"
+  properties: {
+    sessionID: string
+  }
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -1190,6 +1197,7 @@ export type Event =
   | EventQuestionRejected
   | EventRuleUpdated
   | EventTodoUpdated
+  | EventCollaborationUpdated
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionNotificationCreated
@@ -1428,6 +1436,46 @@ export type ConfigOutput = {
         },
       ]
   >
+  /**
+   * Collaboration groups. The leader is always a Merak seat.
+   */
+  collaboration?: {
+    /**
+     * Extra products, or overrides for claude, codex and opencode
+     */
+    products?: {
+      [key: string]: {
+        /**
+         * Executable name or path; may be left out when overriding claude, codex or opencode
+         */
+        command?: string
+        /**
+         * Offer this product for new members; default true
+         */
+        enabled?: boolean
+        /**
+         * Display name
+         */
+        title?: string
+        /**
+         * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+         */
+        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+        /**
+         * Arguments. The prompt is written to stdin
+         */
+        args?: Array<string>
+        /**
+         * Arguments used when the seat already has a private session. {id} is replaced with that session id
+         */
+        resumeArgs?: Array<string>
+        /**
+         * Regular expression with one capture group for the private session id, for a one-shot command
+         */
+        sessionLine?: string
+      }
+    }
+  }
   snapshot?: boolean
   /**
    * Disable providers that are loaded automatically
@@ -2202,6 +2250,46 @@ export type Config = {
         },
       ]
   >
+  /**
+   * Collaboration groups. The leader is always a Merak seat.
+   */
+  collaboration?: {
+    /**
+     * Extra products, or overrides for claude, codex and opencode
+     */
+    products?: {
+      [key: string]: {
+        /**
+         * Executable name or path; may be left out when overriding claude, codex or opencode
+         */
+        command?: string
+        /**
+         * Offer this product for new members; default true
+         */
+        enabled?: boolean
+        /**
+         * Display name
+         */
+        title?: string
+        /**
+         * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+         */
+        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+        /**
+         * Arguments. The prompt is written to stdin
+         */
+        args?: Array<string>
+        /**
+         * Arguments used when the seat already has a private session. {id} is replaced with that session id
+         */
+        resumeArgs?: Array<string>
+        /**
+         * Regular expression with one capture group for the private session id, for a one-shot command
+         */
+        sessionLine?: string
+      }
+    }
+  }
   snapshot?: boolean
   /**
    * Disable providers that are loaded automatically
@@ -3433,6 +3521,71 @@ export type AssistantMessage = {
 }
 
 export type Message = UserMessage | AssistantMessage
+
+export type CollaborationProduct = {
+  id: string
+  title: string
+  connected: boolean
+  enabled: boolean
+  reason?: string
+  builtin: boolean
+  source: "builtin" | "global" | "project"
+  version?: string
+  path?: string
+  recommended?: string
+  upgrade?: string
+  outdated?: boolean
+  adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+  command?: string
+  args?: Array<string>
+  resumeArgs?: Array<string>
+  sessionLine?: string
+}
+
+export type CollaborationGroupSummary = {
+  sessionID: string
+  title: string
+  directory: string
+  seats: Array<{
+    name: string
+    role: string
+    duty: string
+    product: string
+    leader: boolean
+  }>
+}
+
+export type CollaborationSeat = {
+  id: string
+  name: string
+  role: string
+  duty: string
+  product: string
+  leader: boolean
+  privateSessionID?: string
+}
+
+export type CollaborationEvent = {
+  at: number
+  kind: "join" | "leave" | "rename"
+  names: Array<string>
+}
+
+export type CollaborationResult = {
+  seatID: string
+  name: string
+  text: string
+  requestID: string
+  at: number
+}
+
+export type CollaborationGroup = {
+  seats: Array<CollaborationSeat>
+  events: Array<CollaborationEvent>
+  results: Array<CollaborationResult>
+  baseline: Array<string>
+  seq: number
+}
 
 export type MemoryEntry = {
   /**
@@ -6160,6 +6313,384 @@ export type SessionImportFullResponses = {
 }
 
 export type SessionImportFullResponse = SessionImportFullResponses[keyof SessionImportFullResponses]
+
+export type CollaborationProductsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    refresh?: "true" | "false"
+  }
+  url: "/collaboration/product"
+}
+
+export type CollaborationProductsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationProductsError = CollaborationProductsErrors[keyof CollaborationProductsErrors]
+
+export type CollaborationProductsResponses = {
+  /**
+   * Products
+   */
+  200: Array<CollaborationProduct>
+}
+
+export type CollaborationProductsResponse = CollaborationProductsResponses[keyof CollaborationProductsResponses]
+
+export type CollaborationProductChangeData = {
+  body:
+    | {
+        type: "add"
+        id: string
+        product: {
+          /**
+           * Executable name or path; may be left out when overriding claude, codex or opencode
+           */
+          command?: string
+          /**
+           * Display name
+           */
+          title?: string
+          /**
+           * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+           */
+          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+          /**
+           * Arguments. The prompt is written to stdin
+           */
+          args?: Array<string>
+          /**
+           * Arguments used when the seat already has a private session. {id} is replaced with that session id
+           */
+          resumeArgs?: Array<string>
+          /**
+           * Regular expression with one capture group for the private session id, for a one-shot command
+           */
+          sessionLine?: string
+        }
+      }
+    | {
+        type: "update"
+        id: string
+        product: {
+          /**
+           * Executable name or path; may be left out when overriding claude, codex or opencode
+           */
+          command?: string
+          /**
+           * Display name
+           */
+          title?: string
+          /**
+           * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
+           */
+          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+          /**
+           * Arguments. The prompt is written to stdin
+           */
+          args?: Array<string>
+          /**
+           * Arguments used when the seat already has a private session. {id} is replaced with that session id
+           */
+          resumeArgs?: Array<string>
+          /**
+           * Regular expression with one capture group for the private session id, for a one-shot command
+           */
+          sessionLine?: string
+        }
+      }
+    | {
+        type: "remove"
+        id: string
+      }
+    | {
+        type: "enabled"
+        id: string
+        enabled: boolean
+      }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/product"
+}
+
+export type CollaborationProductChangeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationProductChangeError = CollaborationProductChangeErrors[keyof CollaborationProductChangeErrors]
+
+export type CollaborationProductChangeResponses = {
+  /**
+   * Products
+   */
+  200: Array<CollaborationProduct>
+}
+
+export type CollaborationProductChangeResponse =
+  CollaborationProductChangeResponses[keyof CollaborationProductChangeResponses]
+
+export type CollaborationListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration"
+}
+
+export type CollaborationListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationListError = CollaborationListErrors[keyof CollaborationListErrors]
+
+export type CollaborationListResponses = {
+  /**
+   * Groups
+   */
+  200: Array<CollaborationGroupSummary>
+}
+
+export type CollaborationListResponse = CollaborationListResponses[keyof CollaborationListResponses]
+
+export type CollaborationCreateData = {
+  body: {
+    title?: string
+    leader: {
+      name: string
+      /**
+       * Short title such as product manager
+       */
+      role?: string
+      /**
+       * What the seat is for; it goes into the seat's prompt
+       */
+      duty?: string
+    }
+    seats?: Array<{
+      name: string
+      /**
+       * Short title such as product manager
+       */
+      role?: string
+      /**
+       * What the seat is for; it goes into the seat's prompt
+       */
+      duty?: string
+      product: string
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration"
+}
+
+export type CollaborationCreateErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationCreateError = CollaborationCreateErrors[keyof CollaborationCreateErrors]
+
+export type CollaborationCreateResponses = {
+  /**
+   * Created group
+   */
+  200: {
+    sessionID: string
+    group: CollaborationGroup
+  }
+}
+
+export type CollaborationCreateResponse = CollaborationCreateResponses[keyof CollaborationCreateResponses]
+
+export type CollaborationGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}"
+}
+
+export type CollaborationGetErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationGetError = CollaborationGetErrors[keyof CollaborationGetErrors]
+
+export type CollaborationGetResponses = {
+  /**
+   * Group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationGetResponse = CollaborationGetResponses[keyof CollaborationGetResponses]
+
+export type CollaborationSeatAddData = {
+  body: {
+    name: string
+    /**
+     * Short title such as product manager
+     */
+    role?: string
+    /**
+     * What the seat is for; it goes into the seat's prompt
+     */
+    duty?: string
+    product: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}/seat"
+}
+
+export type CollaborationSeatAddErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationSeatAddError = CollaborationSeatAddErrors[keyof CollaborationSeatAddErrors]
+
+export type CollaborationSeatAddResponses = {
+  /**
+   * Updated group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationSeatAddResponse = CollaborationSeatAddResponses[keyof CollaborationSeatAddResponses]
+
+export type CollaborationSeatRemoveData = {
+  body?: never
+  path: {
+    sessionID: string
+    seatID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}/seat/{seatID}"
+}
+
+export type CollaborationSeatRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationSeatRemoveError = CollaborationSeatRemoveErrors[keyof CollaborationSeatRemoveErrors]
+
+export type CollaborationSeatRemoveResponses = {
+  /**
+   * Updated group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationSeatRemoveResponse = CollaborationSeatRemoveResponses[keyof CollaborationSeatRemoveResponses]
+
+export type CollaborationSeatUpdateData = {
+  body?: {
+    name?: string
+    /**
+     * Short title such as product manager
+     */
+    role?: string
+    /**
+     * What the seat is for; it goes into the seat's prompt
+     */
+    duty?: string
+  }
+  path: {
+    sessionID: string
+    seatID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}/seat/{seatID}"
+}
+
+export type CollaborationSeatUpdateErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type CollaborationSeatUpdateError = CollaborationSeatUpdateErrors[keyof CollaborationSeatUpdateErrors]
+
+export type CollaborationSeatUpdateResponses = {
+  /**
+   * Updated group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationSeatUpdateResponse = CollaborationSeatUpdateResponses[keyof CollaborationSeatUpdateResponses]
 
 export type MemoryListData = {
   body?: never

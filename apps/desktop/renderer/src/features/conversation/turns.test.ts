@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { Message, Part } from "@merakcode/sdk/client"
-import { blocks, changes, explored, turns } from "./turns"
+import { blocks, changes, eventsByTurn, explored, segments, turns, working } from "./turns"
 
 const user = (id: string) => ({ id, role: "user", sessionID: "s", time: { created: 1 } }) as Message
 const reply = (id: string, parentID: string) => ({ id, role: "assistant", parentID, sessionID: "s" }) as Message
@@ -75,5 +75,60 @@ describe("changes", () => {
 
   test("skips files edited back to their original content", () => {
     expect(changes([edit("1", "/p/a.ts", "a\n", "b\n"), edit("2", "/p/a.ts", "b\n", "a\n")])).toEqual([])
+  })
+})
+
+describe("group chat", () => {
+  test("two members delegated in one step read as two messages between the leader's own", () => {
+    const result = segments([
+      { id: "s", type: "step-start" } as Part,
+      text("1", "好，分头做"),
+      tool("2", "delegate", { seat: "小红" }),
+      tool("3", "delegate", { seat: "abc" }),
+      { id: "f", type: "step-finish" } as Part,
+      tool("4", "read", { filePath: "a" }),
+      text("5", "都做完了"),
+    ])
+    expect(
+      result.map((segment) =>
+        segment.kind === "seat" ? segment.part.state.input.seat : segment.blocks.map((block) => block.kind),
+      ),
+    ).toEqual([["part"], "小红", "abc", ["explore", "part"]])
+  })
+
+  test("a step with only delegate calls leaves no empty leader message", () => {
+    expect(segments([{ id: "s", type: "step-start" } as Part, tool("1", "delegate", { seat: "小红" })])).toHaveLength(1)
+  })
+
+  test("membership lines go before the first turn that started after them", () => {
+    const join = { at: 5, kind: "join" }
+    const rename = { at: 15, kind: "rename" }
+    const leave = { at: 25, kind: "leave" }
+    expect(eventsByTurn([join, rename, leave], [10, 20])).toEqual([[join], [rename], [leave]])
+    expect(eventsByTurn([join], [])).toEqual([[join]])
+  })
+})
+
+describe("working", () => {
+  const call = (id: string, state: Record<string, unknown>) =>
+    ({ id, type: "tool", tool: "delegate", state: { input: {}, ...state } }) as Part
+  test("only members whose delegation has started count as working; queued and finished ones do not", () => {
+    const result = working(
+      [
+        call("1", { status: "running", metadata: { seatID: "s2" } }),
+        call("2", { status: "running", metadata: { seatID: "s3", phase: "queued" } }),
+        call("3", { status: "completed", metadata: { seatID: "s4" } }),
+        call("4", { status: "pending" }),
+        tool("5", "bash"),
+      ],
+      true,
+    )
+    expect([...result]).toEqual(["s2"])
+  })
+
+  test("nobody is working once the turn has stopped, even if a stopped call still reads as running", () => {
+    const running = call("1", { status: "running", metadata: { seatID: "s2" } })
+    expect([...working([running], false)]).toEqual([])
+    expect([...working([running], true)]).toEqual(["s2"])
   })
 })

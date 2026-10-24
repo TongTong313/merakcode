@@ -45,6 +45,7 @@
 ### 沙箱不管什么
 
 - **只有智能体通过 `bash` 工具跑的命令进沙箱**。智能体改文件走的是权限审批，不经过沙箱。MCP 服务、插件、LSP、格式化工具和项目里的自定义工具都在沙箱外面运行，权限和你本人一样，只装你信任的。
+- **协作群成员**（Claude Code、Codex、OpenCode 和成员适配器接入的产品）跑的命令不进 MerakCode 的沙箱，Codex 的命令在 Codex 自己的沙箱里。成员要做的操作都按权限审批判断，但 MerakCode 只管得到成员主动来问的操作；一次性命令接入的自定义产品和你自己写的适配器，权限和你本人一样，只接入你信任的。
 - **你自己在终端里输入的命令**不进沙箱。
 - **你环境变量里的密钥**（比如 `OPENAI_API_KEY`）会传给命令，命令能读到。只有引擎自己的口令和内联配置会被去掉。命令输出交给模型之前，会把常见格式的密钥替换成 `<redacted>`（配置项 `sandbox.redactSecrets`，默认开），但这只是兜底，不保证全部拦住。
 - **提示词注入**：项目文件、网页或 MCP 返回的内容可能藏着诱导模型的指令。沙箱能限制命令的破坏范围，但你批准的操作照样会执行，审批时请看清楚。
@@ -112,6 +113,7 @@ Known limits (`merak sandbox status` lists them too):
 ### What the sandbox does not cover
 
 - **Only commands the agent runs through the `bash` tool go into the sandbox.** File edits by the agent go through the permission checks, not the sandbox. MCP servers, plugins, LSP servers, formatters and custom project tools run outside the sandbox with your own rights. Only install ones you trust.
+- **Collaboration members** (Claude Code, Codex, OpenCode and products with a member adapter) run their commands outside MerakCode's sandbox; Codex runs them in its own. What a member wants to do goes through the permission checks, but MerakCode only governs what a member asks about: a custom product added as a one-shot command, or an adapter you wrote yourself, runs with your own rights. Only add ones you trust.
 - **Commands you type in your own terminal** are not sandboxed.
 - **Keys in your environment** (such as `OPENAI_API_KEY`) are passed to commands, which can read them. Only the engine's own password and inline config are removed. Before command output reaches the model, common key formats are replaced with `<redacted>` (the `sandbox.redactSecrets` option, on by default), but that is a safety net, not a guarantee.
 - **Prompt injection**: project files, web pages or MCP results may contain text meant to steer the model. The sandbox limits the damage a command can do, but anything you approve still runs, so read approval requests carefully.

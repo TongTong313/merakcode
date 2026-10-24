@@ -3,14 +3,25 @@ import Ellipsis from "lucide-solid/icons/ellipsis"
 import GitBranch from "lucide-solid/icons/git-branch"
 import GitMerge from "lucide-solid/icons/git-merge"
 import Undo2 from "lucide-solid/icons/undo-2"
+import Users from "lucide-solid/icons/users"
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { t } from "../../i18n"
 import { sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
-import { busy, ensureSession, folderOf, messages, pending, session, state } from "../../state/store"
+import {
+  busy,
+  ensureSession,
+  folderOf,
+  messages,
+  messagesOf,
+  partsOf,
+  pending,
+  session,
+  state,
+} from "../../state/store"
 import { choose } from "../../state/models"
-import { ui } from "../../state/ui"
+import { saveLayout, setUi, ui } from "../../state/ui"
 import { Confirm, Dialog } from "../../ui/dialog"
 import { Menu } from "../../ui/menu"
 import { Switch } from "../../ui/switch"
@@ -20,7 +31,12 @@ import { openReview } from "../review/state"
 import { Frame } from "../shell/frame"
 import { Rename } from "../shell/rename"
 import { Composer } from "./composer"
+import { groupState } from "./group-state"
+import { working } from "./turns"
+import { GroupTodo } from "./group-todo"
+import { MemberColumn } from "./member-column"
 import { Approval, Question } from "./dock"
+import { askedBy } from "./members"
 import { Messages } from "./messages"
 import { restore, send, stop } from "./send"
 
@@ -121,7 +137,9 @@ export function Conversation(props: { id: string; directory: string }) {
   const [merging, setMerging] = createSignal(false)
   const [renaming, setRenaming] = createSignal(false)
   const [discarding, setDiscarding] = createSignal(false)
+  const [opening, setOpening] = createSignal<{ target: string; at: number }>()
   const info = () => session(props.id)
+  const isGroup = () => info()?.metadata?.group === true
   const folder = () => folderOf(props.directory)
   const dir = () => info()?.directory ?? props.directory
   /** Worktree directory, when the conversation runs in a worktree */
@@ -133,6 +151,31 @@ export function Conversation(props: { id: string; directory: string }) {
   }
   const requests = createMemo(() => pending(props.id))
   const running = () => busy(props.id)
+  const group = groupState({ sessionID: () => props.id, directory: dir, enabled: isGroup })
+  /** Members working right now; only the latest turn can have running delegations */
+  const busySeats = createMemo(() => {
+    const list = messagesOf(props.id)
+    const start = list.findLastIndex((message) => message.role === "user")
+    return working(
+      list.slice(start + 1).flatMap((message) => partsOf(message.id)),
+      running(),
+    )
+  })
+  /** The member a permission request or question comes from, in a group */
+  const from = (request: { tool?: { callID: string } }) => {
+    const current = group.group()
+    if (!current) return undefined
+    const parts = messagesOf(props.id).flatMap((message) => partsOf(message.id))
+    return askedBy(request.tool?.callID, parts, current.seats, group.products())
+  }
+  const collapse = (collapsed: boolean) => {
+    setUi("membersCollapsed", collapsed)
+    saveLayout()
+  }
+  const openMember = (request: { target: string; at: number }) => {
+    collapse(false)
+    setOpening(request)
+  }
 
   createEffect(
     on(
@@ -171,6 +214,20 @@ export function Conversation(props: { id: string; directory: string }) {
               )}
             </Show>
             <span class="title ellipsis">{info()?.title ?? ""}</span>
+            <Show when={group.group()}>
+              {(value) => (
+                <button
+                  class="chip outlined no-drag"
+                  aria-label={t("group.members", { count: value().seats.length })}
+                  title={ui.membersCollapsed ? t("group.expand") : t("group.collapse")}
+                  aria-pressed={!ui.membersCollapsed}
+                  onClick={() => collapse(!ui.membersCollapsed)}
+                >
+                  <Users class="icon icon-sm" />
+                  {value().seats.length}
+                </button>
+              )}
+            </Show>
             <Show when={worktree()}>
               <span class="chip outlined no-drag">
                 <GitBranch class="icon icon-sm" />
@@ -205,49 +262,98 @@ export function Conversation(props: { id: string; directory: string }) {
           />
         }
       >
-        <Messages sessionID={props.id} directory={dir()} onReviewTurn={reviewTurn} onReviewFile={reviewFile} />
-        <div class="dock">
-          <div class="dock-inner">
-            <Show when={!running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
-              <div class="revert-bar" role="status">
-                <Undo2 class="icon icon-sm" />
-                <span class="ellipsis">{t("conversation.reverted")}</span>
-                <span class="spacer" />
-                <button
-                  class="button secondary sm"
-                  onClick={() =>
-                    void restore(props.id, props.directory).catch((error: Error) =>
+        <div class="chat-area">
+          <div class="chat-main">
+            <Show when={isGroup()}>
+              <GroupTodo todos={group.todos()} />
+            </Show>
+            <Messages
+              sessionID={props.id}
+              directory={dir()}
+              onReviewTurn={reviewTurn}
+              onReviewFile={reviewFile}
+              group={
+                group.group()
+                  ? {
+                      seats: group.group()!.seats,
+                      events: group.group()!.events,
+                      products: group.products(),
+                      onOpenSession: (id) => navigate(sessionPath(props.directory, id)),
+                      onOpenMember: (id) => openMember({ target: id, at: Date.now() }),
+                    }
+                  : undefined
+              }
+            />
+            <div class="dock">
+              <div class="dock-inner">
+                <Show when={!running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
+                  <div class="revert-bar" role="status">
+                    <Undo2 class="icon icon-sm" />
+                    <span class="ellipsis">{t("conversation.reverted")}</span>
+                    <span class="spacer" />
+                    <button
+                      class="button secondary sm"
+                      onClick={() =>
+                        void restore(props.id, props.directory).catch((error: Error) =>
+                          toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+                        )
+                      }
+                    >
+                      {t("conversation.restore")}
+                    </button>
+                  </div>
+                </Show>
+                <Show when={requests().permissions[0]}>
+                  {(request) => (
+                    <Approval
+                      request={request()}
+                      more={requests().permissions.length - 1}
+                      directory={dir()}
+                      from={from(request())}
+                    />
+                  )}
+                </Show>
+                <Show when={!requests().permissions.length && requests().questions[0]}>
+                  {(request) => <Question request={request()} directory={dir()} from={from(request())} />}
+                </Show>
+                <Composer
+                  sessionID={props.id}
+                  directory={props.directory}
+                  busy={running()}
+                  compact
+                  autofocus
+                  placeholder={isGroup() ? t("group.placeholder") : undefined}
+                  seats={group.group()?.seats}
+                  products={isGroup() ? group.products() : undefined}
+                  onSubmit={(submission) => send(props.id, props.directory, submission)}
+                  onStop={() => void stop(props.id, props.directory)}
+                  onMode={(mode) => {
+                    choose(props.id, props.directory, { mode })
+                    void call(
+                      client(dir()).session.setPermissionMode({ sessionID: props.id, permissionMode: mode }),
+                    ).catch((error: Error) =>
                       toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
                     )
-                  }
-                >
-                  {t("conversation.restore")}
-                </button>
+                  }}
+                />
               </div>
-            </Show>
-            <Show when={requests().permissions[0]}>
-              {(request) => <Approval request={request()} more={requests().permissions.length - 1} directory={dir()} />}
-            </Show>
-            <Show when={!requests().permissions.length && requests().questions[0]}>
-              {(request) => <Question request={request()} directory={dir()} />}
-            </Show>
-            <Composer
-              sessionID={props.id}
-              directory={props.directory}
-              busy={running()}
-              compact
-              autofocus
-              onSubmit={(submission) => send(props.id, props.directory, submission)}
-              onStop={() => void stop(props.id, props.directory)}
-              onMode={(mode) => {
-                choose(props.id, props.directory, { mode })
-                void call(client(dir()).session.setPermissionMode({ sessionID: props.id, permissionMode: mode })).catch(
-                  (error: Error) =>
-                    toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-                )
-              }}
-            />
+            </div>
           </div>
+          <Show when={group.group()}>
+            {(value) => (
+              <MemberColumn
+                sessionID={props.id}
+                directory={dir()}
+                group={value()}
+                products={group.products()}
+                busy={(seatID) => busySeats().has(seatID)}
+                collapsed={ui.membersCollapsed}
+                onCollapsed={collapse}
+                open={opening()}
+                onOpen={openMember}
+              />
+            )}
+          </Show>
         </div>
         <Show when={info()}>
           {(value) => <Rename session={value()} open={renaming()} onClose={() => setRenaming(false)} />}

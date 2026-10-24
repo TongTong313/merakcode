@@ -32,10 +32,12 @@
     "check:brand": "node --import ./script/node/register.mjs script/check-brand.ts",
     "generate:errors": "node --import ./script/node/register.mjs script/generate-errors.ts",
     "check:errors": "node --import ./script/node/register.mjs script/generate-errors.ts --check",
+    "generate:adapter-library": "node --import ./script/node/register.mjs packages/sdk/js/script/adapter-library.ts",
+    "check:adapter-library": "node --import ./script/node/register.mjs packages/sdk/js/script/adapter-library.ts --check",
     "check:comments": "node --import ./script/node/register.mjs script/check-comments.ts",
     "release:version": "node --import ./script/node/register.mjs script/release/version.ts",
     "check:versions": "node --import ./script/node/register.mjs script/release/version.ts --check",
-    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
+    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm check:adapter-library && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
   },
   "devDependencies": {
     "@merakcode/util": "workspace:*",

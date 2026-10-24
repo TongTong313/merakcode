@@ -129,6 +129,14 @@ async function bundle(out: string) {
       main: path.join(dir, "src/index.ts"),
       // Linux sandbox helper, started as its own process (see packages/sandbox/src/linux/index.ts)
       "sandbox-linux": path.join(root, "packages/sandbox/src/linux/exec.ts"),
+      // Built-in member adapters, each started as its own process for a collaboration member (see
+      // packages/engine/src/collaboration/adapters/index.ts)
+      ...Object.fromEntries(
+        ["claude", "codex", "opencode", "command"].map((name) => [
+          `adapter-${name}`,
+          path.join(root, `packages/engine/src/collaboration/adapters/${name}.ts`),
+        ]),
+      ),
     },
     outdir: out,
     bundle: true,
@@ -174,6 +182,16 @@ async function bundle(out: string) {
     )
   // The output is ESM: without "type", Node first parses it as CommonJS, retries, and prints a warning
   await Filesystem.write(path.join(out, "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n")
+  // The adapter-generator skill's files, read by the engine and copied by the model (see
+  // packages/engine/src/skill/builtin/adapter-generator/index.ts); its code is bundled
+  await fs.cp(
+    path.join(root, "packages/engine/src/skill/builtin/adapter-generator"),
+    path.join(out, "skills", "adapter-generator"),
+    {
+      recursive: true,
+      filter: (file) => path.basename(file) !== "index.ts",
+    },
+  )
   // esbuild drops license comments (legalComments: "none"); ship the full list of bundled packages instead
   const workspaces = ["apps/cli", "packages/engine", "packages/sdk/js", "packages/util", "packages/log"]
   await Filesystem.write(

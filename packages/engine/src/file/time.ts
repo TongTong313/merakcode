@@ -1,4 +1,5 @@
 import fs from "fs/promises"
+import path from "path"
 import { statSync } from "fs"
 import { Instance } from "../project/instance"
 import { Log } from "@merakcode/log/logger"
@@ -17,9 +18,12 @@ export namespace FileTime {
       }
     } = {}
     const locks = new Map<string, Promise<void>>()
+    // Directories another process is changing, see holdDirectories
+    const held = new Map<string, Promise<void>>()
     return {
       read,
       locks,
+      held,
       // Global write barrier, see acquireBarrier
       barrier: undefined as Promise<void> | undefined,
     }
@@ -43,7 +47,15 @@ export namespace FileTime {
     const current = state()
     // No new path writes start while a barrier is up; afterwards, queue for this file's lock.
     // There must be no await between here and locks.set, or a barrier could go up in the gap and this write slip past.
-    while (current.barrier) await current.barrier
+    for (;;) {
+      if (current.barrier) {
+        await current.barrier
+        continue
+      }
+      const holder = heldOver(filepath)
+      if (!holder) break
+      await holder
+    }
     const currentLock = current.locks.get(filepath) ?? Promise.resolve()
     let release: () => void = () => {}
     const nextLock = new Promise<void>((resolve) => {
@@ -124,8 +136,8 @@ export namespace FileTime {
       release = resolve
     })
     current.barrier = barrier
-    // Wait for path writes queued or running before the barrier went up
-    await Promise.allSettled([...current.locks.values()])
+    // Wait for path writes queued or running before the barrier went up, and for other processes holding directories
+    await Promise.allSettled([...current.locks.values(), ...current.held.values()])
     let released = false
     return () => {
       if (released) return
@@ -133,6 +145,40 @@ export namespace FileTime {
       if (current.barrier === barrier) current.barrier = undefined
       release()
     }
+  }
+
+  /**
+   * Holds directories while another process changes files in them (a coding CLI in a group chat). Path writes under a
+   * held directory wait until fn finishes, and so does a write barrier (a bash command may write anywhere); writes
+   * elsewhere go on. A hold starts only after a running barrier is released, and registers with no await after that
+   * check, so a barrier and a hold never wait for each other.
+   */
+  export async function holdDirectories<T>(directories: string[], fn: () => Promise<T>): Promise<T> {
+    const current = state()
+    while (current.barrier) await current.barrier
+    let release = () => {}
+    const done = new Promise<void>((resolve) => (release = resolve))
+    const keys = [...new Set(directories.map((item) => path.resolve(item)))]
+    for (const key of keys) current.held.set(key, done)
+    // Writes that started before the hold finish first
+    await Promise.allSettled(
+      keys.flatMap((key) => [...current.locks].filter(([file]) => within(file, key)).map(([, lock]) => lock)),
+    )
+    try {
+      return await fn()
+    } finally {
+      for (const key of keys) if (current.held.get(key) === done) current.held.delete(key)
+      release()
+    }
+  }
+
+  function heldOver(filepath: string) {
+    for (const [directory, done] of state().held) if (within(filepath, directory)) return done
+  }
+
+  function within(file: string, directory: string) {
+    const relative = path.relative(directory, path.resolve(file))
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
   }
 
   export async function assert(sessionID: string, filepath: string) {

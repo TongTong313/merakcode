@@ -27,12 +27,19 @@ export type Turn = {
 
 type Message = { role: string; content?: unknown }
 
+/**
+ * The text a model reads as the request or the tool output. The engine adds context after the history in
+ * <system-reminder> blocks, which a model takes as background rather than as what was asked or returned.
+ */
 const text = (content: unknown) =>
-  typeof content === "string"
+  (typeof content === "string"
     ? content
     : Array.isArray(content)
       ? content.map((part: { text?: string }) => part.text ?? "").join("")
       : ""
+  )
+    .replace(/\s*<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .trim()
 
 function chunk(delta: object, finish: string | null = null) {
   return `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`

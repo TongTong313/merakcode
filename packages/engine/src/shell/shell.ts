@@ -3,20 +3,24 @@ import { lazy } from "../util/lazy"
 import path from "path"
 import os from "os"
 import { statSync } from "fs"
-import { spawn, type ChildProcess } from "child_process"
+import { spawn } from "child_process"
 import { Process } from "@merakcode/util/process"
 import { setTimeout as delay } from "node:timers/promises"
 
 const SIGKILL_TIMEOUT_MS = 200
 
 export namespace Shell {
-  export async function killTree(proc: ChildProcess, opts?: { exited?: () => boolean }): Promise<void> {
+  export async function killTree(
+    proc: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
+    opts?: { exited?: () => boolean },
+  ): Promise<void> {
     const pid = proc.pid
     if (!pid || opts?.exited?.()) return
 
     if (process.platform === "win32") {
       await new Promise<void>((resolve) => {
-        const killer = spawn("taskkill", ["/pid", String(pid), "/f", "/t"], { stdio: "ignore" })
+        // Hidden: a process without a console of its own (a detached member adapter) would open a window for it
+        const killer = spawn("taskkill", ["/pid", String(pid), "/f", "/t"], { stdio: "ignore", windowsHide: true })
         killer.once("exit", () => resolve())
         killer.once("error", () => resolve())
       })

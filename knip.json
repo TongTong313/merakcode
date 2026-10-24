@@ -10,12 +10,13 @@
       "entry": ["script/*.ts", "test/**/fixture/**", "test/**/*.fixture.ts"]
     },
     "apps/desktop/main": {
-      "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "test/fixture/**"]
+      "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "test/fixture/**", "e2e/fake-*.ts"]
     },
     "packages/engine": {
       "entry": [
         "script/*.ts",
         "src/**/*-fixture.ts",
+        "src/skill/builtin/adapter-generator/*.mjs",
         "test/**/fixture/**",
         "test/**/fixtures/**",
         "test/**/*-fixture.ts"

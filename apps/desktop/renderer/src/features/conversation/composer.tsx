@@ -22,6 +22,7 @@ import { Select } from "../../ui/select"
 import { ModelPicker } from "./model-picker"
 import { COMPACT, loadCommands } from "./send"
 import { apply, fileUrl, trigger, type Trigger } from "./suggest"
+import { mentionChoices, type Product } from "./members"
 
 const MODES: PermissionMode[] = ["readonly", "ask", "auto"]
 export const modeOptions = () => [
@@ -39,7 +40,13 @@ export type Submission = { text: string; files: FilePartInput[] }
 const [fills, setFills] = createStore<Record<string, { text: string; at: number }>>({})
 export const fill = (key: string, text: string) => setFills(key, { text, at: Date.now() })
 
-type Option = { value: string; label: string; detail?: string; directory?: boolean }
+type Option = {
+  value: string
+  label: string
+  detail?: string
+  directory?: boolean
+  seat?: boolean
+}
 
 /** Context usage: share of the model's context window used by the latest reply; hover for tokens and cost */
 function Usage(props: { sessionID: string }) {
@@ -78,6 +85,10 @@ export function Composer(props: {
   busy: boolean
   compact?: boolean
   autofocus?: boolean
+  placeholder?: string
+  /** Group members offered by @ */
+  seats?: readonly { name: string; product: string; role?: string }[]
+  products?: readonly Product[]
   onSubmit: (submission: Submission) => Promise<unknown> | void
   onStop?: () => void
   onMode?: (mode: PermissionMode) => void
@@ -113,7 +124,13 @@ export function Composer(props: {
   )
 
   const [options] = createResource(
-    () => at() && { ...at()!, dir: dir() },
+    () =>
+      at() && {
+        ...at()!,
+        dir: dir(),
+        seats: props.seats ?? [],
+        products: props.products ?? [],
+      },
     async (trigger): Promise<Option[]> => {
       if (trigger.kind === "command") {
         const list = await loadCommands(trigger.dir)
@@ -124,11 +141,20 @@ export function Composer(props: {
         ].filter((item) => item.value.toLowerCase().includes(query))
       }
       const found = await call(client(trigger.dir).find.files({ query: trigger.query, limit: 20 })).catch(() => [])
-      return found.map((path) => ({
-        value: path.replace(/\\/g, "/"),
-        label: path.replace(/\\/g, "/"),
-        directory: /[\\/]$/.test(path),
+      const mentions = mentionChoices(trigger.query, trigger.seats, trigger.products).map((choice) => ({
+        value: choice.name,
+        label: choice.name,
+        detail: choice.detail,
+        seat: true,
       }))
+      return [
+        ...mentions,
+        ...found.map((path) => ({
+          value: path.replace(/\\/g, "/"),
+          label: path.replace(/\\/g, "/"),
+          directory: /[\\/]$/.test(path),
+        })),
+      ]
     },
   )
   const open = () => !!at() && (options()?.length ?? 0) > 0
@@ -145,7 +171,7 @@ export function Composer(props: {
     if (!option || !hit) return
     const next = apply(text(), hit, option.value)
     setText(next.text)
-    if (hit.kind === "file") {
+    if (hit.kind === "file" && !option.seat) {
       const absolute = `${dir().replace(/[\\/]+$/, "")}/${option.value}`
       setMentions((list) => [
         ...list.filter((item) => item.path !== option.value),
@@ -337,7 +363,7 @@ export function Composer(props: {
         aria-label={t("prompt.label")}
         aria-controls={open() ? "composer-suggest" : undefined}
         aria-activedescendant={open() ? `composer-suggest-${active()}` : undefined}
-        placeholder={props.busy ? t("prompt.placeholderBusy") : t("prompt.placeholder")}
+        placeholder={props.placeholder ?? (props.busy ? t("prompt.placeholderBusy") : t("prompt.placeholder"))}
         value={text()}
         onInput={(event) => {
           setText(event.currentTarget.value)

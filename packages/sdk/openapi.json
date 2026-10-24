@@ -2890,6 +2890,27 @@
         "required": ["type", "properties"],
         "additionalProperties": false
       },
+      "Event.collaboration.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "collaboration.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"],
+        "additionalProperties": false
+      },
       "SessionStatus": {
         "anyOf": [
           {
@@ -3544,6 +3565,9 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.collaboration.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.status"
           },
           {
@@ -4157,6 +4181,61 @@
                 }
               ]
             }
+          },
+          "collaboration": {
+            "description": "Collaboration groups. The leader is always a Merak seat.",
+            "type": "object",
+            "properties": {
+              "products": {
+                "description": "Extra products, or overrides for claude, codex and opencode",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "description": "Offer this product for new members; default true",
+                      "type": "boolean"
+                    },
+                    "title": {
+                      "description": "Display name",
+                      "type": "string"
+                    },
+                    "adapter": {
+                      "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                      "type": "string",
+                      "enum": ["claude", "codex", "opencode", "command", "member"]
+                    },
+                    "args": {
+                      "description": "Arguments. The prompt is written to stdin",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "resumeArgs": {
+                      "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sessionLine": {
+                      "description": "Regular expression with one capture group for the private session id, for a one-shot command",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
           },
           "snapshot": {
             "type": "boolean"
@@ -5660,6 +5739,59 @@
                   "maxItems": 2
                 }
               ]
+            }
+          },
+          "collaboration": {
+            "description": "Collaboration groups. The leader is always a Merak seat.",
+            "type": "object",
+            "properties": {
+              "products": {
+                "description": "Extra products, or overrides for claude, codex and opencode",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "description": "Offer this product for new members; default true",
+                      "type": "boolean"
+                    },
+                    "title": {
+                      "description": "Display name",
+                      "type": "string"
+                    },
+                    "adapter": {
+                      "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                      "type": "string",
+                      "enum": ["claude", "codex", "opencode", "command", "member"]
+                    },
+                    "args": {
+                      "description": "Arguments. The prompt is written to stdin",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "resumeArgs": {
+                      "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sessionLine": {
+                      "description": "Regular expression with one capture group for the private session id, for a one-shot command",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           },
           "snapshot": {
@@ -8889,6 +9021,217 @@
             "$ref": "#/components/schemas/AssistantMessage"
           }
         ]
+      },
+      "CollaborationProduct": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "global", "project"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "recommended": {
+            "type": "string"
+          },
+          "upgrade": {
+            "type": "string"
+          },
+          "outdated": {
+            "type": "boolean"
+          },
+          "adapter": {
+            "type": "string",
+            "enum": ["claude", "codex", "opencode", "command", "member"]
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resumeArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionLine": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title", "connected", "enabled", "builtin", "source"],
+        "additionalProperties": false
+      },
+      "CollaborationGroupSummary": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "duty": {
+                  "type": "string"
+                },
+                "product": {
+                  "type": "string"
+                },
+                "leader": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["name", "role", "duty", "product", "leader"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["sessionID", "title", "directory", "seats"],
+        "additionalProperties": false
+      },
+      "CollaborationSeat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "duty": {
+            "type": "string"
+          },
+          "product": {
+            "type": "string"
+          },
+          "leader": {
+            "type": "boolean"
+          },
+          "privateSessionID": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name", "role", "duty", "product", "leader"],
+        "additionalProperties": false
+      },
+      "CollaborationEvent": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "number"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["join", "leave", "rename"]
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["at", "kind", "names"],
+        "additionalProperties": false
+      },
+      "CollaborationResult": {
+        "type": "object",
+        "properties": {
+          "seatID": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "requestID": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          }
+        },
+        "required": ["seatID", "name", "text", "requestID", "at"],
+        "additionalProperties": false
+      },
+      "CollaborationGroup": {
+        "type": "object",
+        "properties": {
+          "seats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollaborationSeat"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollaborationEvent"
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollaborationResult"
+            }
+          },
+          "baseline": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "seq": {
+            "type": "number"
+          }
+        },
+        "required": ["seats", "events", "results", "baseline", "seq"],
+        "additionalProperties": false
       },
       "MemoryEntry": {
         "type": "object",
@@ -15004,6 +15347,763 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.importFull({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/collaboration/product": {
+      "get": {
+        "operationId": "collaboration.products",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "summary": "List collaboration products",
+        "description": "Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.",
+        "responses": {
+          "200": {
+            "description": "Products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CollaborationProduct"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.products({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "collaboration.product.change",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Change collaboration products",
+        "description": "Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.",
+        "responses": {
+          "200": {
+            "description": "Products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CollaborationProduct"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "add"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "product": {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
+                            "type": "string"
+                          },
+                          "title": {
+                            "description": "Display name",
+                            "type": "string"
+                          },
+                          "adapter": {
+                            "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                            "type": "string",
+                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                          },
+                          "args": {
+                            "description": "Arguments. The prompt is written to stdin",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resumeArgs": {
+                            "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "sessionLine": {
+                            "description": "Regular expression with one capture group for the private session id, for a one-shot command",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": ["type", "id", "product"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "update"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "product": {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
+                            "type": "string"
+                          },
+                          "title": {
+                            "description": "Display name",
+                            "type": "string"
+                          },
+                          "adapter": {
+                            "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                            "type": "string",
+                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                          },
+                          "args": {
+                            "description": "Arguments. The prompt is written to stdin",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resumeArgs": {
+                            "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "sessionLine": {
+                            "description": "Regular expression with one capture group for the private session id, for a one-shot command",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": ["type", "id", "product"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "remove"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "id"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "enabled"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["type", "id", "enabled"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.product.change({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/collaboration": {
+      "get": {
+        "operationId": "collaboration.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List collaboration groups",
+        "description": "Groups of every project, most recently active first, with their members for copying into a new group. Private sessions are left out.",
+        "responses": {
+          "200": {
+            "description": "Groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CollaborationGroupSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "collaboration.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create a collaboration group",
+        "description": "Creates a session whose leader is a Merak seat, together with the seats named up front.",
+        "responses": {
+          "200": {
+            "description": "Created group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionID": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "$ref": "#/components/schemas/CollaborationGroup"
+                    }
+                  },
+                  "required": ["sessionID", "group"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "leader": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "description": "Short title such as product manager",
+                        "type": "string"
+                      },
+                      "duty": {
+                        "description": "What the seat is for; it goes into the seat's prompt",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name"]
+                  },
+                  "seats": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "description": "Short title such as product manager",
+                          "type": "string"
+                        },
+                        "duty": {
+                          "description": "What the seat is for; it goes into the seat's prompt",
+                          "type": "string"
+                        },
+                        "product": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["name", "product"]
+                    }
+                  }
+                },
+                "required": ["leader"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/collaboration/{sessionID}": {
+      "get": {
+        "operationId": "collaboration.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get a collaboration group",
+        "responses": {
+          "200": {
+            "description": "Group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaborationGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/collaboration/{sessionID}/seat": {
+      "post": {
+        "operationId": "collaboration.seat.add",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Add a collaboration seat",
+        "responses": {
+          "200": {
+            "description": "Updated group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaborationGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "description": "Short title such as product manager",
+                    "type": "string"
+                  },
+                  "duty": {
+                    "description": "What the seat is for; it goes into the seat's prompt",
+                    "type": "string"
+                  },
+                  "product": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "product"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.seat.add({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/collaboration/{sessionID}/seat/{seatID}": {
+      "patch": {
+        "operationId": "collaboration.seat.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "seatID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Change a collaboration seat's name, role or duty",
+        "responses": {
+          "200": {
+            "description": "Updated group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaborationGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "description": "Short title such as product manager",
+                    "type": "string"
+                  },
+                  "duty": {
+                    "description": "What the seat is for; it goes into the seat's prompt",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.seat.update({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "collaboration.seat.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "seatID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove a collaboration seat",
+        "description": "The Merak leader cannot be removed.",
+        "responses": {
+          "200": {
+            "description": "Updated group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaborationGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.seat.remove({\n  ...\n})"
           }
         ]
       }

@@ -18,7 +18,7 @@
 
 ---
 
-MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. Now that AI writes far faster than people can read, MerakCode puts a lot of care into how people and the agent work together. The author is building a multi-product, multi-agent collaboration mode, and refining how you review what the agent produces, so that its output is what you expect. The aim is to be the best AI coding tool to use, not the most powerful one.
+MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. Now that AI writes far faster than people can read, MerakCode puts a lot of care into how people and the agent work together. Collaboration groups let Claude Code, Codex, OpenCode and other products work together, and MerakCode keeps refining how you review what the agent produces, so that its output is what you expect. The aim is to be the best AI coding tool to use, not the most powerful one.
 
 We open-sourced this project to make up for a regret we have carried, and in the hope that the community can keep it going. The name comes from Merak, the star in the Big Dipper that, together with Dubhe, points to Polaris. We hope MerakCode does the same and points each of your ideas in the right direction.
 
@@ -119,6 +119,7 @@ Handy actions (`⌘` on macOS, `Ctrl` on Windows and Linux):
 | --------------------- | ----------------------------------------------------------------------------- |
 | `⌘/Ctrl+K`            | Command palette: search conversation titles, conversation content or commands |
 | `⌘/Ctrl+N`            | New conversation                                                              |
+| `⌘/Ctrl+G`            | New collaboration group                                                       |
 | `⌘/Ctrl+,`            | Open settings                                                                 |
 | `⌘/Ctrl+J`            | Open or close the terminal                                                    |
 | `⌘/Ctrl+B`            | Show or hide the side panel                                                   |
@@ -172,6 +173,7 @@ MerakCode edits files and runs commands on your computer, so every action goes t
 - **Commands.** Commands that certainly do not change files (`ls`, `git status`, `git diff`, `rg`, and the rest of that fixed list) run in every mode. Anything that might change files counts as a file-changing command. File-changing commands, and `rm`, `rmdir`, `unlink`, `shred`, `git clean`, `git reset --hard` and `find -delete`, are refused in read-only mode, asked about in ask mode, and run immediately in auto mode. Risky commands are refused in read-only mode and asked about in ask and auto mode: `sudo`, `su`, `doas`, `pkexec`, `runas`, `dd` when it does not target a whole disk, `shutdown`, `reboot`, `chown`, and `git push`, `npm publish`, `npm unpublish`, `pnpm publish`, `yarn publish`, `bun publish`, `cargo publish`, `gem push`, `twine upload`, `docker push`, `gh release`, `gh pr`, `helm push`. `rm -rf /` (and the home directory), recursively chmodding those locations to `777`, `mkfs`, `dd` onto a whole disk, `format`, `diskpart` and a fork bomb are refused by default. In ask and auto mode they run only when the config explicitly allows them. In read-only mode an allow rule still does not.
 - **Websites.** The allowlist matches hostnames exactly; a subdomain does not count. These hosts are reached immediately: `registry.npmjs.org`, `registry.yarnpkg.com`, `registry.npmmirror.com`, `cdn.npmmirror.com`, `pypi.org`, `files.pythonhosted.org`, `pypi.tuna.tsinghua.edu.cn`, `crates.io`, `index.crates.io`, `static.crates.io`, `static.rust-lang.org`, `rsproxy.cn`, `proxy.golang.org`, `sum.golang.org`, `goproxy.cn`, `repo.maven.apache.org`, `repo1.maven.org`, `maven.aliyun.com`, `services.gradle.org`, `plugins.gradle.org`, `rubygems.org`, `github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`, `gitlab.com`, `gitee.com`, `mirrors.aliyun.com`, `mirrors.tuna.tsinghua.edu.cn`. Every other host asks, in every mode.
 - **The rest.** Subagents, workflows, scheduled tasks, MCP and tools registered by plugins ask in read-only and ask mode, and run immediately in auto mode. Leaving the sandbox always asks. While the sandbox is not ready, a command that may change things asks even in auto mode. In ask and auto mode, allow and deny rules in the project config override the defaults above. Read-only mode still cannot edit files or run anything except read-only commands.
+- **Collaboration members.** The leader hands a task to a member without asking. When a member (Claude Code, Codex, OpenCode, or a product with a member adapter) wants to edit files, run commands, reach a website or read files, the rules above decide it; what needs asking shows in the approval bar and a member's question in the question box, both naming the member. Members' commands do not run in MerakCode's OS sandbox (Codex runs them in its own sandbox), and a custom product added as a one-shot command never asks: its own settings decide.
 
 | Mode          | Good for                              | What happens                                                                                                                                                                                                           |
 | ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -190,6 +192,31 @@ Commands the agent runs also go into an **OS sandbox**: they can only write the 
 | macOS   | The built-in Seatbelt (sandbox-exec)                          | Nothing                                                                                                                                            |
 
 While the sandbox is not ready (for example before setup on Windows), commands that may change things ask first, even in auto mode. For what the sandbox does and does not protect against, see [SECURITY.md](SECURITY.md).
+
+## Collaboration groups
+
+In a collaboration group MerakCode is the leader, and Claude Code, Codex, OpenCode and other AI coding tools can be members. Say what you want in the group; the leader splits it into tasks for the members, and each replies in the group when it is done.
+
+- Create one from New collaboration group in the sidebar, `⌘/Ctrl+G` or the command palette, or copy the members of an existing group.
+- Mention a member with `@` in the input; rename it or change its role and duty in the member column.
+- What members want to do, and what they ask, shows in the approval bar and the question box, decided by the permission mode you chose.
+- Under Settings › Collaboration, turn products on or off, see their versions and paths and who decides their permissions (MerakCode approves for a product with an adapter; a one-shot command decides itself), and add your own. A CLI older than recommended shows how to upgrade it (`claude update`, `codex update`, `opencode upgrade`) and still works. Recommended: Claude Code 2.1.283, Codex 0.164.0, OpenCode 1.19.4 or later.
+- For an AI coding tool without a built-in adapter, click "Have MerakCode write an adapter to connect your own AI coding tool" under Settings › Collaboration, or ask MerakCode in an ordinary conversation to write and register a member adapter with the adapter generator skill (`adapter-generator`). The skill works from the three built-in adapters: a tool that talks the way one of them does gets a copy of it, changed where it differs; any other gets an adapter written after them. You can also write one yourself with [the member adapter section of the SDK guide](docs/sdk/README.en.md#15-member-adapters-adapter).
+
+Products can also be set in the config:
+
+```jsonc
+{
+  "collaboration": {
+    "products": {
+      // A built-in product needs only the fields you change, such as where its command is or extra arguments
+      "codex": { "command": "/opt/codex/bin/codex", "args": ["-c", "model=\"o3\""] },
+      // Your own adapter
+      "mycli": { "title": "MyCLI", "adapter": "member", "command": "node", "args": ["/path/to/adapter.mjs"] },
+    },
+  },
+}
+```
 
 ## Configuration
 

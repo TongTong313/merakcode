@@ -21,20 +21,21 @@ pnpm hooks:install   # 提交前自动检查格式
 
 都在仓库根目录运行：
 
-| 命令                          | 作用                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `pnpm dev <命令>`             | 从源码运行 `merak` 的命令，比如 `pnpm dev serve`                        |
-| `pnpm check`                  | 提交 PR 前的全套检查，见下面的说明                                      |
-| `pnpm format`                 | 格式化整个仓库                                                          |
-| `pnpm generate:sdk`           | 改了服务端接口后重新生成 SDK                                            |
-| `pnpm generate:schema`        | 改了配置项后重新生成 `schema/config.json`                               |
-| `pnpm generate:errors`        | 改了错误码后重新生成 `docs/errors.md`                                   |
-| `pnpm generate:sdk-reference` | 改了服务端接口后重新生成 `docs/sdk/reference.md`（先跑 `generate:sdk`） |
-| `pnpm check:api --write`      | SDK 公开接口有意变动时，更新 `packages/sdk/js/api.md`                   |
-| `pnpm release:version x.y.z`  | 把所有包的版本号改成同一个（维护者发版用）                              |
+| 命令                               | 作用                                                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pnpm --dir apps/desktop/main dev` | 从源码开发桌面端（界面热更新，主进程改完自动重启；引擎改完用「帮助 › 重启本地服务」）                       |
+| `pnpm dev <命令>`                  | 从源码运行 `merak` 的命令，比如 `pnpm dev serve`                                                            |
+| `pnpm check`                       | 提交 PR 前的全套检查，见下面的说明                                                                          |
+| `pnpm format`                      | 格式化整个仓库                                                                                              |
+| `pnpm generate:sdk`                | 改了服务端接口后重新生成 SDK                                                                                |
+| `pnpm generate:schema`             | 改了配置项后重新生成 `schema/config.json`                                                                   |
+| `pnpm generate:errors`             | 改了错误码后重新生成 `docs/errors.md`                                                                       |
+| `pnpm generate:adapter-library`    | 改了 `@merakcode/sdk/adapter` 或内置适配器后，重新生成技能 `adapter-generator` 带的单文件适配器开发库和示例 |
+| `pnpm generate:sdk-reference`      | 改了服务端接口后重新生成 `docs/sdk/reference.md`（先跑 `generate:sdk`）                                     |
+| `pnpm check:api --write`           | SDK 公开接口有意变动时，更新 `packages/sdk/js/api.md`                                                       |
+| `pnpm release:version x.y.z`       | 把所有包的版本号改成同一个（维护者发版用）                                                                  |
 
-`pnpm check` 依次检查：格式、品牌名、各包版本号一致、配置 Schema 和错误码文档是不是最新、类型、依赖边界、CSS 里没有 `!important`、SDK 公开接口快照、SDK 接口参考是不是最新、SDK 手册有没有漏掉公开接口和代码能不能编译、文档里写的 `merak` 命令是不是真的存在、没用到的代码和依赖。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
-| `pnpm --dir apps/desktop/main dev` | 从源码开发桌面端（界面热更新，主进程改完自动重启；引擎改完用「帮助 › 重启本地服务」） |
+`pnpm check` 依次检查：格式、品牌名、各包版本号一致、配置 Schema、错误码文档、单文件适配器开发库和适配器示例是不是最新、类型、依赖边界、CSS 里没有 `!important`、SDK 公开接口快照、SDK 接口参考是不是最新、SDK 手册有没有漏掉公开接口和代码能不能编译、文档里写的 `merak` 命令是不是真的存在、没用到的代码和依赖。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
 
 ## 代码是怎么组织的
 
@@ -88,6 +89,7 @@ pnpm hooks:install   # 提交前自动检查格式
 - 测试用 Vitest，每个包在自己的目录里跑：`cd packages/engine && pnpm test`；只跑一个文件就把路径加在后面。根目录的脚本用 `pnpm test:script`。
 - 测真实行为，尽量不用 mock。需要临时目录就用测试夹具里的 `tmpdir()`，用完自动清理。
 - 要模型回复的用例用本地的假模型（比如 `packages/sdk/js/test/fixture/model.ts`，按脚本吐出回复），不要连真的模型服务。
+- 要协作群成员的用例用假 CLI（`packages/engine/test/collaboration/fixture/` 里的假 Claude Code、Codex、OpenCode）或假适配器，不要启动真的 CLI。
 - 端到端用例会起真实进程，比较慢：通过 SDK 驱动引擎的是 `cd apps/cli && pnpm test:e2e`；桌面端先在 `apps/desktop/main` 和 `apps/desktop/renderer` 里各跑一次 `pnpm build`，再在 `apps/desktop/main` 里跑 `pnpm test:e2e`。
 - 测试默认关掉沙箱（测试的 preload 里设了 `MERAKCODE_SANDBOX_MODE=off`），否则在没初始化沙箱的 Windows 上会卡在审批。要测沙箱相关的逻辑，在用例里显式打开。
 - 沙箱的一致性测试是 `cd packages/sandbox && pnpm test test/conformance.test.ts`。沙箱没开时这组用例会跳过；CI 在三个系统上设了 `MERAKCODE_SANDBOX_REQUIRED=1`，跳过就算失败。Windows 上要先 `merak sandbox setup`。
@@ -187,20 +189,21 @@ For running, debugging and packaging from source, see ["Develop from source" in 
 
 All from the repo root:
 
-| Command                       | What it does                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm dev <command>`          | Run a `merak` command from source, such as `pnpm dev serve`                                 |
-| `pnpm check`                  | Every check a PR needs, see below                                                           |
-| `pnpm format`                 | Format the whole repo                                                                       |
-| `pnpm generate:sdk`           | Regenerate the SDK after changing a server route                                            |
-| `pnpm generate:schema`        | Regenerate `schema/config.json` after changing config options                               |
-| `pnpm generate:errors`        | Regenerate `docs/errors.md` after changing error codes                                      |
-| `pnpm generate:sdk-reference` | Regenerate `docs/sdk/reference.md` after changing a server route (run `generate:sdk` first) |
-| `pnpm check:api --write`      | Update `packages/sdk/js/api.md` when you change the SDK API on purpose                      |
-| `pnpm release:version x.y.z`  | Set every package to the same version (for maintainers)                                     |
+| Command                            | What it does                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --dir apps/desktop/main dev` | Work on the desktop app from source (UI changes apply on save, main process changes restart the app; after engine changes use Help › Restart Local Service)    |
+| `pnpm dev <command>`               | Run a `merak` command from source, such as `pnpm dev serve`                                                                                                    |
+| `pnpm check`                       | Every check a PR needs, see below                                                                                                                              |
+| `pnpm format`                      | Format the whole repo                                                                                                                                          |
+| `pnpm generate:sdk`                | Regenerate the SDK after changing a server route                                                                                                               |
+| `pnpm generate:schema`             | Regenerate `schema/config.json` after changing config options                                                                                                  |
+| `pnpm generate:errors`             | Regenerate `docs/errors.md` after changing error codes                                                                                                         |
+| `pnpm generate:adapter-library`    | Regenerate the single-file adapter library and the examples the `adapter-generator` skill ships, after changing `@merakcode/sdk/adapter` or a built-in adapter |
+| `pnpm generate:sdk-reference`      | Regenerate `docs/sdk/reference.md` after changing a server route (run `generate:sdk` first)                                                                    |
+| `pnpm check:api --write`           | Update `packages/sdk/js/api.md` when you change the SDK API on purpose                                                                                         |
+| `pnpm release:version x.y.z`       | Set every package to the same version (for maintainers)                                                                                                        |
 
-`pnpm check` runs, in order: formatting, brand names, matching package versions, whether the config schema and error list are up to date, types, dependency boundaries, no `!important` in CSS, the SDK API snapshot, whether the SDK API reference is up to date, whether the SDK guide mentions every public export and its code compiles, whether every `merak` command in the docs exists, and unused code and dependencies. Don't edit generated files by hand; change the source and run the matching `generate` command.
-| `pnpm --dir apps/desktop/main dev` | Work on the desktop app from source (UI changes apply on save, main process changes restart the app; after engine changes use Help › Restart Local Service) |
+`pnpm check` runs, in order: formatting, brand names, matching package versions, whether the config schema, error list, single-file adapter library and adapter examples are up to date, types, dependency boundaries, no `!important` in CSS, the SDK API snapshot, whether the SDK API reference is up to date, whether the SDK guide mentions every public export and its code compiles, whether every `merak` command in the docs exists, and unused code and dependencies. Don't edit generated files by hand; change the source and run the matching `generate` command.
 
 ## How the code is organized
 
@@ -254,6 +257,7 @@ Changes to these rules (`script/check-deps.ts`) and to the files that load the e
 - Tests use Vitest and run per package: `cd packages/engine && pnpm test`; add a file path to run just that file. Root scripts use `pnpm test:script`.
 - Test real behavior and avoid mocks. For temporary directories use the `tmpdir()` fixture; it cleans up after itself.
 - Tests that need model replies use a local fake model (such as `packages/sdk/js/test/fixture/model.ts`, which replies from a script), never a real provider.
+- Tests that need collaboration members use fake CLIs (the fake Claude Code, Codex and OpenCode in `packages/engine/test/collaboration/fixture/`) or a fake adapter, never a real CLI.
 - End-to-end tests start real processes and are slow: the engine driven through the SDK uses `cd apps/cli && pnpm test:e2e`; for the desktop app run `pnpm build` in both `apps/desktop/main` and `apps/desktop/renderer`, then `pnpm test:e2e` in `apps/desktop/main`.
 - Tests turn the sandbox off by default (the test preload sets `MERAKCODE_SANDBOX_MODE=off`); otherwise they would stop at an approval on a Windows machine without sandbox setup. Turn it on explicitly in tests that are about the sandbox.
 - The sandbox conformance tests are `cd packages/sandbox && pnpm test test/conformance.test.ts`. They skip when the sandbox is off; CI sets `MERAKCODE_SANDBOX_REQUIRED=1` on all three systems so a skip counts as a failure. On Windows, run `merak sandbox setup` first.

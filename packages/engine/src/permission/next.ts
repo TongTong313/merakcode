@@ -28,7 +28,13 @@ export namespace PermissionNext {
    * Plan switching, doom loop detection and the todowrite protocol are managed by agent profiles and runtime rules;
    * todowrite is always allowed once it is in the tool pool, so users cannot set its permission.
    */
-  export const INTERNAL_PERMISSION_KEYS = new Set<string>(["plan_enter", "plan_exit", "doom_loop", "todowrite"])
+  export const INTERNAL_PERMISSION_KEYS = new Set<string>([
+    "plan_enter",
+    "plan_exit",
+    "doom_loop",
+    "todowrite",
+    "delegate",
+  ])
 
   /** These requests only offer allow once / allow for this session / reject, never "always allow" */
   const SESSION_ONLY = new Set(["subagent", "workflow_run", "sandbox"])

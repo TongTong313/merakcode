@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest"
+import { writeFile } from "node:fs/promises"
+import { join } from "node:path"
 import type { Agent } from "@merakcode/engine/agent/agent"
 import { Instance } from "@merakcode/engine/project/instance"
 import type { Provider } from "@merakcode/engine/provider/provider"
 import { Message } from "@merakcode/engine/session/message"
 import { SessionContextBudget } from "@merakcode/engine/session/context-budget"
 import { SessionContextView } from "@merakcode/engine/session/context-view"
+import { SystemPrompt } from "@merakcode/engine/session/system"
 import { Token } from "@merakcode/engine/util/token"
 import { tmpdir } from "../fixture/fixture"
 
@@ -430,6 +433,209 @@ describe("SessionContextView.build", () => {
         expect(serialized).toContain("next request")
         expect(serialized).not.toContain("diagnostic only")
         expect(serialized).not.toContain("/context")
+      },
+    })
+  })
+})
+
+test("git status comes after the history, so editing a file leaves everything before it as it was", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const messages: Message.FullMsg[] = [
+        { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "改一下 a.ts")] },
+      ]
+      const build = () =>
+        SessionContextView.build({
+          messages,
+          sessionID,
+          user: messages[0]!.info as Message.UserInfo,
+          agent: { id: "build", mode: "primary", prompt: "Agent prompt" } as Agent.Info,
+          model: createModel(),
+          step: 1,
+        })
+      const before = await build()
+      await writeFile(join(tmp.path, "a.ts"), "export const a = 1\n")
+      const after = await build()
+      expect(after.messages.slice(0, -1)).toEqual(before.messages.slice(0, -1))
+      expect(JSON.stringify(after.messages[0])).not.toContain("<git-status>")
+      expect(JSON.stringify(after.messages.at(-1))).toContain("?? a.ts")
+    },
+  })
+})
+
+test("the /context breakdown counts the context after the history as user context", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await writeFile(join(tmp.path, "a.ts"), "export const a = 1\n")
+      const messages: Message.FullMsg[] = [{ info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "hi")] }]
+      const view = await SessionContextView.build({
+        messages,
+        sessionID,
+        user: messages[0]!.info as Message.UserInfo,
+        agent: { id: "build", mode: "primary", prompt: "Agent prompt" } as Agent.Info,
+        model: createModel(),
+        step: 1,
+      })
+      const tail = SessionContextView.toUserContextMessages(await SystemPrompt.gitStatus())
+      expect(tail).toHaveLength(1)
+      const reminders = [view.messages[0]!, ...tail]
+      expect(view.stats.tokens.userContext).toBe(SessionContextView.estimate({ system: [], messages: reminders }))
+    },
+  })
+})
+
+describe("context that changes from step to step", () => {
+  const agent = { id: "build", mode: "primary", prompt: "Agent prompt" } as Agent.Info
+  const build = (messages: Message.FullMsg[], step: number) =>
+    SessionContextView.build({
+      messages,
+      sessionID,
+      user: messages[0]!.info as Message.UserInfo,
+      agent,
+      model: createModel(),
+      step,
+    })
+
+  test("rides on the user's request, after its words, so the request is still the last user message", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const view = await build([{ info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] }], 1)
+        const last = view.messages.at(-1)!
+        expect(last.role).toBe("user")
+        const parts = last.content as { type: string; text: string }[]
+        expect(parts[0]!.text).toBe("改一下 a.ts")
+        expect(parts.at(-1)!.text).toContain("?? a.ts")
+        expect(view.messages.filter((message) => message.role === "user")).toHaveLength(2)
+      },
+    })
+  })
+
+  test("the next step reuses everything up to the previous step's second-to-last message", async () => {
+    // The previous step's last message carried the context and no longer does; everything before it is unchanged
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const first: Message.FullMsg[] = [
+          { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] },
+          { info: assistantInfo("msg_002", "msg_001"), parts: [tool("msg_002", "p2", "call_1", "read a.ts")] },
+        ]
+        const before = await build(first, 2)
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const after = await build(
+          [...first, { info: assistantInfo("msg_003", "msg_001"), parts: [tool("msg_003", "p3", "call_2", "edited")] }],
+          3,
+        )
+        const reused = before.messages.length - 1
+        expect(after.messages.slice(0, reused)).toEqual(before.messages.slice(0, reused))
+      },
+    })
+  })
+
+  test("after a reply with no tool call it comes as a message of its own", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const view = await build(
+          [
+            { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "你好")] },
+            { info: assistantInfo("msg_002", "msg_001"), parts: [text("msg_002", "p2", "你好呀")] },
+          ],
+          2,
+        )
+        expect(JSON.stringify(view.messages.at(-2))).toContain("你好呀")
+        expect(JSON.stringify(view.messages.at(-2))).not.toContain("?? a.ts")
+        expect(view.messages.at(-1)!.role).toBe("user")
+        expect(JSON.stringify(view.messages.at(-1))).toContain("?? a.ts")
+      },
+    })
+  })
+
+  test("a tool result with an attachment carries it as well", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const read = tool("msg_002", "p2", "call_1", "an image")
+        if (read.state.status === "completed")
+          read.state.attachments = [
+            {
+              id: "f1",
+              sessionID,
+              messageID: "msg_002",
+              type: "file",
+              mime: "image/png",
+              url: "data:image/png;base64,AAAA",
+            },
+          ]
+        const view = await build(
+          [
+            { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "看图")] },
+            { info: assistantInfo("msg_002", "msg_001"), parts: [read] },
+          ],
+          2,
+        )
+        const last = view.messages.at(-1)!
+        expect(last.role).toBe("tool")
+        const output = JSON.stringify((last.content as { output: unknown }[]).at(-1)!.output)
+        expect(output).toContain("image/png")
+        expect(output).toContain("?? a.ts")
+      },
+    })
+  })
+
+  test("a failed tool call carries it as well", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const failed = tool("msg_002", "p2", "call_1", "")
+        failed.state = { status: "error", input: {}, error: "permission denied", time: { start: 0, end: 0 } }
+        const view = await build(
+          [
+            { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] },
+            { info: assistantInfo("msg_002", "msg_001"), parts: [failed] },
+          ],
+          2,
+        )
+        const last = view.messages.at(-1)!
+        expect(last.role).toBe("tool")
+        const output = JSON.stringify((last.content as { output: unknown }[]).at(-1)!.output)
+        expect(output).toContain("permission denied")
+        expect(output).toContain("?? a.ts")
+      },
+    })
+  })
+
+  test("after a tool call it rides on the latest tool result, so no message is added after it", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await writeFile(join(tmp.path, "a.ts"), "1")
+        const view = await build(
+          [
+            { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] },
+            { info: assistantInfo("msg_002", "msg_001"), parts: [tool("msg_002", "p2", "call_1", "edited")] },
+          ],
+          2,
+        )
+        const last = view.messages.at(-1)!
+        expect(last.role).toBe("tool")
+        const output = JSON.stringify((last.content as { output: unknown }[]).at(-1)!.output)
+        expect(output).toContain("edited")
+        expect(output).toContain("?? a.ts")
       },
     })
   })

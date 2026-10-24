@@ -26,6 +26,11 @@ export namespace Process {
     timeout?: number
     /** Hide the console window on Windows; defaults to true */
     windowsHide?: boolean
+    /**
+     * Let the child outlive this process. On Windows a child otherwise dies with its parent at once, before it can
+     * clean up after itself
+     */
+    detached?: boolean
   }
 
   export type Child = {
@@ -51,6 +56,7 @@ export namespace Process {
       env: options.env,
       stdio: [options.stdin ?? "ignore", options.stdout ?? "pipe", options.stderr ?? "inherit"],
       windowsHide: options.windowsHide ?? true,
+      detached: options.detached,
     })
     let exitCode: number | null = null
     const exited = new Promise<number>((resolve, reject) => {

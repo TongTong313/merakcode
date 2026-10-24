@@ -151,6 +151,67 @@
         ]
       }
     },
+    "collaboration": {
+      "description": "Collaboration groups. The leader is always a Merak seat.",
+      "type": "object",
+      "properties": {
+        "products": {
+          "description": "Extra products, or overrides for claude, codex and opencode",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
+                "type": "string"
+              },
+              "enabled": {
+                "description": "Offer this product for new members; default true",
+                "type": "boolean"
+              },
+              "title": {
+                "description": "Display name",
+                "type": "string"
+              },
+              "adapter": {
+                "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "opencode",
+                  "command",
+                  "member"
+                ]
+              },
+              "args": {
+                "description": "Arguments. The prompt is written to stdin",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "resumeArgs": {
+                "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sessionLine": {
+                "description": "Regular expression with one capture group for the private session id, for a one-shot command",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "snapshot": {
       "type": "boolean"
     },
