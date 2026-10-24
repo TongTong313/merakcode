@@ -535,6 +535,7 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.about.manual.linux-package":
     "Version {version} is out. A .deb install cannot update itself: download the new package from the releases page.",
   "settings.about.error": "Updating failed: [{code}] {message}",
+  "settings.about.unavailable.disabled": "Automatic updates are turned off.",
   "update.notice.available": "Version {version} is available",
   "update.notice.ready": "Restart to update to {version}",
   "update.notice.manual": "Version {version} is available to download",

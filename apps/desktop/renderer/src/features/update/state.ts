@@ -13,6 +13,7 @@ export type UpdateState =
   | { kind: "downloading"; version: string; percent: number }
   | { kind: "ready"; version: string }
   | { kind: "manual"; version: string; reason?: "linux-package" | "mac-unsigned" }
+  | { kind: "unavailable"; reason: "disabled" }
   | { kind: "error"; code: string; message: string; version?: string }
 
 const version = (state: UpdateState) => ("version" in state ? state.version : undefined)
@@ -25,6 +26,7 @@ export function reduce(state: UpdateState, event: UpdateEvent): UpdateState {
   if (event.type === "latest") return busy ? state : { kind: "latest" }
   if (event.type === "available") return busy ? state : { kind: "available", version: event.version }
   if (event.type === "manual") return { kind: "manual", version: event.version, reason: event.reason }
+  if (event.type === "unavailable") return busy ? state : { kind: "unavailable", reason: event.reason }
   if (event.type === "progress")
     return { kind: "downloading", version: version(state) ?? "", percent: Math.round(event.percent) }
   if (event.type === "downloaded") return { kind: "ready", version: event.version }

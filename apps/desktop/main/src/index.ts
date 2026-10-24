@@ -101,8 +101,10 @@ function main() {
     log: (level, message, extra) =>
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "windows", message, extra),
   })
+  const [repositoryOwner, repositoryName] = Project.REPOSITORY.split("/")
   const updater = new Updater({
-    enabled: !dev && !process.env.MERAKCODE_DISABLE_AUTOUPDATE,
+    disabled: process.env.MERAKCODE_DISABLE_AUTOUPDATE ? "disabled" : undefined,
+    feed: dev && repositoryOwner && repositoryName ? { owner: repositoryOwner, repo: repositoryName } : undefined,
     releases: Project.RELEASES,
     version: app.getVersion(),
     signed: (() => {
