@@ -98,10 +98,16 @@ test("stop ends a CLI with what it started, as the CLI behind an npm shim, and r
   const { spawn, stop } = await import("../src/adapter")
   await using space = await workspace("")
   const pidFile = path.join(space.dir, "cli.pid")
+  // The CLI starts a process of its own (a language server, a shell): that one must go too
   const bin = await npmCommand(
     space.dir,
     "busycli",
-    `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000)`,
+    [
+      `const { spawn } = require("child_process")`,
+      `const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" })`,
+      `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(worker.pid))`,
+      `setInterval(() => {}, 1000)`,
+    ].join("\n"),
   )
   const child = spawn("busycli", [], {
     stdio: ["pipe", "ignore", "inherit"],

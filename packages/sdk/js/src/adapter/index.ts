@@ -32,12 +32,48 @@ export async function stop(child: ChildProcess) {
     const late = new Promise<false>((resolve) => setTimeout(() => resolve(false), STOP_GRACE).unref())
     if (await Promise.race([exited, late])) return
   }
-  if (process.platform !== "win32") return void child.kill("SIGTERM")
-  const kill = nodeSpawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
-  await new Promise((resolve) => {
-    kill.once("exit", resolve)
-    kill.once("error", resolve)
+  if (process.platform === "win32") {
+    const kill = nodeSpawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
+    await new Promise((resolve) => {
+      kill.once("exit", resolve)
+      kill.once("error", resolve)
+    })
+    return
+  }
+  // Elsewhere a signal reaches one process: the ones the CLI started are found by their parent first
+  for (const pid of [child.pid, ...(await descendants(child.pid))])
+    try {
+      process.kill(pid, "SIGTERM")
+    } catch {
+      // Gone already
+    }
+  const late = new Promise<false>((resolve) => setTimeout(() => resolve(false), STOP_GRACE).unref())
+  await Promise.race([exited, late])
+}
+
+/** The processes a process started, and the ones they started, as ps lists them */
+async function descendants(pid: number) {
+  const listing = await new Promise<string>((resolve) => {
+    const ps = nodeSpawn("ps", ["-A", "-o", "pid=", "-o", "ppid="], { stdio: ["ignore", "pipe", "ignore"] })
+    let text = ""
+    ps.stdout.on("data", (chunk) => (text += chunk))
+    ps.once("close", () => resolve(text))
+    ps.once("error", () => resolve(""))
   })
+  const children = new Map<number, number[]>()
+  for (const line of listing.split("\n")) {
+    const [child, parent] = line.trim().split(/\s+/).map(Number)
+    if (child && parent) children.set(parent, [...(children.get(parent) ?? []), child])
+  }
+  const found: number[] = []
+  const visit = (parent: number) => {
+    for (const child of children.get(parent) ?? []) {
+      found.push(child)
+      visit(child)
+    }
+  }
+  visit(pid)
+  return found
 }
 
 /** How long a CLI may take to print its version */
