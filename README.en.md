@@ -4,7 +4,7 @@
 
 <h1 align="center">MerakCode</h1>
 
-<p align="center">Aiming to be the best AI coding tool to work with</p>
+<p align="center">An entry-point AI coding tool</p>
 
 <p align="center">
   <a href="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml"><img src="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -18,7 +18,7 @@
 
 ---
 
-MerakCode is an open-source AI coding tool. Beyond strong coding skills, it can help with anything you need AI for. Now that AI writes far faster than people can read, MerakCode puts a lot of care into how people and the agent work together. Collaboration groups let Claude Code, Codex, OpenCode and other products work together, and MerakCode keeps refining how you review what the agent produces, so that its output is what you expect. The aim is to be the best AI coding tool to use, not the most powerful one.
+MerakCode is an open-source **entry-point AI coding tool**. The idea came from me: I like using Claude Code, Codex, OpenCode and other products together, but there was no good entry-point AI coding tool for that, so MerakCode came to be. Now that AI generates far faster than people can read, we are not competing on AI coding ability (though MerakCode itself has strong coding ability). We care more about how people and tools work together in real coding. Connecting and combining other AI coding harnesses is what MerakCode is for. MerakCode's collaboration groups let Claude Code, Codex, OpenCode and other products work together. If you use these AI coding tools and want to combine them to get the most out of them, MerakCode is a good choice.
 
 We open-sourced this project to make up for a regret we have carried, and in the hope that the community can keep it going. The name comes from Merak, the star in the Big Dipper that, together with Dubhe, points to Polaris. We hope MerakCode does the same and points each of your ideas in the right direction.
 

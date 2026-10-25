@@ -80,7 +80,9 @@ export type SessionOutput = {
 export type SessionStats = {
   totalSessions: number
   totalMessages: number
-  totalCost: number
+  totalCost: {
+    [key: string]: number
+  }
   totalTokens: {
     input: number
     output: number
@@ -105,6 +107,7 @@ export type SessionStats = {
         }
       }
       cost: number
+      currency?: "USD" | "CNY"
     }
   }
   dateRange: {
@@ -112,7 +115,9 @@ export type SessionStats = {
     latest: number
   }
   days: number
-  costPerDay: number
+  costPerDay: {
+    [key: string]: number
+  }
   tokensPerSession: number
   medianTokensPerSession: number
 }
@@ -202,11 +207,22 @@ export type EventConfigUpdated = {
   }
 }
 
+export type CatalogRefreshError = {
+  name: "CatalogRefreshError"
+  code?: string
+  data: {
+    providerID: string
+    message: string
+    statusCode?: number
+  }
+}
+
 export type EventProviderChanged = {
   type: "provider.changed"
   properties: {
     providerID?: string
-    reason: "connected" | "disconnected" | "refreshed"
+    reason: "connected" | "disconnected" | "refreshed" | "refresh-failed"
+    error?: CatalogRefreshError
   }
 }
 
@@ -1285,6 +1301,21 @@ export type ProviderConfigOutput = {
   env?: Array<string>
   id?: string
   npm?: string
+  whitelist?: Array<string>
+  blacklist?: Array<string>
+  /**
+   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
+   */
+  picker?: {
+    include?: Array<string>
+    exclude?: Array<string>
+  }
+  relay?: {
+    station: string
+    group: string
+    kind: "claude-code" | "codex" | "standard" | "custom"
+    auth?: "bearer" | "x-api-key"
+  }
   models?: {
     [key: string]: {
       id?: string
@@ -1301,28 +1332,21 @@ export type ProviderConfigOutput = {
             field: "reasoning_content" | "reasoning_details"
           }
       cost?: {
-        input: number
-        output: number
+        input?: number
+        output?: number
         cache_read?: number
         cache_write?: number
-        context_over_200k?: {
-          input: number
-          output: number
-          cache_read?: number
-          cache_write?: number
-        }
       }
       limit?: {
-        context: number
+        context?: number
         input?: number
-        output: number
+        output?: number
       }
       modalities?: {
-        input: Array<"text" | "audio" | "image" | "video" | "pdf">
-        output: Array<"text" | "audio" | "image" | "video" | "pdf">
+        input?: Array<"text" | "audio" | "image" | "video" | "pdf">
+        output?: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
-      experimental?: boolean
-      status?: "alpha" | "beta" | "deprecated"
+      status?: "alpha" | "beta" | "deprecated" | "active"
       options?: {
         [key: string]: unknown
       }
@@ -1345,29 +1369,7 @@ export type ProviderConfigOutput = {
           [key: string]: unknown
         }
       }
-      reasoning_options?: Array<
-        | {
-            type: "toggle"
-          }
-        | {
-            type: "effort"
-            values: Array<string>
-          }
-        | {
-            type: "budget_tokens"
-            min?: number
-            max?: number
-          }
-      >
     }
-  }
-  whitelist?: Array<string>
-  blacklist?: Array<string>
-  relay?: {
-    station: string
-    group: string
-    kind: "claude-code" | "codex" | "standard" | "custom"
-    auth?: "bearer" | "x-api-key"
   }
   options?: {
     apiKey?: string
@@ -2013,6 +2015,21 @@ export type ProviderConfig = {
   env?: Array<string>
   id?: string
   npm?: string
+  whitelist?: Array<string>
+  blacklist?: Array<string>
+  /**
+   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
+   */
+  picker?: {
+    include?: Array<string>
+    exclude?: Array<string>
+  }
+  relay?: {
+    station: string
+    group: string
+    kind: "claude-code" | "codex" | "standard" | "custom"
+    auth?: "bearer" | "x-api-key"
+  }
   models?: {
     [key: string]: {
       id?: string
@@ -2029,28 +2046,21 @@ export type ProviderConfig = {
             field: "reasoning_content" | "reasoning_details"
           }
       cost?: {
-        input: number
-        output: number
+        input?: number
+        output?: number
         cache_read?: number
         cache_write?: number
-        context_over_200k?: {
-          input: number
-          output: number
-          cache_read?: number
-          cache_write?: number
-        }
       }
       limit?: {
-        context: number
+        context?: number
         input?: number
-        output: number
+        output?: number
       }
       modalities?: {
-        input: Array<"text" | "audio" | "image" | "video" | "pdf">
-        output: Array<"text" | "audio" | "image" | "video" | "pdf">
+        input?: Array<"text" | "audio" | "image" | "video" | "pdf">
+        output?: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
-      experimental?: boolean
-      status?: "alpha" | "beta" | "deprecated"
+      status?: "alpha" | "beta" | "deprecated" | "active"
       options?: {
         [key: string]: unknown
       }
@@ -2073,29 +2083,7 @@ export type ProviderConfig = {
           [key: string]: unknown
         }
       }
-      reasoning_options?: Array<
-        | {
-            type: "toggle"
-          }
-        | {
-            type: "effort"
-            values: Array<string>
-          }
-        | {
-            type: "budget_tokens"
-            min?: number
-            max?: number
-          }
-      >
     }
-  }
-  whitelist?: Array<string>
-  blacklist?: Array<string>
-  relay?: {
-    station: string
-    group: string
-    kind: "claude-code" | "codex" | "standard" | "custom"
-    auth?: "bearer" | "x-api-key"
   }
   options?: {
     apiKey?: string
@@ -2707,14 +2695,32 @@ export type Model = {
           field: "reasoning_content" | "reasoning_details"
         }
   }
-  cost: {
+  cost?: {
     input: number
     output: number
     cache: {
       read: number
       write: number
     }
-    experimentalOver200K?: {
+    currency?: "USD" | "CNY"
+    tiers?: Array<{
+      input: number
+      output: number
+      cache: {
+        read: number
+        write: number
+      }
+      above: number
+      thinking?: {
+        input: number
+        output: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+    }>
+    thinking?: {
       input: number
       output: number
       cache: {
@@ -2736,31 +2742,20 @@ export type Model = {
     [key: string]: string
   }
   release_date: string
+  homepage?: boolean
   variants?: {
     [key: string]: {
       [key: string]: unknown
     }
   }
-  reasoning_options?: Array<
-    | {
-        type: "toggle"
-      }
-    | {
-        type: "effort"
-        values: Array<string>
-      }
-    | {
-        type: "budget_tokens"
-        min?: number
-        max?: number
-      }
-  >
+  defaultVariant?: string
 }
 
 export type Provider = {
   id: string
   name: string
   source: "env" | "config" | "custom" | "api"
+  origin?: "official" | "configured"
   env: Array<string>
   key?: string
   options: {
@@ -7232,82 +7227,7 @@ export type ProviderListResponses = {
    * List of providers
    */
   200: {
-    all: Array<{
-      api?: string
-      name: string
-      env: Array<string>
-      id: string
-      npm?: string
-      models: {
-        [key: string]: {
-          id: string
-          name: string
-          family?: string
-          release_date: string
-          attachment: boolean
-          reasoning: boolean
-          temperature: boolean
-          tool_call: boolean
-          interleaved?:
-            | true
-            | {
-                field: "reasoning_content" | "reasoning_details"
-              }
-          cost?: {
-            input: number
-            output: number
-            cache_read?: number
-            cache_write?: number
-            context_over_200k?: {
-              input: number
-              output: number
-              cache_read?: number
-              cache_write?: number
-            }
-          }
-          limit: {
-            context: number
-            input?: number
-            output: number
-          }
-          modalities?: {
-            input: Array<"text" | "audio" | "image" | "video" | "pdf">
-            output: Array<"text" | "audio" | "image" | "video" | "pdf">
-          }
-          experimental?: boolean
-          status?: "alpha" | "beta" | "deprecated"
-          options: {
-            [key: string]: unknown
-          }
-          headers?: {
-            [key: string]: string
-          }
-          provider?: {
-            npm?: string
-            api?: string
-          }
-          variants?: {
-            [key: string]: {
-              [key: string]: unknown
-            }
-          }
-          reasoning_options?: Array<
-            | {
-                type: "toggle"
-              }
-            | {
-                type: "effort"
-                values: Array<string>
-              }
-            | {
-                type: "budget_tokens"
-                min?: number
-                max?: number
-              }
-          >
-        }
-      }
-    }>
+    all: Array<Provider>
     default: {
       [key: string]: string
     }
@@ -7446,14 +7366,48 @@ export type ProviderRelayDiscoverResponses = {
     | {
         models: Array<{
           id: string
+          name: string
           context?: number
           output?: number
+          input?: Array<"text" | "audio" | "image" | "video" | "pdf">
+          outputModalities?: Array<"text" | "audio" | "image" | "video" | "pdf">
+          reasoning?: boolean
+          toolcall?: boolean
+          temperature?: boolean
+          status?: "active" | "deprecated" | "alpha" | "beta"
+          releaseDate?: string
+          cost?: {
+            input: number
+            output: number
+            cacheRead?: number
+            cacheWrite?: number
+            currency: "USD" | "CNY"
+            tiers?: Array<{
+              input: number
+              output: number
+              cacheRead?: number
+              cacheWrite?: number
+              above: number
+              thinking?: {
+                input: number
+                output: number
+                cacheRead?: number
+                cacheWrite?: number
+              }
+            }>
+            thinking?: {
+              input: number
+              output: number
+              cacheRead?: number
+              cacheWrite?: number
+            }
+          }
+          efforts?: Array<string>
+          canDisable?: boolean
+          defaultEffort?: string
           contextFrom?: "relay" | "catalog" | "fallback"
           outputFrom?: "relay" | "catalog" | "fallback"
           endpoint?: "anthropic" | "openai-responses" | "openai-chat"
-          image?: boolean
-          reasoning?: boolean
-          toolcall?: boolean
         }>
       }
     | {

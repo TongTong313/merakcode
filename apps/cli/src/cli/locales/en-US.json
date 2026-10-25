@@ -228,7 +228,7 @@
   "cli.mcp.list": "List MCP servers and their status",
   "cli.models.provider": "Only list models from this provider",
   "cli.models.verbose": "Show more detail, including metadata such as cost",
-  "cli.models.refresh": "Refresh the model list from models.dev",
+  "cli.models.refresh": "Refresh the model list from providers",
   "cli.provider.list": "List configured providers",
   "cli.provider.login": "Add or update credentials for a model provider",
   "cli.provider.url": "URL of a login server that serves /.well-known/merakcode (organization login)",

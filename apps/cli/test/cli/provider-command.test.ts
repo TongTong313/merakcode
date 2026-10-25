@@ -10,7 +10,7 @@ import { cli, tmpdir } from "../fixture/fixture"
 async function merak(cwd: string, env: Record<string, string>, ...args: string[]) {
   const proc = Process.spawn([...cli, ...args], {
     cwd,
-    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_DISABLE_MODELS_FETCH: "1", ...env },
+    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_DISABLE_CATALOG_FETCH: "1", ...env },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -94,3 +94,35 @@ test(
     }
   },
 )
+
+test("relay saves an undescribed model without made-up windows or capabilities", { timeout: 60_000 }, async () => {
+  const { createServer } = await import("node:http")
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json")
+    response.end(JSON.stringify({ data: [{ id: "local-model" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+  const port = (server.address() as { port: number }).port
+  await using tmp = await tmpdir()
+  try {
+    const result = await merak(
+      tmp.path,
+      {},
+      ...["provider", "relay", "--name", "Local", "--url", `http://127.0.0.1:${port}`, "--key", "sk-local"],
+      ...["--kind", "standard"],
+    )
+    expect(result.code, result.output).toBe(0)
+    const configDir = process.env.MERAKCODE_HOME!
+    const configFile = (await Filesystem.exists(path.join(configDir, "merakcode.jsonc")))
+      ? path.join(configDir, "merakcode.jsonc")
+      : path.join(configDir, "merakcode.json")
+    const config = (await Filesystem.readJson(configFile)) as {
+      provider: Record<string, { models?: Record<string, Record<string, unknown>> }>
+    }
+    const model = config.provider["local-standard"]?.models?.["local-model"]
+    expect(model).toEqual({ name: "local-model", provider: { npm: "@ai-sdk/openai-compatible" } })
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+    await Filesystem.write(path.join(process.env.MERAKCODE_HOME!, "data", "auth.json"), "{}").catch(() => {})
+  }
+})

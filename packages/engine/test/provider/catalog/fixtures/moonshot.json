@@ -1,0 +1,15 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "kimi-k3",
+      "object": "model",
+      "created": 1784215858,
+      "owned_by": "moonshot",
+      "context_length": 1048576,
+      "supports_image_in": true,
+      "supports_video_in": true,
+      "supports_reasoning": true
+    }
+  ]
+}

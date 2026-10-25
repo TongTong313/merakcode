@@ -239,6 +239,18 @@ export namespace ErrorCode {
       },
       errors: ["StructuredOutputError"],
     },
+    CATALOG_REFRESH_FAILED: {
+      code: "MRK-2010",
+      domain: "provider",
+      status: 502,
+      retryable: true,
+      title: { zh: "模型列表没有拉下来", en: "Could not refresh the model list" },
+      hint: {
+        zh: "检查网络，稍后再试。",
+        en: "Check the network and try again.",
+      },
+      errors: ["CatalogRefreshError"],
+    },
 
     CONFIG_JSON_INVALID: {
       code: "MRK-3001",
@@ -678,8 +690,8 @@ export namespace ErrorCode {
 
   /** Code for an error class name; provider API errors are classified by their HTTP status */
   export function of(name: string, data?: unknown): string {
-    if (name === "APIError") {
-      const status = (data as { statusCode?: unknown } | undefined)?.statusCode
+    const status = (data as { statusCode?: unknown } | undefined)?.statusCode
+    if (name === "APIError" || name === "CatalogRefreshError") {
       if (status === 429) return CATALOG.RATE_LIMITED.code
       if (status === 401 || status === 403) return CATALOG.PROVIDER_AUTH_FAILED.code
     }

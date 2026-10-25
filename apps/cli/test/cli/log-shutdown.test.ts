@@ -48,7 +48,7 @@ test.each([false, true])(
           MERAKCODE_CONFIG_DIR: "",
           MERAKCODE_CONFIG_CONTENT: "",
           MERAKCODE_DISABLE_PROJECT_CONFIG: "true",
-          MERAKCODE_DISABLE_MODELS_FETCH: "1",
+          MERAKCODE_DISABLE_CATALOG_FETCH: "1",
         },
         stdout: "pipe",
         stderr: "pipe",

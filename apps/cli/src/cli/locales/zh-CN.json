@@ -228,7 +228,7 @@
   "cli.mcp.list": "列出 MCP 服务器及其状态",
   "cli.models.provider": "只列出该提供商的模型",
   "cli.models.verbose": "输出更多信息（包括费用等元数据）",
-  "cli.models.refresh": "从 models.dev 刷新模型列表",
+  "cli.models.refresh": "从供应商刷新模型列表",
   "cli.provider.list": "列出已配置的提供商",
   "cli.provider.login": "添加或更新模型提供商的凭据",
   "cli.provider.url": "提供 /.well-known/merakcode 的登录服务地址（组织登录）",

@@ -10,6 +10,7 @@ import { Network } from "@merakcode/util/network"
 import { Process } from "@merakcode/util/process"
 import { tmpdir } from "../fixture/fixture"
 import { product, server, until } from "../fixture/sdk-sequence"
+import { seedCatalog } from "../../../../script/node/seed-catalog.ts"
 
 /**
  * One engine process hosts every conversation. This test guards two things:
@@ -79,12 +80,12 @@ async function logLines(dir: string): Promise<string[]> {
 test("10 concurrent conversations in one engine process: no mutual slowdown, bounded memory, one dependency check", async () => {
   await using tmp = await tmpdir()
   const root = tmp.path
+  await seedCatalog(root)
   const project = join(root, "project")
   for (const dir of ["project", "home", "node_modules", "cache", "data", "logs", "tmp"])
     await mkdir(join(root, dir), { recursive: true })
   const git = Process.spawn(["git", "init", "--quiet", project], { stdout: "ignore", stderr: "pipe" })
   if (await git.exited) throw new Error("git init failed")
-  await Filesystem.write(join(root, "cache/version"), "21")
   // The dependency check must resolve zod, which cannot be installed offline, so link it in (junctions need no admin
   // rights on Windows)
   await symlink(dirname(fileURLToPath(import.meta.resolve("zod"))), join(root, "node_modules/zod"), "junction")
@@ -124,14 +125,11 @@ test("10 concurrent conversations in one engine process: no mutual slowdown, bou
     MERAKCODE_HOME: root,
     MERAKCODE_TEST_HOME: join(root, "home"),
     MERAKCODE_I1_NETWORK_LOG: join(root, "blocked-network.txt"),
-    MERAKCODE_DISABLE_MODELS_FETCH: "1",
+    MERAKCODE_DISABLE_CATALOG_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
     MERAKCODE_DISABLE_CLAUDE_CODE: "1",
     MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
-    MERAKCODE_MODELS_PATH: fileURLToPath(
-      new URL("../../../../packages/engine/test/tool/fixtures/models-api.json", import.meta.url),
-    ),
     LANG: "en_US.UTF-8",
   }
   const port = await Network.freePort()

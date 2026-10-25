@@ -145,7 +145,7 @@ async function smokeServer() {
       ...process.env,
       MERAKCODE_TEST_HOME: path.join(tmp, "home"),
       MERAKCODE_HOME: path.join(tmp, "merakcode"),
-      MERAKCODE_DISABLE_MODELS_FETCH: "1",
+      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
       MERAKCODE_DISABLE_CONFIG_WATCH: "1",
       MERAKCODE_DISABLE_SKILL_WATCH: "1",
     },

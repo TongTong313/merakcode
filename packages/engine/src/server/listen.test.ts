@@ -3,10 +3,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { tmpdir, runtime } from "../../test/fixture/fixture"
+import { seedCatalog } from "../../../../script/node/seed-catalog.ts"
 import { Process } from "@merakcode/util/process"
 
 test("a real listener serves HTTP and terminal WebSockets and refuses connections after stop", async () => {
   await using root = await tmpdir({ git: true })
+  await seedCatalog(root.path)
   const modules = path.join(root.path, "node_modules")
   await fs.mkdir(modules, { recursive: true })
   await fs.symlink(
@@ -23,8 +25,7 @@ test("a real listener serves HTTP and terminal WebSockets and refuses connection
       MERAKCODE_HOME: root.path,
       MERAKCODE_TEST_HOME: path.join(root.path, "home"),
       MERAKCODE_TEST_MANAGED_CONFIG_DIR: path.join(root.path, "managed"),
-      MERAKCODE_DISABLE_MODELS_FETCH: "1",
-      MERAKCODE_MODELS_PATH: path.resolve(import.meta.dirname, "../../test/tool/fixtures/models-api.json"),
+      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
       MERAKCODE_CONFIG: "",
       MERAKCODE_CONFIG_DIR: "",
       MERAKCODE_CONFIG_CONTENT: "",

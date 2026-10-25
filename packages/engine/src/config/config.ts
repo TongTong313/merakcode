@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { ModelsDev } from "../provider/models"
 import { Relay } from "../provider/relay"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../global"
@@ -50,7 +49,7 @@ export namespace Config {
   export const SCHEMA = `https://raw.githubusercontent.com/${Project.REPOSITORY}/main/schema/config.json`
   const DEPENDENCY_INSTALL_STALL_MS = 5_000
   const DEPENDENCY_INSTALL_TIMEOUT_MS = 30_000
-  const ModelId = z.string().meta({ $ref: "https://models.dev/model-schema.json#/$defs/Model" })
+  const ModelId = z.string()
 
   const log = Log.create({ service: "config" })
 
@@ -1094,10 +1093,74 @@ export namespace Config {
   })
   export type Layout = z.infer<typeof Layout>
 
-  export const Provider = ModelsDev.Provider.partial()
-    .extend({
+  const ConfigModel = z
+    .object({
+      id: z.string().optional(),
+      name: z.string().optional(),
+      family: z.string().optional(),
+      release_date: z.string().optional(),
+      attachment: z.boolean().optional(),
+      reasoning: z.boolean().optional(),
+      temperature: z.boolean().optional(),
+      tool_call: z.boolean().optional(),
+      interleaved: z
+        .union([z.literal(true), z.object({ field: z.enum(["reasoning_content", "reasoning_details"]) }).strict()])
+        .optional(),
+      cost: z
+        .object({
+          input: z.number().optional(),
+          output: z.number().optional(),
+          cache_read: z.number().optional(),
+          cache_write: z.number().optional(),
+        })
+        .optional(),
+      limit: z
+        .object({
+          context: z.number().optional(),
+          input: z.number().optional(),
+          output: z.number().optional(),
+        })
+        .optional(),
+      modalities: z
+        .object({
+          input: z.array(z.enum(["text", "audio", "image", "video", "pdf"])).optional(),
+          output: z.array(z.enum(["text", "audio", "image", "video", "pdf"])).optional(),
+        })
+        .optional(),
+      status: z.enum(["alpha", "beta", "deprecated", "active"]).optional(),
+      options: z.record(z.string(), z.any()).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      provider: z.object({ npm: z.string().optional(), api: z.string().optional() }).optional(),
+      variants: z
+        .record(
+          z.string(),
+          z
+            .object({
+              disabled: z.boolean().optional().describe("Disable this variant for the model"),
+            })
+            .catchall(z.any()),
+        )
+        .optional()
+        .describe("Variant-specific configuration"),
+    })
+    .partial()
+
+  export const Provider = z
+    .object({
+      api: z.string().optional(),
+      name: z.string().optional(),
+      env: z.array(z.string()).optional(),
+      id: z.string().optional(),
+      npm: z.string().optional(),
       whitelist: z.array(z.string()).optional(),
       blacklist: z.array(z.string()).optional(),
+      picker: z
+        .object({
+          include: z.array(z.string()).optional(),
+          exclude: z.array(z.string()).optional(),
+        })
+        .optional()
+        .describe("Homepage visibility delta. include turns a model on, exclude turns a default model off."),
       relay: z
         .object({
           station: z.string().min(1),
@@ -1106,24 +1169,7 @@ export namespace Config {
           auth: z.enum(["bearer", "x-api-key"]).optional(),
         })
         .optional(),
-      models: z
-        .record(
-          z.string(),
-          ModelsDev.Model.partial().extend({
-            variants: z
-              .record(
-                z.string(),
-                z
-                  .object({
-                    disabled: z.boolean().optional().describe("Disable this variant for the model"),
-                  })
-                  .catchall(z.any()),
-              )
-              .optional()
-              .describe("Variant-specific configuration"),
-          }),
-        )
-        .optional(),
+      models: z.record(z.string(), ConfigModel).optional(),
       options: z
         .object({
           apiKey: z.string().optional(),

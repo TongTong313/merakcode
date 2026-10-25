@@ -132,6 +132,13 @@ const rules: Rule[] = [
     to: /^@merakcode\/util\/config-peek$/,
     uses: /^@merakcode\/util\/paths#(globalConfigFile|Paths\.(data|worktrees))$/,
   },
+  {
+    // Provider list adapters stay inside the catalog. Session, UI and billing code see Provider.Model only.
+    name: "catalog-adapters-private",
+    from: /^packages\/engine\/src\//,
+    except: ["packages/engine/src/provider/catalog.ts", /^packages\/engine\/src\/provider\/catalog\//, TESTS],
+    to: /^packages\/engine\/src\/provider\/catalog\/(deepseek|alibaba|openrouter|anthropic|openai|google|zhipu|moonshot|relay|config)\.ts$/,
+  },
 ]
 
 type Node = { type: string; start: number; [key: string]: unknown }

@@ -1,0 +1,31 @@
+{
+  "fetchedAt": 1792903204428,
+  "models": [
+    {
+      "id": "deepseek-chat",
+      "name": "DeepSeek Chat",
+      "context": 128000,
+      "output": 8192,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": false,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2024-12-26"
+    },
+    {
+      "id": "deepseek-reasoner",
+      "name": "DeepSeek Reasoner",
+      "context": 128000,
+      "output": 128000,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-01-20"
+    }
+  ]
+}

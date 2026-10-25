@@ -1,6 +1,4 @@
 pnpm-lock.yaml
-# 生成的模型数据快照（单行），格式化会膨胀成十几万行
-packages/engine/src/provider/models-snapshot.ts
 # 由 pnpm generate:schema 生成
 schema/config.json
 # 由 pnpm check:api --write 生成

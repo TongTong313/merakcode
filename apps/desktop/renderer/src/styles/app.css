@@ -433,6 +433,27 @@
   flex: none;
   max-width: 45%;
 }
+.model-list .menu-item[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+.model-picker .model-add {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.model-picker .model-add:hover {
+  background: var(--surface-hover);
+}
+.dialog.model-dialog .dialog-body {
+  flex: 1;
+  min-height: 0;
+}
 
 /* Conversation */
 .workspace {

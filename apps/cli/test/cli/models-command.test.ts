@@ -1,49 +1,20 @@
 /**
- * merak models: lists the models of connected providers; --refresh first fetches the latest catalog from its source.
- * The catalog source is a local fake server (MERAKCODE_MODELS_URL) serving an official provider (only those are kept)
- * with made-up models; the provider connects through an API key in the project config
+ * merak models --refresh fetches the connected provider's own model list.
+ * A local server speaks the DeepSeek list shape; the provider's base URL points at it.
  */
 import { expect, test } from "vitest"
 import http from "node:http"
 import type { AddressInfo } from "node:net"
 import { Process } from "@merakcode/util/process"
 import { cli, tmpdir } from "../fixture/fixture"
-
-function catalog(models: string[]) {
-  return {
-    deepseek: {
-      id: "deepseek",
-      name: "DeepSeek",
-      env: ["DEEPSEEK_API_KEY"],
-      npm: "@ai-sdk/openai-compatible",
-      api: "http://127.0.0.1:9/v1",
-      models: Object.fromEntries(
-        models.map((id) => [
-          id,
-          {
-            id,
-            name: id,
-            release_date: "2026-01-01",
-            attachment: false,
-            reasoning: false,
-            temperature: true,
-            tool_call: true,
-            limit: { context: 128000, output: 8192 },
-            cost: { input: 0, output: 0 },
-            options: {},
-          },
-        ]),
-      ),
-    },
-  }
-}
+import { Filesystem } from "@merakcode/util/filesystem"
+import path from "path"
 
 async function source() {
-  const state = { models: ["fake-coder-1"], requests: 0 }
-  const server = http.createServer((req, res) => {
-    state.requests++
+  const state = { models: ["fake-coder-1"] }
+  const server = http.createServer((_req, res) => {
     res.setHeader("content-type", "application/json")
-    res.end(JSON.stringify(catalog(state.models)))
+    res.end(JSON.stringify({ data: state.models.map((id) => ({ id, name: id })) }))
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   return {
@@ -53,16 +24,19 @@ async function source() {
   }
 }
 
-async function merak(cwd: string, url: string, ...args: string[]) {
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    MERAKCODE_LOCALE: "en",
-    MERAKCODE_MODELS_URL: url,
-  }
-  // Skip the fixture's fixed catalog so the command goes through the cache to the catalog source
-  delete env.MERAKCODE_MODELS_PATH
-  delete env.MERAKCODE_DISABLE_MODELS_FETCH
-  const proc = Process.spawn([...cli, ...args], { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" })
+async function merak(home: string, cwd: string, ...args: string[]) {
+  const proc = Process.spawn([...cli, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      MERAKCODE_LOCALE: "en",
+      MERAKCODE_HOME: home,
+      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
+    },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -71,17 +45,21 @@ async function merak(cwd: string, url: string, ...args: string[]) {
   return { stdout, stderr, code }
 }
 
-test("--refresh lists new models after fetching them from the catalog", { timeout: 90_000 }, async () => {
-  await using tmp = await tmpdir({ config: { provider: { deepseek: { options: { apiKey: "sk-test" } } } } })
+test("--refresh lists new models after fetching them from the provider", { timeout: 90_000 }, async () => {
   await using models = await source()
+  await using tmp = await tmpdir()
+  await Filesystem.write(
+    path.join(tmp.path, "merakcode.json"),
+    JSON.stringify({ provider: { deepseek: { options: { apiKey: "sk-test", baseURL: models.url } } } }),
+  )
 
-  const first = await merak(tmp.path, models.url, "models", "deepseek", "--refresh")
-  expect(first.code, first.stderr).toBe(0)
-  expect(first.stderr).toContain("Models cache refreshed")
+  const first = await merak(tmp.path, tmp.path, "models", "deepseek", "--refresh")
+  expect(first.code, first.stderr + first.stdout).toBe(0)
+  expect(first.stdout + first.stderr).toContain("Models cache refreshed")
   expect(first.stdout.split(/\r?\n/).filter((line) => line.startsWith("deepseek/"))).toEqual(["deepseek/fake-coder-1"])
 
   models.state.models = ["fake-coder-1", "fake-coder-2"]
-  const second = await merak(tmp.path, models.url, "models", "deepseek", "--refresh")
+  const second = await merak(tmp.path, tmp.path, "models", "deepseek", "--refresh")
   expect(second.stdout.split(/\r?\n/).filter((line) => line.startsWith("deepseek/"))).toEqual([
     "deepseek/fake-coder-1",
     "deepseek/fake-coder-2",
@@ -90,7 +68,6 @@ test("--refresh lists new models after fetching them from the catalog", { timeou
 
 test("a provider that is not connected is reported as not found", { timeout: 90_000 }, async () => {
   await using tmp = await tmpdir()
-  await using models = await source()
-  const result = await merak(tmp.path, models.url, "models", "no-such-provider")
-  expect(result.stderr).toContain("no-such-provider")
+  const result = await merak(tmp.path, tmp.path, "models", "no-such-provider")
+  expect(result.stderr + result.stdout).toContain("no-such-provider")
 })

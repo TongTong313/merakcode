@@ -1,4 +1,5 @@
 import type { PermissionMode, UserMessage } from "@merakcode/sdk/client"
+import { batch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { messagesOf, session, state } from "./store"
 
@@ -60,34 +61,68 @@ export function shownSmallModel(): string | undefined {
 }
 
 /** Composer choices, kept per conversation (per directory for a new conversation) */
-type Choice = { model?: ModelRef; variant?: string; mode?: PermissionMode }
+type Choice = { model?: ModelRef; variantByModel?: Record<string, string>; mode?: PermissionMode }
 const [choices, setChoices] = createStore<Record<string, Choice>>({})
 
 export const choiceKey = (sessionID: string | undefined, directory: string) => sessionID ?? `new:${directory}`
 
 /** Model last used in the conversation */
-function lastUsed(sessionID: string): Choice {
+function lastUsed(sessionID: string): { model?: ModelRef } {
   const last = messagesOf(sessionID).findLast((message): message is UserMessage => message.role === "user")
-  return last ? { model: last.model, variant: last.variant } : {}
+  return last ? { model: last.model } : {}
+}
+
+/** Level last sent with this model, ignoring every other model's messages. */
+function sentVariant(sessionID: string, model: ModelRef) {
+  const last = messagesOf(sessionID).findLast(
+    (message): message is UserMessage =>
+      message.role === "user" &&
+      message.model.providerID === model.providerID &&
+      message.model.modelID === model.modelID &&
+      !!message.variant,
+  )
+  return last?.variant
 }
 
 export function choice(sessionID: string | undefined, directory: string) {
   const own = choices[choiceKey(sessionID, directory)] ?? {}
   const used = sessionID ? lastUsed(sessionID) : {}
   const model = own.model ?? used.model
+  const resolved = model && find(model) ? model : defaultModel()
+  const stored = resolved ? own.variantByModel?.[modelKey(resolved)] : undefined
+  const sent = resolved && sessionID ? sentVariant(sessionID, resolved) : undefined
+  const official = resolved ? find(resolved)?.model.defaultVariant : undefined
   return {
-    model: model && find(model) ? model : defaultModel(),
-    variant: own.variant ?? used.variant,
+    model: resolved,
+    variant: stored ?? sent ?? official,
     mode: (sessionID ? session(sessionID)?.permissionMode : undefined) ?? own.mode ?? state.mode,
   }
 }
 
-export function choose(sessionID: string | undefined, directory: string, patch: Choice) {
+/**
+ * Writes only what changed: selects call onChange again whenever their options are rebuilt, and a write of an equal
+ * value must not notify, or the select and this store would update each other forever.
+ */
+export function choose(sessionID: string | undefined, directory: string, patch: Choice & { variant?: string }) {
   const key = choiceKey(sessionID, directory)
-  setChoices(key, (current) => ({ ...current, ...patch }))
+  const target = patch.model ?? choice(sessionID, directory).model
+  batch(() => {
+    if (!choices[key]) setChoices(key, {})
+    if (patch.mode) setChoices(key, "mode", patch.mode)
+    const current = choices[key]!.model
+    if (patch.model && (!current || modelKey(current) !== modelKey(patch.model))) setChoices(key, "model", patch.model)
+    if (patch.variant === undefined || !target) return
+    if (!choices[key]!.variantByModel) setChoices(key, "variantByModel", {})
+    setChoices(key, "variantByModel", modelKey(target), patch.variant)
+  })
 }
 
-type Usage = { tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } } }
+type Usage = {
+  tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
+  cost: number
+  providerID: string
+  modelID: string
+}
 
 /** Tokens in context after a reply: input (with cache) plus this reply's output and reasoning, all sent next turn */
 const contextTokens = (message: Usage) =>
@@ -107,10 +142,18 @@ export function usage(sessionID: string) {
   if (!last) return
   const limit = find({ providerID: last.providerID, modelID: last.modelID })?.model.limit.context
   const tokens = contextTokens(last)
+  const costs: Record<string, number> = {}
+  for (const message of replies) {
+    if (message.role !== "assistant") continue
+    const priced = find({ providerID: message.providerID, modelID: message.modelID })?.model.cost
+    if (!priced) continue
+    const currency = priced.currency ?? "USD"
+    costs[currency] = (costs[currency] ?? 0) + message.cost
+  }
   return {
     tokens,
     limit,
     percent: limit ? Math.min(100, Math.round((tokens / limit) * 100)) : undefined,
-    cost: replies.reduce((sum, message) => sum + message.cost, 0),
+    costs,
   }
 }

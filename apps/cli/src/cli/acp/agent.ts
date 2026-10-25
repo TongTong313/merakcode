@@ -122,7 +122,17 @@ export namespace ACP {
     }
 
     const used = msg.tokens.input + (msg.tokens.cache?.read ?? 0)
-    const totalCost = assistantMessages.reduce((sum, m) => sum + m.info.cost, 0)
+    const providers = await sdk.provider.list({ directory }, { throwOnError: true }).then((x) => x.data)
+    const currencyOf = (providerID: string, modelID: string) => {
+      const provider = providers.all.find((item) => item.id === providerID)
+      return provider?.models[modelID]?.cost?.currency
+    }
+    const currencies = assistantMessages.map((message) => currencyOf(message.info.providerID, message.info.modelID))
+    const unique = new Set(currencies)
+    const cost =
+      currencies.every((currency) => currency) && unique.size === 1
+        ? { amount: assistantMessages.reduce((sum, message) => sum + message.info.cost, 0), currency: [...unique][0]! }
+        : undefined
 
     await connection
       .sessionUpdate({
@@ -131,7 +141,7 @@ export namespace ACP {
           sessionUpdate: "usage_update",
           used,
           size,
-          cost: { amount: totalCost, currency: "USD" },
+          ...(cost ? { cost } : {}),
         },
       })
       .catch((error) => {

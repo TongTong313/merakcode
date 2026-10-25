@@ -149,14 +149,13 @@ export const ProviderRelayCommand = cmd({
                     model.id,
                     {
                       name: model.id,
-                      limit: { context: model.context ?? 128_000, output: model.output ?? 16_000 },
-                      tool_call: model.toolcall ?? true,
-                      reasoning: model.reasoning ?? false,
-                      attachment: model.image ?? false,
-                      modalities: {
-                        input: model.image ? ["text", "image"] : ["text"],
-                        output: ["text"],
-                      },
+                      limit:
+                        model.context === undefined && model.output === undefined
+                          ? undefined
+                          : { context: model.context, output: model.output },
+                      tool_call: model.toolcall,
+                      reasoning: model.reasoning,
+                      modalities: model.input ? { input: model.input, output: model.outputModalities } : undefined,
                       provider: { npm: relayNpm(model.endpoint, kind) },
                     },
                   ]),

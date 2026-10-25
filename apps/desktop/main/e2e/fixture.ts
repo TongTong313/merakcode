@@ -22,6 +22,7 @@ import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
+import { seedCatalog } from "../../../../script/node/seed-catalog.ts"
 
 /** One fake model reply: text, or a tool call (the model is asked again once the tool result is back) */
 type Reply = { text: string } | { tool: string; args: Record<string, unknown> }
@@ -175,6 +176,7 @@ export const test = base.extend<{
   git: [false, { option: true }],
   kit: async ({ script, config, git }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
+    await seedCatalog(root)
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
     await writeFile(path.join(project, "notes.txt"), "hello from e2e\n")
@@ -235,7 +237,7 @@ export const test = base.extend<{
         ...env,
         MERAKCODE_HOME: root,
         MERAKCODE_DISABLE_AUTOUPDATE: "1",
-        MERAKCODE_DISABLE_MODELS_FETCH: "1",
+        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
         MERAKCODE_SANDBOX_MODE: "off",
         MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
         MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",

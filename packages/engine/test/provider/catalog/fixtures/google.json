@@ -1,0 +1,29 @@
+{
+  "models": [
+    {
+      "name": "models/gemini-4-argon",
+      "baseModelId": "gemini-4-argon",
+      "version": "4",
+      "displayName": "Gemini 4 Argon",
+      "description": "Gemini 4 Argon",
+      "inputTokenLimit": 1048576,
+      "outputTokenLimit": 943718,
+      "supportedGenerationMethods": ["generateContent", "countTokens"],
+      "thinking": true,
+      "temperature": 1,
+      "maxTemperature": 2,
+      "topP": 0.95,
+      "topK": 64
+    },
+    {
+      "name": "models/gemini-embedding-001",
+      "baseModelId": "gemini-embedding-001",
+      "version": "001",
+      "displayName": "Gemini Embedding 001",
+      "description": "Gemini Embedding 001",
+      "inputTokenLimit": 2048,
+      "outputTokenLimit": 1,
+      "supportedGenerationMethods": ["embedContent", "countTextTokens"]
+    }
+  ]
+}

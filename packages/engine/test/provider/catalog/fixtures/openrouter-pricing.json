@@ -1,0 +1,29 @@
+{
+  "longContext": {
+    "prompt": "0.0000025",
+    "completion": "0.00001",
+    "overrides": [
+      {
+        "min_prompt_tokens": 200000,
+        "prompt": "0.000005",
+        "completion": "0.00002"
+      }
+    ]
+  },
+  "timeWindow": {
+    "prompt": "0.0000025",
+    "completion": "0.00001",
+    "overrides": [
+      {
+        "min_prompt_tokens": 200000,
+        "utc_start": 1630,
+        "utc_end": 30,
+        "utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "prompt": "0.000005",
+        "completion": "0.00002",
+        "input_cache_read": "0.0000005",
+        "input_cache_write": "0.00000625"
+      }
+    ]
+  }
+}

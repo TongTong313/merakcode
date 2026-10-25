@@ -321,6 +321,7 @@ export namespace Server {
           // Invalidate the Provider cache after writing credentials, or provider.list still shows "not connected".
           await connectProvider(providerID, info, {
             set: Auth.set,
+            refresh: (id) => Provider.refreshCatalog(id, true),
             invalidate: Provider.invalidateAll,
             changed: () => Provider.publishChanged({ providerID, reason: "connected" }),
           })
@@ -1192,7 +1193,7 @@ export namespace Server {
         openapi: "3.1.1",
       },
     })
-    // Model fields in the config reference the models.dev schema, which is for editor completion in config files.
+    // Model ids in the config are plain provider/model strings. The schema is for editor completion.
     // In the API a model is a plain string (custom provider models are valid too), and generating the SDK must not
     // fetch external documents.
     return JSON.parse(

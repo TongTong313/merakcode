@@ -109,25 +109,25 @@ describe("global.stats", () => {
     expect(all).toMatchObject({
       totalSessions: 2,
       totalMessages: 4,
-      totalCost: 0.75,
+      totalCost: {},
       totalTokens: { input: 140, output: 20, reasoning: 10, cache: { read: 4, write: 2 } },
       toolUsage: { bash: 2 },
       modelUsage: {
-        "alibaba-cn/qwen-plus": { messages: 1, cost: 0.5, tokens: { input: 100, output: 15 } },
-        "deepseek/deepseek-chat": { messages: 1, cost: 0.25, tokens: { input: 40, output: 15 } },
+        "alibaba-cn/qwen-plus": { messages: 1, cost: 0, tokens: { input: 100, output: 15 } },
+        "deepseek/deepseek-chat": { messages: 1, cost: 0, tokens: { input: 40, output: 15 } },
       },
     })
 
     const project = await (await app.request(`/global/stats?project=${recent.projectID}`)).json()
-    expect(project).toMatchObject({ totalSessions: 1, totalCost: 0.5 })
+    expect(project).toMatchObject({ totalSessions: 1, totalCost: {} })
 
     const week = await (await app.request("/global/stats?days=7")).json()
-    expect(week).toMatchObject({ totalSessions: 1, totalCost: 0.5, days: 7 })
+    expect(week).toMatchObject({ totalSessions: 1, totalCost: {}, days: 7 })
   })
 
   test("everything is zero without sessions", async () => {
     const app = Server.App()
     const stats = await (await app.request("/global/stats?project=prj_none")).json()
-    expect(stats).toMatchObject({ totalSessions: 0, totalMessages: 0, totalCost: 0, toolUsage: {}, modelUsage: {} })
+    expect(stats).toMatchObject({ totalSessions: 0, totalMessages: 0, totalCost: {}, toolUsage: {}, modelUsage: {} })
   })
 })

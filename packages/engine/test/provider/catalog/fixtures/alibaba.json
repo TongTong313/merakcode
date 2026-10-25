@@ -1,0 +1,1373 @@
+{
+  "output": {
+    "total": 11,
+    "page_no": 1,
+    "page_size": 100,
+    "models": [
+      {
+        "model": "qwen3.8-max",
+        "name": "Qwen3.8-Max",
+        "description": "2.4万亿参数MoE旗舰，编程与办公能力全面跃升，可自主编程十数天交付完整项目。胜任法律、金融、设计等数百种专业任务，一次对话端到端交付生产级成果。原生视觉理解贯穿规划、执行与验证全流程，支持超长文档与长视频的深度语义解析。长程任务中自主规划与闭环迭代，持续进化。",
+        "features": [
+          "cache",
+          "function-calling",
+          "model-experience",
+          "prefix-completion",
+          "structured-outputs",
+          "web-search",
+          "batch"
+        ],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "36",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "1.5",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "6",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "18",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "15",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "36",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["Reasoning", "VU", "TG"],
+        "published_time": "2026-08-02 12:14:32",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Image", "Text", "Video"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 991808,
+          "max_output_tokens": 131072,
+          "max_reasoning_tokens": 262144,
+          "reasoning_max_input_tokens": 983616,
+          "reasoning_max_output_tokens": 131072
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "qwen3.7-flash",
+        "name": "Qwen3.7-Flash",
+        "description": "Qwen3.7原生视觉语言系列Flash模型，相较3.6-Flash全面提升多模态理解与Agent执行能力。重点强化多模态基础能力、万物识别能力更强，真实世界感知与空间智能进一步提升，Search Agent、CI Agent等多模态Agent场景能力显著升级、端到端任务执行更稳定，多模态Coding能力优化、vibe coding 体验更加流畅。",
+        "features": [
+          "batch",
+          "cache",
+          "function-calling",
+          "model-experience",
+          "prefix-completion",
+          "structured-outputs",
+          "web-search"
+        ],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "0.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.04",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "0.1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "0.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "0.25",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.02",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "0.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "输入<=32k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "0.6",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.12",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "0.3",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "1.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "0.75",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.06",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "0.6",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "32k<输入<=256k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "1.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.24",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "0.6",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "1.5",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.12",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "1.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "256k<输入<=1m"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["TG", "VU", "Reasoning"],
+        "published_time": "2026-07-21 01:02:37",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Image", "Text", "Video"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 991808,
+          "max_output_tokens": 131072,
+          "max_reasoning_tokens": 262144,
+          "reasoning_max_input_tokens": 983616,
+          "reasoning_max_output_tokens": 131072
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "qwen-plus",
+        "name": "Qwen-Plus",
+        "description": "Qwen3系列Plus模型，实现思考模式和非思考模式的有效融合，可在对话中切换模式。推理能力显著超过QwQ、通用能力显著超过Qwen2.5-Plus，达到同规模业界SOTA水平。",
+        "features": [
+          "model-experience",
+          "function-calling",
+          "structured-outputs",
+          "web-search",
+          "prefix-completion",
+          "cache",
+          "batch"
+        ],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token",
+                "price": "8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.16",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache",
+                "price": "0.16",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch",
+                "price": "4",
+                "price_unit": "每百万tokens",
+                "price_name": "思考模式输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "0.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch",
+                "price": "0.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.08",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_creation_5m",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_read",
+                "price": "0.08",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch_chat",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch_chat",
+                "price": "8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考模式 Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "输入<=128k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "20",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.48",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache",
+                "price": "0.48",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "思考模式输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "1.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "10",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch",
+                "price": "1.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "3",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.24",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_creation_5m",
+                "price": "3",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_read",
+                "price": "0.24",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "20",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch_chat",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch_chat",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考模式 Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "128k<输入<=256k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "48",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token",
+                "price": "64",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.96",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache",
+                "price": "0.96",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式缓存命中）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch",
+                "price": "32",
+                "price_unit": "每百万tokens",
+                "price_name": "思考模式输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "6",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.48",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_creation_5m",
+                "price": "6",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_cache_read",
+                "price": "0.48",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中（思考）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "48",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_input_token_batch_chat",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（思考模式 Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "thinking_output_token_batch_chat",
+                "price": "64",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（思考模式 Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "256k<输入<=1m"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["Reasoning", "TG"],
+        "published_time": "2025-06-24 00:00:00",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 997952,
+          "max_output_tokens": 32768,
+          "max_reasoning_tokens": 81920,
+          "reasoning_max_input_tokens": 995904,
+          "reasoning_max_output_tokens": 32768
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "deepseek-v4.1-flash",
+        "name": "DeepSeek-V4.1-Flash",
+        "description": "DeepSeek-V4.1-Flash 是 DeepSeek 全新架构系列中的轻量旗舰模型，以 552B 总参数 MoE 实现越级智能，在多项基准上超越包括 DeepSeek-V4-Pro 在内的主流旗舰模型。采用 Causal Encoder-Decoder 非对称架构，输入激活仅 8B、输出激活 16B，并具备原生多模态视觉理解能力。KV Cache 压缩至上一代 HBM 的 1/4、SSD 的 1/8，显著降低长上下文与 Agent 任务成本。支持 1M 上下文与 384K 最大输出，兼顾高吞吐、低延迟与极致性价比。",
+        "features": ["cache", "function-calling", "structured-outputs", "web-search"],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "offpeak"
+              },
+              {
+                "type": "input_token",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "peak"
+              },
+              {
+                "type": "output_token",
+                "price": "4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "offpeak"
+              },
+              {
+                "type": "output_token",
+                "price": "8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "peak"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "offpeak"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "0.2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "peak"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "deepseek",
+        "capabilities": ["TG", "Reasoning", "VU"],
+        "published_time": "2026-09-13 00:13:01",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text", "Image"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 1000000,
+          "max_output_tokens": 393216,
+          "max_reasoning_tokens": 393216,
+          "reasoning_max_input_tokens": 1000000,
+          "reasoning_max_output_tokens": 393216
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "kimi-k3",
+        "name": "Kimi-K3",
+        "description": "Kimi-K3 是 Kimi 迄今能力最强的旗舰模型，拥有 2.8 万亿参数，基于 KDA 混合线性注意力机制（Kimi Delta Attention）和注意力残差（Attention Residuals）技术构建，原生支持视觉理解，并拥有 100 万 token 上下文窗口。它是全球首个开源的 3 万亿级别模型，面向长程编程、知识工作和推理等前沿智能场景而设计。",
+        "features": [
+          "cache",
+          "function-calling",
+          "model-experience",
+          "prefix-completion",
+          "structured-outputs",
+          "web-search"
+        ],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "20",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": null
+              },
+              {
+                "type": "output_token",
+                "price": "100",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": null
+              },
+              {
+                "type": "input_token_cache",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": null
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "moonshot-ai",
+        "capabilities": ["TG", "VU", "Reasoning"],
+        "published_time": "2026-08-19 16:51:08",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Image", "Text"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 1048576,
+          "max_output_tokens": 1048576,
+          "max_reasoning_tokens": 1048576,
+          "reasoning_max_input_tokens": 1048576,
+          "reasoning_max_output_tokens": 1048576
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "qwen3.5-plus",
+        "name": "Qwen3.5-Plus",
+        "description": "Qwen3.5原生视觉语言系列Plus模型，基于混合架构设计，融合了线性注意力机制与稀疏混合专家模型，实现了更高的推理效率。在多项任务评测中，3.5系列均展现出与当前顶尖前沿模型相媲美的卓越性能，模型效果在纯文本与多模态方面相较3系列均实现飞跃式进步。",
+        "features": [
+          "model-experience",
+          "function-calling",
+          "structured-outputs",
+          "web-search",
+          "prefix-completion",
+          "cache",
+          "batch"
+        ],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "0.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "2.4",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.08",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "4.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "输入<=128k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "6",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "2.5",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.2",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "128k<输入<=256k"
+          },
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch File）",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_creation_5m",
+                "price": "5",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存创建",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache_read",
+                "price": "0.4",
+                "price_unit": "每百万tokens",
+                "price_name": "显式缓存命中",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_batch_chat",
+                "price": "4",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（Batch Chat)",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token_batch_chat",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出（Batch Chat)",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "256k<输入<=1m"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["TG", "Reasoning", "VU"],
+        "published_time": "2026-02-15 17:15:31",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text", "Image", "Video"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 991808,
+          "max_output_tokens": 65536,
+          "max_reasoning_tokens": 81920,
+          "reasoning_max_input_tokens": 983616,
+          "reasoning_max_output_tokens": 65536
+        },
+        "equivalent_snapshot": "qwen3.5-plus-2026-02-15",
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": {
+          "offline_time": "2027-01-19 10:00:00"
+        }
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "name": "DeepSeek-V4-Pro",
+        "description": "旗舰级 MoE 大模型，总参1.6T、激活 49B，原生支持百万级超长上下文。依托海量高质量训练数据，具备顶尖数学逻辑、复杂推理、专业代码与长文本深度解析能力，适配高阶科研、复杂办公、深度智能代理等高难度场景。",
+        "features": ["cache", "function-calling", "model-experience", "web-search", "structured-outputs"],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "12",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "24",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "deepseek",
+        "capabilities": ["Reasoning", "TG"],
+        "published_time": "2026-04-24 15:51:09",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 1000000,
+          "max_output_tokens": 393216,
+          "max_reasoning_tokens": null,
+          "reasoning_max_input_tokens": null,
+          "reasoning_max_output_tokens": null
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "glm-5.3",
+        "name": "GLM-5.3",
+        "description": "GLM-5.3 是智谱最新旗舰大语言模型，编程与智能体能力全面进阶，达开源模型 SOTA 水平，内部编程基准较上代提升 50%，可端到端交付生产级成果。涌现网络安全能力，漏洞发现基准 CyberGym 创当前最佳。支持 1M 上下文、128K 输出与三档深度思考，胜任长程复杂任务。",
+        "features": ["cache", "function-calling", "model-experience", "structured-outputs"],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "input_token",
+                "price": "8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "output_token",
+                "price": "28",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "input_token_cache",
+                "price": "2",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "zhipu-ai",
+        "capabilities": ["TG", "Reasoning"],
+        "published_time": "2026-09-15 17:45:03",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 1048576,
+          "max_output_tokens": 131072,
+          "max_reasoning_tokens": 131072,
+          "reasoning_max_input_tokens": 1048576,
+          "reasoning_max_output_tokens": 131072
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "qwen3.8-omni-flash",
+        "name": "Qwen3.8-Omni-Flash",
+        "description": "Qwen 新一代原生全模态模型，支持 1M 长序列，可直接输入文本、图像、音频与视频，基于 Qwen3.8-Flash-Next 架构。模型面向真实生产力场景中的 Agent 能力：在具备编程、文本知识工作、GUI 操作等 Agentic 能力的同时，在以音视频为核心的Agentic应用例如视频剪辑、音乐视频创作、影视制作与解说、音视频到图文摘要、音视频对话等需要综合处理文本、图像、音频和视频的工作流上取得了显著的效果。支持 2 通道与 4 通道空间音频解析，兼容 DashScope 与 OpenAI 协议，建议安装配套的 Qwen-MM-Plugins，便于 Agent 框架接入原生多模态能力。",
+        "features": ["cache", "function-calling", "prefix-completion", "structured-outputs", "web-search"],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "omni_input_token",
+                "price": "0.8",
+                "price_unit": "每百万tokens",
+                "price_name": "输入",
+                "time_band": "standard"
+              },
+              {
+                "type": "omni_output_token",
+                "price": "2.7",
+                "price_unit": "每百万tokens",
+                "price_name": "输出",
+                "time_band": "standard"
+              },
+              {
+                "type": "omni_input_token_cache",
+                "price": "0.1",
+                "price_unit": "每百万tokens",
+                "price_name": "输入（缓存命中）",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["Multimodal-Omni"],
+        "published_time": "2026-09-09 16:51:47",
+        "inference_metadata": {
+          "response_modality": ["Text"],
+          "request_modality": ["Text", "Image", "Audio", "Video"]
+        },
+        "model_info": {
+          "context_window": 1000000,
+          "max_input_tokens": 991808,
+          "max_output_tokens": 131072,
+          "max_reasoning_tokens": 262144,
+          "reasoning_max_input_tokens": 983616,
+          "reasoning_max_output_tokens": 131072
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "happyhorse-1.1-t2v",
+        "name": "HappyHorse-1.1-T2V",
+        "description": "HappyHorse-1.1-T2V支持文生视频，进一步提升文本语义理解、镜头调度与动态生成表现。模型能够更精准地还原创作意图，在人物动作、场景氛围、视觉美感和物理运动上生成更流畅自然、细节丰富且一致性更高的高质量视频。",
+        "features": ["model-experience"],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "video_ratio_480p",
+                "price": "0.45",
+                "price_unit": "每秒",
+                "price_name": "视频生成（480P）",
+                "time_band": null
+              },
+              {
+                "type": "video_ratio_720p",
+                "price": "0.9",
+                "price_unit": "每秒",
+                "price_name": "视频生成（720P）",
+                "time_band": null
+              },
+              {
+                "type": "video_ratio_1080p",
+                "price": "1.2",
+                "price_unit": "每秒",
+                "price_name": "视频生成（1080P）",
+                "time_band": null
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "happyhorse",
+        "capabilities": ["VG"],
+        "published_time": "2026-06-16 14:14:47",
+        "inference_metadata": {
+          "response_modality": ["Video"],
+          "request_modality": ["Text"]
+        },
+        "model_info": {
+          "context_window": null,
+          "max_input_tokens": null,
+          "max_output_tokens": null,
+          "max_reasoning_tokens": null,
+          "reasoning_max_input_tokens": null,
+          "reasoning_max_output_tokens": null
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      },
+      {
+        "model": "qwen-audio-3.1-tts-plus",
+        "name": "Qwen-Audio-3.1-TTS-Plus",
+        "description": "Qwen-Audio-3.1-TTS-Plus是面向高质量语音生成场景打造的语音合成大模型，支持多个小语种和中文方言。该模型具有较好的方言发音正宗度，支持free-style指令遵循和细粒度标签控制能力，可更准确地控制情绪、语气、角色、语速、音量和合成风格。同时，模型在声音复刻场景中，对于噪声、混响等复杂声学条件下具备更强鲁棒性，进一步提升了音质、清晰度、分辨率和整体表现力。Plus 版本更强调合成效果和细节表现，适用于有更高音质、自然度和表现力要求的专业场景，如内容创作、有声书、影视配音、品牌声音设计等高品质语音服务。",
+        "features": [],
+        "prices": [
+          {
+            "prices": [
+              {
+                "type": "cosy_tts_number",
+                "price": "1.4",
+                "price_unit": "每万字符",
+                "price_name": "语音合成",
+                "time_band": "standard"
+              }
+            ],
+            "range_name": "Default"
+          }
+        ],
+        "provider": "qwen",
+        "capabilities": ["TTS"],
+        "published_time": "2026-10-21 17:32:15",
+        "inference_metadata": {
+          "response_modality": ["Audio"],
+          "request_modality": ["Text"]
+        },
+        "model_info": {
+          "context_window": null,
+          "max_input_tokens": null,
+          "max_output_tokens": null,
+          "max_reasoning_tokens": null,
+          "reasoning_max_input_tokens": null,
+          "reasoning_max_output_tokens": null
+        },
+        "equivalent_snapshot": null,
+        "inference_provider": "aliyun-bailian",
+        "inference_offline_info": null
+      }
+    ]
+  }
+}

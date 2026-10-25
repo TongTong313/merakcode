@@ -1,7 +1,9 @@
+import { readFileSync } from "fs"
 import { afterEach, expect, test } from "vitest"
 import path from "path"
 
 import { tmpdir } from "../fixture/fixture"
+import { restoreCatalog, writeCatalog } from "./catalog/fixture"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Provider } from "@merakcode/engine/provider/provider"
 import { Auth } from "@merakcode/engine/auth/index"
@@ -504,10 +506,7 @@ test("model cost defaults to zero when not specified", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["test-provider"].models["test-model"]
-      expect(model.cost.input).toBe(0)
-      expect(model.cost.output).toBe(0)
-      expect(model.cost.cache.read).toBe(0)
-      expect(model.cost.cache.write).toBe(0)
+      expect(model.cost).toBeUndefined()
     },
   })
 })
@@ -928,10 +927,10 @@ test("model with custom cost values", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["test-provider"].models["test-model"]
-      expect(model.cost.input).toBe(5)
-      expect(model.cost.output).toBe(15)
-      expect(model.cost.cache.read).toBe(2.5)
-      expect(model.cost.cache.write).toBe(7.5)
+      expect(model.cost?.input).toBe(5)
+      expect(model.cost?.output).toBe(15)
+      expect(model.cost?.cache.read).toBe(2.5)
+      expect(model.cost?.cache.write).toBe(7.5)
     },
   })
 })
@@ -1167,8 +1166,8 @@ test("model cost overrides existing cost values", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.cost.input).toBe(999)
-      expect(model.cost.output).toBe(888)
+      expect(model.cost?.input).toBe(999)
+      expect(model.cost?.output).toBe(888)
     },
   })
 })
@@ -1653,7 +1652,7 @@ test("provider options are deeply merged", async () => {
   })
 })
 
-test("custom model inherits npm package from models.dev provider config", async () => {
+test("custom model inherits the npm package from the official provider", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Filesystem.write(
@@ -1689,7 +1688,7 @@ test("custom model inherits npm package from models.dev provider config", async 
   })
 })
 
-test("custom model inherits api.url from models.dev provider", async () => {
+test("custom model inherits the api url from the official provider", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Filesystem.write(
@@ -1770,7 +1769,7 @@ test("model variants can be disabled via config", async () => {
           provider: {
             anthropic: {
               models: {
-                "claude-sonnet-4-20250514": {
+                "claude-opus-4-5": {
                   variants: {
                     high: { disabled: true },
                   },
@@ -1789,11 +1788,10 @@ test("model variants can be disabled via config", async () => {
     },
     fn: async () => {
       const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
+      const model = providers["anthropic"].models["claude-opus-4-5"]
       expect(model.variants).toBeDefined()
       expect(model.variants!["high"]).toBeUndefined()
-      // max variant should still exist
-      expect(model.variants!["max"]).toBeDefined()
+      expect(model.variants!["medium"]).toBeDefined()
     },
   })
 })
@@ -1879,6 +1877,29 @@ test("disabled key is stripped from variant config", async () => {
   })
 })
 
+test("disabling the default level in config moves the default to a level that is still offered", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      provider: {
+        deepseek: {
+          options: { apiKey: "test-key" },
+          models: {
+            "deepseek-v4-pro": { reasoning: true, variants: { high: { disabled: true } } },
+          },
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = await Provider.getModel("deepseek", "deepseek-v4-pro")
+      expect(Object.keys(model.variants ?? {})).toEqual(["off", "low", "max"])
+      expect(model.defaultVariant).toBe("max")
+    },
+  })
+})
+
 test("all variants can be disabled via config", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -1889,10 +1910,12 @@ test("all variants can be disabled via config", async () => {
           provider: {
             anthropic: {
               models: {
-                "claude-sonnet-4-20250514": {
+                "claude-opus-4-5": {
                   variants: {
+                    off: { disabled: true },
+                    low: { disabled: true },
+                    medium: { disabled: true },
                     high: { disabled: true },
-                    max: { disabled: true },
                   },
                 },
               },
@@ -1909,9 +1932,10 @@ test("all variants can be disabled via config", async () => {
     },
     fn: async () => {
       const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
+      const model = providers["anthropic"].models["claude-opus-4-5"]
       expect(model.variants).toBeDefined()
       expect(Object.keys(model.variants!).length).toBe(0)
+      expect(model.defaultVariant).toBeUndefined()
     },
   })
 })
@@ -1926,7 +1950,7 @@ test("variant config merges with generated variants", async () => {
           provider: {
             anthropic: {
               models: {
-                "claude-sonnet-4-20250514": {
+                "claude-opus-4-5": {
                   variants: {
                     high: {
                       extraOption: "custom-value",
@@ -1947,49 +1971,10 @@ test("variant config merges with generated variants", async () => {
     },
     fn: async () => {
       const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
+      const model = providers["anthropic"].models["claude-opus-4-5"]
       expect(model.variants!["high"]).toBeDefined()
-      // Should have both the generated thinking config and the custom option
-      expect(model.variants!["high"].thinking).toBeDefined()
+      expect(model.variants!["high"].effort).toBe("high")
       expect(model.variants!["high"].extraOption).toBe("custom-value")
-    },
-  })
-})
-
-test("variants filtered in second pass for database models", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Filesystem.write(
-        path.join(dir, "merakcode.json"),
-        JSON.stringify({
-          $schema: Config.SCHEMA,
-          provider: {
-            openai: {
-              models: {
-                "gpt-5": {
-                  variants: {
-                    high: { disabled: true },
-                  },
-                },
-              },
-            },
-          },
-        }),
-      )
-    },
-  })
-  await Instance.provide({
-    directory: tmp.path,
-    init: async () => {
-      await Auth.set("openai", { type: "api", key: "test-api-key" })
-    },
-    fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["openai"].models["gpt-5"]
-      expect(model.variants).toBeDefined()
-      expect(model.variants!["high"]).toBeUndefined()
-      // Other variants should still exist
-      expect(model.variants!["medium"]).toBeDefined()
     },
   })
 })
@@ -2049,4 +2034,503 @@ test("custom model with variants enabled and disabled", async () => {
       expect(model.variants!["custom"].disabled).toBeUndefined()
     },
   })
+})
+
+test("providers that share a display name stay separate", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "merakcode.json"),
+        JSON.stringify({
+          $schema: Config.SCHEMA,
+          provider: {
+            anthropic: { name: "Same Name" },
+            relay: {
+              name: "Same Name",
+              npm: "@ai-sdk/anthropic",
+              options: { apiKey: "relay-key" },
+              models: { "relay-only": { name: "Relay Only" } },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      await Auth.set("anthropic", { type: "api", key: "test-api-key" })
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers.anthropic?.name).toBe("Same Name")
+      expect(providers.relay?.name).toBe("Same Name")
+      expect(providers.anthropic?.origin).toBe("official")
+      expect(providers.relay?.origin).toBe("configured")
+      expect(providers.relay?.models["relay-only"]).toBeDefined()
+      expect(providers.anthropic?.models["relay-only"]).toBeUndefined()
+    },
+  })
+})
+
+test("an official homepage opens the named lines, and an unsuffixed id beats a versioned one", async () => {
+  await writeCatalog("anthropic", [
+    { id: "claude-opus-4-7" },
+    { id: "claude-opus-5-5" },
+    { id: "claude-opus-5-5-20251101" },
+    { id: "claude-sonnet-4-5" },
+    { id: "claude-sonnet-5-5" },
+    { id: "claude-fable-5-1" },
+    { id: "claude-haiku-5-5" },
+  ])
+  await writeCatalog("openai", [
+    { id: "gpt-6-astra" },
+    { id: "gpt-6.1-sol" },
+    { id: "gpt-5.6-sol" },
+    { id: "gpt-5.6-terra" },
+    { id: "gpt-5.6-luna" },
+    { id: "gpt-5.2" },
+  ])
+  await writeCatalog("alibaba-cn", [
+    { id: "qwen-plus" },
+    { id: "qwen-max" },
+    { id: "qwen3-max" },
+    { id: "qwen3.8-max" },
+    { id: "qwen-plus-2025-12-01" },
+    { id: "qwen-vl-max" },
+  ])
+  await writeCatalog("moonshotai-cn", [
+    { id: "kimi-k3.1-pro" },
+    { id: "kimi-k3-pro" },
+    { id: "kimi-k3.1-pro-highspeed" },
+    { id: "kimi-k2.5" },
+  ])
+  await writeCatalog("deepseek", [
+    { id: "deepseek-flash" },
+    { id: "deepseek-v4-flash" },
+    { id: "deepseek-v4-pro" },
+    { id: "deepseek-chat" },
+  ])
+  await writeCatalog("zhipuai", [
+    { id: "glm-5.3" },
+    { id: "glm-5.2" },
+    { id: "glm-5.3-flash" },
+    { id: "glm-4.7-flash" },
+    { id: "glm-5.3-flashx" },
+  ])
+  await writeCatalog("google", [
+    { id: "gemini-3.8-flash" },
+    { id: "gemini-3.1-pro-preview" },
+    { id: "gemini-3.5-flash-lite" },
+    { id: "gemini-2.5-flash" },
+  ])
+  await writeCatalog("openrouter", [{ id: "openai/gpt-6-astra" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        for (const id of [
+          "anthropic",
+          "openai",
+          "alibaba-cn",
+          "moonshotai-cn",
+          "deepseek",
+          "zhipuai",
+          "google",
+          "openrouter",
+        ])
+          await Auth.set(id, { type: "api", key: `test-${id}` })
+      },
+      fn: async () => {
+        const on = async (id: string) =>
+          Object.entries((await Provider.list())[id].models)
+            .filter(([, model]) => model.homepage)
+            .map(([modelID]) => modelID)
+            .toSorted()
+        expect(await on("anthropic")).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"])
+        expect(await on("openai")).toEqual(["gpt-6-astra", "gpt-6.1-sol"])
+        expect(await on("alibaba-cn")).toEqual(["qwen-max", "qwen-plus"])
+        expect(await on("moonshotai-cn")).toEqual(["kimi-k3.1-pro"])
+        expect(await on("deepseek")).toEqual(["deepseek-flash", "deepseek-v4-pro"])
+        expect(await on("zhipuai")).toEqual(["glm-5.3", "glm-5.3-flash"])
+        expect(await on("google")).toEqual(["gemini-3.1-pro-preview", "gemini-3.8-flash"])
+        expect(await on("openrouter")).toEqual([])
+
+        await writeCatalog("alibaba-cn", [{ id: "qwen-plus" }, { id: "qwen3.8-max" }])
+        Provider.invalidate()
+        expect(await on("alibaba-cn")).toEqual(["qwen-plus"])
+      },
+    })
+  } finally {
+    await restoreCatalog()
+    await Auth.remove("deepseek")
+    await Auth.remove("moonshotai-cn")
+    await Auth.remove("zhipuai")
+  }
+})
+
+test("an official provider keeps only the newest model of each line on the homepage", async () => {
+  await writeCatalog("anthropic", [
+    { id: "claude-opus-4-7" },
+    { id: "claude-opus-5-5" },
+    { id: "claude-opus-5-5-20251101" },
+    { id: "claude-sonnet-5-5" },
+    { id: "claude-sonnet-4-5" },
+    { id: "tts-1" },
+    { id: "claude-haiku-5-5", toolcall: false },
+  ])
+  await writeCatalog("openai", [
+    { id: "gpt-5.6-sol" },
+    { id: "gpt-5.6-terra" },
+    { id: "gpt-5.6-luna" },
+    { id: "gpt-5.4-mini" },
+    { id: "gpt-5-mini" },
+    { id: "gpt-image-1" },
+  ])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("anthropic", { type: "api", key: "test-api-key" })
+        await Auth.set("openai", { type: "api", key: "test-openai-key" })
+      },
+      fn: async () => {
+        const shown = async (id: string) =>
+          Object.fromEntries(
+            Object.entries((await Provider.list())[id].models).map(([modelID, model]) => [modelID, model.homepage]),
+          )
+        expect(await shown("anthropic")).toEqual({
+          "claude-opus-4-7": false,
+          "claude-opus-5-5": true,
+          "claude-opus-5-5-20251101": false,
+          "claude-sonnet-5-5": true,
+          "claude-sonnet-4-5": false,
+          "tts-1": false,
+          "claude-haiku-5-5": false,
+        })
+        expect(await shown("openai")).toEqual({
+          "gpt-5.6-sol": true,
+          "gpt-5.6-terra": false,
+          "gpt-5.6-luna": false,
+          "gpt-5.4-mini": false,
+          "gpt-5-mini": false,
+          "gpt-image-1": false,
+        })
+
+        await writeCatalog("openai", [
+          { id: "gpt-5.6-sol" },
+          { id: "gpt-5.6-terra" },
+          { id: "gpt-5.6-luna" },
+          { id: "gpt-5.4-mini" },
+          { id: "gpt-5-mini" },
+          { id: "gpt-image-1" },
+          { id: "gpt-6-sol" },
+        ])
+        Provider.invalidate()
+        const next = await shown("openai")
+        expect(next["gpt-6-sol"]).toBe(true)
+        expect(next["gpt-5.6-sol"]).toBe(false)
+        expect(next["gpt-5.6-terra"]).toBe(false)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+test("a configured provider shows every model until the user turns one off", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "merakcode.json"),
+        JSON.stringify({
+          $schema: Config.SCHEMA,
+          provider: {
+            relay: {
+              name: "Relay",
+              npm: "@ai-sdk/openai-compatible",
+              options: { apiKey: "relay-key" },
+              models: {
+                "qwen-plus": { name: "Qwen Plus" },
+                "qwen-plus-2025-12-01": { name: "Qwen Plus Snapshot" },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const flags = () => {
+        const models = Provider.list().then((providers) => providers.relay.models)
+        return models.then((models) =>
+          Object.fromEntries(Object.entries(models).map(([id, model]) => [id, model.homepage])),
+        )
+      }
+      expect(await flags()).toEqual({ "qwen-plus": true, "qwen-plus-2025-12-01": true })
+
+      await Config.updateProjectMerakCode({
+        provider: { relay: { picker: { exclude: ["qwen-plus-2025-12-01"] } } },
+      })
+      Provider.invalidate()
+      expect(await flags()).toEqual({ "qwen-plus": true, "qwen-plus-2025-12-01": false })
+
+      await Config.updateProjectMerakCode({
+        provider: { relay: { picker: { exclude: [] } } },
+      })
+      Provider.invalidate()
+      expect(await flags()).toEqual({ "qwen-plus": true, "qwen-plus-2025-12-01": true })
+
+      await Config.updateProjectMerakCode({
+        provider: {
+          relay: {
+            models: { "qwen-max": { name: "Qwen Max" } },
+          },
+        },
+      })
+      Provider.invalidate()
+      expect((await flags())["qwen-max"]).toBe(true)
+    },
+  })
+})
+
+test("include and exclude move an official model on or off the homepage", async () => {
+  await writeCatalog("anthropic", [{ id: "claude-opus-5-5" }, { id: "claude-opus-5-5-20251101" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(
+          path.join(dir, "merakcode.json"),
+          JSON.stringify({
+            $schema: Config.SCHEMA,
+            provider: {
+              anthropic: {
+                picker: {
+                  exclude: ["claude-opus-5-5"],
+                  include: ["claude-opus-5-5-20251101"],
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("anthropic", { type: "api", key: "test-api-key" })
+      },
+      fn: async () => {
+        const models = (await Provider.list()).anthropic.models
+        expect(models["claude-opus-5-5"].homepage).toBe(false)
+        expect(models["claude-opus-5-5-20251101"].homepage).toBe(true)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+test("a short date after the version stays on the same line as the current id", async () => {
+  await writeCatalog("moonshotai-cn", [{ id: "kimi-k3.1-pro-0905" }, { id: "kimi-k3.1-pro" }])
+  await writeCatalog("google", [{ id: "gemini-2.5-flash" }, { id: "gemini-2.5-flash-preview-05-20" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("moonshotai-cn", { type: "api", key: "test-moonshot-key" })
+        await Auth.set("google", { type: "api", key: "test-google-key" })
+      },
+      fn: async () => {
+        const home = async (providerID: string, modelID: string) =>
+          (await Provider.list())[providerID].models[modelID].homepage
+        expect(await home("moonshotai-cn", "kimi-k3.1-pro")).toBe(true)
+        expect(await home("moonshotai-cn", "kimi-k3.1-pro-0905")).toBe(false)
+        expect(await home("google", "gemini-2.5-flash")).toBe(true)
+        expect(await home("google", "gemini-2.5-flash-preview-05-20")).toBe(false)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+    await Auth.remove("moonshotai-cn")
+  }
+})
+
+test("a vision letter stays off the plain model line", async () => {
+  await writeCatalog("zhipuai", [{ id: "glm-4.6v" }, { id: "glm-4.5v" }, { id: "glm-4.7" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("zhipuai", { type: "api", key: "test-zhipu-key" })
+      },
+      fn: async () => {
+        const models = (await Provider.list()).zhipuai.models
+        expect(models["glm-4.6v"].homepage).toBe(false)
+        expect(models["glm-4.5v"].homepage).toBe(false)
+        expect(models["glm-4.7"].homepage).toBe(true)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+    await Auth.remove("zhipuai")
+  }
+})
+
+test("a sized open-weight id stays off the homepage", async () => {
+  await writeCatalog("alibaba-cn", [{ id: "qwen3-14b" }, { id: "qwen2-5-72b-instruct" }, { id: "qwen-plus" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("alibaba-cn", { type: "api", key: "test-alibaba-key" })
+      },
+      fn: async () => {
+        const models = (await Provider.list())["alibaba-cn"].models
+        expect(models["qwen3-14b"].homepage).toBe(false)
+        expect(models["qwen2-5-72b-instruct"].homepage).toBe(false)
+        expect(models["qwen-plus"].homepage).toBe(true)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+test("a hosted catalog only defaults to its own model families", async () => {
+  await writeCatalog("alibaba-cn", [{ id: "deepseek-v3" }, { id: "moonshot-kimi-k2-instruct" }, { id: "qwen-plus" }])
+  await writeCatalog("openrouter", [{ id: "google/gemini-3-pro" }, { id: "openai/gpt-5.2" }])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("alibaba-cn", { type: "api", key: "test-alibaba-key" })
+        await Auth.set("openrouter", { type: "api", key: "test-openrouter-key" })
+      },
+      fn: async () => {
+        const alibaba = (await Provider.list())["alibaba-cn"].models
+        expect(alibaba["deepseek-v3"].homepage).toBe(false)
+        expect(alibaba["moonshot-kimi-k2-instruct"].homepage).toBe(false)
+        expect(alibaba["qwen-plus"].homepage).toBe(true)
+        const routed = await Provider.list()
+        expect(routed.openrouter.models["google/gemini-3-pro"].homepage).toBe(false)
+        expect(routed.openrouter.models["openai/gpt-5.2"].homepage).toBe(false)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+test("speech, embedding, realtime and image models stay off the homepage", async () => {
+  await writeCatalog("openai", [
+    { id: "tts-1" },
+    { id: "text-embedding-3-small" },
+    { id: "gpt-realtime" },
+    { id: "gpt-image-1" },
+    { id: "gpt-6-sol" },
+  ])
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        await Auth.set("openai", { type: "api", key: "test-openai-key" })
+      },
+      fn: async () => {
+        const models = (await Provider.list()).openai.models
+        expect(models["tts-1"].homepage).toBe(false)
+        expect(models["text-embedding-3-small"].homepage).toBe(false)
+        expect(models["gpt-realtime"].homepage).toBe(false)
+        expect(models["gpt-image-1"].homepage).toBe(false)
+        expect(models["gpt-6-sol"].homepage).toBe(true)
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+const SEEDED_HOMEPAGE: Record<string, string[]> = {
+  "alibaba-cn": ["qwen-max", "qwen-plus"],
+  anthropic: ["claude-opus-4-5", "claude-sonnet-4-5"],
+  deepseek: [],
+  google: ["gemini-3-flash-preview", "gemini-3-pro-preview"],
+  "moonshotai-cn": [],
+  openai: [],
+  openrouter: [],
+  zhipuai: ["glm-4.7", "glm-4.7-flash"],
+}
+
+test("a seeded catalog defaults to the current model of each live line", async () => {
+  for (const [name] of Object.entries(SEEDED_HOMEPAGE)) {
+    const seed = JSON.parse(readFileSync(new URL(`./catalog/seed/${name}.json`, import.meta.url), "utf8")) as {
+      models: Array<{ id: string }>
+    }
+    await writeCatalog(name, seed.models)
+  }
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Filesystem.write(path.join(dir, "merakcode.json"), JSON.stringify({ $schema: Config.SCHEMA }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      init: async () => {
+        for (const name of Object.keys(SEEDED_HOMEPAGE)) await Auth.set(name, { type: "api", key: `test-${name}` })
+      },
+      fn: async () => {
+        const listed = await Provider.list()
+        for (const [name, expected] of Object.entries(SEEDED_HOMEPAGE)) {
+          const on = Object.entries(listed[name].models)
+            .filter(([, model]) => model.homepage)
+            .map(([id]) => id)
+            .toSorted()
+          expect(on, name).toEqual(expected)
+        }
+      },
+    })
+  } finally {
+    await restoreCatalog()
+    await Auth.remove("deepseek")
+    await Auth.remove("moonshotai-cn")
+    await Auth.remove("zhipuai")
+  }
 })

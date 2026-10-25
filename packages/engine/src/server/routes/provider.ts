@@ -4,7 +4,6 @@ import { describeRoute, resolver } from "hono-openapi"
 import { validator } from "../validator"
 import z from "zod"
 import { Provider } from "../../provider/provider"
-import { ModelsDev } from "../../provider/models"
 import { ProviderAuth } from "../../provider/auth"
 import { ProviderVerify } from "../../provider/verify"
 import { Relay } from "../../provider/relay"
@@ -15,10 +14,7 @@ import { lazy } from "../../util/lazy"
 async function buildProviderListResponse() {
   const filteredProviders = await Provider.getFilteredProviders()
   const connected = await Provider.list()
-  const providers = Object.assign(
-    mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x)),
-    connected,
-  )
+  const providers = Object.assign({}, filteredProviders, connected)
   return {
     all: Provider.sortProvidersByPriority(Object.values(providers)),
     default: mapValues(providers, (item) => sortModels(Object.values(item.models))[0]?.id ?? ""),
@@ -42,7 +38,7 @@ export const ProviderRoutes = lazy(() =>
               "application/json": {
                 schema: resolver(
                   z.object({
-                    all: ModelsDev.Provider.array(),
+                    all: Provider.Info.array(),
                     default: z.record(z.string(), z.string()),
                     connected: z.array(z.string()),
                   }),
@@ -82,7 +78,7 @@ export const ProviderRoutes = lazy(() =>
       describeRoute({
         summary: "Refresh model catalog",
         description:
-          "Fetch the latest model catalog (models.dev) into the local cache and rebuild providers. Returns false when the fetch fails and the cached catalog stays in use.",
+          "Fetch connected providers' model lists into the local cache and rebuild providers. Returns false when every fetch fails and the cached catalog stays in use.",
         operationId: "provider.catalog.refresh",
         responses: {
           200: {
@@ -91,11 +87,7 @@ export const ProviderRoutes = lazy(() =>
           },
         },
       }),
-      async (c) => {
-        const refreshed = await ModelsDev.refresh()
-        if (refreshed) Provider.invalidateAll()
-        return c.json(refreshed)
-      },
+      async (c) => c.json((await Provider.refreshCatalog(undefined, true)).updated),
     )
     .post(
       "/refresh",
@@ -130,24 +122,7 @@ export const ProviderRoutes = lazy(() =>
             content: {
               "application/json": {
                 schema: resolver(
-                  z.union([
-                    z.object({
-                      models: z.array(
-                        z.object({
-                          id: z.string(),
-                          context: z.number().optional(),
-                          output: z.number().optional(),
-                          contextFrom: z.enum(["relay", "catalog", "fallback"]).optional(),
-                          outputFrom: z.enum(["relay", "catalog", "fallback"]).optional(),
-                          endpoint: z.enum(["anthropic", "openai-responses", "openai-chat"]).optional(),
-                          image: z.boolean().optional(),
-                          reasoning: z.boolean().optional(),
-                          toolcall: z.boolean().optional(),
-                        }),
-                      ),
-                    }),
-                    z.object({ error: z.string() }),
-                  ]),
+                  z.union([z.object({ models: z.array(Relay.Listed) }), z.object({ error: z.string() })]),
                 ),
               },
             },

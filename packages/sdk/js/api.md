@@ -29,7 +29,7 @@ type RunOptions = Handlers & { agent?: string; model?: string; mode?: Permission
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 987 exports generated from openapi.json
++ 988 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
@@ -38,7 +38,7 @@ interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 987 exports generated from openapi.json
++ 988 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 

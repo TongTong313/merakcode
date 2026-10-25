@@ -5,18 +5,10 @@ import { call, client } from "../../state/client"
 import { connected, loadProviders, state } from "../../state/store"
 import { setUi, ui } from "../../state/ui"
 import { Dialog } from "../../ui/dialog"
+import { providerLabel } from "../../ui/provider-label"
 
-/** Providers listed directly on the onboarding page (ids from the model catalog); the rest are in settings */
-const FEATURED: { id: string; zh: string; en: string }[] = [
-  { id: "alibaba-cn", zh: "阿里云百炼", en: "Alibaba Cloud Model Studio" },
-  { id: "deepseek", zh: "DeepSeek", en: "DeepSeek" },
-  { id: "zhipuai", zh: "智谱", en: "Zhipu AI" },
-  { id: "moonshotai-cn", zh: "月之暗面", en: "Moonshot AI" },
-  { id: "openai", zh: "OpenAI", en: "OpenAI" },
-  { id: "anthropic", zh: "Anthropic", en: "Anthropic" },
-  { id: "google", zh: "Google", en: "Google" },
-  { id: "openrouter", zh: "OpenRouter", en: "OpenRouter" },
-]
+/** Providers listed directly on the onboarding page; the rest are in settings */
+const FEATURED = ["alibaba-cn", "deepseek", "zhipuai", "moonshotai-cn", "openai", "anthropic", "google", "openrouter"]
 
 /**
  * Shown while no model is usable: pick a provider, enter a key, verify. Can be skipped, which keeps it closed for the
@@ -28,9 +20,14 @@ export function Onboarding() {
   const [error, setError] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
   const open = () => !!state.providers && !connected() && !ui.skipped && !ui.settings
-  const providers = () => FEATURED.filter((item) => state.providers?.all.some((provider) => provider.id === item.id))
+  const providers = () =>
+    FEATURED.flatMap((id) => {
+      const provider = state.providers?.all.find((item) => item.id === id)
+      return provider ? [provider] : []
+    })
   const directory = () => state.folders[0]?.directory
-  const label = (item: (typeof FEATURED)[number]) => (locale() === "zh" ? item.zh : item.en)
+  const label = (item: { id: string; name: string; origin?: "official" | "configured" }) =>
+    providerLabel(item, locale())
 
   const verify = async () => {
     const providerID = picked()

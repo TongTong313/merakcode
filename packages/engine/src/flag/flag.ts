@@ -52,7 +52,7 @@ export namespace Flag {
   export const MERAKCODE_DISABLE_LSP_DOWNLOAD = truthy("DISABLE_LSP_DOWNLOAD")
   export const MERAKCODE_ENABLE_EXPERIMENTAL_MODELS = truthy("ENABLE_EXPERIMENTAL_MODELS")
   export const MERAKCODE_DISABLE_AUTOCOMPACT = truthy("DISABLE_AUTOCOMPACT")
-  export const MERAKCODE_DISABLE_MODELS_FETCH = truthy("DISABLE_MODELS_FETCH")
+  export const MERAKCODE_DISABLE_CATALOG_FETCH = truthy("DISABLE_CATALOG_FETCH")
   export const MERAKCODE_DISABLE_CLAUDE_CODE = truthy("DISABLE_CLAUDE_CODE")
   export const MERAKCODE_DISABLE_CLAUDE_CODE_PROMPT =
     MERAKCODE_DISABLE_CLAUDE_CODE || truthy("DISABLE_CLAUDE_CODE_PROMPT")
@@ -103,8 +103,6 @@ export namespace Flag {
   // Plan/Build mode (plan file plus plan_enter/plan_exit) is on for every client (CLI / desktop / web);
   // MERAKCODE_DISABLE_PLAN_MODE=1 turns it off as a fallback switch
   export const MERAKCODE_PLAN_MODE = !truthy("DISABLE_PLAN_MODE")
-  export const MERAKCODE_MODELS_URL = env("MODELS_URL")
-  export const MERAKCODE_MODELS_PATH = env("MODELS_PATH")
 
   function number(name: string) {
     const value = env(name)

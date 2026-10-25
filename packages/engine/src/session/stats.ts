@@ -3,6 +3,7 @@
  * Covers all sessions stored on this machine, optionally filtered by project or by the last N days.
  */
 import z from "zod"
+import { Provider } from "../provider/provider"
 import { Session } from "./index"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -18,15 +19,23 @@ export namespace SessionStats {
     .object({
       totalSessions: z.number(),
       totalMessages: z.number(),
-      totalCost: z.number(),
+      totalCost: z.record(z.string(), z.number()),
       totalTokens: Tokens.extend({ reasoning: z.number() }),
       toolUsage: z.record(z.string(), z.number()),
-      /** Keyed by provider/model; output includes reasoning tokens */
-      modelUsage: z.record(z.string(), z.object({ messages: z.number(), tokens: Tokens, cost: z.number() })),
+      /** Keyed by provider/model; output includes reasoning tokens. cost is omitted from the total when price is unknown. */
+      modelUsage: z.record(
+        z.string(),
+        z.object({
+          messages: z.number(),
+          tokens: Tokens,
+          cost: z.number(),
+          currency: z.enum(["USD", "CNY"]).optional(),
+        }),
+      ),
       dateRange: z.object({ earliest: z.number(), latest: z.number() }),
       /** Days in the window: the days query if given (0 means today and counts as 1), else earliest to latest */
       days: z.number(),
-      costPerDay: z.number(),
+      costPerDay: z.record(z.string(), z.number()),
       tokensPerSession: z.number(),
       medianTokensPerSession: z.number(),
     })
@@ -56,13 +65,13 @@ export namespace SessionStats {
     const stats: Info = {
       totalSessions: sessions.length,
       totalMessages: 0,
-      totalCost: 0,
+      totalCost: {},
       totalTokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       toolUsage: {},
       modelUsage: {},
       dateRange: { earliest: now, latest: now },
       days: window ?? 0,
-      costPerDay: 0,
+      costPerDay: {},
       tokensPerSession: 0,
       medianTokensPerSession: 0,
     }
@@ -76,7 +85,7 @@ export namespace SessionStats {
       const loaded = await Promise.all(
         batch.map((session) => Session.messages({ sessionID: session.id, projectID: session.projectID })),
       )
-      loaded.forEach((messages, index) => {
+      for (const [index, messages] of loaded.entries()) {
         const session = batch[index]!
         range.earliest = Math.min(range.earliest, cutoff > 0 ? session.time.updated : session.time.created)
         range.latest = Math.max(range.latest, session.time.updated)
@@ -95,12 +104,19 @@ export namespace SessionStats {
             cost: 0,
           })
           model.messages++
-          model.cost += cost
+          const priced = await Provider.getModel(message.info.providerID, message.info.modelID)
+            .then((found) => found.cost)
+            .catch(() => undefined)
+          if (priced) {
+            const currency = priced.currency ?? "USD"
+            model.currency = currency
+            model.cost += cost
+            stats.totalCost[currency] = (stats.totalCost[currency] ?? 0) + cost
+          }
           model.tokens.input += tokens.input
           model.tokens.output += tokens.output + tokens.reasoning
           model.tokens.cache.read += tokens.cache.read
           model.tokens.cache.write += tokens.cache.write
-          stats.totalCost += cost
           stats.totalTokens.input += tokens.input
           stats.totalTokens.output += tokens.output
           stats.totalTokens.reasoning += tokens.reasoning
@@ -109,7 +125,7 @@ export namespace SessionStats {
           total += tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
         }
         totals.push(total)
-      })
+      }
     }
 
     const days = window ?? Math.max(1, Math.ceil((range.latest - range.earliest) / DAY))
@@ -120,7 +136,9 @@ export namespace SessionStats {
       ...stats,
       dateRange: range,
       days,
-      costPerDay: stats.totalCost / days,
+      costPerDay: Object.fromEntries(
+        Object.entries(stats.totalCost).map(([currency, amount]) => [currency, amount / days]),
+      ),
       tokensPerSession: sum / sessions.length,
       medianTokensPerSession: totals.length % 2 === 0 ? (totals[mid - 1]! + totals[mid]!) / 2 : totals[mid]!,
     }
