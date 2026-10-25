@@ -481,4 +481,72 @@ describe("session.getUsage", () => {
 
     expect(result.cost).toBe(10)
   })
+
+  test("a long Bailian input is billed at the matching tier", () => {
+    const model = createModel({
+      context: 1_000_000,
+      output: 32_000,
+      cost: {
+        input: 1,
+        output: 2,
+        cache: { read: 0, write: 0 },
+        currency: "CNY",
+        tiers: [
+          { above: 32_000, input: 2, output: 8, cache: { read: 0, write: 0 } },
+          { above: 256_000, input: 4, output: 16, cache: { read: 0, write: 0 } },
+        ],
+      },
+    })
+    const result = Session.getUsage({
+      model,
+      usage: usage({ total: 40_000, noCache: 40_000, output: 1_000_000 }),
+    })
+    expect(result.cost).toBeCloseTo(8.08)
+  })
+
+  test("a long reply with reasoning tokens uses the thinking price of the matching tier", () => {
+    const model = createModel({
+      context: 1_000_000,
+      output: 32_000,
+      cost: {
+        input: 0.8,
+        output: 2,
+        cache: { read: 0, write: 0 },
+        currency: "CNY",
+        thinking: { input: 0.8, output: 8, cache: { read: 0, write: 0 } },
+        tiers: [
+          {
+            above: 128_000,
+            input: 2.4,
+            output: 20,
+            cache: { read: 0, write: 0 },
+            thinking: { input: 2.4, output: 24, cache: { read: 0, write: 0 } },
+          },
+        ],
+      },
+    })
+    const result = Session.getUsage({
+      model,
+      usage: usage({ total: 200_000, noCache: 200_000, output: 1_000_000, reasoning: 10 }),
+    })
+    expect(result.cost).toBeCloseTo(0.48 + 24)
+  })
+
+  test("a reply with reasoning tokens uses the thinking price", () => {
+    const model = createModel({
+      context: 1_000_000,
+      output: 32_000,
+      cost: {
+        input: 1,
+        output: 2,
+        cache: { read: 0, write: 0 },
+        thinking: { input: 10, output: 20, cache: { read: 0, write: 0 } },
+      },
+    })
+    const result = Session.getUsage({
+      model,
+      usage: usage({ total: 1_000_000, noCache: 1_000_000, output: 1_000_000, reasoning: 100 }),
+    })
+    expect(result.cost).toBeCloseTo(30)
+  })
 })

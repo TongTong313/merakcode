@@ -1,0 +1,109 @@
+{
+  "fetchedAt": 1792903204428,
+  "models": [
+    {
+      "id": "glm-4.6v",
+      "name": "GLM-4.6V",
+      "context": 128000,
+      "output": 32768,
+      "input": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-12-08"
+    },
+    {
+      "id": "glm-4.6",
+      "name": "GLM-4.6",
+      "context": 204800,
+      "output": 131072,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-09-30"
+    },
+    {
+      "id": "glm-4.5v",
+      "name": "GLM-4.5V",
+      "context": 64000,
+      "output": 16384,
+      "input": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-08-11"
+    },
+    {
+      "id": "glm-4.5-air",
+      "name": "GLM-4.5-Air",
+      "context": 131072,
+      "output": 98304,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-07-28"
+    },
+    {
+      "id": "glm-4.7-flash",
+      "name": "GLM-4.7-Flash",
+      "context": 200000,
+      "output": 131072,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2026-01-19"
+    },
+    {
+      "id": "glm-4.5",
+      "name": "GLM-4.5",
+      "context": 131072,
+      "output": 98304,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-07-28"
+    },
+    {
+      "id": "glm-4.5-flash",
+      "name": "GLM-4.5-Flash",
+      "context": 131072,
+      "output": 98304,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-07-28"
+    },
+    {
+      "id": "glm-4.7",
+      "name": "GLM-4.7",
+      "context": 204800,
+      "output": 131072,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-12-22"
+    }
+  ]
+}

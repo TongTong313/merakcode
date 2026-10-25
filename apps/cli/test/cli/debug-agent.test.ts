@@ -27,8 +27,7 @@ test("debug agent --tool runs a tool directly under the agent's permission rules
       cwd: tmp.path,
       env: {
         ...process.env,
-        MERAKCODE_MODELS_PATH: path.join(root, "../../packages/engine/test/tool/fixtures/models-api.json"),
-        MERAKCODE_DISABLE_MODELS_FETCH: "1",
+        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
         // The agent needs a default model even though no model is called; a fake key keeps the test off real keys
         MERAKCODE_CONFIG_CONTENT: JSON.stringify({
           model: "alibaba-cn/qwen-plus",

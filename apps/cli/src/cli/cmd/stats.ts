@@ -67,11 +67,12 @@ function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: numb
 
   // Cost & Tokens section
   header(t("cli.stats.costTokens"))
-  const cost = isNaN(stats.totalCost) ? 0 : stats.totalCost
-  const costPerDay = isNaN(stats.costPerDay) ? 0 : stats.costPerDay
   const tokensPerSession = isNaN(stats.tokensPerSession) ? 0 : stats.tokensPerSession
-  console.log(renderRow(t("cli.stats.totalCost"), `$${cost.toFixed(2)}`))
-  console.log(renderRow(t("cli.stats.costPerDay"), `$${costPerDay.toFixed(2)}`))
+  const money = (currency: string, amount: number) => `${currency === "CNY" ? "¥" : "$"}${amount.toFixed(2)}`
+  for (const [currency, amount] of Object.entries(stats.totalCost)) {
+    console.log(renderRow(t("cli.stats.totalCost"), money(currency, amount)))
+    console.log(renderRow(t("cli.stats.costPerDay"), money(currency, stats.costPerDay[currency] ?? 0)))
+  }
   console.log(renderRow(t("cli.stats.tokensPerSession"), formatNumber(Math.round(tokensPerSession))))
   const medianTokensPerSession = isNaN(stats.medianTokensPerSession) ? 0 : stats.medianTokensPerSession
   console.log(renderRow(t("cli.stats.medianTokens"), formatNumber(Math.round(medianTokensPerSession))))
@@ -96,7 +97,10 @@ function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: numb
       console.log(renderRow("  " + t("cli.stats.outputTokens"), formatNumber(usage.tokens.output)))
       console.log(renderRow("  " + t("cli.stats.cacheRead"), formatNumber(usage.tokens.cache.read)))
       console.log(renderRow("  " + t("cli.stats.cacheWrite"), formatNumber(usage.tokens.cache.write)))
-      console.log(renderRow("  " + t("cli.stats.cost"), `$${usage.cost.toFixed(4)}`))
+      if (usage.currency) {
+        const symbol = usage.currency === "CNY" ? "¥" : "$"
+        console.log(renderRow("  " + t("cli.stats.cost"), `${symbol}${usage.cost.toFixed(4)}`))
+      }
       console.log("├────────────────────────────────────────────────────────┤")
     }
     // Remove last separator and add bottom border

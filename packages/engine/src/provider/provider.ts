@@ -9,13 +9,12 @@ import { NoSuchModelError, type LanguageModel } from "ai"
 import { Log } from "@merakcode/log/logger"
 import { Npm } from "../npm"
 import { Plugin } from "../plugin"
-import { ModelsDev, ReasoningOption } from "./models"
-import { OFFICIAL_PROVIDER_IDS } from "./official"
+import { OFFICIAL, OFFICIAL_PROVIDER_IDS, official, type OfficialID } from "./official"
+import * as Catalog from "./catalog"
 import { NamedError } from "@merakcode/util/error"
 import { Auth } from "../auth"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
-import { iife } from "../util/iife"
 import { Storage } from "../storage/storage"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
@@ -31,9 +30,20 @@ import { Relay } from "./relay"
 import { Text } from "../util/text"
 import { Agent } from "undici"
 import { parseModel as parseModelRef, sortModels } from "@merakcode/util/model"
+import { applyHomepage } from "./homepage"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
+
+  /** A model-list fetch failed. The code follows the HTTP status: 401 and 403 are MRK-2001, 429 is MRK-2004. */
+  export const CatalogRefreshError = NamedError.create(
+    "CatalogRefreshError",
+    z.object({
+      providerID: z.string(),
+      message: z.string(),
+      statusCode: z.number().optional(),
+    }),
+  )
 
   /**
    * Connection pool for model requests, without fetch's default timeouts (5 minutes each for headers and the next
@@ -48,7 +58,8 @@ export namespace Provider {
       "provider.changed",
       z.object({
         providerID: z.string().optional(),
-        reason: z.enum(["connected", "disconnected", "refreshed"]),
+        reason: z.enum(["connected", "disconnected", "refreshed", "refresh-failed"]),
+        error: CatalogRefreshError.Schema.optional(),
       }),
     ),
   }
@@ -109,6 +120,13 @@ export namespace Provider {
     },
   }
 
+  /** Price per million tokens. */
+  const Rate = z.object({
+    input: z.number(),
+    output: z.number(),
+    cache: z.object({ read: z.number(), write: z.number() }),
+  })
+
   export const Model = z
     .object({
       id: z.string(),
@@ -146,24 +164,11 @@ export namespace Provider {
           }),
         ]),
       }),
-      cost: z.object({
-        input: z.number(),
-        output: z.number(),
-        cache: z.object({
-          read: z.number(),
-          write: z.number(),
-        }),
-        experimentalOver200K: z
-          .object({
-            input: z.number(),
-            output: z.number(),
-            cache: z.object({
-              read: z.number(),
-              write: z.number(),
-            }),
-          })
-          .optional(),
-      }),
+      cost: Rate.extend({
+        currency: z.enum(["USD", "CNY"]).optional(),
+        tiers: z.array(Rate.extend({ above: z.number(), thinking: Rate.optional() })).optional(),
+        thinking: Rate.optional(),
+      }).optional(),
       limit: z.object({
         context: z.number(),
         input: z.number().optional(),
@@ -173,8 +178,9 @@ export namespace Provider {
       options: z.record(z.string(), z.any()),
       headers: z.record(z.string(), z.string()),
       release_date: z.string(),
+      homepage: z.boolean().optional(),
       variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
-      reasoning_options: z.array(ReasoningOption).optional(),
+      defaultVariant: z.string().optional(),
     })
     .meta({
       ref: "Model",
@@ -186,6 +192,7 @@ export namespace Provider {
       id: z.string(),
       name: z.string(),
       source: z.enum(["env", "config", "custom", "api"]),
+      origin: z.enum(["official", "configured"]).optional(),
       env: z.string().array(),
       key: z.string().optional(),
       options: z.record(z.string(), z.any()),
@@ -196,83 +203,41 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
-  function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
-    const m: Model = {
-      id: model.id,
-      providerID: provider.id,
-      name: model.name,
-      family: model.family,
-      api: {
-        id: model.id,
-        url: model.provider?.api ?? provider.api!,
-        npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
-      },
-      status: model.status ?? "active",
-      headers: model.headers ?? {},
-      options: model.options ?? {},
-      cost: {
-        input: model.cost?.input ?? 0,
-        output: model.cost?.output ?? 0,
-        cache: {
-          read: model.cost?.cache_read ?? 0,
-          write: model.cost?.cache_write ?? 0,
-        },
-        experimentalOver200K: model.cost?.context_over_200k
-          ? {
-              cache: {
-                read: model.cost.context_over_200k.cache_read ?? 0,
-                write: model.cost.context_over_200k.cache_write ?? 0,
-              },
-              input: model.cost.context_over_200k.input,
-              output: model.cost.context_over_200k.output,
-            }
-          : undefined,
-      },
-      limit: {
-        context: model.limit.context,
-        input: model.limit.input,
-        output: model.limit.output,
-      },
-      capabilities: {
-        temperature: model.temperature,
-        reasoning: model.reasoning,
-        attachment: model.attachment,
-        toolcall: model.tool_call,
-        input: {
-          text: model.modalities?.input?.includes("text") ?? false,
-          audio: model.modalities?.input?.includes("audio") ?? false,
-          image: model.modalities?.input?.includes("image") ?? false,
-          video: model.modalities?.input?.includes("video") ?? false,
-          pdf: model.modalities?.input?.includes("pdf") ?? false,
-        },
-        output: {
-          text: model.modalities?.output?.includes("text") ?? false,
-          audio: model.modalities?.output?.includes("audio") ?? false,
-          image: model.modalities?.output?.includes("image") ?? false,
-          video: model.modalities?.output?.includes("video") ?? false,
-          pdf: model.modalities?.output?.includes("pdf") ?? false,
-        },
-        interleaved: model.interleaved ?? false,
-      },
-      release_date: model.release_date,
-      reasoning_options: model.reasoning_options,
-      variants: {},
+  async function loadCatalog(): Promise<Record<string, Info>> {
+    const pub = await Catalog.readPublic()
+    const result: Record<string, Info> = {}
+    for (const spec of Object.values(OFFICIAL)) {
+      const models = await Catalog.read(spec.id)
+      const built: Record<string, Model> = {}
+      for (const model of models) {
+        built[model.id] = Catalog.toProviderModel({
+          providerID: spec.id,
+          npm: spec.npm,
+          url: spec.api,
+          interleaved: spec.interleaved,
+          official: model,
+          public: Catalog.lookup(pub, spec.id, model.id),
+          fallback: Catalog.fallbackFor(spec.id, model.id),
+        })
+      }
+      result[spec.id] = {
+        id: spec.id,
+        source: "custom",
+        origin: "official",
+        name: spec.name,
+        env: [...spec.env],
+        options: {},
+        models: built,
+      }
     }
-
-    m.variants = mapValues(ProviderTransform.variants(m), (v) => v)
-
-    return m
+    return result
   }
 
-  export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
-    return {
-      id: provider.id,
-      source: "custom",
-      name: provider.name,
-      env: provider.env ?? [],
-      options: {},
-      models: mapValues(provider.models, (model) => fromModelsDevModel(provider, model)),
-    }
+  /** Plugins hand back finished models; they still get the shared level menu and default. */
+  function withLevels(model: Model) {
+    if (!model.variants || Object.keys(model.variants).length === 0) ProviderTransform.fillVariants(model, {})
+    else model.defaultVariant ??= ProviderTransform.pickDefault(Object.keys(model.variants), undefined)
+    return model
   }
 
   /** Sorts providers by name for the /provider and /config/providers lists */
@@ -290,17 +255,75 @@ export namespace Provider {
   }
 
   /**
-   * ModelsDev catalog filtered by enabled/disabled, used by the API list and available-provider logic.
+   * Official providers from the local catalog, filtered by enabled/disabled.
    * Same source as `all` in GET `/` of `server/routes/provider` (without the `connected` merge).
    */
-  export async function getFilteredProviders(): Promise<Record<string, ModelsDev.Provider>> {
+  export async function getFilteredProviders(): Promise<Record<string, Info>> {
     const config = await Config.get()
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
-    const allProviders = await ModelsDev.get()
+    const allProviders = await loadCatalog()
+    for (const [providerID, provider] of Object.entries(allProviders)) {
+      applyHomepage(provider, config.provider?.[providerID]?.picker)
+    }
     return Object.fromEntries(
       Object.entries(allProviders).filter(([key]) => (enabled ? enabled.has(key) : true) && !disabled.has(key)),
     )
+  }
+
+  /**
+   * Pulls one connected official provider, or every connected one plus the public catalog. Reads the global config:
+   * credentials and the catalog cache are global, and the save-key route and the hourly timer run outside a project.
+   */
+  export async function refreshCatalog(providerID?: string, force = false) {
+    const config = await Config.getGlobal()
+    const base = (id: string) => {
+      const spec = official(id)
+      const configured = config.provider?.[id]?.options?.baseURL
+      return (typeof configured === "string" && configured) || spec?.api || ""
+    }
+    const failures: Array<ReturnType<InstanceType<typeof CatalogRefreshError>["toObject"]>> = []
+    const written: string[] = []
+    let attempted = false
+    let wrote = false
+    const note = async (id: string, result: Catalog.RefreshResult) => {
+      if (result.ok) {
+        wrote = true
+        if (id !== "public") written.push(id)
+        return
+      }
+      // The public catalog only fills in limits. A failure there stays in the log.
+      if (id === "public") return
+      const error = new CatalogRefreshError({
+        providerID: id,
+        message: result.message,
+        statusCode: result.statusCode,
+      }).toObject()
+      failures.push(error)
+      await publishChanged({ providerID: id, reason: "refresh-failed", error })
+    }
+    if ((!providerID || providerID === "public") && (force || (await Catalog.stale("public")))) {
+      attempted = true
+      await note("public", await Catalog.refreshPublic())
+    }
+    const ids = providerID && providerID !== "public" ? [providerID] : [...OFFICIAL_PROVIDER_IDS]
+    const pub = Catalog.publicIDs(await Catalog.readPublic())
+    for (const id of ids) {
+      if (!force && !(await Catalog.stale(id))) continue
+      const auth = await Auth.get(id)
+      const configuredKey = config.provider?.[id]?.options?.apiKey
+      const key = auth?.type === "api" && auth.key ? auth.key : typeof configuredKey === "string" ? configuredKey : ""
+      if (!key) continue
+      attempted = true
+      await note(id, await Catalog.refresh(id, { key, baseURL: base(id), publicIDs: pub }))
+    }
+    if (wrote) {
+      invalidateAll()
+      // One event per provider that actually got a new list, so the UI can forget that provider's failure.
+      const refreshed = written.length > 0 ? written : [providerID]
+      for (const id of refreshed) await publishChanged({ providerID: id, reason: "refreshed" })
+    }
+    return { updated: attempted ? wrote : true, failures }
   }
 
   function extractHost(url: string): string {
@@ -354,14 +377,14 @@ export namespace Provider {
 
     const modelsStarted = Date.now()
     log.info("provider.models.started")
-    const modelsDev = await ModelsDev.get()
+    const database = await loadCatalog()
     log.info("provider.models.completed", {
       duration: Date.now() - modelsStarted,
-      providers: Object.keys(modelsDev).length,
+      providers: Object.keys(database).length,
     })
 
     const mapStarted = Date.now()
-    const database = mapValues(modelsDev, fromModelsDevProvider)
+    const pub = await Catalog.readPublic()
     log.info("provider.models.map.completed", {
       duration: Date.now() - mapStarted,
       providers: Object.keys(database).length,
@@ -410,80 +433,46 @@ export namespace Provider {
         env: provider.env ?? existing?.env ?? [],
         options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
         source: "config",
+        origin: official(providerID) ? "official" : "configured",
         models: existing?.models ?? {},
       }
 
+      const spec = official(providerID)
+      const cached = new Map((await Catalog.read(providerID)).map((model) => [model.id, model]))
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
-        const existingModel = parsed.models[model.id ?? modelID]
-        const name = iife(() => {
-          if (model.name) return model.name
-          if (model.id && model.id !== modelID) return modelID
-          return existingModel?.name ?? modelID
-        })
-        const parsedModel: Model = {
-          id: modelID,
-          api: {
-            id: model.id ?? existingModel?.api.id ?? modelID,
-            npm:
-              model.provider?.npm ??
-              provider.npm ??
-              existingModel?.api.npm ??
-              modelsDev[providerID]?.npm ??
-              "@ai-sdk/openai-compatible",
-            url: model.provider?.api ?? provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api,
-          },
-          status: model.status ?? existingModel?.status ?? "active",
-          name,
+        const extra = Catalog.configExtras(modelID, model, { npm: provider.npm, api: provider.api })
+        const existingModel = parsed.models[modelID]
+        const alias = model.id && model.id !== modelID ? modelID : undefined
+        const parsedModel = Catalog.toProviderModel({
           providerID,
-          capabilities: {
-            temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
-            attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
-            toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
-            input: {
-              text: model.modalities?.input?.includes("text") ?? existingModel?.capabilities.input.text ?? true,
-              audio: model.modalities?.input?.includes("audio") ?? existingModel?.capabilities.input.audio ?? false,
-              image: model.modalities?.input?.includes("image") ?? existingModel?.capabilities.input.image ?? false,
-              video: model.modalities?.input?.includes("video") ?? existingModel?.capabilities.input.video ?? false,
-              pdf: model.modalities?.input?.includes("pdf") ?? existingModel?.capabilities.input.pdf ?? false,
-            },
-            output: {
-              text: model.modalities?.output?.includes("text") ?? existingModel?.capabilities.output.text ?? true,
-              audio: model.modalities?.output?.includes("audio") ?? existingModel?.capabilities.output.audio ?? false,
-              image: model.modalities?.output?.includes("image") ?? existingModel?.capabilities.output.image ?? false,
-              video: model.modalities?.output?.includes("video") ?? existingModel?.capabilities.output.video ?? false,
-              pdf: model.modalities?.output?.includes("pdf") ?? existingModel?.capabilities.output.pdf ?? false,
-            },
-            interleaved: model.interleaved ?? false,
-          },
-          cost: {
-            input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
-            output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
-            cache: {
-              read: model?.cost?.cache_read ?? existingModel?.cost?.cache.read ?? 0,
-              write: model?.cost?.cache_write ?? existingModel?.cost?.cache.write ?? 0,
-            },
-          },
-          options: mergeDeep(existingModel?.options ?? {}, model.options ?? {}),
-          limit: {
-            context: model.limit?.context ?? existingModel?.limit?.context ?? 0,
-            output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
-          },
+          npm: extra.npm ?? existingModel?.api.npm ?? spec?.npm ?? "@ai-sdk/openai-compatible",
+          url: extra.url ?? existingModel?.api.url ?? spec?.api ?? provider.api ?? "",
+          interleaved: spec?.interleaved ?? false,
+          official: cached.get(modelID),
+          public: Catalog.lookup(pub, providerID, modelID),
+          fallback: Catalog.fallbackFor(providerID, modelID),
+          config: Catalog.fromConfig(modelID, { ...model, name: model.name ?? alias ?? existingModel?.name }),
+          apiID: extra.apiID,
           headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
-          family: model.family ?? existingModel?.family ?? "",
-          release_date: model.release_date ?? existingModel?.release_date ?? "",
-          reasoning_options: model.reasoning_options ?? existingModel?.reasoning_options,
-          variants: {},
-        }
-        const merged = mergeDeep(ProviderTransform.variants(parsedModel), model.variants ?? {})
+          options: mergeDeep(existingModel?.options ?? {}, model.options ?? {}),
+          family: model.family ?? existingModel?.family,
+          configInterleaved: extra.interleaved,
+        })
+        const merged = mergeDeep(parsedModel.variants ?? {}, model.variants ?? {})
         parsedModel.variants = mapValues(
           pickBy(merged, (v) => !v.disabled),
           (v) => omit(v, ["disabled"]),
         )
+        if (!parsedModel.variants[parsedModel.defaultVariant ?? ""]) {
+          parsedModel.defaultVariant = ProviderTransform.pickDefault(Object.keys(parsedModel.variants), undefined)
+        }
         parsed.models[modelID] = parsedModel
       }
       database[providerID] = parsed
     }
+    const unfetched = new Set(
+      OFFICIAL_PROVIDER_IDS.filter((id) => Object.keys(database[id]?.models ?? {}).length === 0),
+    )
 
     // load apikeys the user saved. Environment variables are not credentials.
     for (const [providerID, provider] of Object.entries(await Auth.all())) {
@@ -568,36 +557,10 @@ export namespace Provider {
           (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
         )
           delete provider.models[modelID]
-
-        model.variants = mapValues(ProviderTransform.variants(model), (v) => v)
-
-        // Custom provider models lack models.dev reasoning_options: an off variant means thinking can be toggled, so
-        // derive the toggle capability for the desktop switch.
-        if (!model.reasoning_options?.length && model.variants?.["off"]) {
-          model.reasoning_options = [{ type: "toggle" }]
-        }
-
-        // Filter out disabled variants from config
-        const configVariants = configProvider?.models?.[modelID]?.variants
-        if (configVariants && model.variants) {
-          const merged = mergeDeep(model.variants, configVariants)
-          model.variants = mapValues(
-            pickBy(merged, (v) => !v.disabled),
-            (v) => omit(v, ["disabled"]),
-          )
-        }
-
-        // Checked after the config merge: models without off/on variants expose no toggle, so the desktop shows no fake
-        // switch
-        if (model.reasoning_options?.length) {
-          const hasToggleVariant = ["off", "on"].some((key) => key in (model.variants ?? {}))
-          if (!hasToggleVariant) {
-            model.reasoning_options = model.reasoning_options.filter((option) => option.type !== "toggle")
-          }
-        }
       }
 
-      if (Object.keys(provider.models).length === 0) {
+      // A connected official provider stays listed before its first successful fetch.
+      if (Object.keys(provider.models).length === 0 && !unfetched.has(providerID as OfficialID)) {
         delete providers[providerID]
         continue
       }
@@ -605,12 +568,13 @@ export namespace Provider {
       log.info("found", { providerID })
     }
 
-    // Whole provider catalogs registered by plugins are merged after the models.dev providers are admitted and
+    // Whole provider catalogs registered by plugins are merged after the official providers are admitted and
     // filtered; plugins own access control for their catalogs, but the user's disabled_providers still applies.
     const custom = await Plugin.customProviders()
     for (const [providerID, provider] of Object.entries(custom)) {
       if (disabled.has(providerID)) continue
-      providers[providerID] = provider
+      for (const model of Object.values(provider.models)) withLevels(model)
+      providers[providerID] = { ...provider, origin: official(providerID) ? "official" : "configured" }
     }
 
     // `provider.models()` hook: only plugins whose `hook.id` matches the provider are called; they replace its models
@@ -623,7 +587,7 @@ export namespace Provider {
         // undefined: no plugin owns this provider, keep the models found so far
         if (!next) continue
         provider.models = Object.fromEntries(
-          Object.entries(next).map(([modelID, model]) => [modelID, { ...model, id: modelID, providerID }]),
+          Object.entries(next).map(([modelID, model]) => [modelID, withLevels({ ...model, id: modelID, providerID })]),
         )
         // Empty: the plugin says the provider has no usable models right now (e.g. not logged in). Same rule as above,
         // a provider without models is not listed, so clients never get an empty provider
@@ -634,6 +598,10 @@ export namespace Provider {
         }
         log.info("plugin models applied", { providerID, models: Object.keys(provider.models).length })
       }
+    }
+
+    for (const [providerID, provider] of Object.entries(providers)) {
+      applyHomepage(provider, config.provider?.[providerID]?.picker)
     }
 
     return {
@@ -972,4 +940,10 @@ export namespace Provider {
       providerID: z.string(),
     }),
   )
+}
+
+if (!Flag.MERAKCODE_DISABLE_CATALOG_FETCH) {
+  const run = () => void Provider.refreshCatalog().catch(() => undefined)
+  setTimeout(run, 1_000).unref()
+  setInterval(run, 60 * 60 * 1000).unref()
 }

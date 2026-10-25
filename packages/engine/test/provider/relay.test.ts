@@ -1,6 +1,5 @@
 import { expect, test } from "vitest"
 import { createServer } from "node:http"
-import { readFile } from "node:fs/promises"
 import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { generateText } from "ai"
@@ -15,6 +14,9 @@ import { LLM } from "@merakcode/engine/session/llm"
 import type { Agent } from "@merakcode/engine/agent/agent"
 import type { Message } from "@merakcode/engine/session/message"
 import { tmpdir } from "../fixture/fixture"
+import * as OpenRouter from "../../src/provider/catalog/openrouter"
+import { parseItems } from "../../src/provider/catalog/model"
+import { load, restoreCatalog, writeCatalog } from "./catalog/fixture"
 
 test("a relay model list keeps the context and output limits the station returned", () => {
   const models = Relay.readList({
@@ -24,6 +26,7 @@ test("a relay model list keeps the context and output limits the station returne
   expect(models).toEqual([
     {
       id: "claude-sonnet-4-5",
+      name: "claude-sonnet-4-5",
       context: 200_000,
       output: 64_000,
       contextFrom: "relay",
@@ -44,11 +47,11 @@ test("other known station field names for limits are accepted", () => {
   })
 
   expect(models).toEqual([
-    { id: "a", context: 1, output: 2, contextFrom: "relay", outputFrom: "relay" },
-    { id: "b", context: 3, output: 4, contextFrom: "relay", outputFrom: "relay" },
-    { id: "c", context: 5, output: 6, contextFrom: "relay", outputFrom: "relay" },
-    { id: "d", context: 7, contextFrom: "relay" },
-    { id: "e", context: 8, contextFrom: "relay" },
+    { id: "a", name: "a", context: 1, output: 2, contextFrom: "relay", outputFrom: "relay" },
+    { id: "b", name: "b", context: 3, output: 4, contextFrom: "relay", outputFrom: "relay" },
+    { id: "c", name: "c", context: 5, output: 6, contextFrom: "relay", outputFrom: "relay" },
+    { id: "d", name: "d", context: 7, contextFrom: "relay" },
+    { id: "e", name: "e", context: 8, contextFrom: "relay" },
   ])
 })
 
@@ -63,14 +66,12 @@ test("a model id the station did not describe takes its limits from the catalog"
   expect(models).toEqual([
     {
       id: "claude-sonnet-4-5",
+      name: "claude-sonnet-4-5",
       context: 200_000,
       output: 64_000,
       contextFrom: "catalog",
       outputFrom: "catalog",
       endpoint: "anthropic",
-      image: true,
-      reasoning: true,
-      toolcall: true,
     },
   ])
 })
@@ -84,47 +85,25 @@ test("a prefixed model id uses the catalog entry without the provider prefix", (
   expect(models).toEqual([
     {
       id: "openai/gpt-5",
+      name: "openai/gpt-5",
       context: 111_111,
       output: 22_222,
       contextFrom: "catalog",
       outputFrom: "catalog",
       endpoint: "openai-responses",
-      image: false,
-      reasoning: false,
-      toolcall: true,
     },
   ])
 })
 
-test("an unknown model uses fallback limits and records that they were not stated", () => {
+test("an unknown model keeps unknown limits and still gets an endpoint", () => {
   const models = Relay.resolve({
     drafts: Relay.readList({ data: [{ id: "claude-private" }, { id: "local-model" }] }),
     catalog: {},
   })
 
   expect(models).toEqual([
-    {
-      id: "claude-private",
-      context: 200_000,
-      output: 64_000,
-      contextFrom: "fallback",
-      outputFrom: "fallback",
-      endpoint: "anthropic",
-      image: true,
-      reasoning: true,
-      toolcall: true,
-    },
-    {
-      id: "local-model",
-      context: 128_000,
-      output: 16_000,
-      contextFrom: "fallback",
-      outputFrom: "fallback",
-      endpoint: "openai-chat",
-      image: false,
-      reasoning: false,
-      toolcall: true,
-    },
+    { id: "claude-private", name: "claude-private", endpoint: "anthropic" },
+    { id: "local-model", name: "local-model", endpoint: "openai-chat" },
   ])
 })
 
@@ -151,14 +130,12 @@ test("discover asks the station for its model list and keeps the limits it retur
       models: [
         {
           id: "claude-sonnet-4-5",
+          name: "claude-sonnet-4-5",
           context: 180_000,
           output: 8_000,
           contextFrom: "relay",
           outputFrom: "relay",
           endpoint: "anthropic",
-          image: true,
-          reasoning: true,
-          toolcall: true,
         },
       ],
     })
@@ -168,10 +145,9 @@ test("discover asks the station for its model list and keeps the limits it retur
 })
 
 test("discover fills a bare model id from the model catalog", async () => {
-  const fixture = JSON.parse(await readFile(new URL("../tool/fixtures/models-api.json", import.meta.url), "utf8")) as {
-    openai: { models: Record<string, { limit: { context: number; output: number } }> }
-  }
-  const limit = fixture.openai.models["gpt-4.1-nano"]!.limit
+  const limit = { context: 1047576, output: 32768 }
+  const { Auth } = await import("@merakcode/engine/auth/index")
+  await Auth.set("openai", { type: "api", key: "sk-test" })
   const server = createServer((_request, response) => {
     response.end(JSON.stringify({ data: [{ id: "gpt-4.1-nano" }] }))
   })
@@ -187,18 +163,20 @@ test("discover fills a bare model id from the model catalog", async () => {
       models: [
         {
           id: "gpt-4.1-nano",
+          name: "gpt-4.1-nano",
           context: limit.context,
           output: limit.output,
           contextFrom: "catalog",
           outputFrom: "catalog",
           endpoint: "openai-responses",
-          image: true,
+          input: ["text", "image"],
           reasoning: false,
           toolcall: true,
         },
       ],
     })
   } finally {
+    await Auth.remove("openai")
     await new Promise((resolve) => server.close(resolve))
   }
 })
@@ -604,7 +582,7 @@ test("discover names the protocol a standard group will use for each model", asy
   }
 })
 
-test("capabilities come from the station, then the catalog, then the model family", () => {
+test("capabilities come from the station, then the catalog, and stay unset when neither has them", () => {
   const models = Relay.resolve({
     drafts: Relay.readList({
       data: [
@@ -615,18 +593,18 @@ test("capabilities come from the station, then the catalog, then the model famil
       ],
     }),
     catalog: {
-      "from-station": { image: false, reasoning: true, toolcall: false },
-      "gpt-4.1-nano": { image: true, reasoning: false, toolcall: true },
+      "from-station": { input: ["text"], reasoning: true, toolcall: false },
+      "gpt-4.1-nano": { input: ["text", "image"], reasoning: false, toolcall: true },
     },
   })
 
   expect(
-    models.map((model) => ({ id: model.id, image: model.image, reasoning: model.reasoning, toolcall: model.toolcall })),
+    models.map((model) => ({ id: model.id, input: model.input, reasoning: model.reasoning, toolcall: model.toolcall })),
   ).toEqual([
-    { id: "from-station", image: true, reasoning: false, toolcall: true },
-    { id: "gpt-4.1-nano", image: true, reasoning: false, toolcall: true },
-    { id: "claude-private", image: true, reasoning: true, toolcall: true },
-    { id: "local-model", image: false, reasoning: false, toolcall: true },
+    { id: "from-station", input: ["text", "image"], reasoning: false, toolcall: true },
+    { id: "gpt-4.1-nano", input: ["text", "image"], reasoning: false, toolcall: true },
+    { id: "claude-private", input: undefined, reasoning: undefined, toolcall: undefined },
+    { id: "local-model", input: undefined, reasoning: undefined, toolcall: undefined },
   ])
 })
 
@@ -660,5 +638,56 @@ test("clients can ask the engine to list a relay's models", async () => {
     })
   } finally {
     await new Promise((resolve) => station.close(resolve))
+  }
+})
+
+test("with no official keys, a relay claude-opus-4-8 gets xhigh and a 1M window from the public catalog", async () => {
+  await writeCatalog("public", parseItems((await load("openrouter")).data, OpenRouter.parse))
+  await using server = await Http.serve({
+    fetch() {
+      return Response.json({ data: [{ id: "claude-opus-4-8" }] })
+    },
+  })
+  try {
+    const found = await Relay.discover({ baseURL: server.url.origin, key: "sk-test", kind: "standard" })
+    if ("error" in found) throw new Error(found.error)
+    expect(found.models[0]).toMatchObject({ id: "claude-opus-4-8", context: 1_000_000, contextFrom: "catalog" })
+    await using tmp = await tmpdir({
+      config: {
+        provider: {
+          station: {
+            npm: "@ai-sdk/anthropic",
+            options: { apiKey: "sk-test", baseURL: server.url.origin },
+            models: { "claude-opus-4-8": {} },
+          },
+        },
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = await Provider.getModel("station", "claude-opus-4-8")
+        expect(model.limit.context).toBe(1_000_000)
+        expect(Object.keys(model.variants ?? {})).toEqual(["off", "low", "medium", "high", "xhigh", "max"])
+      },
+    })
+  } finally {
+    await restoreCatalog()
+  }
+})
+
+test("a relay model found nowhere gets no made-up 200k window", async () => {
+  const server = await Http.serve({
+    fetch() {
+      return Response.json({ data: [{ id: "local-model" }] })
+    },
+  })
+  try {
+    const found = await Relay.discover({ baseURL: server.url.origin, key: "sk-test", kind: "standard" })
+    if ("error" in found) throw new Error(found.error)
+    expect(found.models[0]?.context).toBeUndefined()
+    expect(found.models[0]?.output).toBeUndefined()
+  } finally {
+    await server.stop(true)
   }
 })

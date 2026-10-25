@@ -1,0 +1,13 @@
+{
+  "data": [
+    { "id": "claude-private", "endpoints": ["anthropic"] },
+    {
+      "id": "gpt-local",
+      "limit": { "context": 32000, "output": 4096 },
+      "vision": true,
+      "reasoning": false,
+      "tool_call": true,
+      "supported_endpoints": ["openai"]
+    }
+  ]
+}

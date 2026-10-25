@@ -1,9 +1,7 @@
 import z from "zod"
-import { ModelsDev } from "./models"
-
-function first(values: Array<number | undefined>) {
-  return values.find((value) => value !== undefined)
-}
+import { Auth } from "../auth"
+import { OFFICIAL_PROVIDER_IDS } from "./official"
+import * as Catalog from "./catalog"
 
 function modelsURL(baseURL: string) {
   const trimmed = baseURL.trim().replace(/\/+$/, "")
@@ -24,124 +22,69 @@ function protocol(id: string, endpoints: string[] | undefined): Relay.Endpoint {
   return "openai-chat"
 }
 
+function hostOf(id: string) {
+  const name = id.toLowerCase()
+  if (name.includes("claude")) return "anthropic"
+  if (name.includes("gpt") || name.includes("codex")) return "openai"
+  if (name.includes("gemini")) return "google"
+  if (name.includes("qwen")) return "alibaba-cn"
+  if (name.includes("glm")) return "zhipuai"
+  if (name.includes("kimi") || name.includes("moonshot")) return "moonshotai-cn"
+  if (name.includes("deepseek")) return "deepseek"
+  return undefined
+}
+
 export namespace Relay {
-  const Item = z.object({
-    id: z.string().min(1),
-    limit: z
-      .object({
-        context: z.number().optional(),
-        output: z.number().optional(),
-      })
-      .optional(),
-    context_length: z.number().optional(),
-    context_window: z.number().optional(),
-    max_context_length: z.number().optional(),
-    max_input_tokens: z.number().optional(),
-    max_model_len: z.number().optional(),
-    max_output_tokens: z.number().optional(),
-    max_tokens: z.number().optional(),
-    max_completion_tokens: z.number().optional(),
-    endpoints: z.array(z.string()).optional(),
-    supported_endpoints: z.array(z.string()).optional(),
-    endpoint_types: z.array(z.string()).optional(),
-    vision: z.boolean().optional(),
-    reasoning: z.boolean().optional(),
-    tool_call: z.boolean().optional(),
-    modalities: z.object({ input: z.array(z.string()).optional() }).optional(),
-  })
-
   export type Endpoint = "anthropic" | "openai-responses" | "openai-chat"
+  export const Source = z.enum(["relay", "catalog", "fallback"])
 
-  export type ListedModel = {
-    id: string
-    context?: number
-    output?: number
-    contextFrom?: "relay" | "catalog" | "fallback"
-    outputFrom?: "relay" | "catalog" | "fallback"
-    endpoints?: string[]
-    endpoint?: Endpoint
-    image?: boolean
-    reasoning?: boolean
-    toolcall?: boolean
-  }
+  /** A relay model in the shared catalog shape, plus where each window came from and the protocol to use. */
+  export const Listed = Catalog.Model.extend({
+    contextFrom: Source.optional(),
+    outputFrom: Source.optional(),
+    endpoint: z.enum(["anthropic", "openai-responses", "openai-chat"]).optional(),
+  })
+  export type Listed = z.infer<typeof Listed>
+
+  type Draft = Listed & { endpoints?: string[] }
 
   /** Reads the model list a relay returned. Present limits keep the station's numbers. */
-  export function readList(payload: unknown): ListedModel[] {
-    const data = z.object({ data: z.array(z.unknown()) }).safeParse(payload)
-    if (!data.success) return []
-    return data.data.data.flatMap((item) => {
-      const parsed = Item.safeParse(item)
-      if (!parsed.success) return []
-      const row = parsed.data
-      const model: ListedModel = { id: row.id }
-      const context = first([
-        row.limit?.context,
-        row.context_length,
-        row.context_window,
-        row.max_context_length,
-        row.max_input_tokens,
-        row.max_model_len,
-      ])
-      const output = first([row.limit?.output, row.max_output_tokens, row.max_tokens, row.max_completion_tokens])
-      if (context !== undefined) {
-        model.context = context
-        model.contextFrom = "relay"
-      }
-      if (output !== undefined) {
-        model.output = output
-        model.outputFrom = "relay"
-      }
-      const endpoints = [row.endpoints, row.supported_endpoints, row.endpoint_types].find(
-        (item) => item && item.length > 0,
-      )
-      if (endpoints) model.endpoints = endpoints
-      if (typeof row.vision === "boolean") model.image = row.vision
-      else if (row.modalities?.input?.includes("image")) model.image = true
-      if (typeof row.reasoning === "boolean") model.reasoning = row.reasoning
-      if (typeof row.tool_call === "boolean") model.toolcall = row.tool_call
-      return [model]
-    })
+  export function readList(payload: unknown): Draft[] {
+    return Catalog.parseRelay(payload).map((row) => ({
+      ...row,
+      contextFrom: row.context === undefined ? undefined : "relay",
+      outputFrom: row.output === undefined ? undefined : "relay",
+    }))
   }
 
-  export type CatalogModel = {
-    context?: number
-    output?: number
-    image?: boolean
-    reasoning?: boolean
-    toolcall?: boolean
-  }
-
-  /** Fills limits the station left out from a catalog entry with the same id. */
-  export function resolve(input: { drafts: ListedModel[]; catalog: Record<string, CatalogModel> }): ListedModel[] {
-    return input.drafts.map((draft) => {
-      const known = input.catalog[draft.id] ?? input.catalog[draft.id.slice(draft.id.indexOf("/") + 1)]
-      const model = { ...draft }
-      if (model.context === undefined && known?.context !== undefined) {
-        model.context = known.context
-        model.contextFrom = "catalog"
+  /** Fills fields the station left out. Missing windows stay missing when no catalog or fallback entry has them. */
+  export function resolve(input: { drafts: Draft[]; catalog: Record<string, Partial<Catalog.Model>> }): Listed[] {
+    return input.drafts.map(({ endpoints, ...draft }) => {
+      const known =
+        input.catalog[draft.id] ??
+        input.catalog[Catalog.normalizeModelID(draft.id)] ??
+        input.catalog[draft.id.slice(draft.id.indexOf("/") + 1)]
+      const host = hostOf(draft.id)
+      const fallback = host ? Catalog.fallbackFor(host, draft.id) : undefined
+      const window = (key: "context" | "output") => {
+        if (draft[key] !== undefined) return { value: draft[key], from: draft[`${key}From`] }
+        if (known?.[key] !== undefined) return { value: known[key], from: "catalog" as const }
+        if (fallback?.[key] !== undefined) return { value: fallback[key], from: "fallback" as const }
+        return { value: undefined, from: undefined }
       }
-      if (model.output === undefined && known?.output !== undefined) {
-        model.output = known.output
-        model.outputFrom = "catalog"
+      const context = window("context")
+      const output = window("output")
+      return {
+        ...draft,
+        context: context.value,
+        contextFrom: context.from,
+        output: output.value,
+        outputFrom: output.from,
+        input: draft.input ?? known?.input,
+        reasoning: draft.reasoning ?? known?.reasoning,
+        toolcall: draft.toolcall ?? known?.toolcall,
+        endpoint: protocol(draft.id, endpoints),
       }
-      if (model.image === undefined && known?.image !== undefined) model.image = known.image
-      if (model.reasoning === undefined && known?.reasoning !== undefined) model.reasoning = known.reasoning
-      if (model.toolcall === undefined && known?.toolcall !== undefined) model.toolcall = known.toolcall
-      const claude = draft.id.toLowerCase().includes("claude")
-      const limits = claude ? { context: 200_000, output: 64_000 } : { context: 128_000, output: 16_000 }
-      if (model.context === undefined) {
-        model.context = limits.context
-        model.contextFrom = "fallback"
-      }
-      if (model.output === undefined) {
-        model.output = limits.output
-        model.outputFrom = "fallback"
-      }
-      if (model.image === undefined) model.image = claude
-      if (model.reasoning === undefined) model.reasoning = claude
-      if (model.toolcall === undefined) model.toolcall = true
-      model.endpoint = protocol(draft.id, draft.endpoints)
-      return model
     })
   }
 
@@ -161,20 +104,17 @@ export namespace Relay {
     kind: Kind,
   })
 
+  /** The public catalog, overlaid with official lists of connected providers, keyed by id and normalized id. */
   async function shippedCatalog() {
-    const providers = await ModelsDev.get()
-    const catalog: Record<string, CatalogModel> = {}
-    for (const provider of Object.values(providers)) {
-      for (const model of Object.values(provider.models)) {
-        if (catalog[model.id]) continue
-        const entry: CatalogModel = {}
-        if (model.limit.context > 0) entry.context = model.limit.context
-        if (model.limit.output > 0) entry.output = model.limit.output
-        entry.image = model.modalities?.input?.includes("image") ?? false
-        entry.reasoning = model.reasoning
-        entry.toolcall = model.tool_call
-        catalog[model.id] = entry
-      }
+    const catalog: Record<string, Catalog.Model> = {}
+    const put = (model: Catalog.Model) => {
+      catalog[model.id] = model
+      catalog[Catalog.normalizeModelID(model.id)] ??= model
+    }
+    for (const model of await Catalog.readPublic()) put(model)
+    for (const id of OFFICIAL_PROVIDER_IDS) {
+      if ((await Auth.get(id))?.type !== "api") continue
+      for (const model of await Catalog.read(id)) put(model)
     }
     return catalog
   }
@@ -182,7 +122,7 @@ export namespace Relay {
   /** Fetches the station's model list. The key is sent only on this request and is not stored. */
   export async function discover(
     input: z.input<typeof DiscoverInput>,
-  ): Promise<{ models: ListedModel[] } | { error: string }> {
+  ): Promise<{ models: Listed[] } | { error: string }> {
     const parsed = DiscoverInput.safeParse(input)
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "invalid relay" }
     try {

@@ -44,7 +44,7 @@ process.env["MERAKCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 
 const root = path.join(dir, "root")
 process.env["MERAKCODE_HOME"] = root
-process.env["MERAKCODE_MODELS_PATH"] = path.join(import.meta.dirname, "tool", "fixtures", "models-api.json")
+process.env["MERAKCODE_DISABLE_CATALOG_FETCH"] = "1"
 // Tests behave the same on every system; the sandbox modes have their own tests (test/sandbox)
 process.env["MERAKCODE_SANDBOX_MODE"] = "off"
 
@@ -58,14 +58,17 @@ await fs.symlink(
   process.platform === "win32" ? "junction" : "dir",
 )
 
-// Write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(root, "cache")
-await fs.mkdir(cacheDir, { recursive: true })
-await fs.writeFile(path.join(cacheDir, "version"), "21")
+// The model catalog cache and its version file, so global/index.ts does not clear the cache
+const { seedCatalog } = await import("../../../script/node/seed-catalog.ts")
+await seedCatalog(root)
 
-// Clear model keys from the dev machine so a developer key cannot leak into a test process.
+// Clear model keys from the dev machine so a developer key cannot leak into a test process. The live suite
+// (vitest.live.config.ts) needs them and sets MERAKCODE_LIVE.
 for (const key of Object.keys(process.env))
-  if (/_API_KEY$/.test(key) || /^AWS_(ACCESS_KEY_ID|PROFILE|REGION|BEARER_TOKEN_BEDROCK)$/.test(key))
+  if (
+    !process.env.MERAKCODE_LIVE &&
+    (/_API_KEY$/.test(key) || /^AWS_(ACCESS_KEY_ID|PROFILE|REGION|BEARER_TOKEN_BEDROCK)$/.test(key))
+  )
     delete process.env[key]
 
 // No remote config source is injected, so tests never contact one.

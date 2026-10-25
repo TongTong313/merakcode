@@ -58,11 +58,20 @@ function Usage(props: { sessionID: string }) {
           class="usage"
           role="status"
           aria-label={t("prompt.usage", { percent: info().percent! })}
-          title={t("prompt.usageDetail", {
-            tokens: info().tokens.toLocaleString(),
-            limit: (info().limit ?? 0).toLocaleString(),
-            cost: info().cost.toFixed(4),
-          })}
+          title={
+            Object.keys(info().costs).length
+              ? t("prompt.usageDetail", {
+                  tokens: info().tokens.toLocaleString(),
+                  limit: (info().limit ?? 0).toLocaleString(),
+                  cost: Object.entries(info().costs)
+                    .map(([currency, amount]) => `${currency === "CNY" ? "¥" : "$"}${amount.toFixed(4)}`)
+                    .join(" · "),
+                })
+              : t("prompt.usageTokens", {
+                  tokens: info().tokens.toLocaleString(),
+                  limit: (info().limit ?? 0).toLocaleString(),
+                })
+          }
           data-level={info().percent! >= 80 ? "high" : undefined}
         >
           <span class="usage-bar">
@@ -390,24 +399,19 @@ export function Composer(props: {
         <Show when={connected()}>
           <ModelPicker
             value={current().model}
-            onChange={(model) => choose(props.sessionID, props.directory, { model, variant: undefined })}
+            onChange={(model) => choose(props.sessionID, props.directory, { model })}
           />
         </Show>
         <Show when={variants().length}>
           <Select
             label={t("model.variant")}
-            options={[
-              { value: "default", label: t("model.variant.default") },
-              ...variants().map((value) => ({ value, label: value })),
-            ]}
-            value={current().variant ?? "default"}
-            onChange={(variant) =>
-              choose(props.sessionID, props.directory, { variant: variant === "default" ? undefined : variant })
-            }
+            options={variants().map((value) => ({ value, label: value }))}
+            value={current().variant ?? variants()[0]}
+            onChange={(variant) => choose(props.sessionID, props.directory, { variant })}
             display={(option) => (
               <>
                 <Brain class="icon icon-sm" />
-                <span>{option && option.value !== "default" ? option.label : t("model.variant")}</span>
+                <span>{option?.label}</span>
               </>
             )}
           />

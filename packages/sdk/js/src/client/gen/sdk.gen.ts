@@ -3308,7 +3308,7 @@ export class Catalog extends HeyApiClient {
   /**
    * Refresh model catalog
    *
-   * Fetch the latest model catalog (models.dev) into the local cache and rebuild providers. Returns false when the fetch fails and the cached catalog stays in use.
+   * Fetch connected providers' model lists into the local cache and rebuild providers. Returns false when every fetch fails and the cached catalog stays in use.
    */
   public refresh<ThrowOnError extends boolean = false>(
     parameters?: {

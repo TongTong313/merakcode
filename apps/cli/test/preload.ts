@@ -83,11 +83,7 @@ afterEach((context) => {
 })
 // Engines started by the tests behave the same on every system (the sandbox has its own tests)
 process.env["MERAKCODE_SANDBOX_MODE"] = "off"
-// Share the model catalog fixture with the engine tests
-process.env["MERAKCODE_MODELS_PATH"] = path.join(
-  import.meta.dirname,
-  "../../../packages/engine/test/tool/fixtures/models-api.json",
-)
+process.env["MERAKCODE_DISABLE_CATALOG_FETCH"] = "1"
 
 // Reuse the workspace's installed zod package in the isolated global config.
 // Config still writes and validates its plugin shim without repeating `npm install zod` in every test process.
@@ -99,10 +95,9 @@ await fs.symlink(
   process.platform === "win32" ? "junction" : "dir",
 )
 
-// Write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(root, "cache")
-await fs.mkdir(cacheDir, { recursive: true })
-await fs.writeFile(path.join(cacheDir, "version"), "21")
+// The model catalog cache and its version file, so global/index.ts does not clear the cache
+const { seedCatalog } = await import("../../../script/node/seed-catalog.ts")
+await seedCatalog(root)
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

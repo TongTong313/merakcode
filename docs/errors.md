@@ -53,6 +53,7 @@ what to do.
 | MRK-2007    | 还没有可用的模型             | No model is available                           | 先在 /provider 里连接一个模型服务。<br>Connect a model provider in /provider first.                                                                                                              |
 | MRK-2008    | 模型输出被截断了             | The model's output was cut off                  | 模型一次写不完。让它分几步做，或换一个输出上限更大的模型。<br>The model ran out of room for its answer. Ask for the work in smaller steps, or use a model with a larger output limit.            |
 | MRK-2009    | 模型没有按要求的格式回答     | The model did not answer in the required format | 重试一次；反复出现时换一个能力更强的模型。<br>Try again; if it keeps happening, use a stronger model.                                                                                            |
+| MRK-2010    | 模型列表没有拉下来           | Could not refresh the model list                | 检查网络，稍后再试。<br>Check the network and try again.                                                                                                                                         |
 
 ## 3xxx 配置 · Configuration
 

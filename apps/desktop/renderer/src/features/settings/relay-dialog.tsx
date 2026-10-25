@@ -6,23 +6,9 @@ import { loadProviders, state, updateConfig } from "../../state/store"
 import { Dialog } from "../../ui/dialog"
 import { Segmented } from "../../ui/segmented"
 import { toast } from "../../ui/toast"
+import { manualRow, modelConfig, rowOf, windowsValid, type Endpoint, type RelayRow } from "./relay-models"
 
 type Kind = "claude-code" | "codex" | "standard" | "custom"
-type Endpoint = "anthropic" | "openai-responses" | "openai-chat"
-type From = "relay" | "catalog" | "fallback"
-
-type Row = {
-  id: string
-  context: string
-  output: string
-  contextFrom?: From
-  outputFrom?: From
-  endpoint: Endpoint
-  image: boolean
-  reasoning: boolean
-  toolcall: boolean
-  selected: boolean
-}
 
 const project = () => state.folders[0]?.directory
 
@@ -30,20 +16,6 @@ const project = () => state.folders[0]?.directory
 function apiRoot(url: string) {
   const trimmed = url.trim().replace(/\/+$/, "")
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
-}
-
-function family(id: string): Pick<Row, "context" | "output" | "endpoint" | "image" | "reasoning" | "toolcall"> {
-  const name = id.toLowerCase()
-  const claude = name.includes("claude")
-  const responses = name.includes("gpt") || name.includes("codex")
-  return {
-    context: String(claude ? 200_000 : 128_000),
-    output: String(claude ? 64_000 : 16_000),
-    endpoint: claude ? "anthropic" : responses ? "openai-responses" : "openai-chat",
-    image: claude,
-    reasoning: claude,
-    toolcall: true,
-  }
 }
 
 function npmOf(endpoint: Endpoint) {
@@ -71,7 +43,7 @@ function headersOf(text: string) {
   return headers
 }
 
-function source(from: From | undefined) {
+function source(from: RelayRow["contextFrom"]) {
   if (from === "relay") return t("settings.relay.source.relay")
   if (from === "catalog") return t("settings.relay.source.catalog")
   return t("settings.relay.source.fallback")
@@ -118,7 +90,7 @@ export function CustomDialog(props: {
     if (kind() !== "custom") return
     requestAnimationFrame(() => headersBox?.scrollIntoView({ block: "nearest" }))
   })
-  const [rows, setRows] = createSignal<Row[]>([])
+  const [rows, setRows] = createSignal<RelayRow[]>([])
   const [manual, setManual] = createSignal("")
   const [step, setStep] = createSignal<"connect" | "models">("connect")
   const [busy, setBusy] = createSignal(false)
@@ -135,7 +107,10 @@ export function CustomDialog(props: {
       ["custom", "settings.relay.kind.custom", "settings.relay.kind.custom.hint"],
     ] as const
 
-  const ready = () => rows().some((row) => row.selected && row.id && Number(row.context) > 0 && Number(row.output) > 0)
+  const ready = () => {
+    const selected = rows().filter((row) => row.selected && row.id)
+    return selected.length > 0 && selected.every(windowsValid)
+  }
 
   const load = async () => {
     const found = await call(
@@ -147,28 +122,14 @@ export function CustomDialog(props: {
       setStep("models")
       return
     }
-    setRows(
-      found.models.map((model) => ({
-        id: model.id,
-        context: String(model.context ?? 128_000),
-        output: String(model.output ?? 16_000),
-        contextFrom: model.contextFrom,
-        outputFrom: model.outputFrom,
-        endpoint: model.endpoint ?? "openai-chat",
-        image: model.image ?? false,
-        reasoning: model.reasoning ?? false,
-        toolcall: model.toolcall ?? true,
-        selected: true,
-      })),
-    )
+    setRows(found.models.map(rowOf))
     setStep("models")
   }
 
   const addManual = () => {
     const id = manual().trim()
     if (!id || rows().some((row) => row.id === id)) return
-    const guessed = family(id)
-    setRows((list) => [...list, { id, ...guessed, contextFrom: "fallback", outputFrom: "fallback", selected: true }])
+    setRows((list) => [...list, manualRow(id)])
     setManual("")
   }
 
@@ -194,21 +155,7 @@ export function CustomDialog(props: {
       },
       ...(Object.keys(extra).length ? { options: { headers: extra } } : {}),
       models: Object.fromEntries(
-        selected.map((row, index) => {
-          const endpoint = endpoints[index] ?? "openai-chat"
-          return [
-            row.id,
-            {
-              name: row.id,
-              limit: { context: Number(row.context), output: Number(row.output) },
-              tool_call: row.toolcall,
-              reasoning: row.reasoning,
-              attachment: row.image,
-              modalities: { input: row.image ? ["text", "image"] : ["text"], output: ["text"] },
-              provider: { npm: npmOf(endpoint) },
-            },
-          ]
-        }),
+        selected.map((row, index) => [row.id, modelConfig(row, npmOf(endpoints[index] ?? "openai-chat"))]),
       ),
     }
     await call(client(project()).auth.set({ providerID: id, auth: { type: "api", key: key().trim() } }))

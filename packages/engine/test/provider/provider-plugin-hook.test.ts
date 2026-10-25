@@ -430,4 +430,46 @@ describe("provider.models() matches opencode 1.16.2 semantics", () => {
       },
     })
   })
+
+  test("a reasoning model from a plugin provider gets thinking levels and a default", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const reasoning = { ...model, capabilities: { ...model.capabilities, reasoning: true } }
+    const pluginUrl = await writePlugin(
+      tmp.path,
+      "reasoning-provider-plugin",
+      `
+      export default async function () {
+        return {
+          provider: {
+            id: "reasoning-plugin",
+            async providers() {
+              return {
+                "reasoning-provider": {
+                  id: "reasoning-provider",
+                  name: "Reasoning Provider",
+                  source: "custom",
+                  env: [],
+                  options: { apiKey: "test-key" },
+                  models: { "h2-e2e-model": ${JSON.stringify({ ...reasoning, providerID: "reasoning-provider" })} },
+                },
+              }
+            },
+          },
+        }
+      }
+      `,
+    )
+    await Filesystem.write(
+      path.join(tmp.path, "merakcode.json"),
+      JSON.stringify({ $schema: Config.SCHEMA, plugin: [pluginUrl] }),
+    )
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const resolved = await Provider.getModel("reasoning-provider", "h2-e2e-model")
+        expect(Object.keys(resolved.variants ?? {})).toEqual(["off", "on"])
+        expect(resolved.defaultVariant).toBe("on")
+      },
+    })
+  })
 })

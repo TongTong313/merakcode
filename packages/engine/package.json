@@ -8,8 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:live": "vitest run --config vitest.live.config.ts",
-    "refresh:models": "node --import ../../script/node/register.mjs script/refresh-models.ts"
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "exports": {
     "./host": "./src/host/index.ts",

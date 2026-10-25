@@ -25,10 +25,12 @@ import { setUi, ui, type SettingsSection } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
 import { Select } from "../../ui/select"
 import { Switch } from "../../ui/switch"
-import { Confirm } from "../../ui/dialog"
+import { Confirm, Dialog } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 import { trackOverlay } from "../../ui/overlay"
 import { modeOptions } from "../conversation/composer"
+import { providerLabel } from "../../ui/provider-label"
+import { nextPicker } from "./model-visibility"
 import { CustomDialog } from "./relay-dialog"
 import { updateState } from "../update/state"
 import { Row, Section } from "./layout"
@@ -110,6 +112,7 @@ function Models() {
   const [adding, setAdding] = createSignal(false)
   const [station, setStation] = createSignal<{ id: string; name: string; baseURL: string }>()
   const [editing, setEditing] = createSignal<string>()
+  const [modelsFor, setModelsFor] = createSignal<string>()
   const [key, setKey] = createSignal("")
   const [query, setQuery] = createSignal("")
   const providers = () =>
@@ -148,7 +151,7 @@ function Models() {
     available().map((item) => ({
       value: item.key,
       label: item.model.name,
-      description: item.provider.name,
+      description: providerLabel(item.provider, locale()),
       providerID: item.provider.id,
     }))
   return (
@@ -202,7 +205,7 @@ function Models() {
               <div class="setting-row provider-row">
                 <span class={connected() ? "dot success" : "dot"} />
                 <div class="grow">
-                  <div class="label">{provider.name}</div>
+                  <div class="label">{providerLabel(provider, locale())}</div>
                   <div class="desc">
                     {Object.keys(provider.models).length} · {provider.id}
                   </div>
@@ -230,6 +233,11 @@ function Models() {
                     </div>
                   </Show>
                 </div>
+                <Show when={Object.keys(provider.models).length}>
+                  <button class="button ghost sm" onClick={() => setModelsFor(provider.id)}>
+                    {t("settings.provider.models")}
+                  </button>
+                </Show>
                 <Show
                   when={connected()}
                   fallback={
@@ -281,6 +289,7 @@ function Models() {
           }}
         </For>
       </div>
+      <ModelDialog providerID={modelsFor()} onClose={() => setModelsFor(undefined)} />
       <Show when={adding()}>
         <CustomDialog
           open
@@ -292,6 +301,55 @@ function Models() {
         />
       </Show>
     </Section>
+  )
+}
+
+function ModelDialog(props: { providerID: string | undefined; onClose: () => void }) {
+  const provider = () => state.providers?.all.find((item) => item.id === props.providerID)
+  const save = async (modelID: string, on: boolean) => {
+    const id = props.providerID
+    if (!id) return
+    const picker = nextPicker(state.config?.provider?.[id]?.picker, modelID, on)
+    await updateConfig({ provider: { [id]: { picker } } })
+    await loadProviders(project())
+  }
+  const restore = async () => {
+    const id = props.providerID
+    if (!id) return
+    await updateConfig({ provider: { [id]: { picker: { include: [], exclude: [] } } } })
+    await loadProviders(project())
+  }
+  return (
+    <Dialog
+      open={!!props.providerID}
+      onOpenChange={(next) => !next && props.onClose()}
+      class="model-dialog"
+      title={provider() ? providerLabel(provider()!, locale()) : t("settings.provider.models")}
+      footer={
+        <button class="button secondary" onClick={() => void restore().catch(fail)}>
+          {t("settings.provider.models.restore")}
+        </button>
+      }
+    >
+      <div class="dialog-body">
+        <For each={Object.values(provider()?.models ?? {})}>
+          {(model) => (
+            <div class="setting-row">
+              <div class="grow">
+                <div class="label">{model.name}</div>
+                <div class="desc">{model.id}</div>
+              </div>
+              <Switch
+                label={model.name}
+                hideLabel
+                checked={model.homepage === true}
+                onChange={(on) => void save(model.id, on).catch(fail)}
+              />
+            </div>
+          )}
+        </For>
+      </div>
+    </Dialog>
   )
 }
 

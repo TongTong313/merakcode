@@ -1360,7 +1360,7 @@ Get a list of all available AI providers, including both available and connected
 
 No parameters.
 
-Returns: `{ all: ({ api?: string; name: string; env: string[]; id: string; npm?: string; models: Record<string, object> })[]; default: Record<string, string>; connected: string[] }`
+Returns: `{ all: Provider[]; default: Record<string, string>; connected: string[] }`
 
 ### client.provider.auth
 
@@ -1408,7 +1408,7 @@ Returns: `{ ok: true; model: string } \| { ok: false; error: string }`
 
 Refresh model catalog.
 
-Fetch the latest model catalog (models.dev) into the local cache and rebuild providers. Returns false when the fetch fails and the cached catalog stays in use.
+Fetch connected providers' model lists into the local cache and rebuild providers. Returns false when every fetch fails and the cached catalog stays in use.
 
 No parameters.
 
@@ -1430,7 +1430,7 @@ Ask a relay for the models a key can use, and fill in limits the relay did not r
 | `key`     | `string`                                             | yes      |             |
 | `kind`    | `"claude-code" \| "codex" \| "standard" \| "custom"` | yes      |             |
 
-Returns: `{ models: ({ id: string; context?: number; output?: number; contextFrom?: "relay" \| "catalog" \| "fallback"; outputFrom?: "relay" \| "catalog" \| "fallback"; endpoint?: "anthropic" \| "openai-responses" \| "openai-chat"; image?: boolean; reasoning?: boolean; toolcall?: boolean })[] } \| { error: string }`
+Returns: `{ models: ({ id: string; name: string; context?: number; output?: number; input?: ("text" \| "audio" \| "image" \| "video" \| "pdf")[]; outputModalities?: ("text" \| "audio" \| "image" \| "video" \| "pdf")[]; reasoning?: boolean; toolcall?: boolean; temperature?: boolean; status?: "active" \| "deprecated" \| "alpha" \| "beta"; releaseDate?: string; cost?: object; efforts?: string[]; canDisable?: boolean; defaultEffort?: string; contextFrom?: "relay" \| "catalog" \| "fallback"; outputFrom?: "relay" \| "catalog" \| "fallback"; endpoint?: "anthropic" \| "openai-responses" \| "openai-chat" })[] } \| { error: string }`
 
 ## provider.oauth
 

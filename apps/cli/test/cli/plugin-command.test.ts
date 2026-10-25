@@ -11,7 +11,7 @@ import { cli, tmpdir } from "../fixture/fixture"
 async function merak(cwd: string, ...args: string[]) {
   const proc = Process.spawn([...cli, ...args], {
     cwd,
-    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_DISABLE_MODELS_FETCH: "1" },
+    env: { ...process.env, MERAKCODE_LOCALE: "en", MERAKCODE_DISABLE_CATALOG_FETCH: "1" },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

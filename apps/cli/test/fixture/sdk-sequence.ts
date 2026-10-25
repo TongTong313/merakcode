@@ -14,13 +14,14 @@ import { Filesystem } from "@merakcode/util/filesystem"
 import { Glob } from "@merakcode/util/glob"
 import { Process } from "@merakcode/util/process"
 import { setTimeout as delay } from "node:timers/promises"
+import { seedCatalog } from "../../../../script/node/seed-catalog.ts"
 
 const cli = resolve(import.meta.dirname, "../..")
 
 /**
  * The real product command run from source: `[...product("serve", ...)]`.
  * Loads sdk-sequence-network.ts first, which blocks and records every non-local fetch in the process. The model
- * server is a local fake; other outbound traffic (models.dev, LSP downloads, external skills) is turned off by the
+ * server is a local fake; other outbound traffic (catalog fetch, LSP downloads, external skills) is turned off by the
  * MERAKCODE_DISABLE_* variables in sequence().
  */
 export function product(...args: string[]): [string, ...string[]] {
@@ -187,12 +188,12 @@ export async function sequence(
   if (!models.length) throw new Error("Sequence requires at least one allowed model")
   const tmp = await tmpdir()
   const root = tmp.path
+  await seedCatalog(root)
   const project = join(root, "project")
   for (const dir of ["project", "home", "node_modules", "cache", "data", "logs", "managed", "tmp"])
     await mkdir(join(root, dir), { recursive: true })
   const git = Process.spawn(["git", "init", "--quiet", project], { stdout: "ignore", stderr: "pipe" })
   if (await git.exited) throw new Error("I1 project git init failed")
-  await Filesystem.write(join(root, "cache/version"), "21")
   // On Windows directory symlinks need admin rights and junctions do not; other platforms ignore this argument
   await symlink(dirname(fileURLToPath(import.meta.resolve("zod"))), join(root, "node_modules/zod"), "junction")
   const marker = `MARKER_${crypto.randomUUID()}`
@@ -353,13 +354,12 @@ export async function sequence(
     MERAKCODE_TEST_HOME: join(root, "home"),
     MERAKCODE_TEST_MANAGED_CONFIG_DIR: join(root, "managed"),
     MERAKCODE_I1_NETWORK_LOG: join(root, "blocked-network.txt"),
-    MERAKCODE_DISABLE_MODELS_FETCH: "1",
+    MERAKCODE_DISABLE_CATALOG_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
     MERAKCODE_DISABLE_CLAUDE_CODE: "1",
     MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
     ...(options.serverPassword ? { MERAKCODE_SERVER_PASSWORD: options.serverPassword } : {}),
-    MERAKCODE_MODELS_PATH: join(cli, "../../packages/engine/test/tool/fixtures/models-api.json"),
     npm_config_cache: join(root, "cache/npm"),
     HUSKY: "0",
     CI: "1",

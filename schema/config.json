@@ -77,8 +77,7 @@
             "type": "string"
           },
           "model": {
-            "type": "string",
-            "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+            "$ref": "#/$defs/__schema0"
           },
           "subtask": {
             "type": "boolean"
@@ -230,14 +229,12 @@
       }
     },
     "model": {
-      "type": "string",
       "description": "Model to use in the format of provider/model, eg anthropic/claude-2",
-      "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+      "$ref": "#/$defs/__schema0"
     },
     "small_model": {
-      "type": "string",
       "description": "Small model to use for tasks like title generation in the format of provider/model",
-      "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+      "$ref": "#/$defs/__schema0"
     },
     "default_agent": {
       "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
@@ -248,14 +245,14 @@
       "type": "object",
       "properties": {
         "build": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "plan": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         }
       },
       "additionalProperties": {
-        "$ref": "#/$defs/__schema0"
+        "$ref": "#/$defs/__schema1"
       }
     },
     "agent": {
@@ -263,35 +260,35 @@
       "type": "object",
       "properties": {
         "plan": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "build": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "general": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "explore": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "title": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "summary": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "compaction": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "memory-extractor": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         },
         "simplifier": {
-          "$ref": "#/$defs/__schema0"
+          "$ref": "#/$defs/__schema1"
         }
       },
       "additionalProperties": {
-        "$ref": "#/$defs/__schema0"
+        "$ref": "#/$defs/__schema1"
       }
     },
     "provider": {
@@ -320,6 +317,72 @@
           },
           "npm": {
             "type": "string"
+          },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "picker": {
+            "description": "Homepage visibility delta. include turns a model on, exclude turns a default model off.",
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "relay": {
+            "type": "object",
+            "properties": {
+              "station": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claude-code",
+                  "codex",
+                  "standard",
+                  "custom"
+                ]
+              },
+              "auth": {
+                "type": "string",
+                "enum": [
+                  "bearer",
+                  "x-api-key"
+                ]
+              }
+            },
+            "required": [
+              "station",
+              "group",
+              "kind"
+            ],
+            "additionalProperties": false
           },
           "models": {
             "type": "object",
@@ -391,34 +454,8 @@
                     },
                     "cache_write": {
                       "type": "number"
-                    },
-                    "context_over_200k": {
-                      "type": "object",
-                      "properties": {
-                        "input": {
-                          "type": "number"
-                        },
-                        "output": {
-                          "type": "number"
-                        },
-                        "cache_read": {
-                          "type": "number"
-                        },
-                        "cache_write": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "input",
-                        "output"
-                      ],
-                      "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
                   "additionalProperties": false
                 },
                 "limit": {
@@ -434,10 +471,6 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "context",
-                    "output"
-                  ],
                   "additionalProperties": false
                 },
                 "modalities": {
@@ -470,21 +503,15 @@
                       }
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
                   "additionalProperties": false
-                },
-                "experimental": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
                   "enum": [
                     "alpha",
                     "beta",
-                    "deprecated"
+                    "deprecated",
+                    "active"
                   ]
                 },
                 "options": {
@@ -531,116 +558,10 @@
                     },
                     "additionalProperties": {}
                   }
-                },
-                "reasoning_options": {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "toggle"
-                          }
-                        },
-                        "required": [
-                          "type"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "effort"
-                          },
-                          "values": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "values"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "budget_tokens"
-                          },
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "required": [
-                          "type"
-                        ],
-                        "additionalProperties": false
-                      }
-                    ]
-                  }
                 }
               },
               "additionalProperties": false
             }
-          },
-          "whitelist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "blacklist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "relay": {
-            "type": "object",
-            "properties": {
-              "station": {
-                "type": "string",
-                "minLength": 1
-              },
-              "group": {
-                "type": "string",
-                "minLength": 1
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "claude-code",
-                  "codex",
-                  "standard",
-                  "custom"
-                ]
-              },
-              "auth": {
-                "type": "string",
-                "enum": [
-                  "bearer",
-                  "x-api-key"
-                ]
-              }
-            },
-            "required": [
-              "station",
-              "group",
-              "kind"
-            ],
-            "additionalProperties": false
           },
           "options": {
             "type": "object",
@@ -985,7 +906,7 @@
       "ref": "LayoutConfig"
     },
     "permission": {
-      "$ref": "#/$defs/__schema1"
+      "$ref": "#/$defs/__schema2"
     },
     "tools": {
       "type": "object",
@@ -1157,8 +1078,7 @@
         },
         "model": {
           "description": "Model for post-turn memory extraction. Defaults to small_model, then the turn model.",
-          "type": "string",
-          "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+          "$ref": "#/$defs/__schema0"
         },
         "recall_rerank": {
           "description": "Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.",
@@ -1421,12 +1341,14 @@
   "ref": "Config",
   "$defs": {
     "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
       "ref": "AgentConfig",
       "type": "object",
       "properties": {
         "model": {
-          "type": "string",
-          "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+          "$ref": "#/$defs/__schema0"
         },
         "variant": {
           "description": "Default model variant for this agent (applies only when using the agent's configured model).",
@@ -1511,7 +1433,7 @@
           "maximum": 9007199254740991
         },
         "permission": {
-          "$ref": "#/$defs/__schema1"
+          "$ref": "#/$defs/__schema2"
         },
         "disableTools": {
           "description": "Tool ids to remove from this agent's available-tools pool (e.g. pdf_parse, workflow_run) — reduces per-turn tool-schema token cost for tools this agent will never use. Only ever narrows the existing pool; unknown ids are ignored.",
@@ -1530,7 +1452,7 @@
       },
       "additionalProperties": {}
     },
-    "__schema1": {
+    "__schema2": {
       "ref": "PermissionConfig",
       "anyOf": [
         {
@@ -1544,104 +1466,104 @@
             },
             "read": {
               "description": "Read files inside the workspace",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "external_read": {
               "description": "Read files outside the workspace",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "sensitive_read": {
               "description": "Read secrets: .env, keys, certificates, credentials",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "edit": {
               "description": "Write files inside the workspace",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "protected_write": {
               "description": "Write .git and dotfiles inside the workspace",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "external_write": {
               "description": "Write files outside the workspace",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash_readonly": {
               "description": "Run read-only commands (ls, git status, ...)",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash": {
               "description": "Run other commands",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash_delete": {
               "description": "Run commands that delete files (rm, git clean, ...)",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash_risky": {
               "description": "Run risky commands (sudo, git push, npm publish, ...)",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash_forbidden": {
               "description": "Run commands that wipe the system or home folder, format disks or write raw disks (denied unless allowed here)",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "bash_unsandboxed": {
               "description": "Run a command that may change things while the sandbox is not ready",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "sandbox": {
               "description": "Run a command with extra sandbox permissions",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "network": {
               "description": "Connect to a domain",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "subagent": {
               "description": "Start a subagent",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "workflow_run": {
               "description": "Start a workflow",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "cron": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "mcp": {
               "description": "Call an MCP tool (pattern: server/tool)",
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "glob": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "grep": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "ls": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "lsp": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             },
             "skill": {
-              "$ref": "#/$defs/__schema2"
+              "$ref": "#/$defs/__schema3"
             }
           },
           "additionalProperties": {
-            "$ref": "#/$defs/__schema2"
+            "$ref": "#/$defs/__schema3"
           }
         },
         {
-          "$ref": "#/$defs/__schema3"
+          "$ref": "#/$defs/__schema4"
         }
       ]
     },
-    "__schema2": {
+    "__schema3": {
       "anyOf": [
         {
-          "$ref": "#/$defs/__schema3"
+          "$ref": "#/$defs/__schema4"
         },
         {
           "type": "object",
@@ -1649,14 +1571,14 @@
             "type": "string"
           },
           "additionalProperties": {
-            "$ref": "#/$defs/__schema3"
+            "$ref": "#/$defs/__schema4"
           },
           "ref": "PermissionObjectConfig"
         }
       ],
       "ref": "PermissionRuleConfig"
     },
-    "__schema3": {
+    "__schema4": {
       "type": "string",
       "enum": [
         "ask",

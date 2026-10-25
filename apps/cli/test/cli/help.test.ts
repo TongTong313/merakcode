@@ -11,8 +11,7 @@ async function merak(args: string[]) {
     env: {
       ...process.env,
       MERAKCODE_LOCALE: "en-US",
-      MERAKCODE_MODELS_PATH: path.join(root, "../../packages/engine/test/tool/fixtures/models-api.json"),
-      MERAKCODE_DISABLE_MODELS_FETCH: "1",
+      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
     },
     stdin: "ignore",
     stdout: "pipe",
@@ -29,7 +28,7 @@ async function merak(args: string[]) {
 
 test("help output names the merak command", async () => {
   const { stdout, stderr, code } = await merak(["--help"])
-  expect(stderr).not.toContain("Failed to fetch models.dev")
+  expect(stderr).not.toContain("catalog refresh failed")
   expect(code).toBe(0)
   expect(stdout).toContain("merak completion")
   expect(stdout).toContain("merak serve")

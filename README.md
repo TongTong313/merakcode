@@ -4,7 +4,7 @@
 
 <h1 align="center">MerakCode</h1>
 
-<p align="center">致力于做最好用的 AI Coding 工具</p>
+<p align="center">一款入口型 AI Coding 工具</p>
 
 <p align="center">
   <a href="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml"><img src="https://github.com/TongTong313/merakcode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -18,7 +18,7 @@
 
 ---
 
-MerakCode 是一个开源的 AI Coding 工具，除了具备强大的编程能力外，它还可以用于任何需要 AI 协助的场景。在 AI 生成速度远大于人类阅读速度的今天，MerakCode 非常注重人机协同交互，MerakCode 的协作群可以让 Claude Code、Codex、OpenCode 等产品一起干活，并通过优化产物审核机制，确保智能体输出的内容符合预期。最后，MerakCode 的目标不是最强大的 AI Coding 工具，而是最好用的 AI Coding 工具。
+MerakCode 是一个开源的**入口型 AI Coding 工具**，产品设计的灵感来自于我自己，我喜欢结合 Claude Code、Codex、OpenCode 等产品一起干活，但又没有一个很好的入口型 AI Coding 工具，因此 MerakCode 应运而生。在 AI 生成速度远大于人类阅读速度的今天，我们不去卷 AI Coding 能力（虽然 MerakCode 本身也具备强大的编程能力），而是更看重实际编码场景的人机协同交互体验。如何更好地接入并组合使用其他各类 AI Coding Harness，是 MerakCode 的核心价值所在。MerakCode 的协作群可以让 Claude Code、Codex、OpenCode 等产品一起干活。如果你是各类 AI Coding 工具的使用者，并且想把它们组合在一起发挥最大效能，那么 MerakCode 是一个不错的选择。
 
 开源这个项目是为了弥补我们心中的一个遗憾，也是想依靠社区的力量，让这个项目能够持续发展下去。产品的名字来自北斗七星里的天璇星，它和天枢一起指向北极星。我们希望 MerakCode 也像它一样，为你的每一个想法指明方向。
 

@@ -32,6 +32,8 @@ export async function disconnectProvider(providerID: string, deps: ProviderDisco
 export interface ProviderConnectDeps extends CacheInvalidator {
   /** Writes the credentials under a key */
   set(key: string, info: Auth.Info): Promise<void>
+  /** Fetches this provider's model list before the cache is rebuilt. Resolves on timeout too. */
+  refresh?(providerID: string): Promise<unknown>
 }
 
 /**
@@ -40,6 +42,12 @@ export interface ProviderConnectDeps extends CacheInvalidator {
  */
 export async function connectProvider(storeID: string, info: Auth.Info, deps: ProviderConnectDeps): Promise<void> {
   await deps.set(storeID, info)
+  if (deps.refresh) {
+    await Promise.race([
+      deps.refresh(storeID).catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 15_000)),
+    ])
+  }
   deps.invalidate()
   await deps.changed()
 }

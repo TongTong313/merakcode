@@ -9,6 +9,7 @@ import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { seedCatalog } from "../../../../../script/node/seed-catalog.ts"
 
 const repo = path.resolve(import.meta.dirname, "../../../../..")
 
@@ -35,7 +36,7 @@ export async function sandbox(model: string, extra: Record<string, unknown> = {}
   for (const dir of ["project", "home", "node_modules", "cache", "data", "logs"])
     await mkdir(path.join(root, dir), { recursive: true })
   execFileSync("git", ["init", "--quiet", project])
-  await Filesystem.write(path.join(root, "cache/version"), "21")
+  await seedCatalog(root)
   // The config directory's dependency check must resolve zod, which cannot be installed offline, so link it (a
   // junction needs no admin rights on Windows)
   await symlink(
@@ -61,12 +62,11 @@ export async function sandbox(model: string, extra: Record<string, unknown> = {}
     MERAKCODE_HOME: root,
     MERAKCODE_TEST_HOME: path.join(root, "home"),
     MERAKCODE_LOG_ROOT: path.join(root, "logs"),
-    MERAKCODE_DISABLE_MODELS_FETCH: "1",
+    MERAKCODE_DISABLE_CATALOG_FETCH: "1",
     MERAKCODE_SANDBOX_MODE: "off",
     MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
     MERAKCODE_DISABLE_CLAUDE_CODE: "1",
     MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
-    MERAKCODE_MODELS_PATH: path.join(repo, "packages/engine/test/tool/fixtures/models-api.json"),
   }
   return {
     root,

@@ -26,7 +26,9 @@ import type {
 import { activity, applyEvent, createSessionsState, rootOf, search, type SessionsState } from "@merakcode/sdk/store"
 import { log, storage } from "../lib/bridge"
 import { sameDir } from "../lib/route"
-import { fromConfig, setLocale } from "../i18n"
+import { fromConfig, setLocale, t } from "../i18n"
+import { toast } from "../ui/toast"
+import { providerChanged, type SeenFailures } from "./catalog-refresh"
 import { call, client } from "./client"
 
 type Providers = ProviderListResponses[200]
@@ -98,12 +100,30 @@ function reduce(draft: SessionsState, event: Event) {
   applyEvent(draft, event)
 }
 
+let catalogFailures: SeenFailures = {}
+
 function dispatch(directory: string, event: Event) {
   setState(
     "sessions",
     produce((draft) => reduce(draft, event)),
   )
   if (event.type === "vcs.branch.updated") setState("branch", directory, event.properties.branch)
+  if (event.type === "provider.changed") {
+    const decision = providerChanged(catalogFailures, event.properties)
+    catalogFailures = decision.seen
+    if (decision.reload) {
+      const notice = decision.toast
+      void loadProviders().then(() => {
+        if (!notice) return
+        const name = state.providers?.all.find((item) => item.id === notice.providerID)?.name ?? notice.providerID
+        toast({
+          kind: "error",
+          title: t("model.catalog.failed", { provider: name, code: notice.code, message: notice.message }),
+          error: event.type === "provider.changed" ? event.properties.error : undefined,
+        })
+      })
+    }
+  }
   if (event.type === "project.updated") {
     const project = event.properties
     setState("folders", (folder) => folder.project?.id === project.id && project.id !== "global", "project", project)

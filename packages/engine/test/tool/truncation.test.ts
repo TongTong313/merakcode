@@ -5,12 +5,10 @@ import fs from "fs/promises"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 
-const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures")
-
 describe("Truncate", () => {
   describe("output", () => {
     test("truncates large json file by bytes", async () => {
-      const content = await Filesystem.readText(path.join(FIXTURES_DIR, "models-api.json"))
+      const content = "x".repeat(80 * 1024)
       const result = await Truncate.output(content)
 
       expect(result.truncated).toBe(true)
@@ -70,7 +68,7 @@ describe("Truncate", () => {
     })
 
     test("large single-line file truncates with byte message", async () => {
-      const content = await Filesystem.readText(path.join(FIXTURES_DIR, "models-api.json"))
+      const content = "x".repeat(80 * 1024)
       const result = await Truncate.output(content)
 
       expect(result.truncated).toBe(true)

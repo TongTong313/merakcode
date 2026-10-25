@@ -13,7 +13,7 @@ test("serve started over IPC exits on its own once the parent disconnects", asyn
     stdio: ["ignore", "pipe", "pipe", "ipc"],
     env: {
       ...process.env,
-      MERAKCODE_DISABLE_MODELS_FETCH: "1",
+      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
       MERAKCODE_HOME: path.join(tmp.path, "merakcode"),
     },
   })

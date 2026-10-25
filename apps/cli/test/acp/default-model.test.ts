@@ -17,7 +17,7 @@ beforeAll(async () => {
   engine = await startEngine({
     cwd: project.path,
     executablePath: cli,
-    env: { MERAKCODE_DISABLE_MODELS_FETCH: "1" },
+    env: { MERAKCODE_DISABLE_CATALOG_FETCH: "1" },
     config: { provider: { "alibaba-cn": { options: { apiKey: "sk-test" } } } },
   })
 }, 120_000)

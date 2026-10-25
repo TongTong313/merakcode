@@ -1,1 +1,0 @@
-# 说明：src/provider/models-snapshot.ts 是【有意提交】的联网生成快照（离线打包依赖它），刷新用 pnpm --dir packages/engine refresh:models。

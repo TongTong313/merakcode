@@ -1,0 +1,83 @@
+{
+  "fetchedAt": 1792903204428,
+  "models": [
+    {
+      "id": "kimi-k2-0905-preview",
+      "name": "Kimi K2 0905",
+      "context": 262144,
+      "output": 262144,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": false,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-09-05"
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "name": "Kimi K2 Thinking",
+      "context": 262144,
+      "output": 262144,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-11-06"
+    },
+    {
+      "id": "kimi-k2-0711-preview",
+      "name": "Kimi K2 0711",
+      "context": 131072,
+      "output": 16384,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": false,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-07-14"
+    },
+    {
+      "id": "kimi-k2.5",
+      "name": "Kimi K2.5",
+      "context": 262144,
+      "output": 262144,
+      "input": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": false,
+      "status": "active",
+      "releaseDate": "2026-01"
+    },
+    {
+      "id": "kimi-k2-turbo-preview",
+      "name": "Kimi K2 Turbo",
+      "context": 262144,
+      "output": 262144,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": false,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-09-05"
+    },
+    {
+      "id": "kimi-k2-thinking-turbo",
+      "name": "Kimi K2 Thinking Turbo",
+      "context": 262144,
+      "output": 262144,
+      "input": ["text"],
+      "outputModalities": ["text"],
+      "reasoning": true,
+      "toolcall": true,
+      "temperature": true,
+      "status": "active",
+      "releaseDate": "2025-11-06"
+    }
+  ]
+}

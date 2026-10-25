@@ -1,17 +1,19 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest"
+import { afterAll, beforeAll, beforeEach, describe, expect, onTestFinished, test } from "vitest"
 import path from "path"
 import type { ModelMessage } from "ai"
 import { LLM } from "@merakcode/engine/session/llm"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Provider } from "@merakcode/engine/provider/provider"
 import { ProviderTransform } from "@merakcode/engine/provider/transform"
-import { ModelsDev } from "@merakcode/engine/provider/models"
 import { tmpdir } from "../fixture/fixture"
 import type { Agent } from "@merakcode/engine/agent/agent"
 import type { Message } from "@merakcode/engine/session/message"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Http } from "@merakcode/util/http"
 import { Config } from "../../src/config/config"
+import { parseItems } from "../../src/provider/catalog/model"
+import * as OpenRouter from "../../src/provider/catalog/openrouter"
+import { load, restoreCatalog, writeCatalog } from "../provider/catalog/fixture"
 
 describe("session.llm.hasToolCalls", () => {
   test("returns false for empty messages array", () => {
@@ -186,16 +188,15 @@ function createChatStream(text: string) {
 }
 
 async function loadFixture(providerID: string, modelID: string) {
-  const fixturePath = path.join(import.meta.dirname, "../tool/fixtures/models-api.json")
-  const data = (await Filesystem.readJson(fixturePath)) as Record<string, ModelsDev.Provider>
+  const fixturePath = path.join(import.meta.dirname, "fixtures/llm-models.json")
+  const data = (await Filesystem.readJson(fixturePath)) as Record<
+    string,
+    { npm?: string; api?: string; models: Record<string, { id: string }> }
+  >
   const provider = data[providerID]
-  if (!provider) {
-    throw new Error(`Missing provider in fixture: ${providerID}`)
-  }
+  if (!provider) throw new Error(`Missing provider in fixture: ${providerID}`)
   const model = provider.models[modelID]
-  if (!model) {
-    throw new Error(`Missing model in fixture: ${modelID}`)
-  }
+  if (!model) throw new Error(`Missing model in fixture: ${modelID}`)
   return { provider, model }
 }
 
@@ -323,7 +324,7 @@ describe("session.llm.stream", () => {
         expect(maxTokens).toBe(expectedMaxTokens)
 
         const reasoning = (body.reasoningEffort as string | undefined) ?? (body.reasoning_effort as string | undefined)
-        expect(reasoning).toBe("high")
+        expect(reasoning).toBeUndefined()
 
         // The system prompt goes first as system messages, followed by the user message.
         const messages = body.messages as { role: string; content: unknown }[]
@@ -375,6 +376,8 @@ describe("session.llm.stream", () => {
       },
     ]
     const request = waitRequest("/responses", createEventResponse(responseChunks, true))
+    await writeCatalog("public", parseItems((await load("openrouter")).data, OpenRouter.parse))
+    onTestFinished(restoreCatalog)
 
     await using tmp = await tmpdir({
       init: async (dir) => {
@@ -761,4 +764,159 @@ describe("session.llm.stream", () => {
       },
     })
   })
+
+  test("off sends only the provider's disable field", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+    await using tmp = await tmpdir({
+      config: {
+        enabled_providers: ["deepseek"],
+        provider: { deepseek: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const body = await send("deepseek", "deepseek-reasoner", "off", "/chat/completions", chatReply())
+        expect(body.thinking).toEqual({ type: "disabled" })
+        expect(body.reasoning_effort).toBeUndefined()
+      },
+    })
+  })
+
+  test("an effort level is encoded for the SDK in use", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+    const origin = server.url.origin
+    await writeCatalog("public", parseItems((await load("openrouter")).data, OpenRouter.parse))
+    await using tmp = await tmpdir({
+      config: {
+        provider: {
+          anthropic: {
+            options: { apiKey: "test-key", baseURL: `${origin}/v1` },
+            models: { "claude-opus-4-8": { reasoning: true } },
+          },
+          google: {
+            options: { apiKey: "test-key", baseURL: `${origin}/v1beta` },
+            models: { "gemini-3-flash": { reasoning: true } },
+          },
+          openai: { options: { apiKey: "test-key", baseURL: `${origin}/v1` } },
+          "alibaba-cn": {
+            options: { apiKey: "test-key", baseURL: `${origin}/v1` },
+            models: { "qwen3.8-max": { reasoning: true } },
+          },
+        },
+      },
+    })
+    try {
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const anthropic = await send("anthropic", "claude-opus-4-8", "high", "/messages", anthropicReply())
+          expect(anthropic.output_config).toMatchObject({ effort: "high" })
+          const google = await send("google", "gemini-3-flash", "low", ":streamGenerateContent", googleReply())
+          expect((google.generationConfig as { thinkingConfig?: unknown }).thinkingConfig).toEqual({
+            includeThoughts: true,
+            thinkingLevel: "low",
+          })
+          const openai = await send("openai", "gpt-5.2", "xhigh", "/responses", responsesReply())
+          expect(openai.reasoning).toMatchObject({ effort: "xhigh" })
+          const bailian = await send("alibaba-cn", "qwen3.8-max", "xhigh", "/chat/completions", chatReply())
+          expect(bailian.reasoning_effort).toBe("xhigh")
+          expect(bailian.enable_thinking).toBe(true)
+        },
+      })
+    } finally {
+      await restoreCatalog()
+    }
+  })
+
+  test("no hardcoded default effort is sent when the user picked a level", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+    await writeCatalog("public", parseItems((await load("openrouter")).data, OpenRouter.parse))
+    await using tmp = await tmpdir({
+      config: { provider: { openai: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } } },
+    })
+    try {
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const body = await send("openai", "gpt-5.2", "low", "/responses", responsesReply())
+          expect(body.reasoning).toMatchObject({ effort: "low" })
+        },
+      })
+    } finally {
+      await restoreCatalog()
+    }
+  })
 })
+
+/** Streams one reply for the given model and level and returns the request body the SDK sent. */
+async function send(providerID: string, modelID: string, variant: string, pathname: string, response: Response) {
+  const request = waitRequest(pathname, response)
+  const model = await Provider.getModel(providerID, modelID)
+  const stream = await LLM.stream({
+    user: {
+      id: `user-${providerID}`,
+      sessionID: "session-levels",
+      role: "user",
+      time: { created: Date.now() },
+      agent: "test",
+      model: { providerID, modelID },
+      variant,
+    },
+    sessionID: "session-levels",
+    model,
+    agent: {
+      id: "test",
+      name: "test",
+      mode: "primary",
+      options: {},
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    },
+    system: [],
+    abort: new AbortController().signal,
+    messages: [{ role: "user", content: "Hello" }],
+    tools: {},
+  })
+  for await (const _ of stream.stream) {
+  }
+  return (await request).body
+}
+
+function chatReply() {
+  return new Response(createChatStream("Hello"), { status: 200, headers: { "Content-Type": "text/event-stream" } })
+}
+
+function anthropicReply() {
+  return createEventResponse([
+    { type: "message_start", message: { id: "msg-levels", model: "m", usage: { input_tokens: 1 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hello" } },
+    { type: "content_block_stop", index: 0 },
+    { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
+    { type: "message_stop" },
+  ])
+}
+
+function googleReply() {
+  return createEventResponse([
+    {
+      candidates: [{ content: { parts: [{ text: "Hello" }] }, finishReason: "STOP" }],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+    },
+  ])
+}
+
+function responsesReply() {
+  return createEventResponse(
+    [
+      {
+        type: "response.completed",
+        response: { incomplete_details: null, usage: { input_tokens: 1, output_tokens: 1 }, service_tier: null },
+      },
+    ],
+    true,
+  )
+}

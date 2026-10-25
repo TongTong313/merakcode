@@ -3,7 +3,7 @@
   "info": {
     "title": "merakcode",
     "description": "merakcode api",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "components": {
     "schemas": {
@@ -263,7 +263,13 @@
             "type": "number"
           },
           "totalCost": {
-            "type": "number"
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
           },
           "totalTokens": {
             "type": "object",
@@ -342,6 +348,10 @@
                 },
                 "cost": {
                   "type": "number"
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": ["USD", "CNY"]
                 }
               },
               "required": ["messages", "tokens", "cost"],
@@ -365,7 +375,13 @@
             "type": "number"
           },
           "costPerDay": {
-            "type": "number"
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
           },
           "tokensPerSession": {
             "type": "number"
@@ -619,6 +635,36 @@
         "required": ["type", "properties"],
         "additionalProperties": false
       },
+      "CatalogRefreshError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "CatalogRefreshError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "statusCode": {
+                "type": "number"
+              }
+            },
+            "required": ["providerID", "message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
       "Event.provider.changed": {
         "type": "object",
         "properties": {
@@ -634,7 +680,10 @@
               },
               "reason": {
                 "type": "string",
-                "enum": ["connected", "disconnected", "refreshed"]
+                "enum": ["connected", "disconnected", "refreshed", "refresh-failed"]
+              },
+              "error": {
+                "$ref": "#/components/schemas/CatalogRefreshError"
               }
             },
             "required": ["reason"],
@@ -3765,6 +3814,60 @@
           "npm": {
             "type": "string"
           },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "picker": {
+            "description": "Homepage visibility delta. include turns a model on, exclude turns a default model off.",
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "relay": {
+            "type": "object",
+            "properties": {
+              "station": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["claude-code", "codex", "standard", "custom"]
+              },
+              "auth": {
+                "type": "string",
+                "enum": ["bearer", "x-api-key"]
+              }
+            },
+            "required": ["station", "group", "kind"],
+            "additionalProperties": false
+          },
           "models": {
             "type": "object",
             "propertyNames": {
@@ -3830,28 +3933,8 @@
                     },
                     "cache_write": {
                       "type": "number"
-                    },
-                    "context_over_200k": {
-                      "type": "object",
-                      "properties": {
-                        "input": {
-                          "type": "number"
-                        },
-                        "output": {
-                          "type": "number"
-                        },
-                        "cache_read": {
-                          "type": "number"
-                        },
-                        "cache_write": {
-                          "type": "number"
-                        }
-                      },
-                      "required": ["input", "output"],
-                      "additionalProperties": false
                     }
                   },
-                  "required": ["input", "output"],
                   "additionalProperties": false
                 },
                 "limit": {
@@ -3867,7 +3950,6 @@
                       "type": "number"
                     }
                   },
-                  "required": ["context", "output"],
                   "additionalProperties": false
                 },
                 "modalities": {
@@ -3888,15 +3970,11 @@
                       }
                     }
                   },
-                  "required": ["input", "output"],
                   "additionalProperties": false
-                },
-                "experimental": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["alpha", "beta", "deprecated"]
+                  "enum": ["alpha", "beta", "deprecated", "active"]
                 },
                 "options": {
                   "type": "object",
@@ -3942,97 +4020,10 @@
                     },
                     "additionalProperties": {}
                   }
-                },
-                "reasoning_options": {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "toggle"
-                          }
-                        },
-                        "required": ["type"],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "effort"
-                          },
-                          "values": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "required": ["type", "values"],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "budget_tokens"
-                          },
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "required": ["type"],
-                        "additionalProperties": false
-                      }
-                    ]
-                  }
                 }
               },
               "additionalProperties": false
             }
-          },
-          "whitelist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "blacklist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "relay": {
-            "type": "object",
-            "properties": {
-              "station": {
-                "type": "string",
-                "minLength": 1
-              },
-              "group": {
-                "type": "string",
-                "minLength": 1
-              },
-              "kind": {
-                "type": "string",
-                "enum": ["claude-code", "codex", "standard", "custom"]
-              },
-              "auth": {
-                "type": "string",
-                "enum": ["bearer", "x-api-key"]
-              }
-            },
-            "required": ["station", "group", "kind"],
-            "additionalProperties": false
           },
           "options": {
             "type": "object",
@@ -5217,6 +5208,58 @@
           "npm": {
             "type": "string"
           },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "picker": {
+            "description": "Homepage visibility delta. include turns a model on, exclude turns a default model off.",
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "relay": {
+            "type": "object",
+            "properties": {
+              "station": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["claude-code", "codex", "standard", "custom"]
+              },
+              "auth": {
+                "type": "string",
+                "enum": ["bearer", "x-api-key"]
+              }
+            },
+            "required": ["station", "group", "kind"]
+          },
           "models": {
             "type": "object",
             "propertyNames": {
@@ -5282,27 +5325,8 @@
                     },
                     "cache_write": {
                       "type": "number"
-                    },
-                    "context_over_200k": {
-                      "type": "object",
-                      "properties": {
-                        "input": {
-                          "type": "number"
-                        },
-                        "output": {
-                          "type": "number"
-                        },
-                        "cache_read": {
-                          "type": "number"
-                        },
-                        "cache_write": {
-                          "type": "number"
-                        }
-                      },
-                      "required": ["input", "output"]
                     }
-                  },
-                  "required": ["input", "output"]
+                  }
                 },
                 "limit": {
                   "type": "object",
@@ -5316,8 +5340,7 @@
                     "output": {
                       "type": "number"
                     }
-                  },
-                  "required": ["context", "output"]
+                  }
                 },
                 "modalities": {
                   "type": "object",
@@ -5336,15 +5359,11 @@
                         "enum": ["text", "audio", "image", "video", "pdf"]
                       }
                     }
-                  },
-                  "required": ["input", "output"]
-                },
-                "experimental": {
-                  "type": "boolean"
+                  }
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["alpha", "beta", "deprecated"]
+                  "enum": ["alpha", "beta", "deprecated", "active"]
                 },
                 "options": {
                   "type": "object",
@@ -5389,92 +5408,9 @@
                     },
                     "additionalProperties": {}
                   }
-                },
-                "reasoning_options": {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "toggle"
-                          }
-                        },
-                        "required": ["type"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "effort"
-                          },
-                          "values": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "required": ["type", "values"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "budget_tokens"
-                          },
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "required": ["type"]
-                      }
-                    ]
-                  }
                 }
               }
             }
-          },
-          "whitelist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "blacklist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "relay": {
-            "type": "object",
-            "properties": {
-              "station": {
-                "type": "string",
-                "minLength": 1
-              },
-              "group": {
-                "type": "string",
-                "minLength": 1
-              },
-              "kind": {
-                "type": "string",
-                "enum": ["claude-code", "codex", "standard", "custom"]
-              },
-              "auth": {
-                "type": "string",
-                "enum": ["bearer", "x-api-key"]
-              }
-            },
-            "required": ["station", "group", "kind"]
           },
           "options": {
             "type": "object",
@@ -6670,7 +6606,69 @@
                 "required": ["read", "write"],
                 "additionalProperties": false
               },
-              "experimentalOver200K": {
+              "currency": {
+                "type": "string",
+                "enum": ["USD", "CNY"]
+              },
+              "tiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cache": {
+                      "type": "object",
+                      "properties": {
+                        "read": {
+                          "type": "number"
+                        },
+                        "write": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["read", "write"],
+                      "additionalProperties": false
+                    },
+                    "above": {
+                      "type": "number"
+                    },
+                    "thinking": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["input", "output", "cache"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["input", "output", "cache", "above"],
+                  "additionalProperties": false
+                }
+              },
+              "thinking": {
                 "type": "object",
                 "properties": {
                   "input": {
@@ -6739,6 +6737,9 @@
           "release_date": {
             "type": "string"
           },
+          "homepage": {
+            "type": "boolean"
+          },
           "variants": {
             "type": "object",
             "propertyNames": {
@@ -6752,57 +6753,8 @@
               "additionalProperties": {}
             }
           },
-          "reasoning_options": {
-            "type": "array",
-            "items": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "toggle"
-                    }
-                  },
-                  "required": ["type"],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "effort"
-                    },
-                    "values": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": ["type", "values"],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "budget_tokens"
-                    },
-                    "min": {
-                      "type": "number"
-                    },
-                    "max": {
-                      "type": "number"
-                    }
-                  },
-                  "required": ["type"],
-                  "additionalProperties": false
-                }
-              ]
-            }
+          "defaultVariant": {
+            "type": "string"
           }
         },
         "required": [
@@ -6811,7 +6763,6 @@
           "api",
           "name",
           "capabilities",
-          "cost",
           "limit",
           "status",
           "options",
@@ -6832,6 +6783,10 @@
           "source": {
             "type": "string",
             "enum": ["env", "config", "custom", "api"]
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["official", "configured"]
           },
           "env": {
             "type": "array",
@@ -17199,270 +17154,7 @@
                     "all": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "api": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "env": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "npm": {
-                            "type": "string"
-                          },
-                          "models": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "family": {
-                                  "type": "string"
-                                },
-                                "release_date": {
-                                  "type": "string"
-                                },
-                                "attachment": {
-                                  "type": "boolean"
-                                },
-                                "reasoning": {
-                                  "type": "boolean"
-                                },
-                                "temperature": {
-                                  "type": "boolean"
-                                },
-                                "tool_call": {
-                                  "type": "boolean"
-                                },
-                                "interleaved": {
-                                  "anyOf": [
-                                    {
-                                      "type": "boolean",
-                                      "const": true
-                                    },
-                                    {
-                                      "type": "object",
-                                      "properties": {
-                                        "field": {
-                                          "type": "string",
-                                          "enum": ["reasoning_content", "reasoning_details"]
-                                        }
-                                      },
-                                      "required": ["field"],
-                                      "additionalProperties": false
-                                    }
-                                  ]
-                                },
-                                "cost": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    },
-                                    "cache_read": {
-                                      "type": "number"
-                                    },
-                                    "cache_write": {
-                                      "type": "number"
-                                    },
-                                    "context_over_200k": {
-                                      "type": "object",
-                                      "properties": {
-                                        "input": {
-                                          "type": "number"
-                                        },
-                                        "output": {
-                                          "type": "number"
-                                        },
-                                        "cache_read": {
-                                          "type": "number"
-                                        },
-                                        "cache_write": {
-                                          "type": "number"
-                                        }
-                                      },
-                                      "required": ["input", "output"],
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "required": ["input", "output"],
-                                  "additionalProperties": false
-                                },
-                                "limit": {
-                                  "type": "object",
-                                  "properties": {
-                                    "context": {
-                                      "type": "number"
-                                    },
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    }
-                                  },
-                                  "required": ["context", "output"],
-                                  "additionalProperties": false
-                                },
-                                "modalities": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": ["text", "audio", "image", "video", "pdf"]
-                                      }
-                                    },
-                                    "output": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": ["text", "audio", "image", "video", "pdf"]
-                                      }
-                                    }
-                                  },
-                                  "required": ["input", "output"],
-                                  "additionalProperties": false
-                                },
-                                "experimental": {
-                                  "type": "boolean"
-                                },
-                                "status": {
-                                  "type": "string",
-                                  "enum": ["alpha", "beta", "deprecated"]
-                                },
-                                "options": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {}
-                                },
-                                "headers": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "string"
-                                  }
-                                },
-                                "provider": {
-                                  "type": "object",
-                                  "properties": {
-                                    "npm": {
-                                      "type": "string"
-                                    },
-                                    "api": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "additionalProperties": false
-                                },
-                                "variants": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "object",
-                                    "propertyNames": {
-                                      "type": "string"
-                                    },
-                                    "additionalProperties": {}
-                                  }
-                                },
-                                "reasoning_options": {
-                                  "type": "array",
-                                  "items": {
-                                    "anyOf": [
-                                      {
-                                        "type": "object",
-                                        "properties": {
-                                          "type": {
-                                            "type": "string",
-                                            "const": "toggle"
-                                          }
-                                        },
-                                        "required": ["type"],
-                                        "additionalProperties": false
-                                      },
-                                      {
-                                        "type": "object",
-                                        "properties": {
-                                          "type": {
-                                            "type": "string",
-                                            "const": "effort"
-                                          },
-                                          "values": {
-                                            "type": "array",
-                                            "items": {
-                                              "type": "string"
-                                            }
-                                          }
-                                        },
-                                        "required": ["type", "values"],
-                                        "additionalProperties": false
-                                      },
-                                      {
-                                        "type": "object",
-                                        "properties": {
-                                          "type": {
-                                            "type": "string",
-                                            "const": "budget_tokens"
-                                          },
-                                          "min": {
-                                            "type": "number"
-                                          },
-                                          "max": {
-                                            "type": "number"
-                                          }
-                                        },
-                                        "required": ["type"],
-                                        "additionalProperties": false
-                                      }
-                                    ]
-                                  }
-                                }
-                              },
-                              "required": [
-                                "id",
-                                "name",
-                                "release_date",
-                                "attachment",
-                                "reasoning",
-                                "temperature",
-                                "tool_call",
-                                "limit",
-                                "options"
-                              ],
-                              "additionalProperties": false
-                            }
-                          }
-                        },
-                        "required": ["name", "env", "id", "models"],
-                        "additionalProperties": false
+                        "$ref": "#/components/schemas/Provider"
                       }
                     },
                     "default": {
@@ -17596,7 +17288,7 @@
           }
         ],
         "summary": "Refresh model catalog",
-        "description": "Fetch the latest model catalog (models.dev) into the local cache and rebuild providers. Returns false when the fetch fails and the cached catalog stays in use.",
+        "description": "Fetch connected providers' model lists into the local cache and rebuild providers. Returns false when every fetch fails and the cached catalog stays in use.",
         "responses": {
           "200": {
             "description": "Whether the catalog was refreshed",
@@ -17725,13 +17417,146 @@
                             "type": "object",
                             "properties": {
                               "id": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1
                               },
                               "context": {
                                 "type": "number"
                               },
                               "output": {
                                 "type": "number"
+                              },
+                              "input": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["text", "audio", "image", "video", "pdf"]
+                                }
+                              },
+                              "outputModalities": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["text", "audio", "image", "video", "pdf"]
+                                }
+                              },
+                              "reasoning": {
+                                "type": "boolean"
+                              },
+                              "toolcall": {
+                                "type": "boolean"
+                              },
+                              "temperature": {
+                                "type": "boolean"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": ["active", "deprecated", "alpha", "beta"]
+                              },
+                              "releaseDate": {
+                                "type": "string"
+                              },
+                              "cost": {
+                                "type": "object",
+                                "properties": {
+                                  "input": {
+                                    "type": "number"
+                                  },
+                                  "output": {
+                                    "type": "number"
+                                  },
+                                  "cacheRead": {
+                                    "type": "number"
+                                  },
+                                  "cacheWrite": {
+                                    "type": "number"
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "enum": ["USD", "CNY"]
+                                  },
+                                  "tiers": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "input": {
+                                          "type": "number"
+                                        },
+                                        "output": {
+                                          "type": "number"
+                                        },
+                                        "cacheRead": {
+                                          "type": "number"
+                                        },
+                                        "cacheWrite": {
+                                          "type": "number"
+                                        },
+                                        "above": {
+                                          "type": "number"
+                                        },
+                                        "thinking": {
+                                          "type": "object",
+                                          "properties": {
+                                            "input": {
+                                              "type": "number"
+                                            },
+                                            "output": {
+                                              "type": "number"
+                                            },
+                                            "cacheRead": {
+                                              "type": "number"
+                                            },
+                                            "cacheWrite": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": ["input", "output"],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": ["input", "output", "above"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "thinking": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "cacheRead": {
+                                        "type": "number"
+                                      },
+                                      "cacheWrite": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": ["input", "output"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": ["input", "output", "currency"],
+                                "additionalProperties": false
+                              },
+                              "efforts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "canDisable": {
+                                "type": "boolean"
+                              },
+                              "defaultEffort": {
+                                "type": "string"
                               },
                               "contextFrom": {
                                 "type": "string",
@@ -17744,18 +17569,9 @@
                               "endpoint": {
                                 "type": "string",
                                 "enum": ["anthropic", "openai-responses", "openai-chat"]
-                              },
-                              "image": {
-                                "type": "boolean"
-                              },
-                              "reasoning": {
-                                "type": "boolean"
-                              },
-                              "toolcall": {
-                                "type": "boolean"
                               }
                             },
-                            "required": ["id"],
+                            "required": ["id", "name"],
                             "additionalProperties": false
                           }
                         }

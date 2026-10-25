@@ -2846,13 +2846,23 @@ export namespace SessionRunner {
 
     const model = input.model ?? agent.model ?? (await SessionExecution.wait(async () => lastModel(input.sessionID)))
     if (input.model) await Provider.remember(input.model)
-    const full =
-      !input.variant && agent.variant
-        ? await SessionExecution.wait(async () =>
-            Provider.getModel(model.providerID, model.modelID).catch(() => undefined),
-          )
-        : undefined
-    const variant = input.variant ?? (agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined)
+    const full = await SessionExecution.wait(async () =>
+      Provider.getModel(model.providerID, model.modelID).catch(() => undefined),
+    )
+    const history = await SessionExecution.wait(async () => Session.messages({ sessionID: input.sessionID }))
+    const picked = history.some(
+      (message) =>
+        message.info.role === "user" &&
+        message.info.model.providerID === model.providerID &&
+        message.info.model.modelID === model.modelID &&
+        !!message.info.variant,
+    )
+    const configured = agent.model
+    const owns =
+      !!configured && configured.providerID === model.providerID && configured.modelID === model.modelID && !picked
+    const requested = input.variant && full?.variants?.[input.variant] ? input.variant : undefined
+    const fromAgent = owns && agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined
+    const variant = requested ?? fromAgent ?? full?.defaultVariant
 
     const info: Message.Info = {
       id: input.messageID ?? Identifier.ascending("message"),

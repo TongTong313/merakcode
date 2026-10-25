@@ -1,0 +1,26 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-5.2",
+      "object": "model",
+      "created": 1765389775,
+      "owned_by": "system",
+      "shutdown_date": null
+    },
+    {
+      "id": "text-embedding-3-small",
+      "object": "model",
+      "created": 1686935002,
+      "owned_by": "system",
+      "shutdown_date": null
+    },
+    {
+      "id": "model-id-2",
+      "object": "model",
+      "created": 1686935002,
+      "owned_by": "openai",
+      "shutdown_date": "2026-10-23"
+    }
+  ]
+}

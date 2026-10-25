@@ -870,20 +870,25 @@ export namespace Session {
         cache: { write: cacheWrite, read: cacheRead },
       }
 
-      const costInfo =
-        input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
-          ? input.model.cost.experimentalOver200K
-          : input.model.cost
+      const promptTokens = tokens.input + tokens.cache.read + tokens.cache.write
+      const costInfo = (() => {
+        const cost = input.model.cost
+        if (!cost) return undefined
+        const tier = [...(cost.tiers ?? [])].sort((a, b) => b.above - a.above).find((item) => promptTokens > item.above)
+        const thinking = tier ? tier.thinking : cost.thinking
+        return tokens.reasoning > 0 && thinking ? thinking : (tier ?? cost)
+      })()
       return {
-        cost: safe(
-          new Decimal(0)
-            .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            // Reasoning tokens are already included in output tokens and billed at the output price
-            .toNumber(),
-        ),
+        cost: costInfo
+          ? safe(
+              new Decimal(0)
+                .add(new Decimal(tokens.input).mul(costInfo.input).div(1_000_000))
+                .add(new Decimal(tokens.output).mul(costInfo.output).div(1_000_000))
+                .add(new Decimal(tokens.cache.read).mul(costInfo.cache.read).div(1_000_000))
+                .add(new Decimal(tokens.cache.write).mul(costInfo.cache.write).div(1_000_000))
+                .toNumber(),
+            )
+          : 0,
         tokens,
       }
     },

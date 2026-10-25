@@ -139,7 +139,7 @@ async function invoke(
       cwd: root,
       env: {
         ...process.env,
-        MERAKCODE_DISABLE_MODELS_FETCH: "1",
+        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
         MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
         MERAKCODE_DISABLE_PROJECT_CONFIG: "1",
       },
