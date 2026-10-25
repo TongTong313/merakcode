@@ -6,13 +6,31 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-25
+
 ### Changed
 
+- Connected providers load their model list from the provider, with the saved key, instead of a bundled models.dev snapshot. A failed refresh is shown once (MRK-2001, MRK-2004, or MRK-2010).
+- The homepage model menu is two sections, Configured then Official. An official provider starts with one current model per named line: Alibaba starts on unsuffixed `qwen-plus` and `qwen-max`, and OpenRouter starts with nothing on. A model that starts off can be added from the bottom of the menu, and Settings has a model list for each provider.
+- Prices can be USD or CNY, can step by prompt size, and use a separate thinking price. Stats, the composer, and ACP show a total only when every priced reply shares one currency.
+- The reasoning level starts from the model's catalog default, then keeps the level last sent with that model. A relay's discovered models keep the context, output, and modalities the catalog reported.
 - Member adapters are written in TypeScript: Node runs an `adapter.mts` as it is, the single-file adapter library comes with its type declarations (`merakcode-adapter.d.mts`), and the `adapter-generator` skill writes TypeScript from the built-in adapters. Adapters already written in JavaScript keep working. The SDK guide explains writing one step by step.
+
+### Fixed
+
+- The new-group dialog can clear a copied group and return to a blank draft.
 
 ### 变更
 
+- 已连接的服务商用保存的密钥向服务商拉取模型列表，不再使用打包的 models.dev 快照。刷新失败时提示一次（MRK-2001、MRK-2004 或 MRK-2010）。
+- 主页的模型菜单分成「配置的模型」和「官方供应商」两段。官方供应商默认只打开每个指定系列里当前的一个模型：阿里云百炼只开不带后缀的 `qwen-plus` 和 `qwen-max`，OpenRouter 默认一个都不开。没打开的模型可以在菜单底部「添加模型」，设置里每个服务商有一份「模型配置」。
+- 价格可以是美元或人民币，可以按提示词长度分档，思考另有价格。统计、输入框和 ACP 只在每条有价格的回复币种相同时显示合计。
+- 推理档位先用模型目录里的默认值，再记住这个模型上次发送的档位。中转发现的模型保留目录里实际返回的上下文、输出长度和模态。
 - 成员适配器改用 TypeScript 写：Node 直接运行 `adapter.mts`，单文件适配器开发库带上了类型声明（`merakcode-adapter.d.mts`），技能 `adapter-generator` 照着内置适配器写 TypeScript。已经用 JavaScript 写好的适配器照样能用。SDK 手册一步步讲了怎么写。
+
+### 修复
+
+- 新建协作群时，复制了已有的群之后可以清空，回到空白草稿。
 
 ## [0.1.1] - 2026-10-24
 
