@@ -607,6 +607,8 @@ export const zh = {
   "group.someUnavailable": "部分产品不可用 · 查看原因",
   "group.copyFrom": "从已有群复制",
   "group.copyFromPlaceholder": "选择一个群，带上它的成员",
+  "group.copyClear": "清空",
+  "group.copyClearTitle": "清空复制来的群名和成员",
   "group.copySkipped": "这些成员的产品在这里不可用，没有复制：{names}",
   "group.nameEmpty": "请填写姓名",
   "group.nameInvalid": "姓名里不能有空格或 @",

@@ -632,6 +632,8 @@ export const en: Record<keyof typeof zh, string> = {
   "group.someUnavailable": "Some products are unavailable · See why",
   "group.copyFrom": "Copy from a group",
   "group.copyFromPlaceholder": "Pick a group to bring its members",
+  "group.copyClear": "Clear",
+  "group.copyClearTitle": "Clear the copied name and members",
   "group.copySkipped": "Not copied, as their products are unavailable here: {names}",
   "group.nameEmpty": "Enter a name",
   "group.nameInvalid": "A name cannot contain spaces or @",

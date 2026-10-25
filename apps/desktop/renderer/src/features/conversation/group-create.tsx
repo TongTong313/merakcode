@@ -23,6 +23,9 @@ export function GroupCreate(props: {
   open: boolean
   onClose: () => void
   onCreated: (sessionID: string) => void
+  /** Test seam: skip the SDK list/product calls and use these instead */
+  products?: Product[]
+  groups?: CollaborationGroupSummary[]
 }) {
   const [title, setTitle] = createSignal("")
   const [seats, setSeats] = createSignal<Seat[]>([])
@@ -31,6 +34,7 @@ export function GroupCreate(props: {
   const [copied, setCopied] = createSignal<{ from: string; skipped: string[] }>()
   const [busy, setBusy] = createSignal(false)
   let added = 0
+  let copyField: HTMLDivElement | undefined
 
   createEffect(
     on(
@@ -40,6 +44,11 @@ export function GroupCreate(props: {
         setTitle("")
         setSeats([leaderDraft()])
         setCopied(undefined)
+        if (props.products && props.groups) {
+          setProducts(props.products)
+          setGroups(props.groups)
+          return
+        }
         // Products may have changed since the last time: none are offered until they are checked again
         setProducts([])
         const failed = (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }) })
@@ -57,6 +66,14 @@ export function GroupCreate(props: {
     setTitle(result.title)
     setSeats(result.seats)
     setCopied({ from: sessionID, skipped: result.skipped })
+  }
+
+  /** Back to the blank draft from when the dialog opened */
+  const clear = () => {
+    setTitle("")
+    setSeats([leaderDraft()])
+    setCopied(undefined)
+    queueMicrotask(() => copyField?.querySelector<HTMLButtonElement>("button[aria-haspopup]")?.focus())
   }
 
   const create = async () => {
@@ -101,20 +118,27 @@ export function GroupCreate(props: {
       <div class="dialog-body form">
         {/* Offered once the products are in, since they decide which members can be copied */}
         <Show when={groups().length && products().length}>
-          <div class="field">
+          <div class="field" ref={copyField}>
             <span>{t("group.copyFrom")}</span>
-            <Select
-              class="chip outlined"
-              label={t("group.copyFrom")}
-              placeholder={t("group.copyFromPlaceholder")}
-              value={copied()?.from}
-              onChange={copy}
-              options={groups().map((group) => ({
-                value: group.sessionID,
-                label: group.title,
-                description: group.directory,
-              }))}
-            />
+            <div class="row">
+              <Select
+                class="chip outlined"
+                label={t("group.copyFrom")}
+                placeholder={t("group.copyFromPlaceholder")}
+                value={copied()?.from}
+                onChange={copy}
+                options={groups().map((group) => ({
+                  value: group.sessionID,
+                  label: group.title,
+                  description: group.directory,
+                }))}
+              />
+              <Show when={copied()}>
+                <button type="button" class="button ghost sm" title={t("group.copyClearTitle")} onClick={clear}>
+                  {t("group.copyClear")}
+                </button>
+              </Show>
+            </div>
           </div>
           <Show when={copied()?.skipped.length}>
             <p class="subtle group-copy-skipped" role="status">
