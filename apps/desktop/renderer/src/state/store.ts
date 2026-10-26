@@ -195,8 +195,13 @@ export async function loadConfig() {
   return config
 }
 
-export async function updateConfig(patch: Config) {
-  const config = await call(client().global.config.update({ config: patch }))
+export async function updateConfig(patch: Config, options?: { skipDispose?: boolean }) {
+  const config = await call(
+    client().global.config.update({
+      config: patch,
+      ...(options?.skipDispose ? { skipDispose: "true" as const } : {}),
+    }),
+  )
   setState("config", config)
   void loadWarnings()
   return config

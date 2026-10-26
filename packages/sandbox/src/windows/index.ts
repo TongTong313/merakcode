@@ -172,6 +172,11 @@ export namespace WindowsSandbox {
       status,
       tmp: () => file.tmp,
 
+      async warm() {
+        if (!load() || !existsSync(file.password) || !compiler()) return
+        await helper()
+      },
+
       async setup(progress = () => {}) {
         if (!compiler()) return status()
         mkdirSync(root, { recursive: true })

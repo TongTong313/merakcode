@@ -26,7 +26,7 @@ export function Select<T extends string>(props: {
   options: Option<T>[]
   value: T | undefined
   onChange: (value: T) => void
-  placeholder?: string
+  placeholder?: JSX.Element
   class?: string
   /** Content of the trigger button; defaults to the selected option's icon and text */
   display?: (option: Option<T> | undefined) => JSX.Element

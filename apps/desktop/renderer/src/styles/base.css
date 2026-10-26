@@ -649,6 +649,13 @@ kbd {
   border: 0;
 }
 
+/* The hint trigger must have a box. display:contents has no rectangle, so the hint is placed at the window origin. */
+.tip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  max-width: 100%;
+}
 .tooltip {
   padding: 4px 8px;
   border-radius: var(--radius);

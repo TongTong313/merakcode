@@ -5,6 +5,7 @@ import { locale, t } from "../../i18n"
 import { available, find, modelKey, type ModelRef } from "../../state/models"
 import { setUi } from "../../state/ui"
 import { trackOverlay } from "../../ui/overlay"
+import { Tip } from "../../ui/tooltip"
 import { providerLabel } from "../../ui/provider-label"
 import { pickerSections } from "./model-picker-list"
 
@@ -67,10 +68,12 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
       placement="top-end"
       gutter={6}
     >
-      <Popover.Trigger class="chip" aria-label={`${t("model.label")} ${current()?.model.name ?? ""}`.trim()}>
-        <span class="ellipsis">{current()?.model.name ?? t("model.none")}</span>
-        <ChevronDown class="icon chevron" />
-      </Popover.Trigger>
+      <Tip label={t("model.hint")} placement="top">
+        <Popover.Trigger class="chip" aria-label={t("model.named", { name: current()?.model.name ?? t("model.none") })}>
+          <span class="ellipsis">{current()?.model.name ?? t("model.none")}</span>
+          <ChevronDown class="icon chevron" />
+        </Popover.Trigger>
+      </Tip>
       <Popover.Portal>
         <Popover.Content class="popover model-picker">
           <input

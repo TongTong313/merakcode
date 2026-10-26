@@ -52,6 +52,7 @@ export namespace Sandbox {
       setup: (progress?: (step: string) => void): Promise<Status> =>
         backend.setup ? backend.setup(progress) : backend.status(),
       reset: (): Promise<Status> => (backend.reset ? backend.reset() : backend.status()),
+      warm: (): Promise<void> => (backend.warm ? backend.warm() : Promise.resolve()),
 
       /** Prepares one command; spawn `file` with `args` and `env` instead of the shell */
       async prepare(input: {

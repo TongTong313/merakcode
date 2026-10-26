@@ -1315,6 +1315,8 @@ export namespace Server {
 
     _url = server.url
     ServerAddress.set(server.url)
+    // An already set up sandbox is prepared before the first command. Setup itself still waits for the user.
+    await Sandbox.wake().catch((error) => log.warn("sandbox wake failed", { error }))
     ConfigWatch.initGlobal()
     SkillWatch.initGlobal()
     RuleWatch.initGlobal()
