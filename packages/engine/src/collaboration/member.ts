@@ -196,6 +196,8 @@ export async function decide(
   request: Permission,
   cwd: string,
 ): Promise<Verdict> {
+  const missing = nothingToCheck(request)
+  if (missing) return { allow: false, message: missing }
   const input = await checksOf(request, cwd)
   const grants = await PermissionNext.grants(ctx.sessionID)
   const covered = input.checks.every(
@@ -213,6 +215,22 @@ export async function decide(
     if (refused) return { allow: false, message: error.message }
     throw error
   }
+}
+
+/**
+ * Why a request has nothing for the rules to match (no file, an empty command), if so. Such a request is refused
+ * rather than let through, and the message tells the adapter what to send instead.
+ */
+function nothingToCheck(request: Permission) {
+  const blank = (value: string | undefined) => !value?.trim()
+  const instead = `Send a "tool" request with what the CLI asked for as its detail when it gives no path or command.`
+  if ((request.kind === "write" || request.kind === "read") && (!request.paths.length || request.paths.some(blank)))
+    return `MerakCode refused a ${request.kind} request that names no file. ${instead}`
+  if (request.kind === "command" && blank(request.command))
+    return `MerakCode refused a command request with an empty command. ${instead}`
+  if (request.kind === "network" && blank(request.host))
+    return `MerakCode refused a network request that names no host. ${instead}`
+  if (request.kind === "tool" && blank(request.name)) return `MerakCode refused a tool request that names no tool.`
 }
 
 /** The checks MerakCode makes for the same operation by its own tools: edit, read, bash, webfetch, plugin tools */
