@@ -33,7 +33,7 @@ what to do.
 
 1. 先看下表里对应错误码的建议。
 2. 运行 \`merak doctor\`，它会检查安装、配置、模型服务和沙箱，并指出哪一项有问题。
-3. 还是解决不了，运行 \`merak bug-report\`。它会把最近的日志和检查结果打成一个 zip（密钥等敏感信息会先去掉），
+3. 还是解决不了，运行 \`merak bug-report\`。它会把最近的日志、检查结果和配置文件打成一个 zip（密钥等敏感信息会先去掉），
    在 GitHub 提 issue 时附上这个文件。
 4. 想自己看日志：\`merak logs\` 会显示日志在哪，\`merak logs --tail\` 会实时打印最新的日志。
 
@@ -41,8 +41,8 @@ what to do.
 
 1. Check the suggestion for your code in the table below.
 2. Run \`merak doctor\`. It checks the install, configuration, model providers and sandbox, and points at what is wrong.
-3. If that does not help, run \`merak bug-report\`. It zips recent logs and the doctor results (with keys and other
-   secrets removed). Attach the file to a GitHub issue.
+3. If that does not help, run \`merak bug-report\`. It zips recent logs, the doctor results and your config
+   files (with keys and other secrets removed). Attach the file to a GitHub issue.
 4. To read the logs yourself: \`merak logs\` shows where they are, and \`merak logs --tail\` follows the newest one.
 `
 

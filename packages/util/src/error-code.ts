@@ -82,8 +82,8 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "不允许从这里访问", en: "Not allowed from this process" },
       hint: {
-        zh: "引擎不接受由它自己启动的命令发来的这类请求，防止模型绕过权限。请在 merak 界面或你自己的程序里操作。",
-        en: "The engine refuses this request from commands it started itself, so the model cannot get around permissions. Do it from the merak UI or your own program.",
+        zh: "这个接口只接受启动引擎的那个程序发来的请求，引擎自己启动的命令和其他程序都不行，防止模型绕过权限。请在桌面端或启动引擎的程序里操作。",
+        en: "This endpoint only accepts requests from the program that started the engine, not from commands the engine runs or other programs, so the model cannot get around permissions. Do it from the desktop app or the program that started the engine.",
       },
     },
     REQUEST_TIMEOUT: {
@@ -149,8 +149,8 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "模型服务登录失败", en: "Model provider sign-in failed" },
       hint: {
-        zh: "检查 API 密钥是否正确、是否过期；在 /provider 里重新连接。",
-        en: "Check that the API key is correct and not expired; reconnect in /provider.",
+        zh: "检查 API 密钥是否正确、是否过期；在桌面端「设置 → 模型与供应商」里重新连接，或者运行 merak provider login。",
+        en: "Check that the API key is correct and not expired; reconnect under Settings → Models & providers in the desktop app, or run merak provider login.",
       },
       errors: [
         "ProviderAuthError",
@@ -212,7 +212,10 @@ export namespace ErrorCode {
       status: 400,
       retryable: false,
       title: { zh: "还没有可用的模型", en: "No model is available" },
-      hint: { zh: "先在 /provider 里连接一个模型服务。", en: "Connect a model provider in /provider first." },
+      hint: {
+        zh: "先在桌面端「设置 → 模型与供应商」里连接一个模型服务，或者运行 merak provider login。",
+        en: "Connect a model provider first: under Settings → Models & providers in the desktop app, or with merak provider login.",
+      },
       errors: ["ProviderNoModelError"],
     },
     OUTPUT_TRUNCATED: {
@@ -387,8 +390,8 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "沙箱拦下了一次写文件", en: "The sandbox blocked a file write" },
       hint: {
-        zh: "命令想写工作区以外的地方。确实需要时，把那个目录加到配置的 sandbox.write.allow 里。",
-        en: "The command tried to write outside the workspace. If it really needs to, add that directory to sandbox.write.allow in the config.",
+        zh: "命令想写沙箱不允许的地方，或者改了 .git/hooks、.git/config、MerakCode 的配置文件（已自动还原）。确实要写别的目录时，在智能体申请额外可写目录时同意，或者把目录加到配置的 sandbox.write.allow 里。",
+        en: "The command tried to write where the sandbox does not allow, or changed .git/hooks, .git/config or a MerakCode config file (rolled back). If it really needs another folder, approve it when the agent asks for extra writable folders, or add the folder to sandbox.write.allow in the config.",
       },
     },
     SANDBOX_NETWORK_BLOCKED: {
@@ -409,8 +412,8 @@ export namespace ErrorCode {
       retryable: false,
       title: { zh: "沙箱拦下了一次读文件", en: "The sandbox blocked a file read" },
       hint: {
-        zh: "命令想读密钥一类的敏感目录（比如 ~/.ssh）。这是故意拦的；确实需要时，改配置的 sandbox.read.deny。",
-        en: "The command tried to read a sensitive directory such as ~/.ssh. This is on purpose; if it really needs to, change sandbox.read.deny in the config.",
+        zh: "命令想读放密钥的目录（比如 ~/.ssh）。这是故意拦的，这些目录不能在配置里放开；确实需要时，同意智能体在沙箱外运行这条命令。",
+        en: "The command tried to read a key folder such as ~/.ssh. This is on purpose, and these folders cannot be opened up in the config; if it really needs to, approve running the command outside the sandbox.",
       },
     },
     SANDBOX_SETUP_REQUIRED: {
@@ -421,8 +424,8 @@ export namespace ErrorCode {
       title: { zh: "沙箱还没初始化", en: "The sandbox has not been set up" },
       errors: ["SandboxSetupRequiredError"],
       hint: {
-        zh: "在桌面端「设置 → 权限与安全」里点「初始化」，或者运行 merak sandbox setup。",
-        en: "In the desktop app, open Settings → Permissions & security and click Set up, or run merak sandbox setup.",
+        zh: "sandbox.mode 是 required，沙箱却没开。Windows 上在桌面端「设置 → 权限与安全」里点「初始化」，或者运行 merak sandbox setup；其他系统运行 merak sandbox status 查看原因，或者把 sandbox.mode 改成 preferred。",
+        en: "sandbox.mode is required but the sandbox is not on. On Windows, open Settings → Permissions & security in the desktop app and click Set up, or run merak sandbox setup; elsewhere run merak sandbox status to see why, or set sandbox.mode to preferred.",
       },
     },
     TOOL_FAILED: {
