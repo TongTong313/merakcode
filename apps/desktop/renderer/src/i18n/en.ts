@@ -87,7 +87,6 @@ export const en: Record<keyof typeof zh, string> = {
   "model.section.configured": "Configured",
   "model.section.official": "Official",
   "model.add": "Add model",
-  "model.back": "Back",
   "model.catalog.failed": "Could not refresh the model list for {provider}: [{code}] {message}",
   "model.variant": "Reasoning",
 
