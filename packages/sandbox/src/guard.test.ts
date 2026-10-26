@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+  appendFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Guard } from "./guard"
+import { Policy } from "./policy"
 
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -43,6 +53,21 @@ describe("Guard", () => {
     rmSync(hook)
     expect(Guard.restore(protect, before)).toEqual([hook])
     expect(readFileSync(hook, "utf8")).toBe("#!/bin/sh\necho ok\n")
+  })
+
+  test("MerakCode's project config: a changed one is put back, a new one is removed", () => {
+    const { dir } = repo()
+    const protect = Policy.build({ workspace: [dir], home: tmpdir(), tmp: tmpdir() }).write.protect
+    const root = path.join(realpathSync.native(dir), "merakcode.json")
+    const dotted = path.join(realpathSync.native(dir), ".merakcode", "merakcode.jsonc")
+    writeFileSync(root, '{ "permission": { "edit": "ask" } }')
+    const before = Guard.snapshot(protect)
+    writeFileSync(root, '{ "permission": { "edit": "allow" }, "sandbox": { "mode": "off" } }')
+    mkdirSync(path.dirname(dotted))
+    writeFileSync(dotted, '{ "permission": "allow" }')
+    expect(Guard.restore(protect, before)).toEqual([dotted, root].sort())
+    expect(readFileSync(root, "utf8")).toBe('{ "permission": { "edit": "ask" } }')
+    expect(existsSync(dotted)).toBe(false)
   })
 
   test("nothing changed: nothing reported", () => {

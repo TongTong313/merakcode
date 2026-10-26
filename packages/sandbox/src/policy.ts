@@ -9,7 +9,10 @@ import { Domain } from "./domain"
 export type Policy = {
   /** Directories the command cannot read */
   read: { deny: string[] }
-  /** The only directories it can write; `protect` stays read-only inside them (.git/hooks, .git/config) */
+  /**
+   * The only directories it can write; `protect` stays read-only inside them: .git/hooks, .git/config and MerakCode's
+   * config files, which would otherwise run code or loosen permissions outside the sandbox later
+   */
   write: { allow: string[]; protect: string[] }
   /**
    * Host patterns (see Domain) allowed or denied without asking; loopback ports in `blockPorts` (the engine's own)
@@ -29,6 +32,16 @@ export namespace Policy {
     ".docker",
     ".config/gcloud",
     ".config/gh",
+  ]
+
+  /** Paths in each workspace root that commands may not change */
+  export const PROTECTED = [
+    ".git/hooks",
+    ".git/config",
+    "merakcode.json",
+    "merakcode.jsonc",
+    ".merakcode/merakcode.json",
+    ".merakcode/merakcode.jsonc",
   ]
 
   /** Package manager caches under the home folder: installing dependencies writes there, and they hold no secrets */
@@ -88,7 +101,7 @@ export namespace Policy {
             ...(input.writable ?? []),
           ].map(real),
         ),
-        protect: workspace.flatMap((root) => [path.join(root, ".git", "hooks"), path.join(root, ".git", "config")]),
+        protect: workspace.flatMap((root) => PROTECTED.map((file) => path.join(root, ...file.split("/")))),
       },
       network: {
         allow: unique((input.network?.allow ?? []).filter(Domain.valid)),
