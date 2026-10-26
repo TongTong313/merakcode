@@ -54,25 +54,31 @@ npm install @merakcode/sdk
 ```
 
 - 需要 Node.js 24 或更新的版本。
-- 支持 Windows、macOS、Linux 的 x64 和 arm64。
+- 支持 Windows、macOS、Linux 的 x64 和 arm64。Linux 要用 glibc 的发行版；Alpine 这类 musl 系统装不上引擎包，要用 `executablePath` 自己指定引擎。
 - 安装时 npm 会按你的系统装上一个引擎包，名字是 `merakcode-<系统>-<架构>`（比如 `merakcode-windows-x64`），里面自带 Node 和引擎，所以体积比较大。它是可选依赖，用了 `--omit=optional` 或者换了一台不同系统的机器跑，就会找不到引擎，报 `MRK-1001`。
 
 **用别的引擎。** 不想用 npm 装的引擎时，用 `executablePath` 指定：
 
 - 一个可执行文件：macOS / Linux 上可以直接写装好的 `merak`，比如 `~/.merakcode/versions/<版本>/bin/merak`。
-- 一个命令前缀数组：Windows 上 `merak.cmd` 不能直接启动，要写成 `[<版本目录>\node\node.exe, <版本目录>\lib\index.js]`；从源码运行就写成下面这样。
+- 一个命令前缀数组：Windows 上 `merak.cmd` 不能直接启动，要写成 `[<版本目录>\node\node.exe, <版本目录>\lib\index.js]`；从源码运行就写成下面这样（先在仓库里 `pnpm install`，运行你程序的 Node 要是 26.12 以上；`--import` 后面要写成 `file://` 地址，Windows 上才认）。
 
 ```ts
+import { pathToFileURL } from "node:url"
 import { createMerakCode } from "@merakcode/sdk"
 
 const repo = "/path/to/merakcode"
 const merak = await createMerakCode({
-  executablePath: [process.execPath, "--import", `${repo}/script/node/register.mjs`, `${repo}/apps/cli/src/index.ts`],
+  executablePath: [
+    process.execPath,
+    "--import",
+    pathToFileURL(`${repo}/script/node/register.mjs`).href,
+    `${repo}/apps/cli/src/index.ts`,
+  ],
 })
 await merak.close()
 ```
 
-**连接已经在运行的引擎。** 用 `url` 代替启动新进程。引擎如果设置了口令（环境变量 `MERAKCODE_SERVER_PASSWORD`），用户名是 `merakcode`，按 HTTP Basic 认证带上：
+**连接已经在运行的引擎。** 用 `url` 代替启动新进程。引擎如果设置了口令（环境变量 `MERAKCODE_SERVER_PASSWORD`），按 HTTP Basic 认证带上，用户名默认是 `merakcode`（引擎设置了 `MERAKCODE_SERVER_USERNAME` 时用它）：
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
@@ -86,7 +92,7 @@ const merak = await createMerakCode({
 await merak.close()
 ```
 
-这时 `close()` 只断开连接，不会关掉那个引擎。
+这时 `close()` 只断开连接，不会关掉那个引擎。另外要注意：用 `url` 连接时，引擎退出或者事件流连不上（地址、口令不对）都不会抛错，SDK 会每隔 3 到 30 秒重连，断开期间的事件会丢，正在等事件的迭代会一直等。可以给 `run` 传 `signal` 设个上限。
 
 ## 3. 快速开始
 
@@ -105,7 +111,7 @@ try {
 }
 ```
 
-用的模型是你已经连接好的模型服务的默认模型（在配置里写过 `options.apiKey`，或在 `/provider` 里填过密钥）。还没连接过的话，先用 `merak` 在终端里输入 `/provider` 连一个，或者在 `config` 选项里写上（见第 5 节）。
+用的模型是你已经连接好的模型服务的默认模型（在配置里写过 `options.apiKey`，用 `merak provider login` 连过，或者在桌面端「设置 → 模型与供应商」里填过密钥）。还没连接过的话，先运行 `merak provider login` 连一个，或者在 `config` 选项里写上（见第 5 节）。
 
 仓库里有三个可以直接跑的示例，在 [`packages/sdk/js/examples`](../../packages/sdk/js/examples)：
 
@@ -120,7 +126,7 @@ try {
 - **引擎**：一个 `merak serve` 进程。一个引擎可以同时服务多个会话，也可以服务多个项目目录。
 - **会话**（session）：一次对话。智能体派出的子智能体、后台工作流会建**子会话**，子会话的 `parentID` 指向父会话。
 - **消息和 Part**：每条消息（`role` 是 `user` 或 `assistant`）由若干 Part 组成。常见的 Part：`text`（正文）、`reasoning`（思考过程）、`tool`（一次工具调用，含参数、状态和输出）、`file`（附件）、`step-start` / `step-finish`（一步的开始和结束，带用量）、`patch`（这一步改了哪些文件）、`subtask`、`agent`、`retry`、`compaction`。
-- **智能体**（agent）：决定用什么提示词、能用哪些工具。默认是 `build`；子智能体有 `general`、`explore`。可以在配置里自己加。
+- **智能体**（agent）：决定用什么提示词、能用哪些工具。默认是 `build`；子智能体有 `general`、`explore`；`simplifier` 两种都能当。可以在配置里自己加。
 - **模型**：写成 `服务商/模型`，比如 `anthropic/claude-sonnet-4-5`、`alibaba-cn/qwen-plus`。`merak models` 能列出可用的。
 - **权限模式**：`readonly`（只读）、`ask`（询问，默认）、`auto`（自动）。会改东西的操作是直接做、先问，还是不做，由它和你的权限规则决定。
 - **事件**：引擎把所有变化（新消息、Part 更新、审批请求、会话状态……）通过事件流推出来。高层 API 帮你只挑出当前会话的事件。
@@ -131,23 +137,23 @@ try {
 
 启动（或连接）一个引擎，返回 `MerakCode` 对象。选项（类型 `MerakCodeOptions`，包含 `EngineOptions` 的全部字段）：
 
-| 选项             | 说明                                                                                                 |
-| ---------------- | ---------------------------------------------------------------------------------------------------- |
-| `cwd`            | 项目目录。启动引擎时是引擎的工作目录，请求也都针对这个目录                                           |
-| `executablePath` | 引擎命令，见第 2 节。默认用 npm 装的引擎包                                                           |
-| `env`            | 追加给引擎进程的环境变量（会和当前进程的环境变量合并）                                               |
-| `config`         | 内联配置，写法和 `merakcode.json` 一样，优先级最高                                                   |
-| `agents`         | 自定义智能体，写法同配置里的 `agent` 段（类型 `AgentConfig`）                                        |
-| `timeout`        | 等引擎启动的最长时间，毫秒，默认 60000                                                               |
-| `serve`          | 传给 `merak serve` 的参数，默认 `["--hostname", "127.0.0.1", "--port", "0"]`（只监听本机的随机端口） |
-| `signal`         | 取消启动                                                                                             |
-| `logger`         | 日志回调，见第 13 节                                                                                 |
-| `url`            | 连接已经在运行的引擎，不再启动新进程                                                                 |
-| `headers`        | 连接已有引擎时带的请求头（口令等）                                                                   |
-| `tools`          | 宿主工具，见第 7 节                                                                                  |
-| `clientRun`      | 你自己的运行编号或追踪编号，引擎会把它写进每条请求日志                                               |
+| 选项             | 说明                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `cwd`            | 项目目录。启动引擎时是引擎的工作目录，请求也都针对这个目录                                                                     |
+| `executablePath` | 引擎命令，见第 2 节。默认用 npm 装的引擎包                                                                                     |
+| `env`            | 追加给引擎进程的环境变量（会和当前进程的环境变量合并）                                                                         |
+| `config`         | 内联配置，写法和 `merakcode.json` 一样，优先级最高                                                                             |
+| `agents`         | 自定义智能体，写法同配置里的 `agent` 段（类型 `AgentConfig`）。同时给了 `config.agent` 时，`agents` 会整个替换它               |
+| `timeout`        | 等引擎启动的最长时间，毫秒，默认 60000                                                                                         |
+| `serve`          | 传给 `merak serve` 的参数，默认 `["--hostname", "127.0.0.1", "--port", "0"]`（只监听本机的随机端口）                           |
+| `signal`         | 取消启动（传入时已经中止的 `signal` 不会取消启动）                                                                             |
+| `logger`         | 日志回调，见第 13 节                                                                                                           |
+| `url`            | 连接已经在运行的引擎，不再启动新进程                                                                                           |
+| `headers`        | 连接已有引擎时带的请求头（口令等）                                                                                             |
+| `tools`          | 宿主工具，见第 7 节                                                                                                            |
+| `clientRun`      | 你自己的运行编号或追踪编号，引擎会把它写进每条请求日志。只能用字母、数字和 `_`、`.`、`:`、`-`，最长 100 个字符，否则引擎不记录 |
 
-`config`、`agents`、`env`、`timeout`、`serve`、`executablePath` 只在启动新引擎时有效；用 `url` 连接时会被忽略。
+`config`、`agents`、`env`、`timeout`、`serve`、`executablePath`、`signal` 只在启动新引擎时有效；用 `url` 连接时会被忽略。
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
@@ -182,34 +188,34 @@ await merak.close()
 
 ### 会话 MerakCodeSession
 
-| 成员                   | 说明                                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| `id`、`info`           | 会话编号和完整信息                                                                                   |
-| `run(prompt, options)` | 发一条消息，返回这一轮的事件流。这一轮结束时产出 `done`，然后结束                                    |
-| `events(handlers)`     | 这个会话之后的所有事件，不限于一轮。后台工作流做完会再给会话发一轮，用它接着等。中止 `signal` 时结束 |
-| `messages()`           | 会话里的所有消息和 Part                                                                              |
-| `abort()`              | 停掉正在跑的这一轮（排队的消息会接着执行）                                                           |
+| 成员                   | 说明                                                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| `id`、`info`           | 会话编号和信息。`info` 是新建或取回时的快照，之后生成的标题不会更新进来，要最新的用 `client.session.get` |
+| `run(prompt, options)` | 发一条消息，返回这一轮的事件流。这一轮结束时产出 `done`，然后结束                                        |
+| `events(handlers)`     | 这个会话之后的所有事件，不限于一轮。后台工作流做完会再给会话发一轮，用它接着等。中止 `signal` 时结束     |
+| `messages()`           | 会话里的所有消息和 Part                                                                                  |
+| `abort()`              | 停掉正在跑的这一轮（排队的消息会接着执行）                                                               |
 
 `run` 的选项（`RunOptions`，包含 `Handlers` 的全部字段）：
 
-| 选项           | 说明                                          |
-| -------------- | --------------------------------------------- |
-| `model`        | 这一轮用的模型，写成 `服务商/模型`            |
-| `agent`        | 这一轮用的智能体                              |
-| `mode`         | 权限模式：`"readonly"`、`"ask"`、`"auto"`     |
-| `onPermission` | 引擎要审批时调用，见第 6 节。不给的话一律拒绝 |
-| `onQuestion`   | 模型提问时调用，见第 6 节。不给的话跳过提问   |
-| `signal`       | 中止这一轮                                    |
+| 选项           | 说明                                                        |
+| -------------- | ----------------------------------------------------------- |
+| `model`        | 这一轮用的模型，写成 `服务商/模型`                          |
+| `agent`        | 这一轮用的智能体                                            |
+| `mode`         | 权限模式：`"readonly"`、`"ask"`、`"auto"`                   |
+| `onPermission` | 需要审批时调用，见第 6 节。不给的话，需要审批的请求一律拒绝 |
+| `onQuestion`   | 模型提问时调用，见第 6 节。不给的话跳过提问                 |
+| `signal`       | 中止这一轮                                                  |
 
 `run` 产出的事件（`RunEvent`）有 5 种：
 
-| `type`      | 内容                                                                             |
-| ----------- | -------------------------------------------------------------------------------- |
-| `text`      | 回复正文的一小段（`delta`），边生成边到；`partID` 区分不同的正文段落             |
-| `reasoning` | 思考过程的一小段，开了思考的模型才有。有的模型会把结论只写在思考里，正文是空的   |
-| `part`      | 其他 Part 的完整最新状态，比如工具调用开始、完成                                 |
-| `error`     | 这一轮出错了（`error` 是 `MerakCodeError`），之后仍然会有 `done`                 |
-| `done`      | 这一轮结束，`message` 是完整的回复消息，里面有 `cost`（费用）和 `tokens`（用量） |
+| `type`      | 内容                                                                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`      | 回复正文的一小段（`delta`），边生成边到；`partID` 区分不同的正文段落                                                                                                                                                    |
+| `reasoning` | 思考过程的一小段，开了思考的模型才有。有的模型会把结论只写在思考里，正文是空的                                                                                                                                          |
+| `part`      | 其他所有 Part 的完整最新状态，比如工具调用开始、完成。也包括你发出的这条消息的 Part，以及生成完的正文和思考（`text`、`reasoning` 的完整内容，前面已经以 `delta` 到过）                                                  |
+| `error`     | 这一轮出错了（`error` 是 `MerakCodeError`），可能不止一个。出错时这一轮已经生成了回复消息的（比如密钥不对、额度用完），之后还会有 `done`；还没生成的（比如模型名写错），可能没有 `done`，或者 `done` 带的是上一轮的回复 |
+| `done`      | 这一轮结束，`message` 是这个会话最后一条回复消息，里面有 `cost`（费用）和 `tokens`（用量）                                                                                                                              |
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
@@ -227,35 +233,43 @@ console.log(answer)
 await merak.close()
 ```
 
+同一个会话同时只跑一个 `run()`：同时发的消息会排队执行，两个迭代会收到彼此的事件，并在两轮都结束后才各自收到同一个 `done`。要并发就开多个会话（见 `batch.ts`）。
+
 ## 6. 审批、提问和中止
 
 ### 审批
 
-智能体要改文件、跑命令、联网时，如果按权限规则需要问人，引擎会发一个审批请求（`PermissionRequest`），SDK 调用你的 `onPermission`。子智能体和工作流的审批也会转到这里。
+智能体要改文件、跑命令、联网时，如果按权限模式和规则需要问人，引擎会发一个审批请求（`PermissionRequest`），SDK 调用你的 `onPermission`。子智能体和工作流的审批也会转到这里。
+
+不是每个操作都会问：默认的 `ask` 模式下，工作区里普通文件的修改直接执行；`auto` 模式下大多数命令和宿主工具也直接执行（规则见 [README 的权限和沙箱](../../README.md#权限和沙箱)）。想让每次改文件都经过你，在 `config` 里写 `permission: { edit: "ask" }`，或者用 `readonly` 模式。
 
 `PermissionRequest` 里常用的字段：
 
-| 字段         | 说明                                                                                                                                                                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `permission` | 要做的事：`read`、`edit`、`bash`、`network`、`mcp`、`subagent`、`workflow_run`、`cron`，或者工具的名字。危险程度不在这里区分：`git push` 也是 `bash`，改工作区外的文件也是 `edit` |
-| `patterns`   | 具体对象，比如命令内容、文件路径、域名                                                                                                                                            |
-| `metadata`   | 附加信息，不同操作不一样，比如命令的说明、要改的内容                                                                                                                              |
-| `sessionID`  | 发起请求的会话；`root` 是它所属的最上层会话                                                                                                                                       |
-| `tool`       | 是哪次工具调用触发的                                                                                                                                                              |
+| 字段         | 说明                                                                                                                                                                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permission` | 要做的事：`read`、`edit`、`bash`、`sandbox`（命令要离开沙箱，或者写工作区外的目录）、`network`、`mcp`、`subagent`、`workflow_run`、`cron`、`skill`，或者工具的名字。危险程度不在这里区分：`git push` 也是 `bash`，改工作区外的文件也是 `edit` |
+| `patterns`   | 具体对象，比如命令内容、文件路径、域名                                                                                                                                                                                                        |
+| `metadata`   | 附加信息，不同操作不一样，比如命令的说明、要改的内容                                                                                                                                                                                          |
+| `sessionID`  | 发起请求的会话；`root` 是它所属的最上层会话                                                                                                                                                                                                   |
+| `tool`       | 是哪次工具调用触发的                                                                                                                                                                                                                          |
 
 返回 `PermissionDecision` 之一：
 
 - `"allow-once"`：只允许这一次
-- `"allow-session"`：这个会话里同样的请求都允许
-- `"always"`：总是允许，写进项目配置
+- `"allow-session"`：这个会话里同一范围的请求都允许：命令按前缀（比如 `npm install *`），文件按这个文件或它所在的目录
+- `"always"`：总是允许，写进项目配置。请求的 `always` 为 `false` 时（子智能体、工作流、沙箱权限、改 MerakCode 的配置文件）只在这个会话里生效
 - `"deny"`：拒绝
 
-没给 `onPermission` 时一律拒绝：宿主没表态，就不放行。
+没给 `onPermission` 时，需要审批的请求一律拒绝：宿主没表态，就不放行。
+
+审批和提问只在你迭代 `run()` 或 `events()` 的过程中处理。提前 `break` 之后再来的请求没人回复，这一轮会一直等，要先调用 `session.abort()`。回调里不要抛错：错误不会传给你，请求也不会被回复。排查卡住的一轮时，`client.permission.list()` 和 `client.question.list()` 能列出还没回复的请求。
+
+下面的例子让每次改文件都先问宿主：
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
 
-const merak = await createMerakCode({ cwd: process.cwd() })
+const merak = await createMerakCode({ cwd: process.cwd(), config: { permission: { edit: "ask" } } })
 const session = await merak.session()
 const run = session.run("把 package.json 里的版本号改成 1.2.0", {
   onPermission: (request) => {
@@ -269,7 +283,7 @@ await merak.close()
 
 ### 提问
 
-模型有时会停下来问你选择题（`QuestionRequest`）。`questions` 里每一题有 `question`（题目）、`header`（短标题）、`options`（选项，每项有 `label` 和 `description`），`multiple` 表示能多选，`custom` 表示能自己写答案。
+模型有时会停下来问你选择题（`QuestionRequest`）。`questions` 里每一题有 `question`（题目）、`header`（短标题）、`options`（选项，每项有 `label` 和 `description`），`multiple` 表示能多选，`custom` 表示能自己写答案（模型提的问题都能）。子智能体的提问也会转到这里；`auto` 模式下模型不会提问。
 
 `onQuestion` 按题目顺序返回每一题的答案，每题是一个字符串数组：选中的 `label`，或者自己写的文字。没给 `onQuestion` 时这次提问会被跳过，模型会知道你没有回答。
 
@@ -289,7 +303,7 @@ await merak.close()
 
 - 给 `run` 传 `signal`，中止后引擎会停掉这一轮，迭代抛出 `AbortError`。
 - 也可以调用 `session.abort()`。
-- 引擎进程意外退出时，正在等事件的迭代会抛出 `EngineExitedError`（`MRK-1004`）。
+- SDK 自己启动的引擎意外退出时，正在等事件的迭代会抛出 `EngineExitedError`（`MRK-1004`）。用 `url` 连接的引擎不会这样，见第 2 节。
 - 直接用底层客户端时，可以用 `withRequestDeadline` 给一次请求加时限，超时抛 `RequestTimeoutError`（`MRK-1007`）。时限默认 5 秒，可以用 `timeout` 改；还可以传 `signal`，测试里可以传自己的 `timer`（`RequestDeadlineTimer`）。选项类型是 `RequestDeadlineOptions`。
 
 ```ts
@@ -314,21 +328,30 @@ await merak.close()
 
 ### 等后台任务
 
-智能体可能启动后台工作流，这一轮先结束，工作流做完后引擎会再给这个会话发一轮。用 `events()` 接着等：
+你明确让智能体用工作流时（提示词里写了"工作流"或 "workflow"），它会在后台启动工作流，这一轮先结束；工作流做完后，引擎给这个会话发一条通知（正文里有 `<workflow-notification>`），模型再回复一轮。启动工作流（`workflow_run`）在 `ask` 模式下要审批。
+
+- 先用 `events()` 订阅，再调用 `run()`，否则可能错过工作流结束后的那一轮。
+- 工作流做得快时，两轮会连在一起，只产出一个 `done`，所以不要靠数 `done`，要等看到通知之后的那个 `done`。
+- 同一个会话上同时开着的每个迭代都会回复审批，给它们同样的 `onPermission`。
 
 ```ts
-import { createMerakCode } from "@merakcode/sdk"
+import { createMerakCode, type PermissionDecision } from "@merakcode/sdk"
 
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session()
-for await (const event of session.run("在后台把 docs 目录里的文档都翻译成英文")) {
-  if (event.type === "text") process.stdout.write(event.delta)
-}
+const onPermission = (): PermissionDecision => "allow-once"
 const controller = new AbortController()
-for await (const event of session.events({ signal: controller.signal, onPermission: () => "allow-once" })) {
-  if (event.type === "text") process.stdout.write(event.delta)
-  if (event.type === "done") controller.abort()
-}
+const later = (async () => {
+  let notified = false
+  for await (const event of session.events({ signal: controller.signal, onPermission })) {
+    if (event.type === "text") process.stdout.write(event.delta)
+    if (event.type === "part" && event.part.type === "text" && event.part.text.includes("<workflow-notification>"))
+      notified = true
+    if (event.type === "done" && notified) controller.abort()
+  }
+})()
+for await (const _ of session.run("用工作流在后台把 docs 目录里的文档都翻译成英文", { onPermission }));
+await later
 await merak.close()
 ```
 
@@ -348,16 +371,18 @@ await merak.close()
 
 用 `tool()` 定义（类型 `HostTool`），传给 `createMerakCode` 的 `tools`。模型调用时，引擎把调用转回你的程序执行，再把结果交给模型。
 
-| 字段          | 说明                                                                |
-| ------------- | ------------------------------------------------------------------- |
-| `name`        | 工具名，也是审批时的 `permission`                                   |
-| `description` | 给模型看的说明，写清楚什么时候用                                    |
-| `args`        | 参数，用 zod 写成 `{ 参数名: schema }`                              |
-| `run`         | `(args, context) => string`，可以是异步的。抛出的错误信息会交给模型 |
+| 字段          | 说明                                                                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | 工具名，也是审批时的 `permission`。字母开头，只能用字母、数字、`_`、`-`，最长 64 个字符，否则 `createMerakCode` 报 `MRK-1009`；和内置工具（`bash`、`read`、`edit`、`write` 等）重名的会被忽略 |
+| `description` | 给模型看的说明，写清楚什么时候用                                                                                                                                                              |
+| `args`        | 参数，用 zod 写成 `{ 参数名: schema }`                                                                                                                                                        |
+| `run`         | `(args, context) => string`，可以是异步的。抛出的错误信息会交给模型                                                                                                                           |
 
 `context`（类型 `ToolRunContext`）里有 `sessionID`、`messageID`、`callID`。
 
-宿主工具和其他工具一样要审批，审批名就是工具名。
+宿主工具和插件注册的工具一样审批：只读和询问模式先问，自动模式直接执行，审批名就是工具名。
+
+宿主工具注册在整个引擎进程上：之后任何一次注册都会整体替换它，`close()` 也不会注销。几个程序用 `url` 连同一个引擎时，会互相覆盖对方的宿主工具。
 
 ```ts
 import { createMerakCode, tool } from "@merakcode/sdk"
@@ -438,32 +463,32 @@ export default tool({
 
 `Hooks` 里的每一项都是可选的：
 
-| Hook                                         | 什么时候调用                               | 能做什么                                                                                            |
-| -------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `tool`                                       | 加载时                                     | 注册工具，写法同项目工具                                                                            |
-| `config`                                     | 加载时，拿到合并后的配置                   | 读配置、校验自己的参数                                                                              |
-| `event`                                      | 引擎每发出一个事件                         | 监听会话、消息、审批等变化                                                                          |
-| `auth`                                       | 用户在 `/provider` 里登录某个服务商        | 提供 OAuth 或 API 密钥登录方式（类型 `AuthHook`，OAuth 结果是 `AuthOAuthResult`）                   |
-| `provider`                                   | 列模型、调模型时                           | `providers()` 注册整套服务商；`models()` 替换某个服务商的模型列表；`fetch()` 包住发往模型的网络请求 |
-| `chat.message`                               | 收到用户消息                               | 改消息内容和 Part                                                                                   |
-| `chat.params`                                | 调模型之前                                 | 改 `temperature`、`topP`、`topK`、`maxOutputTokens` 和其他参数（`provider` 是 `ProviderContext`）   |
-| `chat.headers`                               | 调模型之前                                 | 加请求头                                                                                            |
-| `permission.ask`                             | 要审批时                                   | 把 `status` 改成 `allow` 或 `deny`，直接替用户决定                                                  |
-| `command.execute.before`                     | 执行斜杠命令之前                           | 改命令展开后的 Part                                                                                 |
-| `tool.execute.before`                        | 工具执行之前                               | 改参数 `args`                                                                                       |
-| `tool.execute.after`                         | 工具执行之后                               | 改标题、输出、附加数据                                                                              |
-| `tool.definition`                            | 把工具列表发给模型之前                     | 改某个工具的说明和参数                                                                              |
-| `shell.env`                                  | 跑命令之前                                 | 加环境变量                                                                                          |
-| `experimental.chat.messages.transform`       | 把历史消息发给模型之前                     | 改发给模型的消息                                                                                    |
-| `experimental.chat.system.transform`         | 组装系统提示词时                           | 改系统提示词                                                                                        |
-| `experimental.chat.guard`                    | 用户消息存下来之后、开始干活之前           | `refuse: true` 拒绝这一轮，`message` 作为回复                                                       |
-| `experimental.text.complete`                 | 每段正文生成完                             | 改这段正文                                                                                          |
-| `experimental.message.complete.transform`    | 整条回复写入之前                           | 改整条回复的文字，比如做内容审核                                                                    |
-| `experimental.tool.path.guard`               | 工具算出要读写的绝对路径之后、真正读写之前 | 把路径加进 `denied` 禁止访问（只能禁止，不能放行）                                                  |
-| `experimental.session.compacting`            | 压缩会话之前                               | 补充上下文，或者换掉压缩用的提示词                                                                  |
-| `experimental.compaction.messages.transform` | 压缩时，消息交给总结模型之前               | 改或过滤消息                                                                                        |
-| `experimental.compaction.summary.transform`  | 总结写回会话之前                           | 改总结内容                                                                                          |
-| `dispose`                                    | 引擎关闭或插件卸载时                       | 释放进程、定时器等资源                                                                              |
+| Hook                                         | 什么时候调用                                               | 能做什么                                                                                            |
+| -------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `tool`                                       | 加载时                                                     | 注册工具，写法同项目工具                                                                            |
+| `config`                                     | 加载时，拿到合并后的配置                                   | 读配置、校验自己的参数                                                                              |
+| `event`                                      | 引擎每发出一个事件                                         | 监听会话、消息、审批等变化                                                                          |
+| `auth`                                       | 用户登录某个服务商时（`merak provider login`、桌面端设置） | 提供 OAuth 或 API 密钥登录方式（类型 `AuthHook`，OAuth 结果是 `AuthOAuthResult`）                   |
+| `provider`                                   | 列模型、调模型时                                           | `providers()` 注册整套服务商；`models()` 替换某个服务商的模型列表；`fetch()` 包住发往模型的网络请求 |
+| `chat.message`                               | 收到用户消息                                               | 改消息内容和 Part                                                                                   |
+| `chat.params`                                | 调模型之前                                                 | 改 `temperature`、`topP`、`topK`、`maxOutputTokens` 和其他参数（`provider` 是 `ProviderContext`）   |
+| `chat.headers`                               | 调模型之前                                                 | 加请求头                                                                                            |
+| `permission.ask`                             | 要审批时                                                   | 把 `status` 改成 `allow` 或 `deny`，直接替用户决定                                                  |
+| `command.execute.before`                     | 执行斜杠命令之前                                           | 改命令展开后的 Part                                                                                 |
+| `tool.execute.before`                        | 工具执行之前                                               | 改参数 `args`                                                                                       |
+| `tool.execute.after`                         | 工具执行之后                                               | 改标题、输出、附加数据                                                                              |
+| `tool.definition`                            | 把工具列表发给模型之前                                     | 改某个工具的说明和参数                                                                              |
+| `shell.env`                                  | 跑命令之前                                                 | 加环境变量                                                                                          |
+| `experimental.chat.messages.transform`       | 把历史消息发给模型之前                                     | 改发给模型的消息                                                                                    |
+| `experimental.chat.system.transform`         | 组装系统提示词时                                           | 改系统提示词                                                                                        |
+| `experimental.chat.guard`                    | 用户消息存下来之后、开始干活之前                           | `refuse: true` 拒绝这一轮，`message` 作为回复                                                       |
+| `experimental.text.complete`                 | 每段正文生成完                                             | 改这段正文                                                                                          |
+| `experimental.message.complete.transform`    | 整条回复写入之前                                           | 改整条回复的文字，比如做内容审核                                                                    |
+| `experimental.tool.path.guard`               | 工具算出要读写的绝对路径之后、真正读写之前                 | 把路径加进 `denied` 禁止访问（只能禁止，不能放行）                                                  |
+| `experimental.session.compacting`            | 压缩会话之前                                               | 补充上下文，或者换掉压缩用的提示词                                                                  |
+| `experimental.compaction.messages.transform` | 压缩时，消息交给总结模型之前                               | 改或过滤消息                                                                                        |
+| `experimental.compaction.summary.transform`  | 总结写回会话之前                                           | 改总结内容                                                                                          |
+| `dispose`                                    | 引擎关闭或插件卸载时                                       | 释放进程、定时器等资源                                                                              |
 
 `experimental.` 开头的 Hook 以后可能会改。
 
@@ -491,24 +516,24 @@ export const guard: Plugin = async ({ directory, $ }) => {
 
 ## 8. 底层客户端
 
-`createMerakCodeClient` 返回的客户端覆盖引擎的全部接口，按功能分组：`client.session`、`client.permission`、`client.provider`、`client.file`、`client.mcp` 等。每个方法、参数和返回值见 [接口参考](reference.md)。它不依赖 Node，浏览器里也能用。
+`createMerakCodeClient` 返回的客户端覆盖引擎的全部接口，按功能分组：`client.session`、`client.permission`、`client.provider`、`client.file`、`client.mcp` 等。每个方法、参数和返回值见 [接口参考](reference.md)。它不依赖 Node：在浏览器里用时从 `@merakcode/sdk/client` 引入（主入口带着启动进程的代码）。网页的来源不是 `localhost`、`127.0.0.1` 时，引擎要用 `merak serve --cors <来源>` 放行。
 
 配置项（`MerakCodeClientConfig` 加上下面几项）：
 
-| 选项               | 说明                                                             |
-| ------------------ | ---------------------------------------------------------------- |
-| `baseUrl`          | 引擎地址                                                         |
-| `headers`          | 请求头，比如口令                                                 |
-| `directory`        | 项目目录，每个请求都会带上                                       |
-| `workspaceFolders` | 多根工作区的各个目录（`{ name?, path }[]`）                      |
-| `clientRun`        | 你的运行编号，写进引擎的请求日志                                 |
-| `logger`           | 每个失败的请求都会调用它                                         |
-| `fetch`            | 换成你自己的 fetch                                               |
-| `throwOnError`     | 为 `true` 时出错直接抛出引擎返回的错误内容，不再返回 `{ error }` |
+| 选项               | 说明                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `baseUrl`          | 引擎地址                                                                                                                                    |
+| `headers`          | 请求头，比如口令                                                                                                                            |
+| `directory`        | 项目目录，每个请求都会带上                                                                                                                  |
+| `workspaceFolders` | 多根工作区的各个目录（`{ name?, path }[]`）                                                                                                 |
+| `clientRun`        | 你的运行编号，写进引擎的请求日志                                                                                                            |
+| `logger`           | 每个失败的请求都会调用它                                                                                                                    |
+| `fetch`            | 换成你自己的 fetch。默认的 fetch 用的是不限时的连接池；换掉以后，Node 自带的 fetch 会在 5 分钟时断开很长的同步请求（比如 `session.prompt`） |
+| `throwOnError`     | 为 `true` 时出错直接抛出引擎返回的错误内容，不再返回 `{ error }`                                                                            |
 
-每个方法的第一个参数是一个对象，路径参数、查询参数和请求体字段都平铺在里面；第二个参数可以传 `signal`、`headers`、`throwOnError`。返回 `{ data, error, response }`：成功时 `data` 有值，失败时 `error` 有值。用 `fromResponse(error, response)` 把错误变成 `MerakCodeError`。
+每个方法的第一个参数是一个对象，路径参数、查询参数和请求体字段都平铺在里面（没有参数的方法，比如 `global.health`，第一个参数就是下面说的选项）；第二个参数可以传 `signal`、`headers`、`throwOnError`。返回 `{ data, error, response }`：成功时 `data` 有值，失败时 `error` 有值。用 `fromResponse(error, response)` 把错误变成 `MerakCodeError`。
 
-`client.event.subscribe()` 返回 `{ stream }`，是当前目录所有事件的异步迭代器；`client.global.event()` 是所有目录的事件，每一项是 `{ directory, payload }`：`payload` 是事件本身，`directory` 是它属于哪个项目目录（`server.connected` 这类不属于任何目录的事件没有它）。
+`client.event.subscribe()` 返回 `{ stream }`，是当前目录所有事件的异步迭代器。它在开始迭代后才真正连上引擎，连上后第一个事件是 `server.connected`：要在这之后再发消息，否则开头的事件会丢。`client.global.event()` 是所有目录的事件，每一项是 `{ directory, payload }`：`payload` 是事件本身，`directory` 是它属于哪个项目目录（`server.connected` 这类不属于任何目录的事件没有它）。
 
 ```ts
 import { createMerakCodeClient, fromResponse } from "@merakcode/sdk"
@@ -524,9 +549,11 @@ console.log(sessions.data.map((session) => session.title))
 const created = await client.session.create({ title: "底层客户端示例" }, { throwOnError: true })
 const controller = new AbortController()
 const events = await client.event.subscribe(undefined, { signal: controller.signal })
+const stream = events.stream[Symbol.asyncIterator]()
+await stream.next() // server.connected：连上了才发消息
 await client.session.promptAsync({ sessionID: created.data.id, parts: [{ type: "text", text: "你好" }] })
-for await (const event of events.stream) {
-  if (event.type === "session.idle" && event.properties.sessionID === created.data.id) break
+for (let next = await stream.next(); !next.done; next = await stream.next()) {
+  if (next.value.type === "session.idle" && next.value.properties.sessionID === created.data.id) break
 }
 controller.abort()
 await engine.close()
@@ -536,7 +563,7 @@ await engine.close()
 
 `@merakcode/sdk/process` 只管引擎进程：
 
-- `startEngine(options)`：启动引擎，等它开始监听后返回 `Engine`。选项就是第 5 节表里的 `cwd`、`executablePath`、`env`、`config`、`timeout`、`serve`、`signal`、`logger`（类型 `EngineOptions`）。每次启动都用随机端口和一次性口令，口令只通过环境变量交给引擎。
+- `startEngine(options)`：启动引擎，等它开始监听后返回 `Engine`。选项就是第 5 节表里的 `cwd`、`executablePath`、`env`、`config`、`timeout`、`serve`、`signal`、`logger`（类型 `EngineOptions`）。默认每次启动都用随机端口和一次性口令（自己传 `serve` 又没写 `--port` 时，引擎先试 4096），口令只通过环境变量交给引擎。
 - `resolveEngine()`：返回 npm 装的引擎包的启动命令（数组），找不到时抛 `MRK-1001`。
 
 `Engine`：
@@ -549,7 +576,7 @@ await engine.close()
 | `exited`  | 进程退出时完成，值是退出码（正常关闭是 0）       |
 | `close()` | 让引擎正常退出并等它结束，8 秒内没退出就强制结束 |
 
-引擎和你的程序之间有一条 IPC 通道。你的程序退出或崩溃时通道断开，引擎会自己退出，不会留下孤儿进程。
+引擎和你的程序之间有一条 IPC 通道。你的程序退出或崩溃时通道断开，引擎会自己退出，不会留下孤儿进程。反过来，引擎还在运行时，你的程序不会自己退出，所以用完一定要 `close()`，最好写在 `finally` 里。
 
 启动失败抛 `EngineStartError`：`output` 是引擎最后的输出，错误信息里带了最后 5 行。超时是 `MRK-1002`，其他启动失败是 `MRK-1003`，被 `signal` 取消是 `MRK-4002`。
 
@@ -566,7 +593,7 @@ await engine.close()
 | `forgetSession(state, id)`   | 删掉某个会话缓存的全部数据                                                                                                                                          |
 | `search(list, id, key)`      | 在按 id 排好序的列表里二分查找，返回 `{ found, index }`                                                                                                             |
 
-状态里的列表都按 id 排序（引擎的 id 随时间递增）。更新时原地合并，没变的子对象保持原来的引用，所以界面框架只会重画变了的部分。用 Solid 时可以这样写：`setStore(produce((draft) => applyEvent(draft, event)))`。
+状态从空开始，只合并之后来的事件；已有的会话和消息要先用 `client.session.list()`、`session.messages()` 取回来。状态里的列表都按 id 排序：消息和 Part 的 id 随时间递增，会话的 id 随时间递减，所以 `state.session` 是最新的在前。更新时原地合并，没变的子对象保持原来的引用，所以界面框架只会重画变了的部分。用 Solid 时可以这样写：`setStore(produce((draft) => applyEvent(draft, event)))`。
 
 ```ts
 import { createMerakCodeClient } from "@merakcode/sdk/client"
@@ -588,7 +615,9 @@ for await (const event of events.stream) {
 - `formatTranscript(session, messages, options)`：整个会话。`session` 是 `SessionInfo`（`id`、`title`、`time`），`messages` 是 `MessageWithParts[]`。
 - `formatMessage`、`formatPart`、`formatAssistantHeader`：单条消息、单个 Part、回复的标题行。
 
-选项（`TranscriptOptions`）：`thinking`（是否带思考过程）、`toolDetails`（是否带工具的参数和输出）、`assistantMetadata`（是否带模型名和耗时）、`lang`（`"zh"` 或 `"en"`，默认中文）。
+只导出正文、思考和工具调用；附件、改动摘要等 Part 不导出，时间按本机的时区和格式显示。
+
+选项（`TranscriptOptions`）：`thinking`（是否带思考过程）、`toolDetails`（是否带工具的参数和输出）、`assistantMetadata`（是否带智能体名、模型名和耗时）、`lang`（`"zh"` 或 `"en"`，默认中文）。
 
 ```ts
 import { writeFile } from "node:fs/promises"
@@ -598,7 +627,9 @@ import { formatTranscript } from "@merakcode/sdk/transcript"
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session({ id: "ses_xxx" })
 const messages = await session.messages()
-const markdown = formatTranscript(session.info, messages, {
+// session.info 是取回时的快照；要最新的标题，用 client.session.get 再取一次
+const info = (await merak.client.session.get({ sessionID: session.id }, { throwOnError: true })).data
+const markdown = formatTranscript(info, messages, {
   thinking: false,
   toolDetails: true,
   assistantMetadata: true,
@@ -610,38 +641,41 @@ await merak.close()
 
 ## 12. 错误处理
 
-SDK 抛出的错误都是 `MerakCodeError`（或它的子类）：
+SDK 抛出的错误都是 `MerakCodeError`（或它的子类），只有两种例外：中止时抛的 `AbortError`，以及底层客户端设了 `throwOnError` 时抛出的引擎原始错误内容。
 
 | 字段        | 说明                                                               |
 | ----------- | ------------------------------------------------------------------ |
 | `code`      | 错误码，比如 `MRK-2002`。含义和处理办法见 [错误码表](../errors.md) |
 | `message`   | 说明                                                               |
-| `status`    | HTTP 状态码（来自引擎的错误才有）                                  |
-| `requestID` | 引擎日志里对应那条请求的编号，排查时用                             |
+| `status`    | HTTP 状态码（来自引擎接口的错误才有，`error` 事件里的错误没有）    |
+| `requestID` | 引擎日志里对应那条请求的编号，排查时用（`error` 事件里的错误没有） |
 | `data`      | 引擎给的附加信息                                                   |
 | `retryable` | 这类错误值不值得重试，比如超时、限流                               |
 
 子类：`EngineStartError`（启动失败）、`EngineExitedError`（引擎中途退出，带 `exitCode`）、`RequestTimeoutError`（请求超时）。
 
-`isMerakCodeError(error)` 判断是不是 SDK 的错误；`fromResponse(error, response)` 把底层客户端返回的 `error` 变成 `MerakCodeError`。这三个也可以从 `@merakcode/sdk/errors` 单独引入（适合浏览器）。
+`isMerakCodeError(error)` 判断是不是 SDK 的错误；`fromResponse(error, response)` 把底层客户端返回的 `error` 变成 `MerakCodeError`。`MerakCodeError`、`isMerakCodeError`、`fromResponse` 也可以从 `@merakcode/sdk/errors` 单独引入（适合浏览器），上面三个子类不在这个入口里。
 
-一轮对话里模型那边出的错（比如密钥不对、额度用完）不会抛出，而是作为 `error` 事件产出，之后照常有 `done`。
+一轮对话里模型那边出的错（比如密钥不对、额度用完）不会抛出，而是作为 `error` 事件产出；之后是否还有 `done`，见第 5 节的事件表。
 
 ```ts
 import { createMerakCode, isMerakCodeError } from "@merakcode/sdk"
 
+const merak = await createMerakCode({ cwd: process.cwd(), timeout: 30_000 })
 try {
-  const merak = await createMerakCode({ cwd: process.cwd(), timeout: 30_000 })
   const session = await merak.session()
   for await (const event of session.run("你好")) {
     if (event.type === "error" && event.error.retryable) console.log("可以稍后重试：", event.error.message)
   }
-  await merak.close()
 } catch (error) {
   if (isMerakCodeError(error)) console.error(`[${error.code}] ${error.message}`, error.requestID ?? "")
   else throw error
+} finally {
+  await merak.close()
 }
 ```
+
+启动失败（`createMerakCode` 本身抛错）时没有引擎要关，所以它放在 `try` 外面。
 
 ## 13. 日志和调试
 
@@ -662,13 +696,13 @@ const merak = await createMerakCode({
 await merak.close()
 ```
 
-引擎自己的日志写在本机的日志目录里，用 `merak logs` 查看；想换个位置，通过 `env` 传 `MERAKCODE_LOG_ROOT`。`MERAKCODE_DIAGNOSTIC_LOGS=1` 会让引擎记更详细的调试日志。传了 `clientRun` 的话，引擎的每条请求日志都会带上它，方便和你自己的日志对上。
+引擎自己的日志写在 `~/.merakcode/logs` 下（设了 `MERAKCODE_HOME` 就在那个目录的 `logs` 下），SDK 启动的引擎写在其中的 `server/` 子目录。用 `merak logs` 查看；只装了 SDK、没装 `merak` 的话，引擎包里的 `bin/merak logs` 也行。想换个位置，通过 `env` 传 `MERAKCODE_LOG_ROOT`。`MERAKCODE_DIAGNOSTIC_LOGS=1` 会让引擎记更详细的调试日志。传了 `clientRun` 的话，引擎的每条请求日志都会带上它，方便和你自己的日志对上。
 
 ## 14. 版本兼容
 
 SDK 和引擎必须是同一个版本。npm 装 SDK 时，引擎包的版本已经锁定成和 SDK 一样，不用操心。
 
-用 `executablePath` 指向别的引擎，或者用 `url` 连接已有的引擎时，要自己保证版本一致。可以用 `client.global.health()` 查引擎的版本。
+用 `executablePath` 指向别的引擎，或者用 `url` 连接已有的引擎时，要自己保证版本一致。SDK 不会自动比对版本，也不会报 `MRK-1010`；版本不一致时，可能在任意接口上出现参数或字段错误。可以把 `client.global.health()` 返回的 `version` 和你装的 `@merakcode/sdk` 的版本（看 `package.json` 或锁文件）对一下。
 
 ## 15. 成员适配器（adapter）
 
@@ -692,11 +726,13 @@ MerakCode  ⇄  适配器库 merakcode-adapter.mjs  ⇄  你写的 adapter.mts  
 ### 15.2 一个任务从头到尾怎么走
 
 1. 群主把任务交给成员。MerakCode 用配置里的命令和参数启动你的适配器（比如 `node adapter.mts`），工作目录是项目目录。
-2. 适配器库先调用你写的 `inspect`，告诉 MerakCode 这个 CLI 叫什么、是什么版本。设置页显示产品状态时，也只调用这一步，不派任务。
+2. 适配器库先调用你写的 `inspect`，告诉 MerakCode 这个 CLI 叫什么、是什么版本；返回 `unavailable` 时任务直接失败。设置页显示产品状态时，也只调用这一步，不派任务。
 3. MerakCode 把任务发过来，库调用你写的 `run(task, host)`。
 4. 你在 `run` 里启动 CLI、读它的输出。CLI 每做一步、每次要审批、每次要提问，你就调用 `host` 上对应的方法（见 15.3）。
 5. CLI 做完了，`run` 返回 `{ text, sessionId }`：`text` 是成员在群里的回复；`sessionId` 是 CLI 的会话 id，下次给这个成员派任务时会作为 `task.resume` 传回来，用来接着上次的会话干。
-6. 适配器退出。用户中途点了停止的话，`task.signal` 会触发，你要把 CLI 停掉。
+6. 适配器退出。用户中途点了停止的话，`task.signal` 会触发，你要把 CLI 停掉。任务正常结束后 `task.signal` 也会触发（MerakCode 拿到结果就关掉适配器的输入），所以不能把它当成"用户点了停止"。
+
+同一个产品可能同时跑好几个适配器进程：不同成员改的路径互不重叠时会并行。所以不要用固定端口、共享的临时文件或全局锁。
 
 ### 15.3 host 是什么
 
@@ -705,18 +741,18 @@ MerakCode  ⇄  适配器库 merakcode-adapter.mjs  ⇄  你写的 adapter.mts  
 - `task` 是这次要干的活：任务内容、项目目录、权限模式等（见 15.5 的表）；
 - `host` 是干活过程中找 MerakCode 用的三个方法。
 
-| 方法                       | 作用                                                                     | 要不要等                 |
-| -------------------------- | ------------------------------------------------------------------------ | ------------------------ |
-| `host.step(step)`          | 告诉 MerakCode "我正在做什么"，成员的气泡里实时显示，比如"Bash npm test" | 不等，只是通知           |
-| `host.permission(request)` | 问 MerakCode "这件事能不能做"，请求分五种（见 15.6）                     | 要等，拿到"允许"或"拒绝" |
-| `host.question(questions)` | 请 MerakCode 弹出提问框问用户                                            | 要等，拿到用户选的答案   |
+| 方法                       | 作用                                                                     | 要不要等                                               |
+| -------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
+| `host.step(step)`          | 告诉 MerakCode "我正在做什么"，成员的气泡里实时显示，比如"Bash npm test" | 不等，只是通知                                         |
+| `host.permission(request)` | 问 MerakCode "这件事能不能做"，请求分五种（见 15.6）                     | 要等，拿到"允许"或"拒绝"                               |
+| `host.question(questions)` | 请 MerakCode 弹出提问框问用户                                            | 要等，拿到用户的答案；用户点「跳过」或停止群聊时会抛错 |
 
 以 CLI 想跑 `npm test` 为例，一次审批是这样走的：
 
 ```text
 CLI → 适配器："我想跑 npm test"
 适配器 → await host.permission({ kind: "command", command: "npm test" })   ← 在这里停下来等
-         MerakCode 按权限模式判断：自动放行，或者弹出审批栏"小明 · MyCLI 请求 / 要跑命令"
+         MerakCode 按权限模式判断：自动放行、直接拒绝（比如只读模式下改文件），或者弹出审批栏"小明 · MyCLI 请求 / 要运行命令"
          用户点"允许"
 host.permission 返回 { allow: true }
 适配器 → CLI："可以，跑吧"
@@ -737,9 +773,15 @@ host.permission 返回 { allow: true }
 前两个文件在 MerakCode 的安装目录里，同一个文件夹下还有三个内置适配器的示例 `example-claude-code.mts`、`example-codex.mts`、`example-opencode.mts`，可以直接拿来改：
 
 - 桌面端：安装目录下的 `resources/engine/lib/skills/adapter-generator/`，macOS 上是 `/Applications/MerakCode.app/Contents/Resources/engine/lib/skills/adapter-generator/`；
-- 命令行版：`~/.merakcode/versions/<版本>/lib/skills/adapter-generator/`。
+- 命令行版：`~/.merakcode/versions/<版本>/lib/skills/adapter-generator/`（安装时设置了 `MERAKCODE_INSTALL_DIR` 或 `MERAKCODE_HOME`，就在那个目录下）；用 npm 装的，在全局 `node_modules` 的 `merakcode-<系统>-<架构>/lib/skills/adapter-generator/` 下。
 
-不用装任何东西：MerakCode 自带的 Node 能直接运行 `.mts` 文件，编辑器从 `merakcode-adapter.d.mts` 拿到类型。想让编辑器也认识 `node:readline` 这类 Node 自带模块的类型，在文件夹里装一下 `@types/node`（`npm install --save-dev @types/node`），这只影响编辑器，运行不需要。
+运行不用装任何东西：MerakCode 自带的 Node 能直接运行 `.mts` 文件。想要类型检查，在文件夹里运行 `npm install --save-dev typescript @types/node`，再放一个 `tsconfig.json`：
+
+```json
+{ "compilerOptions": { "module": "nodenext", "target": "esnext", "strict": true, "noEmit": true, "types": ["node"] } }
+```
+
+适配器库的类型声明也用到了 Node 的类型，而 TypeScript 6 起不会自动加载 `@types/node`，所以要写 `types`。这些只影响编辑器和检查，运行不需要。
 
 扩展名用 `.mts`，不用 `.ts`：`.mts` 永远按 ES 模块（`import`/`export`）运行；`.ts` 要看上级目录的 `package.json` 有没有写 `"type": "module"`，而 `~/.merakcode/package.json` 没写，Node 会先按老式模块解析失败、再重新解析，每次启动都打一条警告。
 
@@ -831,12 +873,13 @@ function parse(line: string): MyCliEvent | undefined {
 
 /** 把 mycli 的审批事件翻译成 MerakCode 的五种请求之一（见 15.6），尽量选最具体的那种 */
 function toPermission(event: Extract<MyCliEvent, { type: "approval" }>): Permission {
-  if (event.action === "write") return { kind: "write", paths: [event.path ?? ""] }
-  if (event.action === "shell") return { kind: "command", command: event.command ?? "" }
-  if (event.action === "read") return { kind: "read", paths: [event.path ?? ""] }
+  if (event.action === "write" && event.path) return { kind: "write", paths: [event.path] }
+  if (event.action === "shell" && event.command) return { kind: "command", command: event.command }
+  if (event.action === "read" && event.path) return { kind: "read", paths: [event.path] }
   if (event.action === "fetch" && event.url)
     return { kind: "network", host: new URL(event.url).hostname, url: event.url }
-  return { kind: "tool", name: event.action } // 以上都不是的，才用 tool
+  // 以上都不是，或者 mycli 没给路径、命令时，才用 tool，把能给的都放进 detail
+  return { kind: "tool", name: event.action, detail: event.path ?? event.command ?? event.url }
 }
 
 /**
@@ -844,10 +887,13 @@ function toPermission(event: Extract<MyCliEvent, { type: "approval" }>): Permiss
  * host 传进了自己写的函数，所以参数要标上类型 Host
  */
 async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>, send: (message: object) => void) {
-  const answers = await host.question([
-    { question: event.text, header: "提问", options: event.choices.map((label) => ({ label, description: "" })) },
-  ])
-  // answers 里每个问题一个数组，装着用户选的选项文字；这里只问了一个问题
+  // 用户点「跳过」或停止群聊时 host.question 会抛错：接住它，告诉 mycli 用户没有回答，否则整个任务失败
+  const answers = await host
+    .question([
+      { question: event.text, header: "提问", options: event.choices.map((label) => ({ label, description: "" })) },
+    ])
+    .catch(() => [] as string[][])
+  // answers 里每个问题一个数组：用户选的选项文字，或者用户自己写的回答；这里只问了一个问题
   send({ answer: event.id, choice: answers[0]?.[0] })
 }
 ```
@@ -856,21 +902,21 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 
 `adapter()` 接收的对象（类型 `Definition`）就是上面这两个函数：
 
-| 函数               | 什么时候调用               | 返回什么                                                                                                                         |
-| ------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect(product)` | 设置页显示状态时，不带任务 | `Info`：名称 `name`，可选的版本 `version`、路径 `path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写原因 `unavailable` |
-| `run(task, host)`  | 每个任务一次               | `Result`：回复 `text`，以及下次续接用的 `sessionId`                                                                              |
+| 函数               | 什么时候调用                                                                            | 返回什么                                                                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | 每个任务开始前一次，以及设置页显示状态时（不带任务）。返回 `unavailable` 时任务直接失败 | `Info`：名称 `name`，可选的版本 `version`、路径 `path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写原因 `unavailable`                  |
+| `run(task, host)`  | 每个任务一次                                                                            | `Result`：回复 `text`（不能为空，否则任务失败），以及下次续接用的 `sessionId`（任务成功时才保存；CLI 那边的会话已经不在时，要自己退回到新开会话） |
 
 `task`（类型 `Task`）里有：
 
-| 字段           | 是什么                                                           |
-| -------------- | ---------------------------------------------------------------- |
-| `task.prompt`  | 交给成员的完整任务，包括它的职责和群里的情况                     |
-| `task.cwd`     | 项目目录，CLI 要在这里干活                                       |
-| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"readonly"`、`"ask"` 或 `"auto"` |
-| `task.resume`  | 上次任务返回的 `sessionId`，第一次是空的                         |
-| `task.product` | 用户在配置里写的这个产品（类型 `Product`）：id、名称、命令和参数 |
-| `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                               |
+| 字段           | 是什么                                                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.prompt`  | 交给成员的完整任务，包括它的职责和群里的情况                                                                                           |
+| `task.cwd`     | 项目目录，CLI 要在这里干活                                                                                                             |
+| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"readonly"`、`"ask"` 或 `"auto"`                                                                       |
+| `task.resume`  | 上次任务返回的 `sessionId`，第一次是空的                                                                                               |
+| `task.product` | 这个产品的 id 和名称（类型 `Product`）。接入方式是 `member` 时只有 `id`、`title`：配置里的命令和参数用来启动适配器本身，不会传给适配器 |
+| `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                                                                                                     |
 
 ### 15.6 五种审批请求
 
@@ -885,10 +931,11 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 | `tool`    | 以上都不是 | `{ kind: "tool", name: "某工具", detail }`      |
 
 - 返回值（类型 `Verdict`）是 `{ allow: true }` 或 `{ allow: false, message }`。拒绝时把 `message` 当理由转给 CLI。
-- MerakCode 判断这些请求的规则，和它自己的工具完全一样。"本对话允许""总是允许""信任文件或目录"都由 MerakCode 处理，你的适配器只会收到"允许"或"拒绝"。
+- MerakCode 按它自己的工具的规则判断这些请求：改文件按 edit，读文件按 read，命令按 bash，联网按 network，其他按插件工具。"本对话允许""总是允许""信任文件或目录"都由 MerakCode 处理，你的适配器只会收到"允许"或"拒绝"。
 - 路径可以是相对项目目录的，也可以是绝对路径。
+- `paths` 不要给空数组或空字符串，`command` 不要给空字符串：没有可检查的内容时，MerakCode 会直接拒绝，拒绝的 `message` 里说明缺了什么。拿不到路径或命令时改用 `tool`。
 
-`host.question` 接收的问题（类型 `Question`）有 `question`（问题）、`header`（很短的标题）、`options`（选项，每个有 `label` 和 `description`），可选 `multiple`（能不能多选）。返回值里每个问题一个数组（类型 `Answer`），装着用户选的选项文字。`host.step` 接收的一步（类型 `Step`）是 `{ tool, detail }`。
+`host.question` 接收的问题（类型 `Question`）有 `question`（问题）、`header`（很短的标题）、`options`（选项，每个有 `label` 和 `description`），可选 `multiple`（能不能多选）和 `custom`（默认 `true`：用户可以不选选项、自己写回答）。返回值里每个问题一个数组（类型 `Answer`），装着用户选的选项文字或自己写的回答。用户点「跳过」或停止群聊时，`host.question` 会抛错（消息是 `The user dismissed this question`），请接住它，告诉 CLI 用户没有回答，否则整个任务失败。`host.step` 接收的一步（类型 `Step`）是 `{ tool, detail }`。
 
 ### 15.7 先自己测一遍
 
@@ -908,11 +955,11 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 - 写 `hello.txt` 作为 `write` 请求到达；
 - 结果正常返回。
 
-只有 `check` 通过还不够，它只证明握手没问题。SDK 里同样的入口是 `cli(argv)`。
+只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试模式固定用 `ask` 模式，工作目录是当前目录，产品是 `{ id: "test", title: "test" }`，测不到只读模式下的参数。SDK 里同样的入口是 `cli(argv)`。
 
 ### 15.8 注册到 MerakCode
 
-在全局配置 `~/.merakcode/merakcode.jsonc` 里加一个产品，接入方式写 `member`：
+在全局配置 `~/.merakcode/merakcode.jsonc`（已有 `merakcode.json` 就改它；设置了 `MERAKCODE_HOME` 时在那个目录下）里加一个产品，接入方式写 `member`。id 不要用 `merak`，也不要和已有的产品重名：写成内置产品的 id 会覆盖那个内置产品。`args` 不经过 shell，`~` 和环境变量不会展开；Windows 上 JSON 里的反斜杠要写两个，或者改用 `/`。
 
 ```jsonc
 {
@@ -933,15 +980,16 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 
 也可以在「设置 › 协作群 › 添加产品」里加：接入方式选"成员适配器（命令和参数启动你的适配器）"，命令填 `node`，参数填适配器的路径。
 
-注册后，设置页这一行会显示 `inspect` 返回的版本，以及"权限：由 MerakCode 审批"，然后就能在群里添加这个产品的成员了。
+注册后，设置页这一行会显示 `inspect` 返回的版本，以及"权限：由 MerakCode 审批"，然后就能在群里添加这个产品的成员了。设置页的检测结果会缓存 60 秒，改了 `adapter.mts` 之后点「重新检测」。
 
 ### 15.9 运行时的规则和常见的坑
 
 - **一个任务一个进程**：每个任务都启动一个新的适配器进程。要接着上次干，就靠你返回的 `sessionId`。
-- **用户点停止**：`task.signal` 触发，你负责停掉 CLI。5 秒后还没退出的话，MerakCode 会把适配器和它启动的所有进程一起结束。
-- **MerakCode 退出**：适配器的输入流被关闭，`task.signal` 随之触发，库会在 5 秒后自动退出，不会在后台留下残留。
-- **`inspect` 有时限**：10 秒内没回应，这个产品显示为不可用。
-- **不要往标准输出打印东西**：标准输出是和 MerakCode 通信专用的。`console.log` 已经被库转到了 MerakCode 的日志里，但直接写 `process.stdout` 会把通信搞乱。
+- **用户点停止**：`task.signal` 触发，你负责停掉 CLI。MerakCode 同时关掉适配器的输入，库在 5 秒后让适配器退出；那时适配器还在的话，MerakCode 会把它和它启动的进程一起结束。所以要在 5 秒内停掉 CLI：在 macOS 和 Linux 上，适配器退出时还没停掉的 CLI 不一定会被一起清理。
+- **MerakCode 退出**：适配器的输入流被关闭，`task.signal` 随之触发，库会在 5 秒后让适配器退出；CLI 会不会一起结束，取决于你有没有在 `task.signal` 里调用 `stop`。
+- **设置页的 `inspect` 有时限**：10 秒内没回应，这个产品显示为不可用。任务开始前的那一次没有时限，所以 `inspect` 要快、没有副作用；设置页调用它时，工作目录不是项目目录，不要依赖当前目录。
+- **不要往标准输出打印东西**：标准输出是和 MerakCode 通信专用的。库只把 `console.log`、`console.info` 转到了标准错误（MerakCode 的日志里），`console.debug`、`console.dir` 仍然写标准输出，打日志请用 `console.error`。直接写 `process.stdout`，或者让 CLI 继承适配器的标准输出，都会把通信搞乱。
+- **排错**：适配器写到标准错误的每一行都会进 MerakCode 的日志（`merak logs`）。适配器中途退出时，失败消息里会带上它最后一行错误。
 - **不要给 CLI 加跳过审批的参数**（比如"全部自动放行"）：加了以后 MerakCode 就管不到它了，权限模式和审批都会失效。
 - **适配器以你本人的权限运行，不在 MerakCode 的沙箱里**。MerakCode 只管得到 CLI 主动来问的操作，只接你信任的 CLI。
 
@@ -949,7 +997,7 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 
 MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，所以：
 
-- 运行时不检查类型。类型错误要靠编辑器发现，或者自己跑一下 `tsc --noEmit`。
+- 运行时不检查类型。类型错误要靠编辑器发现，或者按 15.4 放好 `tsconfig.json` 后在文件夹里运行 `npx tsc`。
 - 只能用"删掉类型后就是 JavaScript"的写法：类型标注、`type`、`interface`、`as`、`!`、泛型都可以；**`enum`、`namespace`、构造函数参数属性（`constructor(private x)`）不行**，Node 会报语法错误。
 - 只导入类型时写 `type`，比如 `import { adapter, type Host } from "./merakcode-adapter.mjs"`。
 - 相对导入要写完整的扩展名，比如 `./merakcode-adapter.mjs`。
@@ -957,7 +1005,7 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 ### 15.11 库里的其他内容
 
 - `spawn`：参数和返回值都和 `node:child_process` 的 `spawn` 一样，但在 Windows 上也能启动 npm 装的 CLI（`.cmd` 文件），参数原样传过去。
-- `stop(child)`：结束 CLI 和它启动的所有进程，结束后才返回。CLI 的输入还开着的话，会先关掉输入，给它一点时间自己退出。
+- `stop(child)`：结束 CLI 和它启动的所有进程，结束后才返回。CLI 的输入还开着的话，先关掉输入，等它最多 3 秒自己退出；还不退出，Windows 上强制结束整棵进程树，macOS 和 Linux 上发 `SIGTERM` 再等最多 3 秒（不发 `SIGKILL`）。
 - `version(command)`：跑 `<CLI> --version`，返回第一行；没装、出错或 5 秒内没回应时，返回原因。
 - `connect`：你的 CLI 也说 JSON-RPC 的话，可以用它来连，写法见 `example-codex.mts`。对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。
 - `PROTOCOL`：成员协议的版本号。协议本身是标准输入输出上的 JSON-RPC 2.0，一行一条消息，由库处理。
