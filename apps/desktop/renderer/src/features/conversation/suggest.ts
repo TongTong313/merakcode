@@ -1,15 +1,18 @@
 /**
- * Composer suggestions: files when "@word" precedes the caret, commands when the whole text is "/word". Pure
- * functions; the component only renders.
+ * Composer suggestions: files when "@word" precedes the caret, commands when "/word" is at the start or after a
+ * space. Pure functions; the component only renders.
  */
 
 export type Trigger = { kind: "file" | "command"; query: string; start: number; end: number }
 
-/** Suggestion trigger at the caret: @ must follow the start or whitespace; / only at the start, before any space */
+/** Suggestion trigger at the caret: @ and / must follow the start or whitespace, and / must be the token being typed */
 export function trigger(text: string, caret: number): Trigger | undefined {
   const before = text.slice(0, caret)
-  const command = /^\/(\S*)$/.exec(before)
-  if (command && !text.slice(caret).trim()) return { kind: "command", query: command[1]!, start: 0, end: caret }
+  const command = /(?:^|\s)\/(\S*)$/.exec(before)
+  if (command && !text.slice(caret).trim()) {
+    const slash = before.lastIndexOf("/")
+    return { kind: "command", query: command[1]!, start: slash, end: caret }
+  }
   const file = /(^|\s)@([^\s@]*)$/.exec(before)
   if (file) return { kind: "file", query: file[2]!, start: caret - file[2]!.length - 1, end: caret }
 }

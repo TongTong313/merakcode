@@ -2838,6 +2838,51 @@ export namespace SessionRunner {
     })
   }
 
+  /** Other files next to SKILL.md, so the model can open tests.md and the like. Built-in skills have no disk directory. */
+  async function skillMentionText(skill: Skill.Info) {
+    const lines = [`<skill_content name="${skill.name}">`, skill.content.trim()]
+    if (!skill.location.startsWith("<builtin>/")) {
+      const dir = path.dirname(skill.location)
+      const entries = await fs.readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])
+      const files = entries
+        .filter((entry) => entry.isFile() && entry.name !== "SKILL.md")
+        .slice(0, 10)
+        .map((entry) => path.join(entry.parentPath, entry.name).replaceAll("\\", "/"))
+      lines.push("", `Base directory for this skill: ${pathToFileURL(dir).href}`)
+      lines.push("<skill_files>", ...files.map((file) => `<file>${file}</file>`), "</skill_files>")
+    }
+    lines.push("</skill_content>")
+    return lines.join("\n")
+  }
+
+  /** Loads each /name in the user's own text. The skill body stays on the message so later turns still see it. */
+  async function loadMentionedSkills(sessionID: string, messageID: string, parts: Message.Part[], agent: Agent.Info) {
+    const skills = await SessionExecution.wait(async () => SkillSearch.accessible({ skills: await Skill.all(), agent }))
+    const byName = new Map<string, Skill.Info>()
+    for (const skill of skills) if (!byName.has(skill.name)) byName.set(skill.name, skill)
+    const names = new Set(byName.keys())
+    const seen = new Set<string>()
+    const extra: Message.Part[] = []
+    for (const part of parts) {
+      if (part.type !== "text" || part.synthetic || part.ignored) continue
+      for (const name of Skill.mentioned(part.text, names)) {
+        if (seen.has(name)) continue
+        seen.add(name)
+        const skill = byName.get(name)
+        if (!skill) continue
+        extra.push({
+          id: Identifier.ascending("part"),
+          messageID,
+          sessionID,
+          type: "text",
+          synthetic: true,
+          text: await skillMentionText(skill),
+        })
+      }
+    }
+    return extra
+  }
+
   async function createUserMessage(input: PromptInput, commandSource?: Message.UserInfo["commandSource"]) {
     SessionExecution.check(input.sessionID)
     const selection = await SessionExecution.wait(async () => PromptMode.resolve(input))
@@ -3304,6 +3349,8 @@ export namespace SessionRunner {
         }),
       ).then((x) => x.flat()),
     )
+
+    parts.push(...(await loadMentionedSkills(input.sessionID, info.id, parts, agent)))
 
     await SessionExecution.wait(async () =>
       Plugin.trigger(
@@ -4023,7 +4070,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
    * Builds a command's body and skill system text, without touching the model or the loop.
    * - Body: $1/$2/$ARGUMENTS in the template are replaced with the arguments; if the template uses none, the arguments
    *   are appended once at the end.
-   * - System: skill commands load the full skill so the model can introduce it and ask what the user needs.
+   * - System: skill commands load the full skill and tell the model to follow it for the user's request.
    */
   export async function resolveCommandInjection(input: {
     command: string
@@ -4077,10 +4124,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const skill =
       command?.source === "skill" ? await SessionExecution.wait(async () => Skill.get(command.name)) : undefined
     const system = skill
-      ? `You have loaded the "${skill.name}" skill. Its full content follows:
-${skill.content}
-
-In the user's language, give the user a friendly overview of this skill and what it does (use a clear structure, such as core concepts, key principles, and how to use it), then ask what they would like to use this skill for.`
+      ? `The user invoked the "${skill.name}" skill. Follow this skill for the user's request. Its full content follows:
+${skill.content}`
       : undefined
 
     return { template, system }
@@ -4132,12 +4177,18 @@ In the user's language, give the user a friendly overview of this skill and what
       })
     }
 
-    const { template, system } = await SessionExecution.wait(async () => resolveCommandInjection(input))
+    const injection = await SessionExecution.wait(async () => resolveCommandInjection(input))
+    const template = injection.template
+    let system = injection.system
 
     const { ref: commandModel } = await SessionExecution.wait(async () => getCommandModel(input, command))
 
     // getCommandAgent already throws AgentNotFoundError listing the available agents.
     const agent = await SessionExecution.wait(async () => getCommandAgent(input, agentID))
+    if (command.source === "skill" && system) {
+      const allowed = await SessionExecution.wait(async () => SkillSearch.accessible({ agent }))
+      if (!allowed.some((skill) => skill.name === command.name)) system = undefined
+    }
 
     const expandedParts = await SessionExecution.wait(async () => resolvePromptParts(template))
     for (const part of expandedParts) part.id ??= Identifier.ascending("part")

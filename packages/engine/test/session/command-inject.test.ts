@@ -269,7 +269,7 @@ describe("command injection", () => {
     })
   })
 
-  test("skill command loads the full skill into system and asks what the user wants", async () => {
+  test("skill command loads the full skill into system and tells the model to follow it", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -281,7 +281,7 @@ describe("command injection", () => {
       fn: async () => {
         const { system } = await SessionRunner.resolveCommandInjection({ command: "skill-a", arguments: "" })
         expect(system).toContain("AAA-body")
-        expect(system).toContain("ask what they would like")
+        expect(system).toContain("Follow this skill")
       },
     })
   })
@@ -307,7 +307,7 @@ describe("command injection", () => {
           model: "openai/gpt-4",
         })
         if (user.info.role !== "user") throw new Error("expected user message")
-        expect(user.info.system).toContain("ask what they would like")
+        expect(user.info.system).toContain("Follow this skill")
         expect(user.info.system).not.toContain("The user just ran the /")
         expect(user.parts.some((part) => part.type === "subtask")).toBe(false)
       },
