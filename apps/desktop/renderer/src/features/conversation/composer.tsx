@@ -19,7 +19,9 @@ import { choice, choiceKey, choose, find, usage } from "../../state/models"
 import { connected, session } from "../../state/store"
 import { setUi } from "../../state/ui"
 import { Select } from "../../ui/select"
+import { Tip } from "../../ui/tooltip"
 import { ModelPicker } from "./model-picker"
+import { SandboxField } from "./sandbox-control"
 import { COMPACT, loadCommands } from "./send"
 import { apply, fileUrl, trigger, type Trigger } from "./suggest"
 import { mentionChoices, type Product } from "./members"
@@ -51,34 +53,35 @@ type Option = {
 /** Context usage: share of the model's context window used by the latest reply; hover for tokens and cost */
 function Usage(props: { sessionID: string }) {
   const value = () => usage(props.sessionID)
+  const detail = (info: { tokens: number; limit?: number; costs: Record<string, number> }) =>
+    Object.keys(info.costs).length
+      ? t("prompt.usageDetail", {
+          tokens: info.tokens.toLocaleString(),
+          limit: (info.limit ?? 0).toLocaleString(),
+          cost: Object.entries(info.costs)
+            .map(([currency, amount]) => `${currency === "CNY" ? "¥" : "$"}${amount.toFixed(4)}`)
+            .join(" · "),
+        })
+      : t("prompt.usageTokens", {
+          tokens: info.tokens.toLocaleString(),
+          limit: (info.limit ?? 0).toLocaleString(),
+        })
   return (
     <Show when={value()?.percent !== undefined && value()}>
       {(info) => (
-        <span
-          class="usage"
-          role="status"
-          aria-label={t("prompt.usage", { percent: info().percent! })}
-          title={
-            Object.keys(info().costs).length
-              ? t("prompt.usageDetail", {
-                  tokens: info().tokens.toLocaleString(),
-                  limit: (info().limit ?? 0).toLocaleString(),
-                  cost: Object.entries(info().costs)
-                    .map(([currency, amount]) => `${currency === "CNY" ? "¥" : "$"}${amount.toFixed(4)}`)
-                    .join(" · "),
-                })
-              : t("prompt.usageTokens", {
-                  tokens: info().tokens.toLocaleString(),
-                  limit: (info().limit ?? 0).toLocaleString(),
-                })
-          }
-          data-level={info().percent! >= 80 ? "high" : undefined}
-        >
-          <span class="usage-bar">
-            <span style={{ width: `${info().percent}%` }} />
+        <Tip label={detail(info())} placement="top">
+          <span
+            class="usage"
+            role="status"
+            aria-label={t("prompt.usage", { percent: info().percent! })}
+            data-level={info().percent! >= 80 ? "high" : undefined}
+          >
+            <span class="usage-bar">
+              <span style={{ width: `${info().percent}%` }} />
+            </span>
+            {info().percent}%
           </span>
-          {info().percent}%
-        </span>
+        </Tip>
       )}
     </Show>
   )
@@ -403,20 +406,32 @@ export function Composer(props: {
           />
         </Show>
         <Show when={variants().length}>
-          <Select
-            label={t("model.variant")}
-            options={variants().map((value) => ({ value, label: value }))}
-            value={current().variant ?? variants()[0]}
-            onChange={(variant) => choose(props.sessionID, props.directory, { variant })}
-            display={(option) => (
-              <>
-                <Brain class="icon icon-sm" />
-                <span>{option?.label}</span>
-              </>
-            )}
-          />
+          <Tip label={t("model.variant.hint")} placement="top">
+            <Select
+              label={t("model.variant.named", { level: current().variant ?? variants()[0] ?? "" })}
+              options={variants().map((value) => ({ value, label: value }))}
+              value={current().variant ?? variants()[0]}
+              onChange={(variant) => choose(props.sessionID, props.directory, { variant })}
+              display={(option) => (
+                <>
+                  <Brain class="icon icon-sm" />
+                  <span>{option?.label}</span>
+                </>
+              )}
+            />
+          </Tip>
         </Show>
-        <Select label={t("mode.label")} options={modeOptions()} value={current().mode} onChange={setMode} />
+        <SandboxField directory={dir()} />
+        <Tip label={t("mode.hint")} placement="top">
+          <Select
+            label={t("mode.named", {
+              mode: modeOptions().find((option) => option.value === current().mode)?.label ?? "",
+            })}
+            options={modeOptions()}
+            value={current().mode}
+            onChange={setMode}
+          />
+        </Tip>
         <Show
           when={props.busy && !text().trim()}
           fallback={

@@ -5,7 +5,7 @@ import { For, Show, type JSX } from "solid-js"
 export function Tip(props: { label: string; keys?: string; children: JSX.Element; placement?: "top" | "bottom" }) {
   return (
     <Kobalte openDelay={500} closeDelay={0} placement={props.placement ?? "bottom"} gutter={6}>
-      <Kobalte.Trigger as="span" style={{ display: "contents" }}>
+      <Kobalte.Trigger as="span" class="tip">
         {props.children}
       </Kobalte.Trigger>
       <Kobalte.Portal>

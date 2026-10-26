@@ -8,6 +8,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- The conversation composer shows the sandbox as on or off beside a shield. Hovering context usage, the model, reasoning, the sandbox, or the permission mode says what that control configures, with the current value still on the button. The menu can set the sandbox up (Windows asks for administrator approval once), turn it on, or turn it off, without leaving the conversation. A command waiting only because the sandbox was not ready continues once the sandbox is on, or once you turn it off. An already set up sandbox is warmed when the engine starts.
 - The homepage model menu lists Official before Configured, and "Add model" at its bottom opens the provider list in Settings.
 - Commands wrapped in `env`, `sudo`, `nice`, `timeout`, `xargs` and the like, command lines inside `sh -c` and `eval`, and tool options before a subcommand (`git -C dir push`, `pnpm --filter x publish`) are judged by the command that actually runs. Read-only commands with options that write files or run other programs (`sort -o`, `rg --pre`, `git diff --output=`) count as file-changing commands.
 - A command argument naming a secret file is asked about even as a relative path (`cat .env`), and `~/.merakcode/data/auth.json`, where MerakCode keeps provider keys, counts as a secret.
@@ -20,6 +21,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Setting up the sandbox, or turning it off, no longer lets a file-changing command through when read-only mode or an explicit deny still refuses it. Resetting the sandbox while it is turned off still reports that it can be set up again.
+- Hints on the composer bar open just above their controls: context usage, the model, reasoning, the sandbox, and the permission mode.
 - Typing `/skill-name` after a space, including in the middle of a sentence, loads that skill. Skills are read from Claude's `.claude/skills` and `.agents/skills`, and from `.merakcode/skill` and `.merakcode/skills`. A skill the agent is denied is not loaded.
 - Maximizing the review from a new conversation fills the window with the review.
 - A subagent's question reaches the SDK's `onQuestion` of the conversation that started it, and is dismissed without one, instead of leaving the turn waiting.
@@ -28,6 +31,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 对话栏里沙箱是盾牌图标加「开」或「关」。悬停上下文用量、模型、思考档位、沙箱或权限模式，都会说明这个控件是在配置什么，当前的值仍写在按钮上。点开沙箱可以初始化（Windows 会要一次管理员确认）、开启或关闭，不用离开当前对话。只因为沙箱没就绪才在等审批的命令，会在沙箱打开之后继续执行；你把沙箱关掉之后也会继续。已经初始化过的沙箱会在引擎启动时预先准备好。
 - 主页的模型菜单改成「官方供应商」在前、「配置的模型」在后，底部的「添加模型」改为打开设置里的服务商列表。
 - 包在 `env`、`sudo`、`nice`、`timeout`、`xargs` 等命令里的命令、`sh -c` 和 `eval` 里的命令，以及写在子命令前面的选项（`git -C 目录 push`、`pnpm --filter x publish`），都按实际执行的那条命令判断。只读命令带上会写文件或执行别的程序的参数（`sort -o`、`rg --pre`、`git diff --output=`）时，按会改文件的命令算。
 - 命令的参数写到密钥文件时，用相对路径（`cat .env`）也会先问；MerakCode 保存模型服务密钥的 `~/.merakcode/data/auth.json` 也算密钥。
@@ -40,6 +44,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 初始化沙箱或关掉沙箱时，只读模式或明确拒绝仍挡住的改文件命令不会被放行。沙箱关着的时候重置，仍会显示还可以再初始化。
+- 对话栏上的悬停说明出现在控件正上方，包括上下文用量、模型、思考档位、沙箱和权限模式。
 - 在空格后面输入 `/技能名`（包括写在句子中间）会加载该技能。技能从 Claude 的 `.claude/skills`、`.agents/skills`，以及 `.merakcode/skill`、`.merakcode/skills` 读取。智能体被拒绝使用的技能不会加载。
 - 在新对话里铺满审阅时，窗口显示的是全屏审阅。
 - 子智能体的提问会交给发起它的会话的 SDK `onQuestion`，没给 `onQuestion` 时会被跳过，不再让这一轮一直卡着。

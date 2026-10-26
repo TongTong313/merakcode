@@ -72,6 +72,8 @@ export const en: Record<keyof typeof zh, string> = {
   "prompt.usageDetail": "Context {tokens} / {limit} tokens · this conversation cost {cost}",
 
   "mode.label": "Permission mode",
+  "mode.hint": "Configure permission mode",
+  "mode.named": "Configure permission mode, {mode}",
   "mode.plan": "Read-only",
   "mode.plan.desc": "View and search only. Edits and commands that change files are refused.",
   "mode.default": "Ask",
@@ -82,6 +84,8 @@ export const en: Record<keyof typeof zh, string> = {
     "Edits and commands inside the workspace run directly. Writes outside the workspace, high-risk commands, and reads of secrets still require confirmation.",
 
   "model.label": "Model",
+  "model.hint": "Configure model",
+  "model.named": "Configure model, {name}",
   "model.search": "Search models",
   "model.none": "No models available",
   "model.section.configured": "Configured",
@@ -89,6 +93,8 @@ export const en: Record<keyof typeof zh, string> = {
   "model.add": "Add model",
   "model.catalog.failed": "Could not refresh the model list for {provider}: [{code}] {message}",
   "model.variant": "Reasoning",
+  "model.variant.hint": "Configure reasoning",
+  "model.variant.named": "Configure reasoning, {level}",
 
   "conversation.log": "Messages",
   "conversation.thinking": "Thinking",
@@ -416,6 +422,18 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.rule.edit": "Change files",
   "settings.rule.read": "Read files",
   "settings.rule.webfetch": "Fetch pages",
+  "sandbox.state.on": "On",
+  "sandbox.state.off": "Off",
+  "sandbox.named": "Configure sandbox, {state}",
+  "sandbox.hint": "Configure sandbox",
+  "sandbox.open": "Turn on",
+  "sandbox.openDesc": "Commands run inside the sandbox.",
+  "sandbox.install": "Set up",
+  "sandbox.installDesc": "Windows asks for administrator approval once. The first time can take a few minutes.",
+  "sandbox.close": "Turn off",
+  "sandbox.closeDesc":
+    "Commands run as you. File-changing commands no longer wait just because the sandbox is not ready.",
+
   "settings.sandbox": "System sandbox",
   "settings.sandbox.on": "On ({backend})",
   "settings.sandbox.off": "Off (sandbox.mode is off)",

@@ -6,6 +6,7 @@ import { NamedError } from "@merakcode/util/error"
 import { Log } from "@merakcode/log/logger"
 import { Config } from "../config/config"
 import { Flag } from "../flag/flag"
+import { Instance } from "../project/instance"
 import { PermissionNext } from "../permission/next"
 import { PermissionPolicy } from "../permission/policy"
 import { ServerAddress } from "../server/address"
@@ -53,7 +54,9 @@ export namespace Sandbox {
   export async function mode(): Promise<Mode> {
     const override = Flag.MERAKCODE_SANDBOX_MODE
     if (override === "preferred" || override === "required" || override === "off") return override
-    return (await Config.get()).sandbox?.mode ?? "preferred"
+    // Engine startup has no project yet; the sandbox account is per machine, so the global config decides.
+    const config = Instance.has() ? await Config.get() : await Config.getGlobal()
+    return config.sandbox?.mode ?? "preferred"
   }
 
   /** Approved writable folders: sandbox rules written as directories ("/abs/dir/*") that evaluate to allow */
@@ -101,8 +104,26 @@ export namespace Sandbox {
 
   /** Status shown in the status bar, settings and `merak sandbox status` */
   export async function current(): Promise<Info> {
-    if ((await mode()) === "off") return { status: "off" }
-    return runner().status()
+    const status = await runner().status()
+    // Off still reports whether a one-time setup remains, so the conversation control can offer it.
+    if ((await mode()) === "off") return { ...status, status: "off" }
+    return status
+  }
+
+  /**
+   * Brings an already set up sandbox to ready when the engine starts. Does not create the Windows account; that
+   * still takes the one-time setup.
+   */
+  export async function wake(): Promise<Info> {
+    const status = await current()
+    if (status.status === "on") await runner().warm()
+    return current()
+  }
+
+  /** Commands are not waiting on sandbox setup: it is on, or the user turned it off */
+  export async function ready(): Promise<boolean> {
+    if ((await mode()) === "off") return true
+    return (await current()).status === "on"
   }
 
   export async function install(progress?: (step: string) => void): Promise<Info> {
@@ -111,13 +132,15 @@ export namespace Sandbox {
       progress?.(step)
     })
     log.info("setup finished", { status: status.status })
-    return (await mode()) === "off" ? { status: "off" } : status
+    const reported = (await mode()) === "off" ? { ...status, status: "off" as const } : status
+    if (reported.status === "on") await import("../permission/flush").then((m) => m.PermissionFlush.run())
+    return reported
   }
 
   export async function reset(): Promise<Info> {
     const status = await runner().reset()
     log.info("reset finished", { status: status.status })
-    return (await mode()) === "off" ? { status: "off" } : status
+    return (await mode()) === "off" ? { ...status, status: "off" as const } : status
   }
 
   /** True when commands that change things must ask first because the sandbox should be used but is not ready */

@@ -21,6 +21,8 @@ export interface Backend {
   setup?(progress?: (step: string) => void): Promise<Status>
   /** Undoes setup */
   reset?(): Promise<Status>
+  /** One-time work after setup already exists, so the next command does not pay it. No administrator prompt. */
+  warm?(): Promise<void>
   /** Temp folder the sandboxed command can write; undefined means the caller's */
   tmp?(): string
   wrap(input: {

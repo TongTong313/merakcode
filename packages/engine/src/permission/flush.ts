@@ -30,7 +30,23 @@ export namespace PermissionFlush {
   }
 
   export async function run(): Promise<void> {
-    await PermissionNext.recheck(ruleset)
+    // A pending "sandbox is not ready" check was recorded before setup finished or the user turned the sandbox
+    // off. Once commands are no longer blocked on that, the check is satisfied unless the current rules deny it.
+    const { Sandbox } = await import("../sandbox")
+    const settled = await Sandbox.ready()
+    await PermissionNext.recheck(async (request, checks) => {
+      const rules = await ruleset(request)
+      if (!rules || !settled) return rules
+      const unsandboxed = checks.filter((check) => check.permission === "bash_unsandboxed")
+      // A read-only session, or an explicit deny, still refuses the command. Only the default "ask because the
+      // sandbox is not ready" is lifted.
+      if (
+        unsandboxed.length === 0 ||
+        unsandboxed.some((check) => PermissionNext.evaluate(check.permission, check.pattern, rules).action === "deny")
+      )
+        return rules
+      return [...rules, { permission: "bash_unsandboxed", pattern: "*", action: "allow" }]
+    })
   }
 
   /**

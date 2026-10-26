@@ -31,11 +31,11 @@
 
 ### 各系统的实现和限制
 
-| 系统    | 实现                                                                                      | 需要做什么                                                                                    |
-| ------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Windows | 一个隐藏的本地账户 `merakcode-sbx`，用 NTFS 权限限制读写，用防火墙规则拦截它的出站连接    | 在桌面端"设置 → 权限与安全"里初始化一次（或者运行 `merak sandbox setup`），同意一次管理员确认 |
-| Linux   | Landlock（内核 5.13 以上且开启了 Landlock，需要 glibc），通过 `node:ffi` 直接调用系统调用 | 不用设置                                                                                      |
-| macOS   | 系统自带的 Seatbelt（`sandbox-exec`）                                                     | 不用设置                                                                                      |
+| 系统    | 实现                                                                                      | 需要做什么                                                                                                        |
+| ------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Windows | 一个隐藏的本地账户 `merakcode-sbx`，用 NTFS 权限限制读写，用防火墙规则拦截它的出站连接    | 在对话栏的沙箱开关里初始化一次（「设置 → 权限与安全」里也能，或者运行 `merak sandbox setup`），同意一次管理员确认 |
+| Linux   | Landlock（内核 5.13 以上且开启了 Landlock，需要 glibc），通过 `node:ffi` 直接调用系统调用 | 不用设置                                                                                                          |
+| macOS   | 系统自带的 Seatbelt（`sandbox-exec`）                                                     | 不用设置                                                                                                          |
 
 已知的限制（其中一部分 `merak sandbox status` 也会列出来）：
 
@@ -104,11 +104,11 @@ The sandbox is our own code, built only on what each operating system provides. 
 
 ### Per-system details and limits
 
-| System  | How it works                                                                                                                             | What you need to do                                                                                                                           |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows | A hidden local account `merakcode-sbx`; NTFS permissions limit what it reads and writes; a firewall rule blocks its outbound connections | Set it up once under Settings → Permissions & security in the desktop app (or run `merak sandbox setup`) and approve one administrator prompt |
-| Linux   | Landlock (kernel 5.13 or newer with Landlock enabled; needs glibc), called directly through `node:ffi`                                   | Nothing                                                                                                                                       |
-| macOS   | The built-in Seatbelt (`sandbox-exec`)                                                                                                   | Nothing                                                                                                                                       |
+| System  | How it works                                                                                                                             | What you need to do                                                                                                                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows | A hidden local account `merakcode-sbx`; NTFS permissions limit what it reads and writes; a firewall rule blocks its outbound connections | Set it up once from the sandbox control in the conversation composer (Settings → Permissions & security works too, or run `merak sandbox setup`) and approve one administrator prompt |
+| Linux   | Landlock (kernel 5.13 or newer with Landlock enabled; needs glibc), called directly through `node:ffi`                                   | Nothing                                                                                                                                                                               |
+| macOS   | The built-in Seatbelt (`sandbox-exec`)                                                                                                   | Nothing                                                                                                                                                                               |
 
 Known limits (some of them are also listed by `merak sandbox status`):
 

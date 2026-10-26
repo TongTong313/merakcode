@@ -140,6 +140,65 @@ test("off: commands run as usual without asking", async () => {
   expect(result?.metadata.exit).toBe(0)
 })
 
+test("waking prepares an already set up sandbox so the next command can run inside it", async () => {
+  let prepared = false
+  const backend: Backend = {
+    status: async () => ({ status: "on", backend: "landlock" }),
+    warm: async () => {
+      prepared = true
+    },
+    wrap: async (input) => {
+      if (!prepared) throw new Error("not prepared")
+      return {
+        file: input.shell,
+        args:
+          process.platform === "win32" && /cmd(\.exe)?$/i.test(input.shell)
+            ? ["/d", "/s", "/c", input.command]
+            : ["-c", input.command],
+        env: input.env,
+      }
+    },
+  }
+  process.env.MERAKCODE_SANDBOX_MODE = "preferred"
+  Sandbox.useBackendForTest(backend)
+  await Sandbox.wake()
+  const { result, error, requests } = await run("preferred", backend, "echo hi > warmed.txt", "ses_wake_prepare")
+  expect(requests).toHaveLength(0)
+  expect(error).toBeUndefined()
+  expect(result?.metadata.exit).toBe(0)
+})
+
+test("resetting while the sandbox is off still reports that setup can be done again", async () => {
+  process.env.MERAKCODE_SANDBOX_MODE = "off"
+  Sandbox.useBackendForTest({
+    ...missing,
+    reset: async () => ({ status: "unsupported", installable: true, reason: "needs a one-time setup" }),
+  })
+  const status = await Sandbox.reset()
+  expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
+})
+
+test("turning the sandbox off keeps whether a one-time setup is still needed", async () => {
+  process.env.MERAKCODE_SANDBOX_MODE = "off"
+  Sandbox.useBackendForTest(missing)
+  const status = await Sandbox.current()
+  expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
+})
+
+test("waking an already set up sandbox leaves it on, and an auto-mode command runs inside it without asking", async () => {
+  process.env.MERAKCODE_SANDBOX_MODE = "preferred"
+  Sandbox.useBackendForTest(on)
+  wrapped.length = 0
+  const status = await Sandbox.wake()
+  expect(status.status).toBe("on")
+
+  const { result, error, requests } = await run("preferred", on, "echo hi > out.txt", "ses_wake_on")
+  expect(requests).toHaveLength(0)
+  expect(wrapped).toEqual(["echo hi > out.txt"])
+  expect(error).toBeUndefined()
+  expect(result?.metadata.exit).toBe(0)
+})
+
 test("preferred, sandbox on: commands go through the sandbox without an extra question", async () => {
   wrapped.length = 0
   const { result, error, requests, dir } = await run("preferred", on, "echo hi > out.txt", "ses_mode_on")

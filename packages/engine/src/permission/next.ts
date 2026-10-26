@@ -385,10 +385,10 @@ export namespace PermissionNext {
    * allowed now are released, the rest stay. rulesetOf returns the latest rule chain for the request's session, or
    * undefined to skip it.
    */
-  export async function recheck(rulesetOf: (request: Request) => Promise<Ruleset | undefined>) {
+  export async function recheck(rulesetOf: (request: Request, checks: Check[]) => Promise<Ruleset | undefined>) {
     const s = state()
     for (const item of Object.values(s.pending)) {
-      const ruleset = await rulesetOf(item.info).catch(() => undefined)
+      const ruleset = await rulesetOf(item.info, item.checks).catch(() => undefined)
       if (!ruleset) continue
       const allowed = item.checks.every(
         (check) => evaluate(check.permission, check.pattern, ruleset).action === "allow" || granted([], check),
