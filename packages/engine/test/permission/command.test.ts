@@ -76,7 +76,100 @@ describe("forbidden commands", () => {
   })
 })
 
+describe("commands inside other commands", () => {
+  const worst = async (command: string) => {
+    const found = await levels(command)
+    return ["forbidden", "risky", "delete", "normal", "readonly"].find((level) => found.includes(level as never))
+  }
+
+  test("wrappers such as env, nice, timeout and sudo are judged by the command they run", async () => {
+    for (const command of ["env rm -rf ~", "command rm -rf ~", "nice rm -rf ~", "sudo -u root rm -rf /"])
+      expect(await worst(command), command).toBe("forbidden")
+    for (const command of ["env git push", "nohup npm publish", "timeout 30 git push origin main"])
+      expect(await worst(command), command).toBe("risky")
+    expect(await worst("env FOO=1 rm -rf build")).toBe("delete")
+    expect(await worst("xargs -n 1 rm")).toBe("delete")
+    expect(await worst("sudo ls")).toBe("risky")
+  })
+
+  test("the options before a tool's subcommand do not hide it", async () => {
+    for (const command of [
+      "git -C . push origin main",
+      "git -c a=b push",
+      "git --git-dir .git --work-tree . push",
+      "npm --workspace x publish",
+      "pnpm --filter x publish",
+    ])
+      expect(await worst(command), command).toBe("risky")
+    expect(await worst("git -C sub clean -fdx")).toBe("delete")
+    expect(await worst("git -C sub status")).toBe("readonly")
+  })
+
+  test("git options that set config never count as read-only: config can name programs git runs", async () => {
+    expect(await worst("git -c core.pager=evil log")).toBe("normal")
+  })
+
+  test("command lines handed to a shell or eval are analyzed too", async () => {
+    expect(await worst('sh -c "git push"')).toBe("risky")
+    expect(await worst("bash -lc 'rm -rf build'")).toBe("delete")
+    expect(await worst("bash -c 'rm -rf ~'")).toBe("forbidden")
+    expect(await worst('eval "git push"')).toBe("risky")
+    expect(await worst('env -S "rm -rf ~"')).toBe("forbidden")
+    expect(await worst('sh -c "ls"')).toBe("normal")
+    expect(await worst('sh -c "$CMD"')).toBe("normal")
+  })
+
+  test("the command a wrapper runs is a segment of its own, so rules written for it match", async () => {
+    const result = await analyze("env FOO=1 rm -rf build")
+    expect(result.segments.map((s) => [s.text, s.level])).toEqual([
+      ["env FOO=1 rm -rf build", "delete"],
+      ["rm -rf build", "delete"],
+    ])
+    expect((await analyze('sh -c "git push origin"')).segments.map((s) => s.text)).toContain("git push origin")
+  })
+
+  test("printing the environment and looking a command up stay read-only", async () => {
+    for (const command of ["env", "printenv", "env FOO=1 ls", "command -v git"])
+      expect(await levels(command), command).not.toContain("normal")
+    expect((await analyze("env FOO=1 ls")).readOnly).toBe(true)
+  })
+
+  test("read-only commands with options that write files or run programs count as normal", async () => {
+    for (const command of [
+      "sort -o out.txt a.txt",
+      "sort -uo out.txt a.txt",
+      "rg --pre sh x",
+      "git diff --output=x",
+      "git log --output=x",
+      "git ls-remote --upload-pack=x origin",
+      "uniq a b",
+      "tree -o out.txt",
+      "xxd -r a b",
+      "xxd a b",
+      "file -C",
+      "date -s 2020-01-01",
+      "hostname evil",
+      "time -o out.txt ls",
+    ])
+      expect(await worst(command), command).toBe("normal")
+    for (const command of ["sort -n a.txt", "uniq -c a.txt", "xxd -l 16 a.bin", "tree -L 2", "date +%s", "hostname"])
+      expect(await worst(command), command).toBe("readonly")
+  })
+
+  test("the session grant prefix keeps the words as written, up to the subcommand", async () => {
+    const result = await analyze("env FOO=1 git -C sub push origin main")
+    expect(result.segments.map((s) => s.prefix)).toEqual(["env FOO=1 git -C sub push", "git push"])
+  })
+})
+
 describe("paths in arguments", () => {
+  test("files named like credentials are paths even when relative", async () => {
+    for (const command of ["cat .env", "cat ./.env", "cat config/.env.local", "cd ~ && cat .git-credentials"])
+      expect((await analyze(command)).tags, command).toContain("sensitive-path")
+    expect((await analyze("cat .env")).paths).toEqual([path.join(root, ".env")])
+    expect((await analyze("cat .env.example")).tags).not.toContain("sensitive-path")
+  })
+
   test("credential paths are tagged even in read-only commands", async () => {
     const result = await analyze("cat ~/.ssh/id_rsa")
     expect(result.readOnly).toBe(true)

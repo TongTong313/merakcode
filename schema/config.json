@@ -1484,6 +1484,10 @@
               "description": "Write .git and dotfiles inside the workspace",
               "$ref": "#/$defs/__schema3"
             },
+            "config_write": {
+              "description": "Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's",
+              "$ref": "#/$defs/__schema3"
+            },
             "external_write": {
               "description": "Write files outside the workspace",
               "$ref": "#/$defs/__schema3"

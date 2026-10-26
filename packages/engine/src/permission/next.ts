@@ -37,7 +37,7 @@ export namespace PermissionNext {
   ])
 
   /** These requests only offer allow once / allow for this session / reject, never "always allow" */
-  const SESSION_ONLY = new Set(["subagent", "workflow_run", "sandbox"])
+  const SESSION_ONLY = new Set(["subagent", "workflow_run", "sandbox", "config_write"])
 
   function expand(pattern: string): string {
     if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)

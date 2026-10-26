@@ -3,7 +3,7 @@
   "info": {
     "title": "merakcode",
     "description": "merakcode api",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "components": {
     "schemas": {
@@ -5014,6 +5014,10 @@
               "protected_write": {
                 "$ref": "#/components/schemas/PermissionRuleConfig",
                 "description": "Write .git and dotfiles inside the workspace"
+              },
+              "config_write": {
+                "$ref": "#/components/schemas/PermissionRuleConfig",
+                "description": "Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's"
               },
               "external_write": {
                 "$ref": "#/components/schemas/PermissionRuleConfig",

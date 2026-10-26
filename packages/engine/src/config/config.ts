@@ -899,6 +899,9 @@ export namespace Config {
           sensitive_read: PermissionRule.optional().describe("Read secrets: .env, keys, certificates, credentials"),
           edit: PermissionRule.optional().describe("Write files inside the workspace"),
           protected_write: PermissionRule.optional().describe("Write .git and dotfiles inside the workspace"),
+          config_write: PermissionRule.optional().describe(
+            "Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's",
+          ),
           external_write: PermissionRule.optional().describe("Write files outside the workspace"),
           bash_readonly: PermissionRule.optional().describe("Run read-only commands (ls, git status, ...)"),
           bash: PermissionRule.optional().describe("Run other commands"),
