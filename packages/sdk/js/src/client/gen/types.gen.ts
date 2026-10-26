@@ -1900,6 +1900,10 @@ export type PermissionConfig =
        */
       protected_write?: PermissionRuleConfig
       /**
+       * Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's
+       */
+      config_write?: PermissionRuleConfig
+      /**
        * Write files outside the workspace
        */
       external_write?: PermissionRuleConfig

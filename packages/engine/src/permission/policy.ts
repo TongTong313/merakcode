@@ -1,6 +1,7 @@
 import os from "os"
 import path from "path"
 import { Policy } from "@merakcode/sandbox/policy"
+import { Global } from "../global"
 import { Instance } from "../project/instance"
 import { PermissionNext } from "./next"
 import type { PermissionMode } from "./mode"
@@ -50,6 +51,8 @@ export namespace PermissionPolicy {
     // File edits
     edit: { readonly: "deny", ask: "allow", auto: "allow" },
     protected_write: { readonly: "deny", ask: "ask", auto: "allow" },
+    // MerakCode's own config: it holds the permission rules, so even auto mode asks before changing it
+    config_write: { readonly: "deny", ask: "ask", auto: "ask" },
     external_write: { readonly: "deny", ask: "ask", auto: "ask" },
     // Commands
     bash_readonly: allow,
@@ -71,7 +74,7 @@ export namespace PermissionPolicy {
   }
 
   /** Permission keys that edit files */
-  export const WRITE = ["edit", "protected_write", "external_write"]
+  export const WRITE = ["edit", "protected_write", "config_write", "external_write"]
   /** Permission keys that run commands, including leaving the sandbox */
   export const COMMAND = [
     "bash_readonly",
@@ -183,17 +186,32 @@ export namespace PermissionPolicy {
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
   }
 
-  export function sensitive(file: string, home: string) {
+  /** Whether a file is named like one holding secrets (.env, id_rsa, *.pem, ...), wherever it is */
+  export function sensitiveName(file: string) {
     const name = path.basename(file)
-    if (SENSITIVE_NAMES.some((pattern) => pattern.test(name))) return true
+    return SENSITIVE_NAMES.some((pattern) => pattern.test(name))
+  }
+
+  export function sensitive(file: string, home: string) {
+    if (sensitiveName(file)) return true
+    // MerakCode's own store of provider keys
+    if (path.resolve(file) === path.resolve(Global.Path.data, "auth.json")) return true
     return SENSITIVE_HOME_DIRS.some((dir) => inside(path.join(home, dir), file))
+  }
+
+  /** MerakCode's config files, global or a project's: changing them changes what the agent is allowed to do */
+  const CONFIG_NAMES = new Set(["merakcode.json", "merakcode.jsonc"])
+
+  export function config(file: string) {
+    return CONFIG_NAMES.has(path.basename(file))
   }
 
   /**
    * Classifies a file operation. workspace holds the session's workspace roots (several in multi-root setups), path is
    * absolute.
    * - read: read inside the workspace, external_read outside, sensitive_read for sensitive files
-   * - write: edit inside the workspace, protected_write for .git and dotfiles inside it, external_write outside
+   * - write: config_write for MerakCode's config files anywhere, edit inside the workspace, protected_write for .git
+   *   and dotfiles inside it, external_write outside
    */
   export function file(input: {
     op: "read" | "write"
@@ -210,6 +228,7 @@ export namespace PermissionPolicy {
         if (sensitive(target, input.home)) return "sensitive_read"
         return root ? "read" : "external_read"
       }
+      if (config(target)) return "config_write"
       if (!root) return "external_write"
       const relative = path.relative(path.resolve(root), target)
       return relative.split(path.sep).some((part) => part.startsWith(".")) ? "protected_write" : "edit"

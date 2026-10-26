@@ -120,7 +120,7 @@ export namespace CommandAnalysis {
   ])
 
   /** find options that modify files or run commands */
-  const FIND_WRITE = new Set(["-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls"])
+  const FIND_WRITE = new Set(["-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"])
 
   const DELETE = new Set(["rm", "rmdir", "unlink", "shred"])
 
@@ -185,7 +185,193 @@ export namespace CommandAnalysis {
     "docker pull",
   ]
 
-  const SHELLS = new Set(["sh", "bash", "zsh", "dash", "fish", "pwsh", "powershell"])
+  const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell"])
+
+  type Wrapper = {
+    /** Options followed by a separate value */
+    values: string[]
+    /** NAME=value words set the environment of the wrapped command (env) */
+    assignments?: boolean
+    /** Positional arguments before the wrapped command (the duration of timeout) */
+    positional?: number
+    /** Options whose value is a whole command line (env -S) */
+    scripts?: string[]
+    /** Options that look a command up instead of running it (command -v) */
+    lookups?: string[]
+    /** Runs the command as another user: high risk whatever the command */
+    privileged?: boolean
+    /** Options that write the wrapper's own output to a file (time -o) */
+    output?: string[]
+  }
+
+  /** Commands that run the command after their own options; that command decides the level */
+  const WRAPPERS: Record<string, Wrapper> = {
+    env: { values: ["-u", "--unset", "-C", "--chdir"], assignments: true, scripts: ["-S", "--split-string"] },
+    nice: { values: ["-n", "--adjustment"] },
+    nohup: { values: [] },
+    command: { values: [], lookups: ["-v", "-V"] },
+    builtin: { values: [] },
+    exec: { values: ["-a"] },
+    time: { values: ["-f", "--format", "-o", "--output"], output: ["-o", "--output", "-a", "--append"] },
+    timeout: { values: ["-s", "--signal", "-k", "--kill-after"], positional: 1 },
+    stdbuf: { values: ["-i", "-o", "-e", "--input", "--output", "--error"] },
+    ionice: { values: ["-c", "--class", "-n", "--classdata"] },
+    xargs: {
+      values: [
+        "-a",
+        "-d",
+        "-E",
+        "-I",
+        "-L",
+        "-n",
+        "-P",
+        "-s",
+        "--arg-file",
+        "--delimiter",
+        "--max-args",
+        "--max-procs",
+      ],
+    },
+    sudo: {
+      values: ["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-t", "-T", "-U", "--user", "--group", "--chdir"],
+      privileged: true,
+    },
+    doas: { values: ["-u", "-C"], privileged: true },
+    pkexec: { values: ["--user"], privileged: true },
+  }
+
+  /**
+   * Options a tool takes before its subcommand and the value after them (git -C dir push, pnpm --filter x publish);
+   * skipped so the subcommand is recognised
+   */
+  const GLOBAL_VALUES: Record<string, string[]> = {
+    git: ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source"],
+    npm: ["-w", "--workspace", "--prefix", "--registry", "--userconfig", "--globalconfig", "--cache", "--loglevel"],
+    pnpm: ["-C", "--dir", "-F", "--filter", "--filter-prod", "--workspace-dir", "--reporter", "--loglevel"],
+    yarn: ["--cwd", "--cache-folder", "--modules-folder", "--registry", "--mutex"],
+    bun: ["--cwd", "-c", "--config"],
+  }
+
+  /** git options that set config, which can name programs git runs (core.pager, alias.x=!cmd, ...) */
+  const GIT_CONFIG = /^(-c|--config-env|--exec-path=)/
+
+  /** Whether an argument sets an option: a long one as --name or --name=value, a short one alone or in a cluster */
+  function sets(args: string[], short: string, long: string[] = []) {
+    return args.some(
+      (arg) =>
+        long.some((name) => arg === name || arg.startsWith(name + "=")) ||
+        (!!short && /^-[a-zA-Z0-9]+$/.test(arg) && [...short].some((letter) => arg.slice(1).includes(letter))),
+    )
+  }
+
+  /** Positional arguments, skipping the value after each option in `values` */
+  function positionals(args: string[], values: string[] = []) {
+    return args.filter((arg, index) => !arg.startsWith("-") && !values.includes(args[index - 1] ?? ""))
+  }
+
+  /**
+   * Arguments that make a command on the read-only list write files or run other programs (sort -o out, rg --pre cmd,
+   * git diff --output=f); such a call counts as a normal command
+   */
+  const UNSAFE_ARGS: Record<string, (args: string[]) => boolean> = {
+    rg: (args) => sets(args, "", ["--pre"]),
+    ag: (args) => sets(args, "", ["--pager"]),
+    sort: (args) => sets(args, "o", ["--output", "--compress-program"]),
+    uniq: (args) => positionals(args, ["-f", "-s", "-w"]).length > 1,
+    tree: (args) => sets(args, "oR", ["--output"]),
+    xxd: (args) => sets(args, "r", ["--revert"]) || positionals(args, ["-c", "-g", "-l", "-o", "-s", "-n"]).length > 1,
+    file: (args) => sets(args, "C", ["--compile"]),
+    date: (args) => sets(args, "s", ["--set"]),
+    hostname: (args) => sets(args, "F", ["--file"]) || positionals(args).length > 0,
+    "git diff": (args) => sets(args, "", ["--output"]),
+    "git log": (args) => sets(args, "", ["--output"]),
+    "git show": (args) => sets(args, "", ["--output"]),
+    "git whatchanged": (args) => sets(args, "", ["--output"]),
+    "git shortlog": (args) => sets(args, "", ["--output"]),
+    "git ls-remote": (args) => sets(args, "u", ["--upload-pack"]),
+  }
+
+  const SEVERITY: PermissionPolicy.CommandLevel[] = ["readonly", "normal", "delete", "risky", "forbidden"]
+
+  function worst(...levels: PermissionPolicy.CommandLevel[]) {
+    return levels.reduce((a, b) => (SEVERITY.indexOf(b) > SEVERITY.indexOf(a) ? b : a), "readonly")
+  }
+
+  /**
+   * Where the command a wrapper (env, nice, sudo, ...) runs starts in `words`. Also returns the command line handed to
+   * env -S, whether it only looks a command up, whether a wrapper runs it as another user, and whether a wrapper's own
+   * options write a file.
+   */
+  function unwrap(words: string[]) {
+    let start = 0
+    let privileged = false
+    let writes = false
+    for (;;) {
+      const wrapper = WRAPPERS[words[start] ?? ""]
+      if (!wrapper) return { start, privileged, writes }
+      privileged ||= !!wrapper.privileged
+      let index = start + 1
+      let positional = wrapper.positional ?? 0
+      while (index < words.length) {
+        const word = words[index]!
+        if (word === "--") {
+          index++
+          break
+        }
+        if (wrapper.lookups?.includes(word)) return { start: words.length, privileged, writes, lookup: true }
+        const script = wrapper.scripts?.find((name) => word === name || word.startsWith(name + "="))
+        if (script)
+          return {
+            start: words.length,
+            privileged,
+            writes,
+            script: word === script ? (words[index + 1] ?? "") : word.slice(script.length + 1),
+          }
+        if (wrapper.output?.some((name) => word === name || word.startsWith(name + "="))) writes = true
+        if (word.startsWith("-") && word.length > 1) {
+          index += wrapper.values.includes(word) ? 2 : 1
+          continue
+        }
+        if (wrapper.assignments && /^[A-Za-z_]\w*=/.test(word)) {
+          index++
+          continue
+        }
+        if (positional > 0) {
+          positional--
+          index++
+          continue
+        }
+        break
+      }
+      start = index
+    }
+  }
+
+  /** The command line a shell runs with -c (also `eval`); undefined for anything else */
+  function scriptOf(words: string[]) {
+    const [head = "", ...rest] = words
+    if (head === "eval") return rest.join(" ")
+    if (!SHELLS.has(head) && head !== "su") return
+    const flag = rest.findIndex(
+      (word) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(word) || word === "--command" || word.toLowerCase() === "-command",
+    )
+    return flag < 0 ? undefined : (rest[flag + 1] ?? "")
+  }
+
+  /** The words without a tool's options before its subcommand, with their positions in `words` */
+  function subcommand(words: string[]) {
+    const values = GLOBAL_VALUES[words[0] ?? ""]
+    const all = words.map((_, index) => index)
+    if (!values) return { at: all, configured: false }
+    let index = 1
+    let configured = false
+    while (index < words.length && words[index]!.startsWith("-")) {
+      const word = words[index]!
+      if (words[0] === "git" && GIT_CONFIG.test(word)) configured = true
+      index += values.includes(word) ? 2 : 1
+    }
+    return { at: [0, ...all.slice(index)], configured }
+  }
 
   // tree-sitter only needs the wasm file path (it reads the file itself), so resolving through the package is enough
   const resolveWasm = (asset: string) => createRequire(import.meta.url).resolve(asset)
@@ -243,17 +429,62 @@ export namespace CommandAnalysis {
     return name === "diskpart" || name === "diskpart.exe"
   }
 
-  function level(tokens: string[], prefix: string, redirected: boolean): PermissionPolicy.CommandLevel {
-    const head = tokens[0] ?? ""
-    if (forbidden(tokens)) return "forbidden"
+  /** Level of a command whose words are unquoted, with wrappers and the tool's options before its subcommand removed */
+  function level(
+    words: string[],
+    prefix: string,
+    redirected: boolean,
+    configured: boolean,
+  ): PermissionPolicy.CommandLevel {
+    const head = words[0] ?? ""
+    if (forbidden(words)) return "forbidden"
     if (PRIVILEGE.has(head) || PUBLISH.has(prefix)) return "risky"
     if (DELETE.has(head)) return "delete"
     if (prefix === "git clean") return "delete"
-    if (prefix === "git reset" && tokens.includes("--hard")) return "delete"
-    if (head === "find" && tokens.includes("-delete")) return "delete"
-    if (head === "find" && tokens.some((token) => FIND_WRITE.has(token))) return "normal"
-    if (READ_ONLY.has(prefix) && !redirected) return "readonly"
+    if (prefix === "git reset" && words.includes("--hard")) return "delete"
+    if (head === "find" && words.includes("-delete")) return "delete"
+    if (head === "find" && words.some((word) => FIND_WRITE.has(word))) return "normal"
+    const args = words.slice(prefix.split(" ").length)
+    if (READ_ONLY.has(prefix) && !redirected && !configured && !UNSAFE_ARGS[prefix]?.(args)) return "readonly"
     return "normal"
+  }
+
+  /**
+   * One command as tokens: its level and session-grant prefix, looking through wrappers (env rm, sudo -u x cmd) and
+   * a tool's options before its subcommand (git -C dir push). `inner` is the command that actually runs, when it
+   * differs from the whole, so rules written for it match too; `script` is a command line handed to sh -c, eval or
+   * env -S, to be analyzed on its own.
+   */
+  function classify(tokens: string[], redirected: boolean) {
+    const words = tokens.map(unquote)
+    const wrapped = unwrap(words)
+    const rest = words.slice(wrapped.start)
+    const sub = subcommand(rest)
+    const effective = sub.at.map((index) => rest[index]!)
+    const raw = sub.at.map((index) => tokens[wrapped.start + index]!)
+    const arity = BashArity.prefix(effective).length
+    const prefix = effective.slice(0, arity).join(" ")
+    const own = rest.length ? level(effective, prefix, redirected, sub.configured) : redirected ? "normal" : "readonly"
+    const script = wrapped.script ?? scriptOf(rest)
+    // The grant prefix keeps the words as written, up to the end of the subcommand (`env git -C . push`)
+    const end = arity ? wrapped.start + sub.at[arity - 1]! + 1 : BashArity.prefix(tokens).length
+    const changed = rest.length > 0 && (wrapped.start > 0 || sub.at.length < rest.length)
+    return {
+      level: worst(
+        own,
+        wrapped.privileged ? "risky" : "readonly",
+        script === undefined && !wrapped.writes ? "readonly" : "normal",
+      ),
+      prefix: tokens.slice(0, end).join(" "),
+      /** The subcommand as matched against the lists (`git push` for `env git -C . push origin`) */
+      name: prefix,
+      effective,
+      privileged: wrapped.privileged,
+      script,
+      inner: changed
+        ? { text: raw.join(" "), tokens: raw, prefix: raw.slice(0, arity).join(" "), level: own }
+        : undefined,
+    }
   }
 
   function inside(roots: string[], target: string) {
@@ -264,14 +495,18 @@ export namespace CommandAnalysis {
   }
 
   /**
-   * Path-like arguments: absolute, starting with ~, or relative with ../. Returns the absolute path, or undefined when
-   * the argument does not look like a path.
+   * Path-like arguments: absolute, starting with ~, relative with ../, or named like a credential file (.env,
+   * id_rsa, ...) wherever it is. Returns the absolute path, or undefined when the argument does not look like a path.
    */
   function pathOf(token: string, input: { cwd: string; home: string }) {
     const value = unquote(token)
     if (!value || value.startsWith("-") || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return
     const expanded = value === "~" ? input.home : value.startsWith("~/") ? path.join(input.home, value.slice(2)) : value
-    const looksLikePath = path.isAbsolute(expanded) || expanded !== value || value.split(/[\\/]/).includes("..")
+    const looksLikePath =
+      path.isAbsolute(expanded) ||
+      expanded !== value ||
+      value.split(/[\\/]/).includes("..") ||
+      PermissionPolicy.sensitiveName(expanded)
     // Devices such as /dev/null do not count
     if (!looksLikePath || expanded.startsWith("/dev/")) return
     return path.resolve(input.cwd, expanded)
@@ -318,9 +553,20 @@ export namespace CommandAnalysis {
     return result
   }
 
+  /** Command lines inside command lines (sh -c "sh -c ...") are followed this deep; deeper ones count as normal */
+  const MAX_DEPTH = 4
+
   export async function analyze(
     command: string,
     input: { cwd: string; workspace: string[]; home: string },
+  ): Promise<Result> {
+    return analyzeAt(command, input, 0)
+  }
+
+  async function analyzeAt(
+    command: string,
+    input: { cwd: string; workspace: string[]; home: string },
+    depth: number,
   ): Promise<Result> {
     const tree = await parser().then((p) => p.parse(command))
     if (!tree) throw new Error("Failed to parse command")
@@ -338,9 +584,18 @@ export namespace CommandAnalysis {
         if (child && TOKEN_TYPES.has(child.type)) tokens.push(child.text)
       }
       if (!tokens.length || tokens[0] === "cd") continue
-      const prefix = BashArity.prefix(tokens).join(" ")
-      const segment = { text, tokens, prefix, level: level(tokens, prefix, own?.write ?? false) }
+      const found = classify(tokens, own?.write ?? false)
+      const segment: Segment = { text, tokens, prefix: found.prefix, level: found.level }
       segments.push(segment)
+      if (found.inner) segments.push(found.inner)
+      if (found.script !== undefined && depth < MAX_DEPTH) {
+        // The command line a shell is handed: its commands are segments too, and the shell is at least as risky
+        const nested = await analyzeAt(found.script, input, depth + 1)
+        segments.push(...nested.segments)
+        for (const tag of nested.tags) tags.add(tag)
+        for (const file of nested.paths) paths.add(file)
+        segment.level = worst(segment.level, ...nested.segments.map((item) => item.level))
+      }
       for (const token of tokens.slice(1)) {
         const target = pathOf(token, input)
         if (!target) continue
@@ -348,9 +603,10 @@ export namespace CommandAnalysis {
         if (!inside(input.workspace, target)) tags.add("external-path")
         if (PermissionPolicy.sensitive(target, input.home)) tags.add("sensitive-path")
       }
+      const prefix = found.name
       if (segment.level === "forbidden") tags.add("forbidden")
       if (NETWORK.some((item) => prefix === item || prefix.startsWith(item + " "))) tags.add("network")
-      if (PRIVILEGE.has(tokens[0]!)) tags.add("sudo")
+      if (found.privileged || PRIVILEGE.has(found.effective[0] ?? "")) tags.add("sudo")
       if (segment.level === "delete") tags.add("delete")
       if (PUBLISH.has(prefix)) tags.add("publish")
     }
@@ -362,7 +618,8 @@ export namespace CommandAnalysis {
         .map((name) => name?.text ?? "")
         .filter(Boolean)
       if (names.some((name) => name === "curl" || name === "wget") && names.some((name) => SHELLS.has(name))) {
-        for (const segment of segments) if (pipeline.text.includes(segment.text)) segment.level = "risky"
+        for (const segment of segments)
+          if (pipeline.text.includes(segment.text)) segment.level = worst(segment.level, "risky")
         tags.add("network")
       }
     }

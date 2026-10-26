@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
+import { Global } from "@merakcode/engine/global/index"
 import { PermissionNext } from "@merakcode/engine/permission/next"
 import { PermissionPolicy } from "@merakcode/engine/permission/policy"
 
@@ -41,6 +42,34 @@ describe("file operation classification", () => {
     expect(PermissionPolicy.file({ ...ctx, op: "write", path: path.join(home, ".npmrc") }).permission).toBe(
       "external_write",
     )
+  })
+
+  test("write: MerakCode's config files, global or a project's, are config_write", () => {
+    for (const file of [
+      at("merakcode.json"),
+      at("merakcode.jsonc"),
+      at(".merakcode", "merakcode.json"),
+      path.join(home, ".merakcode", "merakcode.jsonc"),
+    ])
+      expect(PermissionPolicy.file({ ...ctx, op: "write", path: file }).permission, file).toBe("config_write")
+    expect(PermissionPolicy.file({ ...ctx, op: "write", path: at(".merakcode", "agent", "a.md") }).permission).toBe(
+      "protected_write",
+    )
+  })
+
+  test("config_write asks in auto mode too, and is denied in read-only mode", () => {
+    const config = PermissionPolicy.file({ ...ctx, op: "write", path: at(".merakcode", "merakcode.json") })
+    expect(decide("readonly", config)).toBe("deny")
+    expect(decide("ask", config)).toBe("ask")
+    expect(decide("auto", config)).toBe("ask")
+    expect(
+      decide("auto", PermissionPolicy.file({ ...ctx, op: "write", path: at(".git", "hooks", "pre-commit") })),
+    ).toBe("allow")
+  })
+
+  test("MerakCode's store of provider keys is a sensitive file", () => {
+    const auth = path.join(Global.Path.data, "auth.json")
+    expect(PermissionPolicy.file({ ...ctx, op: "read", path: auth }).permission).toBe("sensitive_read")
   })
 
   test("offers grant scopes: trust this file or this directory for the session", () => {
