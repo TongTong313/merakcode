@@ -1,12 +1,14 @@
 /**
- * Linux sandbox helper, started as `node sandbox-linux.js <request file>`. It restricts itself with Landlock and
- * then replaces itself with the shell (execve keeps the restriction), so the command and everything it starts
- * inherit the same limits. The request file is private (0600) and deleted as soon as it is read.
+ * Linux sandbox helper, started as `node sandbox-linux.js <request file> <sha256 of it>`. It restricts itself with
+ * Landlock and then replaces itself with the shell (execve keeps the restriction), so the command and everything it
+ * starts inherit the same limits. The request file is private (0600) and deleted as soon as it is read; the helper
+ * refuses a file whose content does not match the digest it was started with.
  */
 import { closeSync, openSync, readFileSync, statSync, unlinkSync } from "node:fs"
 import { native } from "@merakcode/util/ffi"
 import { Landlock } from "./landlock"
 import { readRoots } from "./read-roots"
+import { SandboxRequest } from "./request"
 
 export type Request = {
   shell: string
@@ -26,10 +28,12 @@ function fail(message: string): never {
   process.exit(125)
 }
 
-const file = process.argv[2]
-if (!file) fail("missing request file")
-const request = JSON.parse(readFileSync(file, "utf8")) as Request
+const [file, expected] = process.argv.slice(2)
+if (!file || !expected) fail("missing request file or its digest")
+const content = readFileSync(file)
 unlinkSync(file)
+if (!SandboxRequest.matches(content, expected)) fail("the request file does not match what the engine wrote")
+const request = JSON.parse(content.toString("utf8")) as Request
 
 const ffi = native() ?? fail("node:ffi is not available")
 const ARGS = ["int64", "int64", "int64", "int64", "int64", "int64"]

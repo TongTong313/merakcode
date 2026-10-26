@@ -13,6 +13,7 @@ import { Runtime } from "@merakcode/util/runtime"
 import type { Backend, Status } from "../backend"
 import type { Request } from "./exec"
 import { Landlock } from "./landlock"
+import { SandboxRequest } from "./request"
 
 export namespace LinuxSandbox {
   /** Landlock ABI version of the running kernel; 0 when Landlock or FFI is unavailable */
@@ -75,9 +76,16 @@ export namespace LinuxSandbox {
           write: input.policy.write.allow,
           ports: [input.proxyPort, ...input.policy.network.localPorts],
         }
-        writeFileSync(file, JSON.stringify(request), { mode: 0o600 })
+        const content = JSON.stringify(request)
+        // wx: never write through a file someone else created first
+        writeFileSync(file, content, { mode: 0o600, flag: "wx" })
         const [node, ...args] = helper()
-        return { file: node!, args: [...args, file], env: {}, cleanup: () => rmSync(file, { force: true }) }
+        return {
+          file: node!,
+          args: [...args, file, SandboxRequest.digest(content)],
+          env: {},
+          cleanup: () => rmSync(file, { force: true }),
+        }
       },
     }
   }
