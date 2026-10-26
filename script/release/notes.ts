@@ -36,7 +36,9 @@ if (import.meta.main) {
     }
   })()
   if (process.argv.includes("--require") && !section(text, version)) {
-    console.error(`CHANGELOG.md has no notes for ${version}: rename Unreleased to "## [${version}] - date"`)
+    console.error(
+      `CHANGELOG.md has no notes for ${version}: add "## [${version}] - date" below Unreleased and move its entries there`,
+    )
     process.exit(1)
   }
   process.stdout.write(notes(text, version) + "\n")
