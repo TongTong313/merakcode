@@ -3,6 +3,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Bus } from "../bus"
 import z from "zod"
 import { Instance } from "../project/instance"
+import { Checkout } from "../project/checkout"
 import type { WorkflowRunCache, WorkflowRunControl, WorkflowRunMetadata, WorkflowRunRecord } from "./types"
 
 export namespace WorkflowState {
@@ -170,12 +171,14 @@ export namespace WorkflowState {
   }
 
   export function registerRun(sessionID: string, runId: string, control: AbortController | WorkflowRunControl) {
+    const releaseCheckout = Checkout.hold()
     const current = active()
     const runs = (current[sessionID] ??= {})
     const handle = control instanceof AbortController ? { abort: control } : control
     runs[runId] = handle
 
     return () => {
+      releaseCheckout()
       if (runs[runId] !== handle) return
       delete runs[runId]
       if (Object.keys(runs).length === 0) delete current[sessionID]

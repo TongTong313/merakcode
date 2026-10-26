@@ -30,6 +30,7 @@ import { fromConfig, setLocale, t } from "../i18n"
 import { toast } from "../ui/toast"
 import { providerChanged, type SeenFailures } from "./catalog-refresh"
 import { call, client } from "./client"
+import { checkoutOf, gitDirectory, onCheckoutChange, updateCheckout } from "./git"
 
 type Providers = ProviderListResponses[200]
 
@@ -50,6 +51,7 @@ type State = {
   sessions: SessionsState
   /** Directory → current branch */
   branch: Record<string, string | undefined>
+  head: Record<string, string | null | undefined>
   /** Directory → the repository's default branch (vcs.get) */
   defaultBranch: Record<string, string | undefined>
   /** Directory → push remote, ahead/behind, and staged / unstaged / untracked file counts (vcs.get) */
@@ -78,6 +80,7 @@ export const [state, setState] = createStore<State>({
   folders: [],
   sessions: createSessionsState(),
   branch: {},
+  head: {},
   defaultBranch: {},
   remote: {},
   loaded: {},
@@ -86,6 +89,18 @@ export const [state, setState] = createStore<State>({
 })
 
 const PAGE = 40
+
+onCheckoutChange((directory, current) => {
+  const directories = new Set([
+    directory,
+    ...Object.keys(state.branch).filter((key) => sameDir(gitDirectory(key), directory)),
+  ])
+  for (const key of directories) {
+    setState("branch", key, current.branch ?? undefined)
+    setState("head", key, current.head)
+  }
+  void refreshVcs(directory)
+})
 
 type Listener = (directory: string, event: Event) => void
 const listeners = new Set<Listener>()
@@ -108,6 +123,12 @@ function dispatch(directory: string, event: Event) {
     produce((draft) => reduce(draft, event)),
   )
   if (event.type === "vcs.branch.updated") setState("branch", directory, event.properties.branch)
+  if (event.type === "vcs.head.updated")
+    updateCheckout(
+      directory,
+      event.properties.checkout ? { ...event.properties, checkout: event.properties.checkout } : null,
+      event.properties.branchChanged,
+    )
   if (event.type === "provider.changed") {
     const decision = providerChanged(catalogFailures, event.properties)
     catalogFailures = decision.seen
@@ -220,6 +241,8 @@ export async function loadProviders(directory = state.folders[0]?.directory) {
 
 type GitInfo = {
   branch?: string
+  head?: string | null
+  checkout?: string | null
   default_branch?: string
   remote?: string
   ahead?: number
@@ -244,8 +267,19 @@ function remembered(vcs: GitInfo | undefined) {
 
 /** Reloads a directory's git state after a commit, push, or when the review bar opens */
 export async function refreshVcs(directory: string) {
+  const before = checkoutOf(directory)
   const vcs = await call(client(directory).vcs.get()).catch(() => undefined)
+  if (!vcs) return
+  if (before !== checkoutOf(directory)) return
+  if (vcs?.checkout)
+    updateCheckout(directory, {
+      branch: vcs.branch === "HEAD" ? null : vcs.branch || null,
+      head: vcs.head ?? null,
+      checkout: vcs.checkout,
+    })
+  else if (vcs?.checkout === null) updateCheckout(directory, null)
   setState("branch", directory, vcs?.branch || undefined)
+  setState("head", directory, vcs?.head)
   setState("defaultBranch", directory, vcs?.default_branch)
   setState("remote", directory, remembered(vcs))
 }
@@ -312,13 +346,14 @@ async function refresh(directory: string, limit = PAGE) {
   const instances = await Promise.all(
     directories(folder).map(async (dir) => {
       const c = client(dir)
+      const checkout = checkoutOf(dir)
       const [status, permissions, questions, vcs] = await Promise.all([
         call(c.session.status()).catch(() => ({})),
         call(c.permission.list()).catch(() => []),
         call(c.question.list()).catch(() => []),
         project.vcs === "git" ? call(c.vcs.get()).catch(() => undefined) : undefined,
       ])
-      return { dir, status, permissions, questions, vcs }
+      return { dir, status, permissions, questions, vcs, checkout }
     }),
   )
   batch(() => {
@@ -335,7 +370,15 @@ async function refresh(directory: string, limit = PAGE) {
       }),
     )
     for (const item of instances) {
+      if (checkoutOf(item.dir) !== item.checkout) continue
       setState("branch", item.dir, item.vcs?.branch)
+      setState("head", item.dir, item.vcs?.head)
+      if (item.vcs?.checkout)
+        updateCheckout(item.dir, {
+          branch: item.vcs.branch === "HEAD" ? null : item.vcs.branch || null,
+          head: item.vcs.head ?? null,
+          checkout: item.vcs.checkout,
+        })
       setState("defaultBranch", item.dir, item.vcs?.default_branch)
       setState("remote", item.dir, remembered(item.vcs))
     }

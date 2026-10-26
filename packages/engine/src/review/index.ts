@@ -29,6 +29,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Bus } from "../bus"
 import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
+import { Checkout } from "../project/checkout"
 import { Storage } from "../storage/storage"
 import { ReviewBaseline } from "./baseline"
 import { Snapshot } from "../snapshot"
@@ -84,7 +85,7 @@ export namespace Review {
       /** Number of hunks; their lines come from Review.file */
       hunks: z.number(),
       accepted: z.number(),
-      /** Hash of base and current: changes whenever either changes */
+      /** Hash of checkout context, base and current: changes whenever any of them changes */
       version: z.string(),
     })
     .meta({ ref: "ReviewFile" })
@@ -105,6 +106,8 @@ export namespace Review {
   export const Result = z
     .object({
       scope: Scope,
+      /** Opaque checkout context; null outside Git repositories */
+      checkout: z.string().nullable(),
       /** Base branch used by the branch scope */
       base: z.string().optional(),
       actions: z.object({ accept: z.boolean(), reject: z.boolean() }),
@@ -125,16 +128,21 @@ export namespace Review {
   export type Input = z.infer<typeof Input>
 
   export const Decision = Input.extend({
+    expectedCheckout: z.string().nullable(),
     decision: z.enum(["accept", "reject"]),
     /** Omitted means all files; a file without hunks means all of its hunks */
     files: z.object({ file: z.string(), hunks: z.string().array().optional() }).array().optional(),
   })
   export type Decision = z.infer<typeof Decision>
 
+  export const UndoInput = Input.extend({ expectedCheckout: z.string().nullable() })
+  export type UndoInput = z.infer<typeof UndoInput>
+
   export const FileInput = Input.extend({
     file: z.string(),
     /** Version from the list; when the file has changed since, the request is stale */
     version: z.string().optional(),
+    expectedCheckout: z.string().nullable().optional(),
   })
   export type FileInput = z.infer<typeof FileInput>
 
@@ -183,6 +191,16 @@ export namespace Review {
 
   type Text = { before?: string; after?: string }
   type Kind = "binary" | "truncated"
+  type Context = { directory: string; branch: string | null; checkout: string | null }
+
+  async function context(expectedCheckout?: string | null): Promise<Context> {
+    const identity = expectedCheckout === undefined ? await Checkout.current() : await Checkout.assert(expectedCheckout)
+    return {
+      directory: identity?.directory ?? canonical(Instance.directory),
+      branch: identity?.branch ?? null,
+      checkout: identity?.checkout ?? null,
+    }
+  }
 
   /** Why the file cannot be diffed line by line; undefined when it can */
   function undiffable(entry: Entry): Kind | undefined {
@@ -212,6 +230,12 @@ export namespace Review {
   const version = (entry: Entry) =>
     createHash("sha1")
       .update(`${digest(entry.before)}\u0000${digest(entry.after)}`)
+      .digest("hex")
+      .slice(0, 16)
+
+  const fileVersion = (entry: Entry, current: Context) =>
+    createHash("sha1")
+      .update(`${current.directory}\u0000${current.checkout ?? ""}\u0000${version(entry)}`)
       .digest("hex")
       .slice(0, 16)
 
@@ -273,7 +297,7 @@ export namespace Review {
     return blocks(entry).list.map((hunk) => (accepted.has(hunk.id) ? { ...hunk, state: "accepted" } : hunk))
   }
 
-  function summary(entry: Entry): File {
+  function summary(entry: Entry, current: Context): File {
     const { kind } = blocks(entry)
     const items = marked(entry)
     const rows = items.flatMap((hunk) => hunk.lines)
@@ -286,16 +310,16 @@ export namespace Review {
       deletions: rows.filter((line) => line.kind === "del").length,
       hunks: items.length,
       accepted: items.filter((hunk) => hunk.state === "accepted").length,
-      version: version(entry),
+      version: fileVersion(entry, current),
     }
   }
 
-  function detail(entry: Entry): Detail {
+  function detail(entry: Entry, current: Context): Detail {
     const size = (entry.before?.length ?? 0) + (entry.after?.length ?? 0)
     const full = !blocks(entry).kind && size <= TEXT_LIMIT ? text(entry) : {}
     return {
       file: entry.file,
-      version: version(entry),
+      version: fileVersion(entry, current),
       hunks: marked(entry),
       ...(full.before !== undefined ? { before: full.before } : {}),
       ...(full.after !== undefined ? { after: full.after } : {}),
@@ -520,10 +544,15 @@ export namespace Review {
 
   type Marks = Record<string, Record<string, string[]>>
 
-  async function branch(input: Input): Promise<Source> {
+  async function branch(input: Input, current: Context): Promise<Source> {
     const base = input.base ?? (await Vcs.defaultBranch())?.ref
     const fork = base ? (await git(["merge-base", base, "HEAD"])).text().trim() : ""
-    const key = ["review_branch", Instance.project.id]
+    const key = [
+      "review_branch_checkout",
+      createHash("sha256")
+        .update(`${current.directory}\u0000${current.branch ?? ""}\u0000${base ?? ""}`)
+        .digest("hex"),
+    ]
     return {
       base,
       actions: { accept: true, reject: true },
@@ -612,12 +641,12 @@ export namespace Review {
     reject: async () => nothing,
   }
 
-  async function open(input: Input): Promise<Source> {
+  async function open(input: Input, current: Context): Promise<Source> {
     if (input.scope === "session" || input.scope === "turn") return conversation(input)
     if (Instance.project.vcs !== "git") return none
     if (input.scope === "unstaged") return unstaged()
     if (input.scope === "staged") return staged()
-    return branch(input)
+    return branch(input, current)
   }
 
   /**
@@ -627,67 +656,95 @@ export namespace Review {
   const snapshots = new Map<string, Entry[]>()
   const SNAPSHOTS = 4
 
-  function snapshotKey(input: Input) {
-    return [Instance.directory, input.scope, input.sessionID ?? "", input.messageID ?? "", input.base ?? ""].join(
-      "\u0000",
-    )
+  function snapshotKey(input: Input, current: Context) {
+    return [
+      current.directory,
+      current.checkout ?? "",
+      input.scope,
+      input.sessionID ?? "",
+      input.messageID ?? "",
+      input.base ?? "",
+    ].join("\u0000")
   }
 
-  function remember(input: Input, entries: Entry[]) {
-    const key = snapshotKey(input)
+  function remember(input: Input, current: Context, entries: Entry[]) {
+    const key = snapshotKey(input, current)
     snapshots.delete(key)
     snapshots.set(key, entries)
     if (snapshots.size > SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!)
   }
 
-  export async function get(input: Input): Promise<Result> {
-    const source = await open(input)
+  async function list(input: Input, current: Context): Promise<Result> {
+    const source = await open(input, current)
     const entries = await source.entries()
-    remember(input, entries)
+    await Checkout.assert(current.checkout)
+    remember(input, current, entries)
     return {
       scope: input.scope,
+      checkout: current.checkout,
       ...(source.base ? { base: source.base } : {}),
       actions: source.actions,
-      files: entries.map(summary),
+      files: entries.map((entry) => summary(entry, current)),
     }
+  }
+
+  export async function get(input: Input): Promise<Result> {
+    return list(input, await context())
   }
 
   /** Hunks of one file at the version the client listed; stale when the file has changed since */
   export async function file(input: FileInput): Promise<Detail> {
+    const current = await context(input.expectedCheckout)
     const pick = (entries: Entry[] | undefined) => entries?.find((entry) => entry.file === input.file)
-    const matches = (entry: Entry | undefined) => !!entry && (!input.version || version(entry) === input.version)
-    const listed = input.version ? pick(snapshots.get(snapshotKey(input))) : undefined
-    if (matches(listed)) return detail(listed!)
-    const entries = await (await open(input)).entries()
-    remember(input, entries)
+    const matches = (entry: Entry | undefined) =>
+      !!entry && (!input.version || fileVersion(entry, current) === input.version)
+    const listed = input.version ? pick(snapshots.get(snapshotKey(input, current))) : undefined
+    if (matches(listed)) {
+      await Checkout.assert(current.checkout)
+      return detail(listed!, current)
+    }
+    const entries = await (await open(input, current)).entries()
+    await Checkout.assert(current.checkout)
+    remember(input, current, entries)
     const entry = pick(entries)
     if (!entry) throw new StaleError({ message: `${input.file} has no changes in scope ${input.scope}` })
     if (!matches(entry)) throw new StaleError({ message: `${input.file} changed after version ${input.version}` })
-    return detail(entry)
+    return detail(entry, current)
   }
 
   // One decision at a time: two decisions reading the same base and writing back would overwrite each other
-  let queue = Promise.resolve()
+  const queues = new Map<string, Promise<void>>()
 
-  function serial<T>(task: () => Promise<T>) {
-    const run = queue.then(task)
-    queue = run.then(
+  function serial<T>(directory: string, task: () => Promise<T>) {
+    const run = (queues.get(directory) ?? Promise.resolve()).then(task)
+    const settled = run.then(
       () => {},
       () => {},
     )
-    return run
+    queues.set(directory, settled)
+    return run.finally(() => {
+      if (queues.get(directory) === settled) queues.delete(directory)
+    })
   }
 
   /**
    * Recent decisions per scope, undoable step by step. Kept in memory only, so they are lost when the engine restarts.
    * The turn and session scopes share one base, so they also share the undo history.
    */
-  const history = new Map<string, Undo[][]>()
+  const history = new Map<string, { checkout: string | null; scopes: Map<string, Undo[][]> }>()
   const LIMIT = 50
+
+  function historyFor(current: Context) {
+    const known = history.get(current.directory)
+    if (known?.checkout === current.checkout) return known.scopes
+    const scopes = new Map<string, Undo[][]>()
+    history.set(current.directory, { checkout: current.checkout, scopes })
+    return scopes
+  }
 
   function undoKey(input: Input, source: Source) {
     const scope = input.scope === "turn" ? "session" : input.scope
-    return [Instance.directory, scope, input.sessionID ?? "", source.base ?? ""].join("\u0000")
+    return [scope, input.sessionID ?? "", source.base ?? ""].join("\u0000")
   }
 
   function updated(input: Input) {
@@ -695,52 +752,68 @@ export namespace Review {
   }
 
   export async function decide(input: Decision): Promise<Result> {
-    await serial(async () => {
-      const source = await open(input)
-      if (!source.actions[input.decision])
-        throw new InvalidError({ message: `scope ${input.scope} does not support ${input.decision}` })
-      const entries = await source.entries()
-      const targets = input.files ?? entries.map((entry) => ({ file: entry.file, hunks: undefined }))
-      // Validate everything before writing: if any target is stale, nothing is changed
-      const plans = targets.map((target): Plan => {
-        const entry = entries.find((item) => item.file === target.file)
-        if (!entry) throw new StaleError({ message: `${target.file} has no changes in scope ${input.scope}` })
-        const { kind, list } = blocks(entry)
-        const ids = target.hunks ?? list.map((hunk) => hunk.id)
-        const missing = ids.filter((id) => !list.some((hunk) => hunk.id === id))
-        if (missing.length) throw new StaleError({ message: `${target.file}: hunk ${missing.join(", ")} not found` })
-        return { entry, ids, next: apply(entry, input.decision, new Set(ids)), whole: !!kind }
-      })
-      const undos: Undo[] = []
-      for (const plan of plans)
-        undos.push(await (input.decision === "accept" ? source.accept(plan) : source.reject(plan)))
-      const key = undoKey(input, source)
-      history.set(key, [...(history.get(key) ?? []), undos].slice(-LIMIT))
-      log.info("decided", { scope: input.scope, decision: input.decision, files: plans.length })
-      updated(input)
-    })
-    return get(input)
+    return Checkout.activity(() =>
+      serial(canonical(Instance.worktree), async () => {
+        const current = await context(input.expectedCheckout)
+        const source = await open(input, current)
+        if (!source.actions[input.decision])
+          throw new InvalidError({ message: `scope ${input.scope} does not support ${input.decision}` })
+        const entries = await source.entries()
+        const targets = input.files ?? entries.map((entry) => ({ file: entry.file, hunks: undefined }))
+        // Validate everything before writing: if any target is stale, nothing is changed
+        const plans = targets.map((target): Plan => {
+          const entry = entries.find((item) => item.file === target.file)
+          if (!entry) throw new StaleError({ message: `${target.file} has no changes in scope ${input.scope}` })
+          const { kind, list } = blocks(entry)
+          const ids = target.hunks ?? list.map((hunk) => hunk.id)
+          const missing = ids.filter((id) => !list.some((hunk) => hunk.id === id))
+          if (missing.length) throw new StaleError({ message: `${target.file}: hunk ${missing.join(", ")} not found` })
+          return { entry, ids, next: apply(entry, input.decision, new Set(ids)), whole: !!kind }
+        })
+        await Checkout.assert(current.checkout)
+        const undos: Undo[] = []
+        for (const plan of plans) {
+          await Checkout.assert(current.checkout)
+          undos.push(await (input.decision === "accept" ? source.accept(plan) : source.reject(plan)))
+        }
+        const decisions = historyFor(current)
+        const key = undoKey(input, source)
+        decisions.set(key, [...(decisions.get(key) ?? []), undos].slice(-LIMIT))
+        log.info("decided", { scope: input.scope, decision: input.decision, files: plans.length })
+        updated(input)
+        return list(input, current)
+      }),
+    )
   }
 
   /**
    * Undoes the latest decision in this scope. Throws a stale error and changes nothing when the files changed since
    * then or there is nothing to undo.
    */
-  export async function undo(input: Input): Promise<Result> {
-    await serial(async () => {
-      const key = undoKey(input, await open(input))
-      const undos = history.get(key)?.pop()
-      if (!undos) throw new StaleError({ message: `nothing to undo in scope ${input.scope}` })
-      const fresh = await Promise.all(undos.map((item) => item.check()))
-      if (fresh.includes(false)) {
-        // This step can no longer be undone, so earlier steps cannot be undone past it either
-        history.delete(key)
-        throw new StaleError({ message: "the files changed after the decision" })
-      }
-      for (const item of undos.toReversed()) await item.run()
-      log.info("undone", { scope: input.scope, files: undos.length })
-      updated(input)
-    })
-    return get(input)
+  export async function undo(input: UndoInput): Promise<Result> {
+    return Checkout.activity(() =>
+      serial(canonical(Instance.worktree), async () => {
+        const current = await context(input.expectedCheckout)
+        const decisions = historyFor(current)
+        const key = undoKey(input, await open(input, current))
+        const undos = decisions.get(key)?.at(-1)
+        if (!undos) throw new StaleError({ message: `nothing to undo in scope ${input.scope}` })
+        const fresh = await Promise.all(undos.map((item) => item.check()))
+        if (fresh.includes(false)) {
+          // This step can no longer be undone, so earlier steps cannot be undone past it either
+          decisions.delete(key)
+          throw new StaleError({ message: "the files changed after the decision" })
+        }
+        await Checkout.assert(current.checkout)
+        for (const item of undos.toReversed()) {
+          await Checkout.assert(current.checkout)
+          await item.run()
+        }
+        decisions.get(key)!.pop()
+        log.info("undone", { scope: input.scope, files: undos.length })
+        updated(input)
+        return list(input, current)
+      }),
+    )
   }
 }

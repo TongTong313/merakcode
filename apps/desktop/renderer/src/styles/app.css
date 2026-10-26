@@ -297,11 +297,10 @@
   margin-bottom: 8px;
   padding: 0 4px;
 }
-.context-row .switch {
-  height: 26px;
-  padding: 0 8px;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+.worktree-preparation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .hints {
   display: flex;

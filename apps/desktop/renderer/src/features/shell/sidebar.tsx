@@ -16,6 +16,7 @@ import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
 import { baseName, sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
+import { unsavedReason } from "../../state/git"
 import { closeFolder, listen, loadMore, openFolder, sessionsOf, state, statusOf, type Folder } from "../../state/store"
 import { setUi, ui } from "../../state/ui"
 import { updateState } from "../update/state"
@@ -24,6 +25,7 @@ import { Menu } from "../../ui/menu"
 import { toast } from "../../ui/toast"
 import { Rename } from "./rename"
 import { GroupCreate } from "../conversation/group-create"
+import { releaseBuffers } from "../code/state"
 
 const mod = mac ? "⌘" : "Ctrl"
 
@@ -160,6 +162,10 @@ function Group(props: { folder: Folder; current?: string; route?: string }) {
   const list = () => sessionsOf(props.folder)
   const remove = () => {
     const directory = props.folder.directory
+    const directories = [directory, ...(props.folder.project?.sandboxes ?? [])]
+    const reason = directories.map(unsavedReason).find(Boolean)
+    if (reason) return void toast({ kind: "info", title: reason })
+    for (const value of directories) if (!releaseBuffers(value)) return
     const openHere = props.route !== undefined && sameDir(props.route, directory)
     closeFolder(directory)
     if (!openHere) return

@@ -52,7 +52,9 @@ test("a healthy setup passes; no connected model is only a warning", { timeout: 
   const result = await doctor(tmp.path, {})
   expect(result.code, result.stdout + result.stderr).toBe(0)
   expect(result.stdout).toContain("[MRK-2007]")
-  expect(result.stdout).toContain("Connect a model provider in /provider first.")
+  expect(result.stdout).toContain(
+    "Connect a model provider first: under Settings → Models & providers in the desktop app, or with merak provider login.",
+  )
   expect(result.stdout).toContain("Engine")
   expect(result.stdout).not.toContain("✗")
 })

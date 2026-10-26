@@ -11,6 +11,7 @@ import { SessionRunner } from "./runner"
 import { Instance } from "../project/instance"
 import { NamedError } from "@merakcode/util/error"
 import { Text } from "../util/text"
+import { SessionRevert } from "./revert"
 
 /**
  * Multi-level undo/redo.
@@ -49,6 +50,10 @@ export namespace SessionUndoRedo {
    * Returns the session to the state before the target message.
    */
   export async function undo(input: RevertInput) {
+    return SessionRevert.inCheckout(input.sessionID, () => undoInCheckout(input))
+  }
+
+  async function undoInCheckout(input: RevertInput) {
     // Undo takes priority: cancel the whole session tree (foreground, background workflow/bash and child sessions)
     // instead of only asserting not busy. This avoids BusyError afterwards and stops background tasks from changing
     // files after the rollback.
@@ -159,6 +164,10 @@ export namespace SessionUndoRedo {
    * Reverts the most recent undo.
    */
   export async function redo(input: { sessionID: string }) {
+    return SessionRevert.inCheckout(input.sessionID, () => redoInCheckout(input))
+  }
+
+  async function redoInCheckout(input: { sessionID: string }) {
     SessionRunner.assertNotBusy(input.sessionID)
 
     const session = await Session.get(input.sessionID)

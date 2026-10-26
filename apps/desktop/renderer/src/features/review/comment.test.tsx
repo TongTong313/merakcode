@@ -33,7 +33,7 @@ const detail: ReviewFileDetail = { file: file.file, version: file.version, hunks
 
 function data(): ReviewData {
   return {
-    data: () => ({ scope: "turn", actions: { accept: true, reject: true }, files: [file] }),
+    data: () => ({ scope: "turn", checkout: null, actions: { accept: true, reject: true }, files: [file] }),
     error: () => undefined,
     loading: () => false,
     refreshing: () => false,

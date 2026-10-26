@@ -12,6 +12,8 @@ import { createHash } from "crypto"
 import { unlink, rm } from "fs/promises"
 import { errors } from "../error"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Checkout } from "../../project/checkout"
+import { defer } from "@merakcode/util/defer"
 
 /**
  * Multi-root write/create/delete/rename: the input may be an absolute UI path, `folderName/rel`, or relative to the
@@ -231,7 +233,17 @@ export const FileRoutes = lazy(() =>
             description: "File written successfully",
             content: { "application/json": { schema: resolver(z.object({ ok: z.boolean() })) } },
           },
-          ...errors(400, 409),
+          ...errors(400),
+          409: {
+            description: "The file changed or its checkout is switching branches",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([Checkout.BlockedError.Schema, z.object({ error: z.string(), currentChecksum: z.string() })]),
+                ),
+              },
+            },
+          },
         },
       }),
       validator(
@@ -248,6 +260,10 @@ export const FileRoutes = lazy(() =>
         if (!abs) {
           return c.json({ error: "path outside project" }, 400)
         }
+        const folder = Workspace.resolveFolder(Instance.workspace, abs)
+        using _ = defer(
+          Checkout.hold(folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree),
+        )
         if (checksum) {
           const current = await Filesystem.readText(abs).catch(() => "")
           const currentChecksum = createHash("sha1").update(current).digest("hex")
@@ -271,6 +287,10 @@ export const FileRoutes = lazy(() =>
             content: { "application/json": { schema: resolver(z.object({ ok: z.boolean() })) } },
           },
           ...errors(400),
+          409: {
+            description: "The checkout is switching branches",
+            content: { "application/json": { schema: resolver(Checkout.BlockedError.Schema) } },
+          },
         },
       }),
       validator(
@@ -285,6 +305,10 @@ export const FileRoutes = lazy(() =>
         if (!abs) {
           return c.json({ error: "path outside project" }, 400)
         }
+        const folder = Workspace.resolveFolder(Instance.workspace, abs)
+        using _ = defer(
+          Checkout.hold(folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree),
+        )
         const file = abs
         if (await Filesystem.isFile(file)) {
           await unlink(abs)

@@ -78,13 +78,13 @@ test("branch review lists only changes against the chosen base branch and opens 
   const panel = kit.panel()
   await panel.getByRole("tab", { name: /^审阅/ }).click()
   // The branch scope is a dropdown of base branches; the current branch is listed but cannot be picked
-  await panel.getByRole("button", { name: /^分支/ }).click()
+  await panel.getByRole("button", { name: /^比对分支/ }).click()
   await expect(kit.page.getByRole("option", { name: "feature" })).toHaveAttribute("aria-disabled", "true")
   await kit.page.getByRole("option", { name: main }).click()
   await expect(panel.getByRole("region", { name: "dev.txt" })).toBeVisible()
   await expect(panel.getByRole("region", { name: "src/f.txt" })).toBeVisible()
 
-  await panel.getByRole("button", { name: /^分支/ }).click()
+  await panel.getByRole("button", { name: /^比对分支/ }).click()
   await kit.page.getByRole("option", { name: "dev" }).click()
   await expect(panel.getByRole("region", { name: "dev.txt" })).toHaveCount(0)
   await expect(panel.getByRole("region", { name: "src/f.txt" })).toBeVisible()

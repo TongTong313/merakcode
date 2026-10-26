@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { Checkout } from "../project/checkout"
+import { Instance } from "../project/instance"
 import { LOOP_STOP_TIMEOUT_MS } from "./cancel-tree"
 
 /** Trusted, process-local request state. Never accepted from an HTTP payload. */
@@ -86,6 +88,7 @@ export namespace SessionExecution {
     if (!scope) return Promise.resolve(fn())
     const signal = scope.controller.signal
     signal.throwIfAborted()
+    const releaseCheckout = Instance.has() ? Checkout.hold() : () => {}
     return new Promise<T>((resolve, reject) => {
       const abort = () => reject(signal.reason)
       signal.addEventListener("abort", abort, { once: true })
@@ -95,17 +98,20 @@ export namespace SessionExecution {
       try {
         pending = fn()
       } catch (error) {
+        releaseCheckout()
         signal.removeEventListener("abort", abort)
         reject(error)
         return
       }
       Promise.resolve(pending).then(
         (value) => {
+          releaseCheckout()
           signal.removeEventListener("abort", abort)
           if (signal.aborted) reject(signal.reason)
           else resolve(value)
         },
         (error) => {
+          releaseCheckout()
           signal.removeEventListener("abort", abort)
           reject(signal.aborted ? signal.reason : error)
         },

@@ -559,6 +559,41 @@ controller.abort()
 await engine.close()
 ```
 
+### 分支切换和审阅上下文
+
+`client.vcs.branchOptions()` 返回真实 checkout 目录、本地分支、工作树占用和当前切换限制。`client.vcs.switchBranch({ branch, expectedCheckout })` 只切换已有本地分支；目录必须干净、空闲且没有未完成的 Git 操作。托管工作树禁止切换。它不会自动 stash、强制检出或猜测远程分支。
+
+`vcs.get` 和 `vcs.head.updated` 带有 opaque `checkout` 标识；换分支和同分支新提交都会更新它，事件的 `branchChanged` 可区分两者。不要解析或按大小排序这个标识；连接中断、上下文过期时重新读取实际状态。
+
+**审阅写契约变化：** `review.decide` 和 `review.undo` 必须传入当前 `review.get`／决定结果的 `checkout` 作为 `expectedCheckout`；非 Git 审阅传 `null`。旧上下文返回 409，缺字段返回 400。文件详情也可传 `expectedCheckout`，并配合列表里的 `version` 防止读取旧快照。只改变 `review.get({ scope: "branch", base })` 的 base 不会切换工作分支。
+
+```ts
+import { createMerakCode } from "@merakcode/sdk"
+
+const merak = await createMerakCode({ cwd: process.cwd() })
+try {
+  const { client } = merak
+  const options = (await client.vcs.branchOptions({}, { throwOnError: true })).data
+  if (options.current && !options.blocked && options.branches.some((item) => item.name === "dev" && !item.worktree)) {
+    await client.vcs.switchBranch({ branch: "dev", expectedCheckout: options.current.checkout }, { throwOnError: true })
+  }
+
+  const input = { scope: "unstaged" as const }
+  const review = (await client.review.get(input, { throwOnError: true })).data
+  if (review.files.length) {
+    const accepted = (
+      await client.review.decide(
+        { ...input, decision: "accept", expectedCheckout: review.checkout },
+        { throwOnError: true },
+      )
+    ).data
+    await client.review.undo({ ...input, expectedCheckout: accepted.checkout }, { throwOnError: true })
+  }
+} finally {
+  await merak.close()
+}
+```
+
 ## 9. 进程管理
 
 `@merakcode/sdk/process` 只管引擎进程：

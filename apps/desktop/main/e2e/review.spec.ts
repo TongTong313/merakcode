@@ -124,11 +124,10 @@ test("reviewing unstaged git changes: accepting a whole file stages it; another 
   kit.git("branch", "feature")
 
   const panel = kit.panel()
-  // Before the conversation starts, this turn and the whole conversation are unavailable and say why
+  // Before the conversation starts, only Git scopes appear
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const turn = panel.getByRole("radio", { name: "本轮" })
-  await expect(turn).toHaveAttribute("aria-disabled", "true")
-  await expect(turn).toHaveAccessibleDescription(/开始对话后可用/)
+  await expect(turn).toHaveCount(0)
 
   await kit.send("改一下 math.js")
   await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
@@ -143,10 +142,10 @@ test("reviewing unstaged git changes: accepting a whole file stages it; another 
   await expect(panel.getByRole("region", { name: "src/new.js" })).toBeVisible()
 
   // The branch scope is a dropdown: the current branch cannot be picked, another branch becomes the base
-  await panel.getByRole("button", { name: /^分支/ }).click()
-  await expect(kit.page.getByRole("option", { name: /^(main|master)$/ })).toHaveAttribute("aria-disabled", "true")
+  await panel.getByRole("button", { name: /^比对分支/ }).click()
+  await expect(kit.page.getByRole("option", { name: /^(main|master)\s/ })).toHaveAttribute("aria-disabled", "true")
   await kit.page.getByRole("option", { name: "feature" }).click()
-  await expect(panel.getByRole("button", { name: /分支.*feature/ })).toBeVisible()
+  await expect(panel.getByRole("button", { name: /比对分支.*feature/ })).toBeVisible()
   await expect(panel.getByRole("region", { name: "src/math.js" })).toBeVisible()
 })
 

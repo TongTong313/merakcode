@@ -279,7 +279,7 @@ export const test = base.extend<{
     }
     const modeButton = () =>
       page
-        .getByRole("button", { name: /^(权限模式|Permission mode)/ })
+        .getByRole("button", { name: /^(配置权限模式|Configure permission mode)/ })
         .filter({ visible: true })
         .first()
     const approval = () =>

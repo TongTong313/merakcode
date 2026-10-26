@@ -93,14 +93,24 @@ export namespace FileWatcher {
         }
       }
 
-      // Subscribe to .git of every git worktree
+      // Linked worktrees keep HEAD locally but branch refs in their shared common directory.
+      const watched = new Set<string>()
       for (const wt of vcs) {
-        const vcsDir = await Process.run(["git", "rev-parse", "--git-dir"], { cwd: wt, nothrow: true })
-          .then((x) => path.resolve(wt, x.text().trim()))
-          .catch(() => undefined)
-        if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
+        const directories = await Promise.all(
+          ["--git-dir", "--git-common-dir"].map(async (argument) => {
+            const result = await Process.run(["git", "rev-parse", argument], { cwd: wt, nothrow: true }).catch(
+              () => undefined,
+            )
+            return result?.exitCode === 0 ? path.resolve(wt, result.text().trim()) : undefined
+          }),
+        )
+        for (const vcsDir of directories) {
+          if (!vcsDir || cfgIgnores.includes(".git") || cfgIgnores.includes(vcsDir)) continue
+          const key = process.platform === "win32" ? vcsDir.toLowerCase() : vcsDir
+          if (watched.has(key)) continue
+          watched.add(key)
           const gitDirContents = await readdir(vcsDir).catch(() => [])
-          const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
+          const ignoreList = gitDirContents.filter((entry) => !["HEAD", "refs", "packed-refs"].includes(entry))
           const pending = w.subscribe(vcsDir, subscribe, {
             ignore: ignoreList,
             backend,

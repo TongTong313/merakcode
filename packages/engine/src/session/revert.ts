@@ -10,6 +10,9 @@ import { Storage } from "../storage/storage"
 import { Bus } from "../bus"
 import { SessionRunner } from "./runner"
 import { SessionSummary } from "./summary"
+import { Checkout } from "../project/checkout"
+import { Filesystem } from "@merakcode/util/filesystem"
+import { Instance } from "../project/instance"
 
 export namespace SessionRevert {
   const log = Log.create({ service: "session.revert" })
@@ -21,7 +24,22 @@ export namespace SessionRevert {
   })
   export type RevertInput = z.infer<typeof RevertInput>
 
+  /** Recovery follows the session's checkout even when its caller is another worktree in the same project. */
+  export async function inCheckout<T>(sessionID: string, task: () => Promise<T>): Promise<T> {
+    const session = await Session.get(sessionID)
+    if (Filesystem.sameDirectory(session.directory, Instance.directory)) return Checkout.activity(task)
+    const workspace =
+      Instance.workspace.folders.length > 1
+        ? { folders: Instance.workspace.folders.map(({ name, path }) => ({ name, path })) }
+        : undefined
+    return Instance.provide({ directory: session.directory, workspace, fn: () => Checkout.activity(task) })
+  }
+
   export async function revert(input: RevertInput) {
+    return inCheckout(input.sessionID, () => revertInCheckout(input))
+  }
+
+  async function revertInCheckout(input: RevertInput) {
     SessionRunner.assertNotBusy(input.sessionID)
     const all = await Session.messages({ sessionID: input.sessionID })
     let lastUserInfo: Message.UserInfo | undefined
@@ -81,6 +99,10 @@ export namespace SessionRevert {
   }
 
   export async function unrevert(input: { sessionID: string }) {
+    return inCheckout(input.sessionID, () => unrevertInCheckout(input))
+  }
+
+  async function unrevertInCheckout(input: { sessionID: string }) {
     log.info("unreverting", input)
     SessionRunner.assertNotBusy(input.sessionID)
     const session = await Session.get(input.sessionID)

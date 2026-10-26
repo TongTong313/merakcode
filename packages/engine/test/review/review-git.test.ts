@@ -10,6 +10,10 @@ import { tmpdir } from "../fixture/fixture"
 // unstaged. The branch scope diffs against the merge base, where accepting only marks a hunk and rejecting writes
 // back to the worktree.
 
+const decide = async (input: Omit<Review.Decision, "expectedCheckout">) =>
+  Review.decide({ ...input, expectedCheckout: (await Review.get(input)).checkout })
+const undo = async (input: Review.Input) =>
+  Review.undo({ ...input, expectedCheckout: (await Review.get(input)).checkout })
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
 const git = (cwd: string, ...args: string[]) => Process.run(["git", ...args], { cwd }).then((r) => r.text())
 const hunksOf = async (input: Review.Input, file: string) => (await Review.file({ ...input, file })).hunks
@@ -34,7 +38,7 @@ test("unstaged: accepting a hunk stages only that hunk and rejecting discards on
       expect(review.files.map((file) => [file.file, file.status, file.hunks])).toEqual([["a.txt", "modified", 2]])
       const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
 
-      const after = await Review.decide({
+      const after = await decide({
         scope: "unstaged",
         decision: "accept",
         files: [{ file: "a.txt", hunks: [first!.id] }],
@@ -43,7 +47,7 @@ test("unstaged: accepting a hunk stages only that hunk and rejecting discards on
       expect(after.files[0]!.hunks).toBe(1)
       expect((await hunksOf({ scope: "unstaged" }, "a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
 
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
       expect(await Filesystem.readText(path.join(tmp.path, "a.txt"))).toBe(lines(30).replace("line 2\n", "two\n"))
       expect((await Review.get({ scope: "unstaged" })).files).toEqual([])
     },
@@ -133,8 +137,8 @@ test("untracked files: accepting adds them to the index and rejecting deletes th
         ["drop.txt", "added"],
         ["new.txt", "added"],
       ])
-      await Review.decide({ scope: "unstaged", decision: "accept", files: [{ file: "new.txt" }] })
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "drop.txt" }] })
+      await decide({ scope: "unstaged", decision: "accept", files: [{ file: "new.txt" }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "drop.txt" }] })
       expect(await git(tmp.path, "show", ":new.txt")).toBe("hello\n")
       expect(await Filesystem.exists(path.join(tmp.path, "drop.txt"))).toBe(false)
       expect((await Review.get({ scope: "unstaged" })).files).toEqual([])
@@ -153,10 +157,10 @@ test("staged: hunks can only be unstaged, one at a time, leaving the worktree un
       const review = await Review.get({ scope: "staged" })
       expect(review.actions).toEqual({ accept: false, reject: true })
       const [first] = await hunksOf({ scope: "staged" }, "a.txt")
-      await Review.decide({ scope: "staged", decision: "reject", files: [{ file: "a.txt", hunks: [first!.id] }] })
+      await decide({ scope: "staged", decision: "reject", files: [{ file: "a.txt", hunks: [first!.id] }] })
       expect(await git(tmp.path, "show", ":a.txt")).toBe(lines(30).replace("line 20\n", "twenty\n"))
       expect(await Filesystem.readText(path.join(tmp.path, "a.txt"))).toBe(changed)
-      await expect(Review.decide({ scope: "staged", decision: "accept" })).rejects.toMatchObject({
+      await expect(decide({ scope: "staged", decision: "accept" })).rejects.toMatchObject({
         name: "ReviewInvalidError",
       })
     },
@@ -170,7 +174,7 @@ test("reports stale and changes no files when a hunk no longer exists", async ()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const decision = Review.decide({
+      const decision = decide({
         scope: "unstaged",
         decision: "reject",
         files: [{ file: "b.txt" }, { file: "a.txt", hunks: ["0000000000000000"] }],
@@ -202,7 +206,7 @@ test("branch: diffs committed and uncommitted changes against the merge base; ac
         "twenty",
       ])
 
-      await Review.decide({
+      await decide({
         scope: "branch",
         base: main,
         decision: "accept",
@@ -215,7 +219,7 @@ test("branch: diffs committed and uncommitted changes against the merge base; ac
         undefined,
       ])
 
-      await Review.decide({
+      await decide({
         scope: "branch",
         base: main,
         decision: "reject",
@@ -239,9 +243,9 @@ test("with autocrlf and a CRLF worktree, only real changes are listed; the index
       await Review.get({ scope: "unstaged" })
       const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
       expect(first!.lines.filter((line) => line.kind !== "context").map((line) => line.text)).toEqual(["line 2", "two"])
-      await Review.decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
+      await decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
       expect(await git(tmp.path, "cat-file", "blob", ":a.txt")).toBe(lines(30).replace("line 2\n", "two\n"))
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
       expect(await Filesystem.readText(path.join(tmp.path, "a.txt"))).toBe(crlf(lines(30).replace("line 2\n", "two\n")))
     },
   })
@@ -262,7 +266,7 @@ test("a binary file is a single hunk that is staged or restored as a whole", asy
       const detail = await Review.file({ scope: "unstaged", file: "logo.bin", version: file!.version })
       expect(detail.hunks.map((hunk) => hunk.lines)).toEqual([[]])
       expect(detail.before).toBeUndefined()
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "logo.bin" }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "logo.bin" }] })
       expect([...(await Filesystem.readBytes(image))]).toEqual([0, 1, 2, 3])
     },
   })
@@ -277,19 +281,19 @@ test("undo unstages accepted hunks and restores rejected ones, and reports stale
     directory: tmp.path,
     fn: async () => {
       const [first, second] = await hunksOf({ scope: "unstaged" }, "a.txt")
-      await Review.decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      await decide({ scope: "unstaged", decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
 
-      await Review.undo({ scope: "unstaged" })
+      await undo({ scope: "unstaged" })
       expect(await Filesystem.readText(file)).toBe(changed)
-      await Review.undo({ scope: "unstaged" })
+      await undo({ scope: "unstaged" })
       expect(await git(tmp.path, "show", ":a.txt")).toBe(lines(30))
       expect((await hunksOf({ scope: "unstaged" }, "a.txt")).map((hunk) => hunk.id)).toEqual([first!.id, second!.id])
-      await expect(Review.undo({ scope: "unstaged" })).rejects.toMatchObject({ name: "ReviewStaleError" })
+      await expect(undo({ scope: "unstaged" })).rejects.toMatchObject({ name: "ReviewStaleError" })
 
-      await Review.decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      await decide({ scope: "unstaged", decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
       await Filesystem.write(file, "edited again\n")
-      await expect(Review.undo({ scope: "unstaged" })).rejects.toMatchObject({ name: "ReviewStaleError" })
+      await expect(undo({ scope: "unstaged" })).rejects.toMatchObject({ name: "ReviewStaleError" })
       expect(await Filesystem.readText(file)).toBe("edited again\n")
     },
   })

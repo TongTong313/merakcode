@@ -14,6 +14,10 @@ import { tmpdir } from "../fixture/fixture"
 // edited it. Accepting moves the baseline forward and rejecting reverts the hunk on disk. Files only the user changed
 // are not listed.
 
+const decide = async (input: Omit<Review.Decision, "expectedCheckout">) =>
+  Review.decide({ ...input, expectedCheckout: (await Review.get(input)).checkout })
+const undo = async (input: Review.Input) =>
+  Review.undo({ ...input, expectedCheckout: (await Review.get(input)).checkout })
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
 const hunksOf = async (input: Review.Input, file: string) => (await Review.file({ ...input, file })).hunks
 
@@ -62,13 +66,13 @@ test("session: lists files changed by the agent and subsessions; accepted hunks 
       ])
       const [first, second] = await hunksOf(input, "a.txt")
 
-      await Review.decide({ ...input, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
+      await decide({ ...input, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
       expect((await hunksOf(input, "a.txt")).map((hunk) => hunk.id)).toEqual([second!.id])
       expect(await Filesystem.readText(a)).toBe(lines(30).replace("line 2\n", "two\n").replace("line 20\n", "twenty\n"))
 
-      await Review.decide({ ...input, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      await decide({ ...input, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
       expect(await Filesystem.readText(a)).toBe(lines(30).replace("line 2\n", "two\n"))
-      await Review.decide({ ...input, decision: "reject", files: [{ file: "src/b.txt" }] })
+      await decide({ ...input, decision: "reject", files: [{ file: "src/b.txt" }] })
       expect(await Filesystem.exists(b)).toBe(false)
       expect((await Review.get(input)).files).toEqual([])
 
@@ -150,10 +154,10 @@ test("session: undoing an accept lists the hunk again", async () => {
       const session = await Session.create({})
       await edit(session.id, a, "A\n")
       const input = { scope: "session" as const, sessionID: session.id }
-      await Review.decide({ ...input, decision: "accept" })
+      await decide({ ...input, decision: "accept" })
       expect((await Review.get(input)).files).toEqual([])
       // Turn and session scopes share one baseline and one undo history.
-      const undone = await Review.undo(input)
+      const undone = await undo(input)
       expect(undone.files.map((file) => file.file)).toEqual(["a.txt"])
     },
   })

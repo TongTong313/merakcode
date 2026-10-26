@@ -263,6 +263,16 @@ export type EventVcsBranchUpdated = {
   }
 }
 
+export type EventVcsHeadUpdated = {
+  type: "vcs.head.updated"
+  properties: {
+    branch: string | null
+    head: string | null
+    checkout: string | null
+    branchChanged: boolean
+  }
+}
+
 export type PermissionGrant = {
   scope: "file" | "directory" | "prefix" | "agent" | "tool" | "domain"
   pattern: string
@@ -1202,6 +1212,7 @@ export type Event =
   | EventFileEdited
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
+  | EventVcsHeadUpdated
   | EventPermissionAsked
   | EventPermissionReplied
   | EventMessageUpdated
@@ -3734,6 +3745,7 @@ export type ReviewFile = {
 
 export type ReviewResult = {
   scope: ReviewScope
+  checkout: string | null
   base?: string
   actions: {
     accept: boolean
@@ -3755,6 +3767,31 @@ export type ReviewStaleError = {
   code?: string
   data: {
     message: string
+  }
+}
+
+export type CheckoutStaleError = {
+  name: "CheckoutStaleError"
+  code?: string
+  data: {
+    message: string
+    expectedCheckout: string | null
+    checkout: string | null
+  }
+}
+
+export type CheckoutBlockedError = {
+  name: "CheckoutBlockedError"
+  code?: string
+  data: {
+    reason: "not_git" | "unborn" | "managed_worktree" | "dirty" | "busy" | "git_operation" | "occupied"
+    message: string
+    branch?: string
+    worktree?: string
+    operation?: string
+    staged?: number
+    unstaged?: number
+    untracked?: number
   }
 }
 
@@ -4054,6 +4091,8 @@ export type Path = {
 
 export type VcsInfo = {
   branch: string
+  head: string | null
+  checkout: string | null
   default_branch?: string
   remote?: string
   ahead?: number
@@ -4061,6 +4100,51 @@ export type VcsInfo = {
   staged: number
   unstaged: number
   untracked: number
+}
+
+export type VcsBranchOptions = {
+  directory: string
+  current: {
+    branch: string | null
+    head: string | null
+    checkout: string
+  } | null
+  defaultBranch?: string
+  branches: Array<{
+    name: string
+    worktree?: string
+  }>
+  blocked?: {
+    reason: "not_git" | "unborn" | "managed_worktree" | "dirty" | "busy" | "git_operation"
+    staged?: number
+    unstaged?: number
+    untracked?: number
+    operation?: string
+  }
+}
+
+export type VcsSwitchResult = {
+  branch: string
+  head: string
+  checkout: string
+  changed: boolean
+}
+
+export type VcsInvalidBranchError = {
+  name: "VcsInvalidBranchError"
+  code?: string
+  data: {
+    branch: string
+    message: string
+  }
+}
+
+export type VcsSwitchFailedError = {
+  name: "VcsSwitchFailedError"
+  code?: string
+  data: {
+    message: string
+  }
 }
 
 export type VcsPushResult =
@@ -4988,6 +5072,10 @@ export type WorktreeRemoveErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type WorktreeRemoveError = WorktreeRemoveErrors[keyof WorktreeRemoveErrors]
@@ -5073,6 +5161,10 @@ export type WorktreeResetErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type WorktreeResetError = WorktreeResetErrors[keyof WorktreeResetErrors]
@@ -5100,6 +5192,10 @@ export type WorktreeMergeErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type WorktreeMergeError = WorktreeMergeErrors[keyof WorktreeMergeErrors]
@@ -5820,6 +5916,10 @@ export type SessionPromptErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionPromptError = SessionPromptErrors[keyof SessionPromptErrors]
@@ -6054,6 +6154,10 @@ export type SessionPromptAsyncErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionPromptAsyncError = SessionPromptAsyncErrors[keyof SessionPromptAsyncErrors]
@@ -6110,6 +6214,10 @@ export type SessionCommandErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionCommandError = SessionCommandErrors[keyof SessionCommandErrors]
@@ -6158,6 +6266,10 @@ export type SessionShellErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionShellError = SessionShellErrors[keyof SessionShellErrors]
@@ -6194,6 +6306,10 @@ export type SessionRevertErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionRevertError = SessionRevertErrors[keyof SessionRevertErrors]
@@ -6227,6 +6343,10 @@ export type SessionUnrevertErrors = {
    * Not found
    */
   404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type SessionUnrevertError = SessionUnrevertErrors[keyof SessionUnrevertErrors]
@@ -7827,9 +7947,9 @@ export type ReviewGetErrors = {
    */
   400: ReviewInvalidError
   /**
-   * The file or hunk is no longer in the review (the list is stale); fetch it again
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
    */
-  409: ReviewStaleError
+  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
 }
 
 export type ReviewGetError = ReviewGetErrors[keyof ReviewGetErrors]
@@ -7849,6 +7969,7 @@ export type ReviewDecideData = {
     sessionID?: string
     messageID?: string
     base?: string
+    expectedCheckout: string | null
     decision: "accept" | "reject"
     files?: Array<{
       file: string
@@ -7868,9 +7989,9 @@ export type ReviewDecideErrors = {
    */
   400: ReviewInvalidError
   /**
-   * The file or hunk is no longer in the review (the list is stale); fetch it again
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
    */
-  409: ReviewStaleError
+  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
 }
 
 export type ReviewDecideError = ReviewDecideErrors[keyof ReviewDecideErrors]
@@ -7895,6 +8016,7 @@ export type ReviewFileData = {
     base?: string
     file: string
     version?: string
+    expectedCheckout?: string | null
   }
   url: "/review/file"
 }
@@ -7905,9 +8027,9 @@ export type ReviewFileErrors = {
    */
   400: ReviewInvalidError
   /**
-   * The file or hunk is no longer in the review (the list is stale); fetch it again
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
    */
-  409: ReviewStaleError
+  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
 }
 
 export type ReviewFileError = ReviewFileErrors[keyof ReviewFileErrors]
@@ -7927,6 +8049,7 @@ export type ReviewUndoData = {
     sessionID?: string
     messageID?: string
     base?: string
+    expectedCheckout: string | null
   }
   path?: never
   query?: {
@@ -7941,9 +8064,9 @@ export type ReviewUndoErrors = {
    */
   400: ReviewInvalidError
   /**
-   * The file or hunk is no longer in the review (the list is stale); fetch it again
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
    */
-  409: ReviewStaleError
+  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
 }
 
 export type ReviewUndoError = ReviewUndoErrors[keyof ReviewUndoErrors]
@@ -8335,6 +8458,10 @@ export type FileDeleteErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * The checkout is switching branches
+   */
+  409: CheckoutBlockedError
 }
 
 export type FileDeleteError = FileDeleteErrors[keyof FileDeleteErrors]
@@ -8432,6 +8559,15 @@ export type FileWriteErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * The file changed or its checkout is switching branches
+   */
+  409:
+    | CheckoutBlockedError
+    | {
+        error: string
+        currentChecksum: string
+      }
 }
 
 export type FileWriteError = FileWriteErrors[keyof FileWriteErrors]
@@ -8984,6 +9120,71 @@ export type VcsBranchesResponses = {
 
 export type VcsBranchesResponse = VcsBranchesResponses[keyof VcsBranchesResponses]
 
+export type VcsBranchOptionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/branch-options"
+}
+
+export type VcsBranchOptionsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type VcsBranchOptionsError = VcsBranchOptionsErrors[keyof VcsBranchOptionsErrors]
+
+export type VcsBranchOptionsResponses = {
+  /**
+   * Branch options
+   */
+  200: VcsBranchOptions
+}
+
+export type VcsBranchOptionsResponse = VcsBranchOptionsResponses[keyof VcsBranchOptionsResponses]
+
+export type VcsSwitchBranchData = {
+  body: {
+    branch: string
+    expectedCheckout: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/switch"
+}
+
+export type VcsSwitchBranchErrors = {
+  /**
+   * Invalid local branch or Git could not switch branches
+   */
+  400: VcsInvalidBranchError | VcsSwitchFailedError
+  /**
+   * Checkout is busy, restricted or changed
+   */
+  409: CheckoutBlockedError | CheckoutStaleError
+}
+
+export type VcsSwitchBranchError = VcsSwitchBranchErrors[keyof VcsSwitchBranchErrors]
+
+export type VcsSwitchBranchResponses = {
+  /**
+   * Switched checkout
+   */
+  200: VcsSwitchResult
+}
+
+export type VcsSwitchBranchResponse = VcsSwitchBranchResponses[keyof VcsSwitchBranchResponses]
+
 export type VcsPushData = {
   body?: never
   path?: never
@@ -9002,6 +9203,10 @@ export type VcsPushErrors = {
     error: Array<unknown>
     data: unknown
   }
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type VcsPushError = VcsPushErrors[keyof VcsPushErrors]
@@ -9035,6 +9240,10 @@ export type VcsRunErrors = {
     error: Array<unknown>
     data: unknown
   }
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type VcsRunError = VcsRunErrors[keyof VcsRunErrors]
@@ -9195,6 +9404,10 @@ export type VcsCommitErrors = {
     error: Array<unknown>
     data: unknown
   }
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
 }
 
 export type VcsCommitError = VcsCommitErrors[keyof VcsCommitErrors]

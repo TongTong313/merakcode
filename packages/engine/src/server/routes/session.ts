@@ -837,7 +837,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -854,12 +854,13 @@ export const SessionRoutes = lazy(() =>
         // stream callback comes after the 200 has started, onError cannot catch it, and it would end up as an unhandled
         // rejection.
         await Session.get(sessionID)
+        const response = SessionDispatch.prompt({ ...body, sessionID })
 
         c.status(200)
         c.header("Content-Type", "application/json")
         return stream(c, async (out) => {
           try {
-            const msg = await SessionDispatch.prompt({ ...body, sessionID })
+            const msg = await response
             out.write(JSON.stringify(msg))
           } catch (error) {
             if (error instanceof Error && error.name === "AbortError") return
@@ -889,7 +890,7 @@ export const SessionRoutes = lazy(() =>
           204: {
             description: "Prompt accepted",
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -942,7 +943,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -974,7 +975,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -1006,7 +1007,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -1043,7 +1044,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(

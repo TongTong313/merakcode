@@ -3,6 +3,7 @@ import { SessionExecution } from "./execution"
 import { SessionStatus } from "./status"
 import { Log } from "@merakcode/log/logger"
 import { Message } from "./message"
+import { Checkout } from "../project/checkout"
 
 /**
  * Request entry point shared by HTTP and in-process callers. Each request gets its own execution scope; cancelling
@@ -33,6 +34,7 @@ export namespace SessionDispatch {
     // the outer cancellation tree; otherwise a queued callback can outlive it.
     const inherited = SessionExecution.current(sessionID)
     SessionExecution.check(sessionID)
+    const releaseCheckout = Checkout.hold()
     const scope = SessionExecution.create({
       id: crypto.randomUUID(),
       sessionID,
@@ -74,7 +76,7 @@ export namespace SessionDispatch {
           duration: Date.now() - started,
         })
       }
-    })
+    }).finally(releaseCheckout)
   }
 
   export async function cancel(sessionID: string): Promise<void> {

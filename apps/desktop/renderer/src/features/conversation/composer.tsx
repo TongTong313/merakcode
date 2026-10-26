@@ -20,6 +20,7 @@ import { connected, session } from "../../state/store"
 import { setUi } from "../../state/ui"
 import { Select } from "../../ui/select"
 import { Tip } from "../../ui/tooltip"
+import { toast } from "../../ui/toast"
 import { ModelPicker } from "./model-picker"
 import { SandboxField } from "./sandbox-control"
 import { COMPACT, loadCommands } from "./send"
@@ -34,6 +35,7 @@ export const modeOptions = () => [
 ]
 
 export type Submission = { text: string; files: FilePartInput[] }
+export type ComposerDraft = Submission & { mentions?: { path: string; part: FilePartInput }[] }
 
 /**
  * Text pushed into the composer from outside (when editing a sent message), keyed by conversation; an open composer
@@ -95,6 +97,9 @@ export function Composer(props: {
   sessionID?: string
   directory: string
   busy: boolean
+  disabled?: boolean
+  draft?: ComposerDraft
+  onDraftChange?: (draft: ComposerDraft) => void
   compact?: boolean
   autofocus?: boolean
   placeholder?: string
@@ -106,10 +111,10 @@ export function Composer(props: {
   onMode?: (mode: PermissionMode) => void
 }) {
   let input!: HTMLTextAreaElement
-  const [text, setText] = createSignal("")
-  const [files, setFiles] = createSignal<FilePartInput[]>([])
+  const [text, setText] = createSignal(props.draft?.text ?? "")
+  const [files, setFiles] = createSignal<FilePartInput[]>(props.draft?.files ?? [])
   /** Files mentioned with @; only those whose "@path" is still in the text are sent */
-  const [mentions, setMentions] = createSignal<{ path: string; part: FilePartInput }[]>([])
+  const [mentions, setMentions] = createSignal<{ path: string; part: FilePartInput }[]>(props.draft?.mentions ?? [])
   const [sending, setSending] = createSignal(false)
   const [at, setAt] = createSignal<Trigger>()
   const [active, setActive] = createSignal(0)
@@ -118,6 +123,18 @@ export function Composer(props: {
   /** For a conversation in a worktree, files and commands are looked up in the worktree directory */
   const dir = () => (props.sessionID ? session(props.sessionID)?.directory : undefined) ?? props.directory
   const key = () => choiceKey(props.sessionID, props.directory)
+  createEffect(
+    on(
+      key,
+      () => {
+        setText(props.draft?.text ?? "")
+        setFiles(props.draft?.files ?? [])
+        setMentions(props.draft?.mentions ?? [])
+      },
+      { defer: true },
+    ),
+  )
+  createEffect(() => props.onDraftChange?.({ text: text(), files: files(), mentions: mentions() }))
 
   onMount(() => props.autofocus && input.focus())
   createEffect(
@@ -210,19 +227,23 @@ export function Composer(props: {
   }
 
   const submit = async () => {
+    const target = key()
     const value = text().trim()
-    if ((!value && !files().length) || sending()) return
+    if ((!value && !files().length) || sending() || props.disabled) return
     setSending(true)
     try {
       const referenced = mentions()
         .filter((item) => value.includes(`@${item.path}`))
         .map((item) => item.part)
       await props.onSubmit({ text: value, files: [...files(), ...referenced] })
+      if (target !== key()) return
       setText("")
       setFiles([])
       setMentions([])
       setAt(undefined)
       resize()
+    } catch (error) {
+      toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error })
     } finally {
       setSending(false)
     }
@@ -439,7 +460,7 @@ export function Composer(props: {
               class="icon-button solid"
               aria-label={t("prompt.send")}
               title={`${t("prompt.send")} (Enter)`}
-              disabled={(!text().trim() && !files().length) || sending()}
+              disabled={(!text().trim() && !files().length) || sending() || props.disabled}
               onClick={() => void submit()}
             >
               <ArrowUp class="icon" />

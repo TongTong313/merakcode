@@ -1597,16 +1597,17 @@ Returns: `ReviewResult`
 
 Decide review.
 
-Accept or reject whole files or single hunks. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
+Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
 
-| Parameter   | Type                                     | Required | Description |
-| ----------- | ---------------------------------------- | -------- | ----------- |
-| `scope`     | `ReviewScope`                            | yes      |             |
-| `sessionID` | `string`                                 | no       |             |
-| `messageID` | `string`                                 | no       |             |
-| `base`      | `string`                                 | no       |             |
-| `decision`  | `"accept" \| "reject"`                   | yes      |             |
-| `files`     | `({ file: string; hunks?: string[] })[]` | no       |             |
+| Parameter          | Type                                     | Required | Description |
+| ------------------ | ---------------------------------------- | -------- | ----------- |
+| `scope`            | `ReviewScope`                            | yes      |             |
+| `sessionID`        | `string`                                 | no       |             |
+| `messageID`        | `string`                                 | no       |             |
+| `base`             | `string`                                 | no       |             |
+| `expectedCheckout` | `string \| null`                         | yes      |             |
+| `decision`         | `"accept" \| "reject"`                   | yes      |             |
+| `files`            | `({ file: string; hunks?: string[] })[]` | no       |             |
 
 Returns: `ReviewResult`
 
@@ -1616,16 +1617,17 @@ Returns: `ReviewResult`
 
 Get review file.
 
-Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.
+Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.
 
-| Parameter   | Type          | Required | Description |
-| ----------- | ------------- | -------- | ----------- |
-| `scope`     | `ReviewScope` | yes      |             |
-| `sessionID` | `string`      | no       |             |
-| `messageID` | `string`      | no       |             |
-| `base`      | `string`      | no       |             |
-| `file`      | `string`      | yes      |             |
-| `version`   | `string`      | no       |             |
+| Parameter          | Type             | Required | Description |
+| ------------------ | ---------------- | -------- | ----------- |
+| `scope`            | `ReviewScope`    | yes      |             |
+| `sessionID`        | `string`         | no       |             |
+| `messageID`        | `string`         | no       |             |
+| `base`             | `string`         | no       |             |
+| `file`             | `string`         | yes      |             |
+| `version`          | `string`         | no       |             |
+| `expectedCheckout` | `string \| null` | no       |             |
 
 Returns: `ReviewFileDetail`
 
@@ -1635,14 +1637,15 @@ Returns: `ReviewFileDetail`
 
 Undo review decision.
 
-Undo the most recent decision in a review scope. Fails with 409 when there is nothing to undo or the files changed after the decision.
+Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.
 
-| Parameter   | Type          | Required | Description |
-| ----------- | ------------- | -------- | ----------- |
-| `scope`     | `ReviewScope` | yes      |             |
-| `sessionID` | `string`      | no       |             |
-| `messageID` | `string`      | no       |             |
-| `base`      | `string`      | no       |             |
+| Parameter          | Type             | Required | Description |
+| ------------------ | ---------------- | -------- | ----------- |
+| `scope`            | `ReviewScope`    | yes      |             |
+| `sessionID`        | `string`         | no       |             |
+| `messageID`        | `string`         | no       |             |
+| `base`             | `string`         | no       |             |
+| `expectedCheckout` | `string \| null` | yes      |             |
 
 Returns: `ReviewResult`
 
@@ -2033,6 +2036,33 @@ Local branch names, sorted.
 No parameters.
 
 Returns: `string[]`
+
+### client.vcs.branchOptions
+
+`GET /vcs/branch-options` · operationId `vcs.branchOptions`
+
+Get branch options.
+
+Local branches, their worktree occupancy and the current checkout's switch restrictions.
+
+No parameters.
+
+Returns: `VcsBranchOptions`
+
+### client.vcs.switchBranch
+
+`POST /vcs/switch` · operationId `vcs.switchBranch`
+
+Switch branch.
+
+Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
+
+| Parameter          | Type     | Required | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `branch`           | `string` | yes      |             |
+| `expectedCheckout` | `string` | yes      |             |
+
+Returns: `VcsSwitchResult`
 
 ### client.vcs.push
 

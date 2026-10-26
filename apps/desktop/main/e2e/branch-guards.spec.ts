@@ -1,0 +1,105 @@
+import { expect, test } from "./fixture"
+
+test.use({
+  git: true,
+  script: {
+    reply: ({ toolResults }) => {
+      if (!toolResults.length) return { tool: "read", args: { filePath: "notes.txt" } }
+      if (toolResults.length === 1)
+        return { tool: "write", args: { filePath: "notes.txt", content: "changed by agent\n" } }
+      return { text: "Ready to review" }
+    },
+  },
+})
+
+test("an unsubmitted review comment survives panel changes and blocks branch switching", async ({ kit }) => {
+  const current = kit.git("branch", "--show-current").trim()
+  kit.git("branch", "feature")
+  await kit.send("Update notes")
+  await expect(kit.text("Ready to review")).toBeVisible({ timeout: 60_000 })
+  kit.git("add", "notes.txt")
+  kit.git("commit", "--quiet", "-m", "agent update")
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  const panel = kit.panel()
+  await panel
+    .getByRole("group", { name: /^notes\.txt 第 1 块$/ })
+    .getByRole("button", { name: "评论" })
+    .click()
+  const draft = panel.getByRole("textbox", { name: "评论", exact: true })
+  await draft.fill("Keep this review draft")
+  const working = panel.getByRole("toolbar", { name: "审阅工具栏" }).getByRole("button", { name: /^当前分支/ })
+  await working.click()
+  await expect(kit.page.getByText("请先发送或清除未发送的审阅评论及输入草稿", { exact: true })).toBeVisible()
+  await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
+  await kit.page.keyboard.press("Escape")
+  await panel.getByRole("tab", { name: "代码", exact: true }).click()
+  await panel.getByRole("tab", { name: /^审阅/ }).click()
+  await expect(draft).toHaveValue("Keep this review draft")
+  await panel.getByRole("button", { name: "添加", exact: true }).click()
+  await expect(panel.getByText(/1 条评论待发送/)).toBeVisible()
+  await working.click()
+  await expect(kit.page.getByText("请先发送或清除未发送的审阅评论及输入草稿", { exact: true })).toBeVisible()
+  await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
+  await kit.page.keyboard.press("Escape")
+  await panel.getByRole("button", { name: "清空", exact: true }).click()
+  await working.click()
+  await expect(kit.page.getByRole("option", { name: /^feature/ })).not.toHaveAttribute("aria-disabled", "true")
+  await kit.page.keyboard.press("Escape")
+  expect(kit.git("branch", "--show-current").trim()).toBe(current)
+})
+
+test("unsaved editor contents survive closing the code panel and still block branch switching", async ({ kit }) => {
+  kit.git("branch", "feature")
+  await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  const panel = kit.panel()
+  await panel.getByRole("tab", { name: "代码", exact: true }).click()
+  await panel.getByRole("treeitem", { name: "notes.txt" }).click()
+  const editor = panel.getByRole("code")
+  await expect(editor).toContainText("hello from e2e")
+  await editor.click()
+  await kit.page.keyboard.press("Control+End")
+  await kit.page.keyboard.type("unsaved branch draft")
+  await panel.getByRole("tab", { name: /^审阅/ }).click()
+  await panel
+    .getByRole("toolbar", { name: "审阅工具栏" })
+    .getByRole("button", { name: /^当前分支/ })
+    .click()
+  await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
+  await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
+  await kit.page.keyboard.press("Escape")
+  await panel.getByRole("tab", { name: "代码", exact: true }).click()
+  await expect(editor).toContainText("unsaved branch draft")
+  expect(kit.git("status", "--porcelain").trim()).toBe("")
+  await kit.page.getByRole("button", { name: "项目操作" }).click()
+  await kit.page.getByRole("menuitem", { name: "从列表移除" }).click()
+  await expect(kit.page.getByRole("region", { name: "project", exact: true })).toBeVisible()
+  await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
+  await expect(editor).toContainText("unsaved branch draft")
+})
+
+test("a commit on the same branch preserves the comparison base and unsubmitted review draft", async ({ kit }) => {
+  kit.git("branch", "feature")
+  await kit.send("Update notes")
+  await expect(kit.text("Ready to review")).toBeVisible({ timeout: 60_000 })
+  kit.git("add", "notes.txt")
+  kit.git("commit", "--quiet", "-m", "agent update")
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  const panel = kit.panel()
+  const toolbar = panel.getByRole("toolbar", { name: "审阅工具栏" })
+  const base = toolbar.getByRole("button", { name: /^比对分支/ })
+  await base.click()
+  await kit.page.getByRole("option", { name: /^feature/ }).click()
+  await panel
+    .getByRole("group", { name: /^notes\.txt 第 1 块$/ })
+    .getByRole("button", { name: "评论" })
+    .click()
+  const draft = panel.getByRole("textbox", { name: "评论", exact: true })
+  await draft.fill("Keep this draft after commit")
+  kit.git("commit", "--allow-empty", "--quiet", "-m", "keep draft")
+  await toolbar.getByRole("button", { name: /^当前分支/ }).click()
+  await expect(kit.page.getByText("请先发送或清除未发送的审阅评论及输入草稿", { exact: true })).toBeVisible()
+  await kit.page.keyboard.press("Escape")
+  await expect(base).toContainText("feature")
+  await expect(base).toHaveAttribute("aria-pressed", "true")
+  await expect(draft).toHaveValue("Keep this draft after commit")
+})

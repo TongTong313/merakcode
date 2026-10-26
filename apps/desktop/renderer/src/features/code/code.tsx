@@ -6,14 +6,12 @@ import FileText from "lucide-solid/icons/file-text"
 import Folder from "lucide-solid/icons/folder"
 import X from "lucide-solid/icons/x"
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
-import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { listen } from "../../state/store"
 import { ui } from "../../state/ui"
-import { toast } from "../../ui/toast"
-
-type Tab = { path: string; checksum?: string; dirty: boolean; binary: boolean; model?: Monaco.editor.ITextModel }
+import { Confirm } from "../../ui/dialog"
+import { buffersFor, loadMonaco } from "./state"
 
 const marks: Record<string, string> = { added: "A", modified: "M", deleted: "D" }
 
@@ -27,8 +25,9 @@ function Level(props: {
   onOpen: (path: string) => void
 }) {
   const [nodes] = createResource(
-    () => props.path,
-    (path) => call(client(props.directory).file.list({ path })).then((list) => list.filter((node) => !node.ignored)),
+    () => [props.directory, props.path] as const,
+    ([directory, path]) =>
+      call(client(directory).file.list({ path })).then((list) => list.filter((node) => !node.ignored)),
   )
   return (
     <For each={nodes()}>
@@ -102,23 +101,42 @@ function Node(props: {
  */
 export function CodeView(props: { directory: string }) {
   let host!: HTMLDivElement
-  const [tabs, setTabs] = createStore<Tab[]>([])
-  const [active, setActive] = createSignal<string>()
+  const buffer = () => buffersFor(props.directory)
+  const tabs = () => buffer().tabs
+  const active = () => buffer().active()
+  const setActive = (path: string | undefined) => buffer().setActive(path)
+  const [closing, setClosing] = createSignal<string>()
   const [status, setStatus] = createSignal<Record<string, string>>({})
   const [monaco, setMonaco] = createSignal<typeof Monaco>()
   let editor: Monaco.editor.IStandaloneCodeEditor | undefined
   // The editor loads lazily; opening a file waits for it if it is not ready yet
-  const loading = import("../../lib/monaco")
+  const loading = loadMonaco()
+  let disposed = false
 
-  const loadStatus = () =>
-    call(client(props.directory).file.status())
-      .then((list) => setStatus(Object.fromEntries(list.map((item) => [item.path, marks[item.status] ?? "M"]))))
+  const loadStatus = () => {
+    const directory = props.directory
+    return call(client(directory).file.status())
+      .then((list) => {
+        if (directory === props.directory)
+          setStatus(Object.fromEntries(list.map((item) => [item.path, marks[item.status] ?? "M"])))
+      })
       .catch(() => {})
-  loadStatus()
-  onCleanup(listen((_, event) => event.type === "file.watcher.updated" && void loadStatus()))
+  }
+  createEffect(
+    on(
+      () => props.directory,
+      () => void loadStatus(),
+    ),
+  )
+  onCleanup(
+    listen(
+      (directory, event) => directory === props.directory && event.type === "file.watcher.updated" && void loadStatus(),
+    ),
+  )
 
   onMount(async () => {
     const { monaco: loaded } = await loading
+    if (disposed) return
     editor = loaded.editor.create(host, {
       automaticLayout: true,
       minimap: { enabled: false },
@@ -132,35 +150,15 @@ export function CodeView(props: { directory: string }) {
       occurrencesHighlight: "off",
       tabSize: 2,
     })
-    editor.addCommand(loaded.KeyMod.CtrlCmd | loaded.KeyCode.KeyS, () => void save())
+    editor.addCommand(loaded.KeyMod.CtrlCmd | loaded.KeyCode.KeyS, () => void buffer().save())
     setMonaco(loaded)
   })
   onCleanup(() => {
+    disposed = true
     editor?.dispose()
-    for (const tab of tabs) tab.model?.dispose()
   })
 
-  const open = async (path: string) => {
-    const existing = tabs.find((tab) => tab.path === path)
-    if (!existing) {
-      const content = await call(client(props.directory).file.read({ path })).catch((error: Error) => {
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
-        return undefined
-      })
-      if (!content) return
-      const binary = content.type === "binary"
-      const { monaco: loaded } = await loading
-      // The same file was clicked twice: the first open finished while the second waited for the editor
-      if (tabs.some((tab) => tab.path === path)) return void setActive(path)
-      const uri = loaded.Uri.file(`/${path}`)
-      const model = binary
-        ? undefined
-        : (loaded.editor.getModel(uri) ?? loaded.editor.createModel(content.content, undefined, uri))
-      model?.onDidChangeContent(() => setTabs((tab) => tab.path === path, "dirty", true))
-      setTabs((list) => [...list, { path, checksum: content.checksum, dirty: false, binary, model }])
-    }
-    setActive(path)
-  }
+  const open = (path: string) => buffer().open(path)
 
   // File requested from the review or a file-edit card
   createEffect(
@@ -175,39 +173,15 @@ export function CodeView(props: { directory: string }) {
 
   createEffect(
     on([active, monaco], ([path]) => {
-      const tab = tabs.find((item) => item.path === path)
+      const tab = tabs().find((item) => item.path === path)
       editor?.setModel(tab?.model ?? null)
       if (tab?.model) editor?.focus()
     }),
   )
 
-  const save = async (force = false) => {
-    const tab = tabs.find((item) => item.path === active())
-    if (!tab?.model) return
-    const content = tab.model.getValue()
-    const result = await client(props.directory).file.write({
-      path: tab.path,
-      content,
-      ...(force || !tab.checksum ? {} : { checksum: tab.checksum }),
-    })
-    if (result.response?.status === 409) {
-      toast({
-        kind: "error",
-        title: t("code.conflict"),
-        action: { label: t("code.overwrite"), run: () => void save(true) },
-      })
-      return
-    }
-    if (result.error) return toast({ kind: "error", title: t("error.request", { message: String(result.error) }) })
-    const fresh = await call(client(props.directory).file.read({ path: tab.path })).catch(() => undefined)
-    setTabs((item) => item.path === tab.path, { dirty: false, checksum: fresh?.checksum })
-  }
-
   const close = (path: string) => {
-    const tab = tabs.find((item) => item.path === path)
-    tab?.model?.dispose()
-    setTabs((list) => list.filter((item) => item.path !== path))
-    if (active() === path) setActive(tabs.at(-1)?.path)
+    if (tabs().find((item) => item.path === path)?.dirty) return void setClosing(path)
+    buffer().close(path)
   }
 
   return (
@@ -224,7 +198,7 @@ export function CodeView(props: { directory: string }) {
       </div>
       <div class="editor">
         <div class="editor-tabs" role="tablist">
-          <For each={tabs}>
+          <For each={tabs()}>
             {(tab) => (
               <div
                 class="editor-tab"
@@ -250,8 +224,13 @@ export function CodeView(props: { directory: string }) {
             )}
           </For>
         </div>
-        <Show when={tabs.find((tab) => tab.path === active())?.binary}>
+        <Show when={tabs().find((tab) => tab.path === active())?.binary}>
           <div class="empty-state subtle">{t("code.binary")}</div>
+        </Show>
+        <Show when={tabs().find((tab) => tab.path === active())?.conflict}>
+          <p class="branch-notice" role="status">
+            {t("code.branchConflict")}
+          </p>
         </Show>
         <Show when={!active()}>
           <div class="empty-state subtle">{t("code.empty")}</div>
@@ -259,9 +238,21 @@ export function CodeView(props: { directory: string }) {
         <div
           class="editor-host"
           ref={host}
-          classList={{ hidden: !active() || !!tabs.find((tab) => tab.path === active())?.binary }}
+          classList={{ hidden: !active() || !!tabs().find((tab) => tab.path === active())?.binary }}
         />
       </div>
+      <Confirm
+        open={!!closing()}
+        title={t("code.closeDirtyTitle")}
+        description={t("code.closeDirtyDetail", { path: closing() ?? "" })}
+        confirm={t("code.discard")}
+        cancel={t("code.keepEditing")}
+        danger
+        onResult={(discard) => {
+          if (discard && closing()) buffer().close(closing()!)
+          setClosing(undefined)
+        }}
+      />
     </div>
   )
 }

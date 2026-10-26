@@ -20,6 +20,7 @@ import { Format } from "../format"
 import { Instance } from "../project/instance"
 import { Workspace } from "../project/workspace"
 import { Vcs } from "../project/vcs"
+import { Checkout } from "../project/checkout"
 import { Sandbox } from "../sandbox"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill/skill"
@@ -522,7 +523,10 @@ export namespace Server {
             },
           },
         }),
-        async (c) => c.json((await Vcs.status()) ?? { branch: "", staged: 0, unstaged: 0, untracked: 0 }),
+        async (c) =>
+          c.json(
+            (await Vcs.status()) ?? { branch: "", head: null, checkout: null, staged: 0, unstaged: 0, untracked: 0 },
+          ),
       )
       .get(
         "/vcs/branches",
@@ -539,6 +543,54 @@ export namespace Server {
         }),
         async (c) => c.json(await Vcs.branches()),
       )
+      .get(
+        "/vcs/branch-options",
+        describeRoute({
+          summary: "Get branch options",
+          description: "Local branches, their worktree occupancy and the current checkout's switch restrictions.",
+          operationId: "vcs.branchOptions",
+          responses: {
+            200: {
+              description: "Branch options",
+              content: { "application/json": { schema: resolver(Vcs.BranchOptions) } },
+            },
+          },
+        }),
+        async (c) => c.json(await Vcs.branchOptions()),
+      )
+      .post(
+        "/vcs/switch",
+        describeRoute({
+          summary: "Switch branch",
+          description:
+            "Switch a clean, idle checkout to an existing local branch using its expected checkout identity.",
+          operationId: "vcs.switchBranch",
+          responses: {
+            200: {
+              description: "Switched checkout",
+              content: { "application/json": { schema: resolver(Vcs.SwitchResult) } },
+            },
+            400: {
+              description: "Invalid local branch or Git could not switch branches",
+              content: {
+                "application/json": {
+                  schema: resolver(z.union([Vcs.InvalidBranchError.Schema, Vcs.SwitchFailedError.Schema])),
+                },
+              },
+            },
+            409: {
+              description: "Checkout is busy, restricted or changed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.union([Checkout.BlockedError.Schema, Checkout.StaleError.Schema])),
+                },
+              },
+            },
+          },
+        }),
+        validator("json", z.object(Vcs.SwitchInput.shape)),
+        async (c) => c.json(await Vcs.switchBranch(c.req.valid("json"))),
+      )
       .post(
         "/vcs/push",
         describeRoute({
@@ -548,6 +600,7 @@ export namespace Server {
           operationId: "vcs.push",
           responses: {
             200: { description: "Push result", content: { "application/json": { schema: resolver(Vcs.PushResult) } } },
+            ...errors(409),
           },
         }),
         async (c) => c.json(await Vcs.push()),
@@ -564,6 +617,7 @@ export namespace Server {
               description: "Command output",
               content: { "application/json": { schema: resolver(Vcs.RunResult) } },
             },
+            ...errors(409),
           },
         }),
         validator("json", z.object({ args: z.array(z.string().max(2000)).min(1).max(64) })),
@@ -670,6 +724,7 @@ export namespace Server {
               description: "Commit result",
               content: { "application/json": { schema: resolver(Vcs.CommitResult) } },
             },
+            ...errors(409),
           },
         }),
         validator("json", z.object({ message: z.string(), all: z.boolean().optional() })),

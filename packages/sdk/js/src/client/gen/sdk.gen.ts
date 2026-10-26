@@ -301,6 +301,8 @@ import type {
   ToolRemoteResultResponses,
   VcsBranchesErrors,
   VcsBranchesResponses,
+  VcsBranchOptionsErrors,
+  VcsBranchOptionsResponses,
   VcsCommitErrors,
   VcsCommitResponses,
   VcsDiffErrors,
@@ -311,6 +313,8 @@ import type {
   VcsPushResponses,
   VcsRunErrors,
   VcsRunResponses,
+  VcsSwitchBranchErrors,
+  VcsSwitchBranchResponses,
   WorkflowCancelErrors,
   WorkflowCancelResponses,
   WorkflowGetErrors,
@@ -3837,7 +3841,7 @@ export class Review extends HeyApiClient {
   /**
    * Decide review
    *
-   * Accept or reject whole files or single hunks. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
+   * Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
    */
   public decide<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3846,6 +3850,7 @@ export class Review extends HeyApiClient {
       sessionID?: string
       messageID?: string
       base?: string
+      expectedCheckout: string | null
       decision: "accept" | "reject"
       files?: Array<{
         file: string
@@ -3864,6 +3869,7 @@ export class Review extends HeyApiClient {
             { in: "body", key: "sessionID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "base" },
+            { in: "body", key: "expectedCheckout" },
             { in: "body", key: "decision" },
             { in: "body", key: "files" },
           ],
@@ -3885,7 +3891,7 @@ export class Review extends HeyApiClient {
   /**
    * Get review file
    *
-   * Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.
+   * Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.
    */
   public file<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3896,6 +3902,7 @@ export class Review extends HeyApiClient {
       base?: string
       file: string
       version?: string
+      expectedCheckout?: string | null
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<ReviewFileResponses, ReviewFileErrors, ThrowOnError> {
@@ -3911,6 +3918,7 @@ export class Review extends HeyApiClient {
             { in: "query", key: "base" },
             { in: "query", key: "file" },
             { in: "query", key: "version" },
+            { in: "query", key: "expectedCheckout" },
           ],
         },
       ],
@@ -3925,7 +3933,7 @@ export class Review extends HeyApiClient {
   /**
    * Undo review decision
    *
-   * Undo the most recent decision in a review scope. Fails with 409 when there is nothing to undo or the files changed after the decision.
+   * Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.
    */
   public undo<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3934,6 +3942,7 @@ export class Review extends HeyApiClient {
       sessionID?: string
       messageID?: string
       base?: string
+      expectedCheckout: string | null
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<ReviewUndoResponses, ReviewUndoErrors, ThrowOnError> {
@@ -3947,6 +3956,7 @@ export class Review extends HeyApiClient {
             { in: "body", key: "sessionID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "base" },
+            { in: "body", key: "expectedCheckout" },
           ],
         },
       ],
@@ -4835,6 +4845,62 @@ export class Vcs extends HeyApiClient {
       url: "/vcs/branches",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Get branch options
+   *
+   * Local branches, their worktree occupancy and the current checkout's switch restrictions.
+   */
+  public branchOptions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError>({
+      url: "/vcs/branch-options",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Switch branch
+   *
+   * Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
+   */
+  public switchBranch<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      branch: string
+      expectedCheckout: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "branch" },
+            { in: "body", key: "expectedCheckout" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError>({
+      url: "/vcs/switch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

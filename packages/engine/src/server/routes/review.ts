@@ -1,7 +1,9 @@
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
+import z from "zod"
 import { validator } from "../validator"
 import { Review } from "../../review"
+import { Checkout } from "../../project/checkout"
 import { lazy } from "../../util/lazy"
 
 // Review is read lazily: engine modules import each other, so Review may not be initialized at module load.
@@ -11,8 +13,12 @@ const failures = () => ({
     content: { "application/json": { schema: resolver(Review.InvalidError.Schema) } },
   },
   409: {
-    description: "The file or hunk is no longer in the review (the list is stale); fetch it again",
-    content: { "application/json": { schema: resolver(Review.StaleError.Schema) } },
+    description: "The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again",
+    content: {
+      "application/json": {
+        schema: resolver(z.union([Review.StaleError.Schema, Checkout.StaleError.Schema, Checkout.BlockedError.Schema])),
+      },
+    },
   },
 })
 
@@ -39,7 +45,7 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Get review file",
         description:
-          "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.",
+          "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.",
         operationId: "review.file",
         responses: {
           200: {
@@ -58,14 +64,14 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Decide review",
         description:
-          "Accept or reject whole files or single hunks. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
+          "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
         operationId: "review.decide",
         responses: {
           200: { description: "Updated review", content: { "application/json": { schema: resolver(Review.Result) } } },
           ...failures(),
         },
       }),
-      validator("json", Review.Decision),
+      validator("json", z.object(Review.Decision.shape)),
       async (c) => c.json(await Review.decide(c.req.valid("json"))),
     )
     .post(
@@ -73,14 +79,14 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Undo review decision",
         description:
-          "Undo the most recent decision in a review scope. Fails with 409 when there is nothing to undo or the files changed after the decision.",
+          "Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.",
         operationId: "review.undo",
         responses: {
           200: { description: "Updated review", content: { "application/json": { schema: resolver(Review.Result) } } },
           ...failures(),
         },
       }),
-      validator("json", Review.Input),
+      validator("json", z.object(Review.UndoInput.shape)),
       async (c) => c.json(await Review.undo(c.req.valid("json"))),
     ),
 )
