@@ -88,6 +88,7 @@ function failed(command: string, error: string): ToolPart {
 /** The block under the title that holds stdout or the error */
 function resultOf(host: HTMLElement) {
   const command = host.querySelector("code")
+  host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   const result = host.querySelector("pre")
   expect(command).toBeTruthy()
   expect(result).toBeTruthy()
@@ -119,6 +120,7 @@ test("long command output stays complete inside a scrolling region", () => {
   setLocale("zh")
   const lines = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`)
   const host = mount(() => <Tool part={bash("pnpm test", { output: lines.join("\n") })} directory="D:/work" />)
+  host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   const result = host.querySelector("pre")
   expect(result?.textContent).toContain("line 1")
   expect(result?.textContent).toContain("line 40")
@@ -149,6 +151,7 @@ test("new output follows the tail until the reader scrolls up", () => {
   setLocale("zh")
   const [output, setOutput] = createSignal("line 1")
   const host = mount(() => <Tool part={running("pnpm test", output())} directory="D:/work" />)
+  host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   const result = host.querySelector("pre")
   expect(result).toBeTruthy()
   const box = scrollBox(result!, 320)
@@ -170,19 +173,19 @@ test("new output follows the tail until the reader scrolls up", () => {
   expect(box.gap()).toBeLessThanOrEqual(8)
 })
 
-test("a command starts with its output open and the title closes it", () => {
+test("a command starts collapsed and the title expands it", () => {
   setLocale("zh")
   const output = "Test Files  1 failed"
   const host = mount(() => <Tool part={bash("pnpm test", { output })} directory="D:/work" />)
   const title = host.querySelector("button")
-  expect(title?.getAttribute("aria-expanded")).toBe("true")
+  expect(title?.getAttribute("aria-expanded")).toBe("false")
+  expect(host.querySelector("pre")).toBeNull()
+  title?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   expect(host.querySelector("pre")?.textContent).toBe(output)
+  expect(title?.getAttribute("aria-expanded")).toBe("true")
   title?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   expect(host.querySelector("pre")).toBeNull()
   expect(title?.getAttribute("aria-expanded")).toBe("false")
-  title?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-  expect(host.querySelector("pre")?.textContent).toBe(output)
-  expect(title?.getAttribute("aria-expanded")).toBe("true")
 })
 
 test("a finished command shows the command, exit code, and duration in the title", () => {

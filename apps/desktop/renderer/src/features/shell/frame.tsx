@@ -6,14 +6,15 @@ import { mac } from "../../lib/bridge"
 import { setUi, togglePanel, ui } from "../../state/ui"
 import { Tip } from "../../ui/tooltip"
 import { Panel } from "../panel/panel"
+import { ReviewFull } from "../review/full"
 import { Terminal } from "../terminal/terminal"
 
 const mod = mac ? "⌘" : "Ctrl"
 
 /**
  * Frame of the main area: top bar (title, actions, terminal and side panel toggles), content, side panel and bottom
- * terminal. Shared by the new-conversation and conversation pages, so code, browser and terminal work before a
- * conversation starts.
+ * terminal. Shared by the new-conversation and conversation pages, so code, browser, terminal and the maximized
+ * review work before a conversation starts.
  */
 export function Frame(props: {
   title: JSX.Element
@@ -26,38 +27,43 @@ export function Frame(props: {
   children: JSX.Element
 }) {
   return (
-    <main class="main">
-      <div class="topbar drag">
-        {props.title}
-        <span class="spacer" />
-        <div class="no-drag row">
-          {props.actions}
-          <Tip label={t("topbar.terminal")} keys={`${mod} J`}>
-            <button
-              class="icon-button"
-              aria-label={t("topbar.terminal")}
-              aria-pressed={ui.terminal}
-              onClick={() => setUi("terminal", !ui.terminal)}
-            >
-              <SquareTerminal class="icon" />
-            </button>
-          </Tip>
-          <Tip label={t("topbar.panel")} keys={`${mod} B`}>
-            <button class="icon-button" aria-label={t("topbar.panel")} aria-pressed={ui.panel} onClick={togglePanel}>
-              <PanelRight class="icon" />
-            </button>
-          </Tip>
+    <Show
+      when={!ui.maximized}
+      fallback={<ReviewFull sessionID={props.sessionID} directory={props.directory} folder={props.folder} />}
+    >
+      <main class="main">
+        <div class="topbar drag">
+          {props.title}
+          <span class="spacer" />
+          <div class="no-drag row">
+            {props.actions}
+            <Tip label={t("topbar.terminal")} keys={`${mod} J`}>
+              <button
+                class="icon-button"
+                aria-label={t("topbar.terminal")}
+                aria-pressed={ui.terminal}
+                onClick={() => setUi("terminal", !ui.terminal)}
+              >
+                <SquareTerminal class="icon" />
+              </button>
+            </Tip>
+            <Tip label={t("topbar.panel")} keys={`${mod} B`}>
+              <button class="icon-button" aria-label={t("topbar.panel")} aria-pressed={ui.panel} onClick={togglePanel}>
+                <PanelRight class="icon" />
+              </button>
+            </Tip>
+          </div>
         </div>
-      </div>
-      <div class="workspace">
-        <section class="thread">{props.children}</section>
-        <Show when={ui.panel}>
-          <Panel sessionID={props.sessionID} directory={props.directory} folder={props.folder} />
+        <div class="workspace">
+          <section class="thread">{props.children}</section>
+          <Show when={ui.panel}>
+            <Panel sessionID={props.sessionID} directory={props.directory} folder={props.folder} />
+          </Show>
+        </div>
+        <Show when={ui.terminal}>
+          <Terminal directory={props.directory} />
         </Show>
-      </div>
-      <Show when={ui.terminal}>
-        <Terminal directory={props.directory} />
-      </Show>
-    </main>
+      </main>
+    </Show>
   )
 }

@@ -31,7 +31,7 @@ import {
  * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments and
  * commit on the right. Keys: J / K next / previous hunk, A accept, R reject, C comment, ] next file.
  */
-export function ReviewFull(props: { sessionID: string; directory: string; folder: string }) {
+export function ReviewFull(props: { sessionID?: string; directory: string; folder: string }) {
   const data = useReview(
     () => props.sessionID,
     () => props.directory,
@@ -109,10 +109,12 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
   })
 
   const sendComments = async () => {
-    await send(props.sessionID, props.directory, { text: commentMessage(comments()), files: [] }).catch(
-      (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+    const sessionID = props.sessionID
+    if (!sessionID) return
+    await send(sessionID, props.directory, { text: commentMessage(comments()), files: [] }).catch((error: Error) =>
+      toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
     )
-    clearComments(props.sessionID)
+    clearComments(sessionID)
   }
 
   return (
@@ -123,7 +125,8 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
           {t("review.back")}
         </button>
         <span class="title ellipsis">
-          {t("review.label")} · {session(props.sessionID)?.title ?? ""}
+          {t("review.label")}
+          <Show when={props.sessionID}>{(id) => ` · ${session(id())?.title ?? ""}`}</Show>
         </span>
         <div class="no-drag row grow">
           <ScopeBar folder={props.folder} directory={props.directory} data={data} sessionID={props.sessionID} />
@@ -181,7 +184,9 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
         </section>
         <aside class="review-side" aria-label={t("review.comments")}>
           <div class="side-head">{t("review.comments")}</div>
-          <CommentComposer sessionID={props.sessionID} target={commentingOn(files(), (file) => data.detail(file))} />
+          <Show when={props.sessionID}>
+            <CommentComposer sessionID={props.sessionID} target={commentingOn(files(), (file) => data.detail(file))} />
+          </Show>
           <div class="side-list scroll">
             <Show when={comments().length} fallback={<p class="subtle side-empty">{t("review.noComments")}</p>}>
               <For each={comments()}>
@@ -193,7 +198,10 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
                       <button
                         class="icon-button sm"
                         aria-label={t("common.remove")}
-                        onClick={() => removeComment(props.sessionID, comment.id)}
+                        onClick={() => {
+                          const sessionID = props.sessionID
+                          if (sessionID) removeComment(sessionID, comment.id)
+                        }}
                       >
                         ×
                       </button>
@@ -205,10 +213,12 @@ export function ReviewFull(props: { sessionID: string; directory: string; folder
             </Show>
           </div>
           <div class="side-foot">
-            <button class="button primary" disabled={!comments().length} onClick={() => void sendComments()}>
-              <Bot class="icon icon-sm" />
-              {t("review.send")}
-            </button>
+            <Show when={props.sessionID}>
+              <button class="button primary" disabled={!comments().length} onClick={() => void sendComments()}>
+                <Bot class="icon icon-sm" />
+                {t("review.send")}
+              </button>
+            </Show>
             <Show when={review.scope === "staged" || review.scope === "unstaged"}>
               <hr class="divider" />
               <Commit
