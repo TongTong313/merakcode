@@ -1,4 +1,4 @@
-import { build, context, type BuildOptions } from "esbuild"
+import { build, context, type BuildOptions, type Metafile } from "esbuild"
 import { rm } from "node:fs/promises"
 import path from "node:path"
 
@@ -19,7 +19,10 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
     sourcemap: "linked" as const,
     minify: options.minify,
     logLevel: "warning" as const,
+    // esbuild drops license comments; package.ts lists the bundled packages in THIRD_PARTY_LICENSES.txt instead
     legalComments: "none" as const,
+    // Metafile paths are relative to this directory
+    absWorkingDir: root,
   }
   return [
     {
@@ -43,9 +46,20 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
   ]
 }
 
+/** Builds both entries and returns the absolute paths of the source files whose code ended up in the output */
 export async function bundle(options: { minify?: boolean } = {}) {
   await rm(dist, { recursive: true, force: true })
-  await Promise.all(entries(options).map((entry) => build(entry)))
+  const results = await Promise.all(entries(options).map((entry) => build({ ...entry, metafile: true })))
+  return results.flatMap((result) => bundled(result.metafile))
+}
+
+/** Inputs that contributed bytes to an output (tree-shaken files are left out); esbuild lists them relative to root */
+function bundled(metafile: Metafile) {
+  return Object.values(metafile.outputs).flatMap((output) =>
+    Object.entries(output.inputs)
+      .filter(([, input]) => input.bytesInOutput > 0)
+      .map(([file]) => path.resolve(root, file)),
+  )
 }
 
 /**

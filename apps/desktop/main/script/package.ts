@@ -74,7 +74,7 @@ run(
   ],
   renderer,
 )
-await bundle({ minify: true })
+const bundled = await bundle({ minify: true })
 
 // 2. Engine: rebuilt for every target so it matches the current code
 node(
@@ -92,8 +92,9 @@ const stage = path.join(root, ".package")
 const app = path.join(stage, "app")
 await rm(stage, { recursive: true, force: true })
 await mkdir(app, { recursive: true })
-// Packages bundled into the window UI; the engine ships its own list under resources/engine/lib
-await writeFile(path.join(stage, "THIRD_PARTY_LICENSES.txt"), Licenses.collect([renderer, root]))
+// Packages bundled into the window UI (its production dependencies) and into the main process (the files esbuild put
+// into main.js and preload.cjs: they are all devDependencies). The engine ships its own list under resources/engine/lib
+await writeFile(path.join(stage, "THIRD_PARTY_LICENSES.txt"), Licenses.collect([renderer], bundled))
 for (const file of ["main.js", "preload.cjs"]) await cp(path.join(root, "dist", file), path.join(app, file))
 await writeFile(
   path.join(app, "package.json"),

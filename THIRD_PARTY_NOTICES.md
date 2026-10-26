@@ -3,13 +3,14 @@
 MerakCode contains code taken from or based on the open-source projects below. Their licenses ask us to keep
 their copyright notices, so they are reproduced here in full.
 
-Release packages also contain `THIRD_PARTY_LICENSES.txt`, which lists every npm package bundled into that
-release together with its license text.
+The command-line archives and platform packages, and the desktop installers, also contain `THIRD_PARTY_LICENSES.txt`,
+which lists the npm packages bundled into them together with their license texts. The `merakcode` npm package and
+`@merakcode/sdk` bundle no third-party code, so they carry this file only.
 
 ## opencode
 
 - Project: https://github.com/anomalyco/opencode
-- Used in: the engine (sessions, tools, providers, server)
+- Used in: the engine (sessions, tools, providers, server, system prompts) and the SDK's plugin API
 - License: MIT
 
 ```
