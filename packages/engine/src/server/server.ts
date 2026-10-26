@@ -241,10 +241,6 @@ export namespace Server {
             )
               return input
 
-            // *.merakcode.ai (https only, adjust if needed)
-            if (/^https:\/\/([a-z0-9-]+\.)*merakcode\.ai$/.test(input)) {
-              return input
-            }
             if (_corsWhitelist.includes(input)) {
               return input
             }
