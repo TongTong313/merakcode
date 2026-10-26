@@ -39,6 +39,8 @@ export namespace Question {
     .object({
       id: Identifier.schema("question"),
       sessionID: Identifier.schema("session"),
+      /** Root session: a subagent's question belongs to the conversation it was started from, as permission requests do */
+      root: Identifier.schema("session").optional(),
       questions: z.array(Info).describe("Questions to ask"),
       /**
        * Absolute timestamp (ms). When set, clients can show a countdown against Date.now(); on expiry the server
@@ -106,6 +108,8 @@ export namespace Question {
 
   export async function ask(input: {
     sessionID: string
+    /** Root session of a subagent's session (Session.rootID), so the question reaches the conversation that started it */
+    root?: string
     questions: Info[]
     tool?: { messageID: string; callID: string }
     /** Expiry counts as unanswered and skips reply validation */
@@ -123,6 +127,7 @@ export namespace Question {
       const info: Request = {
         id,
         sessionID: input.sessionID,
+        ...(input.root && input.root !== input.sessionID ? { root: input.root } : {}),
         questions: input.questions,
         tool: input.tool,
         ...(expiresAt !== undefined ? { expiresAt } : {}),

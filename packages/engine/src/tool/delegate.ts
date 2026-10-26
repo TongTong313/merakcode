@@ -169,9 +169,10 @@ async function runAdapter(
       step: (step) => onStep({ tool: step.tool, detail: shown(step.detail ?? "") }),
       permission: (request) => decide(ctx, request, Instance.directory),
       // The question carries the delegate call, so the chat shows which member asks
-      question: (questions) =>
+      question: async (questions) =>
         Question.ask({
           sessionID: ctx.sessionID,
+          root: await Session.rootID(ctx.sessionID),
           questions,
           tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
           abort: ctx.abort,

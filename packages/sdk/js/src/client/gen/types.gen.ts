@@ -925,6 +925,7 @@ export type QuestionInfo = {
 export type QuestionRequest = {
   id: string
   sessionID: string
+  root?: string
   /**
    * Questions to ask
    */
