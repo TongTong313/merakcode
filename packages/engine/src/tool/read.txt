@@ -15,5 +15,5 @@ Usage:
 - This tool can read image files and return them as file attachments.
 - Reading a PDF first parses the first 10 pages in auto mode and returns extracted text directly when the PDF has a usable text layer.
 - If the PDF is scanned, image-only, or mixed with image/table pages, this tool attaches the original PDF when the current model supports PDF input.
-- If the current model does not support PDF input, this tool returns a Chinese hint suggesting the user run `/pdf`.
+- If the current model does not support PDF input, this tool returns a hint suggesting the user run `/pdf`.
 - For controlled PDF page ranges, text-only extraction, or image rendering, use the `pdf_parse` tool or load the `pdf` skill.

@@ -9,7 +9,7 @@ When to use the subagent tool:
 - When exploring the codebase to gather context or to answer a question that is not a needle query (e.g. "how does auth work?", "where is X handled?"). Use `explore` and spawn multiple in parallel for independent areas.
 - When a task fits a specialized agent's description above (read each agent's "Trigger when" hints carefully). Prefer the most specific agent over `general`.
 - When a multi-step subtask shouldn't pollute the main session's context (long research, multi-file analysis, repetitive checks).
-- When you are instructed to execute custom slash commands. Pass the slash command invocation as the entire prompt. For example: subagent(description="Check the file", prompt="/check-file path/to/file.py")
+- When you are instructed to execute custom slash commands. Pass the slash command invocation as the entire prompt. For example: subagent(description="Check the file", prompt="/check-file path/to/file.py", subagent_type="general")
 
 When NOT to use the subagent tool:
 - Reading one known file path — use Read directly
@@ -33,7 +33,7 @@ Usage notes:
 5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent. Tell it how to verify its work if possible (e.g., relevant test commands).
 6. If an agent's description or "Trigger when" hints suggest it should be used proactively, try your best to use it without the user having to ask for it first. Use your judgement.
 
-Examples (use the actual agents listed in {agents} above):
+Examples (use the actual agents listed above):
 
 <example>
 user: Where are errors from the API client handled in this codebase?

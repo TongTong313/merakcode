@@ -102,7 +102,7 @@ A common shape: pipeline() each item through a review stage that emits schema'd 
 Input precedence:
 - scriptPath takes precedence over script and name.
 - script runs an inline self-contained script. Inline scripts are persisted to .merakcode/workflows/generated/ and returned as scriptPath.
-- name resolves a saved workflow from .merakcode/workflows/*.js.
+- name resolves a saved workflow from workflows/*.js in the project's .merakcode/ folder or the global config folder (~/.merakcode).
 
 Prefer { name } for installed workflows. Use { scriptPath } when the user points to a file, or when resuming/editing a generated workflow. Use { script } when no saved workflow fits and the user asked for workflow-style orchestration.
 

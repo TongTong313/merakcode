@@ -17,9 +17,9 @@ Usage:
 Parameters:
 - filePath: absolute path to the .xlsx/.xlsm workbook. Relative paths resolve against the project directory.
 - sheets: optional list of worksheet names or 1-based indexes to inspect.
-- maxSheets: max worksheets to inspect. Default 20.
-- maxRows: max rows to show per sheet. Default 100.
-- maxCells: max cells to scan per sheet. Default 2000.
+- maxSheets: max worksheets to inspect. Default 20, at most 100.
+- maxRows: max rows to show per sheet. Default 100, at most 1000.
+- maxCells: max cells to scan per sheet. Default 2000, at most 20000. Larger values are lowered to the limit.
 - rows: 1-based closed row range to read, e.g. "1001:2000". Useful for paging large sheets.
 - summary: only output each sheet's dimension and header row.
 - json: print the parsed workbook as JSON instead of formatted text.

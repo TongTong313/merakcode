@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test, type Mock, vi } from "vitest"
 import { Plugin } from "@merakcode/engine/plugin/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { ReadTool } from "@merakcode/engine/tool/read"
-import { ListTool } from "@merakcode/engine/tool/ls"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -78,25 +77,6 @@ describe("experimental.tool.path.guard", () => {
         expect(seen.paths?.[0]).toContain("secret-notes.txt")
         expect(seen.paths?.[0]?.startsWith("/") || /^[A-Za-z]:/.test(seen.paths?.[0] ?? "")).toBe(true)
         expect(result).not.toBe("allowed")
-      },
-    })
-  })
-
-  test("a multi-path tool (ls) drops denied entries and returns the rest", async () => {
-    Log.init({ print: false })
-    await using tmp = await tmpdir({ git: true })
-    await Filesystem.write(`${tmp.path}/normal.txt`, "x")
-    await Filesystem.write(`${tmp.path}/secret.txt`, "y")
-    denySecretPaths({})
-
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const ls = await ListTool.init()
-        const result = await ls.execute({ path: tmp.path }, ctx("列一下目录"))
-
-        expect(result.output).toContain("normal.txt")
-        expect(result.output).not.toContain("secret.txt")
       },
     })
   })

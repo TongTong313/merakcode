@@ -5,7 +5,7 @@ Supported operations:
 - findReferences: Find all references to a symbol
 - hover: Get hover information (documentation, type info) for a symbol
 - documentSymbol: Get all symbols (functions, classes, variables) in a document
-- workspaceSymbol: Search for symbols across the entire workspace
+- workspaceSymbol: List symbols across the workspace (takes no query; up to 10 per language server)
 - goToImplementation: Find implementations of an interface or abstract method
 - prepareCallHierarchy: Get call hierarchy item at a position (functions/methods)
 - incomingCalls: Find all functions/methods that call the function at a position

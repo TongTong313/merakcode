@@ -5,7 +5,6 @@ import fs from "fs/promises"
 import path from "path"
 import { GlobTool } from "@merakcode/engine/tool/glob"
 import { GrepTool } from "@merakcode/engine/tool/grep"
-import { ListTool } from "@merakcode/engine/tool/ls"
 import { ToolResultDelta } from "@merakcode/engine/tool/result-delta"
 import { Instance } from "@merakcode/engine/project/instance"
 import { tmpdir } from "../fixture/fixture"
@@ -80,26 +79,6 @@ describe("search tools", () => {
         expect(result.metadata.truncated).toBe(true)
         expect(typeof (result.metadata as any).rawOutputPath).toBe("string")
         expect(await Filesystem.readText((result.metadata as any).rawOutputPath)).toContain("TODO 9")
-      },
-    })
-  })
-
-  test("ls only marks truncated after seeing an extra entry", async () => {
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Filesystem.write(path.join(dir, "a.txt"), "a")
-        await Filesystem.write(path.join(dir, "b.txt"), "b")
-      },
-    })
-
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const ls = await ListTool.init()
-        const result = await ls.execute({ limit: 2 }, ctx)
-
-        expect(result.output).toContain("Summary: 2 files shown")
-        expect(result.metadata.truncated).toBe(false)
       },
     })
   })

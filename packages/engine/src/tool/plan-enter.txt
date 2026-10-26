@@ -2,7 +2,7 @@ Use this tool to suggest switching to plan mode when the user's request would be
 
 If they explicitly mention wanting to create a plan ALWAYS call this tool first.
 If they ask to switch to plan mode, or to revise/modify the official session plan file
-(under the merakcode data plans directory, e.g. …/merakcode/plans/<timestamp>-<slug>.md),
+(under the MerakCode data plans directory, e.g. ~/.merakcode/data/plans/<timestamp>-<slug>.md),
 ALWAYS call this tool first — before any write/edit to that official plan file.
 Do NOT call this tool merely because a path contains a folder named "plans"; user-authored
 markdown under project plans/ or other folders is ordinary file editing, not plan mode.
