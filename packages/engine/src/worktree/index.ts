@@ -13,6 +13,8 @@ import { Log } from "@merakcode/log/logger"
 import { BusEvent } from "../bus/bus-event"
 import { GlobalBus } from "../bus/global"
 import { Message } from "../session/message"
+import { Checkout } from "../project/checkout"
+import { defer } from "@merakcode/util/defer"
 
 export namespace Worktree {
   const log = Log.create({ service: "worktree" })
@@ -465,6 +467,14 @@ export namespace Worktree {
   })
 
   export const remove = fn(RemoveInput, async (input) => {
+    const releaseCheckout = Checkout.hold(input.directory)
+    await using _ = defer(async () => {
+      try {
+        await Checkout.current(input.directory)
+      } finally {
+        releaseCheckout()
+      }
+    })
     if (Instance.project.vcs !== "git") {
       throw new NotGitError({ message: "Worktrees are only supported for git projects" })
     }
@@ -563,6 +573,14 @@ export namespace Worktree {
   })
 
   export const reset = fn(ResetInput, async (input) => {
+    const releaseCheckout = Checkout.hold(input.directory)
+    await using _ = defer(async () => {
+      try {
+        await Checkout.current(input.directory)
+      } finally {
+        releaseCheckout()
+      }
+    })
     if (Instance.project.vcs !== "git") {
       throw new NotGitError({ message: "Worktrees are only supported for git projects" })
     }
@@ -728,6 +746,15 @@ export namespace Worktree {
    * the conflicts there first).
    */
   export const merge = fn(MergeInput, async (input): Promise<MergeResult> => {
+    using _primaryCheckout = defer(Checkout.hold())
+    const releaseSource = Checkout.hold(input.directory)
+    await using _sourceCheckout = defer(async () => {
+      try {
+        await Promise.all([Checkout.current(), Checkout.current(input.directory)])
+      } finally {
+        releaseSource()
+      }
+    })
     if (Instance.project.vcs !== "git") {
       throw new NotGitError({ message: "Worktrees are only supported for git projects" })
     }

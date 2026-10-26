@@ -8,6 +8,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- The homepage can switch local branches or prepare a new worktree from a chosen branch. Review keeps its scope, current branch and comparison branch in one toolbar; choosing the comparison branch opens branch review. Unsaved editor buffers and review comments survive view changes and prevent switching.
+- The SDK adds checkout-aware branch operations and HEAD events. Review decisions and undo now require `expectedCheckout` from the displayed review, so stale operations cannot modify another checkout context.
 - The conversation composer shows the sandbox as on or off beside a shield. Hovering context usage, the model, reasoning, the sandbox, or the permission mode says what that control configures, with the current value still on the button. The menu can set the sandbox up (Windows asks for administrator approval once), turn it on, or turn it off, without leaving the conversation. A command waiting only because the sandbox was not ready continues once the sandbox is on, or once you turn it off. An already set up sandbox is warmed when the engine starts.
 - The homepage model menu lists Official before Configured, and "Add model" at its bottom opens the provider list in Settings.
 - Commands wrapped in `env`, `sudo`, `nice`, `timeout`, `xargs` and the like, command lines inside `sh -c` and `eval`, and tool options before a subcommand (`git -C dir push`, `pnpm --filter x publish`) are judged by the command that actually runs. Read-only commands with options that write files or run other programs (`sort -o`, `rg --pre`, `git diff --output=`) count as file-changing commands.
@@ -31,6 +33,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 主页可以切换本地分支，或选择起点后准备创建新工作树。审阅范围、当前分支和比对分支合并为一行工具栏，选择比对分支即可进入分支审阅。未保存的编辑缓冲和审阅评论在切换视图后仍保留，并阻止切换工作分支。
+- SDK 新增带 checkout 身份的分支操作和 HEAD 事件。审阅决定与撤销现在必须携带所显示审阅的 `expectedCheckout`，防止过期操作修改另一个 checkout 上下文。
 - 对话栏里沙箱是盾牌图标加「开」或「关」。悬停上下文用量、模型、思考档位、沙箱或权限模式，都会说明这个控件是在配置什么，当前的值仍写在按钮上。点开沙箱可以初始化（Windows 会要一次管理员确认）、开启或关闭，不用离开当前对话。只因为沙箱没就绪才在等审批的命令，会在沙箱打开之后继续执行；你把沙箱关掉之后也会继续。已经初始化过的沙箱会在引擎启动时预先准备好。
 - 主页的模型菜单改成「官方供应商」在前、「配置的模型」在后，底部的「添加模型」改为打开设置里的服务商列表。
 - 包在 `env`、`sudo`、`nice`、`timeout`、`xargs` 等命令里的命令、`sh -c` 和 `eval` 里的命令，以及写在子命令前面的选项（`git -C 目录 push`、`pnpm --filter x publish`），都按实际执行的那条命令判断。只读命令带上会写文件或执行别的程序的参数（`sort -o`、`rg --pre`、`git diff --output=`）时，按会改文件的命令算。

@@ -2,40 +2,15 @@ import CheckCheck from "lucide-solid/icons/check-check"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import MessageSquare from "lucide-solid/icons/message-square"
 import Undo2 from "lucide-solid/icons/undo-2"
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  For,
-  Match,
-  on,
-  onCleanup,
-  Show,
-  Switch,
-  untrack,
-} from "solid-js"
+import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
-import { call, client } from "../../state/client"
-import { folderOf, state } from "../../state/store"
-import { Segmented } from "../../ui/segmented"
-import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
 import { send } from "../conversation/send"
 import { CommentComposer } from "./compose"
 import { Commit } from "./commit"
+import { ReviewToolbar } from "./toolbar"
 import { FileDiff } from "./diff"
-import {
-  clearComments,
-  commentMessage,
-  commentingOn,
-  commentsOf,
-  progress,
-  review,
-  scopeOptions,
-  setReview,
-  useReview,
-} from "./state"
+import { clearComments, commentMessage, commentingOn, commentsOf, review, useReview } from "./state"
 
 export type ReviewData = ReturnType<typeof useReview>
 
@@ -50,99 +25,20 @@ function delayed(when: () => boolean, ms = 300) {
   return shown
 }
 
-/**
- * Scope picker and progress. The branch scope is a dropdown in the same group: picking a base branch switches to it.
- * The current branch is listed but cannot be picked, since a branch compared with itself shows nothing new.
- */
-export function ScopeBar(props: { folder: string; directory: string; data: ReviewData; sessionID?: string }) {
-  const git = () => folderOf(props.folder)?.project?.vcs === "git"
-  const count = () => progress(props.data.data())
-  const refreshing = delayed(props.data.refreshing)
-  // Before a conversation starts, only the git scopes apply
-  createEffect(() => {
-    if (!props.sessionID && git() && (review.scope === "turn" || review.scope === "session"))
-      setReview("scope", "unstaged")
-  })
-  const [branches, { refetch }] = createResource(
-    () => git() && props.directory,
-    (directory) => call(client(directory).vcs.branches()).catch(() => [] as string[]),
-  )
-  const preferred = () => state.defaultBranch[props.directory]
-  const base = () => review.base ?? (review.scope === "branch" ? props.data.data()?.base : undefined) ?? preferred()
-  const latest = createMemo(() => {
-    const current = state.branch[props.directory]
-    const list = branches.latest ?? []
-    const first = preferred() && list.includes(preferred()!) ? [preferred()!] : []
-    return [...new Set([...first, ...list])].map((name) => ({
-      value: name,
-      label: name,
-      description:
-        name === current ? t("review.currentBranch") : name === preferred() ? t("review.defaultBranch") : undefined,
-      disabled: name === current,
-    }))
-  })
-  // The items are refreshed before the dropdown opens and after it closes, but not while it is open (new branches,
-  // or the current and default branch arriving): replacing them moves focus out of it, which closes it. Filling an
-  // empty list is safe, so the first fetch always shows.
-  const [open, setOpen] = createSignal(false)
-  const [options, setOptions] = createSignal<ReturnType<typeof latest>>([])
-  createEffect(() => {
-    const next = latest()
-    if (!open() || !untrack(options).length) setOptions(next)
-  })
-  return (
-    <>
-      <Segmented
-        label={t("review.scope")}
-        options={scopeOptions(git(), !!props.sessionID)}
-        value={review.scope}
-        onChange={(scope) => setReview({ scope, messageID: undefined, last: undefined })}
-      >
-        <Show when={git()}>
-          <Select
-            class={review.scope === "branch" ? "on" : "off"}
-            label={t("review.scope.branch")}
-            options={options()}
-            value={review.scope === "branch" ? base() : undefined}
-            placeholder={t("review.scope.branch")}
-            // Opening before the first list arrives shows an empty menu, and filling it while open closes the menu
-            disabled={branches.state !== "ready" && branches.state !== "refreshing"}
-            onPrepare={() => void refetch()}
-            onOpenChange={(value) => {
-              setOpen(value)
-              if (!value) void refetch()
-            }}
-            onChange={(value) => setReview({ scope: "branch", base: value, messageID: undefined, last: undefined })}
-            display={(option) => (
-              <span class="ellipsis">{t("review.branchOn", { base: option?.label ?? base() ?? "" })}</span>
-            )}
-          />
-        </Show>
-      </Segmented>
-      <span class="spacer" />
-      <Show when={refreshing()}>
-        <LoaderCircle class="icon icon-sm spinner muted" role="status" aria-label={t("review.refreshing")} />
-      </Show>
-      <Show when={review.scope === "branch" && count().total}>
-        <span class="progress">
-          {t("review.progress", count())}
-          <span class="progress-bar">
-            <span style={{ width: `${(count().done / Math.max(1, count().total)) * 100}%` }} />
-          </span>
-        </span>
-      </Show>
-    </>
-  )
-}
-
 /** Pending comments, sent to the agent together */
 function PendingComments(props: { sessionID?: string; directory: string }) {
   const comments = () => commentsOf(props.sessionID)
   const submit = async () => {
     if (!props.sessionID) return
-    await send(props.sessionID, props.directory, { text: commentMessage(comments()), files: [] }).catch(
-      (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+    if (comments().some((comment) => comment.stale)) return
+    const sent = await send(props.sessionID, props.directory, { text: commentMessage(comments()), files: [] }).then(
+      () => true,
+      (error: Error) => {
+        toast({ kind: "error", title: t("error.request", { message: error.message }), error })
+        return false
+      },
     )
+    if (!sent) return
     clearComments(props.sessionID)
   }
   return (
@@ -154,7 +50,12 @@ function PendingComments(props: { sessionID?: string; directory: string }) {
         <button class="button ghost sm" onClick={() => props.sessionID && clearComments(props.sessionID)}>
           {t("review.clearComments")}
         </button>
-        <button class="button primary sm" onClick={() => void submit()}>
+        <button
+          class="button primary sm"
+          disabled={comments().some((comment) => comment.stale)}
+          title={comments().some((comment) => comment.stale) ? t("review.draftStale") : undefined}
+          onClick={() => void submit()}
+        >
           {t("review.send")}
         </button>
       </div>
@@ -222,7 +123,13 @@ export function ReviewFiles(props: {
           </div>
         </Match>
         <Match when={result() && !files().length}>
-          <div class="empty-state subtle">{review.scope === "turn" ? t("review.emptyTurn") : t("review.empty")}</div>
+          <div class="empty-state subtle">
+            {review.scope === "branch" && !result()?.base
+              ? t("git.choose")
+              : review.scope === "turn"
+                ? t("review.emptyTurn")
+                : t("review.empty")}
+          </div>
         </Match>
       </Switch>
       <For each={files()}>
@@ -270,11 +177,16 @@ export function ReviewPanel(props: { sessionID?: string; directory: string; fold
   return (
     <>
       <div class="review-sub">
-        <ScopeBar folder={props.folder} directory={props.directory} data={props.data} sessionID={props.sessionID} />
+        <ReviewToolbar
+          folder={props.folder}
+          directory={props.directory}
+          data={props.data}
+          sessionID={props.sessionID}
+        />
       </div>
       <ReviewFiles sessionID={props.sessionID} data={props.data} style="unified" />
       <Show when={props.sessionID}>
-        <CommentComposer sessionID={props.sessionID} target={target()} />
+        <CommentComposer directory={props.directory} sessionID={props.sessionID} target={target()} />
       </Show>
       <PendingComments sessionID={props.sessionID} directory={props.directory} />
       <div class="review-foot">

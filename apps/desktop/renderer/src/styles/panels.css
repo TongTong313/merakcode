@@ -72,7 +72,86 @@
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   flex: none;
-  overflow-x: auto;
+}
+.review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.review-toolbar .segmented {
+  flex: none;
+}
+.review-toolbar .segmented button {
+  padding: 4px 7px;
+}
+.review-branches {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.branch-chip {
+  height: 29px;
+  min-width: 0;
+  max-width: 170px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.branch-chip:hover,
+.branch-chip.on {
+  background: var(--surface-active);
+  border-color: var(--accent);
+}
+.branch-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.branch-popover {
+  width: min(350px, calc(100vw - 24px));
+  padding: 8px;
+}
+.branch-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 2px 4px 8px;
+}
+.branch-search {
+  width: 100%;
+  margin-bottom: 6px;
+}
+.branch-options {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.branch-option {
+  min-height: 30px;
+  gap: 8px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.branch-option.focused {
+  background: var(--surface-active);
+}
+.branch-option.disabled {
+  color: var(--text-subtle);
+  cursor: default;
+}
+.branch-notice {
+  margin: 6px 4px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 .progress {
   display: inline-flex;
@@ -81,18 +160,6 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   white-space: nowrap;
-}
-.progress-bar {
-  width: 72px;
-  height: 4px;
-  border-radius: var(--radius-full);
-  background: var(--surface-active);
-  overflow: hidden;
-}
-.progress-bar > span {
-  display: block;
-  height: 100%;
-  background: var(--success);
 }
 .diff {
   flex: 1;

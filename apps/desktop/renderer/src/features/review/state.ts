@@ -29,18 +29,20 @@ import { storage } from "../../lib/bridge"
 import { sameDir } from "../../lib/route"
 import { tokenize } from "../../lib/tokens"
 import { call, client } from "../../state/client"
+import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, identityOf, refreshBranches } from "../../state/git"
 import { busy, listen, messagesOf, refreshVcs } from "../../state/store"
 import { showTab } from "../../state/ui"
 import { toast } from "../../ui/toast"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
 
-export type Comment = { id: number; file: string; line: number; text: string; excerpt: string }
+export type Comment = { id: number; file: string; line: number; text: string; excerpt: string; stale?: boolean }
 
 type Review = {
+  directory?: string
   scope: ReviewScope
   /** For the turn scope: which turn (user message id); defaults to the last one */
   messageID?: string
-  base?: string
+  bases: Record<string, string | null | undefined>
   /** File to scroll to */
   focus?: string
   /** Hunk being commented on */
@@ -51,7 +53,37 @@ type Review = {
   last?: { decision: "accept" | "reject"; count: number }
 }
 
-export const [review, setReview] = createStore<Review>({ scope: "turn", comments: {}, style: "split" })
+export const [review, setReview] = createStore<Review>({ scope: "turn", bases: {}, comments: {}, style: "split" })
+
+const BASES = "review.bases"
+void storage
+  .get<Record<string, string | null>>(BASES, {})
+  .then((saved) => setReview("bases", (current) => ({ ...saved, ...current })))
+
+export const baseFor = (directory: string) => review.bases[gitDirectory(directory)]
+
+export function selectScope(scope: ReviewScope) {
+  setReview({ scope, messageID: undefined, last: undefined })
+}
+
+export function selectBase(directory: string, base: string) {
+  setReview("bases", gitDirectory(directory), base)
+  void storage.set(BASES, review.bases)
+  selectScope("branch")
+}
+
+export function prepareBase(directory: string, branches: string[], preferred?: string) {
+  const key = gitDirectory(directory)
+  const current = identityOf(directory)?.branch
+  const base = review.bases[key]
+  if (typeof base === "string" && (base === current || !branches.includes(base))) {
+    setReview("bases", key, null)
+    void storage.set(BASES, review.bases)
+    return
+  }
+  if (base === undefined && preferred && preferred !== current && branches.includes(preferred))
+    setReview("bases", key, preferred)
+}
 
 let next = 1
 
@@ -71,27 +103,21 @@ function turnOf(sessionID: string) {
   return review.messageID ?? messagesOf(sessionID).findLast((message) => message.role === "user")?.id
 }
 
-const SCOPES: ReviewScope[] = ["turn", "session", "unstaged", "staged"]
+const SCOPES: Exclude<ReviewScope, "branch">[] = ["turn", "session", "unstaged", "staged"]
 
-/** The scopes in the segmented control (the branch scope is a separate dropdown); unavailable ones say why */
+/** Only scopes that apply to this directory and conversation occupy the toolbar. */
 export const scopeOptions = (git: boolean, conversation: boolean) =>
-  SCOPES.map((scope) => {
-    const needs =
-      scope === "turn" || scope === "session" ? (conversation ? undefined : "conversation") : git ? undefined : "git"
-    return {
-      value: scope,
-      label: t(`review.scope.${scope}`),
-      disabled: !!needs,
-      hint:
-        needs === "conversation" ? t("review.needsConversation") : needs === "git" ? t("review.needsGit") : undefined,
-    }
-  })
+  SCOPES.filter((scope) => (scope === "turn" || scope === "session" ? conversation : git)).map((scope) => ({
+    value: scope,
+    label: t(`review.scope.${scope}`),
+  }))
 
 // Lists: one per review, refetched when stale
 
 type List = { input: ReviewKey; result?: ReviewResult; loading: boolean; stale: boolean; error?: Error }
 const [lists, setLists] = createStore<Record<string, List>>({})
 const controllers = new Map<string, AbortController>()
+const currentContext = (input: ReviewKey) => (checkoutOf(input.directory) ?? null) === (input.checkout ?? null)
 
 const params = (input: ReviewKey) => ({
   scope: input.scope,
@@ -104,7 +130,19 @@ const empty = (input: ReviewKey): ReviewResult | undefined => {
   // No conversation yet: only the git scopes have data
   const conversation = input.scope === "turn" || input.scope === "session"
   if ((conversation && !input.sessionID) || (input.scope === "turn" && !input.messageID))
-    return { scope: input.scope, actions: { accept: false, reject: false }, files: [] }
+    return {
+      scope: input.scope,
+      checkout: input.checkout ?? null,
+      actions: { accept: false, reject: false },
+      files: [],
+    }
+  if (input.scope === "branch" && !input.base)
+    return {
+      scope: input.scope,
+      checkout: input.checkout ?? null,
+      actions: { accept: false, reject: false },
+      files: [],
+    }
 }
 
 /** Fetches a list; a newer request for the same review cancels this one */
@@ -117,7 +155,13 @@ async function load(input: ReviewKey) {
   try {
     const result =
       empty(input) ?? (await call(client(input.directory).review.get(params(input), { signal: controller.signal })))
-    if (!controller.signal.aborted) show(key, result)
+    if (controller.signal.aborted) return
+    if (result.checkout !== (checkoutOf(input.directory) ?? null)) {
+      if (!currentContext(input)) return
+      await refreshVcs(input.directory)
+    }
+    if (!controller.signal.aborted && result.checkout === (checkoutOf(input.directory) ?? null))
+      show({ ...input, checkout: result.checkout }, result)
   } catch (error) {
     if (!controller.signal.aborted) setLists(key, { loading: false, error: error as Error })
   } finally {
@@ -126,32 +170,36 @@ async function load(input: ReviewKey) {
 }
 
 /** Puts a new list in place: files keep their identity by path, so open files and their state stay */
-function show(key: string, result: ReviewResult) {
+function show(input: ReviewKey, result: ReviewResult) {
+  const key = keyOf(input)
   batch(() => {
+    setLists(key, (previous) => ({ ...previous, input, loading: false, stale: false, error: undefined }))
     setLists(key, "result", reconcile(result, { key: "file" }))
     setLists(key, { loading: false, error: undefined })
   })
   prune(key, result.files)
 }
 
-const statusTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const statusTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; refs: boolean }>()
 
 /** Reloads git counts with the review, after a burst of file events has settled */
-function refreshStatus(directory: string) {
+function refreshStatus(directory: string, refs = false) {
   const pending = statusTimers.get(directory)
-  if (pending) clearTimeout(pending)
-  statusTimers.set(
-    directory,
-    setTimeout(() => {
+  if (pending) clearTimeout(pending.timer)
+  statusTimers.set(directory, {
+    refs: refs || !!pending?.refs,
+    timer: setTimeout(() => {
+      const refs = statusTimers.get(directory)?.refs
       statusTimers.delete(directory)
       void refreshVcs(directory)
+      if (refs) void refreshBranches(directory)
     }, 1000),
-  )
+  })
 }
 
 /** Marks every list of a directory stale; the one on screen refreshes itself */
-function stale(directory: string) {
-  refreshStatus(directory)
+function stale(directory: string, refs = false) {
+  refreshStatus(directory, refs)
   for (const [key, list] of Object.entries(lists))
     if (sameDir(list.input.directory, directory)) setLists(key, "stale", true)
 }
@@ -160,8 +208,33 @@ let watching = false
 function watch() {
   if (watching) return
   watching = true
+  onCheckoutChange((directory, change) => {
+    for (const [key, list] of Object.entries(lists)) {
+      if (!sameDir(gitDirectory(list.input.directory), directory)) continue
+      controllers.get(key)?.abort()
+      controllers.delete(key)
+      setLists(key, undefined!)
+      for (const detail of details.keys()) if (detail.startsWith(`${key}\u0000`)) details.delete(detail)
+    }
+    prefetching++
+    const shown = review.directory && sameDir(gitDirectory(review.directory), directory)
+    if (shown) setReview("last", undefined)
+    if (shown && change.branchChanged) setReview("commenting", undefined)
+    if (change.branchChanged) {
+      for (const [sessionID, value] of commentDirectories) {
+        if (!sameDir(gitDirectory(value), directory)) continue
+        setReview("comments", sessionID, (comments = []) => comments.map((comment) => ({ ...comment, stale: true })))
+      }
+    }
+    if (shown && change.branchChanged && (review.scope === "turn" || review.scope === "session"))
+      selectScope("unstaged")
+  })
   listen((directory, event) => {
-    if (event.type === "review.updated" || event.type === "file.watcher.updated") return stale(directory)
+    if (event.type === "review.updated") return stale(directory)
+    if (event.type === "file.watcher.updated") {
+      const file = event.properties.file.replace(/\\/g, "/")
+      return stale(directory, file.includes("/refs/") || file.endsWith("/packed-refs"))
+    }
     if (event.type !== "message.part.updated") return
     const part = event.properties.part
     if (
@@ -212,13 +285,20 @@ async function loadDetail(input: ReviewKey, file: ReviewFile) {
   if (pending) return pending
   target.set({})
   const request = call(
-    client(input.directory).review.file({ ...params(input), file: file.file, version: file.version }),
+    client(input.directory).review.file({
+      ...params(input),
+      file: file.file,
+      version: file.version,
+      expectedCheckout: input.checkout ?? null,
+    }),
   ).then(
     (detail) => {
+      if (!currentContext(input) || details.get(key) !== target) return undefined
       target.set({ detail })
       return detail
     },
     (error: Error & { status?: number }) => {
+      if (!currentContext(input) || details.get(key) !== target) return undefined
       if (error.status === 409) {
         target.set({})
         void load(input)
@@ -244,7 +324,8 @@ async function loadTokens(input: ReviewKey, file: ReviewFile, lang: string | und
     detail.after !== undefined ? tokenize(detail.after, lang) : undefined,
   ])
   tokenizing.delete(key)
-  target!.set((current) => ({ ...current, tokens: { before, after } }))
+  if (currentContext(input) && details.get(key) === target)
+    target!.set((current) => ({ ...current, tokens: { before, after } }))
 }
 
 let prefetching = 0
@@ -287,12 +368,24 @@ export function useReview(
   visible: () => boolean = () => true,
 ) {
   watch()
+  createEffect(
+    on([directory, visible], ([value, shown]) => {
+      if (shown) setReview("directory", value)
+    }),
+  )
   const input = createMemo(
     (): ReviewKey => {
       const scope = review.scope
       const id = sessionID()
       const messageID = scope === "turn" && id ? turnOf(id) : undefined
-      return { directory: directory(), scope, sessionID: id, messageID, base: review.base }
+      return {
+        directory: directory(),
+        scope,
+        sessionID: id,
+        messageID,
+        base: baseFor(directory()) ?? undefined,
+        checkout: checkoutOf(directory()) ?? null,
+      }
     },
     undefined,
     { equals: (a, b) => keyOf(a) === keyOf(b) },
@@ -351,6 +444,7 @@ export function useReview(
   /** Accepts or rejects: no files means everything; a file without hunks means the whole file */
   const decide = async (decision: "accept" | "reject", files?: { file: string; hunks?: string[] }[]) => {
     const current = list()?.result
+    if (!current || !currentContext(input())) return
     const targets: { file: string; hunks?: string[] }[] =
       files ?? current?.files.map((file) => ({ file: file.file })) ?? []
     const count = targets.reduce((sum, target) => {
@@ -359,18 +453,35 @@ export function useReview(
     }, 0)
     const target = input()
     const result = await call(
-      client(target.directory).review.decide({ ...params(target), decision, ...(files ? { files } : {}) }),
+      client(target.directory).review.decide({
+        ...params(target),
+        decision,
+        expectedCheckout: current.checkout,
+        ...(files ? { files } : {}),
+      }),
     ).catch(failed)
-    if (!result) return
-    show(keyOf(target), result)
+    if (!result || !currentContext(target) || keyOf(target) !== key()) return
+    if (result.checkout !== (target.checkout ?? null)) {
+      await refreshVcs(target.directory)
+      return
+    }
+    show(target, result)
     setReview("last", { decision, count })
   }
 
   const undo = async () => {
     const target = input()
-    const result = await call(client(target.directory).review.undo(params(target))).catch(failed)
-    if (!result) return
-    show(keyOf(target), result)
+    const current = list()?.result
+    if (!current || !currentContext(target)) return
+    const result = await call(
+      client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
+    ).catch(failed)
+    if (!result || !currentContext(target) || keyOf(target) !== key()) return
+    if (result.checkout !== (target.checkout ?? null)) {
+      await refreshVcs(target.directory)
+      return
+    }
+    show(target, result)
     setReview("last", undefined)
     toast({ kind: "info", title: t("review.undone") })
   }
@@ -423,6 +534,18 @@ export function commentingOn(
   }
 }
 
+const commentDirectories = new Map<string, string>()
+
+export function commentDirectory(sessionID: string, directory: string) {
+  commentDirectories.set(sessionID, directory)
+  registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID).length)
+}
+
+function syncComments(sessionID: string) {
+  const directory = commentDirectories.get(sessionID)
+  if (directory) registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID).length)
+}
+
 export function addComment(sessionID: string, file: string, hunk: ReviewHunk, text: string) {
   const line = commentLine(hunk)
   const excerpt = hunk.lines
@@ -431,11 +554,13 @@ export function addComment(sessionID: string, file: string, hunk: ReviewHunk, te
     .map((item) => `${item.kind === "add" ? "+" : "-"}${item.text}`)
     .join("\n")
   setReview("comments", sessionID, (list = []) => [...list, { id: next++, file, line, text, excerpt }])
+  syncComments(sessionID)
   setReview("commenting", undefined)
 }
 
 export function removeComment(sessionID: string, id: number) {
   setReview("comments", sessionID, (list = []) => list.filter((item) => item.id !== id))
+  syncComments(sessionID)
 }
 
 /** Turns the collected comments into one message */
@@ -448,6 +573,7 @@ export function commentMessage(comments: Comment[]) {
 
 export function clearComments(sessionID: string) {
   setReview("comments", sessionID, [])
+  syncComments(sessionID)
 }
 
 /** Total hunks in this review and how many are accepted (marked, in the branch scope) */

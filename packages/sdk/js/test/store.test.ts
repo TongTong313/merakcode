@@ -127,7 +127,7 @@ describe("permissions, questions, todos, status and branch", () => {
     expect(state.todo.ses_a).toHaveLength(1)
     expect(state.session_diff.ses_a!.map((item) => item.file)).toEqual(["a.ts"])
     expect(state.session_status.ses_a).toEqual({ type: "idle" })
-    expect(state.vcs).toEqual({ branch: "main", staged: 0, unstaged: 0, untracked: 0 })
+    expect(state.vcs).toEqual({ branch: "main", head: null, checkout: null, staged: 0, unstaged: 0, untracked: 0 })
   })
 
   test("the return value says what happened, for the product's own bookkeeping (session count, trimming)", () => {

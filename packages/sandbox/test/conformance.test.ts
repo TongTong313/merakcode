@@ -22,7 +22,9 @@ const windows = process.platform === "win32"
 const shell = windows ? (process.env.ComSpec ?? "cmd.exe") : "/bin/sh"
 
 describe.skipIf(status.status !== "on")(`sandbox conformance (${status.backend})`, () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "sandbox-conformance-"))
+  // Windows keeps approved account permissions: the engine normally allows the whole system temp directory.
+  // Put its fixture outside that allowed tree so the negative write check exercises an actual denied location.
+  const root = mkdtempSync(path.join(windows ? os.homedir() : os.tmpdir(), "sandbox-conformance-"))
   const work = path.join(root, "work")
   const home = path.join(root, "home")
   const tmp = path.join(root, "tmp")
@@ -119,12 +121,14 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
 
   test("2 cannot write outside the allowed folders", async () => {
     const target = path.join(outside, "written.txt")
-    await run(
+    const result = await run(
       node(
         "o.js",
         `try { require("fs").writeFileSync(${JSON.stringify(target)}, "x") } catch (e) { console.log(e.code) }`,
       ),
     )
+    expect(result.code, result.stderr.toString()).toBe(0)
+    expect(result.stdout.toString()).toMatch(/EACCES|EPERM/)
     expect(existsSync(target)).toBe(false)
   })
 

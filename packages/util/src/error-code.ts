@@ -596,6 +596,54 @@ export namespace ErrorCode {
       },
       errors: ["ReviewInvalidError"],
     },
+    CHECKOUT_BLOCKED: {
+      code: "MRK-7006",
+      domain: "workspace",
+      status: 409,
+      retryable: false,
+      title: { zh: "当前不能切换分支", en: "The branch cannot be switched right now" },
+      hint: {
+        zh: "查看限制原因，先处理未提交改动、运行中的任务或未完成的 Git 操作，再重试。",
+        en: "Check the reason, resolve uncommitted changes, running tasks or unfinished Git operations, then retry.",
+      },
+      errors: ["CheckoutBlockedError"],
+    },
+    BRANCH_INVALID: {
+      code: "MRK-7007",
+      domain: "workspace",
+      status: 400,
+      retryable: false,
+      title: { zh: "目标分支无效", en: "The target branch is invalid" },
+      hint: {
+        zh: "刷新分支列表，选择一个仍然存在的本地分支。",
+        en: "Refresh the branch list and select an existing local branch.",
+      },
+      errors: ["VcsInvalidBranchError"],
+    },
+    BRANCH_SWITCH_FAILED: {
+      code: "MRK-7008",
+      domain: "workspace",
+      status: 400,
+      retryable: false,
+      title: { zh: "切换分支失败", en: "Could not switch the branch" },
+      hint: {
+        zh: "查看 Git 的错误信息，处理后刷新实际分支状态再重试。",
+        en: "Check the Git error, resolve it and refresh the actual branch before retrying.",
+      },
+      errors: ["VcsSwitchFailedError"],
+    },
+    CHECKOUT_STALE: {
+      code: "MRK-7009",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: { zh: "工作目录上下文已变化", en: "The checkout context changed" },
+      hint: {
+        zh: "刷新分支和审阅内容，按当前工作目录重新操作。",
+        en: "Refresh the branch and review, then repeat the operation using the current checkout.",
+      },
+      errors: ["CheckoutStaleError"],
+    },
 
     UPDATE_CHECK_FAILED: {
       code: "MRK-8001",

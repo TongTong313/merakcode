@@ -18,7 +18,7 @@ test.use({
 
 /** Starts a conversation in a new worktree and waits for the agent to finish writing */
 async function start(kit: Kit) {
-  await kit.page.getByRole("switch", { name: /在新 worktree 中运行/ }).click()
+  await kit.page.getByRole("button", { name: "新工作树", exact: true }).click()
   await kit.send("在 worktree 里写个文件")
   await expect(kit.text("写好了")).toBeVisible({ timeout: 90_000 })
   await expect(access(path.join(kit.project, "feature.txt"))).rejects.toThrow()
@@ -34,7 +34,10 @@ const worktrees = (kit: Kit) =>
 test("writes in a new worktree without touching the main tree; merging brings the file over and cleans up", async ({
   kit,
 }) => {
+  const errors: string[] = []
+  kit.page.on("pageerror", (error) => errors.push(error.stack ?? error.message))
   await start(kit)
+  expect(errors).toEqual([])
   const sidebar = kit.page.getByRole("navigation", { name: "对话" })
   await expect(sidebar.getByRole("link")).toHaveCount(1)
   expect(worktrees(kit)).toBe(1)

@@ -559,6 +559,41 @@ controller.abort()
 await engine.close()
 ```
 
+### Branch switching and review context
+
+`client.vcs.branchOptions()` returns the real checkout directory, local branches, worktree occupancy and current switch restrictions. `client.vcs.switchBranch({ branch, expectedCheckout })` switches only to an existing local branch. The checkout must be clean, idle and free of unfinished Git operations. Managed worktrees cannot switch branches. It does not stash, force checkout or guess remote branches.
+
+`vcs.get` and `vcs.head.updated` carry an opaque `checkout` identity. Both branch switches and commits on the same branch update it; the event's `branchChanged` distinguishes them. Do not parse or order these identities. Re-read the actual state after a connection failure or stale-context response.
+
+**Review write contract change:** `review.decide` and `review.undo` require the displayed `review.get` or decision result's `checkout` as `expectedCheckout`; pass `null` for a non-Git review. A stale context returns 409 and a missing field returns 400. File details also accept `expectedCheckout` alongside the listed `version` to reject old snapshots. Changing the base of `review.get({ scope: "branch", base })` does not switch the working branch.
+
+```ts
+import { createMerakCode } from "@merakcode/sdk"
+
+const merak = await createMerakCode({ cwd: process.cwd() })
+try {
+  const { client } = merak
+  const options = (await client.vcs.branchOptions({}, { throwOnError: true })).data
+  if (options.current && !options.blocked && options.branches.some((item) => item.name === "dev" && !item.worktree)) {
+    await client.vcs.switchBranch({ branch: "dev", expectedCheckout: options.current.checkout }, { throwOnError: true })
+  }
+
+  const input = { scope: "unstaged" as const }
+  const review = (await client.review.get(input, { throwOnError: true })).data
+  if (review.files.length) {
+    const accepted = (
+      await client.review.decide(
+        { ...input, decision: "accept", expectedCheckout: review.checkout },
+        { throwOnError: true },
+      )
+    ).data
+    await client.review.undo({ ...input, expectedCheckout: accepted.checkout }, { throwOnError: true })
+  }
+} finally {
+  await merak.close()
+}
+```
+
 ## 9. Engine process
 
 `@merakcode/sdk/process` only handles the engine process:

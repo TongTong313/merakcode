@@ -30,6 +30,7 @@ import { openReview } from "../review/state"
 import { Frame } from "../shell/frame"
 import { Rename } from "../shell/rename"
 import { Composer } from "./composer"
+import { switching } from "../../state/git"
 import { groupState } from "./group-state"
 import { working } from "./turns"
 import { GroupTodo } from "./group-todo"
@@ -309,6 +310,7 @@ export function Conversation(props: { id: string; directory: string }) {
                 {(request) => <Question request={request()} directory={dir()} from={from(request())} />}
               </Show>
               <Composer
+                disabled={switching(dir())}
                 sessionID={props.id}
                 directory={props.directory}
                 busy={running()}

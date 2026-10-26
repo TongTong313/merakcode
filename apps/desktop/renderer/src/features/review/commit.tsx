@@ -6,6 +6,7 @@ import { createSignal, Show, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { refreshVcs, state } from "../../state/store"
+import { switching } from "../../state/git"
 import { Confirm } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 import { dangerousGit, splitGitArgs } from "./git-command"
@@ -26,7 +27,8 @@ function Guard(props: { reason?: string; children: JSX.Element }) {
  */
 export function Commit(props: { directory: string; all: boolean; pending?: boolean; onDone: () => void }) {
   const [message, setMessage] = createSignal("")
-  const [busy, setBusy] = createSignal(false)
+  const [working, setBusy] = createSignal(false)
+  const busy = () => working() || switching(props.directory)
   const [commandOpen, setCommandOpen] = createSignal(false)
   const [command, setCommand] = createSignal("")
   const [output, setOutput] = createSignal<string>()
@@ -69,6 +71,7 @@ export function Commit(props: { directory: string; all: boolean; pending?: boole
   const pushLabel = () => (info()?.ahead ? t("review.pushCount", { count: info()!.ahead! }) : t("review.push"))
 
   const generate = async () => {
+    if (busy()) return
     setBusy(true)
     const result = await call(client(props.directory).assist.commit.message()).catch((error: Error) => ({
       message: "",
@@ -80,7 +83,7 @@ export function Commit(props: { directory: string; all: boolean; pending?: boole
   }
 
   const commit = async () => {
-    if (!message().trim() || !hasChanges()) return
+    if (busy() || !message().trim() || !hasChanges()) return
     setBusy(true)
     const result = await call(client(props.directory).vcs.commit({ message: message(), all: props.all })).catch(
       (error: Error) => ({ ok: false as const, error: error.message }),
@@ -107,6 +110,7 @@ export function Commit(props: { directory: string; all: boolean; pending?: boole
   }
 
   const execute = async (args: string[]) => {
+    if (busy()) return
     setBusy(true)
     const result = await call(client(props.directory).vcs.run({ args })).catch((error: Error) => {
       fail(t("review.quickFailed", { message: error.message }))

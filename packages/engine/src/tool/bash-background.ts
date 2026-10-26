@@ -11,6 +11,8 @@ import { Message } from "../session/message"
 import { SessionExecution } from "../session/execution"
 import { Config } from "../config/config"
 import { Redact } from "../util/redact"
+import { Checkout } from "../project/checkout"
+import { Instance } from "../project/instance"
 
 const log = Log.create({ service: "bash-background" })
 
@@ -66,6 +68,12 @@ export namespace BashJobStore {
   const procs = new Map<string, ChildProcess>()
   const timeoutTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const stallTimers = new Map<string, ReturnType<typeof setInterval>>()
+  const releases = new Map<string, () => void>()
+
+  function releaseCheckout(id: string) {
+    releases.get(id)?.()
+    releases.delete(id)
+  }
 
   export function get(id: string): BashJob | undefined {
     return jobs.get(id)
@@ -82,6 +90,7 @@ export namespace BashJobStore {
     }
     jobs.clear()
     procs.clear()
+    for (const id of releases.keys()) releaseCheckout(id)
   }
 
   export async function stop(id: string): Promise<boolean> {
@@ -90,7 +99,7 @@ export namespace BashJobStore {
     const proc = procs.get(id)
     if (proc) {
       // Kills the process tree: SIGTERM/SIGKILL to the group on Linux and macOS, taskkill /T on Windows
-      await Shell.killTree(proc).catch(() => undefined)
+      await Shell.killTree(proc)
     }
     job.status = "stopped"
     job.endedAt = Date.now()
@@ -187,6 +196,7 @@ export namespace BashJobStore {
       }
     }
     const id = "job_" + randomUUID().replace(/-/g, "").slice(0, 16)
+    const release = Checkout.hold(Instance.has() ? Instance.worktree : params.cwd)
     const job: BashJob = {
       id,
       command: params.command,
@@ -203,7 +213,10 @@ export namespace BashJobStore {
       callID: params.callID,
     }
     jobs.set(id, job)
+    releases.set(id, release)
     procs.set(id, params.proc)
+    // A stop acknowledgement can precede inherited pipes closing, especially after the parent has exited.
+    params.proc.once("close", () => releaseCheckout(id))
     startTimeout(id, params.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS)
     startStallWatchdog(id)
     return job
@@ -355,23 +368,23 @@ export const BashBackgroundTool = Tool.define(
         const append = (chunk: Buffer) => BashJobStore.append(job.id, chunk.toString())
         proc.stdout?.on("data", append)
         proc.stderr?.on("data", append)
+        let failed = false
 
-        proc.once("exit", (code) => {
+        proc.once("close", (code) => {
           // Operations the sandbox blocked go into the job log, so the agent sees them in the completion notice
           const violations = finish("", code)
           if (violations) BashJobStore.append(job.id, violations)
           const status: JobStatus = (() => {
             if (job.status === "stopped") return "stopped"
-            return code === 0 ? "completed" : "failed"
+            return !failed && code === 0 ? "completed" : "failed"
           })()
           BashJobStore.finish(job.id, code, status)
           log.info("background job ended", { id: job.id, code, status })
         })
 
         proc.once("error", (err) => {
-          finish("")
+          failed = true
           BashJobStore.append(job.id, `\nError: ${err.message}`)
-          BashJobStore.finish(job.id, null, "failed")
         })
 
         ctx.metadata({

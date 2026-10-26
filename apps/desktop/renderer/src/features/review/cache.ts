@@ -5,10 +5,24 @@
 import type { ReviewFile, ReviewFileDetail, ReviewScope } from "@merakcode/sdk/client"
 
 /** What identifies one review list */
-export type ReviewKey = { directory: string; scope: ReviewScope; sessionID?: string; messageID?: string; base?: string }
+export type ReviewKey = {
+  directory: string
+  scope: ReviewScope
+  sessionID?: string
+  messageID?: string
+  base?: string
+  checkout?: string | null
+}
 
 export const keyOf = (input: ReviewKey) =>
-  [input.directory, input.scope, input.sessionID ?? "", input.messageID ?? "", input.base ?? ""].join("\u0000")
+  [
+    input.directory,
+    input.scope,
+    input.sessionID ?? "",
+    input.messageID ?? "",
+    input.base ?? "",
+    input.checkout ?? "",
+  ].join("\u0000")
 
 /**
  * Details stay valid while the file's content version and its accepted count are the same (accepting in the branch

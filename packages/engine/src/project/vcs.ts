@@ -6,6 +6,11 @@ import { Log } from "@merakcode/log/logger"
 import { Process } from "@merakcode/util/process"
 import { Instance } from "./instance"
 import { FileWatcher } from "../file/watcher"
+import { Checkout } from "./checkout"
+import { NamedError } from "@merakcode/util/error"
+import path from "node:path"
+import { Project } from "./project"
+import { stat } from "node:fs/promises"
 
 const log = Log.create({ service: "vcs" })
 
@@ -17,11 +22,22 @@ export namespace Vcs {
         branch: z.string().optional(),
       }),
     ),
+    HeadUpdated: BusEvent.define(
+      "vcs.head.updated",
+      z.object({
+        branch: z.string().nullable(),
+        head: z.string().nullable(),
+        checkout: z.string().nullable(),
+        branchChanged: z.boolean(),
+      }),
+    ),
   }
 
   export const Info = z
     .object({
       branch: z.string(),
+      head: z.string().nullable(),
+      checkout: z.string().nullable(),
       default_branch: z.string().optional(),
       /** Remote to push to (the upstream's remote, else origin or the only remote); absent without remotes */
       remote: z.string().optional(),
@@ -40,6 +56,43 @@ export namespace Vcs {
       ref: "VcsInfo",
     })
   export type Info = z.infer<typeof Info>
+
+  export const BranchOptions = z
+    .object({
+      directory: z.string(),
+      current: z
+        .object({ branch: z.string().nullable(), head: z.string().nullable(), checkout: z.string() })
+        .nullable(),
+      defaultBranch: z.string().optional(),
+      branches: z.object({ name: z.string(), worktree: z.string().optional() }).array(),
+      blocked: z
+        .object({
+          reason: z.enum(["not_git", "unborn", "managed_worktree", "dirty", "busy", "git_operation"]),
+          staged: z.number().int().optional(),
+          unstaged: z.number().int().optional(),
+          untracked: z.number().int().optional(),
+          operation: z.string().optional(),
+        })
+        .optional(),
+    })
+    .meta({ ref: "VcsBranchOptions" })
+  export type BranchOptions = z.infer<typeof BranchOptions>
+
+  export const SwitchInput = z
+    .object({ branch: z.string().min(1).max(2000), expectedCheckout: z.string() })
+    .meta({ ref: "VcsSwitchInput" })
+  export type SwitchInput = z.infer<typeof SwitchInput>
+
+  export const SwitchResult = z
+    .object({ branch: z.string(), head: z.string(), checkout: z.string(), changed: z.boolean() })
+    .meta({ ref: "VcsSwitchResult" })
+  export type SwitchResult = z.infer<typeof SwitchResult>
+
+  export const InvalidBranchError = NamedError.create(
+    "VcsInvalidBranchError",
+    z.object({ branch: z.string(), message: z.string() }),
+  )
+  export const SwitchFailedError = NamedError.create("VcsSwitchFailedError", z.object({ message: z.string() }))
 
   /** Diff of the git working tree or the branch; last-turn is served by session.diff, not here */
   export const Mode = z.enum(["git", "branch", "last-turn"])
@@ -499,14 +552,22 @@ export namespace Vcs {
   export async function commit(input: { message: string; all?: boolean }): Promise<CommitResult> {
     if (Instance.project.vcs !== "git") return { ok: false, error: "not a git repository" }
     if (!input.message.trim()) return { ok: false, error: "empty commit message" }
-    const cwd = Instance.worktree
-    const git = (args: string[]) => Process.run(["git", ...args], { cwd, nothrow: true })
-    if (input.all) await git(["add", "-A"])
-    // diff --cached --quiet exits with 0 when nothing is staged
-    if ((await git(["diff", "--cached", "--quiet"])).exitCode === 0) return { ok: false, error: "nothing to commit" }
-    const result = await git(["commit", "-m", input.message])
-    if (result.exitCode !== 0) return { ok: false, error: (result.stderr.toString() || result.text()).trim() }
-    return { ok: true, hash: (await git(["rev-parse", "--short", "HEAD"])).text().trim() }
+    return Checkout.activity(async () => {
+      await state()
+      try {
+        const cwd = Instance.worktree
+        const git = (args: string[]) => Process.run(["git", ...args], { cwd, nothrow: true })
+        if (input.all) await git(["add", "-A"])
+        // diff --cached --quiet exits with 0 when nothing is staged
+        if ((await git(["diff", "--cached", "--quiet"])).exitCode === 0)
+          return { ok: false, error: "nothing to commit" }
+        const result = await git(["commit", "-m", input.message])
+        if (result.exitCode !== 0) return { ok: false, error: (result.stderr.toString() || result.text()).trim() }
+        return { ok: true, hash: (await git(["rev-parse", "--short", "HEAD"])).text().trim() }
+      } finally {
+        await Checkout.current()
+      }
+    })
   }
 
   export const PushResult = z
@@ -594,15 +655,23 @@ export namespace Vcs {
 
   /** Branch, default branch, push remote, commits ahead of and behind upstream, and change counts */
   export async function status(): Promise<Info | undefined> {
+    return (await readStatus())?.info
+  }
+
+  async function readStatus() {
     if (Instance.project.vcs !== "git") return undefined
-    const [porcelain, root] = await Promise.all([
+    await state()
+    const [porcelain, root, identity] = await Promise.all([
       run(["status", "--porcelain=v2", "--branch", "--untracked-files=all", "--no-renames"]),
       readDefaultBranch(Instance.worktree),
+      Checkout.current(),
     ])
     const summary = summarize(porcelain.text())
     const remote = await pushRemote(summary.upstream)
-    return {
-      branch: summary.branch,
+    const info: Info = {
+      branch: identity?.branch ?? (identity?.head ? "HEAD" : summary.branch),
+      head: identity?.head ?? null,
+      checkout: identity?.checkout ?? null,
       staged: summary.staged,
       unstaged: summary.unstaged,
       untracked: summary.untracked,
@@ -610,6 +679,7 @@ export namespace Vcs {
       ...(remote ? { remote } : {}),
       ...(summary.ahead !== undefined ? { ahead: summary.ahead, behind: summary.behind ?? 0 } : {}),
     }
+    return { identity, info }
   }
 
   /**
@@ -618,28 +688,42 @@ export namespace Vcs {
    */
   export async function push(): Promise<PushResult> {
     if (Instance.project.vcs !== "git") return { ok: false, error: "not a git repository" }
-    const branch = await currentBranch()
-    if (!branch || branch === "HEAD") return { ok: false, error: "not on a branch" }
-    const tracking = await upstream()
-    const remote = await pushRemote(tracking)
-    if (!remote) return { ok: false, error: "no remote" }
-    const result = await run(tracking ? ["push"] : ["push", "-u", remote, branch])
-    if (result.exitCode !== 0) return { ok: false, error: (result.stderr.toString() || result.text()).trim() }
-    log.info("pushed", { branch, remote })
-    return { ok: true, branch, remote }
+    return Checkout.activity(async () => {
+      await state()
+      try {
+        const branch = await currentBranch()
+        if (!branch || branch === "HEAD") return { ok: false, error: "not on a branch" }
+        const tracking = await upstream()
+        const remote = await pushRemote(tracking)
+        if (!remote) return { ok: false, error: "no remote" }
+        const result = await run(tracking ? ["push"] : ["push", "-u", remote, branch])
+        if (result.exitCode !== 0) return { ok: false, error: (result.stderr.toString() || result.text()).trim() }
+        log.info("pushed", { branch, remote })
+        return { ok: true, branch, remote }
+      } finally {
+        await Checkout.current()
+      }
+    })
   }
 
   /** Runs git with the given arguments in the worktree. Arguments are not passed through a shell. */
   export async function runGit(args: string[]): Promise<RunResult> {
     if (Instance.project.vcs !== "git") return { exitCode: 1, output: "not a git repository" }
     if (args.length === 0 || args.some((arg) => arg.includes("\0"))) return { exitCode: 1, output: "empty command" }
-    const result = await run(args)
-    const error = result.stderr.toString().trim()
-    const output = [result.text().trim(), error].filter(Boolean).join("\n")
-    return {
-      exitCode: result.exitCode,
-      output: output.length > OUTPUT_LIMIT ? `${output.slice(0, OUTPUT_LIMIT)}\n…` : output,
-    }
+    return Checkout.activity(async () => {
+      await state()
+      try {
+        const result = await run(args)
+        const error = result.stderr.toString().trim()
+        const output = [result.text().trim(), error].filter(Boolean).join("\n")
+        return {
+          exitCode: result.exitCode,
+          output: output.length > OUTPUT_LIMIT ? `${output.slice(0, OUTPUT_LIMIT)}\n…` : output,
+        }
+      } finally {
+        await Checkout.current()
+      }
+    })
   }
 
   /** Local branches, sorted by name */
@@ -654,6 +738,129 @@ export namespace Vcs {
       .toSorted()
   }
 
+  export async function branchOptions(): Promise<BranchOptions> {
+    await state()
+    const [snapshot, names, worktrees, managed, operation] = await Promise.all([
+      readStatus(),
+      branches(),
+      occupiedBranches(),
+      managedWorktree(),
+      gitOperation(),
+    ])
+    const identity = snapshot?.identity
+    const info = snapshot?.info
+    const dirty = info && info.staged + info.unstaged + info.untracked > 0
+    const blocked: BranchOptions["blocked"] = (() => {
+      if (!identity) return { reason: "not_git" }
+      if (!identity.head) return { reason: "unborn" }
+      if (managed) return { reason: "managed_worktree" }
+      if (Checkout.busy()) return { reason: "busy" }
+      if (operation) return { reason: "git_operation", operation }
+      if (dirty) return { reason: "dirty", staged: info.staged, unstaged: info.unstaged, untracked: info.untracked }
+    })()
+    return {
+      directory: identity?.directory ?? Instance.directory,
+      current: identity ? { branch: identity.branch, head: identity.head, checkout: identity.checkout } : null,
+      ...(info?.default_branch ? { defaultBranch: info.default_branch } : {}),
+      branches: names.map((name) => {
+        const worktree = worktrees.get(name)
+        return { name, ...(worktree ? { worktree } : {}) }
+      }),
+      ...(blocked ? { blocked } : {}),
+    }
+  }
+
+  export async function switchBranch(input: SwitchInput): Promise<SwitchResult> {
+    await state()
+    return Checkout.exclusive(async () => {
+      const before = await Checkout.assert(input.expectedCheckout)
+      if (!before)
+        throw new Checkout.BlockedError({ reason: "not_git", message: "The directory is not a Git checkout" })
+      if (!before.head)
+        throw new Checkout.BlockedError({ reason: "unborn", message: "The checkout needs its first commit" })
+      if (before.branch === input.branch && before.head)
+        return { branch: input.branch, head: before.head, checkout: before.checkout, changed: false }
+      if (await managedWorktree())
+        throw new Checkout.BlockedError({
+          reason: "managed_worktree",
+          message: "The managed worktree is bound to its branch",
+        })
+      if (!(await branches()).includes(input.branch))
+        throw new InvalidBranchError({ branch: input.branch, message: "The local branch does not exist" })
+      const operation = await gitOperation()
+      if (operation)
+        throw new Checkout.BlockedError({
+          reason: "git_operation",
+          message: "The checkout has an unfinished Git operation",
+          operation,
+        })
+      const info = await status()
+      if (info && info.staged + info.unstaged + info.untracked > 0)
+        throw new Checkout.BlockedError({
+          reason: "dirty",
+          message: "The checkout has uncommitted changes",
+          staged: info.staged,
+          unstaged: info.unstaged,
+          untracked: info.untracked,
+        })
+      const occupied = (await occupiedBranches()).get(input.branch)
+      if (occupied)
+        throw new Checkout.BlockedError({
+          reason: "occupied",
+          message: "The branch is already used by another worktree",
+          branch: input.branch,
+          worktree: occupied,
+        })
+      await Checkout.assert(input.expectedCheckout)
+      const result = await run(["switch", "--no-guess", "--", input.branch])
+      if (result.exitCode !== 0)
+        throw new SwitchFailedError({ message: (result.stderr.toString() || result.text()).trim() })
+      const after = await Checkout.current()
+      if (!after?.head || after.branch !== input.branch)
+        throw new SwitchFailedError({ message: "The checkout does not match the selected branch" })
+      return { branch: after.branch, head: after.head, checkout: after.checkout, changed: true }
+    })
+  }
+
+  async function managedWorktree() {
+    const directories = await Project.sandboxes(Instance.project.id)
+    return directories.some((directory) => Checkout.sameDirectory(directory, Instance.worktree))
+  }
+
+  async function gitOperation() {
+    const result = await run(["rev-parse", "--git-dir"])
+    if (result.exitCode !== 0) return undefined
+    const directory = path.resolve(Instance.worktree, result.text().trim())
+    const markers = [
+      ["rebase-merge", "rebase"],
+      ["rebase-apply", "rebase"],
+      ["MERGE_HEAD", "merge"],
+      ["CHERRY_PICK_HEAD", "cherry-pick"],
+      ["REVERT_HEAD", "revert"],
+      ["BISECT_LOG", "bisect"],
+      ["sequencer", "sequencer"],
+    ] as const
+    const active = await Promise.all(
+      markers.map(async ([marker, operation]) =>
+        (await stat(path.join(directory, marker)).catch(() => undefined)) ? operation : undefined,
+      ),
+    )
+    return active.find(Boolean)
+  }
+
+  async function occupiedBranches() {
+    const result = await run(["worktree", "list", "--porcelain", "-z"])
+    const occupied = new Map<string, string>()
+    let directory: string | undefined
+    for (const field of result.text().split("\0")) {
+      if (field.startsWith("worktree ")) directory = path.resolve(field.slice("worktree ".length))
+      if (!field.startsWith("branch refs/heads/") || !directory || Checkout.sameDirectory(directory, Instance.worktree))
+        continue
+      occupied.set(field.slice("branch refs/heads/".length), directory)
+    }
+    return occupied
+  }
+
   async function currentBranch() {
     return Process.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd: Instance.worktree, nothrow: true })
       .then((x) => x.text().trim())
@@ -665,22 +872,38 @@ export namespace Vcs {
       if (Instance.project.vcs !== "git") {
         return { branch: async () => undefined, unsubscribe: undefined }
       }
-      let current = await currentBranch()
-      log.info("initialized", { branch: current })
-
-      const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, async (evt) => {
-        if (!evt.properties.file.endsWith("HEAD")) return
-        const next = await currentBranch()
-        if (next !== current) {
-          log.info("branch changed", { from: current, to: next })
-          current = next
-          Bus.publish(Event.BranchUpdated, { branch: next })
-        }
+      let current = await Checkout.current()
+      log.info("initialized", { branch: current?.branch })
+      const release = Checkout.subscribe((next, previous) => {
+        current = next
+        const branchChanged = next?.branch !== previous?.branch
+        if (branchChanged)
+          Bus.publish(Event.BranchUpdated, { branch: next?.branch ?? (next?.head ? "HEAD" : undefined) })
+        Bus.publish(Event.HeadUpdated, {
+          branch: next?.branch ?? null,
+          head: next?.head ?? null,
+          checkout: next?.checkout ?? null,
+          branchChanged,
+        })
+      })
+      let refresh: ReturnType<typeof setTimeout> | undefined
+      const unwatch = Bus.subscribe(FileWatcher.Event.Updated, (evt) => {
+        const file = evt.properties.file.replace(/\\/g, "/")
+        if (!file.endsWith("/HEAD") && !file.endsWith("/packed-refs") && !file.includes("/refs/")) return
+        clearTimeout(refresh)
+        refresh = setTimeout(() => {
+          void Checkout.current().catch((error) => log.error("checkout refresh failed", { error }))
+        }, 25)
+        refresh.unref?.()
       })
 
       return {
-        branch: async () => current,
-        unsubscribe,
+        branch: async () => current?.branch ?? (current?.head ? "HEAD" : undefined),
+        unsubscribe: () => {
+          clearTimeout(refresh)
+          release()
+          unwatch()
+        },
       }
     },
     async (state) => {

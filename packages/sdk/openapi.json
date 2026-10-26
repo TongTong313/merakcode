@@ -811,6 +811,36 @@
         "required": ["type", "properties"],
         "additionalProperties": false
       },
+      "Event.vcs.head.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.head.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": ["string", "null"]
+              },
+              "head": {
+                "type": ["string", "null"]
+              },
+              "checkout": {
+                "type": ["string", "null"]
+              },
+              "branchChanged": {
+                "type": "boolean"
+              }
+            },
+            "required": ["branch", "head", "checkout", "branchChanged"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"],
+        "additionalProperties": false
+      },
       "PermissionGrant": {
         "type": "object",
         "properties": {
@@ -3581,6 +3611,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.head.updated"
           },
           {
             "$ref": "#/components/schemas/Event.permission.asked"
@@ -9660,6 +9693,9 @@
           "scope": {
             "$ref": "#/components/schemas/ReviewScope"
           },
+          "checkout": {
+            "type": ["string", "null"]
+          },
           "base": {
             "type": "string"
           },
@@ -9683,7 +9719,7 @@
             }
           }
         },
-        "required": ["scope", "actions", "files"],
+        "required": ["scope", "checkout", "actions", "files"],
         "additionalProperties": false
       },
       "ReviewInvalidError": {
@@ -9728,6 +9764,88 @@
               }
             },
             "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
+      "CheckoutStaleError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "CheckoutStaleError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "expectedCheckout": {
+                "type": ["string", "null"]
+              },
+              "checkout": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["message", "expectedCheckout", "checkout"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
+      "CheckoutBlockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "CheckoutBlockedError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": ["not_git", "unborn", "managed_worktree", "dirty", "busy", "git_operation", "occupied"]
+              },
+              "message": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "worktree": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "staged": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unstaged": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "untracked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["reason", "message"],
             "additionalProperties": false
           }
         },
@@ -10539,6 +10657,12 @@
           "branch": {
             "type": "string"
           },
+          "head": {
+            "type": ["string", "null"]
+          },
+          "checkout": {
+            "type": ["string", "null"]
+          },
           "default_branch": {
             "type": "string"
           },
@@ -10567,7 +10691,158 @@
             "maximum": 9007199254740991
           }
         },
-        "required": ["branch", "staged", "unstaged", "untracked"],
+        "required": ["branch", "head", "checkout", "staged", "unstaged", "untracked"],
+        "additionalProperties": false
+      },
+      "VcsBranchOptions": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "branch": {
+                    "type": ["string", "null"]
+                  },
+                  "head": {
+                    "type": ["string", "null"]
+                  },
+                  "checkout": {
+                    "type": "string"
+                  }
+                },
+                "required": ["branch", "head", "checkout"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "worktree": {
+                  "type": "string"
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false
+            }
+          },
+          "blocked": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": ["not_git", "unborn", "managed_worktree", "dirty", "busy", "git_operation"]
+              },
+              "staged": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unstaged": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "untracked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "operation": {
+                "type": "string"
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["directory", "current", "branches"],
+        "additionalProperties": false
+      },
+      "VcsSwitchResult": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "checkout": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": ["branch", "head", "checkout", "changed"],
+        "additionalProperties": false
+      },
+      "VcsInvalidBranchError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "VcsInvalidBranchError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["branch", "message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
+      "VcsSwitchFailedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "VcsSwitchFailedError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
         "additionalProperties": false
       },
       "VcsPushResult": {
@@ -12650,6 +12925,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -12704,6 +12989,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -12751,6 +13046,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -14171,6 +14476,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -14640,6 +14955,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -14806,6 +15131,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -14947,6 +15282,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15046,6 +15391,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15123,6 +15478,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -18515,11 +18880,21 @@
             }
           },
           "409": {
-            "description": "The file or hunk is no longer in the review (the list is stale); fetch it again",
+            "description": "The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewStaleError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    }
+                  ]
                 }
               }
             }
@@ -18544,7 +18919,7 @@
           }
         ],
         "summary": "Decide review",
-        "description": "Accept or reject whole files or single hunks. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
+        "description": "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
         "responses": {
           "200": {
             "description": "Updated review",
@@ -18567,11 +18942,21 @@
             }
           },
           "409": {
-            "description": "The file or hunk is no longer in the review (the list is stale); fetch it again",
+            "description": "The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewStaleError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    }
+                  ]
                 }
               }
             }
@@ -18596,6 +18981,9 @@
                   "base": {
                     "type": "string"
                   },
+                  "expectedCheckout": {
+                    "type": ["string", "null"]
+                  },
                   "decision": {
                     "type": "string",
                     "enum": ["accept", "reject"]
@@ -18619,7 +19007,7 @@
                     }
                   }
                 },
-                "required": ["scope", "decision"]
+                "required": ["scope", "expectedCheckout", "decision"]
               }
             }
           }
@@ -18686,10 +19074,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "expectedCheckout",
+            "schema": {
+              "type": ["string", "null"]
+            }
           }
         ],
         "summary": "Get review file",
-        "description": "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version from review.get; when the file has changed since, the request fails with 409.",
+        "description": "Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.",
         "responses": {
           "200": {
             "description": "File hunks",
@@ -18712,11 +19107,21 @@
             }
           },
           "409": {
-            "description": "The file or hunk is no longer in the review (the list is stale); fetch it again",
+            "description": "The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewStaleError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    }
+                  ]
                 }
               }
             }
@@ -18743,7 +19148,7 @@
           }
         ],
         "summary": "Undo review decision",
-        "description": "Undo the most recent decision in a review scope. Fails with 409 when there is nothing to undo or the files changed after the decision.",
+        "description": "Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.",
         "responses": {
           "200": {
             "description": "Updated review",
@@ -18766,11 +19171,21 @@
             }
           },
           "409": {
-            "description": "The file or hunk is no longer in the review (the list is stale); fetch it again",
+            "description": "The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewStaleError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutStaleError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    }
+                  ]
                 }
               }
             }
@@ -18794,9 +19209,12 @@
                   },
                   "base": {
                     "type": "string"
+                  },
+                  "expectedCheckout": {
+                    "type": ["string", "null"]
                   }
                 },
-                "required": ["scope"]
+                "required": ["scope", "expectedCheckout"]
               }
             }
           }
@@ -19926,6 +20344,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The checkout is switching branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutBlockedError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -20052,6 +20480,33 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The file changed or its checkout is switching branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "currentChecksum": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error", "currentChecksum"],
+                      "additionalProperties": false
+                    }
+                  ]
                 }
               }
             }
@@ -21164,6 +21619,151 @@
         ]
       }
     },
+    "/vcs/branch-options": {
+      "get": {
+        "operationId": "vcs.branchOptions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get branch options",
+        "description": "Local branches, their worktree occupancy and the current checkout's switch restrictions.",
+        "responses": {
+          "200": {
+            "description": "Branch options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VcsBranchOptions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.branchOptions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/vcs/switch": {
+      "post": {
+        "operationId": "vcs.switchBranch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Switch branch",
+        "description": "Switch a clean, idle checkout to an existing local branch using its expected checkout identity.",
+        "responses": {
+          "200": {
+            "description": "Switched checkout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VcsSwitchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid local branch or Git could not switch branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/VcsInvalidBranchError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VcsSwitchFailedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy, restricted or changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CheckoutBlockedError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CheckoutStaleError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "branch": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "expectedCheckout": {
+                    "type": "string"
+                  }
+                },
+                "required": ["branch", "expectedCheckout"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.switchBranch({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/vcs/push": {
       "post": {
         "operationId": "vcs.push",
@@ -21207,6 +21807,16 @@
                     "data": {}
                   },
                   "required": ["success", "error", "data"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -21263,6 +21873,16 @@
                     "data": {}
                   },
                   "required": ["success", "error", "data"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -21585,6 +22205,16 @@
                     "data": {}
                   },
                   "required": ["success", "error", "data"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

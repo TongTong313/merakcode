@@ -1,6 +1,7 @@
-import type { Command, FilePartInput, PermissionMode, UserMessage } from "@merakcode/sdk/client"
+import type { Command, FilePartInput, PermissionMode, UserMessage, Worktree } from "@merakcode/sdk/client"
 import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
+import { baseName, sameDir } from "../../lib/route"
 import { choice, modelKey } from "../../state/models"
 import { call, client } from "../../state/client"
 import { listen, partsOf, reload, session } from "../../state/store"
@@ -101,16 +102,50 @@ export async function retry(sessionID: string, directory: string, message: UserM
   await send(sessionID, directory, submission)
 }
 
-/** Creates a worktree and returns it once checked out (the engine emits worktree.ready) */
-export async function createWorktree(directory: string, base?: string) {
-  const info = await call(client(directory).worktree.create({ worktreeCreateInput: base ? { base } : {} }))
+export type WorktreeAttempt = { name: string; requested?: boolean; info?: Worktree }
+const worktreeStatus = new Map<string, { ready?: boolean; error?: string }>()
+listen((directory, event) => {
+  if (event.type === "worktree.ready") worktreeStatus.set(directory, { ready: true })
+  if (event.type === "worktree.failed") worktreeStatus.set(directory, { error: event.properties.message })
+})
+
+/** Keeps the returned worktree through session or message failures, and resolves ambiguous create results first. */
+export async function createWorktree(directory: string, base?: string, attempt?: WorktreeAttempt) {
+  const pending = attempt ?? { name: `task-${crypto.randomUUID().slice(0, 8)}` }
+  if (!pending.info && pending.requested) {
+    const directories = await call(client(directory).worktree.list())
+    const found = directories.find((value) => baseName(value) === pending.name)
+    if (!found) throw new Error(t("compose.worktreeUncertain"))
+    const vcs = await call(client(found).vcs.get())
+    if (vcs.branch !== `merakcode/${pending.name}` || !vcs.head) throw new Error(t("compose.worktreeUncertain"))
+    pending.info = { directory: found, name: pending.name, branch: vcs.branch }
+    if (!vcs.staged && !vcs.unstaged) worktreeStatus.set(found, { ready: true })
+  }
+  if (!pending.info) {
+    pending.requested = true
+    try {
+      pending.info = await call(
+        client(directory).worktree.create({ worktreeCreateInput: { name: pending.name, ...(base ? { base } : {}) } }),
+      )
+    } catch (error) {
+      // A structured rejection happened before creation; a transport failure has an unknown outcome.
+      const status = (error as Error & { status?: number }).status
+      if (status && status >= 400 && status < 500 && status !== 408) pending.requested = false
+      throw error
+    }
+  }
+  const info = pending.info
+  const known = [...worktreeStatus].find(([directory]) => sameDir(directory, info.directory))?.[1]
+  if (known?.ready) return info
+  if (known?.error) throw new Error(known.error)
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       stop()
       reject(new Error(t("compose.creatingWorktree")))
     }, 120_000)
     const stop = listen((dir, event) => {
-      if (dir !== info.directory) return
+      if (event.type !== "worktree.ready" && event.type !== "worktree.failed") return
+      if (!sameDir(dir, info.directory)) return
       if (event.type === "worktree.ready") {
         clearTimeout(timer)
         stop()

@@ -102,13 +102,17 @@ what to do.
 
 ## 7xxx 工作区与 Git · Workspace and git
 
-| 错误码 Code | 说明                   | Meaning                              | 怎么办 · What to do                                                                                                                  |
-| ----------- | ---------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| MRK-7001    | 这里不是 git 仓库      | This is not a git repository         | 工作树功能需要 git 仓库。先在项目里运行 git init。<br>Worktrees need a git repository. Run git init in the project first.            |
-| MRK-7002    | 工作树操作失败         | A worktree operation failed          | 报错里有 git 的原话，按它的提示处理。<br>The error includes git's own message; follow it.                                            |
-| MRK-7003    | 工作树里有没提交的改动 | The worktree has uncommitted changes | 先提交或丢弃工作树里的改动，再重置。<br>Commit or discard the changes in the worktree first, then reset it.                          |
-| MRK-7004    | 文件在审阅期间被改过了 | Files changed while being reviewed   | 刷新审阅页面，按最新的文件内容重新审阅。<br>Refresh the review and go through the latest version of the files.                       |
-| MRK-7005    | 审阅请求不对           | Invalid review request               | 报错信息里写了哪里不对。用 SDK 时检查传进去的参数。<br>The message says what is wrong. If you use the SDK, check what you passed in. |
+| 错误码 Code | 说明                   | Meaning                                 | 怎么办 · What to do                                                                                                                                                                 |
+| ----------- | ---------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-7001    | 这里不是 git 仓库      | This is not a git repository            | 工作树功能需要 git 仓库。先在项目里运行 git init。<br>Worktrees need a git repository. Run git init in the project first.                                                           |
+| MRK-7002    | 工作树操作失败         | A worktree operation failed             | 报错里有 git 的原话，按它的提示处理。<br>The error includes git's own message; follow it.                                                                                           |
+| MRK-7003    | 工作树里有没提交的改动 | The worktree has uncommitted changes    | 先提交或丢弃工作树里的改动，再重置。<br>Commit or discard the changes in the worktree first, then reset it.                                                                         |
+| MRK-7004    | 文件在审阅期间被改过了 | Files changed while being reviewed      | 刷新审阅页面，按最新的文件内容重新审阅。<br>Refresh the review and go through the latest version of the files.                                                                      |
+| MRK-7005    | 审阅请求不对           | Invalid review request                  | 报错信息里写了哪里不对。用 SDK 时检查传进去的参数。<br>The message says what is wrong. If you use the SDK, check what you passed in.                                                |
+| MRK-7006    | 当前不能切换分支       | The branch cannot be switched right now | 查看限制原因，先处理未提交改动、运行中的任务或未完成的 Git 操作，再重试。<br>Check the reason, resolve uncommitted changes, running tasks or unfinished Git operations, then retry. |
+| MRK-7007    | 目标分支无效           | The target branch is invalid            | 刷新分支列表，选择一个仍然存在的本地分支。<br>Refresh the branch list and select an existing local branch.                                                                          |
+| MRK-7008    | 切换分支失败           | Could not switch the branch             | 查看 Git 的错误信息，处理后刷新实际分支状态再重试。<br>Check the Git error, resolve it and refresh the actual branch before retrying.                                               |
+| MRK-7009    | 工作目录上下文已变化   | The checkout context changed            | 刷新分支和审阅内容，按当前工作目录重新操作。<br>Refresh the branch and review, then repeat the operation using the current checkout.                                                |
 
 ## 8xxx 安装与更新 · Install and update
 

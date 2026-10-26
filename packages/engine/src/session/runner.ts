@@ -21,6 +21,7 @@ import { SessionCompaction } from "./compaction"
 import { SessionContextView } from "./context-view"
 import { SessionContextLayer } from "./context-layer"
 import { Instance } from "../project/instance"
+import { Checkout } from "../project/checkout"
 import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
 import { ContextAttach } from "./context-attach"
@@ -136,6 +137,7 @@ export namespace SessionRunner {
     queuedPrompts: QueuedPrompt[]
     /** Resolved when the owner loop body exits, after the processor has written any in-flight PatchPart. */
     done: { promise: Promise<void>; resolve: () => void }
+    releaseCheckout: () => void
   }
 
   // Runtime state is scoped per Instance.
@@ -170,6 +172,7 @@ export namespace SessionRunner {
   const admissions = Instance.state(() => new Map<string, Set<AbortController>>())
 
   function admit(sessionID: string) {
+    const releaseCheckout = Checkout.hold()
     const controller = new AbortController()
     const entries = admissions().get(sessionID) ?? new Set<AbortController>()
     entries.add(controller)
@@ -177,6 +180,7 @@ export namespace SessionRunner {
     return {
       signal: controller.signal,
       release() {
+        releaseCheckout()
         entries.delete(controller)
         if (entries.size === 0 && admissions().get(sessionID) === entries) admissions().delete(sessionID)
       },
@@ -549,6 +553,7 @@ export namespace SessionRunner {
   function start(sessionID: string) {
     const s = state()
     if (s[sessionID]) return undefined
+    const releaseCheckout = Checkout.hold()
     const controller = new AbortController()
     s[sessionID] = {
       abort: controller,
@@ -556,6 +561,7 @@ export namespace SessionRunner {
       callbacks: [],
       queuedPrompts: [],
       done: makeDone(),
+      releaseCheckout,
     }
     // Return the controller rather than its signal: the loop checks identity on its deferred cancel, so an old loop
     // exiting does not kill a new loop started by notification delivery (which produced two "interrupted" messages).
@@ -733,10 +739,12 @@ export namespace SessionRunner {
       await Promise.all([previous.done.promise, reconciliation])
       if (controller.signal.aborted || state()[sessionID] !== self) {
         self.done.resolve()
+        self.releaseCheckout()
         return
       }
       if (!self.queuedPrompts.length) {
         self.done.resolve()
+        self.releaseCheckout()
         releaseOwner(sessionID, controller)
         return
       }
@@ -1753,6 +1761,7 @@ export namespace SessionRunner {
       unbind()
       self.running = false
       self.done.resolve()
+      self.releaseCheckout()
       releaseOwner(sessionID, controller)
       completed?.callback.resolve(completed.result)
     }
@@ -3586,6 +3595,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       // If no queued callbacks, cancel (the default)
       const callbacks = state()[input.sessionID]?.callbacks ?? []
       if (callbacks.length === 0) {
+        self?.releaseCheckout()
         cancel(input.sessionID)
       } else {
         // Otherwise, trigger the session loop to process queued items

@@ -29,6 +29,14 @@ export const ERRORS = {
       },
     },
   },
+  409: {
+    description: "Checkout is busy or the request conflicts with its current state",
+    content: {
+      "application/json": {
+        schema: resolver(ErrorResponse),
+      },
+    },
+  },
 } as const
 
 export function errors(...codes: number[]) {

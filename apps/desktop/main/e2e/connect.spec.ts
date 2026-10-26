@@ -30,7 +30,7 @@ test.describe("custom provider", () => {
 
     await kit.page.keyboard.press("Escape")
     await kit.page
-      .getByRole("button", { name: /^模型 / })
+      .getByRole("button", { name: /^配置模型，/ })
       .filter({ visible: true })
       .first()
       .click()

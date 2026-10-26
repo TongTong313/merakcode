@@ -9,13 +9,15 @@ import { t } from "../../i18n"
 import { session } from "../../state/store"
 import { setUi } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
+import { overlays } from "../../ui/overlay"
 import { toast } from "../../ui/toast"
 import { send } from "../conversation/send"
 import { CommentComposer } from "./compose"
 import { Commit } from "./commit"
 import { present } from "./present"
+import { ReviewToolbar } from "./toolbar"
 import { ReviewTree } from "./tree"
-import { BulkActions, LastDecision, ReviewFiles, ScopeBar } from "./review"
+import { BulkActions, LastDecision, ReviewFiles } from "./review"
 import {
   clearComments,
   commentMessage,
@@ -85,6 +87,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
 
   onMount(() => {
     const listener = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || overlays()) return
       const target = event.target as HTMLElement
       if (target.closest("input, textarea, [contenteditable]") || event.ctrlKey || event.metaKey || event.altKey) return
       const current = hunks().find((item) => item.id !== undefined && item.id === active())
@@ -111,9 +114,15 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
   const sendComments = async () => {
     const sessionID = props.sessionID
     if (!sessionID) return
-    await send(sessionID, props.directory, { text: commentMessage(comments()), files: [] }).catch((error: Error) =>
-      toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+    if (comments().some((comment) => comment.stale)) return
+    const sent = await send(sessionID, props.directory, { text: commentMessage(comments()), files: [] }).then(
+      () => true,
+      (error: Error) => {
+        toast({ kind: "error", title: t("error.request", { message: error.message }), error })
+        return false
+      },
     )
+    if (!sent) return
     clearComments(sessionID)
   }
 
@@ -129,7 +138,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
           <Show when={props.sessionID}>{(id) => ` · ${session(id())?.title ?? ""}`}</Show>
         </span>
         <div class="no-drag row grow">
-          <ScopeBar folder={props.folder} directory={props.directory} data={data} sessionID={props.sessionID} />
+          <ReviewToolbar folder={props.folder} directory={props.directory} data={data} sessionID={props.sessionID} />
           <Segmented
             label={t("review.split")}
             options={[
@@ -185,7 +194,11 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
         <aside class="review-side" aria-label={t("review.comments")}>
           <div class="side-head">{t("review.comments")}</div>
           <Show when={props.sessionID}>
-            <CommentComposer sessionID={props.sessionID} target={commentingOn(files(), (file) => data.detail(file))} />
+            <CommentComposer
+              directory={props.directory}
+              sessionID={props.sessionID}
+              target={commentingOn(files(), (file) => data.detail(file))}
+            />
           </Show>
           <div class="side-list scroll">
             <Show when={comments().length} fallback={<p class="subtle side-empty">{t("review.noComments")}</p>}>
@@ -214,7 +227,12 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
           </div>
           <div class="side-foot">
             <Show when={props.sessionID}>
-              <button class="button primary" disabled={!comments().length} onClick={() => void sendComments()}>
+              <button
+                class="button primary"
+                disabled={!comments().length || comments().some((comment) => comment.stale)}
+                title={comments().some((comment) => comment.stale) ? t("review.draftStale") : undefined}
+                onClick={() => void sendComments()}
+              >
                 <Bot class="icon icon-sm" />
                 {t("review.send")}
               </button>
