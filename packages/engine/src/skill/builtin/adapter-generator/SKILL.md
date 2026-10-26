@@ -16,32 +16,40 @@ below, so you can copy it with `cp`.
 - `merakcode-adapter.mjs` and `merakcode-adapter.d.mts`: the adapter library and its types. Copy both next to the
   adapter with `cp`. Never write them out yourself: a retyped library breaks in ways that are hard to find.
 - `example-claude-code.mts`, `example-codex.mts`, `example-opencode.mts`: the adapters MerakCode itself runs for Claude
-  Code, Codex and OpenCode. Each talks to its CLI in one of the three ways in step 1, and each is tested against its
-  CLI.
+  Code, Codex and OpenCode. Each talks to its CLI in one of the three ways in step 1.
 
 ## The contract
 
 `adapter({ inspect, run })` from the library:
 
-- `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable? }`. It runs without a task, so
-  it must never start work: `version(command)` from the library runs `<cli> --version` and gives `{ version }` or
+- `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable? }`. It runs before each task
+  (`unavailable` fails the task) and when settings shows the product, so it must be quick and never start work or rely
+  on the working directory: `version(command)` from the library runs `<cli> --version` and gives `{ version }` or
   `{ unavailable }`.
-- `run(task, host)` does one task and returns `{ text, sessionId? }`. `task` has `prompt`, `cwd`, `mode`
-  (`"readonly" | "ask" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to continue its session),
-  `product` (`command`, `args` from the user's config) and `signal` (aborts when the user stops the group).
+- `run(task, host)` does one task and returns `{ text, sessionId? }`; an empty `text` fails the task. `task` has
+  `prompt`, `cwd`, `mode` (`"readonly" | "ask" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to
+  continue its session; if the CLI no longer has that session, start a new one), `product` and `signal`. For a member
+  adapter `product` has only `id` and `title`: the config's `command` and `args` start the adapter itself, so the CLI's
+  command belongs in the adapter, and in a copied example `task.product.command` and `args` are empty and fall back to
+  its defaults. `signal` aborts when the user stops the group, and also after the task ends, when MerakCode closes the
+  adapter's stdin.
 - `host` is MerakCode, passed to `run` by the library. Its type is `Host`; import it with `type Host` only to pass `host`
   on to a function of your own.
 - `host.step({ tool, detail? })` shows what the CLI is doing. It does not wait.
 - `host.permission(request)` asks whether the CLI may do something and waits for `{ allow: true }` or
   `{ allow: false, message }`. `request` is one of: `{ kind: "write", paths }`, `{ kind: "command", command }`,
   `{ kind: "network", host, url? }`, `{ kind: "read", paths }`, `{ kind: "tool", name, detail? }`. Send a refusal's
-  `message` back to the CLI as its reason.
-- `host.question([{ question, header, options: [{ label, description }], multiple? }])` asks the user and waits for the
-  answers, one list of labels per question.
+  `message` back to the CLI as its reason. A request with nothing to check (empty `paths`, an empty path or an empty
+  `command`) is refused.
+- `host.question([{ question, header, options: [{ label, description }], multiple?, custom? }])` asks the user and waits
+  for the answers, one list per question: the labels picked, or text the user typed (`custom` defaults to true). It
+  throws when the user skips the question or stops the group: catch it and tell the CLI there was no answer, or the
+  whole task fails.
 
 The library also has `spawn`, to start the CLI (unlike `node:child_process` it also starts a CLI that npm installed on
-Windows, a `.cmd`), and `stop(child)`, which ends the CLI with everything it started. console.log goes to stderr
-(MerakCode's log), so stray output cannot break the protocol.
+Windows, a `.cmd`), and `stop(child)`, which ends the CLI with everything it started. console.log and console.info go
+to stderr (MerakCode's log); console.debug and console.dir do not, so log with console.error. Never write to
+process.stdout or let the CLI inherit the adapter's stdout: it carries the protocol.
 
 ## Steps
 
@@ -74,8 +82,9 @@ still be added in Settings › Collaboration as a one-shot command, without appr
 
 ### 2. Write the adapter
 
-Create `<MerakCode home>/adapters/<id>/` (the home is `~/.merakcode` unless MERAKCODE_HOME is set; `<id>` is lower-case
-letters, digits and `-`). Put there:
+Create `<MerakCode home>/adapters/<id>/` (the home is `~/.merakcode` unless MERAKCODE_HOME is set). `<id>` is
+lower-case letters, digits and `-`, and must not be `merak`, `claude`, `codex`, `opencode` or an id already under
+`collaboration.products`: a built-in id there overrides that built-in product. Put there:
 
 - `merakcode-adapter.mjs` and `merakcode-adapter.d.mts`: the library and its types, copied with `cp`
 - `NOTES.md`: what you learned in step 1 with its sources, then the version you tested with, how each mode maps to the
@@ -95,13 +104,20 @@ Rules for `adapter.mts`:
 - Map the modes to the CLI's options so that it **asks about everything it is unsure of** and MerakCode decides:
   read-only must not edit files; ask and auto hand the decisions to MerakCode. Never pass options that skip approvals.
 - Map every permission request of the CLI to one of the five kinds. Prefer the most specific kind; use `tool` only for
-  what is none of the others. Map its questions to `host.question`.
+  what is none of the others, or when the CLI's request has no path or command, with what it has as `detail`. Never
+  send empty `paths` or an empty `command`. Map its questions to `host.question`, and catch its error.
 - Report each tool the CLI starts as a step, once.
 - Continue the CLI's session from `task.resume`, and return its session id as `sessionId`.
-- On `task.signal` abort, and when the task is done, `stop` the CLI.
+- On `task.signal` abort, and when the task is done, `stop` the CLI. Stop it within 5 seconds: the library exits the
+  adapter 5 seconds after its stdin closes.
+- Several adapter processes of one product may run at once, so use no fixed ports, shared temp files or global locks.
 - Keep secrets out of arguments and logs.
 
 ### 3. Test it
+
+The test commands run `node` from the shell: the user's own Node, not the one MerakCode runs on. Check
+`node --version` first; it must be 24 or later to run `.mts`. If it is missing or older, tell the user and ask them to
+install Node 24 or later for the test; do not register an untested adapter.
 
 1. Handshake, no task: `node merakcode-adapter.mjs check -- node adapter.mts` must print the name and version.
 2. A real task, only after the user agrees (it uses the CLI's own model and may cost money). In a new empty temporary
@@ -112,7 +128,7 @@ Rules for `adapter.mts`:
    ```
 
    Test mode prints every step, permission request and question, allows each request and picks the first option of
-   each question, then prints the result.
+   each question, then prints the result. It always uses ask mode, so check the read-only mapping by reading the code.
 
 3. Fix the adapter until the command and the file write each arrive as one request of the right kind and the result
    comes back. Run step 2 again after each fix.
@@ -130,7 +146,9 @@ entry and get their agreement first:
 { "title": "<CLI name>", "adapter": "member", "command": "node", "args": ["<absolute path>/adapter.mts"] }
 ```
 
-`node` there is the Node MerakCode runs on, so the adapter runs even where Node is not installed.
+`node` there is the Node MerakCode runs on, so the adapter runs even where Node is not installed. `args` do not go
+through a shell: write the absolute path with `~` expanded, and on Windows double the backslashes in JSON or use `/`.
+Settings caches its check for 60 seconds; after changing the adapter, the user clicks Check again.
 
 Then tell the user the adapter is ready: they can check it in Settings › Collaboration and add it to a group as a
 member themselves.
