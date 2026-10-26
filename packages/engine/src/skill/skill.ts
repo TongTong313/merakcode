@@ -269,4 +269,18 @@ export namespace Skill {
   export async function dirs() {
     return state().then((x) => x.dirs)
   }
+
+  /**
+   * Skill names written as /name at the start of the text or after whitespace.
+   * A slash inside a path or URL is not a mention. Each name is returned once, in order.
+   */
+  export function mentioned(text: string, names: ReadonlySet<string>): string[] {
+    const found: string[] = []
+    for (const match of text.matchAll(/(?:^|\s)\/([^\s]+)/g)) {
+      const name = match[1]
+      if (!name || !names.has(name) || found.includes(name)) continue
+      found.push(name)
+    }
+    return found
+  }
 }

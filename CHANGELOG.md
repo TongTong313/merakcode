@@ -20,6 +20,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Typing `/skill-name` after a space, including in the middle of a sentence, loads that skill. Skills are read from Claude's `.claude/skills` and `.agents/skills`, and from `.merakcode/skill` and `.merakcode/skills`. A skill the agent is denied is not loaded.
 - Maximizing the review from a new conversation fills the window with the review.
 - A subagent's question reaches the SDK's `onQuestion` of the conversation that started it, and is dismissed without one, instead of leaving the turn waiting.
 - A member adapter's request with nothing to check (empty `paths` or an empty `command`) is refused instead of allowed.
@@ -39,6 +40,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 在空格后面输入 `/技能名`（包括写在句子中间）会加载该技能。技能从 Claude 的 `.claude/skills`、`.agents/skills`，以及 `.merakcode/skill`、`.merakcode/skills` 读取。智能体被拒绝使用的技能不会加载。
 - 在新对话里铺满审阅时，窗口显示的是全屏审阅。
 - 子智能体的提问会交给发起它的会话的 SDK `onQuestion`，没给 `onQuestion` 时会被跳过，不再让这一轮一直卡着。
 - 成员适配器发来的没有可检查内容的审批请求（`paths` 为空或 `command` 为空）改为拒绝，不再放行。
