@@ -305,6 +305,27 @@ test("each kind of request is judged like MerakCode's own tools, in each permiss
     expect(result.shown.some((request) => request.patterns.includes("registry.npmjs.org"))).toBe(false)
 }, 120_000)
 
+test("a request with nothing to check (no file, an empty command) is refused without asking, in every mode", async () => {
+  const permissions: Permission[] = [
+    { kind: "write", paths: [] },
+    { kind: "write", paths: [""] },
+    { kind: "read", paths: [] },
+    { kind: "command", command: "" },
+    { kind: "command", command: "   " },
+    { kind: "network", host: "" },
+    { kind: "tool", name: "" },
+  ]
+  for (const mode of ["readonly", "ask", "auto"] as const) {
+    const result = await delegate({ mode, permissions })
+    expect(
+      result.verdicts.map((verdict) => verdict.allow),
+      mode,
+    ).toEqual(permissions.map(() => false))
+    expect(result.shown, mode).toEqual([])
+    expect(result.verdicts[0]).toMatchObject({ message: expect.stringContaining("names no file") })
+  }
+}, 120_000)
+
 test("allowing a command for the conversation covers the member's later commands of the same kind", async () => {
   const result = await delegate({
     mode: "ask",
