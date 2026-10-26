@@ -125,7 +125,7 @@ function Bash(props: { part: ToolPart }) {
     return state.status === "completed" && typeof state.metadata.exit === "number" ? state.metadata.exit : undefined
   }
   const command = () => text(props.part.state.input.command)
-  const [open, setOpen] = createSignal(true)
+  const [open, setOpen] = createSignal(false)
   let result: HTMLPreElement | undefined
   // Stay on the latest line until the reader scrolls up
   let pinned = true

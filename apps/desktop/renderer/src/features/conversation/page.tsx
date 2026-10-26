@@ -26,7 +26,6 @@ import { Confirm, Dialog } from "../../ui/dialog"
 import { Menu } from "../../ui/menu"
 import { Switch } from "../../ui/switch"
 import { toast } from "../../ui/toast"
-import { ReviewFull } from "../review/full"
 import { openReview } from "../review/state"
 import { Frame } from "../shell/frame"
 import { Rename } from "../shell/rename"
@@ -192,198 +191,190 @@ export function Conversation(props: { id: string; directory: string }) {
   const reviewFile = (file: string) => openReview({ scope: "session", file })
 
   return (
-    <Show
-      when={!ui.maximized}
-      fallback={<ReviewFull sessionID={props.id} directory={dir()} folder={props.directory} />}
-    >
-      <Frame
-        sessionID={props.id}
-        directory={dir()}
-        folder={props.directory}
-        title={
-          <>
-            <Show when={info()?.parentID}>
-              {(parent) => (
-                <button
-                  class="button ghost sm no-drag"
-                  onClick={() => navigate(sessionPath(props.directory, parent()))}
-                >
-                  <ArrowLeft class="icon icon-xs" />
-                  {t("conversation.backToParent")}
-                </button>
-              )}
-            </Show>
-            <span class="title ellipsis">{info()?.title ?? ""}</span>
-            <Show when={group.group()}>
-              {(value) => (
-                <button
-                  class="chip outlined no-drag"
-                  aria-label={t("group.members", { count: value().seats.length })}
-                  title={ui.membersCollapsed ? t("group.expand") : t("group.collapse")}
-                  aria-pressed={!ui.membersCollapsed}
-                  onClick={() => collapse(!ui.membersCollapsed)}
-                >
-                  <Users class="icon icon-sm" />
-                  {value().seats.length}
-                </button>
-              )}
-            </Show>
-            <Show when={worktree()}>
-              <span class="chip outlined no-drag">
-                <GitBranch class="icon icon-sm" />
-                {state.branch[worktree()!] ?? ""}
-                <span class="subtle">← {state.branch[props.directory] ?? ""}</span>
-              </span>
-              <button class="button secondary sm no-drag" onClick={() => setMerging(true)}>
-                <GitMerge class="icon icon-xs" />
-                {t("topbar.merge", { branch: state.branch[props.directory] ?? "" })}
+    <Frame
+      sessionID={props.id}
+      directory={dir()}
+      folder={props.directory}
+      title={
+        <>
+          <Show when={info()?.parentID}>
+            {(parent) => (
+              <button class="button ghost sm no-drag" onClick={() => navigate(sessionPath(props.directory, parent()))}>
+                <ArrowLeft class="icon icon-xs" />
+                {t("conversation.backToParent")}
               </button>
-            </Show>
-            <Show when={requests().permissions.length}>
-              <span class="badge warning">{t("status.approval")}</span>
-            </Show>
-          </>
-        }
-        actions={
-          <Menu
-            label={t("topbar.menu")}
-            trigger={<Ellipsis class="icon" />}
-            items={[
-              { label: t("sidebar.new"), onSelect: () => navigate(sessionPath(props.directory)) },
-              { label: t("sidebar.rename"), onSelect: () => setRenaming(true) },
-              { label: t("palette.cmd.review"), onSelect: () => openReview({ scope: "session" }) },
-              ...(worktree()
-                ? [
-                    "separator" as const,
-                    { label: t("worktree.discard"), danger: true, onSelect: () => setDiscarding(true) },
-                  ]
-                : []),
-            ]}
-          />
-        }
-      >
-        <div class="chat-area">
-          <div class="chat-main">
-            <Show when={isGroup()}>
-              <GroupTodo todos={group.todos()} />
-            </Show>
-            <Messages
-              sessionID={props.id}
-              directory={dir()}
-              onReviewTurn={reviewTurn}
-              onReviewFile={reviewFile}
-              group={
-                group.group()
-                  ? {
-                      seats: group.group()!.seats,
-                      events: group.group()!.events,
-                      products: group.products(),
-                      onOpenSession: (id) => navigate(sessionPath(props.directory, id)),
-                      onOpenMember: (id) => openMember({ target: id, at: Date.now() }),
-                    }
-                  : undefined
-              }
-            />
-            <div class="dock">
-              <div class="dock-inner">
-                <Show when={!running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
-                  <div class="revert-bar" role="status">
-                    <Undo2 class="icon icon-sm" />
-                    <span class="ellipsis">{t("conversation.reverted")}</span>
-                    <span class="spacer" />
-                    <button
-                      class="button secondary sm"
-                      onClick={() =>
-                        void restore(props.id, props.directory).catch((error: Error) =>
-                          toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-                        )
-                      }
-                    >
-                      {t("conversation.restore")}
-                    </button>
-                  </div>
-                </Show>
-                <Show when={requests().permissions[0]}>
-                  {(request) => (
-                    <Approval
-                      request={request()}
-                      more={requests().permissions.length - 1}
-                      directory={dir()}
-                      from={from(request())}
-                    />
-                  )}
-                </Show>
-                <Show when={!requests().permissions.length && requests().questions[0]}>
-                  {(request) => <Question request={request()} directory={dir()} from={from(request())} />}
-                </Show>
-                <Composer
-                  sessionID={props.id}
-                  directory={props.directory}
-                  busy={running()}
-                  compact
-                  autofocus
-                  placeholder={isGroup() ? t("group.placeholder") : undefined}
-                  seats={group.group()?.seats}
-                  products={isGroup() ? group.products() : undefined}
-                  onSubmit={(submission) => send(props.id, props.directory, submission)}
-                  onStop={() => void stop(props.id, props.directory)}
-                  onMode={(mode) => {
-                    choose(props.id, props.directory, { mode })
-                    void call(
-                      client(dir()).session.setPermissionMode({ sessionID: props.id, permissionMode: mode }),
-                    ).catch((error: Error) =>
-                      toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-                    )
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-          <Show when={group.group()}>
-            {(value) => (
-              <MemberColumn
-                sessionID={props.id}
-                directory={dir()}
-                group={value()}
-                products={group.products()}
-                busy={(seatID) => busySeats().has(seatID)}
-                collapsed={ui.membersCollapsed}
-                onCollapsed={collapse}
-                open={opening()}
-                onOpen={openMember}
-              />
             )}
           </Show>
-        </div>
-        <Show when={info()}>
-          {(value) => <Rename session={value()} open={renaming()} onClose={() => setRenaming(false)} />}
-        </Show>
-        <Show when={worktree()}>
-          <Merge
-            open={merging()}
-            onClose={() => setMerging(false)}
+          <span class="title ellipsis">{info()?.title ?? ""}</span>
+          <Show when={group.group()}>
+            {(value) => (
+              <button
+                class="chip outlined no-drag"
+                aria-label={t("group.members", { count: value().seats.length })}
+                title={ui.membersCollapsed ? t("group.expand") : t("group.collapse")}
+                aria-pressed={!ui.membersCollapsed}
+                onClick={() => collapse(!ui.membersCollapsed)}
+              >
+                <Users class="icon icon-sm" />
+                {value().seats.length}
+              </button>
+            )}
+          </Show>
+          <Show when={worktree()}>
+            <span class="chip outlined no-drag">
+              <GitBranch class="icon icon-sm" />
+              {state.branch[worktree()!] ?? ""}
+              <span class="subtle">← {state.branch[props.directory] ?? ""}</span>
+            </span>
+            <button class="button secondary sm no-drag" onClick={() => setMerging(true)}>
+              <GitMerge class="icon icon-xs" />
+              {t("topbar.merge", { branch: state.branch[props.directory] ?? "" })}
+            </button>
+          </Show>
+          <Show when={requests().permissions.length}>
+            <span class="badge warning">{t("status.approval")}</span>
+          </Show>
+        </>
+      }
+      actions={
+        <Menu
+          label={t("topbar.menu")}
+          trigger={<Ellipsis class="icon" />}
+          items={[
+            { label: t("sidebar.new"), onSelect: () => navigate(sessionPath(props.directory)) },
+            { label: t("sidebar.rename"), onSelect: () => setRenaming(true) },
+            { label: t("palette.cmd.review"), onSelect: () => openReview({ scope: "session" }) },
+            ...(worktree()
+              ? [
+                  "separator" as const,
+                  { label: t("worktree.discard"), danger: true, onSelect: () => setDiscarding(true) },
+                ]
+              : []),
+          ]}
+        />
+      }
+    >
+      <div class="chat-area">
+        <div class="chat-main">
+          <Show when={isGroup()}>
+            <GroupTodo todos={group.todos()} />
+          </Show>
+          <Messages
             sessionID={props.id}
-            worktree={worktree()!}
-            directory={props.directory}
-            branch={state.branch[props.directory] ?? ""}
+            directory={dir()}
+            onReviewTurn={reviewTurn}
+            onReviewFile={reviewFile}
+            group={
+              group.group()
+                ? {
+                    seats: group.group()!.seats,
+                    events: group.group()!.events,
+                    products: group.products(),
+                    onOpenSession: (id) => navigate(sessionPath(props.directory, id)),
+                    onOpenMember: (id) => openMember({ target: id, at: Date.now() }),
+                  }
+                : undefined
+            }
           />
-          <Confirm
-            open={discarding()}
-            title={t("worktree.discardTitle")}
-            description={t("worktree.discardDetail", { branch: state.branch[worktree()!] ?? "" })}
-            confirm={t("sidebar.delete")}
-            cancel={t("common.cancel")}
-            danger
-            onResult={(ok) => {
-              setDiscarding(false)
-              if (ok)
-                void discard(props.id, worktree()!, props.directory, navigate).catch((error: Error) =>
-                  toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-                )
-            }}
-          />
+          <div class="dock">
+            <div class="dock-inner">
+              <Show when={!running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
+                <div class="revert-bar" role="status">
+                  <Undo2 class="icon icon-sm" />
+                  <span class="ellipsis">{t("conversation.reverted")}</span>
+                  <span class="spacer" />
+                  <button
+                    class="button secondary sm"
+                    onClick={() =>
+                      void restore(props.id, props.directory).catch((error: Error) =>
+                        toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+                      )
+                    }
+                  >
+                    {t("conversation.restore")}
+                  </button>
+                </div>
+              </Show>
+              <Show when={requests().permissions[0]}>
+                {(request) => (
+                  <Approval
+                    request={request()}
+                    more={requests().permissions.length - 1}
+                    directory={dir()}
+                    from={from(request())}
+                  />
+                )}
+              </Show>
+              <Show when={!requests().permissions.length && requests().questions[0]}>
+                {(request) => <Question request={request()} directory={dir()} from={from(request())} />}
+              </Show>
+              <Composer
+                sessionID={props.id}
+                directory={props.directory}
+                busy={running()}
+                compact
+                autofocus
+                placeholder={isGroup() ? t("group.placeholder") : undefined}
+                seats={group.group()?.seats}
+                products={isGroup() ? group.products() : undefined}
+                onSubmit={(submission) => send(props.id, props.directory, submission)}
+                onStop={() => void stop(props.id, props.directory)}
+                onMode={(mode) => {
+                  choose(props.id, props.directory, { mode })
+                  void call(
+                    client(dir()).session.setPermissionMode({ sessionID: props.id, permissionMode: mode }),
+                  ).catch((error: Error) =>
+                    toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+                  )
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        <Show when={group.group()}>
+          {(value) => (
+            <MemberColumn
+              sessionID={props.id}
+              directory={dir()}
+              group={value()}
+              products={group.products()}
+              busy={(seatID) => busySeats().has(seatID)}
+              collapsed={ui.membersCollapsed}
+              onCollapsed={collapse}
+              open={opening()}
+              onOpen={openMember}
+            />
+          )}
         </Show>
-      </Frame>
-    </Show>
+      </div>
+      <Show when={info()}>
+        {(value) => <Rename session={value()} open={renaming()} onClose={() => setRenaming(false)} />}
+      </Show>
+      <Show when={worktree()}>
+        <Merge
+          open={merging()}
+          onClose={() => setMerging(false)}
+          sessionID={props.id}
+          worktree={worktree()!}
+          directory={props.directory}
+          branch={state.branch[props.directory] ?? ""}
+        />
+        <Confirm
+          open={discarding()}
+          title={t("worktree.discardTitle")}
+          description={t("worktree.discardDetail", { branch: state.branch[worktree()!] ?? "" })}
+          confirm={t("sidebar.delete")}
+          cancel={t("common.cancel")}
+          danger
+          onResult={(ok) => {
+            setDiscarding(false)
+            if (ok)
+              void discard(props.id, worktree()!, props.directory, navigate).catch((error: Error) =>
+                toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
+              )
+          }}
+        />
+      </Show>
+    </Frame>
   )
 }
