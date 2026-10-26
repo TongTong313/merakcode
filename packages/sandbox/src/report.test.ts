@@ -13,7 +13,7 @@ describe("Report.render", () => {
     expect(text).toMatch(/do not retry/i)
   })
 
-  test("lists git files that were put back", () => {
+  test("lists protected files that were put back", () => {
     const text = Report.render({ blocked: [], restored: ["/w/.git/hooks/pre-commit"], output: "", exitCode: 0 })
     expect(text).toContain("[MRK-5004]")
     expect(text).toContain("/w/.git/hooks/pre-commit")

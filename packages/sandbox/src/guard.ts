@@ -1,6 +1,7 @@
 /**
- * Keeps .git/hooks and .git/config as they were before a sandboxed command ran. A changed hook or config would run
- * code outside the sandbox the next time the user runs git, so changes are rolled back and reported.
+ * Keeps the protected paths (.git/hooks, .git/config, MerakCode's config files) as they were before a sandboxed command
+ * ran. A changed hook or git config would run code outside the sandbox the next time the user runs git, and a changed
+ * MerakCode config could loosen the permission rules, so changes are rolled back and reported.
  */
 import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

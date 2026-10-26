@@ -26,11 +26,18 @@ describe("Policy.build", () => {
     expect(policy.write.allow).not.toContain(home)
   })
 
-  test("protects .git/hooks and .git/config of every workspace root", () => {
+  test("protects .git/hooks, .git/config and MerakCode's config files of every workspace root", () => {
     const roots = [path.resolve("/work/a"), path.resolve("/work/b")]
     const policy = Policy.build({ workspace: roots, home, tmp })
     expect(policy.write.protect).toEqual(
-      roots.flatMap((root) => [path.join(root, ".git", "hooks"), path.join(root, ".git", "config")]),
+      roots.flatMap((root) => [
+        path.join(root, ".git", "hooks"),
+        path.join(root, ".git", "config"),
+        path.join(root, "merakcode.json"),
+        path.join(root, "merakcode.jsonc"),
+        path.join(root, ".merakcode", "merakcode.json"),
+        path.join(root, ".merakcode", "merakcode.jsonc"),
+      ]),
     )
   })
 

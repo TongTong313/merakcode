@@ -16,7 +16,7 @@ export namespace Report {
         : []),
       ...(input.restored.length
         ? [
-            `[${ErrorCode.CATALOG.SANDBOX_WRITE_BLOCKED.code}] The sandbox undid changes to git hooks or config: ${input.restored.join(", ")}. Commands may not change .git/hooks or .git/config.`,
+            `[${ErrorCode.CATALOG.SANDBOX_WRITE_BLOCKED.code}] The sandbox undid changes to protected files: ${input.restored.join(", ")}. Commands may not change .git/hooks, .git/config or MerakCode's config files (merakcode.json, merakcode.jsonc).`,
           ]
         : []),
       ...(input.exitCode !== 0 && DENIED.test(input.output)

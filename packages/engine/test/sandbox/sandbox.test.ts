@@ -35,6 +35,10 @@ describe("sandbox policy", () => {
     expect(policy.write.protect).toEqual([
       path.join(workspace[0]!, ".git", "hooks"),
       path.join(workspace[0]!, ".git", "config"),
+      path.join(workspace[0]!, "merakcode.json"),
+      path.join(workspace[0]!, "merakcode.jsonc"),
+      path.join(workspace[0]!, ".merakcode", "merakcode.json"),
+      path.join(workspace[0]!, ".merakcode", "merakcode.jsonc"),
     ])
   })
 
