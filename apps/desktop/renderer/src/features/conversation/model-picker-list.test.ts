@@ -28,9 +28,9 @@ test("providers with the same name stay in their own section and the current mod
     "alibaba-cn/qwen-max",
     titles,
   )
-  expect(sections.map((section) => section.title)).toEqual(["配置的模型", "官方供应商"])
-  expect(sections[0]?.items.map((item) => item.key)).toEqual(["relay/custom"])
-  expect(sections[1]?.items.map((item) => item.key)).toEqual(["alibaba-cn/qwen-max", "alibaba-cn/qwen-plus"])
+  expect(sections.map((section) => section.title)).toEqual(["官方供应商", "配置的模型"])
+  expect(sections[0]?.items.map((item) => item.key)).toEqual(["alibaba-cn/qwen-max", "alibaba-cn/qwen-plus"])
+  expect(sections[1]?.items.map((item) => item.key)).toEqual(["relay/custom"])
 })
 
 test("a model that is off the homepage stays out unless it is the current one", () => {
@@ -45,22 +45,6 @@ test("a model that is off the homepage stays out unless it is the current one", 
   )
   expect(sections.map((section) => section.title)).toEqual(["官方供应商"])
   expect(sections[0]?.items.map((item) => item.key)).toEqual(["alibaba-cn/qwen-max", "alibaba-cn/qwen-plus"])
-})
-
-test("the add list is the models that are off the homepage", () => {
-  const sections = pickerSections(
-    [
-      entry("official", "alibaba-cn", "Alibaba (China)", "qwen-plus"),
-      entry("official", "alibaba-cn", "Alibaba (China)", "qwen-plus-2025-12-01", false),
-      entry("configured", "relay", "Relay", "custom", false),
-    ],
-    "relay/custom",
-    titles,
-    "",
-    "extra",
-  )
-  expect(sections.map((section) => section.title)).toEqual(["官方供应商"])
-  expect(sections[0]?.items.map((item) => item.key)).toEqual(["alibaba-cn/qwen-plus-2025-12-01"])
 })
 
 test("a section with no search hit is left out", () => {

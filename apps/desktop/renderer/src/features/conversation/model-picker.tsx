@@ -3,17 +3,14 @@ import ChevronDown from "lucide-solid/icons/chevron-down"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { locale, t } from "../../i18n"
 import { available, find, modelKey, type ModelRef } from "../../state/models"
-import { loadProviders, state, updateConfig } from "../../state/store"
+import { setUi } from "../../state/ui"
 import { trackOverlay } from "../../ui/overlay"
 import { providerLabel } from "../../ui/provider-label"
-import { toast } from "../../ui/toast"
-import { nextPicker } from "../settings/model-visibility"
-import { pickerSections, type PickerEntry } from "./model-picker-list"
+import { pickerSections } from "./model-picker-list"
 
 /** Model picker: search by name or provider, arrow keys to move, Enter to select */
 export function ModelPicker(props: { value: ModelRef | undefined; onChange: (model: ModelRef) => void }) {
   const [open, setOpen] = createSignal(false)
-  const [adding, setAdding] = createSignal(false)
   const [query, setQuery] = createSignal("")
   const [active, setActive] = createSignal(0)
   trackOverlay(open)
@@ -28,7 +25,6 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
         official: t("model.section.official"),
       },
       query(),
-      adding() ? "extra" : "shown",
     )
     let index = 0
     return sections.flatMap((section) => [
@@ -40,19 +36,6 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
   const pick = (index: number) => {
     const item = choices()[index]?.item
     if (!item) return
-    if (adding()) {
-      void include(item).catch((error: Error) =>
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error }),
-      )
-      return
-    }
-    props.onChange({ providerID: item.provider.id, modelID: item.model.id })
-    setOpen(false)
-  }
-  const include = async (item: PickerEntry) => {
-    const picker = nextPicker(state.config?.provider?.[item.provider.id]?.picker, item.model.id, true)
-    await updateConfig({ provider: { [item.provider.id]: { picker } } })
-    await loadProviders(state.folders[0]?.directory)
     props.onChange({ providerID: item.provider.id, modelID: item.model.id })
     setOpen(false)
   }
@@ -73,7 +56,6 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
       open={open()}
       onOpenChange={(next) => {
         setOpen(next)
-        setAdding(false)
         setQuery("")
         setActive(
           Math.max(
@@ -134,12 +116,11 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
             type="button"
             class="menu-item model-add"
             onClick={() => {
-              setAdding((value) => !value)
-              setQuery("")
-              setActive(0)
+              setOpen(false)
+              setUi("settings", "models")
             }}
           >
-            {adding() ? t("model.back") : t("model.add")}
+            {t("model.add")}
           </button>
         </Popover.Content>
       </Popover.Portal>

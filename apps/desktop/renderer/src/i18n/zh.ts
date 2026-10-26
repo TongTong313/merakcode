@@ -83,7 +83,6 @@ export const zh = {
   "model.section.configured": "配置的模型",
   "model.section.official": "官方供应商",
   "model.add": "添加模型",
-  "model.back": "返回",
   "model.catalog.failed": "{provider} 的模型列表没有拉下来：[{code}] {message}",
   "model.variant": "推理",
 
