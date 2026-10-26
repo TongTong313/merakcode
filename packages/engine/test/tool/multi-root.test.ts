@@ -7,7 +7,7 @@ import { GrepTool } from "@merakcode/engine/tool/grep"
 import { GlobTool } from "@merakcode/engine/tool/glob"
 import { WriteTool } from "@merakcode/engine/tool/write"
 import { EditTool } from "@merakcode/engine/tool/edit"
-import { ListTool } from "@merakcode/engine/tool/ls"
+import { ReadTool } from "@merakcode/engine/tool/read"
 import { MultiEditTool } from "@merakcode/engine/tool/multi_edit"
 import { prepareBashCommand } from "@merakcode/engine/tool/bash"
 import { ExcelWriteTool } from "@merakcode/engine/tool/excel-write"
@@ -182,7 +182,7 @@ describe("tools multi-root", () => {
     })
   })
 
-  test("ls lists the second root and a bash workdir there does not ask for external_directory", async () => {
+  test("read lists the second root and a bash workdir there does not ask for external_directory", async () => {
     await using a = await tmpdir({ git: true })
     await using b = await tmpdir({
       git: true,
@@ -206,8 +206,8 @@ describe("tools multi-root", () => {
         ],
       },
       fn: async () => {
-        const ls = await ListTool.init()
-        const listed = await ls.execute({ path: b.path }, testCtx)
+        const read = await ReadTool.init()
+        const listed = await read.execute({ filePath: b.path }, testCtx)
         expect(listed.output).toContain("listed.txt")
 
         const prepared = await prepareBashCommand({ command: "echo hi", workdir: b.path, description: "echo" }, testCtx)

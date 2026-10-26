@@ -13,16 +13,15 @@ When NOT to use this:
 
 Output handling:
 - The command is launched immediately. The tool returns a `jobId` and a brief confirmation message.
-- The job's stdout and stderr are buffered in memory (last ~500KB only) and exposed through the HTTP API.
-- The job continues running until it exits, the process is killed, or the server stops.
+- The job's stdout and stderr are kept in memory (last ~500KB only); the tail is included in the completion message.
+- The job runs until it exits, is stopped, the server stops, or its timeout passes. The timeout is 30 minutes unless
+  you pass `timeout` (milliseconds); pass `timeout: 0` for dev servers and watchers that should keep running.
+- At most 10 jobs run at once; starting another fails until one ends.
 - When the job exits, its final status (completed / failed / stopped), exit code and tail output
-  are automatically delivered to you as a new user-style message. Do NOT poll the log endpoint —
+  are automatically delivered to you as a new user-style message. Do not wait or poll for it —
   just continue with other work and react to the completion message when it arrives.
 
-Available APIs (the user/UI controls these; you do not call them directly):
-- `GET /bash/jobs` — list all background jobs and their statuses
-- `GET /bash/jobs/:id/log` — fetch buffered stdout/stderr
-- `POST /bash/jobs/:id/stop` — terminate a running job (sends a cross-platform process-tree kill)
+The user can stop a running job from the UI (`POST /bash/jobs/:id/stop`, a process-tree kill); you do not call it.
 
 Usage notes:
 - Always provide a clear, concise `description` (5-10 words) so users can recognize the job in lists.

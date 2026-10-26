@@ -64,6 +64,6 @@ export namespace MemoryAccess {
    * command, and read outside the workspace is denied.
    */
   export function extractorRules() {
-    return PermissionNext.fromConfig({ "*": "deny", read: "allow", grep: "allow", glob: "allow", ls: "allow" })
+    return PermissionNext.fromConfig({ "*": "deny", read: "allow", grep: "allow", glob: "allow" })
   }
 }

@@ -227,7 +227,7 @@ export function formatExcelWorkbook(workbook: ExcelWorkbook): string {
 
   if (workbook.truncated) {
     lines.push(
-      "Some sheets were truncated. Re-run with a smaller sheet selection, larger maxRowsPerSheet/maxCellsPerSheet, or a narrower --rows range.",
+      "Some sheets were truncated. Re-run with fewer sheets, a higher row or cell limit, or a narrower row range.",
     )
   }
 

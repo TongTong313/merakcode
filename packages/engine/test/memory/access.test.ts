@@ -97,7 +97,7 @@ describe("MemoryAccess", () => {
         const agent = await Agent.get("memory-extractor")
         expect(agent).toBeDefined()
         expect(agent!.hidden).toBe(true)
-        expect(agent!.profile?.availableTools).toEqual(["read", "glob", "grep", "ls", "write", "edit", "multi_edit"])
+        expect(agent!.profile?.availableTools).toEqual(["read", "glob", "grep", "write", "edit", "multi_edit"])
         expect(agent!.profile?.availableTools).not.toContain("bash")
         expect(agent!.profile?.availableTools).not.toContain("subagent")
       },

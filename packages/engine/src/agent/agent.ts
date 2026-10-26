@@ -31,7 +31,6 @@ export const STANDARD_TOOL_POOL = [
   "docx_parse",
   "glob",
   "grep",
-  "ls",
   "edit",
   "write",
   "multi_edit",
@@ -100,8 +99,8 @@ export function computeDeferred(agent: Agent.Info): Set<string> {
 const POOL_EXPLORE = STANDARD_TOOL_POOL.filter(
   (t) => !["write", "edit", "multi_edit", "bash_background", "plugin", "delegate"].includes(t),
 )
-const POOL_COMPACTION = ["read", "glob", "grep", "ls"] as const
-const POOL_MEMORY_EXTRACTOR = ["read", "glob", "grep", "ls", "write", "edit", "multi_edit"] as const
+const POOL_COMPACTION = ["read", "glob", "grep"] as const
+const POOL_MEMORY_EXTRACTOR = ["read", "glob", "grep", "write", "edit", "multi_edit"] as const
 // The session-memory agent only reads its notes and edits them
 const POOL_SESSION_MEMORY = ["read", "edit"] as const
 
@@ -259,7 +258,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         ),
         profile: {
@@ -269,7 +267,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         },
         options: {},
@@ -289,7 +286,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         ),
         profile: {
@@ -299,7 +295,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         },
         prompt: PROMPT_TITLE,
@@ -318,7 +313,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         ),
         profile: {
@@ -328,7 +322,6 @@ export namespace Agent {
             read: "allow",
             grep: "allow",
             glob: "allow",
-            ls: "allow",
           }),
         },
         prompt: PROMPT_SUMMARY,
@@ -373,8 +366,8 @@ export namespace Agent {
         mode: "subagent",
         native: true,
         hidden: true,
-        // Consolidation and extraction share one sandbox (read/grep/glob/ls plus write/edit in the memory directory);
-        // bash is denied, exploration uses grep/glob/ls/read
+        // Consolidation and extraction share one sandbox (read/grep/glob plus write/edit in the memory directory);
+        // bash is denied, exploration uses grep/glob/read
         permission: MemoryAccess.extractorRules(),
         profile: {
           availableTools: [...POOL_MEMORY_EXTRACTOR],

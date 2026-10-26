@@ -3,7 +3,6 @@ import path from "path"
 import { Plugin } from "@merakcode/engine/plugin/index"
 import { Instance } from "@merakcode/engine/project/instance"
 import { ReadTool } from "@merakcode/engine/tool/read"
-import { ListTool } from "@merakcode/engine/tool/ls"
 import { ToolPathGuard } from "@merakcode/engine/tool/path-guard"
 import { tmpdir } from "../fixture/fixture"
 import type { Message } from "@merakcode/engine/session/message"
@@ -101,33 +100,6 @@ describe("tool/path-guard: the engine has no built-in source disclosure rules", 
         const read = await ReadTool.init()
         const result = await read.execute({ filePath: path.join(tmp.path, ...SENSITIVE) }, ctx(DISCLOSURE_INTENT))
         expect(result.output).toContain("secret signing code")
-      },
-    })
-  })
-
-  // Multi-path filtering goes through filterAllowedPaths (drops entries without failing the tool), a different code
-  // path from the single-path assertPathAllowed (throws on a match).
-  //
-  // The sample is a root-level auth.json rather than a nested provider.ts: on Windows, ls splits the backslash
-  // `path.dirname()` result by "/", so nested files only count toward the summary and never appear in the rendered
-  // tree. A root-level file keeps the assertion about filtering itself.
-  const SENSITIVE_FLAT = "auth.json"
-
-  test("without a plugin decision, directory listings keep sensitive paths", async () => {
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Filesystem.write(path.join(dir, SENSITIVE_FLAT), "credentials")
-        await Filesystem.write(path.join(dir, "app.ts"), "normal file content")
-      },
-    })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        withoutPlugins()
-        const ls = await ListTool.init()
-        const result = await ls.execute({}, ctx(DISCLOSURE_INTENT))
-        expect(result.output).toContain("app.ts")
-        expect(result.output).toContain(SENSITIVE_FLAT)
       },
     })
   })
