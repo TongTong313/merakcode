@@ -1,8 +1,3 @@
-// the approaches in this edit tool are sourced from
-// https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-23-25.ts
-// https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/utils/editCorrector.ts
-// https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
-
 import z from "zod"
 import fs from "node:fs/promises"
 import * as path from "path"
