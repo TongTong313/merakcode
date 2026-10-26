@@ -122,6 +122,7 @@ async function confirmSwitch(input: {
   try {
     const answers = await Question.ask({
       sessionID: input.ctx.sessionID,
+      root: await Session.rootID(input.ctx.sessionID),
       questions: [
         {
           question: input.question,

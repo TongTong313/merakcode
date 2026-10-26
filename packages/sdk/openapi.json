@@ -2778,6 +2778,11 @@
             "format": "starts_with",
             "pattern": "^ses.*"
           },
+          "root": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^ses.*"
+          },
           "questions": {
             "type": "array",
             "items": {

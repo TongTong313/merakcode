@@ -1,9 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from "vitest"
 import { QuestionTool } from "@merakcode/engine/tool/question"
 import * as QuestionModule from "@merakcode/engine/question/index"
+import { Instance } from "@merakcode/engine/project/instance"
+import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
-  sessionID: "test-session",
+  sessionID: "ses_test",
   messageID: "test-message",
   callID: "test-call",
   agent: "test-agent",
@@ -45,7 +47,8 @@ describe("tool.question", () => {
 
     askSpy.mockResolvedValueOnce([["Red"]])
 
-    const result = await tool.execute({ questions }, ctx)
+    await using dir = await tmpdir()
+    const result = await Instance.provide({ directory: dir.path, fn: () => tool.execute({ questions }, ctx) })
     expect(askSpy).toHaveBeenCalledTimes(1)
     expect(result.title).toBe("Asked 1 question")
   })
@@ -62,7 +65,8 @@ describe("tool.question", () => {
 
     askSpy.mockResolvedValueOnce([["Dog"]])
 
-    const result = await tool.execute({ questions }, ctx)
+    await using dir = await tmpdir()
+    const result = await Instance.provide({ directory: dir.path, fn: () => tool.execute({ questions }, ctx) })
     expect(result.output).toContain(`"What is your favorite animal?"="Dog"`)
   })
 })
