@@ -2,6 +2,7 @@ import ArrowUpFromLine from "lucide-solid/icons/arrow-up-from-line"
 import GitCommitHorizontal from "lucide-solid/icons/git-commit-horizontal"
 import Sparkles from "lucide-solid/icons/sparkles"
 import Terminal from "lucide-solid/icons/terminal"
+import X from "lucide-solid/icons/x"
 import { createSignal, Show, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
@@ -210,9 +211,19 @@ export function Commit(props: { directory: string; all: boolean; pending?: boole
             {t("review.quickRun")}
           </button>
         </div>
-      </Show>
-      <Show when={output() !== undefined}>
-        <pre class="git-output">{output()}</pre>
+        <Show when={output() !== undefined}>
+          <div class="git-output-wrap">
+            <pre class="git-output">{output()}</pre>
+            <button
+              class="icon-button sm git-output-close"
+              aria-label={t("common.close")}
+              title={t("common.close")}
+              onClick={() => setOutput(undefined)}
+            >
+              <X class="icon icon-sm" />
+            </button>
+          </div>
+        </Show>
       </Show>
       <Confirm
         open={ask()}

@@ -1,7 +1,9 @@
+import type { VcsRunResult } from "@merakcode/sdk/client"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import { setLocale, t } from "../../i18n"
+import { client } from "../../state/client"
 import { setState } from "../../state/store"
 import { Commit } from "./commit"
 
@@ -12,6 +14,7 @@ let cleanup = () => {}
 afterEach(() => {
   cleanup()
   cleanup = () => {}
+  vi.restoreAllMocks()
   setState("branch", dir, undefined)
   setState("remote", dir, undefined)
 })
@@ -30,6 +33,17 @@ function mount(node: () => JSX.Element) {
 
 function button(host: HTMLElement, label: string) {
   return [...host.querySelectorAll("button")].find((item) => item.textContent?.includes(label))
+}
+
+async function runQuickCommand(host: HTMLElement, command: string, output: string) {
+  const result: VcsRunResult = { output, exitCode: 1 }
+  vi.spyOn(client(dir).vcs, "run").mockResolvedValue({ data: result, error: undefined })
+  button(host, t("review.quickCommand"))?.click()
+  const input = host.querySelector<HTMLInputElement>(`input[aria-label="${t("review.quickCommand")}"]`)
+  input!.value = command
+  input!.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  button(host, t("review.quickRun"))?.click()
+  await vi.waitFor(() => expect(host.querySelector(".git-output")?.textContent).toBe(output))
 }
 
 test("the branch overview shows ahead, behind and how many files changed", () => {
@@ -82,6 +96,27 @@ test("a destructive git command asks before it runs", () => {
   host.querySelector(".git-command")?.querySelector("button")?.click()
   expect(document.body.textContent).toContain(t("review.quickConfirm"))
   expect(host.querySelector(".git-output")).toBeNull()
+})
+
+test("the quick command output can be closed", async () => {
+  setState("branch", dir, "main")
+  setState("remote", dir, { name: "origin", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 })
+  const host = mount(() => <Commit directory={dir} all={false} onDone={() => {}} />)
+  await runQuickCommand(host, "push", "fatal: nothing to push")
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${t("common.close")}"]`)?.click()
+  expect(host.querySelector(".git-output")).toBeNull()
+})
+
+test("closing the quick command hides its output until it reopens", async () => {
+  setState("branch", dir, "main")
+  setState("remote", dir, { name: "origin", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 })
+  const host = mount(() => <Commit directory={dir} all={false} onDone={() => {}} />)
+  await runQuickCommand(host, "push", "fatal: nothing to push")
+  button(host, t("review.quickCommand"))?.click()
+  expect(host.querySelector(".git-command")).toBeNull()
+  expect(host.querySelector(".git-output")).toBeNull()
+  button(host, t("review.quickCommand"))?.click()
+  expect(host.querySelector(".git-output")?.textContent).toBe("fatal: nothing to push")
 })
 
 test("push stays available and is disabled when the branch has nothing to push", () => {

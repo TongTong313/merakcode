@@ -760,14 +760,22 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+.git-output-wrap {
+  position: relative;
+}
 .git-output {
   margin: 0;
   max-height: 160px;
   overflow: auto;
-  padding: 8px;
+  padding: 8px 36px 8px 8px;
   border-radius: var(--radius);
   background: var(--surface-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   white-space: pre-wrap;
+}
+.git-output-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
 }
