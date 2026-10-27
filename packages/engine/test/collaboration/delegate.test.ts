@@ -8,6 +8,8 @@ import { DelegateTool } from "../../src/tool/delegate"
 import { Todo } from "../../src/session/todo"
 import { create, leave, load, update } from "../../src/collaboration/store"
 import { tmpdir } from "../fixture/fixture"
+import { configureConnections } from "../fixture/agent-connections"
+import { globalConfigFile } from "@merakcode/util/paths"
 
 /**
  * A stand-in CLI: appends the prompt it reads on stdin to <log> and "new <id>" or "resume <id>" to <log>.runs, may
@@ -65,7 +67,7 @@ async function project(products: Record<string, Product>) {
       ]),
     ),
   }
-  await fs.writeFile(path.join(tmp.path, "merakcode.json"), JSON.stringify({ collaboration }))
+  await configureConnections(collaboration.products)
   await fs.writeFile(path.join(tmp.path, ".gitignore"), ".cli/\nmerakcode.json\n.gitignore\n")
   const read = (file: string) => fs.readFile(path.join(tmp.path, ".cli", file), "utf8").catch(() => "")
   const prompts = async (id: string) => (await read(id)).split("\n<<END>>\n").filter(Boolean)
@@ -218,10 +220,7 @@ test("each member resumes its own session; a renamed member keeps it and reads i
 
 test("a member whose command is not installed does not start, and its todo item stays open", async () => {
   await using tmp = await project({})
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { gone: { command: "merak-missing-cli", title: "Gone CLI" } } } }),
-  )
+  await configureConnections({ gone: { command: "merak-missing-cli", title: "Gone CLI" } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
@@ -352,9 +351,9 @@ test("a delegation drives the todo item it names, or adds one; a failure reopens
   process.env.SEAT_DELAY = "300"
   await using tmp = await project({ echo: { title: "Echo CLI", reply: "好了" } })
   await fs.writeFile(path.join(tmp.path, ".cli", "fail.mjs"), "process.stderr.write('boom'); process.exit(2)")
-  const config = JSON.parse(await fs.readFile(path.join(tmp.path, "merakcode.json"), "utf8"))
-  config.collaboration.products.fail = { command: process.execPath, args: [path.join(tmp.path, ".cli", "fail.mjs")] }
-  await fs.writeFile(path.join(tmp.path, "merakcode.json"), JSON.stringify(config))
+  const config = JSON.parse(await fs.readFile(globalConfigFile(), "utf8"))
+  config.agentConnections.products.fail = { command: process.execPath, args: [path.join(tmp.path, ".cli", "fail.mjs")] }
+  await configureConnections(config.agentConnections.products)
   try {
     await Instance.provide({
       directory: tmp.path,
@@ -384,7 +383,7 @@ test("a delegation drives the todo item it names, or adds one; a failure reopens
           task: "补测试",
           paths: ["test/**"],
         }).catch((error: Error) => error.message)
-        expect(failure).toBe("fail returned no reply (exit code 2)")
+        expect(failure).toBe("MRK-4009: fail failed (exit code 2)")
         expect((await statuses(session.id)).at(-1)).toEqual(["@小刚 补测试 (test/**)", "pending"])
 
         const stop = new AbortController()
@@ -478,19 +477,27 @@ test("a member that waited in the queue counts its working time from when it sta
   }
 })
 
-test("turning a product off leaves the members already using it working", async () => {
+test("turning a product off prevents an existing member from starting", async () => {
   await using tmp = await project({ echo: { title: "Echo CLI", reply: "好了" } })
-  const file = path.join(tmp.path, "merakcode.json")
+  const file = globalConfigFile()
   const config = JSON.parse(await fs.readFile(file, "utf8"))
-  config.collaboration.products.echo.enabled = false
-  await fs.writeFile(file, JSON.stringify(config))
+  config.agentConnections.products.echo.enabled = false
+  await configureConnections(config.agentConnections.products)
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
       await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小红", product: "echo" }] })
       const messageID = await turn(session.id, "开始", tmp.path)
-      expect((await delegate(session.id, messageID, { seat: "小红", task: "做" })).output).toBe("好了")
+      const result = await delegate(session.id, messageID, { seat: "小红", task: "做" })
+      expect(result.metadata).toMatchObject({
+        product: "echo",
+        external: { terminal: "cancelled", stopReason: "product-disabled" },
+      })
+      expect(result.metadata).not.toHaveProperty("missing", true)
+      expect(result.output).toContain("offline")
+      expect(await tmp.runs("echo")).toEqual([])
+      expect((await load(session.id))?.seats.find((seat) => seat.name === "小红")?.product).toBe("echo")
     },
   })
 })

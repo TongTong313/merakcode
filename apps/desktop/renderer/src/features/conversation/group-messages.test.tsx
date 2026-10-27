@@ -1,3 +1,4 @@
+import { connectionDefaults } from "./product.fixture"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, beforeEach, expect, test } from "vitest"
@@ -28,16 +29,40 @@ function mount(node: () => JSX.Element) {
 
 const group: GroupView = {
   seats: [
-    { id: "s1", name: "小主", role: "", duty: "", product: "merak", leader: true },
-    { id: "s2", name: "小红", role: "产品经理", duty: "", product: "claude", leader: false },
+    { id: "s1", name: "小主", role: "", duty: "", product: "merak", leader: true, availability: { state: "online" } },
+    {
+      id: "s2",
+      name: "小红",
+      role: "产品经理",
+      duty: "",
+      product: "claude",
+      leader: false,
+      availability: { state: "online" },
+    },
   ],
   events: [
     { at: 5, kind: "join", names: ["小红"] },
     { at: 50, kind: "rename", names: ["小红", "小芳"] },
   ],
   products: [
-    { id: "merak", title: "MerakCode", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
+    {
+      id: "merak",
+      title: "MerakCode",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "claude",
+      title: "Claude Code",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
   ],
 }
 

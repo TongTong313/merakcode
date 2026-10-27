@@ -3,8 +3,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Server } from "@merakcode/engine/server/server"
-import type { Config } from "@merakcode/engine/config/config"
+import { Config } from "@merakcode/engine/config/config"
 import { tmpdir } from "../fixture/fixture"
+import { configureConnections } from "../fixture/agent-connections"
 
 type Product = {
   id: string
@@ -39,14 +40,11 @@ async function shim(dir: string, name: string, script: string) {
 async function products(script: string) {
   await using tmp = await tmpdir()
   const command = await shim(tmp.path, "codex", script)
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { codex: { command } } } }),
-  )
+  await configureConnections({ codex: { command } })
   return await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const response = await Server.App().request(`/collaboration/product?directory=${encodeURIComponent(tmp.path)}`)
+      const response = await Server.App().request(`/agent-connection/product?directory=${encodeURIComponent(tmp.path)}`)
       const list = (await response.json()) as Product[]
       return list.find((item) => item.id === "codex")!
     },
@@ -83,10 +81,7 @@ test("a member cannot be added with a product that does not run, and the refusal
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`,
     { mode: 0o755 },
   )
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { codex: { command } } } }),
-  )
+  await configureConnections({ codex: { command } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
@@ -114,14 +109,11 @@ test("the product list does not run every CLI again each time it is opened", asy
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`,
     { mode: 0o755 },
   )
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { codex: { command } } } }),
-  )
+  await configureConnections({ codex: { command } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const list = () => Server.App().request(`/collaboration/product?directory=${encodeURIComponent(tmp.path)}`)
+      const list = () => Server.App().request(`/agent-connection/product?directory=${encodeURIComponent(tmp.path)}`)
       await list()
       await list()
       expect(await fs.readFile(runs, "utf8")).toBe("x")
@@ -138,14 +130,11 @@ test("a custom product is only looked for, never run, since it may not know --ve
     "agent",
     `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(ran)}, "ran")`,
   )
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { mine: { command } } } }),
-  )
+  await configureConnections({ mine: { command } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const response = await Server.App().request(`/collaboration/product?directory=${encodeURIComponent(tmp.path)}`)
+      const response = await Server.App().request(`/agent-connection/product?directory=${encodeURIComponent(tmp.path)}`)
       const list = (await response.json()) as Product[]
       expect(list.find((item) => item.id === "mine")).toMatchObject({ connected: true })
     },
@@ -155,17 +144,18 @@ test("a custom product is only looked for, never run, since it may not know --ve
 
 /** The product list and a group-create call against a project whose config is products */
 async function withProducts<T>(
-  products: NonNullable<NonNullable<Config.Info["collaboration"]>["products"]>,
+  products: Record<string, Config.AgentConnectionProduct>,
   fn: (api: { list: () => Promise<Product[]>; create: (seats: unknown[]) => Promise<Response> }) => Promise<T>,
 ) {
-  await using tmp = await tmpdir({ config: { collaboration: { products } } })
+  await using tmp = await tmpdir()
+  await configureConnections(products)
   const query = `directory=${encodeURIComponent(tmp.path)}`
   return await Instance.provide({
     directory: tmp.path,
     fn: () => {
       const app = Server.App()
       return fn({
-        list: async () => (await (await app.request(`/collaboration/product?${query}`)).json()) as Product[],
+        list: async () => (await (await app.request(`/agent-connection/product?${query}`)).json()) as Product[],
         create: (seats) =>
           Promise.resolve(
             app.request(`/collaboration?${query}`, {
@@ -187,7 +177,7 @@ test("a built-in product can be turned off with just enabled: false, keeping the
 
 test("a product that is turned off cannot take a new member, even though its command runs", async () => {
   await withProducts({ mine: { command: process.execPath, enabled: false } }, async ({ list, create }) => {
-    expect((await list()).find((item) => item.id === "mine")).toMatchObject({ connected: true, enabled: false })
+    expect((await list()).find((item) => item.id === "mine")).toMatchObject({ enabled: false })
     const response = await create([{ name: "小红", product: "mine" }])
     expect(response.status).toBe(400)
     expect(((await response.json()) as { message: string }).message).toContain("mine")
@@ -196,16 +186,16 @@ test("a product that is turned off cannot take a new member, even though its com
 
 test("each product says where its definition comes from, and a running CLI its version and path", async () => {
   const codex = await products(`process.stdout.write("codex-cli 0.9.0\\n")`)
-  expect(codex).toMatchObject({ builtin: true, source: "project", version: "codex-cli 0.9.0" })
+  expect(codex).toMatchObject({ builtin: true, source: "global", version: "codex-cli 0.9.0" })
   expect(codex.path).toMatch(/codex(\.cmd)?$/)
   await withProducts({ mine: { command: process.execPath } }, async ({ list }) => {
     const all = await list()
     expect(all.find((item) => item.id === "mine")).toMatchObject({
       builtin: false,
-      source: "project",
+      source: "global",
       path: process.execPath,
     })
-    expect(all.find((item) => item.id === "claude")).toMatchObject({ builtin: true, source: "builtin" })
+    expect(all.find((item) => item.id === "merak")).toMatchObject({ builtin: true, source: "builtin" })
   })
 })
 
@@ -217,16 +207,13 @@ test("refresh checks every CLI again instead of using the last result", async ()
     "codex",
     `import fs from "node:fs"; fs.appendFileSync(${JSON.stringify(runs)}, "x")`,
   )
-  await fs.writeFile(
-    path.join(tmp.path, "merakcode.json"),
-    JSON.stringify({ collaboration: { products: { codex: { command } } } }),
-  )
+  await configureConnections({ codex: { command } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const list = (refresh: boolean) =>
         Server.App().request(
-          `/collaboration/product?directory=${encodeURIComponent(tmp.path)}${refresh ? "&refresh=true" : ""}`,
+          `/agent-connection/product?directory=${encodeURIComponent(tmp.path)}${refresh ? "&refresh=true" : ""}`,
         )
       await list(false)
       await list(true)
@@ -305,7 +292,7 @@ test("an adapter that cannot start says so, with its own last error", async () =
   await withProducts({ mine: { adapter: "member", command: process.execPath, args: [missing] } }, async ({ list }) => {
     const mine = (await list()).find((item) => item.id === "mine")!
     expect(mine.connected).toBe(false)
-    expect(mine.reason).toContain("ended before it answered")
+    expect(mine.reason).toContain("适配器在响应前退出")
     expect(mine.reason).toContain("no-such-adapter.mjs")
   })
 }, 60_000)

@@ -16,7 +16,7 @@ type HostTool<Args extends z.ZodRawShape = z.ZodRawShape> = { name: string; desc
 function isMerakCodeError(error: unknown): error is MerakCodeError
 type LogEntry = { level: "debug" | "info" | "warn" | "error"; message: string; data?: Record<string, unknown>; }
 type Logger = (entry: LogEntry) => void
-type MerakCode = { client: MerakCodeClient; url: string; pid: number | undefined; session(input?: { id?: string; title?: string; parentID?: string; }): Promise<MerakCodeSession>; close(): Promise<void>; }
+type MerakCode = { client: MerakCodeClient; url: string; pid: number | undefined; session(input?: { id?: string; title?: string; parentID?: string; target?: SessionOutput["target"]; }): Promise<MerakCodeSession>; close(): Promise<void>; }
 class MerakCodeError extends Error { readonly code: string; readonly status?: number; readonly requestID?: string; readonly data?: unknown; readonly retryable: boolean; constructor(input: { code: string; message: string; status?: number; requestID?: string; data?: unknown; cause?: unknown; }); }
 type MerakCodeOptions = EngineOptions & { url?: string; headers?: Record<string, string>; tools?: HostTool[]; agents?: Record<string, AgentConfig>; clientRun?: string; }
 type MerakCodeSession = { id: string; info: SessionOutput; run(prompt: string, options?: RunOptions): AsyncIterable<RunEvent>; events(options?: Handlers): AsyncIterable<RunEvent>; messages(): Promise<{ info: MessageOutput; parts: PartOutput[]; }[]>; abort(): Promise<void>; }
@@ -24,12 +24,12 @@ type PermissionDecision = "allow-once" | "allow-session" | "always" | "deny"
 interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer?: RequestDeadlineTimer; }
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
-type RunEvent = { type: "text"; partID: string; delta: string; } | { type: "reasoning"; partID: string; delta: string; } | { type: "part"; part: PartOutput; } | { type: "done"; message: AssistantMessageOutput; } | { type: "error"; error: MerakCodeError; }
+type RunEvent = { type: "text"; partID: string; delta: string; } | { type: "reasoning"; partID: string; delta: string; } | { type: "part"; part: PartOutput; } | { type: "done"; message: Extract<MessageOutput, { role: "assistant"; }>; } | { type: "error"; error: MerakCodeError; }
 type RunOptions = Handlers & { agent?: string; model?: string; mode?: PermissionMode; }
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1005 exports generated from openapi.json
++ 1041 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
@@ -38,7 +38,7 @@ interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1005 exports generated from openapi.json
++ 1041 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 
@@ -93,32 +93,36 @@ type ToolResult = string | { title?: string; output: string; metadata?: { [key: 
 
 function adapter(definition: Definition): void
 type Answer = string[]
+type Capabilities = { modelSelection: boolean; modelDiscovery: boolean; textStreaming: boolean; resume: boolean; permission: "merak" | "external"; questions: boolean; }
 function cli(argv: string[]): Promise<void>
 function connect(options: { lines: AsyncIterable<string>; send: (line: string) => void; handlers: Record<string, (params: any) => unknown>; noise?: (line: string) => void; }): { request<T>(method: string, params?: unknown): Promise<T>; notify(method: string, params?: unknown): void; closed: Promise<void>; }
 class ConnectionClosed extends Error { constructor(); }
-type Definition = { inspect(product: Product): Info | Promise<Info>; run(task: Task & { product: Product; signal: AbortSignal; }, host: Host): Promise<Result>; }
-type Host = { step(step: Step): void; permission(request: Permission): Promise<Verdict>; question(questions: Question[]): Promise<Answer[]>; }
-type Info = { name: string; version?: string; path?: string; recommended?: string; upgrade?: string; unavailable?: string; }
+type Definition = { inspect(product: Product): Info | Promise<Info>; models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>; run(task: Task & { product: Product; signal: AbortSignal; }, host: Host): Promise<Result>; }
+type Host = { sessionStarted(input: { sessionId: string; }): Promise<void>; textDelta(input: TextDelta): void; step(step: Step): void; permission(request: Permission): Promise<Verdict>; question(questions: Question[]): Promise<Answer[]>; }
+type Info = { name: string; capabilities?: Capabilities; version?: string; path?: string; recommended?: string; upgrade?: string; unavailable?: string; }
 type Mode = "readonly" | "ask" | "auto"
+type ModelList = { models: (ProductModel & { title: string; })[]; allowCustomID: boolean; }
 type Permission = { kind: "write"; paths: string[]; } | { kind: "command"; command: string; } | { kind: "network"; host: string; url?: string; } | { kind: "read"; paths: string[]; } | { kind: "tool"; name: string; detail?: string; }
 type Product = { id: string; title: string; command?: string; args?: string[]; resumeArgs?: string[]; sessionLine?: string; }
+type ProductModel = { id: string; providerID?: string; }
 const PROTOCOL: 1
 type Question = { question: string; header: string; options: { label: string; description: string; }[]; multiple?: boolean; custom?: boolean; }
-type Result = { text: string; sessionId?: string; }
+type Result = { text: string; sessionId?: string; actualModel?: ProductModel; final?: { messageID: string; parts: { partID: string; text: string; }[]; }; }
 const spawn: { (command: string, options?: SpawnOptionsWithoutStdio | undefined): ChildProcessWithoutNullStreams; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>): ChildProcessByStdio<Writable, Readable, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>): ChildProcessByStdio<Writable, Readable, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>): ChildProcessByStdio<Writable, null, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>): ChildProcessByStdio<null, Readable, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>): ChildProcessByStdio<Writable, null, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>): ChildProcessByStdio<null, Readable, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>): ChildProcessByStdio<null, null, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>): ChildProcessByStdio<null, null, null>; (command: string, options: SpawnOptions): ChildProcess; (command: string, args?: readonly string[] | undefined, options?: SpawnOptionsWithoutStdio | undefined): ChildProcessWithoutNullStreams; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>): ChildProcessByStdio<Writable, Readable, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>): ChildProcessByStdio<Writable, Readable, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>): ChildProcessByStdio<Writable, null, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>): ChildProcessByStdio<null, Readable, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>): ChildProcessByStdio<Writable, null, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>): ChildProcessByStdio<null, Readable, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>): ChildProcessByStdio<null, null, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>): ChildProcessByStdio<null, null, null>; (command: string, args: readonly string[], options: SpawnOptions): ChildProcess; }
 type Step = { tool: string; detail?: string; }
 function stop(child: ChildProcess): Promise<void>
-type Task = { prompt: string; cwd: string; mode: Mode; resume?: string; }
+type Task = { prompt: string; cwd: string; mode: Mode; resume?: string; model?: ProductModel; }
+type TextDelta = { messageID: string; partID: string; delta: string; }
 type Verdict = { allow: true; } | { allow: false; message: string; }
 function version(command: string): Promise<{ version?: string; unavailable?: string; }>
 
 ## @merakcode/sdk/transcript
 
-function formatAssistantHeader(msg: AssistantMessage, includeMetadata: boolean, lang?: TranscriptOptions["lang"]): string
-function formatMessage(msg: UserMessage | AssistantMessage, parts: Part[], options: TranscriptOptions): string
+function formatAssistantHeader(msg: Extract<Message, { role: "assistant"; }>, includeMetadata: boolean, lang?: TranscriptOptions["lang"]): string
+function formatMessage(msg: Message, parts: Part[], options: TranscriptOptions): string
 function formatPart(part: Part, options: TranscriptOptions): string
 function formatTranscript(session: SessionInfo, messages: MessageWithParts[], options: TranscriptOptions): string
-type MessageWithParts = { info: UserMessage | AssistantMessage; parts: Part[]; }
+type MessageWithParts = { info: Message; parts: Part[]; }
 type SessionInfo = { id: string; title: string; time: { created: number; updated: number; }; }
 type TranscriptOptions = { thinking: boolean; toolDetails: boolean; assistantMetadata: boolean; lang?: "zh" | "en"; }
 

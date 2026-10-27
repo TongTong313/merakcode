@@ -35,6 +35,7 @@ import { CustomDialog } from "./relay-dialog"
 import { updateState } from "../update/state"
 import { Row, Section } from "./layout"
 import { Collaboration } from "./collaboration"
+import { AgentConnections } from "./agent-connections"
 
 const fail = (error: Error) => {
   toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
@@ -1225,6 +1226,7 @@ const SECTIONS: { id: SettingsSection; label: () => string; icon: typeof Cpu; vi
   { id: "models", label: () => t("settings.models"), icon: Cpu, view: Models },
   { id: "permissions", label: () => t("settings.permissions"), icon: ShieldCheck, view: Permissions },
   { id: "mcp", label: () => t("settings.mcp"), icon: Plug, view: Mcp },
+  { id: "agentConnections", label: () => t("settings.agentConnections"), icon: Cpu, view: AgentConnections },
   { id: "collaboration", label: () => t("settings.collaboration"), icon: Users, view: Collaboration },
   { id: "skills", label: () => t("settings.skills"), icon: Puzzle, view: Skills },
   { id: "plugins", label: () => t("settings.plugins"), icon: Blocks, view: Plugins },

@@ -2,9 +2,10 @@ import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import readline from "node:readline"
 import type { Mode, Permission, Question, Step } from "@merakcode/sdk/adapter"
-import { runMember } from "../../src/collaboration/member"
-import { builtinLaunch } from "../../src/collaboration/adapters"
+import { runMember } from "../../src/agent-connection/runtime"
+import { builtinLaunch } from "../../src/agent-connection/adapters"
 import { tmpdir } from "../fixture/fixture"
 import { shim } from "./fixture/shim"
 
@@ -37,7 +38,9 @@ async function run(input: {
       task: { prompt: "做登录", cwd: tmp.path, mode: input.mode ?? "ask", resume: input.resume },
       abort: new AbortController().signal,
       host: {
-        step: (step) => steps.push(step),
+        step: (step) => {
+          steps.push(step)
+        },
         permission: async (request) => {
           asked.push(request)
           return input.allow?.(request) === false ? { allow: false, message: "不行" } : { allow: true }
@@ -76,7 +79,7 @@ test("Claude Code asks MerakCode before it fetches a page, and is told the answe
 test("Claude Code gets no edit tools in read-only mode, and the resumed session on its next task", async () => {
   const readonly = await run({ adapter: "claude", mode: "readonly", env: { CLAUDE_FIXTURE: "[]" } })
   expect(readonly.args).toEqual(
-    expect.arrayContaining(["--permission-mode", "default", "--permission-prompt-tool", "stdio"]),
+    expect.arrayContaining(["--permission-mode", "manual", "--permission-prompt-tool", "stdio"]),
   )
   expect(readonly.args.slice(readonly.args.indexOf("--disallowedTools"))).toEqual(
     expect.arrayContaining(["Edit", "Write", "NotebookEdit"]),
@@ -187,7 +190,7 @@ test("Codex reads only in read-only mode, and continues its thread on the next t
 }, 60_000)
 
 test("the shell Codex wraps a command in is taken off before MerakCode judges it", async () => {
-  const { unwrapShell } = await import("../../src/collaboration/adapters/codex")
+  const { unwrapShell } = await import("../../src/agent-connection/adapters/codex")
   expect(
     unwrapShell(`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Command 'node -e "console.log(42)"'`),
   ).toBe(`node -e "console.log(42)"`)
@@ -274,6 +277,13 @@ test("when MerakCode goes away mid-task, the CLI an adapter started is stopped w
     stdio: ["pipe", "pipe", "inherit"],
   })
   const send = (message: object) => adapter.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n")
+  const asked = Promise.withResolvers<void>()
+  const lines = readline.createInterface({ input: adapter.stdout, crlfDelay: Infinity })
+  lines.on("line", (line) => {
+    const message = JSON.parse(line)
+    if (message.method === "session.started") send({ id: message.id, result: null })
+    if (message.method === "question/ask") asked.resolve()
+  })
   send({
     id: 1,
     method: "initialize",
@@ -292,13 +302,7 @@ test("when MerakCode goes away mid-task, the CLI an adapter started is stopped w
     )
     .toBe(true)
   // Leave while the member's question is still waiting for the user
-  let output = ""
-  await new Promise<void>((resolve) =>
-    adapter.stdout.on("data", (chunk) => {
-      output += chunk
-      if (output.includes('"question/ask"')) resolve()
-    }),
-  )
+  await asked.promise
   adapter.stdin.end()
   const pid = Number(await fs.readFile(pidFile, "utf8"))
   const alive = () => {
@@ -334,8 +338,8 @@ test("when MerakCode itself exits mid-task, the CLI of a member at work does not
   const pidFile = path.join(tmp.path, "server.pid")
   // A host like the engine: it runs a member, and exits while the member's question is still open
   const host = path.join(tmp.path, "host.mts")
-  const member = pathToFileURL(path.join(import.meta.dirname, "../../src/collaboration/member.ts")).href
-  const adapters = pathToFileURL(path.join(import.meta.dirname, "../../src/collaboration/adapters/index.ts")).href
+  const member = pathToFileURL(path.join(import.meta.dirname, "../../src/agent-connection/runtime.ts")).href
+  const adapters = pathToFileURL(path.join(import.meta.dirname, "../../src/agent-connection/adapters/index.ts")).href
   await fs.writeFile(
     host,
     [

@@ -1,3 +1,4 @@
+import { connectionDefaults } from "./product.fixture"
 import type { CollaborationGroupSummary } from "@merakcode/sdk/client"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
@@ -29,9 +30,33 @@ function mount(node: () => JSX.Element) {
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 const products: Product[] = [
-  { id: "merak", title: "MerakCode", connected: true, enabled: true, builtin: true, source: "builtin" },
-  { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
-  { id: "codex", title: "Codex", connected: false, enabled: true, builtin: true, source: "builtin" },
+  {
+    id: "merak",
+    title: "MerakCode",
+    connected: true,
+    enabled: true,
+    builtin: true,
+    source: "builtin",
+    ...connectionDefaults,
+  },
+  {
+    id: "claude",
+    title: "Claude Code",
+    connected: true,
+    enabled: true,
+    builtin: true,
+    source: "builtin",
+    ...connectionDefaults,
+  },
+  {
+    id: "codex",
+    title: "Codex",
+    connected: false,
+    enabled: true,
+    builtin: true,
+    source: "builtin",
+    ...connectionDefaults,
+  },
 ]
 
 const groups: CollaborationGroupSummary[] = [
@@ -40,16 +65,30 @@ const groups: CollaborationGroupSummary[] = [
     title: "蜂群",
     directory: "D:\\tmp\\swarm",
     seats: [
-      { name: "小主", role: "", duty: "负责分派", product: "merak", leader: true },
-      { name: "小红", role: "产品经理", duty: "写需求", product: "claude", leader: false },
-      { name: "小刚", role: "", duty: "", product: "codex", leader: false },
+      { name: "小主", role: "", duty: "负责分派", product: "merak", leader: true, availability: { state: "online" } },
+      {
+        name: "小红",
+        role: "产品经理",
+        duty: "写需求",
+        product: "claude",
+        leader: false,
+        availability: { state: "online" },
+      },
+      {
+        name: "小刚",
+        role: "",
+        duty: "",
+        product: "codex",
+        leader: false,
+        availability: { state: "offline", reason: "not installed" },
+      },
     ],
   },
   {
     sessionID: "g2",
     title: "自制适配器试跑",
     directory: "D:\\tmp\\skill-run\\project3",
-    seats: [{ name: "小主", role: "", duty: "", product: "merak", leader: true }],
+    seats: [{ name: "小主", role: "", duty: "", product: "merak", leader: true, availability: { state: "online" } }],
   },
 ]
 

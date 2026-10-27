@@ -48,7 +48,7 @@ export namespace SessionRevert {
     let revert: Session.Info["revert"]
     const patches: Snapshot.Patch[] = []
     for (const fullMsg of all) {
-      if (fullMsg.info.role === "user") lastUserInfo = fullMsg.info
+      if (fullMsg.info.role === "user" && !Message.isExternal(fullMsg.info)) lastUserInfo = fullMsg.info
       const remaining = []
       for (const part of fullMsg.parts) {
         if (revert) {

@@ -1,3 +1,4 @@
+import { connectionDefaults } from "./product.fixture"
 import { beforeEach, expect, test } from "vitest"
 import { setLocale } from "../../i18n"
 import { copyGroup } from "./group-copy"
@@ -12,6 +13,7 @@ const product = (id: string, title: string, fields: Partial<Product> = {}): Prod
   enabled: true,
   builtin: true,
   source: "builtin",
+  ...connectionDefaults,
   ...fields,
 })
 
@@ -28,11 +30,39 @@ test("a copy keeps the name and each member's name, role, duty and product, and 
       title: "登录小组",
       directory: "/old",
       seats: [
-        { name: "小主", role: "组长", duty: "带队", product: "merak", leader: true },
-        { name: "小红", role: "产品经理", duty: "写需求", product: "claude", leader: false },
-        { name: "小刚", role: "", duty: "", product: "codex", leader: false },
-        { name: "小李", role: "", duty: "", product: "opencode", leader: false },
-        { name: "小王", role: "", duty: "", product: "gone", leader: false },
+        { name: "小主", role: "组长", duty: "带队", product: "merak", leader: true, availability: { state: "online" } },
+        {
+          name: "小红",
+          role: "产品经理",
+          duty: "写需求",
+          product: "claude",
+          leader: false,
+          availability: { state: "online" },
+        },
+        {
+          name: "小刚",
+          role: "",
+          duty: "",
+          product: "codex",
+          leader: false,
+          availability: { state: "offline", reason: "not installed" },
+        },
+        {
+          name: "小李",
+          role: "",
+          duty: "",
+          product: "opencode",
+          leader: false,
+          availability: { state: "offline", reason: "disabled" },
+        },
+        {
+          name: "小王",
+          role: "",
+          duty: "",
+          product: "gone",
+          leader: false,
+          availability: { state: "offline", reason: "removed" },
+        },
       ],
     },
     products,

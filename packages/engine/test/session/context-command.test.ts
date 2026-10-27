@@ -170,7 +170,7 @@ describe("context sync command lifecycle", () => {
             ),
         )
         expect(followupUser).toBeDefined()
-        if (followupUser?.info.role === "user") {
+        if (followupUser?.info.role === "user" && !Message.isExternal(followupUser.info)) {
           expect(followupUser.info.system).toContain("The user just ran the /context command")
           expect(followupUser.info.system).toContain("上下文")
         }

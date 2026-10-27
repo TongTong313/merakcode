@@ -31,6 +31,24 @@ export declare function version(command: string): Promise<{
 export declare const PROTOCOL = 1
 /** The user's permission mode in the group */
 export type Mode = "readonly" | "ask" | "auto"
+export type ProductModel = {
+  id: string
+  providerID?: string
+}
+export type ModelList = {
+  models: (ProductModel & {
+    title: string
+  })[]
+  allowCustomID: boolean
+}
+export type Capabilities = {
+  modelSelection: boolean
+  modelDiscovery: boolean
+  textStreaming: boolean
+  resume: boolean
+  permission: "merak" | "external"
+  questions: boolean
+}
 /**
  * The product as configured in MerakCode. command and args are the CLI and extra arguments the user set; an adapter
  * written for one CLI may ignore them. resumeArgs and sessionLine are a one-shot product's settings.
@@ -46,6 +64,7 @@ export type Product = {
 /** What the adapter reports about its CLI, without running a task */
 export type Info = {
   name: string
+  capabilities?: Capabilities
   /** Version of the CLI, shown in settings */
   version?: string
   /** Where the CLI is on this machine */
@@ -65,6 +84,7 @@ export type Task = {
   mode: Mode
   /** The member's private session from its last task, to continue */
   resume?: string
+  model?: ProductModel
 }
 /** Something the member did, shown live in its chat bubble */
 export type Step = {
@@ -122,15 +142,31 @@ export type Result = {
   text: string
   /** The CLI's session, given back as resume with the member's next task */
   sessionId?: string
+  actualModel?: ProductModel
+  final?: {
+    messageID: string
+    parts: {
+      partID: string
+      text: string
+    }[]
+  }
+}
+export type TextDelta = {
+  messageID: string
+  partID: string
+  delta: string
 }
 /** How an adapter reaches MerakCode while it works */
 export type Host = {
+  sessionStarted(input: { sessionId: string }): Promise<void>
+  textDelta(input: TextDelta): void
   step(step: Step): void
   permission(request: Permission): Promise<Verdict>
   question(questions: Question[]): Promise<Answer[]>
 }
 export type Definition = {
   inspect(product: Product): Info | Promise<Info>
+  models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>
   /** Does the task; signal aborts when the user stops the group */
   run(
     task: Task & {

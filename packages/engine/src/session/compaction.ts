@@ -147,7 +147,7 @@ export namespace SessionCompaction {
       if (fullMsg.info.role === "user") turns++
       // Share RECENT_TURNS with the context budget so both protection windows stay in sync.
       if (turns < SessionContextBudget.RECENT_TURNS) continue
-      if (fullMsg.info.role === "assistant" && fullMsg.info.summary) break loop
+      if (fullMsg.info.role === "assistant" && !Message.isExternal(fullMsg.info) && fullMsg.info.summary) break loop
       for (let partIndex = fullMsg.parts.length - 1; partIndex >= 0; partIndex--) {
         const part = fullMsg.parts[partIndex]
         if (part.type === "tool")

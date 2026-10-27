@@ -14,7 +14,7 @@ import { Filesystem } from "@merakcode/util/filesystem"
 
 const root = path.resolve(import.meta.dirname, "..", "..", "..", "..")
 const source = path.join(root, "packages", "sdk", "js", "src", "adapter", "index.ts")
-const adapters = path.join(root, "packages", "engine", "src", "collaboration", "adapters")
+const adapters = path.join(root, "packages", "engine", "src", "agent-connection", "adapters")
 const folder = path.join(root, "packages", "engine", "src", "skill", "builtin", "adapter-generator")
 /** Each example, and the built-in adapter it is */
 const EXAMPLES = {
@@ -79,13 +79,13 @@ async function example(name: string) {
   for (const [, specifier] of code.matchAll(/\bfrom\s+"([^"]+)"/g))
     if (!specifier!.startsWith("node:") && specifier !== "./merakcode-adapter.mjs")
       throw new Error(`${file} imports ${specifier}; an example may use only Node and the adapter library`)
-  return `// MerakCode's own adapter, generated from packages/engine/src/collaboration/adapters/${name}.ts. Do not edit.\n${code}`
+  return `// MerakCode's own adapter, generated from packages/engine/src/agent-connection/adapters/${name}.ts. Do not edit.\n${code}`
 }
 
 /** Each generated file's path and text, formatted as the repo formats its code */
 async function render() {
   const files: Record<string, string> = {
-    "merakcode-adapter.mjs": `// MerakCode adapter library (member protocol v1). Generated from @merakcode/sdk/adapter; do not edit.\n${await bundle()}`,
+    "merakcode-adapter.mjs": `// MerakCode adapter library (member protocol). Generated from @merakcode/sdk/adapter; do not edit.\n${await bundle()}`,
     "merakcode-adapter.d.mts": `// Types of merakcode-adapter.mjs. Generated from @merakcode/sdk/adapter; do not edit.\n${await declarations()}`,
   }
   for (const [file, name] of Object.entries(EXAMPLES)) files[file] = await example(name)

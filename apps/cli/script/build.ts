@@ -130,11 +130,11 @@ async function bundle(out: string) {
       // Linux sandbox helper, started as its own process (see packages/sandbox/src/linux/index.ts)
       "sandbox-linux": path.join(root, "packages/sandbox/src/linux/exec.ts"),
       // Built-in member adapters, each started as its own process for a collaboration member (see
-      // packages/engine/src/collaboration/adapters/index.ts)
+      // packages/engine/src/agent-connection/adapters/index.ts)
       ...Object.fromEntries(
         ["claude", "codex", "opencode", "command"].map((name) => [
           `adapter-${name}`,
-          path.join(root, `packages/engine/src/collaboration/adapters/${name}.ts`),
+          path.join(root, `packages/engine/src/agent-connection/adapters/${name}.ts`),
         ]),
       ),
     },

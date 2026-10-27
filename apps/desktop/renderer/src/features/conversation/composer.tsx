@@ -98,6 +98,7 @@ export function Composer(props: {
   directory: string
   busy: boolean
   disabled?: boolean
+  external?: boolean
   draft?: ComposerDraft
   onDraftChange?: (draft: ComposerDraft) => void
   compact?: boolean
@@ -123,6 +124,16 @@ export function Composer(props: {
   /** For a conversation in a worktree, files and commands are looked up in the worktree directory */
   const dir = () => (props.sessionID ? session(props.sessionID)?.directory : undefined) ?? props.directory
   const key = () => choiceKey(props.sessionID, props.directory)
+  let attachmentEpoch = 0
+  createEffect(
+    on(
+      [key, () => props.disabled, () => props.external],
+      () => {
+        attachmentEpoch++
+      },
+      { defer: true },
+    ),
+  )
   createEffect(
     on(
       key,
@@ -141,7 +152,7 @@ export function Composer(props: {
     on(
       () => fills[key()]?.at,
       (stamp) => {
-        if (!stamp) return
+        if (!stamp || props.disabled) return
         setText(fills[key()]!.text)
         queueMicrotask(() => {
           resize()
@@ -188,7 +199,10 @@ export function Composer(props: {
   )
   const open = () => !!at() && (options()?.length ?? 0) > 0
 
-  const detect = () => setAt(trigger(input.value, input.selectionStart ?? input.value.length))
+  const detect = () => {
+    if (props.disabled || props.external) return setAt(undefined)
+    setAt(trigger(input.value, input.selectionStart ?? input.value.length))
+  }
 
   const resize = () => {
     input.style.height = "auto"
@@ -196,6 +210,7 @@ export function Composer(props: {
   }
 
   const select = (option: Option | undefined) => {
+    if (props.disabled || props.external) return
     const hit = at()
     if (!option || !hit) return
     const next = apply(text(), hit, option.value)
@@ -250,11 +265,16 @@ export function Composer(props: {
   }
 
   const setMode = (mode: PermissionMode) => {
+    if (props.disabled) return
     choose(props.sessionID, props.directory, { mode })
     props.onMode?.(mode)
   }
 
   const keydown = (event: KeyboardEvent) => {
+    if (props.disabled) {
+      event.preventDefault()
+      return
+    }
     if (event.isComposing || event.keyCode === 229) return
     if (open()) {
       const list = options() ?? []
@@ -286,6 +306,9 @@ export function Composer(props: {
   }
 
   const attach = (file: File) => {
+    if (props.disabled || props.external) return
+    const target = key()
+    const epoch = attachmentEpoch
     const path = bridge?.getPathForFile(file)
     if (path) {
       setFiles((list) => [
@@ -295,15 +318,21 @@ export function Composer(props: {
       return
     }
     const reader = new FileReader()
-    reader.onload = () =>
+    reader.onload = () => {
+      if (props.disabled || props.external || target !== key() || epoch !== attachmentEpoch) return
       setFiles((list) => [
         ...list,
         { type: "file", mime: file.type, filename: file.name || "image.png", url: String(reader.result) },
       ])
+    }
     reader.readAsDataURL(file)
   }
 
   const paste = (event: ClipboardEvent) => {
+    if (props.disabled) {
+      event.preventDefault()
+      return
+    }
     const items = [...(event.clipboardData?.files ?? [])]
     if (!items.length) return
     event.preventDefault()
@@ -311,7 +340,11 @@ export function Composer(props: {
   }
 
   const pick = async () => {
+    if (props.disabled || props.external) return
+    const target = key()
+    const epoch = attachmentEpoch
     const picked = await bridge?.openFilePicker({ multiple: true })
+    if (props.disabled || props.external || target !== key() || epoch !== attachmentEpoch) return
     const list = Array.isArray(picked) ? picked : picked ? [picked] : []
     setFiles((current) => [
       ...current,
@@ -325,7 +358,7 @@ export function Composer(props: {
   }
 
   // Preload the command list so typing / does not wait
-  createEffect(() => void loadCommands(dir()))
+  createEffect(() => !props.external && void loadCommands(dir()))
 
   return (
     <div
@@ -337,7 +370,7 @@ export function Composer(props: {
         ;[...(event.dataTransfer?.files ?? [])].forEach(attach)
       }}
     >
-      <Show when={open()}>
+      <Show when={!props.disabled && !props.external && open()}>
         <div
           class="suggest popover scroll"
           role="listbox"
@@ -380,7 +413,8 @@ export function Composer(props: {
                 <button
                   class="icon-button sm"
                   aria-label={t("prompt.removeAttachment", { name: file.filename ?? "" })}
-                  onClick={() => setFiles((list) => list.filter((_, i) => i !== index()))}
+                  disabled={props.disabled}
+                  onClick={() => !props.disabled && setFiles((list) => list.filter((_, i) => i !== index()))}
                 >
                   <X class="icon icon-xs" />
                 </button>
@@ -398,7 +432,12 @@ export function Composer(props: {
         aria-activedescendant={open() ? `composer-suggest-${active()}` : undefined}
         placeholder={props.placeholder ?? (props.busy ? t("prompt.placeholderBusy") : t("prompt.placeholder"))}
         value={text()}
+        disabled={props.disabled}
         onInput={(event) => {
+          if (props.disabled) {
+            event.currentTarget.value = text()
+            return
+          }
           setText(event.currentTarget.value)
           setActive(0)
           detect()
@@ -410,29 +449,38 @@ export function Composer(props: {
         onPaste={paste}
       />
       <div class="composer-bar">
-        <button class="icon-button" aria-label={t("prompt.attach")} onClick={() => void pick()}>
-          <Paperclip class="icon" />
-        </button>
-        <Show when={!connected()}>
+        <Show when={!props.external}>
+          <button
+            class="icon-button"
+            aria-label={t("prompt.attach")}
+            disabled={props.disabled}
+            onClick={() => void pick()}
+          >
+            <Paperclip class="icon" />
+          </button>
+        </Show>
+        <Show when={!props.external && !connected()}>
           <button class="chip accent" onClick={() => setUi("settings", "models")}>
             {t("prompt.noModel")}
           </button>
         </Show>
         <span class="spacer" />
-        <Show when={props.sessionID}>{(id) => <Usage sessionID={id()} />}</Show>
-        <Show when={connected()}>
+        <Show when={!props.external && props.sessionID}>{(id) => <Usage sessionID={id()} />}</Show>
+        <Show when={!props.external && connected()}>
           <ModelPicker
             value={current().model}
-            onChange={(model) => choose(props.sessionID, props.directory, { model })}
+            disabled={props.disabled}
+            onChange={(model) => !props.disabled && choose(props.sessionID, props.directory, { model })}
           />
         </Show>
-        <Show when={variants().length}>
+        <Show when={!props.external && variants().length}>
           <Tip label={t("model.variant.hint")} placement="top">
             <Select
               label={t("model.variant.named", { level: current().variant ?? variants()[0] ?? "" })}
               options={variants().map((value) => ({ value, label: value }))}
               value={current().variant ?? variants()[0]}
-              onChange={(variant) => choose(props.sessionID, props.directory, { variant })}
+              disabled={props.disabled}
+              onChange={(variant) => !props.disabled && choose(props.sessionID, props.directory, { variant })}
               display={(option) => (
                 <>
                   <Brain class="icon icon-sm" />
@@ -442,7 +490,9 @@ export function Composer(props: {
             />
           </Tip>
         </Show>
-        <SandboxField directory={dir()} />
+        <Show when={!props.external}>
+          <SandboxField directory={dir()} disabled={props.disabled} />
+        </Show>
         <Tip label={t("mode.hint")} placement="top">
           <Select
             label={t("mode.named", {
@@ -450,6 +500,7 @@ export function Composer(props: {
             })}
             options={modeOptions()}
             value={current().mode}
+            disabled={props.disabled}
             onChange={setMode}
           />
         </Tip>

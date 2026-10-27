@@ -1,4 +1,4 @@
-import type { CollaborationProduct, CollaborationSeat, Part } from "@merakcode/sdk/client"
+import type { AgentConnectionProduct, CollaborationRoleTemplate, CollaborationSeat, Part } from "@merakcode/sdk/client"
 import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
 import { createEffect, createSignal, For, on, Show } from "solid-js"
@@ -7,7 +7,7 @@ import { setUi } from "../../state/ui"
 import { Select } from "../../ui/select"
 
 export type Seat = CollaborationSeat
-export type Product = CollaborationProduct
+export type Product = AgentConnectionProduct
 export type SeatDraft = { name: string; role: string; duty: string; product: string }
 
 /** A member's avatar, tinted by its id, so a renamed member keeps its color */
@@ -44,6 +44,17 @@ export function seatMeta(seat: { product: string; role?: string }, products: rea
   return [productTitle(seat.product, products), seat.role].filter(Boolean).join(" · ")
 }
 
+export function seatOffline(
+  seat: Pick<Seat, "product"> & Partial<Pick<Seat, "leader" | "availability">>,
+  products: readonly Product[],
+) {
+  if (seat.leader || seat.product === "merak") return false
+  if (seat.availability) return seat.availability.state === "offline"
+  if (!products.length) return false
+  const product = products.find((item) => item.id === seat.product)
+  return !product || !product.enabled || !product.connected
+}
+
 /**
  * Who a permission request or question comes from, when it comes from a member at work: its name, product and role,
  * found from the delegate call that carries it. The leader's own requests carry their own calls and name no one.
@@ -73,6 +84,7 @@ export function mentionChoices(
 ): { name: string; detail: string }[] {
   const needle = query.trim().toLowerCase()
   return seats
+    .filter((seat) => !seatOffline(seat, products))
     .filter((seat) => !needle || seat.name.toLowerCase().includes(needle))
     .map((seat) => ({ name: seat.name, detail: seatMeta(seat, products) }))
 }
@@ -94,6 +106,7 @@ function versionNote(product: Product) {
 function MemberForm(props: {
   seat?: Seat
   products: readonly Product[]
+  roleTemplates?: readonly CollaborationRoleTemplate[]
   taken: readonly string[]
   onSubmit: (draft: SeatDraft) => void
   onRemove?: () => void
@@ -146,6 +159,25 @@ function MemberForm(props: {
           </div>
         }
       >
+        <Show when={props.roleTemplates?.length}>
+          <Select
+            label={t("group.roleTemplate")}
+            value={undefined}
+            placeholder={t("group.roleTemplatePlaceholder")}
+            options={props.roleTemplates!.map((template) => ({
+              value: template.id,
+              label: template.name,
+              description: template.description,
+            }))}
+            onChange={(id) => {
+              const template = props.roleTemplates?.find((item) => item.id === id)
+              if (!template) return
+              setName(template.name)
+              setRole(template.role)
+              setDuty(template.duty)
+            }}
+          />
+        </Show>
         {/* Shown once the products are in: options arriving while the list is open are not picked up */}
         <Show when={props.products.length} fallback={<p class="member-checking subtle pulse">{t("group.checking")}</p>}>
           <Select
@@ -174,7 +206,7 @@ function MemberForm(props: {
             <button
               type="button"
               class="member-hint"
-              onClick={() => setUi({ settings: "collaboration", newTeam: false })}
+              onClick={() => setUi({ settings: "agentConnections", newTeam: false })}
             >
               {t("group.someUnavailable")}
             </button>
@@ -231,6 +263,7 @@ function MemberForm(props: {
 export function MemberList(props: {
   seats: readonly Seat[]
   products: readonly Product[]
+  roleTemplates?: readonly CollaborationRoleTemplate[]
   busy?: (seatID: string) => boolean
   /** Opens this member, or the add form when "new"; at lets the same request open again */
   open?: { target: string; at: number }
@@ -266,6 +299,9 @@ export function MemberList(props: {
               <span class="member-text">
                 <span class="member-name">
                   <span class="ellipsis">{seat.name}</span>
+                  <Show when={seatOffline(seat, props.products)}>
+                    <span class="badge neutral">{t("group.offline")}</span>
+                  </Show>
                   <Show when={seat.leader}>
                     <span class="badge accent">{t("group.leader")}</span>
                   </Show>
@@ -300,6 +336,7 @@ export function MemberList(props: {
         <div class="member open">
           <MemberForm
             products={props.products}
+            roleTemplates={props.roleTemplates}
             taken={taken()}
             onSubmit={(draft) => void done(props.onAdd(draft))}
             onCancel={() => setOpen(undefined)}

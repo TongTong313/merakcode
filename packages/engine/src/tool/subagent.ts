@@ -26,7 +26,8 @@ function tokenTotal(tokens: Message.AssistantInfo["tokens"] | Message.StepFinish
 
 export function summarizeSubagentMetrics(input: { taskID: string; messages: Message.FullMsg[] }): SubagentMetrics {
   const messages = input.messages.filter(
-    (message): message is Message.FullMsg & { info: Message.AssistantInfo } => message.info.role === "assistant",
+    (message): message is Message.FullMsg & { info: Message.AssistantInfo } =>
+      message.info.role === "assistant" && !Message.isExternal(message.info),
   )
   if (messages.length === 0) throw new Error(`Subagent ${input.taskID} completed without an assistant message`)
 
@@ -143,7 +144,9 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
       // The agent's own model, otherwise the model of the main session's current turn; shown on the approval card
       const inherited = await Message.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
         .then((msg) =>
-          msg.info.role === "assistant" ? { modelID: msg.info.modelID, providerID: msg.info.providerID } : undefined,
+          msg.info.role === "assistant" && !Message.isExternal(msg.info)
+            ? { modelID: msg.info.modelID, providerID: msg.info.providerID }
+            : undefined,
         )
         .catch(() => undefined)
       const planned = agent.model ?? inherited
@@ -199,7 +202,8 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
           })
         })
         const fullMsg = await Message.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-        if (fullMsg.info.role !== "assistant") throw new Error("Not an assistant message")
+        if (fullMsg.info.role !== "assistant" || Message.isExternal(fullMsg.info))
+          throw new Error("Not a native assistant message")
 
         const model = agent.model ?? {
           modelID: fullMsg.info.modelID,

@@ -14,8 +14,22 @@ import type { Provider } from "../provider/provider"
 import { PermissionMode } from "../permission/mode"
 import { SessionToolResult } from "./tool-result"
 import { Transcript } from "./transcript"
+import { ExternalAdapterError } from "./external-error"
 
 export namespace Message {
+  const ProductModel = z.object({ id: z.string(), providerID: z.string().optional() })
+  export const ExternalDelegateProgress = z
+    .object({
+      runID: z.string(),
+      productTitle: z.string(),
+      requestedModel: ProductModel.optional(),
+      actualModel: ProductModel.optional(),
+      parts: z.array(z.object({ id: z.string(), text: z.string() })),
+      terminal: z.enum(["completed", "failed", "cancelled", "interrupted"]).optional(),
+      stopReason: z.enum(["product-disabled", "user"]).optional(),
+    })
+    .meta({ ref: "ExternalDelegateProgress" })
+  export type ExternalDelegateProgress = z.infer<typeof ExternalDelegateProgress>
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
   export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
   export const StructuredOutputError = NamedError.create(
@@ -350,7 +364,7 @@ export namespace Message {
       status: z.literal("running"),
       input: z.record(z.string(), z.any()),
       title: z.string().optional(),
-      metadata: z.record(z.string(), z.any()).optional(),
+      metadata: z.object({ external: ExternalDelegateProgress.optional() }).catchall(z.any()).optional(),
       time: z.object({
         start: z.number(),
       }),
@@ -366,11 +380,13 @@ export namespace Message {
   export const ToolCompletedMetadata = z
     .object({
       mcpIsError: z.boolean().optional(),
+      external: ExternalDelegateProgress.optional(),
     })
     .catchall(z.any())
   export const ToolErrorMetadata = z
     .object({
       errorKind: ToolErrorKind.optional(),
+      external: ExternalDelegateProgress.optional(),
     })
     .catchall(z.any())
 
@@ -439,6 +455,7 @@ export namespace Message {
   })
 
   export const UserInfo = Base.extend({
+    execution: z.object({ kind: z.literal("merak") }).optional(),
     role: z.literal("user"),
     time: z.object({
       created: z.number(),
@@ -488,6 +505,7 @@ export namespace Message {
   export type Part = z.infer<typeof Part>
 
   export const AssistantInfo = Base.extend({
+    execution: z.object({ kind: z.literal("merak") }).optional(),
     role: z.literal("assistant"),
     time: z.object({
       created: z.number(),
@@ -509,6 +527,7 @@ export namespace Message {
         ConfigParseError.Schema,
         PluginInstallError.Schema,
         WorktreeResetDirtyError.Schema,
+        ExternalAdapterError.Schema,
       ])
       .optional(),
     parentID: z.string(),
@@ -558,10 +577,42 @@ export namespace Message {
   })
   export type AssistantInfo = z.infer<typeof AssistantInfo>
 
-  export const Info = z.discriminatedUnion("role", [UserInfo, AssistantInfo]).meta({
+  export const ExternalExecution = z.object({
+    kind: z.literal("external"),
+    productID: z.string(),
+    productTitle: z.string(),
+    runID: z.string(),
+    targetRevision: z.number(),
+    requestedModel: ProductModel.optional(),
+    actualModel: ProductModel.optional(),
+  })
+  export const AssistantError = AssistantInfo.shape.error
+  export const ExternalUserInfo = Base.extend({
+    role: z.literal("user"),
+    time: z.object({ created: z.number() }),
+    permissionMode: PermissionMode.Schema,
+    execution: ExternalExecution,
+  }).meta({ ref: "ExternalUserMessage" })
+  export type ExternalUserInfo = z.infer<typeof ExternalUserInfo>
+  export const ExternalAssistantInfo = Base.extend({
+    role: z.literal("assistant"),
+    time: z.object({ created: z.number(), completed: z.number().optional() }),
+    parentID: z.string(),
+    path: z.object({ cwd: z.string(), root: z.string() }),
+    execution: ExternalExecution,
+    error: AssistantError,
+    terminal: z.enum(["completed", "failed", "cancelled", "interrupted"]).optional(),
+  }).meta({ ref: "ExternalAssistantMessage" })
+  export type ExternalAssistantInfo = z.infer<typeof ExternalAssistantInfo>
+  export const AssistantMessage = z.union([AssistantInfo, ExternalAssistantInfo])
+  export const Info = z.union([UserInfo, AssistantInfo, ExternalUserInfo, ExternalAssistantInfo]).meta({
     ref: "Message",
   })
   export type Info = z.infer<typeof Info>
+
+  export function isExternal(info: Info): info is ExternalUserInfo | ExternalAssistantInfo {
+    return info.execution?.kind === "external"
+  }
 
   export const Event = {
     Updated: BusEvent.define(
@@ -602,6 +653,12 @@ export namespace Message {
     parts: z.array(Part),
   })
   export type FullMsg = z.infer<typeof FullMsg>
+  export type NativeFullMsg = { info: UserInfo | AssistantInfo; parts: Part[] }
+
+  export function native(message: FullMsg): NativeFullMsg {
+    if (isExternal(message.info)) throw new Error("Expected a native message")
+    return { info: message.info, parts: message.parts }
+  }
 
   /**
    * For command messages, returns the expanded template (including subtask prompts) selected by source ID, so safety
@@ -609,7 +666,7 @@ export namespace Message {
    */
   export function userSourceTexts(message: FullMsg): string[] {
     if (message.info.role !== "user") return []
-    const source = message.info.commandSource
+    const source = !isExternal(message.info) ? message.info.commandSource : undefined
     if (source) {
       const template = source.templatePartIDs
         .flatMap((id) => {
@@ -634,7 +691,9 @@ export namespace Message {
    */
   export function userTaskText(message: FullMsg): string {
     const texts = userSourceTexts(message)
-    return message.info.role === "user" && message.info.commandSource ? (texts.at(-1) ?? "") : (texts[0] ?? "")
+    return message.info.role === "user" && !isExternal(message.info) && message.info.commandSource
+      ? (texts.at(-1) ?? "")
+      : (texts[0] ?? "")
   }
 
   /** Placeholder result for a dangling tool_use (Anthropic requires a tool_result for every tool_use). */
@@ -749,6 +808,30 @@ export namespace Message {
     }
 
     for (const msg of input) {
+      if (isExternal(msg.info)) {
+        const text = msg.parts.flatMap((part) => (part.type === "text" && !part.ignored ? [part.text] : [])).join("\n")
+        const steps =
+          msg.info.role === "assistant"
+            ? z
+                .array(z.object({ tool: z.string(), detail: z.string().optional() }))
+                .safeParse(msg.info.metadata?.externalSteps)
+            : undefined
+        const observed =
+          steps?.success && steps.data.length
+            ? `\n[Observed external tool steps, not tool results:\n${steps.data.map((step) => `${step.tool}${step.detail ? `: ${step.detail}` : ""}`).join("\n")}]`
+            : ""
+        const status =
+          msg.info.role === "assistant" && msg.info.terminal !== "completed"
+            ? `\n[External turn ${msg.info.terminal ?? "interrupted"}; do not replay its previous actions.]`
+            : ""
+        if (text || observed || status)
+          result.push({
+            id: msg.info.id,
+            role: msg.info.role,
+            parts: [{ type: "text", text: text + observed + status }],
+          })
+        continue
+      }
       if (msg.parts.length === 0) continue
 
       if (msg.info.role === "user") {
@@ -968,6 +1051,7 @@ export namespace Message {
    * Transcript replay output and before import-full validation; only the returned value changes, nothing is written.
    */
   export function legacy(info: Message.Info): Message.Info {
+    if (isExternal(info)) return info
     if (info.role === "user") {
       const diffs = info.summary?.diffs
       if (!Array.isArray(diffs) || diffs.every((item) => legacyDiff(item) === item)) return info
@@ -1008,7 +1092,13 @@ export namespace Message {
         msg.parts.some((part) => part.type === "compaction")
       )
         break
-      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish && !msg.info.error)
+      if (
+        !isExternal(msg.info) &&
+        msg.info.role === "assistant" &&
+        msg.info.summary &&
+        msg.info.finish &&
+        !msg.info.error
+      )
         completed.add(msg.info.parentID)
     }
     result.reverse()

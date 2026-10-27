@@ -19,6 +19,35 @@ function run(events: Event[]) {
 }
 
 describe("sessions", () => {
+  test.each(["accept", "decline"] as const)("ignores session snapshots older than a takeover %s", (decision) => {
+    const state = createSessionsState()
+    const latest = session("ses_a", {
+      targetRevision: 2,
+      target: decision === "accept" ? { kind: "merak" } : { kind: "external", productID: "claude" },
+      targetBlock:
+        decision === "decline"
+          ? { blockID: "b1", productID: "claude", disabledCycleID: "d1", decision: "declined" }
+          : undefined,
+    })
+    applyEvent(state, { type: "session.updated", properties: { info: latest } } as Event)
+    const before = structuredClone(state.session)
+    const old = session("ses_a", {
+      targetRevision: 1,
+      target: { kind: "external", productID: "claude" },
+      targetBlock: { blockID: "b1", productID: "claude", disabledCycleID: "d1", decision: "pending" },
+    })
+    expect(applyEvent(state, { type: "session.updated", properties: { info: old } } as Event)).toBe("none")
+    expect(state.session).toEqual(before)
+    expect(
+      applyEvent(state, {
+        type: "session.updated",
+        properties: { info: session("ses_a", { ...state.session[0], title: "Renamed" }) },
+      } as Event),
+    ).toBe("update")
+    expect(state.session[0]?.title).toBe("Renamed")
+    expect(state.session[0]?.targetRevision).toBe(2)
+  })
+
   test("created and updated sessions are inserted in id order; the same id again updates in place", () => {
     const state = run([
       { type: "session.created", properties: { info: session("ses_b") } },

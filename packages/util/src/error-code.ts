@@ -301,6 +301,48 @@ export namespace ErrorCode {
       errors: ["ConfigFrontmatterError"],
     },
 
+    EXTERNAL_CONVERSATION_BLOCKED: {
+      code: "MRK-4006",
+      domain: "session",
+      status: 409,
+      retryable: false,
+      title: { zh: "对话产品已停用", en: "Conversation product is disabled" },
+      hint: {
+        zh: "重新启用产品，或确认由 MerakCode 接管此单聊。",
+        en: "Enable the product or explicitly accept MerakCode takeover.",
+      },
+      errors: ["ExternalBlockedError"],
+    },
+    TAKEOVER_CONFLICT: {
+      code: "MRK-4007",
+      domain: "session",
+      status: 409,
+      retryable: false,
+      title: { zh: "接管状态已变化", en: "Takeover state changed" },
+      hint: { zh: "刷新对话后重新确认。", en: "Refresh the conversation before deciding again." },
+      errors: ["TakeoverConflictError"],
+    },
+    EXTERNAL_OPERATION_UNSUPPORTED: {
+      code: "MRK-4008",
+      domain: "session",
+      status: 400,
+      retryable: false,
+      title: { zh: "外部对话不支持此操作", en: "Operation unavailable for external conversations" },
+      hint: { zh: "使用文本对话，或新建 MerakCode 对话。", en: "Use text or start a MerakCode conversation." },
+      errors: ["ExternalOperationError"],
+    },
+    EXTERNAL_ADAPTER_FAILED: {
+      code: "MRK-4009",
+      domain: "session",
+      status: 502,
+      retryable: false,
+      title: { zh: "外部产品执行失败", en: "External product execution failed" },
+      hint: {
+        zh: "检查产品安装、登录和模型配置后重试。",
+        en: "Check the product installation, login, and model configuration.",
+      },
+      errors: ["ExternalAdapterError"],
+    },
     SESSION_READ_FAILED: {
       code: "MRK-4001",
       domain: "session",

@@ -513,7 +513,7 @@ export namespace SessionProcessor {
                         status: "error",
                         input: value.input ?? match.state.input,
                         error: message,
-                        metadata: { errorKind },
+                        metadata: { ...match.state.metadata, errorKind },
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),

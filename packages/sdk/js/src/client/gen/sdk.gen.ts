@@ -11,6 +11,14 @@ import {
   type TDataShape,
 } from "./client/index.js"
 import type {
+  AgentConnectionModelsErrors,
+  AgentConnectionModelsResponses,
+  AgentConnectionProductChangeErrors,
+  AgentConnectionProductChangeResponses,
+  AgentConnectionProductsErrors,
+  AgentConnectionProductsResponses,
+  AgentConnectionVerifyErrors,
+  AgentConnectionVerifyResponses,
   AgentPartInput,
   AppAgentGenerateErrors,
   AppAgentGenerateResponses,
@@ -38,10 +46,10 @@ import type {
   CollaborationGetResponses,
   CollaborationListErrors,
   CollaborationListResponses,
-  CollaborationProductChangeErrors,
-  CollaborationProductChangeResponses,
-  CollaborationProductsErrors,
-  CollaborationProductsResponses,
+  CollaborationRoleTemplateChangeErrors,
+  CollaborationRoleTemplateChangeResponses,
+  CollaborationRoleTemplatesErrors,
+  CollaborationRoleTemplatesResponses,
   CollaborationSeatAddErrors,
   CollaborationSeatAddResponses,
   CollaborationSeatRemoveErrors,
@@ -275,6 +283,8 @@ import type {
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionTakeoverErrors,
+  SessionTakeoverResponses,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionToolAbortErrors,
@@ -1461,6 +1471,14 @@ export class Session2 extends HeyApiClient {
       metadata?: {
         [key: string]: unknown
       }
+      target?:
+        | {
+            kind: "merak"
+          }
+        | {
+            kind: "external"
+            productID: string
+          }
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<SessionCreateResponses, SessionCreateErrors, ThrowOnError> {
@@ -1474,6 +1492,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "title" },
             { in: "body", key: "permission" },
             { in: "body", key: "metadata" },
+            { in: "body", key: "target" },
           ],
         },
       ],
@@ -2199,6 +2218,45 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Decide whether MerakCode takes over a disabled external conversation
+   */
+  public takeover<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      decision: "accept" | "decline"
+      expectedTargetRevision: number
+      blockID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionTakeoverResponses, SessionTakeoverErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "decision" },
+            { in: "body", key: "expectedTargetRevision" },
+            { in: "body", key: "blockID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionTakeoverResponses, SessionTakeoverErrors, ThrowOnError>({
+      url: "/session/{sessionID}/takeover",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Send command
    *
    * Send a new command to a session for execution by the AI assistant.
@@ -2523,11 +2581,9 @@ export class Part extends HeyApiClient {
   }
 }
 
-export class Product extends HeyApiClient {
+export class RoleTemplate extends HeyApiClient {
   /**
-   * Change collaboration products
-   *
-   * Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.
+   * Change a custom collaboration role template
    */
   public change<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2536,75 +2592,28 @@ export class Product extends HeyApiClient {
         | {
             type: "add"
             id: string
-            product: {
-              /**
-               * Executable name or path; may be left out when overriding claude, codex or opencode
-               */
-              command?: string
-              /**
-               * Display name
-               */
-              title?: string
-              /**
-               * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-               */
-              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-              /**
-               * Arguments. The prompt is written to stdin
-               */
-              args?: Array<string>
-              /**
-               * Arguments used when the seat already has a private session. {id} is replaced with that session id
-               */
-              resumeArgs?: Array<string>
-              /**
-               * Regular expression with one capture group for the private session id, for a one-shot command
-               */
-              sessionLine?: string
+            template: {
+              name: string
+              role: string
+              duty: string
             }
           }
         | {
             type: "update"
             id: string
-            product: {
-              /**
-               * Executable name or path; may be left out when overriding claude, codex or opencode
-               */
-              command?: string
-              /**
-               * Display name
-               */
-              title?: string
-              /**
-               * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-               */
-              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-              /**
-               * Arguments. The prompt is written to stdin
-               */
-              args?: Array<string>
-              /**
-               * Arguments used when the seat already has a private session. {id} is replaced with that session id
-               */
-              resumeArgs?: Array<string>
-              /**
-               * Regular expression with one capture group for the private session id, for a one-shot command
-               */
-              sessionLine?: string
+            template: {
+              name: string
+              role: string
+              duty: string
             }
           }
         | {
             type: "remove"
             id: string
           }
-        | {
-            type: "enabled"
-            id: string
-            enabled: boolean
-          }
     },
     options?: Options<never, ThrowOnError>,
-  ): RequestResult<CollaborationProductChangeResponses, CollaborationProductChangeErrors, ThrowOnError> {
+  ): RequestResult<CollaborationRoleTemplateChangeResponses, CollaborationRoleTemplateChangeErrors, ThrowOnError> {
     const params = buildClientParams(
       [parameters],
       [
@@ -2617,11 +2626,11 @@ export class Product extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).post<
-      CollaborationProductChangeResponses,
-      CollaborationProductChangeErrors,
+      CollaborationRoleTemplateChangeResponses,
+      CollaborationRoleTemplateChangeErrors,
       ThrowOnError
     >({
-      url: "/collaboration/product",
+      url: "/collaboration/role-template",
       ...options,
       ...params,
       headers: {
@@ -2763,34 +2772,21 @@ export class Seat extends HeyApiClient {
 
 export class Collaboration extends HeyApiClient {
   /**
-   * List collaboration products
-   *
-   * Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.
+   * List collaboration role templates
    */
-  public products<ThrowOnError extends boolean = false>(
+  public roleTemplates<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-      refresh?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
-  ): RequestResult<CollaborationProductsResponses, CollaborationProductsErrors, ThrowOnError> {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "refresh" },
-          ],
-        },
-      ],
-    )
+  ): RequestResult<CollaborationRoleTemplatesResponses, CollaborationRoleTemplatesErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<
-      CollaborationProductsResponses,
-      CollaborationProductsErrors,
+      CollaborationRoleTemplatesResponses,
+      CollaborationRoleTemplatesErrors,
       ThrowOnError
     >({
-      url: "/collaboration/product",
+      url: "/collaboration/role-template",
       ...options,
       ...params,
     })
@@ -2905,14 +2901,204 @@ export class Collaboration extends HeyApiClient {
     })
   }
 
-  private _product?: Product
-  get product(): Product {
-    return (this._product ??= new Product({ client: this.client }))
+  private _roleTemplate?: RoleTemplate
+  get roleTemplate(): RoleTemplate {
+    return (this._roleTemplate ??= new RoleTemplate({ client: this.client }))
   }
 
   private _seat?: Seat
   get seat(): Seat {
     return (this._seat ??= new Seat({ client: this.client }))
+  }
+}
+
+export class Product extends HeyApiClient {
+  /**
+   * Change a global agent connection
+   */
+  public change<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      body:
+        | {
+            type: "add"
+            id: string
+            product: {
+              command?: string
+              title?: string
+              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+              args?: Array<string>
+              resumeArgs?: Array<string>
+              sessionLine?: string
+              model?: {
+                id: string
+                providerID?: string
+              }
+            }
+          }
+        | {
+            type: "update"
+            id: string
+            product: {
+              command?: string
+              title?: string
+              adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+              args?: Array<string>
+              resumeArgs?: Array<string>
+              sessionLine?: string
+              model?: {
+                id: string
+                providerID?: string
+              }
+            }
+          }
+        | {
+            type: "remove"
+            id: string
+          }
+        | {
+            type: "enabled"
+            id: string
+            enabled: boolean
+          }
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<AgentConnectionProductChangeResponses, AgentConnectionProductChangeErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "body", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AgentConnectionProductChangeResponses,
+      AgentConnectionProductChangeErrors,
+      ThrowOnError
+    >({
+      url: "/agent-connection/product",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class AgentConnection extends HeyApiClient {
+  /**
+   * List global agent connections
+   */
+  public products<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      refresh?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<AgentConnectionProductsResponses, AgentConnectionProductsErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "refresh" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      AgentConnectionProductsResponses,
+      AgentConnectionProductsErrors,
+      ThrowOnError
+    >({
+      url: "/agent-connection/product",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Discover models for an agent connection
+   */
+  public models<ThrowOnError extends boolean = false>(
+    parameters: {
+      productID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<AgentConnectionModelsResponses, AgentConnectionModelsErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "productID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      AgentConnectionModelsResponses,
+      AgentConnectionModelsErrors,
+      ThrowOnError
+    >({
+      url: "/agent-connection/product/{productID}/model",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Verify a saved agent connection
+   */
+  public verify<ThrowOnError extends boolean = false>(
+    parameters: {
+      productID: string
+      directory?: string
+      expectedRevision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<AgentConnectionVerifyResponses, AgentConnectionVerifyErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "productID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AgentConnectionVerifyResponses,
+      AgentConnectionVerifyErrors,
+      ThrowOnError
+    >({
+      url: "/agent-connection/product/{productID}/verify",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  private _product?: Product
+  get product(): Product {
+    return (this._product ??= new Product({ client: this.client }))
   }
 }
 
@@ -5505,6 +5691,11 @@ export class MerakCodeClient extends HeyApiClient {
   private _collaboration?: Collaboration
   get collaboration(): Collaboration {
     return (this._collaboration ??= new Collaboration({ client: this.client }))
+  }
+
+  private _agentConnection?: AgentConnection
+  get agentConnection(): AgentConnection {
+    return (this._agentConnection ??= new AgentConnection({ client: this.client }))
   }
 
   private _memory?: Memory

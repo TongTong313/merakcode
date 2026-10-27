@@ -40,6 +40,7 @@ import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
 import { FileRoutes } from "./routes/file"
 import { CollaborationRoutes } from "./routes/collaboration"
+import { AgentConnectionRoutes } from "./routes/agent-connection"
 import { ConfigRoutes } from "./routes/config"
 import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
@@ -404,6 +405,7 @@ export namespace Server {
       .route("/experimental", ExperimentalRoutes())
       .route("/session", SessionRoutes())
       .route("/collaboration", CollaborationRoutes())
+      .route("/agent-connection", AgentConnectionRoutes())
       // Memory management (for people) must be mounted after the directory middleware: the memory directory is
       // located by Instance.worktree, which is wrong outside the Instance context.
       .route("/memory", MemoryRoutes())

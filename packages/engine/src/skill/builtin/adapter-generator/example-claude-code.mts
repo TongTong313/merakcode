@@ -1,4 +1,4 @@
-// MerakCode's own adapter, generated from packages/engine/src/collaboration/adapters/claude.ts. Do not edit.
+// MerakCode's own adapter, generated from packages/engine/src/agent-connection/adapters/claude.ts. Do not edit.
 /**
  * Built-in member adapter for Claude Code. It runs `claude -p` with stream-json in and out and the stdio permission
  * host, so every tool Claude Code would ask about comes to MerakCode first; AskUserQuestion becomes a MerakCode
@@ -25,13 +25,14 @@ import {
   type Permission,
   type Question,
   type Result,
+  type ProductModel,
 } from "./merakcode-adapter.mjs"
 
 /** Edits are not offered at all in read-only mode, so Claude Code does not try them */
 const EDIT_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
 
 /** Arguments for one task; they are given again on resume, since Claude Code keeps none of them */
-function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[] }) {
+function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[]; model?: ProductModel }) {
   return [
     "-p",
     "--input-format",
@@ -39,13 +40,15 @@ function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[] }) {
     "--output-format",
     "stream-json",
     "--verbose",
+    "--include-partial-messages",
     "--permission-prompt-tool",
     "stdio",
     // Everything Claude Code is unsure about goes to MerakCode, which applies the group's mode
     "--permission-mode",
-    "default",
+    "manual",
     ...(input.mode === "readonly" ? ["--disallowedTools", ...EDIT_TOOLS] : []),
     ...(input.resume ? ["--resume", input.resume] : []),
+    ...(input.model ? ["--model", input.model.id] : []),
     ...(input.extra ?? []),
   ]
 }
@@ -55,9 +58,23 @@ type ToolInput = Record<string, unknown>
 type Message = {
   type?: string
   subtype?: string
+  is_error?: boolean
+  terminal_reason?: string
+  parent_tool_use_id?: string | null
+  model?: string
+  event?: {
+    type?: string
+    message?: { id?: string; model?: string }
+    index?: number
+    delta?: { type?: string; text?: string }
+  }
   request_id?: string
   request?: { subtype?: string; tool_name?: string; input?: ToolInput }
-  message?: { content?: { type?: string; name?: string; input?: ToolInput }[] }
+  message?: {
+    id?: string
+    model?: string
+    content?: { type?: string; text?: string; name?: string; input?: ToolInput }[]
+  }
   result?: string
   session_id?: string
 }
@@ -130,11 +147,20 @@ function parseLine(line: string): Message | undefined {
 }
 
 adapter({
+  models: () => ({ models: ["sonnet", "opus", "haiku"].map((id) => ({ id, title: id })), allowCustomID: true }),
   inspect: async (product) => ({
     name: "Claude Code",
     path: product.command,
     recommended: "2.1.283",
     upgrade: "claude update",
+    capabilities: {
+      modelSelection: true,
+      modelDiscovery: true,
+      textStreaming: true,
+      resume: true,
+      permission: "merak",
+      questions: true,
+    },
     ...(await version(product.command || "claude")),
   }),
   async run(task, host) {
@@ -167,9 +193,32 @@ async function follow(
   host: Host,
   send: (message: unknown) => void,
 ): Promise<Result | undefined> {
+  let sessionID: string | undefined
+  let messageID = "reply"
+  let actualModel: ProductModel | undefined
+  let final: Result["final"]
   for await (const line of lines) {
     const message = parseLine(line)
     if (!message) continue
+    if (message.parent_tool_use_id) continue
+    if (message.session_id && message.session_id !== sessionID) {
+      sessionID = message.session_id
+      await host.sessionStarted({ sessionId: sessionID })
+    }
+    if (message.model) actualModel = { id: message.model }
+    if (message.type === "stream_event") {
+      const event = message.event
+      if (event?.type === "message_start") {
+        messageID = event.message?.id ?? messageID
+        if (event.message?.model) actualModel = { id: event.message.model }
+      }
+      if (
+        event?.type === "content_block_delta" &&
+        event.delta?.type === "text_delta" &&
+        typeof event.delta.text === "string"
+      )
+        host.textDelta({ messageID, partID: String(event.index ?? 0), delta: event.delta.text })
+    }
     if (message.type === "control_request" && message.request?.subtype === "can_use_tool") {
       const id = message.request_id
       void answer(host, message.request.tool_name ?? "", message.request.input ?? {}).then(
@@ -179,11 +228,22 @@ async function follow(
       )
       continue
     }
-    if (message.type === "assistant")
+    if (message.type === "assistant") {
+      if (message.message?.model) actualModel = { id: message.message.model }
+      const parts = (message.message?.content ?? []).flatMap((block, index) =>
+        block.type === "text" && typeof block.text === "string" ? [{ partID: String(index), text: block.text }] : [],
+      )
+      if (parts.length) final = { messageID: message.message?.id ?? messageID, parts }
       for (const block of message.message?.content ?? [])
         if (block.type === "tool_use") host.step(stepOf(block.name ?? "", block.input ?? {}))
+    }
     if (message.type !== "result") continue
-    if (message.subtype !== "success") throw new Error(String(message.result ?? message.subtype))
-    return { text: String(message.result ?? "").trim(), sessionId: message.session_id }
+    if (
+      message.subtype !== "success" ||
+      message.is_error ||
+      ["api_error", "error", "cancelled"].includes(message.terminal_reason ?? "")
+    )
+      throw new Error(String(message.result ?? message.terminal_reason ?? message.subtype))
+    return { text: String(message.result ?? "").trim(), sessionId: message.session_id, actualModel, final }
   }
 }

@@ -227,7 +227,8 @@ for await (const event of session.run("Any typos in the README? List them, don't
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("tool:", event.part.tool, event.part.state.status)
-  if (event.type === "done") console.log("cost:", event.message.cost, "output tokens:", event.message.tokens.output)
+  if (event.type === "done" && "cost" in event.message)
+    console.log("cost:", event.message.cost, "output tokens:", event.message.tokens.output)
 }
 console.log(answer)
 await merak.close()
@@ -938,10 +939,10 @@ Here the CLI sends one request at a time, so `await` in the loop is fine. If you
 
 The object `adapter()` takes (type `Definition`) is those two functions:
 
-| Function           | When it is called                                                                           | What it returns                                                                                                                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect(product)` | Before each task, and when settings shows the state (no task). `unavailable` fails the task | `Info`: `name`, and optionally `version`, `path`, the recommended version `recommended`, the upgrade command `upgrade`, or `unavailable` with why                                                                 |
-| `run(task, host)`  | Once per task                                                                               | `Result`: the reply `text` (it may not be empty, or the task fails), and the `sessionId` to continue next time (saved only when the task succeeds; if the CLI's session is gone, fall back to a new one yourself) |
+| Function           | When it is called                                                                           | What it returns                                                                                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | Before each task, and when settings shows the state (no task). `unavailable` fails the task | `Info`: `name`, and optionally `version`, `path`, the recommended version `recommended`, the upgrade command `upgrade`, or `unavailable` with why                                                                       |
+| `run(task, host)`  | Once per task                                                                               | `Result`: the reply `text` (it may not be empty, or the task fails), and the `sessionId` to continue next time (saved immediately through host.sessionStarted; a failed resume must fail without creating a new thread) |
 
 `task` (type `Task`) holds:
 
@@ -955,6 +956,15 @@ The object `adapter()` takes (type `Definition`) is those two functions:
 | `task.signal`  | Fires when the user stops the group; stop the CLI then                                                                                                                             |
 
 ### 15.6 The five kinds of request
+
+Direct chats and group members use the same adapter. `Info.capabilities` (type `Capabilities`) declares model selection,
+model discovery, real text streaming, resume, permission ownership, and questions. Declare only implemented capabilities.
+Optional `task.model` is a `ProductModel` (`{ id, providerID? }`); pass it to the CLI for every new or resumed task.
+Optional `models(product, signal)` returns a `ModelList` (`{ models: [{ id, providerID?, title }], allowCustomID }`) without
+running inference or claiming account access. Await `host.sessionStarted({ sessionId })` as soon as the external thread
+is known. Send real text with `host.textDelta` using a `TextDelta` (`{ messageID, partID, delta }`) and stable IDs.
+Only report `Result.actualModel` when the CLI reports it; `Result.final` can calibrate the corresponding complete text
+parts. A CLI without incremental text must not advertise streaming.
 
 A request to `host.permission` (type `Permission`) is one of five kinds; use the most specific one that fits:
 
@@ -999,7 +1009,7 @@ Add a product to the global config `~/.merakcode/merakcode.jsonc` (or `merakcode
 
 ```jsonc
 {
-  "collaboration": {
+  "agentConnections": {
     "products": {
       "mycli": {
         "title": "MyCLI",
@@ -1014,7 +1024,11 @@ Add a product to the global config `~/.merakcode/merakcode.jsonc` (or `merakcode
 }
 ```
 
-Or add it under Settings › Collaboration › Add product: set Driven by to "Member adapter (command and arguments start your adapter)", enter `node` as the command and the adapter's path as the argument.
+Or add it under Settings › Agent connections › Add product: set Driven by to "Member adapter (command and arguments start your adapter)", enter `node` as the command and the adapter's path as the argument.
+
+SDK clients register and edit products through the generated `client.agentConnection.product.change` method, without
+importing engine code or reading engine configuration files. Registration is global. The same product can be selected
+for a direct chat or added to a group; role templates belong to collaboration settings.
 
 Once registered, the product's row in settings shows the version `inspect` reports and "Permissions: approved in MerakCode", and members of it can be added to a group. Settings caches the check for 60 seconds; after changing `adapter.mts`, click Check again.
 
@@ -1024,8 +1038,8 @@ Once registered, the product's row in settings shows the version `inspect` repor
 - **The user stops the group**: `task.signal` fires and you stop the CLI. MerakCode also closes the adapter's stdin, and the library exits the adapter 5 seconds later; an adapter still there then is ended with what it started. So stop the CLI within 5 seconds: on macOS and Linux, a CLI left running when the adapter exits is not necessarily cleaned up with it.
 - **MerakCode exits**: the adapter's stdin closes, `task.signal` fires, and the library exits the adapter 5 seconds later; whether the CLI goes too depends on your calling `stop` on `task.signal`.
 - **`inspect` in settings has a time limit**: with no answer within 10 seconds, the product shows as unavailable. The call before a task has none, so keep `inspect` quick and free of side effects; in settings its working directory is not the project, so don't rely on it.
-- **Never print to stdout**: stdout is for talking to MerakCode. The library sends only `console.log` and `console.info` to stderr (MerakCode's log); `console.debug` and `console.dir` still write to stdout, so log with `console.error`. Writing to `process.stdout`, or letting the CLI inherit the adapter's stdout, breaks the talking.
-- **Troubleshooting**: every line the adapter writes to stderr goes into MerakCode's log (`merak logs`). When an adapter exits midway, the failure message carries its last error line.
+- **Never print to stdout**: stdout is for talking to MerakCode. The library sends only `console.log` and `console.info` to stderr (protocol diagnostics); `console.debug` and `console.dir` still write to stdout, so log with `console.error`. Writing to `process.stdout`, or letting the CLI inherit the adapter's stdout, breaks the talking.
+- **Troubleshooting**: the engine records diagnostic events without logging raw stderr lines, which may contain conversation text or credentials. When an adapter exits midway, the failure message carries its last error line.
 - **Never give the CLI options that skip approvals** (such as "allow everything"): MerakCode then no longer governs it, and the permission mode and approvals stop working.
 - **An adapter runs with your own rights, outside MerakCode's sandbox.** MerakCode only governs what the CLI asks about, so connect only CLIs you trust.
 

@@ -5,6 +5,7 @@
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { Session } from "./index"
+import { Message } from "./message"
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -95,7 +96,7 @@ export namespace SessionStats {
           for (const part of message.parts) {
             if (part.type === "tool") stats.toolUsage[part.tool] = (stats.toolUsage[part.tool] ?? 0) + 1
           }
-          if (message.info.role !== "assistant") continue
+          if (message.info.role !== "assistant" || Message.isExternal(message.info)) continue
           const { tokens, cost } = message.info
           const key = `${message.info.providerID}/${message.info.modelID}`
           const model = (stats.modelUsage[key] ??= {

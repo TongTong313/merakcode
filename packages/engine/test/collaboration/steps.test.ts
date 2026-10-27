@@ -8,6 +8,7 @@ import { DelegateTool } from "../../src/tool/delegate"
 import { create, load } from "../../src/collaboration/store"
 import { leaderContext } from "../../src/collaboration/context"
 import { tmpdir } from "../fixture/fixture"
+import { configureConnections } from "../fixture/agent-connections"
 
 const FIXTURE = path.join(import.meta.dirname, "fixture", "adapter.ts")
 
@@ -25,11 +26,11 @@ async function delegate(
       const made = typeof scenario === "function" ? scenario(dir) : scenario
       const fake = {
         title: "Fake",
-        adapter: "member",
+        adapter: "member" as const,
         command: process.execPath,
         args: [...process.execArgv, FIXTURE, JSON.stringify(made)],
       }
-      return fs.writeFile(path.join(dir, "merakcode.json"), JSON.stringify({ collaboration: { products: { fake } } }))
+      return configureConnections({ fake })
     },
   })
   return await Instance.provide({

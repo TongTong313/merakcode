@@ -3,7 +3,17 @@ import { storage } from "../lib/bridge"
 
 export type Tab = "review" | "code" | "browser"
 export type SettingsSection =
-  "general" | "models" | "permissions" | "mcp" | "collaboration" | "skills" | "plugins" | "rules" | "memory" | "about"
+  | "general"
+  | "models"
+  | "permissions"
+  | "mcp"
+  | "agentConnections"
+  | "collaboration"
+  | "skills"
+  | "plugins"
+  | "rules"
+  | "memory"
+  | "about"
 
 /** UI layout state; panel width, tab and terminal height are saved and restored on the next launch */
 type UI = {

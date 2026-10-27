@@ -39,6 +39,7 @@ export namespace Question {
     .object({
       id: Identifier.schema("question"),
       sessionID: Identifier.schema("session"),
+      executionID: z.string().optional(),
       /** Root session: a subagent's question belongs to the conversation it was started from, as permission requests do */
       root: Identifier.schema("session").optional(),
       questions: z.array(Info).describe("Questions to ask"),
@@ -108,6 +109,7 @@ export namespace Question {
 
   export async function ask(input: {
     sessionID: string
+    executionID?: string
     /** Root session of a subagent's session (Session.rootID), so the question reaches the conversation that started it */
     root?: string
     questions: Info[]
@@ -127,6 +129,7 @@ export namespace Question {
       const info: Request = {
         id,
         sessionID: input.sessionID,
+        executionID: input.executionID,
         ...(input.root && input.root !== input.sessionID ? { root: input.root } : {}),
         questions: input.questions,
         tool: input.tool,
@@ -293,10 +296,18 @@ export namespace Question {
    * AbortedError. The question bar closes on the rejected event.
    */
   export async function abortPending(sessionID: string) {
+    return abortMatching((item) => item.info.sessionID === sessionID)
+  }
+
+  export async function abortExecution(executionID: string) {
+    return abortMatching((item) => item.info.executionID === executionID)
+  }
+
+  async function abortMatching(matches: (item: Awaited<ReturnType<typeof state>>["pending"][string]) => boolean) {
     const s = await state()
-    const pending = Object.values(s.pending).filter((item) => item.info.sessionID === sessionID)
+    const pending = Object.values(s.pending).filter(matches)
     if (pending.length === 0) return
-    log.info("abort pending", { sessionID, count: pending.length })
+    log.info("abort pending", { count: pending.length })
     for (const item of pending) {
       if (item.timer) {
         clearTimeout(item.timer)

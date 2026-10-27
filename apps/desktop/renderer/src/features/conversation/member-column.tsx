@@ -2,12 +2,13 @@ import type { CollaborationGroup } from "@merakcode/sdk/client"
 import ChevronsLeft from "lucide-solid/icons/chevrons-left"
 import ChevronsRight from "lucide-solid/icons/chevrons-right"
 import Plus from "lucide-solid/icons/plus"
-import { createSignal, For, Show } from "solid-js"
+import { createSignal, For, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { Confirm } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
-import { Avatar, MemberList, type Product, type Seat } from "./members"
+import { Avatar, MemberList, seatOffline, type Product, type Seat } from "./members"
+import { loadRoleTemplates, roleTemplates } from "../../state/agent-connections"
 
 /** Members of a group conversation, beside the chat; collapses to a strip of avatars */
 export function MemberColumn(props: {
@@ -24,6 +25,7 @@ export function MemberColumn(props: {
   onOpen: (request: { target: string; at: number }) => void
 }) {
   const [removing, setRemoving] = createSignal<Seat>()
+  onMount(() => void loadRoleTemplates().catch(() => undefined))
   const api = () => client(props.directory)
   // The record reloads on its own when the change is published; a failure keeps the form open
   const apply = (request: Promise<unknown>) =>
@@ -54,7 +56,13 @@ export function MemberColumn(props: {
           <div class="members-strip">
             <For each={props.group.seats}>
               {(seat) => (
-                <button class="members-face" aria-label={seat.name} title={seat.name} onClick={() => expand(seat.id)}>
+                <button
+                  class="members-face"
+                  classList={{ offline: seatOffline(seat, props.products) }}
+                  aria-label={seat.name}
+                  title={seatOffline(seat, props.products) ? `${seat.name} · ${t("group.offline")}` : seat.name}
+                  onClick={() => expand(seat.id)}
+                >
                   <Avatar id={seat.id} name={seat.name} />
                   <Show when={props.busy(seat.id)}>
                     <span class="member-busy" />
@@ -77,6 +85,7 @@ export function MemberColumn(props: {
           <MemberList
             seats={props.group.seats}
             products={props.products}
+            roleTemplates={roleTemplates()}
             busy={props.busy}
             open={props.open}
             onSave={(seat, draft) =>

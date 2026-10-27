@@ -10,7 +10,11 @@ import { providerLabel } from "../../ui/provider-label"
 import { pickerSections } from "./model-picker-list"
 
 /** Model picker: search by name or provider, arrow keys to move, Enter to select */
-export function ModelPicker(props: { value: ModelRef | undefined; onChange: (model: ModelRef) => void }) {
+export function ModelPicker(props: {
+  value: ModelRef | undefined
+  onChange: (model: ModelRef) => void
+  disabled?: boolean
+}) {
   const [open, setOpen] = createSignal(false)
   const [query, setQuery] = createSignal("")
   const [active, setActive] = createSignal(0)
@@ -35,6 +39,7 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
   })
   const choices = () => rows().flatMap((row) => (row.kind === "model" ? [row] : []))
   const pick = (index: number) => {
+    if (props.disabled) return
     const item = choices()[index]?.item
     if (!item) return
     props.onChange({ providerID: item.provider.id, modelID: item.model.id })
@@ -69,7 +74,11 @@ export function ModelPicker(props: { value: ModelRef | undefined; onChange: (mod
       gutter={6}
     >
       <Tip label={t("model.hint")} placement="top">
-        <Popover.Trigger class="chip" aria-label={t("model.named", { name: current()?.model.name ?? t("model.none") })}>
+        <Popover.Trigger
+          class="chip"
+          disabled={props.disabled}
+          aria-label={t("model.named", { name: current()?.model.name ?? t("model.none") })}
+        >
           <span class="ellipsis">{current()?.model.name ?? t("model.none")}</span>
           <ChevronDown class="icon chevron" />
         </Popover.Trigger>

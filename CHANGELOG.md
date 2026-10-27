@@ -8,6 +8,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- New conversations can select a globally configured agent product with its own model and streamed text. Agent Connections settings are separate from Collaboration role templates, including seven read-only built-in roles and custom templates. Turning a product off locks its direct conversations until the user explicitly accepts MerakCode takeover; group members go offline while other members continue.
 - The homepage can switch local branches or prepare a new worktree from a chosen branch. Review keeps its scope, current branch and comparison branch in one toolbar; choosing the comparison branch opens branch review. Unsaved editor buffers and review comments survive view changes and prevent switching.
 - The SDK adds checkout-aware branch operations and HEAD events. Review decisions and undo now require `expectedCheckout` from the displayed review, so stale operations cannot modify another checkout context.
 - The conversation composer shows the sandbox as on or off beside a shield. Hovering context usage, the model, reasoning, the sandbox, or the permission mode says what that control configures, with the current value still on the button. The menu can set the sandbox up (Windows asks for administrator approval once), turn it on, or turn it off, without leaving the conversation. A command waiting only because the sandbox was not ready continues once the sandbox is on, or once you turn it off. An already set up sandbox is warmed when the engine starts.
@@ -23,6 +24,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Delayed product probes and session updates no longer undo newer settings or takeover decisions. Recreated products require a fresh takeover decision; takeover retains observed steps from failed or cancelled turns without text. Final snapshots remove obsolete fragments, and connection settings show the adapter's reported permission owner and retain MRK error codes.
+- External tasks finish process-tree cleanup before releasing their directory. Final replies calibrate streamed text, client clock differences preserve conversation history, admitted turns update recent activity, and group adapter errors retain localized MRK codes.
+- A late takeover response cannot block decisions for a new disable cycle or another conversation. Disabled group members consistently show offline, including queued tasks, with localized errors. Products without text streaming show that output arrives on completion.
+
+- External chat history rejects reused message and part IDs, and command connections preserve complete recovery IDs across split output and failed runs. External chat errors follow the selected language and show stable MRK codes.
+- Command connections with a session ID pattern and no resume arguments replay conversation history on later turns. Editing or refreshing agent connections discards stale verification reports.
 - Setting up the sandbox, or turning it off, no longer lets a file-changing command through when read-only mode or an explicit deny still refuses it. Resetting the sandbox while it is turned off still reports that it can be set up again.
 - Hints on the composer bar open just above their controls: context usage, the model, reasoning, the sandbox, and the permission mode.
 - Typing `/skill-name` after a space, including in the middle of a sentence, loads that skill. Skills are read from Claude's `.claude/skills` and `.agents/skills`, and from `.merakcode/skill` and `.merakcode/skills`. A skill the agent is denied is not loaded.
@@ -33,6 +40,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 新建对话可以选择全局配置的智能体产品，使用各产品独立模型和流式正文。「智能体接入」与「协作群」角色模板设置分开，提供七个只读内置角色和自定义模板。关闭产品后，单聊锁定输入，只有用户明确同意才由 MerakCode 接管；群成员仅显示离线，其他成员继续工作。
 - 主页可以切换本地分支，或选择起点后准备创建新工作树。审阅范围、当前分支和比对分支合并为一行工具栏，选择比对分支即可进入分支审阅。未保存的编辑缓冲和审阅评论在切换视图后仍保留，并阻止切换工作分支。
 - SDK 新增带 checkout 身份的分支操作和 HEAD 事件。审阅决定与撤销现在必须携带所显示审阅的 `expectedCheckout`，防止过期操作修改另一个 checkout 上下文。
 - 对话栏里沙箱是盾牌图标加「开」或「关」。悬停上下文用量、模型、思考档位、沙箱或权限模式，都会说明这个控件是在配置什么，当前的值仍写在按钮上。点开沙箱可以初始化（Windows 会要一次管理员确认）、开启或关闭，不用离开当前对话。只因为沙箱没就绪才在等审批的命令，会在沙箱打开之后继续执行；你把沙箱关掉之后也会继续。已经初始化过的沙箱会在引擎启动时预先准备好。
@@ -48,6 +56,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 延迟的产品探测和会话更新不会覆盖新设置或接管决定；删除后重建的产品需要重新确认接管。接管保留无正文失败或取消任务的已记录步骤，最终正文快照清除过时片段，接入设置按适配器报告显示权限归属并保留 MRK 错误码。
+- 外部任务清理完进程树后才释放目录占用；完整回复会校准流式正文，客户端时钟偏差不再遗漏对话历史，成功接收的轮次会更新最近活动时间，群适配器错误保留本地化提示与 MRK 编号。
+- 过期接管响应不会阻止新禁用周期或其他对话中的确认。停用群成员在排队阶段也统一显示离线，错误提示支持中英；不支持正文流式的产品会标明“完成后输出”。
+
+- 外部对话历史会拒绝复用已有消息和正文片段 ID，命令接入在分块输出和执行失败时仍保存完整恢复 ID。外部对话错误按所选语言显示，并提供稳定的 MRK 错误码。
+- 仅配置会话 ID 识别、未配置续接参数的命令接入会在后续轮次回放对话历史。编辑或刷新智能体接入时会丢弃过期验证结果。
 - 初始化沙箱或关掉沙箱时，只读模式或明确拒绝仍挡住的改文件命令不会被放行。沙箱关着的时候重置，仍会显示还可以再初始化。
 - 对话栏上的悬停说明出现在控件正上方，包括上下文用量、模型、思考档位、沙箱和权限模式。
 - 在空格后面输入 `/技能名`（包括写在句子中间）会加载该技能。技能从 Claude 的 `.claude/skills`、`.agents/skills`，以及 `.merakcode/skill`、`.merakcode/skills` 读取。智能体被拒绝使用的技能不会加载。

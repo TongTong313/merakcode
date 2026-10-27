@@ -110,6 +110,7 @@ export namespace SessionSummary {
       (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
     )
     const fullMsg = messages.find((m) => m.info.id === input.messageID)!
+    if (Message.isExternal(fullMsg.info)) return
     const userInfo = fullMsg.info as Message.UserInfo
     const diffs = await computeDiff({ messages, sessionID: input.sessionID })
     userInfo.summary = {

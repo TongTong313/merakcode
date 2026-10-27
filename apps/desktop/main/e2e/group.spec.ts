@@ -46,7 +46,7 @@ async function createGroup(page: Page, member: { product: string; name: string; 
 test.describe("group chat", () => {
   test.use({
     config: {
-      collaboration: {
+      agentConnections: {
         products: {
           fake,
           missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
@@ -100,7 +100,7 @@ test.describe("group chat", () => {
 test.describe("group members", () => {
   test.use({
     config: {
-      collaboration: {
+      agentConnections: {
         products: {
           fake,
           missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
@@ -225,7 +225,7 @@ test.describe("a member at work", () => {
   const gate = path.join(os.tmpdir(), `merak-e2e-gate-${process.pid}`)
   test.use({
     config: {
-      collaboration: {
+      agentConnections: {
         products: {
           steps: member("Step CLI", { steps: [{ tool: "Bash", detail: "npm test", gate }], reply: "测试都过了" }),
         },
@@ -249,6 +249,98 @@ test.describe("a member at work", () => {
     await expect(xiaohong).toContainText("测试都过了")
     await expect(xiaohong.getByRole("button", { name: "1 步" })).toBeVisible()
     await rm(gate, { force: true })
+  })
+})
+
+test.describe("external member text", () => {
+  const gate = path.join(os.tmpdir(), `merak-e2e-text-${process.pid}`)
+  test.use({
+    config: {
+      agentConnections: {
+        products: {
+          streaming: {
+            ...member("Streaming CLI", { streaming: { gate, model: true } }),
+            model: { id: "fixture-requested" },
+          },
+        },
+      },
+    },
+    script: {
+      reply: ({ toolResults }) =>
+        toolResults.length === 0
+          ? { tool: "delegate", args: { seat: "小红", task: "Reply with the configured model" } }
+          : { text: "完成" },
+    },
+  })
+
+  test("streams member text before completion using the globally selected product model", async ({ kit }) => {
+    await rm(gate, { force: true })
+    try {
+      await createGroup(kit.page, { product: "Streaming CLI", name: "小红" })
+      await kit.send("@小红 reply")
+      const bubble = kit.page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小红" })
+      await expect(bubble).toContainText("External reply:", { timeout: 10_000 })
+      await writeFile(gate, "go")
+      await expect(bubble).toContainText("External reply: fixture-requested")
+      await expect(bubble).toContainText("fixture-selected")
+    } finally {
+      await writeFile(gate, "go")
+    }
+  })
+})
+
+test.describe("disabled group products", () => {
+  const gate = path.join(os.tmpdir(), `merak-e2e-offline-${process.pid}`)
+  test.use({
+    config: {
+      agentConnections: {
+        products: {
+          offline: member("Offline CLI", { streaming: { gate } }),
+          online: member("Online CLI", { reply: "Online member completed" }),
+        },
+      },
+    },
+    script: {
+      reply: ({ prompt, toolResults }) =>
+        toolResults.length === 0
+          ? { tool: "delegate", args: { seat: prompt.includes("小蓝") ? "小蓝" : "小红", task: "Reply" } }
+          : { text: "群主继续" },
+    },
+  })
+
+  test("keeps a disabled member offline while another member can continue in the same group", async ({ kit }) => {
+    const { page } = kit
+    await rm(gate, { force: true })
+    try {
+      await createGroup(page, { product: "Offline CLI", name: "小红" })
+      const members = page.getByRole("complementary", { name: "群成员" })
+      await members.getByRole("button", { name: "添加成员" }).click()
+      await members.getByRole("button", { name: /^产品/ }).click()
+      await page.getByRole("option", { name: /Online CLI/ }).click()
+      await members.getByRole("textbox", { name: "姓名" }).fill("小蓝")
+      await members.getByRole("button", { name: "加入" }).click()
+      await kit.send("@小红 begin")
+      await expect(page.getByRole("article", { name: "小红" })).toContainText("External reply:")
+      await kit.settings(/智能体接入/)
+      await page.getByRole("region", { name: "智能体接入" }).getByRole("switch", { name: "启用 Offline CLI" }).click()
+      await page.getByRole("button", { name: "返回", exact: true }).click()
+      await expect(members.getByRole("button", { name: /小红/ })).toContainText("离线")
+      await expect(members.getByRole("button", { name: /小红/ })).toContainText("Offline CLI")
+      await expect(page.getByRole("dialog", { name: "对话产品已关闭" })).toHaveCount(0)
+      await expect(
+        page.getByRole("textbox", { name: "消息", exact: true }).filter({ visible: true }).first(),
+      ).toBeEnabled()
+      await kit.send("@小蓝 online task")
+      await expect(page.getByRole("article", { name: "小蓝" })).toContainText("Online member completed")
+      await kit.settings(/智能体接入/)
+      await page.getByRole("region", { name: "智能体接入" }).getByRole("switch", { name: "启用 Offline CLI" }).click()
+      await page.getByRole("button", { name: "返回", exact: true }).click()
+      await expect(members.getByRole("button", { name: /小红/ })).not.toContainText("离线")
+      await expect(members.getByRole("button", { name: /小红/ })).toContainText("Offline CLI")
+      await expect(page.getByRole("button", { name: "3 位成员" })).toBeVisible()
+    } finally {
+      await writeFile(gate, "go")
+    }
   })
 })
 
@@ -280,7 +372,7 @@ test.describe("the entry to a team", () => {
 test.describe("a backend restart in the middle of a member's work", () => {
   test.use({
     config: {
-      collaboration: {
+      agentConnections: {
         products: {
           // Its gate is never opened: it works until it is stopped
           slow: member("Slow CLI", {
@@ -316,7 +408,7 @@ test.describe("a backend restart in the middle of a member's work", () => {
 })
 
 test.describe("copying a group", () => {
-  test.use({ config: { collaboration: { products: { fake } } } })
+  test.use({ config: { agentConnections: { products: { fake } } } })
 
   test("a group from another project is copied with its members' names, roles and duties", async ({ kit }) => {
     const { page } = kit
@@ -362,7 +454,7 @@ test.describe("copying a group", () => {
 test.describe("collaboration settings", () => {
   test.use({
     config: {
-      collaboration: {
+      agentConnections: {
         products: {
           fake,
           missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
@@ -379,7 +471,7 @@ test.describe("collaboration settings", () => {
     await dialog.getByRole("button", { name: "添加成员" }).click()
     await dialog.getByRole("button", { name: "部分产品不可用 · 查看原因" }).click()
 
-    const panel = page.getByRole("region", { name: "协作群" })
+    const panel = page.getByRole("region", { name: "智能体接入" })
     await expect(panel).toContainText("不可用 · merak-e2e-missing-cli 未安装")
     await panel.getByRole("button", { name: "添加产品" }).click()
     await panel.getByRole("textbox", { name: "ID", exact: true }).fill("echo")
@@ -390,7 +482,7 @@ test.describe("collaboration settings", () => {
     await panel.getByRole("switch", { name: "启用 Fake CLI" }).click()
     await expect(panel.getByRole("switch", { name: "启用 Fake CLI" })).toHaveAttribute("aria-checked", "false")
     await expect
-      .poll(async () => JSON.parse(await readFile(global, "utf8")).collaboration.products)
+      .poll(async () => JSON.parse(await readFile(global, "utf8")).agentConnections.products)
       .toMatchObject({ echo: { command: process.execPath, title: "Echo CLI" }, fake: { enabled: false } })
 
     await page.getByRole("button", { name: "返回" }).click()
@@ -408,7 +500,7 @@ test.describe("collaboration settings", () => {
     await members.getByRole("button", { name: "添加成员" }).click()
     await members.getByRole("button", { name: "部分产品不可用 · 查看原因" }).click()
 
-    const panel = page.getByRole("region", { name: "协作群" })
+    const panel = page.getByRole("region", { name: "智能体接入" })
     await panel.getByRole("button", { name: "添加产品" }).click()
     await panel.getByRole("textbox", { name: "ID", exact: true }).fill("echo")
     await panel.getByRole("textbox", { name: "名称" }).fill("Echo CLI")
@@ -452,7 +544,7 @@ const delegateOnce = {
 
 test.describe("a Claude Code member that needs approval", () => {
   const command = fakeClaude("approval", [{ name: "WebFetch", input: { url: "https://example.com" } }])
-  test.use({ config: { collaboration: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
 
   test("its request to reach a website is asked in the approval bar, named after it, and allowing it lets it go on", async ({
     kit,
@@ -490,7 +582,7 @@ test.describe("a Claude Code member that asks a question", () => {
       },
     },
   ])
-  test.use({ config: { collaboration: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
 
   test("its question opens MerakCode's question, named after it, and the answer reaches it", async ({ kit }) => {
     const { page } = kit
@@ -510,7 +602,7 @@ test.describe("a Claude Code member allowed a website for the conversation", () 
     { name: "WebFetch", input: { url: "https://example.com/a" } },
     { name: "WebFetch", input: { url: "https://example.com/b" } },
   ])
-  test.use({ config: { collaboration: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
 
   test("its next page of that website is not asked about", async ({ kit }) => {
     const { page } = kit
@@ -527,7 +619,7 @@ test.describe("a Claude Code member allowed a website for the conversation", () 
 
 test.describe("a Claude Code member refused with a reason", () => {
   const command = fakeClaude("reason", [{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { collaboration: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
 
   test("gets the reason the user wrote", async ({ kit }) => {
     const { page } = kit
@@ -545,7 +637,7 @@ test.describe("a Claude Code member refused with a reason", () => {
 
 test.describe("a Claude Code member always allowed a website", () => {
   const command = fakeClaude("always", [{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { collaboration: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
 
   test("has the rule saved to the project", async ({ kit }) => {
     const { page } = kit

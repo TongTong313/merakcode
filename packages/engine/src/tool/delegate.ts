@@ -13,12 +13,17 @@ import type { Group, Seat } from "../collaboration/board"
 import { changedFiles, withOwners } from "../collaboration/artifacts"
 import { runAdmitted } from "../collaboration/schedule"
 import { memberPrompt } from "../collaboration/prompt"
-import { configuredProducts, titleOf, type ProductSpec } from "../collaboration/run"
+import { configuredProducts, titleOf, type ProductSpec } from "../agent-connection/catalog"
 import { setTodo, startTodo } from "../collaboration/todo"
 import { open, record, remember } from "../collaboration/store"
-import { decide, runMember } from "../collaboration/member"
-import { adapterOf } from "../collaboration/adapters"
+import { decideExternal, runExternal } from "../agent-connection/runtime"
+import { adapterOf } from "../agent-connection/adapters"
+import { onDisable, productState, withProduct } from "../agent-connection/state"
+import { randomUUID } from "node:crypto"
 import { Question } from "../question"
+import { Text } from "../util/text"
+import { ErrorCode } from "@merakcode/util/error-code"
+import { errorCode, NamedError, readableErrorText } from "@merakcode/util/error"
 
 const DESCRIPTION = [
   "Give one member of this group chat a task. Use the member's exact name.",
@@ -30,12 +35,18 @@ const DESCRIPTION = [
 
 /** How many of an external member's latest steps the chat keeps */
 const STEP_LIMIT = 50
+const queued = new Map<string, { productID: string; controller: AbortController }>()
+onDisable((productID) => {
+  for (const run of queued.values())
+    if (run.productID === productID) run.controller.abort(new DOMException("The product was disabled", "AbortError"))
+})
 
 type Output = { text: string; sessionID?: string; missing?: boolean }
 /** A step a member took, shown in its bubble while it works: the tool and what it touched */
 type Step = { tool: string; detail: string }
 /** What the chat reads to draw the member bubble */
 type Metadata = {
+  external?: Message.ExternalDelegateProgress
   seatID: string
   product: string
   phase?: "queued"
@@ -69,58 +80,125 @@ export const DelegateTool = Tool.define("delegate", {
     const request = await userRequest(ctx.sessionID, ctx.messageID)
     const products = await configuredProducts()
     const title = titleOf(products)
-    return runAdmitted(ctx.sessionID, { seatID: seat.id, product: seat.product, paths }, async () => {
-      metadata.started = Date.now()
-      ctx.metadata({ title: seat.name, metadata })
-      const steps: Step[] = []
-      const todo = await startTodo(ctx.sessionID, { id: params.todo, seat: seat.name, task: params.task, paths })
-      try {
-        // Built only now, so a member that waited sees the results that came in meanwhile
-        const latest = await open(ctx.sessionID)
-        const current = latest.seats.find((item) => item.id === seat.id) ?? seat
-        const todos = await Todo.get(ctx.sessionID)
-        const files = await changedFiles(Instance.directory, latest.baseline).catch(() => [])
-        const prompt = memberPrompt({
-          group: latest,
-          seat: current,
-          title,
-          request,
-          task: params.task,
-          paths,
-          todos,
-          artifacts: withOwners(files, todos),
-        })
-        const product = products.find((item) => item.id === current.product)
-        const onStep = (step: Step) => {
-          steps.push(step)
-          if (steps.length > STEP_LIMIT) steps.shift()
-          ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
-        }
-        const output: Output =
-          current.product === "merak"
-            ? await runMerak(ctx, current, prompt, (sessionId) =>
-                ctx.metadata({ title: seat.name, metadata: { ...metadata, sessionId } }),
-              )
-            : await runAdapter(ctx, product, current, prompt, onStep)
-        if (output.missing) {
-          await setTodo(ctx.sessionID, todo, "pending")
-          return { title: seat.name, output: output.text, metadata: { ...metadata, missing: true } as Metadata }
-        }
-        await record(ctx.sessionID, { seatID: seat.id, name: current.name, text: output.text, requestID: request.id })
-        if (output.sessionID) await remember(ctx.sessionID, seat.id, output.sessionID)
-        await setTodo(ctx.sessionID, todo, "completed")
-        // A MerakCode member keeps its child session id, so the chat can open its steps
-        const sessionId = current.product === "merak" ? output.sessionID : undefined
+    const runID = randomUUID()
+    const offlineProgress = (): Message.ExternalDelegateProgress => ({
+      runID,
+      productTitle: title(seat.product),
+      parts: [],
+      terminal: "cancelled",
+      stopReason: "product-disabled",
+    })
+    const controller = new AbortController()
+    const signal = AbortSignal.any([ctx.abort, controller.signal])
+    queued.set(runID, { productID: seat.product, controller })
+    try {
+      if (seat.product !== "merak" && !(await productState(seat.product)).enabled) {
+        const todo = await startTodo(ctx.sessionID, { id: params.todo, seat: seat.name, task: params.task, paths })
+        await setTodo(ctx.sessionID, todo, "pending")
         return {
           title: seat.name,
-          output: output.text,
-          metadata: { ...metadata, sessionId, ...(steps.length ? { steps } : {}) } as Metadata,
+          output: `${seat.name} is offline because ${title(seat.product)} is disabled.`,
+          metadata: { ...metadata, external: offlineProgress() },
         }
-      } catch (error) {
-        await setTodo(ctx.sessionID, todo, ctx.abort.aborted ? "cancelled" : "pending").catch(() => undefined)
-        throw error
       }
-    })
+      return await runAdmitted(
+        ctx.sessionID,
+        { seatID: seat.id, product: seat.product, paths },
+        async () => {
+          signal.throwIfAborted()
+          metadata.started = Date.now()
+          ctx.metadata({ title: seat.name, metadata })
+          const steps: Step[] = []
+          const todo = await startTodo(ctx.sessionID, { id: params.todo, seat: seat.name, task: params.task, paths })
+          try {
+            // Built only now, so a member that waited sees the results that came in meanwhile
+            const latest = await open(ctx.sessionID)
+            const current = latest.seats.find((item) => item.id === seat.id) ?? seat
+            const todos = await Todo.get(ctx.sessionID)
+            const files = await changedFiles(Instance.directory, latest.baseline).catch(() => [])
+            const prompt = memberPrompt({
+              group: latest,
+              seat: current,
+              title,
+              request,
+              task: params.task,
+              paths,
+              todos,
+              artifacts: withOwners(files, todos),
+            })
+            const product = (await configuredProducts()).find((item) => item.id === current.product)
+            const onStep = (step: Step) => {
+              steps.push(step)
+              if (steps.length > STEP_LIMIT) steps.shift()
+              ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
+            }
+            const output: Output =
+              current.product === "merak"
+                ? await runMerak(ctx, current, prompt, (sessionId) =>
+                    ctx.metadata({ title: seat.name, metadata: { ...metadata, sessionId } }),
+                  )
+                : await runAdapter(
+                    { ...ctx, abort: signal },
+                    product,
+                    current,
+                    prompt,
+                    onStep,
+                    runID,
+                    async (progress) => {
+                      metadata.external = progress
+                      await ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
+                    },
+                  ).catch(async (error: unknown) => {
+                    const fallback = ErrorCode.CATALOG.EXTERNAL_ADAPTER_FAILED
+                    const code = errorCode(error instanceof NamedError ? error.toObject() : error) ?? fallback.code
+                    const message = readableErrorText(error, await Text.pick(fallback.title))
+                    throw new Error(`${code}: ${message}`, { cause: error })
+                  })
+            if (output.missing) {
+              await setTodo(ctx.sessionID, todo, "pending")
+              return { title: seat.name, output: output.text, metadata: { ...metadata, missing: true } as Metadata }
+            }
+            await record(ctx.sessionID, {
+              seatID: seat.id,
+              name: current.name,
+              text: output.text,
+              requestID: request.id,
+            })
+            if (output.sessionID) await remember(ctx.sessionID, seat.id, output.sessionID)
+            await setTodo(ctx.sessionID, todo, "completed")
+            // A MerakCode member keeps its child session id, so the chat can open its steps
+            const sessionId = current.product === "merak" ? output.sessionID : undefined
+            return {
+              title: seat.name,
+              output: output.text,
+              metadata: { ...metadata, sessionId, ...(steps.length ? { steps } : {}) } as Metadata,
+            }
+          } catch (error) {
+            if (metadata.external) {
+              metadata.external.terminal = signal.aborted ? "cancelled" : "failed"
+              if (signal.aborted) metadata.external.stopReason = ctx.abort.aborted ? "user" : "product-disabled"
+              await ctx.metadata({ title: seat.name, metadata: { ...metadata } })
+            }
+            await setTodo(ctx.sessionID, todo, ctx.abort.aborted ? "cancelled" : "pending").catch(() => undefined)
+            throw error
+          }
+        },
+        signal,
+      )
+    } catch (error) {
+      if (controller.signal.aborted && !ctx.abort.aborted && !metadata.external) {
+        metadata.external = offlineProgress()
+        await ctx.metadata({ title: seat.name, metadata: { ...metadata } })
+        const message = await Text.pick({
+          zh: "产品已关闭，成员已离线",
+          en: "The product was disabled; the member is offline",
+        })
+        throw new Error(`${ErrorCode.CATALOG.EXTERNAL_CONVERSATION_BLOCKED.code}: ${message}`)
+      }
+      throw error
+    } finally {
+      queued.delete(runID)
+    }
   },
 })
 
@@ -151,37 +229,102 @@ async function runAdapter(
   seat: Seat,
   prompt: string,
   onStep: (step: Step) => void,
+  runID: string,
+  onProgress: (progress: Message.ExternalDelegateProgress) => Promise<void>,
 ): Promise<Output> {
   if (!product) throw new Error(`Product is not available: ${seat.product}`)
-  const driven = adapterOf(product)
+  const driven = await adapterOf(product)
   // Not on this machine: nothing starts, and the task waits for it
   if (!driven) return { text: `${product.title} is not installed, so ${seat.name} did not start.`, missing: true }
-  const result = await runMember({
-    ...driven,
-    task: {
-      prompt,
-      cwd: Instance.directory,
-      mode: ctx.permissionMode ?? ctx.kind ?? "ask",
-      resume: seat.privateSessionID,
-    },
-    abort: ctx.abort,
-    host: {
-      step: (step) => onStep({ tool: step.tool, detail: shown(step.detail ?? "") }),
-      permission: (request) => decide(ctx, request, Instance.directory),
-      // The question carries the delegate call, so the chat shows which member asks
-      question: async (questions) =>
-        Question.ask({
-          sessionID: ctx.sessionID,
-          root: await Session.rootID(ctx.sessionID),
-          questions,
-          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-          abort: ctx.abort,
-        }),
-    },
+  const progress: Message.ExternalDelegateProgress = {
+    runID,
+    productTitle: product.title,
+    requestedModel: product.model,
+    parts: [],
+  }
+  const indexes = new Map<string, string>()
+  const text = async (messageID: string, partID: string, value: string, append: boolean) => {
+    const key = `${messageID}\0${partID}`
+    const id = indexes.get(key) ?? Identifier.ascending("part")
+    indexes.set(key, id)
+    const part = progress.parts.find((item) => item.id === id)
+    if (part) part.text = append ? part.text + value : value
+    else progress.parts.push({ id, text: value })
+    await onProgress(structuredClone(progress))
+  }
+  let running!: ReturnType<typeof runExternal>
+  await withProduct(product.id, (state) => {
+    ctx.abort.throwIfAborted()
+    if (!state.enabled) throw new Error(`${product.title} is offline`)
+    running = runExternal({
+      runID,
+      sessionID: ctx.sessionID,
+      seatID: seat.id,
+      ...driven,
+      task: {
+        prompt,
+        cwd: Instance.directory,
+        mode: ctx.permissionMode ?? ctx.kind ?? "ask",
+        resume: seat.privateSessionID,
+        model: product.model,
+      },
+      abort: ctx.abort,
+      host: {
+        step: (step) => onStep({ tool: step.tool, detail: shown(step.detail ?? "") }),
+        sessionStarted: async ({ sessionId }) => {
+          await remember(ctx.sessionID, seat.id, sessionId)
+        },
+        textDelta: (delta) => text(delta.messageID, delta.partID, delta.delta, true),
+        permission: (request) =>
+          decideExternal(
+            {
+              sessionID: ctx.sessionID,
+              executionID: runID,
+              cwd: Instance.directory,
+              mode: ctx.permissionMode ?? ctx.kind,
+              tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+            },
+            request,
+          ),
+        // The question carries the delegate call, so the chat shows which member asks
+        question: async (questions) =>
+          Question.ask({
+            sessionID: ctx.sessionID,
+            executionID: runID,
+            root: await Session.rootID(ctx.sessionID),
+            questions,
+            tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+            abort: ctx.abort,
+          }),
+      },
+    })
   })
-  // Whatever a stopped member said before it ended is not a result, nor is an empty reply
+  const result = await running
+  // Whatever a stopped member said before it ended is not a result, nor is an empty reply.
   if (ctx.abort.aborted) throw new Error(`${seat.name} was stopped`)
-  if (!result.text.trim()) throw new Error(`${driven.product.title} returned no reply`)
+  if (!result.text.trim())
+    throw new Error(
+      await Text.pick(
+        { zh: "{product} 未返回正文", en: "{product} returned no reply" },
+        { product: driven.product.title },
+      ),
+    )
+  if (result.final) {
+    const keys = new Set(result.final.parts.map((part) => `${result.final!.messageID}\0${part.partID}`))
+    for (const [key, id] of indexes) {
+      if (!key.startsWith(`${result.final.messageID}\0`) || keys.has(key)) continue
+      progress.parts = progress.parts.filter((part) => part.id !== id)
+      indexes.delete(key)
+    }
+    for (const part of result.final.parts) await text(result.final.messageID, part.partID, part.text, false)
+  } else if (progress.parts.map((part) => part.text).join("") !== result.text) {
+    const first = progress.parts[0]
+    if (first) progress.parts = [{ ...first, text: result.text }]
+    else await text("final", "text", result.text, false)
+  }
+  progress.actualModel = result.actualModel
+  progress.terminal = "completed"
+  await onProgress(structuredClone(progress))
   return { text: result.text, sessionID: result.sessionId }
 }
 
@@ -202,7 +345,8 @@ async function runMerak(
   const child = seat.privateSessionID ? await Session.get(seat.privateSessionID).catch(() => undefined) : undefined
   const session = child ?? (await Session.create({ parentID: ctx.sessionID, title: seat.name }))
   const parent = await Message.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-  if (parent.info.role !== "assistant") throw new Error("Not an assistant message")
+  if (parent.info.role !== "assistant" || Message.isExternal(parent.info))
+    throw new Error("Not a native assistant message")
   const agent = (await Agent.get("build")) ?? (await Agent.get(parent.info.agent))
   if (!agent) throw new Error("No agent is available for a Merak seat")
   started(session.id)

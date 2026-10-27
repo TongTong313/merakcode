@@ -1,10 +1,11 @@
-import type { Command, FilePartInput, PermissionMode, UserMessage, Worktree } from "@merakcode/sdk/client"
+import type { Command, FilePartInput, Message, PermissionMode, Worktree } from "@merakcode/sdk/client"
+import { MerakCodeError } from "@merakcode/sdk/errors"
 import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { baseName, sameDir } from "../../lib/route"
 import { choice, modelKey } from "../../state/models"
 import { call, client } from "../../state/client"
-import { listen, partsOf, reload, session } from "../../state/store"
+import { listen, messagesOf, partsOf, reload, session } from "../../state/store"
 import type { Submission } from "./composer"
 
 /**
@@ -36,6 +37,23 @@ export async function send(sessionID: string, directory: string, submission: Sub
   const info = session(sessionID)
   const dir = info?.directory ?? directory
   const picked = choice(sessionID, directory)
+  if (info?.targetBlock || info?.readOnlyReason)
+    throw new MerakCodeError({
+      code: info.targetBlock ? "MRK-4006" : "MRK-4008",
+      message: t("conversation.inputLocked"),
+    })
+  if (info?.target?.kind === "external") {
+    if (submission.files.length)
+      throw new MerakCodeError({ code: "MRK-4008", message: t("conversation.external.textOnly") })
+    await call(
+      client(dir).session.promptAsync({
+        sessionID,
+        parts: [{ type: "text", text: submission.text }],
+        permissionMode: mode ?? picked.mode,
+      }),
+    )
+    return
+  }
   const command = parseCommand(submission.text)
   if (command?.name === COMPACT && picked.model) {
     await call(client(dir).session.summarize({ sessionID, ...picked.model }))
@@ -72,19 +90,34 @@ export async function stop(sessionID: string, directory: string) {
 
 /** Reverts to before this message: it and later messages are hidden, and files the agent changed are restored */
 export async function revertTo(sessionID: string, directory: string, messageID: string) {
+  if (historyLocked(sessionID))
+    throw new MerakCodeError({ code: "MRK-4008", message: t("conversation.external.historyLocked") })
   const dir = session(sessionID)?.directory ?? directory
   await call(client(dir).session.revert({ sessionID, messageID }))
 }
 
 /** Undoes the most recent revert */
 export async function restore(sessionID: string, directory: string) {
+  if (historyLocked(sessionID))
+    throw new MerakCodeError({ code: "MRK-4008", message: t("conversation.external.historyLocked") })
   const dir = session(sessionID)?.directory ?? directory
   await call(client(dir).session.unrevert({ sessionID }))
   await reload(sessionID)
 }
 
 /** The text the user wrote and the attachments of a user message (for resending and editing) */
-export function submissionOf(message: UserMessage): Submission {
+export function historyLocked(sessionID: string) {
+  const info = session(sessionID)
+  return (
+    !!info?.targetBlock ||
+    !!info?.readOnlyReason ||
+    !!info?.takeover ||
+    info?.target?.kind === "external" ||
+    messagesOf(sessionID).some((message) => message.execution?.kind === "external")
+  )
+}
+
+export function submissionOf(message: Extract<Message, { role: "user" }>): Submission {
   const parts = partsOf(message.id)
   const text = parts.flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : [])).join("\n")
   const files = parts.flatMap((part): FilePartInput[] =>
@@ -96,7 +129,7 @@ export function submissionOf(message: UserMessage): Submission {
 }
 
 /** Retries: reverts to this user message and sends the same content again */
-export async function retry(sessionID: string, directory: string, message: UserMessage) {
+export async function retry(sessionID: string, directory: string, message: Extract<Message, { role: "user" }>) {
   const submission = submissionOf(message)
   await revertTo(sessionID, directory, message.id)
   await send(sessionID, directory, submission)

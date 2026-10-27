@@ -3,17 +3,18 @@
  * their paths cannot touch the same file; otherwise the later one waits. Jobs start in the order they were admitted.
  */
 import path from "node:path"
+import { realpathSync } from "node:fs"
 import { FileTime } from "../file/time"
 import { Instance } from "../project/instance"
 import { clear, overlap, roots } from "./paths"
 
 type Job = { seatID: string; product: string; paths: string[] }
-type Slot = Job & { done: Promise<void> }
+type Slot = Job & { owner: string; done: Promise<void> }
 
 const running = new Map<string, Slot[]>()
 
-function conflict(a: Job, b: Job) {
-  return a.seatID === b.seatID || overlap(a.paths, b.paths)
+function conflict(a: Slot, b: Job & { owner: string }) {
+  return a.owner === b.owner || overlap(a.paths, b.paths)
 }
 
 /**
@@ -21,34 +22,64 @@ function conflict(a: Job, b: Job) {
  * Merak's own writes wait: under its paths when they are clear, everywhere when they are not. A Merak member writes
  * through FileTime itself and holds nothing.
  */
-export async function runAdmitted<T>(sessionID: string, job: Job, fn: () => Promise<T>): Promise<T> {
+export async function runAdmitted<T>(
+  sessionID: string,
+  job: Job,
+  fn: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted()
+  const directory = realpathSync.native(Instance.directory)
+  const key = process.platform === "win32" ? directory.toLowerCase() : directory
+  const owner = `${sessionID}\0${job.seatID}`
+  const normalized = {
+    ...job,
+    owner,
+    paths: job.paths.map((item) => (process.platform === "win32" ? item.toLowerCase() : item)),
+  }
   // Registered synchronously, so calls made in the same step queue in call order
-  const ahead = (running.get(sessionID) ?? []).filter((slot) => conflict(slot, job))
+  const ahead = (running.get(key) ?? []).filter((slot) => conflict(slot, normalized))
   let finish = () => {}
-  const slot: Slot = { ...job, done: new Promise<void>((resolve) => (finish = resolve)) }
-  running.set(sessionID, [...(running.get(sessionID) ?? []), slot])
+  const slot: Slot = { ...normalized, done: new Promise<void>((resolve) => (finish = resolve)) }
+  running.set(key, [...(running.get(key) ?? []), slot])
   try {
-    await Promise.all(ahead.map((item) => item.done))
-    return await hold(job, fn)
+    await waiting(Promise.all(ahead.map((item) => item.done)), signal)
+    signal?.throwIfAborted()
+    return await hold(job, fn, signal)
   } finally {
     finish()
-    const rest = (running.get(sessionID) ?? []).filter((item) => item !== slot)
-    if (rest.length) running.set(sessionID, rest)
-    else running.delete(sessionID)
+    const rest = (running.get(key) ?? []).filter((item) => item !== slot)
+    if (rest.length) running.set(key, rest)
+    else running.delete(key)
   }
 }
 
-async function hold<T>(job: Job, fn: () => Promise<T>) {
+async function hold<T>(job: Job, fn: () => Promise<T>, signal?: AbortSignal) {
   if (job.product === "merak") return fn()
   if (clear(job.paths))
     return FileTime.holdDirectories(
-      roots(job.paths).map((item) => path.join(Instance.directory, item)),
+      roots(job.paths).map((item) => path.resolve(Instance.directory, item)),
       fn,
+      signal,
     )
-  const release = await FileTime.acquireBarrier()
+  const release = await FileTime.acquireBarrier(signal)
   try {
+    signal?.throwIfAborted()
     return await fn()
   } finally {
     release()
+  }
+}
+
+async function waiting<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise
+  signal.throwIfAborted()
+  const stopped = Promise.withResolvers<never>()
+  const cancel = () => stopped.reject(signal.reason)
+  signal.addEventListener("abort", cancel, { once: true })
+  try {
+    return await Promise.race([promise, stopped.promise])
+  } finally {
+    signal.removeEventListener("abort", cancel)
   }
 }

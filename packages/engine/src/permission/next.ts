@@ -149,6 +149,7 @@ export namespace PermissionNext {
     .object({
       id: Identifier.schema("permission"),
       sessionID: Identifier.schema("session"),
+      executionID: z.string().optional(),
       /** Root session: subagent requests are shown there, and session grants are recorded against it */
       root: Identifier.schema("session").optional(),
       permission: z.string(),
@@ -459,10 +460,18 @@ export namespace PermissionNext {
    * AbortedError. The approval bar closes on the replied event; without it the card stays after the session stops.
    */
   export async function abortPending(sessionID: string) {
+    return abortMatching((item) => item.info.sessionID === sessionID)
+  }
+
+  export async function abortExecution(executionID: string) {
+    return abortMatching((item) => item.info.executionID === executionID)
+  }
+
+  async function abortMatching(matches: (item: Pending) => boolean) {
     const s = state()
-    const pending = Object.values(s.pending).filter((item) => item.info.sessionID === sessionID)
+    const pending = Object.values(s.pending).filter(matches)
     if (pending.length === 0) return
-    log.info("abort pending", { sessionID, count: pending.length })
+    log.info("abort pending", { count: pending.length })
     for (const item of pending) {
       delete s.pending[item.info.id]
       Bus.publish(Event.Replied, {

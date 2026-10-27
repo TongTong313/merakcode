@@ -31,6 +31,16 @@ const save = () => record && fs.writeFileSync(record, JSON.stringify(seen))
 save()
 
 async function turn(threadId: string, turnId: string, prompt: string) {
+  if (process.env.CODEX_FIXTURE_STREAM) {
+    for (const delta of ["Hello ", "world"])
+      write({ method: "item/agentMessage/delta", params: { threadId, turnId, itemId: "reply", delta } })
+    write({
+      method: "item/completed",
+      params: { threadId, turnId, item: { type: "agentMessage", id: "reply", text: "Hello world" } },
+    })
+    write({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", items: [] } } })
+    return
+  }
   const answers: string[] = []
   for (const [index, item] of items.entries()) {
     const itemId = `item_${index}`
@@ -94,11 +104,16 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     continue
   }
   if (message.method === "initialize") write({ id: message.id, result: { userAgent: "codex-fixture/0.164.0" } })
+  if (message.method === "model/list")
+    write({
+      id: message.id,
+      result: { data: [{ id: "display-id", model: "fixture-model", displayName: "Fixture model" }], nextCursor: null },
+    })
   if (message.method === "thread/start" || message.method === "thread/resume") {
     seen[message.method] = message.params
     save()
     const id = message.method === "thread/resume" ? message.params.threadId : "codex-thread-1"
-    write({ id: message.id, result: { thread: { id } } })
+    write({ id: message.id, result: { thread: { id }, model: message.params.model ?? "fixture-default" } })
   }
   if (message.method === "turn/start") {
     seen["turn/start"] = message.params

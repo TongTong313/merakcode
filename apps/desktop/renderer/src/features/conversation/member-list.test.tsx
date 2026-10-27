@@ -1,3 +1,4 @@
+import { connectionDefaults } from "./product.fixture"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, beforeEach, expect, test } from "vitest"
@@ -26,12 +27,44 @@ function mount(node: () => JSX.Element) {
 }
 
 const seats: Seat[] = [
-  { id: "s1", name: "小主", role: "", duty: "负责分派", product: "merak", leader: true },
-  { id: "s2", name: "小红", role: "产品经理", duty: "负责登录", product: "claude", leader: false },
+  {
+    id: "s1",
+    name: "小主",
+    role: "",
+    duty: "负责分派",
+    product: "merak",
+    leader: true,
+    availability: { state: "online" },
+  },
+  {
+    id: "s2",
+    name: "小红",
+    role: "产品经理",
+    duty: "负责登录",
+    product: "claude",
+    leader: false,
+    availability: { state: "online" },
+  },
 ]
 const products: Product[] = [
-  { id: "merak", title: "MerakCode", connected: true, enabled: true, builtin: true, source: "builtin" },
-  { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
+  {
+    id: "merak",
+    title: "MerakCode",
+    connected: true,
+    enabled: true,
+    builtin: true,
+    source: "builtin",
+    ...connectionDefaults,
+  },
+  {
+    id: "claude",
+    title: "Claude Code",
+    connected: true,
+    enabled: true,
+    builtin: true,
+    source: "builtin",
+    ...connectionDefaults,
+  },
 ]
 
 const button = (host: HTMLElement, name: string) =>
@@ -108,6 +141,44 @@ test("a new member needs a single-word name nobody else uses; the reason is show
   expect(added).toEqual([{ name: "小刚", role: "", duty: "", product: "claude" }])
 })
 
+test("applying a role template copies role fields and preserves the chosen product", () => {
+  const added: SeatDraft[] = []
+  const host = mount(() => (
+    <MemberList
+      seats={seats}
+      products={products}
+      roleTemplates={[
+        {
+          id: "builtin-developer",
+          name: "开发工程师",
+          role: "开发工程师",
+          duty: "Implement the assigned change.",
+          builtin: true,
+          editable: false,
+        },
+      ]}
+      onSave={() => {}}
+      onAdd={(draft) => added.push(draft)}
+      onRemove={() => {}}
+    />
+  ))
+  button(host, "添加成员")!.click()
+  const picker = host.querySelector<HTMLButtonElement>('button[aria-label="角色模板"]')
+  expect(picker).not.toBeNull()
+  picker!.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) =>
+    item.textContent?.includes("开发工程师"),
+  )!
+  option.dispatchEvent(new PointerEvent("pointerup", { button: 0, bubbles: true, pointerType: "mouse" }))
+  option.click()
+  expect(field(host, "姓名").value).toBe("开发工程师")
+  expect(field(host, "职责").value).toBe("Implement the assigned change.")
+  button(host, "加入")!.click()
+  expect(added).toEqual([
+    { name: "开发工程师", role: "开发工程师", duty: "Implement the assigned change.", product: "claude" },
+  ])
+})
+
 test("the product picker leaves out what is turned off, marks what does not run as unavailable, and links to why", () => {
   setUi("newTeam", true)
   const host = mount(() => (
@@ -122,9 +193,18 @@ test("the product picker leaves out what is turned off, marks what does not run 
           enabled: true,
           builtin: true,
           source: "builtin",
+          ...connectionDefaults,
           reason: "spawn codex.exe ENOENT",
         },
-        { id: "opencode", title: "OpenCode", connected: true, enabled: false, builtin: true, source: "builtin" },
+        {
+          id: "opencode",
+          title: "OpenCode",
+          connected: true,
+          enabled: false,
+          builtin: true,
+          source: "builtin",
+          ...connectionDefaults,
+        },
       ]}
       onSave={() => undefined}
       onAdd={() => undefined}
@@ -142,7 +222,7 @@ test("the product picker leaves out what is turned off, marks what does not run 
   expect(codex.textContent).toContain("不可用")
   expect(codex.textContent).not.toContain("ENOENT")
   button(host, "部分产品不可用 · 查看原因")!.click()
-  expect(ui.settings).toBe("collaboration")
+  expect(ui.settings).toBe("agentConnections")
   expect(ui.newTeam).toBe(false)
 })
 
@@ -192,6 +272,7 @@ test("an older CLI is still offered, with its version and a hint to upgrade", ()
           enabled: true,
           builtin: true,
           source: "builtin",
+          ...connectionDefaults,
           version: "codex-cli 0.77.0",
           recommended: "0.164.0",
           upgrade: "codex update",

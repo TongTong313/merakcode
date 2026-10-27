@@ -276,7 +276,8 @@ CLAUDE-SKILL-BODY
         } finally {
           Plugin.trigger = original
         }
-        if (!captured || captured.info.role !== "user") throw new Error("command did not reach chat.message")
+        if (!captured || captured.info.role !== "user" || Message.isExternal(captured.info))
+          throw new Error("command did not reach chat.message")
         const text = captured.parts
           .filter((part) => part.type === "text")
           .map((part) => part.text)

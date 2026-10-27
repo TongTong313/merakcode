@@ -58,6 +58,81 @@
       "SessionOutput": {
         "type": "object",
         "properties": {
+          "target": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "merak"
+                  }
+                },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "productID": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "productID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "targetRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "targetBlock": {
+            "type": "object",
+            "properties": {
+              "blockID": {
+                "type": "string"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "disabledCycleID": {
+                "type": "string"
+              },
+              "decision": {
+                "type": "string",
+                "enum": ["pending", "declined"]
+              }
+            },
+            "required": ["blockID", "productID", "disabledCycleID", "decision"],
+            "additionalProperties": false
+          },
+          "takeover": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number"
+              },
+              "fromProductID": {
+                "type": "string"
+              },
+              "blockID": {
+                "type": "string"
+              }
+            },
+            "required": ["at", "fromProductID", "blockID"],
+            "additionalProperties": false
+          },
+          "readOnlyReason": {
+            "type": "string",
+            "const": "imported-external-history"
+          },
           "id": {
             "type": "string",
             "format": "starts_with",
@@ -868,6 +943,9 @@
             "format": "starts_with",
             "pattern": "^ses.*"
           },
+          "executionID": {
+            "type": "string"
+          },
           "root": {
             "type": "string",
             "format": "starts_with",
@@ -1031,6 +1109,17 @@
               "type": "string"
             },
             "additionalProperties": {}
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "merak"
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
           },
           "role": {
             "type": "string",
@@ -1598,6 +1687,30 @@
         "required": ["name", "data"],
         "additionalProperties": false
       },
+      "ExternalAdapterErrorOutput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ExternalAdapterError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
       "AssistantMessageOutput": {
         "type": "object",
         "properties": {
@@ -1613,6 +1726,17 @@
               "type": "string"
             },
             "additionalProperties": {}
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "merak"
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
           },
           "role": {
             "type": "string",
@@ -1674,6 +1798,9 @@
               },
               {
                 "$ref": "#/components/schemas/WorktreeResetDirtyErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalAdapterErrorOutput"
               }
             ]
           },
@@ -1811,13 +1938,260 @@
         ],
         "additionalProperties": false
       },
+      "ExternalUserMessageOutput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "role": {
+            "type": "string",
+            "const": "user"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"],
+            "additionalProperties": false
+          },
+          "permissionMode": {
+            "$ref": "#/components/schemas/PermissionMode"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "productTitle": {
+                "type": "string"
+              },
+              "runID": {
+                "type": "string"
+              },
+              "targetRevision": {
+                "type": "number"
+              },
+              "requestedModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              },
+              "actualModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["kind", "productID", "productTitle", "runID", "targetRevision"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "sessionID", "role", "time", "permissionMode", "execution"],
+        "additionalProperties": false
+      },
+      "ExternalAssistantMessageOutput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "role": {
+            "type": "string",
+            "const": "assistant"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created"],
+            "additionalProperties": false
+          },
+          "parentID": {
+            "type": "string"
+          },
+          "path": {
+            "type": "object",
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["cwd", "root"],
+            "additionalProperties": false
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "productTitle": {
+                "type": "string"
+              },
+              "runID": {
+                "type": "string"
+              },
+              "targetRevision": {
+                "type": "number"
+              },
+              "requestedModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              },
+              "actualModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["kind", "productID", "productTitle", "runID", "targetRevision"],
+            "additionalProperties": false
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProviderAuthErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/UnknownErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/MessageOutputLengthErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/MessageAbortedErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/StructuredOutputErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ContextOverflowErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionBlockedErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/APIErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ModelNotFoundErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/CommandNotFoundErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/AgentNotFoundErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ConfigParseErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/PluginInstallErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/WorktreeResetDirtyErrorOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalAdapterErrorOutput"
+              }
+            ]
+          },
+          "terminal": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled", "interrupted"]
+          }
+        },
+        "required": ["id", "sessionID", "role", "time", "parentID", "path", "execution"],
+        "additionalProperties": false
+      },
       "MessageOutput": {
-        "oneOf": [
+        "anyOf": [
           {
             "$ref": "#/components/schemas/UserMessageOutput"
           },
           {
             "$ref": "#/components/schemas/AssistantMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/ExternalUserMessageOutput"
+          },
+          {
+            "$ref": "#/components/schemas/ExternalAssistantMessageOutput"
           }
         ]
       },
@@ -2190,6 +2564,69 @@
         "required": ["status", "input", "raw"],
         "additionalProperties": false
       },
+      "ExternalDelegateProgressOutput": {
+        "type": "object",
+        "properties": {
+          "runID": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          },
+          "requestedModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "actualModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "text"],
+              "additionalProperties": false
+            }
+          },
+          "terminal": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled", "interrupted"]
+          },
+          "stopReason": {
+            "type": "string",
+            "enum": ["product-disabled", "user"]
+          }
+        },
+        "required": ["runID", "productTitle", "parts"],
+        "additionalProperties": false
+      },
       "ToolStateRunningOutput": {
         "type": "object",
         "properties": {
@@ -2209,8 +2646,10 @@
           },
           "metadata": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgressOutput"
+              }
             },
             "additionalProperties": {}
           },
@@ -2253,6 +2692,9 @@
             "properties": {
               "mcpIsError": {
                 "type": "boolean"
+              },
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgressOutput"
               }
             },
             "additionalProperties": {}
@@ -2306,6 +2748,9 @@
               "errorKind": {
                 "type": "string",
                 "enum": ["permission_rejected", "timeout", "execution", "invalid_arguments"]
+              },
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgressOutput"
               }
             },
             "additionalProperties": {}
@@ -2807,6 +3252,9 @@
             "type": "string",
             "format": "starts_with",
             "pattern": "^ses.*"
+          },
+          "executionID": {
+            "type": "string"
           },
           "root": {
             "type": "string",
@@ -3351,6 +3799,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/WorktreeResetDirtyErrorOutput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExternalAdapterErrorOutput"
                   }
                 ]
               }
@@ -4211,12 +4662,11 @@
               ]
             }
           },
-          "collaboration": {
-            "description": "Collaboration groups. The leader is always a Merak seat.",
+          "agentConnections": {
+            "description": "Global external product connections shared by direct and group conversations",
             "type": "object",
             "properties": {
               "products": {
-                "description": "Extra products, or overrides for claude, codex and opencode",
                 "type": "object",
                 "propertyNames": {
                   "type": "string"
@@ -4225,41 +4675,81 @@
                   "type": "object",
                   "properties": {
                     "command": {
-                      "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
                       "type": "string"
                     },
                     "enabled": {
-                      "description": "Offer this product for new members; default true",
                       "type": "boolean"
                     },
                     "title": {
-                      "description": "Display name",
                       "type": "string"
                     },
                     "adapter": {
-                      "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
                       "type": "string",
                       "enum": ["claude", "codex", "opencode", "command", "member"]
                     },
                     "args": {
-                      "description": "Arguments. The prompt is written to stdin",
                       "type": "array",
                       "items": {
                         "type": "string"
                       }
                     },
                     "resumeArgs": {
-                      "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
                       "type": "array",
                       "items": {
                         "type": "string"
                       }
                     },
                     "sessionLine": {
-                      "description": "Regular expression with one capture group for the private session id, for a one-shot command",
                       "type": "string"
+                    },
+                    "model": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "providerID": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["id"],
+                      "additionalProperties": false
                     }
                   },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "collaboration": {
+            "description": "Collaboration groups. The leader is always a Merak seat.",
+            "type": "object",
+            "properties": {
+              "roleTemplates": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "role": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "duty": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["name", "role", "duty"],
                   "additionalProperties": false
                 }
               }
@@ -5719,12 +6209,11 @@
               ]
             }
           },
-          "collaboration": {
-            "description": "Collaboration groups. The leader is always a Merak seat.",
+          "agentConnections": {
+            "description": "Global external product connections shared by direct and group conversations",
             "type": "object",
             "properties": {
               "products": {
-                "description": "Extra products, or overrides for claude, codex and opencode",
                 "type": "object",
                 "propertyNames": {
                   "type": "string"
@@ -5733,41 +6222,78 @@
                   "type": "object",
                   "properties": {
                     "command": {
-                      "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
                       "type": "string"
                     },
                     "enabled": {
-                      "description": "Offer this product for new members; default true",
                       "type": "boolean"
                     },
                     "title": {
-                      "description": "Display name",
                       "type": "string"
                     },
                     "adapter": {
-                      "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
                       "type": "string",
                       "enum": ["claude", "codex", "opencode", "command", "member"]
                     },
                     "args": {
-                      "description": "Arguments. The prompt is written to stdin",
                       "type": "array",
                       "items": {
                         "type": "string"
                       }
                     },
                     "resumeArgs": {
-                      "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
                       "type": "array",
                       "items": {
                         "type": "string"
                       }
                     },
                     "sessionLine": {
-                      "description": "Regular expression with one capture group for the private session id, for a one-shot command",
                       "type": "string"
+                    },
+                    "model": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "providerID": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["id"]
                     }
                   }
+                }
+              }
+            }
+          },
+          "collaboration": {
+            "description": "Collaboration groups. The leader is always a Merak seat.",
+            "type": "object",
+            "properties": {
+              "roleTemplates": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "role": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "duty": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["name", "role", "duty"]
                 }
               }
             }
@@ -7390,6 +7916,65 @@
         },
         "required": ["status", "input", "raw"]
       },
+      "ExternalDelegateProgress": {
+        "type": "object",
+        "properties": {
+          "runID": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          },
+          "requestedModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          },
+          "actualModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "text"]
+            }
+          },
+          "terminal": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled", "interrupted"]
+          },
+          "stopReason": {
+            "type": "string",
+            "enum": ["product-disabled", "user"]
+          }
+        },
+        "required": ["runID", "productTitle", "parts"]
+      },
       "ToolStateRunning": {
         "type": "object",
         "properties": {
@@ -7409,8 +7994,10 @@
           },
           "metadata": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgress"
+              }
             },
             "additionalProperties": {}
           },
@@ -7451,6 +8038,9 @@
             "properties": {
               "mcpIsError": {
                 "type": "boolean"
+              },
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgress"
               }
             },
             "additionalProperties": {}
@@ -7502,6 +8092,9 @@
               "errorKind": {
                 "type": "string",
                 "enum": ["permission_rejected", "timeout", "execution", "invalid_arguments"]
+              },
+              "external": {
+                "$ref": "#/components/schemas/ExternalDelegateProgress"
               }
             },
             "additionalProperties": {}
@@ -8117,6 +8710,77 @@
       "Session": {
         "type": "object",
         "properties": {
+          "target": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "merak"
+                  }
+                },
+                "required": ["kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "productID": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "productID"]
+              }
+            ]
+          },
+          "targetRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "targetBlock": {
+            "type": "object",
+            "properties": {
+              "blockID": {
+                "type": "string"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "disabledCycleID": {
+                "type": "string"
+              },
+              "decision": {
+                "type": "string",
+                "enum": ["pending", "declined"]
+              }
+            },
+            "required": ["blockID", "productID", "disabledCycleID", "decision"]
+          },
+          "takeover": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number"
+              },
+              "fromProductID": {
+                "type": "string"
+              },
+              "blockID": {
+                "type": "string"
+              }
+            },
+            "required": ["at", "fromProductID", "blockID"]
+          },
+          "readOnlyReason": {
+            "type": "string",
+            "const": "imported-external-history"
+          },
           "id": {
             "type": "string",
             "format": "starts_with",
@@ -8317,6 +8981,16 @@
               "type": "string"
             },
             "additionalProperties": {}
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "merak"
+              }
+            },
+            "required": ["kind"]
           },
           "role": {
             "type": "string",
@@ -8802,6 +9476,28 @@
         },
         "required": ["name", "data"]
       },
+      "ExternalAdapterError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ExternalAdapterError"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "AssistantMessage": {
         "type": "object",
         "properties": {
@@ -8817,6 +9513,16 @@
               "type": "string"
             },
             "additionalProperties": {}
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "merak"
+              }
+            },
+            "required": ["kind"]
           },
           "role": {
             "type": "string",
@@ -8877,6 +9583,9 @@
               },
               {
                 "$ref": "#/components/schemas/WorktreeResetDirtyError"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalAdapterError"
               }
             ]
           },
@@ -9009,80 +9718,278 @@
           "tokens"
         ]
       },
-      "Message": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/UserMessage"
-          },
-          {
-            "$ref": "#/components/schemas/AssistantMessage"
-          }
-        ]
-      },
-      "CollaborationProduct": {
+      "ExternalUserMessage": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string"
           },
-          "title": {
+          "sessionID": {
             "type": "string"
           },
-          "connected": {
-            "type": "boolean"
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           },
-          "enabled": {
-            "type": "boolean"
+          "role": {
+            "type": "string",
+            "const": "user"
           },
-          "reason": {
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "permissionMode": {
+            "$ref": "#/components/schemas/PermissionMode"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "productTitle": {
+                "type": "string"
+              },
+              "runID": {
+                "type": "string"
+              },
+              "targetRevision": {
+                "type": "number"
+              },
+              "requestedModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"]
+              },
+              "actualModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"]
+              }
+            },
+            "required": ["kind", "productID", "productTitle", "runID", "targetRevision"]
+          }
+        },
+        "required": ["id", "sessionID", "role", "time", "permissionMode", "execution"]
+      },
+      "ExternalAssistantMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "role": {
+            "type": "string",
+            "const": "assistant"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "parentID": {
+            "type": "string"
+          },
+          "path": {
+            "type": "object",
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["cwd", "root"]
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "productID": {
+                "type": "string"
+              },
+              "productTitle": {
+                "type": "string"
+              },
+              "runID": {
+                "type": "string"
+              },
+              "targetRevision": {
+                "type": "number"
+              },
+              "requestedModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"]
+              },
+              "actualModel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"]
+              }
+            },
+            "required": ["kind", "productID", "productTitle", "runID", "targetRevision"]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProviderAuthError"
+              },
+              {
+                "$ref": "#/components/schemas/UnknownError"
+              },
+              {
+                "$ref": "#/components/schemas/MessageOutputLengthError"
+              },
+              {
+                "$ref": "#/components/schemas/MessageAbortedError"
+              },
+              {
+                "$ref": "#/components/schemas/StructuredOutputError"
+              },
+              {
+                "$ref": "#/components/schemas/ContextOverflowError"
+              },
+              {
+                "$ref": "#/components/schemas/CompactionBlockedError"
+              },
+              {
+                "$ref": "#/components/schemas/APIError"
+              },
+              {
+                "$ref": "#/components/schemas/ModelNotFoundError"
+              },
+              {
+                "$ref": "#/components/schemas/CommandNotFoundError"
+              },
+              {
+                "$ref": "#/components/schemas/AgentNotFoundError"
+              },
+              {
+                "$ref": "#/components/schemas/ConfigParseError"
+              },
+              {
+                "$ref": "#/components/schemas/PluginInstallError"
+              },
+              {
+                "$ref": "#/components/schemas/WorktreeResetDirtyError"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalAdapterError"
+              }
+            ]
+          },
+          "terminal": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled", "interrupted"]
+          }
+        },
+        "required": ["id", "sessionID", "role", "time", "parentID", "path", "execution"]
+      },
+      "Message": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/UserMessage"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantMessage"
+          },
+          {
+            "$ref": "#/components/schemas/ExternalUserMessage"
+          },
+          {
+            "$ref": "#/components/schemas/ExternalAssistantMessage"
+          }
+        ]
+      },
+      "CollaborationRoleTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "duty": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "builtin": {
             "type": "boolean"
           },
-          "source": {
-            "type": "string",
-            "enum": ["builtin", "global", "project"]
-          },
-          "version": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "recommended": {
-            "type": "string"
-          },
-          "upgrade": {
-            "type": "string"
-          },
-          "outdated": {
+          "editable": {
             "type": "boolean"
-          },
-          "adapter": {
-            "type": "string",
-            "enum": ["claude", "codex", "opencode", "command", "member"]
-          },
-          "command": {
-            "type": "string"
-          },
-          "args": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "resumeArgs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "sessionLine": {
-            "type": "string"
           }
         },
-        "required": ["id", "title", "connected", "enabled", "builtin", "source"],
+        "required": ["id", "name", "role", "duty", "builtin", "editable"],
         "additionalProperties": false
       },
       "CollaborationGroupSummary": {
@@ -9116,9 +10023,23 @@
                 },
                 "leader": {
                   "type": "boolean"
+                },
+                "availability": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": ["online", "offline"]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["state"],
+                  "additionalProperties": false
                 }
               },
-              "required": ["name", "role", "duty", "product", "leader"],
+              "required": ["name", "role", "duty", "product", "leader", "availability"],
               "additionalProperties": false
             }
           }
@@ -9149,9 +10070,23 @@
           },
           "privateSessionID": {
             "type": "string"
+          },
+          "availability": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["online", "offline"]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["state"],
+            "additionalProperties": false
           }
         },
-        "required": ["id", "name", "role", "duty", "product", "leader"],
+        "required": ["id", "name", "role", "duty", "product", "leader", "availability"],
         "additionalProperties": false
       },
       "CollaborationEvent": {
@@ -9228,6 +10163,207 @@
           }
         },
         "required": ["seats", "events", "results", "baseline", "seq"],
+        "additionalProperties": false
+      },
+      "AgentConnectionProduct": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": "string",
+            "enum": ["claude", "codex", "opencode", "command", "member"]
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resumeArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionLine": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "providerID": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "id": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "global"]
+          },
+          "revision": {
+            "type": "number"
+          },
+          "version": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "recommended": {
+            "type": "string"
+          },
+          "upgrade": {
+            "type": "string"
+          },
+          "outdated": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "modelSelection": {
+                "type": "boolean"
+              },
+              "modelDiscovery": {
+                "type": "boolean"
+              },
+              "textStreaming": {
+                "type": "boolean"
+              },
+              "resume": {
+                "type": "boolean"
+              },
+              "permission": {
+                "type": "string",
+                "enum": ["merak", "external"]
+              },
+              "questions": {
+                "type": "boolean"
+              }
+            },
+            "required": ["modelSelection", "modelDiscovery", "textStreaming", "resume", "permission", "questions"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["enabled", "title", "id", "connected", "builtin", "source", "revision", "capabilities"],
+        "additionalProperties": false
+      },
+      "AgentConnectionModels": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "providerID": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "title"],
+              "additionalProperties": false
+            }
+          },
+          "allowCustomID": {
+            "type": "boolean"
+          }
+        },
+        "required": ["models", "allowCustomID"],
+        "additionalProperties": false
+      },
+      "AgentConnectionVerification": {
+        "type": "object",
+        "properties": {
+          "productID": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed"]
+          },
+          "requestedModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "actualModel": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          },
+          "streamingObserved": {
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "type": "number"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["productID", "revision", "status", "streamingObserved", "checkedAt"],
         "additionalProperties": false
       },
       "MemoryEntry": {
@@ -13294,6 +14430,34 @@
                       "type": "string"
                     },
                     "additionalProperties": {}
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "merak"
+                          }
+                        },
+                        "required": ["kind"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "external"
+                          },
+                          "productID": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]+$"
+                          }
+                        },
+                        "required": ["kind", "productID"]
+                      }
+                    ]
                   }
                 }
               }
@@ -14442,7 +15606,14 @@
                   "type": "object",
                   "properties": {
                     "info": {
-                      "$ref": "#/components/schemas/AssistantMessageOutput"
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/AssistantMessageOutput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ExternalAssistantMessageOutput"
+                        }
+                      ]
                     },
                     "parts": {
                       "type": "array",
@@ -15065,6 +16236,102 @@
         ]
       }
     },
+    "/session/{sessionID}/takeover": {
+      "post": {
+        "operationId": "session.takeover",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Decide whether MerakCode takes over a disabled external conversation",
+        "responses": {
+          "200": {
+            "description": "Current conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": ["accept", "decline"]
+                  },
+                  "expectedTargetRevision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "blockID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["decision", "expectedTargetRevision", "blockID"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.takeover({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/command": {
       "post": {
         "operationId": "session.command",
@@ -15680,9 +16947,9 @@
         ]
       }
     },
-    "/collaboration/product": {
+    "/collaboration/role-template": {
       "get": {
-        "operationId": "collaboration.products",
+        "operationId": "collaboration.roleTemplates",
         "parameters": [
           {
             "in": "query",
@@ -15690,27 +16957,18 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "refresh",
-            "schema": {
-              "type": "string",
-              "enum": ["true", "false"]
-            }
           }
         ],
-        "summary": "List collaboration products",
-        "description": "Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.",
+        "summary": "List collaboration role templates",
         "responses": {
           "200": {
-            "description": "Products",
+            "description": "Role templates",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CollaborationProduct"
+                    "$ref": "#/components/schemas/CollaborationRoleTemplate"
                   }
                 }
               }
@@ -15742,12 +17000,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.products({\n  ...\n})"
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.roleTemplates({\n  ...\n})"
           }
         ]
       },
       "post": {
-        "operationId": "collaboration.product.change",
+        "operationId": "collaboration.roleTemplate.change",
         "parameters": [
           {
             "in": "query",
@@ -15757,17 +17015,16 @@
             }
           }
         ],
-        "summary": "Change collaboration products",
-        "description": "Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.",
+        "summary": "Change a custom collaboration role template",
         "responses": {
           "200": {
-            "description": "Products",
+            "description": "Role templates",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CollaborationProduct"
+                    "$ref": "#/components/schemas/CollaborationRoleTemplate"
                   }
                 }
               }
@@ -15812,44 +17069,26 @@
                       "id": {
                         "type": "string"
                       },
-                      "product": {
+                      "template": {
                         "type": "object",
                         "properties": {
-                          "command": {
-                            "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
-                            "type": "string"
-                          },
-                          "title": {
-                            "description": "Display name",
-                            "type": "string"
-                          },
-                          "adapter": {
-                            "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                          "name": {
                             "type": "string",
-                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                            "minLength": 1
                           },
-                          "args": {
-                            "description": "Arguments. The prompt is written to stdin",
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
+                          "role": {
+                            "type": "string",
+                            "minLength": 1
                           },
-                          "resumeArgs": {
-                            "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "sessionLine": {
-                            "description": "Regular expression with one capture group for the private session id, for a one-shot command",
-                            "type": "string"
+                          "duty": {
+                            "type": "string",
+                            "minLength": 1
                           }
-                        }
+                        },
+                        "required": ["name", "role", "duty"]
                       }
                     },
-                    "required": ["type", "id", "product"]
+                    "required": ["type", "id", "template"]
                   },
                   {
                     "type": "object",
@@ -15861,44 +17100,26 @@
                       "id": {
                         "type": "string"
                       },
-                      "product": {
+                      "template": {
                         "type": "object",
                         "properties": {
-                          "command": {
-                            "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
-                            "type": "string"
-                          },
-                          "title": {
-                            "description": "Display name",
-                            "type": "string"
-                          },
-                          "adapter": {
-                            "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
+                          "name": {
                             "type": "string",
-                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                            "minLength": 1
                           },
-                          "args": {
-                            "description": "Arguments. The prompt is written to stdin",
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
+                          "role": {
+                            "type": "string",
+                            "minLength": 1
                           },
-                          "resumeArgs": {
-                            "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "sessionLine": {
-                            "description": "Regular expression with one capture group for the private session id, for a one-shot command",
-                            "type": "string"
+                          "duty": {
+                            "type": "string",
+                            "minLength": 1
                           }
-                        }
+                        },
+                        "required": ["name", "role", "duty"]
                       }
                     },
-                    "required": ["type", "id", "product"]
+                    "required": ["type", "id", "template"]
                   },
                   {
                     "type": "object",
@@ -15912,22 +17133,6 @@
                       }
                     },
                     "required": ["type", "id"]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "const": "enabled"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "enabled": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": ["type", "id", "enabled"]
                   }
                 ]
               }
@@ -15937,7 +17142,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.product.change({\n  ...\n})"
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.roleTemplate.change({\n  ...\n})"
           }
         ]
       }
@@ -16433,6 +17638,426 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.collaboration.seat.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/agent-connection/product": {
+      "get": {
+        "operationId": "agentConnection.products",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "summary": "List global agent connections",
+        "responses": {
+          "200": {
+            "description": "Products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentConnectionProduct"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.agentConnection.products({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "agentConnection.product.change",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Change a global agent connection",
+        "responses": {
+          "200": {
+            "description": "Products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentConnectionProduct"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "add"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "product": {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "adapter": {
+                            "type": "string",
+                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                          },
+                          "args": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resumeArgs": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "sessionLine": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "providerID": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": ["id"]
+                          }
+                        }
+                      }
+                    },
+                    "required": ["type", "id", "product"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "update"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "product": {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "adapter": {
+                            "type": "string",
+                            "enum": ["claude", "codex", "opencode", "command", "member"]
+                          },
+                          "args": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resumeArgs": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "sessionLine": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "providerID": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": ["id"]
+                          }
+                        }
+                      }
+                    },
+                    "required": ["type", "id", "product"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "remove"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "id"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "enabled"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["type", "id", "enabled"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.agentConnection.product.change({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/agent-connection/product/{productID}/model": {
+      "get": {
+        "operationId": "agentConnection.models",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "productID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Discover models for an agent connection",
+        "responses": {
+          "200": {
+            "description": "Models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConnectionModels"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.agentConnection.models({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/agent-connection/product/{productID}/verify": {
+      "post": {
+        "operationId": "agentConnection.verify",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "productID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Verify a saved agent connection",
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConnectionVerification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [false]
+                    },
+                    "error": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "data": {}
+                  },
+                  "required": ["success", "error", "data"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["expectedRevision"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.agentConnection.verify({\n  ...\n})"
           }
         ]
       }

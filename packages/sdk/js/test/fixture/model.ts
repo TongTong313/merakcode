@@ -6,14 +6,14 @@
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 
+type ToolCall = { tool: string; args: Record<string, unknown> }
+
 /**
  * reasoning: streams thinking first (reasoning_content of the OpenAI-compatible API), then the text; status: replies
  * with an OpenAI-style error with this HTTP status
  */
 export type Reply =
-  | { text: string; reasoning?: string }
-  | { tool: string; args: Record<string, unknown> }
-  | { status: number; message: string }
+  { text: string; reasoning?: string } | ToolCall | { calls: ToolCall[] } | { status: number; message: string }
 
 export type Turn = {
   /** Text of the latest user message */
@@ -23,6 +23,8 @@ export type Turn = {
   /** Names of the tools available to the model in this request */
   tools: string[]
   system: string
+  /** The complete history received by the model, including earlier turns. */
+  messages: { role: string; content: string }[]
 }
 
 type Message = { role: string; content?: unknown }
@@ -54,20 +56,20 @@ function end(finish: string) {
   )
 }
 
-function body(reply: Reply) {
+function body(reply: Exclude<Reply, { status: number }>) {
   if ("text" in reply)
     return (
       (reply.reasoning ? chunk({ role: "assistant", reasoning_content: reply.reasoning }) : "") +
       chunk({ role: "assistant", content: reply.text }) +
       end("stop")
     )
-  const call = {
-    index: 0,
+  const calls = ("calls" in reply ? reply.calls : [reply]).map((call, index) => ({
+    index,
     id: `call_${Math.random().toString(36).slice(2)}`,
     type: "function",
-    function: { name: reply.tool, arguments: JSON.stringify(reply.args) },
-  }
-  return chunk({ role: "assistant", tool_calls: [call] }) + end("tool_calls")
+    function: { name: call.tool, arguments: JSON.stringify(call.args) },
+  }))
+  return chunk({ role: "assistant", tool_calls: calls }) + end("tool_calls")
 }
 
 /** Background requests such as titles and summaries carry no tools and get a fixed reply */
@@ -88,6 +90,7 @@ export async function fakeModel(script: (turn: Turn) => Reply | Promise<Reply>) 
       prompt: text(messages[last]?.content),
       results: messages.slice(last + 1).flatMap((message) => (message.role === "tool" ? [text(message.content)] : [])),
       tools,
+      messages: messages.map((message) => ({ role: message.role, content: text(message.content) })),
       system: messages
         .filter((message) => message.role === "system")
         .map((message) => text(message.content))

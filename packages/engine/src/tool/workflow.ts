@@ -17,6 +17,7 @@ import { WorkflowScriptParser } from "../workflow/script"
 import { WorkflowState } from "../workflow/state"
 import type { WorkflowRunMetadata, WorkflowScript } from "../workflow/types"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Message } from "../session/message"
 
 const parameters = z
   .object({
@@ -203,7 +204,12 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
     parameters,
     description: await description(),
     async execute(params, ctx) {
-      if (ctx.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "workflow-subagent")) {
+      if (
+        ctx.messages.some(
+          (msg) =>
+            msg.info.role === "assistant" && !Message.isExternal(msg.info) && msg.info.agent === "workflow-subagent",
+        )
+      ) {
         throw new Error("workflow_run cannot be called from workflow child agents")
       }
       const runId = ulid()

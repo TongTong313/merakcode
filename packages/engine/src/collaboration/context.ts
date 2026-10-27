@@ -2,7 +2,7 @@ import { Instance } from "../project/instance"
 import { Todo } from "../session/todo"
 import { changedFiles, withOwners } from "./artifacts"
 import { groupState, leaderPrompt } from "./prompt"
-import { configuredProducts, titleOf } from "./run"
+import { configuredProducts, titleOf } from "../agent-connection/catalog"
 import { load } from "./store"
 
 /**

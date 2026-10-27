@@ -1,12 +1,18 @@
 import fs from "fs/promises"
 import path from "path"
-import { statSync } from "fs"
+import { statSync, realpathSync } from "fs"
 import { Instance } from "../project/instance"
 import { Log } from "@merakcode/log/logger"
 import { Flag } from "../flag/flag"
 
 export namespace FileTime {
   const log = Log.create({ service: "file.time" })
+  type WriteState = {
+    locks: Map<string, Promise<void>>
+    held: Map<string, Promise<void>>
+    barrier?: Promise<void>
+  }
+  const coordination = new Map<string, WriteState>()
   // Per-session read times plus per-file write locks.
   // All tools that overwrite existing files should run their
   // assert/read/write/update sequence inside withLock(filepath, ...)
@@ -17,15 +23,20 @@ export namespace FileTime {
         [path: string]: Date | undefined
       }
     } = {}
-    const locks = new Map<string, Promise<void>>()
-    // Directories another process is changing, see holdDirectories
-    const held = new Map<string, Promise<void>>()
+    // Single-root and multi-root views of the same directory share physical writes, but not session read times.
+    const key = canonical(Instance.directory)
+    const shared: WriteState = coordination.get(key) ?? { locks: new Map(), held: new Map() }
+    coordination.set(key, shared)
     return {
       read,
-      locks,
-      held,
-      // Global write barrier, see acquireBarrier
-      barrier: undefined as Promise<void> | undefined,
+      locks: shared.locks,
+      held: shared.held,
+      get barrier() {
+        return shared.barrier
+      },
+      set barrier(value: Promise<void> | undefined) {
+        shared.barrier = value
+      },
     }
   })
 
@@ -43,34 +54,13 @@ export namespace FileTime {
     return state().read[sessionID]?.[file]
   }
 
-  export async function withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
-    const current = state()
-    // No new path writes start while a barrier is up; afterwards, queue for this file's lock.
-    // There must be no await between here and locks.set, or a barrier could go up in the gap and this write slip past.
-    for (;;) {
-      if (current.barrier) {
-        await current.barrier
-        continue
-      }
-      const holder = heldOver(filepath)
-      if (!holder) break
-      await holder
-    }
-    const currentLock = current.locks.get(filepath) ?? Promise.resolve()
-    let release: () => void = () => {}
-    const nextLock = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const chained = currentLock.then(() => nextLock)
-    current.locks.set(filepath, chained)
-    await currentLock
+  export async function withLock<T>(filepath: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await acquireFiles([filepath], signal)
     try {
+      signal?.throwIfAborted()
       return await fn()
     } finally {
       release()
-      if (current.locks.get(filepath) === chained) {
-        current.locks.delete(filepath)
-      }
     }
   }
 
@@ -79,40 +69,47 @@ export namespace FileTime {
    * multi-file writes; the sorted order rules out deadlocks because every withLocks call acquires in the same order.
    * Meant for tools that write several files at once (no built-in caller yet).
    */
-  export async function withLocks<T>(filepaths: string[], fn: () => Promise<T>): Promise<T> {
-    const current = state()
-    while (current.barrier) await current.barrier
-    // Deduplicate and sort so the acquisition order is globally consistent and cannot deadlock
-    const unique = [...new Set(filepaths)].sort()
-    const release: Array<() => void> = []
-    // Acquire one by one; if any acquisition fails, the locks already held are released below
+  export async function withLocks<T>(filepaths: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await acquireFiles(filepaths, signal)
     try {
-      for (const fp of unique) {
-        await acquire(fp, release)
-      }
+      signal?.throwIfAborted()
       return await fn()
     } finally {
-      for (const r of release.reverse()) r()
+      release()
     }
   }
 
-  // Acquires one file lock and records its release in bucket; the caller releases everything on failure
-  async function acquire(filepath: string, bucket: Array<() => void>) {
+  async function acquireFiles(filepaths: string[], signal?: AbortSignal) {
     const current = state()
-    const currentLock = current.locks.get(filepath) ?? Promise.resolve()
-    let release: () => void = () => {}
-    const nextLock = new Promise<void>((resolve) => {
-      release = resolve
+    const keys = [...new Set(filepaths.map(canonical))].sort()
+    for (;;) {
+      signal?.throwIfAborted()
+      const ahead = current.barrier ? [current.barrier] : keys.flatMap((key) => heldOver(key) ?? [])
+      if (!ahead.length) break
+      await waiting(Promise.all(ahead), signal)
+    }
+    const done = Promise.withResolvers<void>()
+    const locks = keys.map((key) => {
+      const previous = current.locks.get(key) ?? Promise.resolve()
+      const chained = previous.then(() => done.promise)
+      current.locks.set(key, chained)
+      return { key, previous, chained }
     })
-    const chained = currentLock.then(() => nextLock)
-    current.locks.set(filepath, chained)
-    await currentLock
-    bucket.push(() => {
+    const release = () => {
+      done.resolve()
+      for (const { key, chained } of locks)
+        void chained.then(() => {
+          if (current.locks.get(key) === chained) current.locks.delete(key)
+        })
+    }
+    try {
+      await waiting(Promise.all(locks.map(({ previous }) => previous)), signal)
+      signal?.throwIfAborted()
+      return release
+    } catch (error) {
       release()
-      if (current.locks.get(filepath) === chained) {
-        current.locks.delete(filepath)
-      }
-    })
+      throw error
+    }
   }
 
   /**
@@ -127,23 +124,31 @@ export namespace FileTime {
    *
    * No deadlock: a holder of a per-path lock has already passed the barrier check and never waits for the barrier.
    */
-  export async function acquireBarrier(): Promise<() => void> {
+  export async function acquireBarrier(signal?: AbortSignal): Promise<() => void> {
     const current = state()
     // Barriers are mutually exclusive too, otherwise two writing bash commands would interleave with path writes
-    while (current.barrier) await current.barrier
+    while (current.barrier) await waiting(current.barrier, signal)
+    signal?.throwIfAborted()
     let release: () => void = () => {}
     const barrier = new Promise<void>((resolve) => {
       release = resolve
     })
     current.barrier = barrier
     // Wait for path writes queued or running before the barrier went up, and for other processes holding directories
-    await Promise.allSettled([...current.locks.values(), ...current.held.values()])
     let released = false
-    return () => {
+    const finish = () => {
       if (released) return
       released = true
       if (current.barrier === barrier) current.barrier = undefined
       release()
+    }
+    try {
+      await waiting(Promise.allSettled([...current.locks.values(), ...current.held.values()]), signal)
+      signal?.throwIfAborted()
+      return finish
+    } catch (error) {
+      finish()
+      throw error
     }
   }
 
@@ -153,18 +158,35 @@ export namespace FileTime {
    * elsewhere go on. A hold starts only after a running barrier is released, and registers with no await after that
    * check, so a barrier and a hold never wait for each other.
    */
-  export async function holdDirectories<T>(directories: string[], fn: () => Promise<T>): Promise<T> {
+  export async function holdDirectories<T>(
+    directories: string[],
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const current = state()
-    while (current.barrier) await current.barrier
+    const keys = [...new Set(directories.map(canonical))]
+    for (;;) {
+      signal?.throwIfAborted()
+      const ahead = current.barrier
+        ? [current.barrier]
+        : [...current.held]
+            .filter(([held]) => keys.some((key) => within(key, held) || within(held, key)))
+            .map(([, done]) => done)
+      if (!ahead.length) break
+      await waiting(Promise.all(ahead), signal)
+    }
     let release = () => {}
     const done = new Promise<void>((resolve) => (release = resolve))
-    const keys = [...new Set(directories.map((item) => path.resolve(item)))]
     for (const key of keys) current.held.set(key, done)
     // Writes that started before the hold finish first
-    await Promise.allSettled(
-      keys.flatMap((key) => [...current.locks].filter(([file]) => within(file, key)).map(([, lock]) => lock)),
-    )
     try {
+      await waiting(
+        Promise.allSettled(
+          keys.flatMap((key) => [...current.locks].filter(([file]) => within(file, key)).map(([, lock]) => lock)),
+        ),
+        signal,
+      )
+      signal?.throwIfAborted()
       return await fn()
     } finally {
       for (const key of keys) if (current.held.get(key) === done) current.held.delete(key)
@@ -177,8 +199,38 @@ export namespace FileTime {
   }
 
   function within(file: string, directory: string) {
-    const relative = path.relative(directory, path.resolve(file))
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+    const relative = path.relative(canonical(directory), canonical(file))
+    return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+
+  function canonical(filepath: string) {
+    let directory = path.resolve(filepath)
+    const missing: string[] = []
+    for (;;) {
+      try {
+        directory = path.join(realpathSync.native(directory), ...missing.reverse())
+        break
+      } catch {
+        const parent = path.dirname(directory)
+        if (parent === directory) break
+        missing.push(path.basename(directory))
+        directory = parent
+      }
+    }
+    return process.platform === "win32" ? directory.toLowerCase() : directory
+  }
+
+  async function waiting<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise
+    signal.throwIfAborted()
+    const stopped = Promise.withResolvers<never>()
+    const cancel = () => stopped.reject(signal.reason)
+    signal.addEventListener("abort", cancel, { once: true })
+    try {
+      return await Promise.race([promise, stopped.promise])
+    } finally {
+      signal.removeEventListener("abort", cancel)
+    }
   }
 
   export async function assert(sessionID: string, filepath: string) {

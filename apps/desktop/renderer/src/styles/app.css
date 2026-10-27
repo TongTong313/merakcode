@@ -522,6 +522,17 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+.conversation-target-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px;
+}
+.external-signature {
+  margin-bottom: 6px;
+  font-size: var(--text-sm);
+}
 .user-message {
   max-width: 82%;
   padding: 9px 13px;
