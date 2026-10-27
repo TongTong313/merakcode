@@ -29,6 +29,12 @@ export type Turn = {
 
 type Message = { role: string; content?: unknown }
 
+/** A tool-less request such as a title or summary, with the model the engine asked for */
+type Background = {
+  model: string
+  messages: { role: string; content: string }[]
+}
+
 /**
  * The text a model reads as the request or the tool output. The engine adds context after the history in
  * <system-reminder> blocks, which a model takes as background rather than as what was asked or returned.
@@ -75,13 +81,20 @@ function body(reply: Exclude<Reply, { status: number }>) {
 /** Background requests such as titles and summaries carry no tools and get a fixed reply */
 export async function fakeModel(script: (turn: Turn) => Reply | Promise<Reply>) {
   const turns: Turn[] = []
+  const background: Background[] = []
   const server = createServer(async (request, response) => {
     let raw = ""
     for await (const part of request) raw += part
-    const input = JSON.parse(raw || "{}") as { messages?: Message[]; tools?: { function: { name: string } }[] }
+    const input = JSON.parse(raw || "{}") as {
+      model?: string
+      messages?: Message[]
+      tools?: { function: { name: string } }[]
+    }
     const messages = input.messages ?? []
     const tools = (input.tools ?? []).map((item) => item.function.name)
+    const conversation = messages.map((message) => ({ role: message.role, content: text(message.content) }))
     if (tools.length === 0) {
+      background.push({ model: input.model ?? "", messages: conversation })
       response.writeHead(200, { "content-type": "text/event-stream" })
       return response.end(body({ text: "OK" }))
     }
@@ -90,7 +103,7 @@ export async function fakeModel(script: (turn: Turn) => Reply | Promise<Reply>) 
       prompt: text(messages[last]?.content),
       results: messages.slice(last + 1).flatMap((message) => (message.role === "tool" ? [text(message.content)] : [])),
       tools,
-      messages: messages.map((message) => ({ role: message.role, content: text(message.content) })),
+      messages: conversation,
       system: messages
         .filter((message) => message.role === "system")
         .map((message) => text(message.content))
@@ -112,6 +125,7 @@ export async function fakeModel(script: (turn: Turn) => Reply | Promise<Reply>) 
   return {
     url: `http://127.0.0.1:${port}/v1`,
     turns,
+    background,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   }
 }

@@ -913,10 +913,35 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
+}
+.changes-card.open .changes-head {
   border-bottom: 1px solid var(--border);
+}
+.changes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.changes-toggle .chevron {
+  color: var(--text-subtle);
+  transition: transform 0.15s;
+}
+.changes-toggle[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
 }
 .changes-head .title {
   font-weight: 600;
+}
+.change-list {
+  max-height: 180px;
 }
 .change-file {
   display: flex;

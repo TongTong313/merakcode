@@ -8,6 +8,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- A turn's changed files start folded; clicking the card lists them all, scrolling after six rows. Review stays available while folded.
 - New conversations can select a globally configured agent product with its own model and streamed text. Agent Connections settings are separate from Collaboration role templates, including seven read-only built-in roles and custom templates. Turning a product off locks its direct conversations until the user explicitly accepts MerakCode takeover; group members go offline while other members continue.
 - The homepage can switch local branches or prepare a new worktree from a chosen branch. Review keeps its scope, current branch and comparison branch in one toolbar; choosing the comparison branch opens branch review. Unsaved editor buffers and review comments survive view changes and prevent switching.
 - The SDK adds checkout-aware branch operations and HEAD events. Review decisions and undo now require `expectedCheckout` from the displayed review, so stale operations cannot modify another checkout context.
@@ -24,6 +25,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- After the engine restarts or is killed mid-turn, unfinished native tool calls no longer stay spinning: loading the conversation (or disposing the instance) marks them interrupted, and the next message starts a new turn instead of continuing under the stuck one.
+- External conversations with agent products such as Claude Code and Codex are titled from the first message with the configured small model, instead of keeping the default `New session - …` title.
 - Delayed product probes and session updates no longer undo newer settings or takeover decisions. Recreated products require a fresh takeover decision; takeover retains observed steps from failed or cancelled turns without text. Final snapshots remove obsolete fragments, and connection settings show the adapter's reported permission owner and retain MRK error codes.
 - External tasks finish process-tree cleanup before releasing their directory. Final replies calibrate streamed text, client clock differences preserve conversation history, admitted turns update recent activity, and group adapter errors retain localized MRK codes.
 - A late takeover response cannot block decisions for a new disable cycle or another conversation. Disabled group members consistently show offline, including queued tasks, with localized errors. Products without text streaming show that output arrives on completion.
@@ -41,6 +44,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 每轮的改动文件默认收起；点击卡片标题展开全部文件，超过六行时在列表内滚动。收起时仍可直接审阅。
 - 新建对话可以选择全局配置的智能体产品，使用各产品独立模型和流式正文。「智能体接入」与「协作群」角色模板设置分开，提供七个只读内置角色和自定义模板。关闭产品后，单聊锁定输入，只有用户明确同意才由 MerakCode 接管；群成员仅显示离线，其他成员继续工作。
 - 主页可以切换本地分支，或选择起点后准备创建新工作树。审阅范围、当前分支和比对分支合并为一行工具栏，选择比对分支即可进入分支审阅。未保存的编辑缓冲和审阅评论在切换视图后仍保留，并阻止切换工作分支。
 - SDK 新增带 checkout 身份的分支操作和 HEAD 事件。审阅决定与撤销现在必须携带所显示审阅的 `expectedCheckout`，防止过期操作修改另一个 checkout 上下文。
@@ -57,6 +61,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 引擎在中途重启或被强杀后，未完成的本地工具调用不再一直转圈：打开对话（或销毁实例）时会标为重启中断，下一条消息会开新一轮，而不会挂在卡住的那一轮下面。
+- 使用 Claude Code、Codex 等智能体产品的单聊会在第一条消息后使用配置的 small model 生成标题，不再保留默认的 `New session - …` 标题。
 - 延迟的产品探测和会话更新不会覆盖新设置或接管决定；删除后重建的产品需要重新确认接管。接管保留无正文失败或取消任务的已记录步骤，最终正文快照清除过时片段，接入设置按适配器报告显示权限归属并保留 MRK 错误码。
 - 外部任务清理完进程树后才释放目录占用；完整回复会校准流式正文，客户端时钟偏差不再遗漏对话历史，成功接收的轮次会更新最近活动时间，群适配器错误保留本地化提示与 MRK 编号。
 - 过期接管响应不会阻止新禁用周期或其他对话中的确认。停用群成员在排队阶段也统一显示离线，错误提示支持中英；不支持正文流式的产品会标明“完成后输出”。
