@@ -265,7 +265,7 @@
   overflow-x: auto;
   user-select: text;
 }
-.line {
+.lines .line {
   display: grid;
   grid-template-columns: 40px 40px 16px minmax(0, 1fr);
   white-space: pre;
@@ -282,33 +282,33 @@
 .split-row > .line + .line {
   border-left: 1px solid var(--border);
 }
-.line .n {
+.lines .line .n {
   padding-right: 8px;
   text-align: right;
   color: var(--text-subtle);
   user-select: none;
 }
-.line .sign {
+.lines .line .sign {
   color: var(--text-subtle);
   user-select: none;
 }
-.line .code {
+.lines .line .code {
   overflow: hidden;
   text-overflow: clip;
 }
-.line.add {
+.lines .line.add {
   background: var(--diff-add);
 }
-.line.add .sign {
+.lines .line.add .sign {
   color: var(--success-text);
 }
-.line.del {
+.lines .line.del {
   background: var(--diff-del);
 }
-.line.del .sign {
+.lines .line.del .sign {
   color: var(--danger-text);
 }
-.line.empty {
+.lines .line.empty {
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 5px,
