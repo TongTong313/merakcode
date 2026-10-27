@@ -150,12 +150,11 @@
         ]
       }
     },
-    "collaboration": {
-      "description": "Collaboration groups. The leader is always a Merak seat.",
+    "agentConnections": {
+      "description": "Global external product connections shared by direct and group conversations",
       "type": "object",
       "properties": {
         "products": {
-          "description": "Extra products, or overrides for claude, codex and opencode",
           "type": "object",
           "propertyNames": {
             "type": "string"
@@ -164,19 +163,15 @@
             "type": "object",
             "properties": {
               "command": {
-                "description": "Executable name or path; may be left out when overriding claude, codex or opencode",
                 "type": "string"
               },
               "enabled": {
-                "description": "Offer this product for new members; default true",
                 "type": "boolean"
               },
               "title": {
-                "description": "Display name",
                 "type": "string"
               },
               "adapter": {
-                "description": "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
                 "type": "string",
                 "enum": [
                   "claude",
@@ -187,24 +182,74 @@
                 ]
               },
               "args": {
-                "description": "Arguments. The prompt is written to stdin",
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
               },
               "resumeArgs": {
-                "description": "Arguments used when the seat already has a private session. {id} is replaced with that session id",
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
               },
               "sessionLine": {
-                "description": "Regular expression with one capture group for the private session id, for a one-shot command",
                 "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "providerID": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
               }
             },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "collaboration": {
+      "description": "Collaboration groups. The leader is always a Merak seat.",
+      "type": "object",
+      "properties": {
+        "roleTemplates": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1
+              },
+              "duty": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "name",
+              "role",
+              "duty"
+            ],
             "additionalProperties": false
           }
         }

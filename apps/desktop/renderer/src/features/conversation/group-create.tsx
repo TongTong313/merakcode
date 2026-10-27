@@ -1,4 +1,4 @@
-import type { CollaborationGroupSummary } from "@merakcode/sdk/client"
+import type { CollaborationGroupSummary, CollaborationRoleTemplate } from "@merakcode/sdk/client"
 import { createEffect, createSignal, on, Show } from "solid-js"
 import { locale, t } from "../../i18n"
 import { call, client } from "../../state/client"
@@ -7,6 +7,7 @@ import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
 import { copyGroup } from "./group-copy"
 import { MemberList, type Product, type Seat } from "./members"
+import { agentConnections, loadConnections, loadRoleTemplates, roleTemplates } from "../../state/agent-connections"
 
 const leaderDraft = (): Seat => ({
   id: "leader",
@@ -15,6 +16,7 @@ const leaderDraft = (): Seat => ({
   duty: t("group.defaultDuty"),
   product: "merak",
   leader: true,
+  availability: { state: "online" },
 })
 
 /** New group: a name and its members, kept locally and sent in one request */
@@ -26,10 +28,11 @@ export function GroupCreate(props: {
   /** Test seam: skip the SDK list/product calls and use these instead */
   products?: Product[]
   groups?: CollaborationGroupSummary[]
+  roleTemplates?: CollaborationRoleTemplate[]
 }) {
   const [title, setTitle] = createSignal("")
   const [seats, setSeats] = createSignal<Seat[]>([])
-  const [products, setProducts] = createSignal<Product[]>([])
+  const products = () => props.products ?? agentConnections()
   const [groups, setGroups] = createSignal<CollaborationGroupSummary[]>([])
   const [copied, setCopied] = createSignal<{ from: string; skipped: string[] }>()
   const [busy, setBusy] = createSignal(false)
@@ -45,14 +48,13 @@ export function GroupCreate(props: {
         setSeats([leaderDraft()])
         setCopied(undefined)
         if (props.products && props.groups) {
-          setProducts(props.products)
           setGroups(props.groups)
           return
         }
         // Products may have changed since the last time: none are offered until they are checked again
-        setProducts([])
         const failed = (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }) })
-        void call(client(props.directory).collaboration.products()).then(setProducts).catch(failed)
+        void loadConnections().catch(failed)
+        void loadRoleTemplates().catch(failed)
         void call(client(props.directory).collaboration.list()).then(setGroups).catch(failed)
       },
     ),
@@ -158,6 +160,7 @@ export function GroupCreate(props: {
         <MemberList
           seats={seats()}
           products={products()}
+          roleTemplates={props.roleTemplates ?? roleTemplates()}
           onSave={(seat, draft) =>
             setSeats((list) =>
               list.map((item) =>
@@ -165,7 +168,12 @@ export function GroupCreate(props: {
               ),
             )
           }
-          onAdd={(draft) => setSeats((list) => [...list, { ...draft, id: `new-${++added}`, leader: false }])}
+          onAdd={(draft) =>
+            setSeats((list) => [
+              ...list,
+              { ...draft, id: `new-${++added}`, leader: false, availability: { state: "online" } },
+            ])
+          }
           onRemove={(seat) => setSeats((list) => list.filter((item) => item.id !== seat.id))}
         />
       </div>

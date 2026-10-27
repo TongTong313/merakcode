@@ -108,7 +108,9 @@ export namespace ACP {
 
     if (!messages) return
 
-    const assistantMessages = messages.flatMap((m) => (m.info.role === "assistant" ? [{ ...m, info: m.info }] : []))
+    const assistantMessages = messages.flatMap((m) =>
+      m.info.role === "assistant" && "tokens" in m.info ? [{ ...m, info: m.info }] : [],
+    )
 
     const lastAssistant = assistantMessages[assistantMessages.length - 1]
     if (!lastAssistant) return
@@ -893,7 +895,7 @@ export namespace ACP {
       // Continue with the previous turn's model, variant and mode (loadSessionMode falls back to the default if the
       // mode no longer exists).
       const lastUser = messages?.findLast((m) => m.info.role === "user")?.info
-      if (lastUser?.role === "user") {
+      if (lastUser?.role === "user" && "model" in lastUser) {
         this.sessionManager.setModel(sessionId, {
           providerID: lastUser.model.providerID,
           modelID: lastUser.model.modelID,
@@ -1642,7 +1644,7 @@ export namespace ACP {
 
         return {
           stopReason: "end_turn" as const,
-          usage: msg ? buildUsage(msg) : undefined,
+          usage: msg && "tokens" in msg ? buildUsage(msg) : undefined,
           _meta: {},
         }
       }

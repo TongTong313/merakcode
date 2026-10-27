@@ -1,7 +1,7 @@
 # adapter-generator
 
-You write a **member adapter**: a small TypeScript program that lets a MerakCode collaboration group give tasks to one
-coding CLI. MerakCode starts the adapter for each task and talks to it on stdin/stdout through the adapter library. The
+You write an **agent adapter**: a small TypeScript program that lets MerakCode direct chats and collaboration groups
+give tasks to one coding CLI. MerakCode starts the adapter for each task and talks to it on stdin/stdout through the adapter library. The
 adapter drives the CLI and hands every step, permission request and question to MerakCode, which applies the user's
 permission mode and asks the user when needed. You write and register the adapter. You do not create groups or add
 members.
@@ -20,15 +20,21 @@ below, so you can copy it with `cp`.
 
 ## The contract
 
-`adapter({ inspect, run })` from the library:
+`adapter({ inspect, models?, run })` from the library:
 
-- `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable? }`. It runs before each task
+- `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable?, capabilities? }`. Report
+  capabilities accurately: modelSelection, modelDiscovery, textStreaming, resume, permission (`"merak"` or `"external"`),
+  and questions. It runs before each task
   (`unavailable` fails the task) and when settings shows the product, so it must be quick and never start work or rely
   on the working directory: `version(command)` from the library runs `<cli> --version` and gives `{ version }` or
   `{ unavailable }`.
-- `run(task, host)` does one task and returns `{ text, sessionId? }`; an empty `text` fails the task. `task` has
+- `models(product, signal)` optionally returns `{ models: [{ id, providerID?, title }], allowCustomID }` without running
+  a model task. Discovery lists models; it does not prove account access.
+- `run(task, host)` does one task and returns `{ text, sessionId?, actualModel?, final? }`; an empty `text` fails the task. `task` has
   `prompt`, `cwd`, `mode` (`"readonly" | "ask" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to
-  continue its session; if the CLI no longer has that session, start a new one), `product` and `signal`. For a member
+  continue its session; a missing session must fail without creating a replacement), optional `model: { id, providerID? }`,
+  `product` and `signal`. Pass an explicit model on every new or resumed task; omit the argument when no model is set.
+  Report actualModel only when the CLI reports it. For a member
   adapter `product` has only `id` and `title`: the config's `command` and `args` start the adapter itself, so the CLI's
   command belongs in the adapter, and in a copied example `task.product.command` and `args` are empty and fall back to
   its defaults. `signal` aborts when the user stops the group, and also after the task ends, when MerakCode closes the
@@ -36,6 +42,10 @@ below, so you can copy it with `cp`.
 - `host` is MerakCode, passed to `run` by the library. Its type is `Host`; import it with `type Host` only to pass `host`
   on to a function of your own.
 - `host.step({ tool, detail? })` shows what the CLI is doing. It does not wait.
+- Await `host.sessionStarted({ sessionId })` as soon as the CLI creates or resumes its thread. MerakCode saves the ID
+  before acknowledging. Send real assistant text through `host.textDelta({ messageID, partID, delta })` with stable IDs;
+  do not stream tool JSON, thinking or child-agent text. Return `final: { messageID, parts: [{ partID, text }] }` to
+  calibrate the final message without duplicating its deltas. A CLI with no incremental text reports textStreaming=false.
 - `host.permission(request)` asks whether the CLI may do something and waits for `{ allow: true }` or
   `{ allow: false, message }`. `request` is one of: `{ kind: "write", paths }`, `{ kind: "command", command }`,
   `{ kind: "network", host, url? }`, `{ kind: "read", paths }`, `{ kind: "tool", name, detail? }`. Send a refusal's
@@ -78,13 +88,13 @@ If the CLI talks both ways but in none of these three, you write the adapter you
 start the CLI, map its requests to the five kinds, answer it, report steps, continue its session and stop it.
 
 If the CLI can only run a task to the end with no way to ask anything, do not write an adapter. Tell the user it can
-still be added in Settings › Collaboration as a one-shot command, without approvals or questions.
+still be added in Settings › Agent connections as a one-shot command, without approvals or questions.
 
 ### 2. Write the adapter
 
 Create `<MerakCode home>/adapters/<id>/` (the home is `~/.merakcode` unless MERAKCODE_HOME is set). `<id>` is
 lower-case letters, digits and `-`, and must not be `merak`, `claude`, `codex`, `opencode` or an id already under
-`collaboration.products`: a built-in id there overrides that built-in product. Put there:
+`agentConnections.products`: a built-in id there overrides that built-in product. Put there:
 
 - `merakcode-adapter.mjs` and `merakcode-adapter.d.mts`: the library and its types, copied with `cp`
 - `NOTES.md`: what you learned in step 1 with its sources, then the version you tested with, how each mode maps to the
@@ -138,9 +148,12 @@ register it.
 
 ### 4. Register it
 
-Add the product under `collaboration.products.<id>` to the user's global MerakCode config: `merakcode.jsonc` in the
-MerakCode home, or `merakcode.json` when that is the one there. Keep everything else in the file. Show the user the
-entry and get their agreement first:
+Register the product through Settings › Agent connections, or the generated SDK's `agentConnection.product.change`
+method with `{ type: "add", id, product }`. This writes global `agentConnections.products.<id>`; do not add a project
+override or import engine internals from client code. The product form is:
+
+The SDK writes the global `merakcode.jsonc` file, or `merakcode.json` when that is the existing global file. Do not
+register the product by writing a project config file.
 
 ```json
 { "title": "<CLI name>", "adapter": "member", "command": "node", "args": ["<absolute path>/adapter.mts"] }
@@ -150,5 +163,4 @@ entry and get their agreement first:
 through a shell: write the absolute path with `~` expanded, and on Windows double the backslashes in JSON or use `/`.
 Settings caches its check for 60 seconds; after changing the adapter, the user clicks Check again.
 
-Then tell the user the adapter is ready: they can check it in Settings › Collaboration and add it to a group as a
-member themselves.
+Then tell the user the adapter is ready: they can select it for a new direct chat or add it as a group member.

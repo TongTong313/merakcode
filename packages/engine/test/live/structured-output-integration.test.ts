@@ -206,7 +206,7 @@ describe("StructuredOutput Integration", () => {
 
         // Verify outputFormat was stored on user message
         expect(userMessage).toBeDefined()
-        if (userMessage?.info.role === "user") {
+        if (userMessage?.info.role === "user" && !Message.isExternal(userMessage.info)) {
           expect(userMessage.info.format).toBeDefined()
           expect(userMessage.info.format?.type).toBe("json_schema")
           if (userMessage.info.format?.type === "json_schema") {

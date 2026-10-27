@@ -1,4 +1,5 @@
-import { type JSX } from "solid-js"
+import { connectionDefaults } from "./product.fixture"
+import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, beforeEach, expect, test } from "vitest"
 import type { ToolPart } from "@merakcode/sdk/client"
@@ -28,14 +29,46 @@ function mount(node: () => JSX.Element) {
 
 const group: GroupView = {
   seats: [
-    { id: "s1", name: "小主", role: "", duty: "", product: "merak", leader: true },
-    { id: "s2", name: "小红", role: "产品经理", duty: "负责登录", product: "claude", leader: false },
+    { id: "s1", name: "小主", role: "", duty: "", product: "merak", leader: true, availability: { state: "online" } },
+    {
+      id: "s2",
+      name: "小红",
+      role: "产品经理",
+      duty: "负责登录",
+      product: "claude",
+      leader: false,
+      availability: { state: "online" },
+    },
   ],
   events: [],
   products: [
-    { id: "merak", title: "MerakCode", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "codex", title: "Codex", connected: true, enabled: true, builtin: true, source: "builtin" },
+    {
+      id: "merak",
+      title: "MerakCode",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "claude",
+      title: "Claude Code",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "codex",
+      title: "Codex",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
   ],
 }
 
@@ -65,6 +98,79 @@ test("a member's finished reply shows under its name, product and role, with the
   expect(article.textContent).toContain("Claude Code · 产品经理")
   expect(article.textContent).toContain("小主：做登录 · src/auth/**")
   expect(article.querySelector("strong")?.textContent).toBe("src/auth/login.ts")
+})
+
+test("an external member streams persisted text and renders the final text once", () => {
+  const external = {
+    runID: "r1",
+    productTitle: "Claude Code",
+    actualModel: { id: "haiku" },
+    parts: [{ id: "text-1", text: "Hello " }],
+  }
+  const [part, setPart] = createSignal(
+    delegate({
+      status: "running",
+      input,
+      metadata: { seatID: "s2", product: "claude", external },
+      time: { start: Date.now() },
+    }),
+  )
+  const host = mount(() => <SeatBubble group={group} part={part()} />)
+  expect(host.textContent).toContain("Hello")
+  expect(host.textContent).not.toContain("world")
+  setPart(
+    delegate({
+      status: "completed",
+      input,
+      title: "小红",
+      output: "Hello world",
+      metadata: {
+        seatID: "s2",
+        product: "claude",
+        external: { ...external, parts: [{ id: "text-1", text: "Hello world" }], terminal: "completed" },
+      },
+      time,
+    }),
+  )
+  expect(host.textContent?.match(/Hello world/g)).toHaveLength(1)
+})
+
+test.each([
+  ["zh", "完成后输出"],
+  ["en", "Output on completion"],
+] as const)("a member describes its non-streaming output in %s", (locale, label) => {
+  setLocale(locale)
+  const [view, setView] = createSignal(group)
+  const host = mount(() => (
+    <>
+      <SeatBubble
+        group={view()}
+        part={delegate({ status: "running", input, metadata: { seatID: "s2", product: "claude" }, time })}
+      />
+      <SeatBubble
+        group={view()}
+        part={delegate({
+          status: "running",
+          input: { seat: "小主" },
+          metadata: { seatID: "s1", product: "merak" },
+          time,
+        })}
+      />
+    </>
+  ))
+  const member = () => host.querySelector('article[aria-label="小红"]')!
+  expect(member().textContent).toContain(label)
+  expect(host.querySelector('article[aria-label="小主"]')!.textContent).not.toContain(label)
+  setView({
+    ...group,
+    products: group.products.map((product) => ({
+      ...product,
+      capabilities: { ...product.capabilities, textStreaming: true },
+    })),
+  })
+  expect(member().textContent).not.toContain(label)
+  setView({ ...group, products: group.products.map((product) => ({ ...product, connected: false })) })
+  expect(member().textContent).not.toContain(label)
 })
 
 test("a member that is waiting, working, missing or failing says so", () => {
@@ -97,6 +203,40 @@ test("a member whose command is not installed is shown in the user's language, n
   ))
   expect(host.textContent).toContain("Claude Code 未安装")
   expect(host.textContent).not.toContain("did not start")
+})
+
+test.each([
+  ["zh", "离线", "completed"],
+  ["en", "Offline", "completed"],
+  ["zh", "离线", "error"],
+  ["en", "Offline", "error"],
+] as const)("a disabled member shows its offline state in %s/%s/%s", (locale, offline, status) => {
+  setLocale(locale)
+  const base = {
+    input,
+    metadata: {
+      seatID: "s2",
+      product: "claude",
+      external: {
+        runID: "r1",
+        productTitle: "Claude Code",
+        parts: status === "error" ? [{ id: "text-1", text: "Partial reply" }] : [],
+        terminal: "cancelled" as const,
+        stopReason: "product-disabled" as const,
+      },
+    },
+    time,
+  }
+  const state: ToolPart["state"] =
+    status === "completed"
+      ? { ...base, status, output: "Member is offline because Claude Code is disabled.", title: "Member" }
+      : { ...base, status, error: "MRK-4006: The product was disabled; the member is offline" }
+  const host = mount(() => <SeatBubble group={group} part={delegate(state)} />)
+  expect(host.textContent).toContain(offline)
+  expect(host.textContent).not.toContain("is disabled")
+  expect(host.textContent).not.toContain("The product was disabled")
+  expect(host.textContent).not.toMatch(/未安装|not installed/i)
+  if (status === "error") expect(host.textContent).toContain("Partial reply")
 })
 
 test("a removed member's old reply keeps the name and product it had", () => {

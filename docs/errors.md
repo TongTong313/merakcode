@@ -66,13 +66,17 @@ what to do.
 
 ## 4xxx 会话 · Sessions
 
-| 错误码 Code | 说明             | Meaning                    | 怎么办 · What to do                                                                                                                             |
-| ----------- | ---------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| MRK-4001    | 读取会话失败     | Could not read the session | 会话数据可能损坏了。运行 merak bug-report 打包日志反馈给我们。<br>The session data may be damaged. Run merak bug-report and send us the bundle. |
-| MRK-4002    | 已中止           | Stopped                    | 你或你的程序主动停下了这次回答，不需要处理。<br>You or your program stopped the reply. Nothing to fix.                                          |
-| MRK-4003    | 找不到这个智能体 | Agent not found            | 运行 merak agent list 查看可用的智能体。<br>Run merak agent list to see the available agents.                                                   |
-| MRK-4004    | 找不到这个命令   | Command not found          | 输入 / 查看可用的命令。<br>Type / to see the available commands.                                                                                |
-| MRK-4005    | 撤销改动失败     | Could not undo the changes | 可能有文件正被别的程序占用或修改。关掉占用的程序后重试。<br>A file may be open or being changed by another program. Close it and try again.     |
+| 错误码 Code | 说明                 | Meaning                                          | 怎么办 · What to do                                                                                                                             |
+| ----------- | -------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-4001    | 读取会话失败         | Could not read the session                       | 会话数据可能损坏了。运行 merak bug-report 打包日志反馈给我们。<br>The session data may be damaged. Run merak bug-report and send us the bundle. |
+| MRK-4002    | 已中止               | Stopped                                          | 你或你的程序主动停下了这次回答，不需要处理。<br>You or your program stopped the reply. Nothing to fix.                                          |
+| MRK-4003    | 找不到这个智能体     | Agent not found                                  | 运行 merak agent list 查看可用的智能体。<br>Run merak agent list to see the available agents.                                                   |
+| MRK-4004    | 找不到这个命令       | Command not found                                | 输入 / 查看可用的命令。<br>Type / to see the available commands.                                                                                |
+| MRK-4005    | 撤销改动失败         | Could not undo the changes                       | 可能有文件正被别的程序占用或修改。关掉占用的程序后重试。<br>A file may be open or being changed by another program. Close it and try again.     |
+| MRK-4006    | 对话产品已停用       | Conversation product is disabled                 | 重新启用产品，或确认由 MerakCode 接管此单聊。<br>Enable the product or explicitly accept MerakCode takeover.                                    |
+| MRK-4007    | 接管状态已变化       | Takeover state changed                           | 刷新对话后重新确认。<br>Refresh the conversation before deciding again.                                                                         |
+| MRK-4008    | 外部对话不支持此操作 | Operation unavailable for external conversations | 使用文本对话，或新建 MerakCode 对话。<br>Use text or start a MerakCode conversation.                                                            |
+| MRK-4009    | 外部产品执行失败     | External product execution failed                | 检查产品安装、登录和模型配置后重试。<br>Check the product installation, login, and model configuration.                                         |
 
 ## 5xxx 工具、权限与沙箱 · Tools, permissions and sandbox
 

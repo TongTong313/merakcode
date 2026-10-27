@@ -4,9 +4,10 @@ import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import type { Product } from "@merakcode/sdk/adapter"
 import { tmpdir } from "../fixture/fixture"
-import { runMember } from "../../src/collaboration/member"
-import { adapterOf, builtinLaunch } from "../../src/collaboration/adapters"
-import { whichInstalled } from "../../src/collaboration/locate"
+import { configureConnections } from "../fixture/agent-connections"
+import { runMember } from "../../src/agent-connection/runtime"
+import { adapterOf, builtinLaunch } from "../../src/agent-connection/adapters"
+import { whichInstalled } from "../../src/agent-connection/locate"
 
 /** One task for a one-shot product, run through the built-in command adapter */
 function oneShot(
@@ -119,7 +120,7 @@ test("a one-shot command is only looked for, never run, to tell whether it is th
   const ran = path.join(tmp.path, "ran.txt")
   const file = path.join(tmp.path, "agent.mjs")
   await fs.writeFile(file, `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(ran)}, "ran")`)
-  const { inspectMember } = await import("../../src/collaboration/member")
+  const { inspectMember } = await import("../../src/agent-connection/runtime")
   const info = await inspectMember({
     launch: builtinLaunch("command"),
     product: { id: "custom", title: "Custom", command: process.execPath, args: [file] },
@@ -145,7 +146,7 @@ test("a product run with node gets MerakCode's own Node, so it runs on a machine
   for (const key of Object.keys(saved)) process.env[key] = empty.path
   try {
     const fixture = path.join(import.meta.dirname, "fixture", "adapter.ts")
-    const driven = adapterOf({
+    const driven = await adapterOf({
       id: "mine",
       title: "Mine",
       command: "node",
@@ -169,10 +170,9 @@ test("a product run with node gets MerakCode's own Node, so it runs on a machine
 
 test("overriding only the command of a built-in product keeps the rest of it, its adapter included", async () => {
   const { Instance } = await import("../../src/project/instance")
-  const { configuredProducts } = await import("../../src/collaboration/run")
-  await using tmp = await tmpdir({
-    config: { collaboration: { products: { claude: { command: "/opt/claude/bin/claude" } } } },
-  })
+  const { configuredProducts } = await import("../../src/agent-connection/catalog")
+  await using tmp = await tmpdir()
+  await configureConnections({ claude: { command: "/opt/claude/bin/claude" } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {

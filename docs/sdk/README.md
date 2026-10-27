@@ -227,7 +227,8 @@ for await (const event of session.run("README 里有错别字吗？只列出来�
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("工具：", event.part.tool, event.part.state.status)
-  if (event.type === "done") console.log("花费：", event.message.cost, "输出 token：", event.message.tokens.output)
+  if (event.type === "done" && "cost" in event.message)
+    console.log("花费：", event.message.cost, "输出 token：", event.message.tokens.output)
 }
 console.log(answer)
 await merak.close()
@@ -937,10 +938,10 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 
 `adapter()` 接收的对象（类型 `Definition`）就是上面这两个函数：
 
-| 函数               | 什么时候调用                                                                            | 返回什么                                                                                                                                          |
-| ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect(product)` | 每个任务开始前一次，以及设置页显示状态时（不带任务）。返回 `unavailable` 时任务直接失败 | `Info`：名称 `name`，可选的版本 `version`、路径 `path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写原因 `unavailable`                  |
-| `run(task, host)`  | 每个任务一次                                                                            | `Result`：回复 `text`（不能为空，否则任务失败），以及下次续接用的 `sessionId`（任务成功时才保存；CLI 那边的会话已经不在时，要自己退回到新开会话） |
+| 函数               | 什么时候调用                                                                            | 返回什么                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect(product)` | 每个任务开始前一次，以及设置页显示状态时（不带任务）。返回 `unavailable` 时任务直接失败 | `Info`：名称 `name`，可选的版本 `version`、路径 `path`、建议版本 `recommended`、升级命令 `upgrade`，用不了时写原因 `unavailable`                               |
+| `run(task, host)`  | 每个任务一次                                                                            | `Result`：回复 `text`（不能为空，否则任务失败），以及下次续接用的 `sessionId`（得到 ID 时立即通过 host.sessionStarted 保存；续接失败必须报错，不自动新建线程） |
 
 `task`（类型 `Task`）里有：
 
@@ -954,6 +955,12 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 | `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                                                                                                     |
 
 ### 15.6 五种审批请求
+
+单聊和群成员使用同一适配器。`Info.capabilities`（类型 `Capabilities`）声明模型选择、模型发现、真实正文流式、续接、
+权限归属和提问能力；只声明已经实现的能力。`task.model` 是可选 `ProductModel`（`{ id, providerID? }`），每次首次/续接任务都要传给 CLI。
+可选 `models(product, signal)` 返回 `ModelList`（`{ models: [{ id, providerID?, title }], allowCustomID }`），只枚举，不做推理或判断账户授权。
+取得外部线程后先 `await host.sessionStarted({ sessionId })`；正文通过 `host.textDelta` 发送 `TextDelta`（`{ messageID, partID, delta }`），
+两个 ID 在同一正文片段中保持稳定。`Result.actualModel` 只填 CLI 实际回报，`Result.final` 可以校准对应片段的完整文本；没有真实增量时不要伪造流式。
 
 `host.permission` 接收的请求（类型 `Permission`）分五种，尽量选最具体的那种：
 
@@ -998,7 +1005,7 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 
 ```jsonc
 {
-  "collaboration": {
+  "agentConnections": {
     "products": {
       "mycli": {
         "title": "MyCLI",
@@ -1013,7 +1020,10 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 }
 ```
 
-也可以在「设置 › 协作群 › 添加产品」里加：接入方式选"成员适配器（命令和参数启动你的适配器）"，命令填 `node`，参数填适配器的路径。
+也可以在「设置 › 智能体接入 › 添加产品」里加：接入方式选"成员适配器（命令和参数启动你的适配器）"，命令填 `node`，参数填适配器的路径。
+
+SDK 客户端通过生成方法 `client.agentConnection.product.change` 注册和修改产品，不能直接导入引擎或读取引擎配置文件。
+注册是全局的；同一个产品既可作为新建单聊的对话对象，也可加入协作群。角色模板在协作群设置中管理。
 
 注册后，设置页这一行会显示 `inspect` 返回的版本，以及"权限：由 MerakCode 审批"，然后就能在群里添加这个产品的成员了。设置页的检测结果会缓存 60 秒，改了 `adapter.mts` 之后点「重新检测」。
 
@@ -1023,8 +1033,8 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 - **用户点停止**：`task.signal` 触发，你负责停掉 CLI。MerakCode 同时关掉适配器的输入，库在 5 秒后让适配器退出；那时适配器还在的话，MerakCode 会把它和它启动的进程一起结束。所以要在 5 秒内停掉 CLI：在 macOS 和 Linux 上，适配器退出时还没停掉的 CLI 不一定会被一起清理。
 - **MerakCode 退出**：适配器的输入流被关闭，`task.signal` 随之触发，库会在 5 秒后让适配器退出；CLI 会不会一起结束，取决于你有没有在 `task.signal` 里调用 `stop`。
 - **设置页的 `inspect` 有时限**：10 秒内没回应，这个产品显示为不可用。任务开始前的那一次没有时限，所以 `inspect` 要快、没有副作用；设置页调用它时，工作目录不是项目目录，不要依赖当前目录。
-- **不要往标准输出打印东西**：标准输出是和 MerakCode 通信专用的。库只把 `console.log`、`console.info` 转到了标准错误（MerakCode 的日志里），`console.debug`、`console.dir` 仍然写标准输出，打日志请用 `console.error`。直接写 `process.stdout`，或者让 CLI 继承适配器的标准输出，都会把通信搞乱。
-- **排错**：适配器写到标准错误的每一行都会进 MerakCode 的日志（`merak logs`）。适配器中途退出时，失败消息里会带上它最后一行错误。
+- **不要往标准输出打印东西**：标准输出是和 MerakCode 通信专用的。库只把 `console.log`、`console.info` 转到了标准错误（协议诊断），`console.debug`、`console.dir` 仍然写标准输出，打日志请用 `console.error`。直接写 `process.stdout`，或者让 CLI 继承适配器的标准输出，都会把通信搞乱。
+- **排错**：引擎只记录适配器诊断事件，不将原始标准错误行写入日志，以免记录会话正文或凭证。适配器中途退出时，失败消息里会带上它最后一行错误。
 - **不要给 CLI 加跳过审批的参数**（比如"全部自动放行"）：加了以后 MerakCode 就管不到它了，权限模式和审批都会失效。
 - **适配器以你本人的权限运行，不在 MerakCode 的沙箱里**。MerakCode 只管得到 CLI 主动来问的操作，只接你信任的 CLI。
 

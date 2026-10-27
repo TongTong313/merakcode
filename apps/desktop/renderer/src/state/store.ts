@@ -6,8 +6,7 @@
  *   directory is its own checkout
  * - Directories outside a git repository all belong to the engine's global project, so session lists filter by
  *   directory
- * - Permission and question snapshots are only added (through the same reducer as the event stream), never replaced
- *   wholesale, to avoid racing with events
+ * - Pending request snapshots replace only their own directory; event replay preserves newer requests
  */
 import { batch } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
@@ -104,6 +103,13 @@ onCheckoutChange((directory, current) => {
 
 type Listener = (directory: string, event: Event) => void
 const listeners = new Set<Listener>()
+const pendingSnapshots = new Map<string, { events: Event[] }>()
+const pendingEvent = (event: Event) =>
+  event.type === "permission.asked" ||
+  event.type === "permission.replied" ||
+  event.type === "question.asked" ||
+  event.type === "question.replied" ||
+  event.type === "question.rejected"
 
 /** Subscribes to raw events (review, code, terminal and others pick the ones they need) */
 export function listen(fn: Listener) {
@@ -118,6 +124,10 @@ function reduce(draft: SessionsState, event: Event) {
 let catalogFailures: SeenFailures = {}
 
 function dispatch(directory: string, event: Event) {
+  if (pendingEvent(event))
+    for (const [dir, snapshot] of pendingSnapshots) {
+      if (sameDir(directory, dir)) snapshot.events.push(event)
+    }
   setState(
     "sessions",
     produce((draft) => reduce(draft, event)),
@@ -347,13 +357,16 @@ async function refresh(directory: string, limit = PAGE) {
     directories(folder).map(async (dir) => {
       const c = client(dir)
       const checkout = checkoutOf(dir)
+      for (const key of pendingSnapshots.keys()) if (sameDir(dir, key)) pendingSnapshots.delete(key)
+      const snapshot = { events: [] as Event[] }
+      pendingSnapshots.set(dir, snapshot)
       const [status, permissions, questions, vcs] = await Promise.all([
         call(c.session.status()).catch(() => ({})),
-        call(c.permission.list()).catch(() => []),
-        call(c.question.list()).catch(() => []),
+        call(c.permission.list()).catch(() => undefined),
+        call(c.question.list()).catch(() => undefined),
         project.vcs === "git" ? call(c.vcs.get()).catch(() => undefined) : undefined,
       ])
-      return { dir, status, permissions, questions, vcs, checkout }
+      return { dir, status, permissions, questions, vcs, checkout, snapshot }
     }),
   )
   batch(() => {
@@ -362,10 +375,28 @@ async function refresh(directory: string, limit = PAGE) {
       produce((draft) => {
         for (const info of list) reduce(draft, { type: "session.updated", properties: { info } } as Event)
         for (const item of instances) {
+          if (pendingSnapshots.get(item.dir) !== item.snapshot) continue
           Object.assign(draft.session_status, item.status)
-          for (const request of item.permissions)
+          const owned = (request: { sessionID: string; root?: string }) => {
+            const owner =
+              draft.session.find((info) => info.id === request.sessionID) ??
+              draft.session.find((info) => info.id === request.root)
+            return !!owner && sameDir(owner.directory, item.dir)
+          }
+          if (item.permissions)
+            for (const [id, requests] of Object.entries(draft.permission)) {
+              draft.permission[id] = requests.filter((request) => !owned(request))
+            }
+          if (item.questions)
+            for (const [id, requests] of Object.entries(draft.question)) {
+              draft.question[id] = requests.filter((request) => !owned(request))
+            }
+          for (const request of item.permissions ?? [])
             reduce(draft, { type: "permission.asked", properties: request } as Event)
-          for (const request of item.questions) reduce(draft, { type: "question.asked", properties: request } as Event)
+          for (const request of item.questions ?? [])
+            reduce(draft, { type: "question.asked", properties: request } as Event)
+          for (const event of item.snapshot.events) reduce(draft, event)
+          pendingSnapshots.delete(item.dir)
         }
       }),
     )

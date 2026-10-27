@@ -1,3 +1,4 @@
+import { connectionDefaults } from "./product.fixture"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, expect, test } from "vitest"
@@ -52,10 +53,42 @@ test("@ lists members with product and role, and does not offer a product that h
     { name: "小主", product: "merak", role: "" },
   ]
   const products: Product[] = [
-    { id: "merak", title: "MerakCode", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "codex", title: "Codex", connected: true, enabled: true, builtin: true, source: "builtin" },
-    { id: "opencode", title: "OpenCode", connected: false, enabled: true, builtin: true, source: "builtin" },
+    {
+      id: "merak",
+      title: "MerakCode",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "claude",
+      title: "Claude Code",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "codex",
+      title: "Codex",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
+    {
+      id: "opencode",
+      title: "OpenCode",
+      connected: false,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
   ]
   expect(mentionChoices("", seats, products)).toEqual([
     { name: "小红", detail: "Claude Code · 产品经理" },
@@ -68,11 +101,35 @@ test("@ lists members with product and role, and does not offer a product that h
 
 test("a request from a member's call names the member and its product; the leader's own requests name no one", () => {
   const seats = [
-    { id: "s1", name: "小主", role: "", duty: "", product: "merak", leader: true },
-    { id: "s2", name: "小明", role: "产品经理", duty: "", product: "claude", leader: false },
+    {
+      id: "s1",
+      name: "小主",
+      role: "",
+      duty: "",
+      product: "merak",
+      leader: true,
+      availability: { state: "online" as const },
+    },
+    {
+      id: "s2",
+      name: "小明",
+      role: "产品经理",
+      duty: "",
+      product: "claude",
+      leader: false,
+      availability: { state: "online" as const },
+    },
   ]
   const products: Product[] = [
-    { id: "claude", title: "Claude Code", connected: true, enabled: true, builtin: true, source: "builtin" },
+    {
+      id: "claude",
+      title: "Claude Code",
+      connected: true,
+      enabled: true,
+      builtin: true,
+      source: "builtin",
+      ...connectionDefaults,
+    },
   ]
   const parts = [
     { type: "tool", tool: "delegate", callID: "c1", state: { input: { seat: "小明" }, metadata: { seatID: "s2" } } },

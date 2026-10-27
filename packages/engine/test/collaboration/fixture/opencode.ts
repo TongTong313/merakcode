@@ -32,7 +32,7 @@ const emit = (type: string, properties: unknown) => {
   for (const stream of streams) stream.write(`data: ${JSON.stringify({ type, properties })}\n\n`)
 }
 const waiting = new Map<string, (body: Record<string, unknown>) => void>()
-const sessions = new Map<string, { text: string }>()
+const sessions = new Map<string, { text: string; model?: { providerID: string; modelID: string } }>()
 let next = 0
 
 const body = (request: http.IncomingMessage) =>
@@ -44,6 +44,14 @@ const body = (request: http.IncomingMessage) =>
 
 async function work(sessionID: string, prompt: string) {
   emit("session.status", { sessionID, status: { type: "busy" } })
+  if (process.env.OPENCODE_FIXTURE_STREAM) {
+    emit("message.updated", { info: { id: "reply", sessionID, role: "assistant" } })
+    for (const delta of ["Hello ", "world"])
+      emit("message.part.delta", { sessionID, messageID: "reply", partID: "text", field: "text", delta })
+    sessions.get(sessionID)!.text = "Hello world"
+    emit("session.status", { sessionID, status: { type: "idle" } })
+    return
+  }
   const replies: string[] = []
   for (const item of items) {
     const id = `req_${++next}`
@@ -89,6 +97,8 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://localhost")
   const json = (value: unknown) =>
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(value))
+  if (url.pathname === "/provider")
+    return json({ all: [{ id: "fixture-provider", models: { "fixture-model": { name: "Fixture model" } } }] })
   if (url.pathname === "/event") {
     response.writeHead(200, { "content-type": "text/event-stream" })
     response.write(`data: ${JSON.stringify({ type: "server.connected", properties: {} })}\n\n`)
@@ -105,6 +115,7 @@ const server = http.createServer(async (request, response) => {
     const sessionID = prompt[1]!
     sessions.set(sessionID, sessions.get(sessionID) ?? { text: "" })
     const input = await body(request)
+    sessions.get(sessionID)!.model = input.model as { providerID: string; modelID: string } | undefined
     ;(seen.prompts as unknown[]).push({ sessionID, ...input })
     save()
     response.writeHead(204).end()
@@ -115,7 +126,10 @@ const server = http.createServer(async (request, response) => {
   if (messages)
     return json([
       { info: { role: "user" }, parts: [] },
-      { info: { role: "assistant" }, parts: [{ type: "text", text: sessions.get(messages[1]!)?.text ?? "" }] },
+      {
+        info: { id: "reply", role: "assistant", ...sessions.get(messages[1]!)?.model },
+        parts: [{ id: "text", type: "text", text: sessions.get(messages[1]!)?.text ?? "" }],
+      },
     ])
   const reply = /^\/(permission|question)\/([^/]+)\/reply$/.exec(url.pathname)
   if (request.method === "POST" && reply) {

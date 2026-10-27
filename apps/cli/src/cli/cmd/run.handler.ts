@@ -503,7 +503,12 @@ export async function run(args: RunArgs) {
           toggles.get("start") !== true
         ) {
           UI.empty()
-          UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+          const info = event.properties.info
+          UI.println(
+            "agent" in info
+              ? `> ${info.agent} · ${info.modelID}`
+              : `> ${info.execution.productTitle}${info.execution.actualModel ? ` · ${info.execution.actualModel.id}` : ""}`,
+          )
           UI.empty()
           toggles.set("start", true)
         }

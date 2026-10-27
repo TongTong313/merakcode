@@ -4,21 +4,27 @@ import GitBranch from "lucide-solid/icons/git-branch"
 import GitMerge from "lucide-solid/icons/git-merge"
 import Undo2 from "lucide-solid/icons/undo-2"
 import Users from "lucide-solid/icons/users"
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
+import { produce } from "solid-js/store"
+import { applyEvent } from "@merakcode/sdk/store"
+import type { Session } from "@merakcode/sdk/client"
 import { useNavigate } from "@solidjs/router"
 import { t } from "../../i18n"
 import { sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
 import {
   busy,
+  connected,
   ensureSession,
   folderOf,
   messages,
   messagesOf,
   partsOf,
   pending,
+  listen,
   session,
   state,
+  setState,
 } from "../../state/store"
 import { choose } from "../../state/models"
 import { saveLayout, setUi, ui } from "../../state/ui"
@@ -38,7 +44,9 @@ import { MemberColumn } from "./member-column"
 import { Approval, Question } from "./dock"
 import { askedBy } from "./members"
 import { Messages } from "./messages"
-import { restore, send, stop } from "./send"
+import { historyLocked, restore, send, stop } from "./send"
+import { agentConnections, connectionsLoaded, loadConnections } from "../../state/agent-connections"
+import { TakeoverDialog } from "./takeover-dialog"
 
 /**
  * Discards a worktree conversation: deletes the conversation first (while its worktree directory still exists), then
@@ -138,10 +146,77 @@ export function Conversation(props: { id: string; directory: string }) {
   const [renaming, setRenaming] = createSignal(false)
   const [discarding, setDiscarding] = createSignal(false)
   const [opening, setOpening] = createSignal<{ target: string; at: number }>()
+  const [takeoverOpen, setTakeoverOpen] = createSignal(false)
   const info = () => session(props.id)
   const isGroup = () => info()?.metadata?.group === true
   const folder = () => folderOf(props.directory)
   const dir = () => info()?.directory ?? props.directory
+  const external = () => info()?.target?.kind === "external"
+  const product = () => {
+    const target = info()?.target
+    return target?.kind === "external" ? agentConnections().find((item) => item.id === target.productID) : undefined
+  }
+  const productDisabled = () => external() && connectionsLoaded() && (!product() || product()?.enabled === false)
+  const inputLocked = () =>
+    !!info()?.targetBlock ||
+    !!info()?.readOnlyReason ||
+    productDisabled() ||
+    (!!info()?.takeover && !external() && !connected())
+  const updatedSession = (value: Session) => {
+    setState(
+      "sessions",
+      produce((draft) =>
+        applyEvent(draft, { type: "session.updated", properties: { sessionID: value.id, info: value } }),
+      ),
+    )
+  }
+  onMount(() => void loadConnections().catch(() => undefined))
+  createEffect(
+    on([() => props.id, () => info()?.targetBlock?.blockID, () => info()?.targetBlock?.decision], () => {
+      setTakeoverOpen(!isGroup() && info()?.targetBlock?.decision === "pending")
+    }),
+  )
+  onCleanup(
+    listen((_directory, event) => {
+      if (event.type !== "config.updated" || isGroup()) return
+      const id = props.id
+      const directory = dir()
+      void call(client(directory).session.get({ sessionID: id }))
+        .then((value) => {
+          if (id === props.id && directory === dir()) updatedSession(value)
+        })
+        .catch(() => undefined)
+    }),
+  )
+  const decideTakeover = async (decision: "accept" | "decline") => {
+    const current = info()
+    const block = current?.targetBlock
+    if (!current || !block) return
+    const sessionID = current.id
+    const blockID = block.blockID
+    const expectedTargetRevision = current.targetRevision ?? 0
+    const directory = dir()
+    const currentDialog = () =>
+      props.id === sessionID &&
+      dir() === directory &&
+      info()?.targetBlock?.blockID === blockID &&
+      (info()?.targetRevision ?? 0) === expectedTargetRevision
+    try {
+      const value = await call(
+        client(directory).session.takeover({ sessionID, decision, expectedTargetRevision, blockID }),
+      )
+      if (!currentDialog()) return
+      updatedSession(value)
+      setTakeoverOpen(false)
+    } catch (error) {
+      if (!currentDialog()) return
+      if ((error as Error & { status?: number }).status !== 409) throw error
+      const value = await call(client(directory).session.get({ sessionID }))
+      if (!currentDialog()) return
+      updatedSession(value)
+      setTakeoverOpen(value.targetBlock?.decision === "pending")
+    }
+  }
   /** Worktree directory, when the conversation runs in a worktree */
   const worktree = () => {
     const value = info()
@@ -279,7 +354,7 @@ export function Conversation(props: { id: string; directory: string }) {
           />
           <div class="dock">
             <div class="dock-inner">
-              <Show when={!running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
+              <Show when={!historyLocked(props.id) && !running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
                 <div class="revert-bar" role="status">
                   <Undo2 class="icon icon-sm" />
                   <span class="ellipsis">{t("conversation.reverted")}</span>
@@ -309,8 +384,31 @@ export function Conversation(props: { id: string; directory: string }) {
               <Show when={!requests().permissions.length && requests().questions[0]}>
                 {(request) => <Question request={request()} directory={dir()} from={from(request())} />}
               </Show>
+              <Show when={!isGroup() && (external() || info()?.takeover)}>
+                <div class="conversation-target-status subtle" role="status">
+                  <span>{external() ? (product()?.title ?? info()?.targetBlock?.productID) : "MerakCode"}</span>
+                  <Show when={external() && product()?.connected && product()?.capabilities.textStreaming === false}>
+                    <span>{t("conversation.outputOnCompletion")}</span>
+                  </Show>
+                  <Show when={info()?.targetBlock}>
+                    <span>{t("conversation.takeover.blocked")}</span>
+                    <button class="button ghost sm" onClick={() => setTakeoverOpen(true)}>
+                      {t("conversation.takeover.accept")}
+                    </button>
+                  </Show>
+                  <Show when={info()?.takeover && !external()}>
+                    <span>{t("conversation.takeover.completed")}</span>
+                  </Show>
+                </div>
+              </Show>
+              <Show when={info()?.readOnlyReason}>
+                <p class="subtle" role="status">
+                  {t("conversation.external.readOnly")}
+                </p>
+              </Show>
               <Composer
-                disabled={switching(dir())}
+                disabled={switching(dir()) || inputLocked()}
+                external={external()}
                 sessionID={props.id}
                 directory={props.directory}
                 busy={running()}
@@ -349,6 +447,15 @@ export function Conversation(props: { id: string; directory: string }) {
           )}
         </Show>
       </div>
+      <Show when={!isGroup() && takeoverOpen() && info()?.targetBlock?.blockID} keyed>
+        {(_blockID) => (
+          <TakeoverDialog
+            open={takeoverOpen()}
+            productTitle={product()?.title ?? info()?.targetBlock?.productID ?? ""}
+            onDecision={decideTakeover}
+          />
+        )}
+      </Show>
       <Show when={info()}>
         {(value) => <Rename session={value()} open={renaming()} onClose={() => setRenaming(false)} />}
       </Show>

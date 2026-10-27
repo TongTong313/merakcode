@@ -396,7 +396,7 @@ export namespace SessionContextView {
   function findBaseline(messages: Message.FullMsg[]) {
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index]
-      if (message.info.role !== "assistant") continue
+      if (message.info.role !== "assistant" || Message.isExternal(message.info)) continue
       if (message.info.summary) continue
       if (!message.info.finish) continue
       if (tokenTotal(message.info.tokens) <= 0) continue

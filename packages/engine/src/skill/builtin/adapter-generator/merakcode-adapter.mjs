@@ -1,4 +1,4 @@
-// MerakCode adapter library (member protocol v1). Generated from @merakcode/sdk/adapter; do not edit.
+// MerakCode adapter library (member protocol). Generated from @merakcode/sdk/adapter; do not edit.
 import { createRequire as __merakcodeRequire } from "node:module"
 const require = __merakcodeRequire(import.meta.url)
 var __create = Object.create
@@ -701,11 +701,17 @@ function adapter(definition) {
         product = params.product
         return { protocol: PROTOCOL, ...(await definition.inspect(product)) }
       },
+      "model/list": () => {
+        if (!definition.models) throw new Error("This adapter does not support model discovery")
+        return definition.models(product, stop2.signal)
+      },
       "task/run": (task) => definition.run({ ...task, product, signal: stop2.signal }, host),
       "task/cancel": () => stop2.abort(),
     },
   })
   const host = {
+    sessionStarted: (input) => rpc.request("session.started", input),
+    textDelta: (input) => rpc.notify("text.delta", input),
     step: (step) => rpc.notify("step", step),
     permission: (request) => rpc.request("permission/request", { request }),
     question: async (questions) => (await rpc.request("question/ask", { questions })).answers,
@@ -730,6 +736,8 @@ async function tryAdapter(input) {
     send: (line) => child.stdin.write(line + "\n"),
     handlers: {
       step: (step) => print(`step ${step.tool}${step.detail ? " " + step.detail : ""}`),
+      "session.started": (input2) => print(`session ${input2.sessionId}`),
+      "text.delta": (input2) => print(`text ${input2.delta}`),
       "permission/request": (params) => {
         print(`permission ${JSON.stringify(params.request)}`)
         return { allow: true }

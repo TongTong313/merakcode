@@ -10,6 +10,7 @@ import { SessionStore } from "../../session/store"
 import { Transcript } from "../../session/transcript"
 import { SessionRunner } from "../../session/runner"
 import { SessionDispatch } from "../../session/dispatch"
+import { SessionTarget } from "../../session/target"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionUndoRedo } from "../../session/undo-redo"
@@ -594,13 +595,13 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        const session = await Session.get(sessionID)
+        const session = await SessionTarget.assertNativeOperation(sessionID)
         await SessionRevert.cleanup(session)
         const msgs = await Session.messages({ sessionID })
         let currentAgent: string = await Agent.defaultAgent()
         for (let i = msgs.length - 1; i >= 0; i--) {
           const info = msgs[i].info
-          if (info.role === "user") {
+          if (info.role === "user" && !Message.isExternal(info)) {
             currentAgent = info.agent || (await Agent.defaultAgent())
             break
           }
@@ -726,6 +727,7 @@ export const SessionRoutes = lazy(() =>
         const params = c.req.valid("param")
         // Check the message exists first: deleting a missing message succeeds silently, so a wrong ID would return
         // true.
+        await SessionTarget.assertNativeOperation(params.sessionID, true)
         await Message.get({ sessionID: params.sessionID, messageID: params.messageID })
         await Session.removeMessage({ sessionID: params.sessionID, messageID: params.messageID })
         return c.json(true)
@@ -758,6 +760,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const params = c.req.valid("param")
+        await SessionTarget.assertNativeOperation(params.sessionID, true)
         await Session.removePart({
           sessionID: params.sessionID,
           messageID: params.messageID,
@@ -795,13 +798,14 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const params = c.req.valid("param")
         const body = c.req.valid("json")
+        await SessionTarget.assertNativeOperation(params.sessionID, true)
         if (body.id !== params.partID || body.messageID !== params.messageID || body.sessionID !== params.sessionID) {
           throw new Error(
             `Part mismatch: body.id='${body.id}' vs partID='${params.partID}', body.messageID='${body.messageID}' vs messageID='${params.messageID}', body.sessionID='${body.sessionID}' vs sessionID='${params.sessionID}'`,
           )
         }
         const message = await Message.get({ sessionID: params.sessionID, messageID: params.messageID })
-        if (message.info.role === "user" && message.info.commandSource) {
+        if (message.info.role === "user" && !Message.isExternal(message.info) && message.info.commandSource) {
           const current = message.parts.find((part) => part.id === body.id)
           if (!current || current.type !== body.type) {
             return c.json({ error: "Command message parts cannot be added or change type" }, 400)
@@ -830,7 +834,7 @@ export const SessionRoutes = lazy(() =>
               "application/json": {
                 schema: resolver(
                   z.object({
-                    info: Message.AssistantInfo,
+                    info: Message.AssistantMessage,
                     parts: Message.Part.array(),
                   }),
                 ),
@@ -854,6 +858,7 @@ export const SessionRoutes = lazy(() =>
         // stream callback comes after the 200 has started, onError cannot catch it, and it would end up as an unhandled
         // rejection.
         await Session.get(sessionID)
+        await SessionTarget.assertCanSend(sessionID, { ...body, sessionID })
         const response = SessionDispatch.prompt({ ...body, sessionID })
 
         c.status(200)
@@ -904,6 +909,7 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         await Session.get(sessionID)
+        await SessionTarget.assertCanSend(sessionID, { ...body, sessionID })
         // Fire and forget: reply 204 (no body) right away.
         // If prompt() throws before producing an assistant message (corrupt message file, a non-allowlisted
         // Provider.getModel error, missing agent, ...), the rejection would be swallowed with neither session.error nor
@@ -922,6 +928,23 @@ export const SessionRoutes = lazy(() =>
         })
         return c.body(null, 204)
       },
+    )
+    .post(
+      "/:sessionID/takeover",
+      describeRoute({
+        summary: "Decide whether MerakCode takes over a disabled external conversation",
+        operationId: "session.takeover",
+        responses: {
+          200: {
+            description: "Current conversation",
+            content: { "application/json": { schema: resolver(Session.Info) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      validator("json", SessionTarget.Decision),
+      async (c) => c.json(await SessionTarget.takeover(c.req.valid("param").sessionID, c.req.valid("json"))),
     )
     .post(
       "/:sessionID/command",
@@ -988,6 +1011,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
+        await SessionTarget.assertNativeOperation(sessionID)
         const msg = await SessionRunner.shell({ ...body, sessionID })
         return c.json(msg)
       },
@@ -1021,6 +1045,7 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         log.info("revert", body)
+        await SessionTarget.assertNativeOperation(sessionID, true)
         const session = await SessionUndoRedo.undo({
           sessionID,
           messageID: body.messageID,
@@ -1055,6 +1080,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
+        await SessionTarget.assertNativeOperation(sessionID, true)
         const session = await SessionUndoRedo.redo({ sessionID })
         return c.json(session)
       },
@@ -1149,6 +1175,7 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
   // An import always generates new session/message/part IDs and never reuses the exported ones: keeping the old
   // session ID would merge into an existing session instead of creating one, and its message count would grow.
   const newSessionID = Identifier.descending("session")
+  const external = body.messages.some((message) => Message.isExternal(message.info))
   const info: Session.Info = {
     ...body.info,
     id: newSessionID,
@@ -1157,6 +1184,13 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
     // The parent is most likely not in the target project. Keeping parentID would make isChildToolSession treat the
     // import as a child session (no nested subagents, permission mode following a missing parent).
     parentID: undefined,
+    target: external ? body.info.target : { kind: "merak" },
+    targetRevision: 0,
+    targetBlock: undefined,
+    takeover: undefined,
+    undoRedo: undefined,
+    revert: undefined,
+    readOnlyReason: external ? "imported-external-history" : undefined,
   }
 
   const messageIDMap = new Map<string, string>()
@@ -1173,14 +1207,16 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
       messageID: newMessageID,
       // A full export is public input. Without trusted command provenance, a
       // synthetic user text would reach the model but be hidden from path guards.
-      ...(fullMsg.info.role === "user" && !fullMsg.info.commandSource && part.type === "text"
+      ...(fullMsg.info.role === "user" &&
+      (Message.isExternal(fullMsg.info) || !fullMsg.info.commandSource) &&
+      part.type === "text"
         ? { synthetic: undefined }
         : {}),
     }))
     // Never trust imported template IDs: cover every model-visible user text
     // (and subtask prompt) after assigning the new part IDs.
     const commandSource =
-      fullMsg.info.role === "user" && fullMsg.info.commandSource
+      fullMsg.info.role === "user" && !Message.isExternal(fullMsg.info) && fullMsg.info.commandSource
         ? {
             templatePartIDs: parts
               .filter((part) => (part.type === "text" && !part.ignored) || part.type === "subtask")
@@ -1191,7 +1227,7 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
       ...fullMsg.info,
       id: newMessageID,
       sessionID: newSessionID,
-      ...(fullMsg.info.role === "user" ? { commandSource } : {}),
+      ...(fullMsg.info.role === "user" && !Message.isExternal(fullMsg.info) ? { commandSource } : {}),
       // An assistant message links to the user message it answers through parentID. Map it to the new ID, or the
       // turn breaks apart in the UI because parentID points to an old ID that no longer exists.
       ...(fullMsg.info.role === "assistant"

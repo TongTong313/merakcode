@@ -12,7 +12,7 @@ import { Identifier } from "@merakcode/util/id"
 import { ContextAttach } from "../session/context-attach"
 import * as Builtin from "../skill/builtin"
 import { parsePdf } from "./pdf-parse"
-import type { Message } from "../session/message"
+import { Message } from "../session/message"
 import { isProjectFileBypass } from "./file-bypass"
 import { ToolPathGuard } from "./path-guard"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -604,6 +604,7 @@ function isPdfSkillLoaded(messages: Message.FullMsg[]): boolean {
   return messages.some(
     (message) =>
       message.info.role === "user" &&
+      !Message.isExternal(message.info) &&
       typeof message.info.system === "string" &&
       // The second phrase is the older Chinese wording, still present in existing sessions.
       (message.info.system.includes('You have loaded the "pdf" skill') ||

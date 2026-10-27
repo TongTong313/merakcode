@@ -22,6 +22,27 @@ export type PermissionRuleOutput = {
 export type PermissionRulesetOutput = Array<PermissionRuleOutput>
 
 export type SessionOutput = {
+  target?:
+    | {
+        kind: "merak"
+      }
+    | {
+        kind: "external"
+        productID: string
+      }
+  targetRevision?: number
+  targetBlock?: {
+    blockID: string
+    productID: string
+    disabledCycleID: string
+    decision: "pending" | "declined"
+  }
+  takeover?: {
+    at: number
+    fromProductID: string
+    blockID: string
+  }
+  readOnlyReason?: "imported-external-history"
   id: string
   slug: string
   projectID: string
@@ -281,6 +302,7 @@ export type PermissionGrant = {
 export type PermissionRequest = {
   id: string
   sessionID: string
+  executionID?: string
   root?: string
   permission: string
   patterns: Array<string>
@@ -331,6 +353,9 @@ export type UserMessageOutput = {
   sessionID: string
   metadata?: {
     [key: string]: unknown
+  }
+  execution?: {
+    kind: "merak"
   }
   role: "user"
   time: {
@@ -521,11 +546,22 @@ export type WorktreeResetDirtyErrorOutput = {
   }
 }
 
+export type ExternalAdapterErrorOutput = {
+  name: "ExternalAdapterError"
+  code?: string
+  data: {
+    message: string
+  }
+}
+
 export type AssistantMessageOutput = {
   id: string
   sessionID: string
   metadata?: {
     [key: string]: unknown
+  }
+  execution?: {
+    kind: "merak"
   }
   role: "assistant"
   time: {
@@ -547,6 +583,7 @@ export type AssistantMessageOutput = {
     | ConfigParseErrorOutput
     | PluginInstallErrorOutput
     | WorktreeResetDirtyErrorOutput
+    | ExternalAdapterErrorOutput
   parentID: string
   modelID: string
   providerID: string
@@ -584,7 +621,86 @@ export type AssistantMessageOutput = {
   finish?: string
 }
 
-export type MessageOutput = UserMessageOutput | AssistantMessageOutput
+export type ExternalUserMessageOutput = {
+  id: string
+  sessionID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  role: "user"
+  time: {
+    created: number
+  }
+  permissionMode: PermissionMode
+  execution: {
+    kind: "external"
+    productID: string
+    productTitle: string
+    runID: string
+    targetRevision: number
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+  }
+}
+
+export type ExternalAssistantMessageOutput = {
+  id: string
+  sessionID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  role: "assistant"
+  time: {
+    created: number
+    completed?: number
+  }
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  execution: {
+    kind: "external"
+    productID: string
+    productTitle: string
+    runID: string
+    targetRevision: number
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+  }
+  error?:
+    | ProviderAuthErrorOutput
+    | UnknownErrorOutput
+    | MessageOutputLengthErrorOutput
+    | MessageAbortedErrorOutput
+    | StructuredOutputErrorOutput
+    | ContextOverflowErrorOutput
+    | CompactionBlockedErrorOutput
+    | ApiErrorOutput
+    | ModelNotFoundErrorOutput
+    | CommandNotFoundErrorOutput
+    | AgentNotFoundErrorOutput
+    | ConfigParseErrorOutput
+    | PluginInstallErrorOutput
+    | WorktreeResetDirtyErrorOutput
+    | ExternalAdapterErrorOutput
+  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
+}
+
+export type MessageOutput =
+  UserMessageOutput | AssistantMessageOutput | ExternalUserMessageOutput | ExternalAssistantMessageOutput
 
 export type EventMessageUpdated = {
   type: "message.updated"
@@ -709,6 +825,25 @@ export type ToolStatePendingOutput = {
   raw: string
 }
 
+export type ExternalDelegateProgressOutput = {
+  runID: string
+  productTitle: string
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  parts: Array<{
+    id: string
+    text: string
+  }>
+  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
+  stopReason?: "product-disabled" | "user"
+}
+
 export type ToolStateRunningOutput = {
   status: "running"
   input: {
@@ -716,6 +851,7 @@ export type ToolStateRunningOutput = {
   }
   title?: string
   metadata?: {
+    external?: ExternalDelegateProgressOutput
     [key: string]: unknown
   }
   time: {
@@ -732,6 +868,7 @@ export type ToolStateCompletedOutput = {
   title: string
   metadata: {
     mcpIsError?: boolean
+    external?: ExternalDelegateProgressOutput
     [key: string]: unknown
   }
   time: {
@@ -750,6 +887,7 @@ export type ToolStateErrorOutput = {
   error: string
   metadata?: {
     errorKind?: "permission_rejected" | "timeout" | "execution" | "invalid_arguments"
+    external?: ExternalDelegateProgressOutput
     [key: string]: unknown
   }
   time: {
@@ -935,6 +1073,7 @@ export type QuestionInfo = {
 export type QuestionRequest = {
   id: string
   sessionID: string
+  executionID?: string
   root?: string
   /**
    * Questions to ask
@@ -1126,6 +1265,7 @@ export type EventSessionError = {
       | ConfigParseErrorOutput
       | PluginInstallErrorOutput
       | WorktreeResetDirtyErrorOutput
+      | ExternalAdapterErrorOutput
   }
 }
 
@@ -1451,42 +1591,34 @@ export type ConfigOutput = {
       ]
   >
   /**
+   * Global external product connections shared by direct and group conversations
+   */
+  agentConnections?: {
+    products?: {
+      [key: string]: {
+        command?: string
+        enabled?: boolean
+        title?: string
+        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+        args?: Array<string>
+        resumeArgs?: Array<string>
+        sessionLine?: string
+        model?: {
+          id: string
+          providerID?: string
+        }
+      }
+    }
+  }
+  /**
    * Collaboration groups. The leader is always a Merak seat.
    */
   collaboration?: {
-    /**
-     * Extra products, or overrides for claude, codex and opencode
-     */
-    products?: {
+    roleTemplates?: {
       [key: string]: {
-        /**
-         * Executable name or path; may be left out when overriding claude, codex or opencode
-         */
-        command?: string
-        /**
-         * Offer this product for new members; default true
-         */
-        enabled?: boolean
-        /**
-         * Display name
-         */
-        title?: string
-        /**
-         * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-         */
-        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-        /**
-         * Arguments. The prompt is written to stdin
-         */
-        args?: Array<string>
-        /**
-         * Arguments used when the seat already has a private session. {id} is replaced with that session id
-         */
-        resumeArgs?: Array<string>
-        /**
-         * Regular expression with one capture group for the private session id, for a one-shot command
-         */
-        sessionLine?: string
+        name: string
+        role: string
+        duty: string
       }
     }
   }
@@ -2255,42 +2387,34 @@ export type Config = {
       ]
   >
   /**
+   * Global external product connections shared by direct and group conversations
+   */
+  agentConnections?: {
+    products?: {
+      [key: string]: {
+        command?: string
+        enabled?: boolean
+        title?: string
+        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+        args?: Array<string>
+        resumeArgs?: Array<string>
+        sessionLine?: string
+        model?: {
+          id: string
+          providerID?: string
+        }
+      }
+    }
+  }
+  /**
    * Collaboration groups. The leader is always a Merak seat.
    */
   collaboration?: {
-    /**
-     * Extra products, or overrides for claude, codex and opencode
-     */
-    products?: {
+    roleTemplates?: {
       [key: string]: {
-        /**
-         * Executable name or path; may be left out when overriding claude, codex or opencode
-         */
-        command?: string
-        /**
-         * Offer this product for new members; default true
-         */
-        enabled?: boolean
-        /**
-         * Display name
-         */
-        title?: string
-        /**
-         * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-         */
-        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-        /**
-         * Arguments. The prompt is written to stdin
-         */
-        args?: Array<string>
-        /**
-         * Arguments used when the seat already has a private session. {id} is replaced with that session id
-         */
-        resumeArgs?: Array<string>
-        /**
-         * Regular expression with one capture group for the private session id, for a one-shot command
-         */
-        sessionLine?: string
+        name: string
+        role: string
+        duty: string
       }
     }
   }
@@ -2984,6 +3108,25 @@ export type ToolStatePending = {
   raw: string
 }
 
+export type ExternalDelegateProgress = {
+  runID: string
+  productTitle: string
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  parts: Array<{
+    id: string
+    text: string
+  }>
+  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
+  stopReason?: "product-disabled" | "user"
+}
+
 export type ToolStateRunning = {
   status: "running"
   input: {
@@ -2991,6 +3134,7 @@ export type ToolStateRunning = {
   }
   title?: string
   metadata?: {
+    external?: ExternalDelegateProgress
     [key: string]: unknown
   }
   time: {
@@ -3007,6 +3151,7 @@ export type ToolStateCompleted = {
   title: string
   metadata: {
     mcpIsError?: boolean
+    external?: ExternalDelegateProgress
     [key: string]: unknown
   }
   time: {
@@ -3025,6 +3170,7 @@ export type ToolStateError = {
   error: string
   metadata?: {
     errorKind?: "permission_rejected" | "timeout" | "execution" | "invalid_arguments"
+    external?: ExternalDelegateProgress
     [key: string]: unknown
   }
   time: {
@@ -3235,6 +3381,27 @@ export type FileDiff = {
 }
 
 export type Session = {
+  target?:
+    | {
+        kind: "merak"
+      }
+    | {
+        kind: "external"
+        productID: string
+      }
+  targetRevision?: number
+  targetBlock?: {
+    blockID: string
+    productID: string
+    disabledCycleID: string
+    decision: "pending" | "declined"
+  }
+  takeover?: {
+    at: number
+    fromProductID: string
+    blockID: string
+  }
+  readOnlyReason?: "imported-external-history"
   id: string
   slug: string
   projectID: string
@@ -3295,6 +3462,9 @@ export type UserMessage = {
   sessionID: string
   metadata?: {
     [key: string]: unknown
+  }
+  execution?: {
+    kind: "merak"
   }
   role: "user"
   time: {
@@ -3468,11 +3638,22 @@ export type WorktreeResetDirtyError = {
   }
 }
 
+export type ExternalAdapterError = {
+  name: "ExternalAdapterError"
+  code?: string
+  data: {
+    message: string
+  }
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
   metadata?: {
     [key: string]: unknown
+  }
+  execution?: {
+    kind: "merak"
   }
   role: "assistant"
   time: {
@@ -3494,6 +3675,7 @@ export type AssistantMessage = {
     | ConfigParseError
     | PluginInstallError
     | WorktreeResetDirtyError
+    | ExternalAdapterError
   parentID: string
   modelID: string
   providerID: string
@@ -3531,26 +3713,94 @@ export type AssistantMessage = {
   finish?: string
 }
 
-export type Message = UserMessage | AssistantMessage
-
-export type CollaborationProduct = {
+export type ExternalUserMessage = {
   id: string
-  title: string
-  connected: boolean
-  enabled: boolean
-  reason?: string
+  sessionID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  role: "user"
+  time: {
+    created: number
+  }
+  permissionMode: PermissionMode
+  execution: {
+    kind: "external"
+    productID: string
+    productTitle: string
+    runID: string
+    targetRevision: number
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+  }
+}
+
+export type ExternalAssistantMessage = {
+  id: string
+  sessionID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  role: "assistant"
+  time: {
+    created: number
+    completed?: number
+  }
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  execution: {
+    kind: "external"
+    productID: string
+    productTitle: string
+    runID: string
+    targetRevision: number
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+  }
+  error?:
+    | ProviderAuthError
+    | UnknownError
+    | MessageOutputLengthError
+    | MessageAbortedError
+    | StructuredOutputError
+    | ContextOverflowError
+    | CompactionBlockedError
+    | ApiError
+    | ModelNotFoundError
+    | CommandNotFoundError
+    | AgentNotFoundError
+    | ConfigParseError
+    | PluginInstallError
+    | WorktreeResetDirtyError
+    | ExternalAdapterError
+  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
+}
+
+export type Message = UserMessage | AssistantMessage | ExternalUserMessage | ExternalAssistantMessage
+
+export type CollaborationRoleTemplate = {
+  id: string
+  name: string
+  role: string
+  duty: string
+  description?: string
   builtin: boolean
-  source: "builtin" | "global" | "project"
-  version?: string
-  path?: string
-  recommended?: string
-  upgrade?: string
-  outdated?: boolean
-  adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-  command?: string
-  args?: Array<string>
-  resumeArgs?: Array<string>
-  sessionLine?: string
+  editable: boolean
 }
 
 export type CollaborationGroupSummary = {
@@ -3563,6 +3813,10 @@ export type CollaborationGroupSummary = {
     duty: string
     product: string
     leader: boolean
+    availability: {
+      state: "online" | "offline"
+      reason?: string
+    }
   }>
 }
 
@@ -3574,6 +3828,10 @@ export type CollaborationSeat = {
   product: string
   leader: boolean
   privateSessionID?: string
+  availability: {
+    state: "online" | "offline"
+    reason?: string
+  }
 }
 
 export type CollaborationEvent = {
@@ -3596,6 +3854,68 @@ export type CollaborationGroup = {
   results: Array<CollaborationResult>
   baseline: Array<string>
   seq: number
+}
+
+export type AgentConnectionProduct = {
+  command?: string
+  enabled: boolean
+  title: string
+  adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+  args?: Array<string>
+  resumeArgs?: Array<string>
+  sessionLine?: string
+  model?: {
+    id: string
+    providerID?: string
+  }
+  id: string
+  connected: boolean
+  reason?: string
+  builtin: boolean
+  source: "builtin" | "global"
+  revision: number
+  version?: string
+  path?: string
+  recommended?: string
+  upgrade?: string
+  outdated?: boolean
+  capabilities: {
+    modelSelection: boolean
+    modelDiscovery: boolean
+    textStreaming: boolean
+    resume: boolean
+    permission: "merak" | "external"
+    questions: boolean
+  }
+}
+
+export type AgentConnectionModels = {
+  models: Array<{
+    id: string
+    providerID?: string
+    title: string
+  }>
+  allowCustomID: boolean
+}
+
+export type AgentConnectionVerification = {
+  productID: string
+  revision: number
+  status: "passed" | "failed"
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  streamingObserved: boolean
+  checkedAt: number
+  error?: {
+    code: string
+    message: string
+  }
 }
 
 export type MemoryEntry = {
@@ -5301,6 +5621,14 @@ export type SessionCreateData = {
     metadata?: {
       [key: string]: unknown
     }
+    target?:
+      | {
+          kind: "merak"
+        }
+      | {
+          kind: "external"
+          productID: string
+        }
   }
   path?: never
   query?: {
@@ -5929,7 +6257,7 @@ export type SessionPromptResponses = {
    * Created message
    */
   200: {
-    info: AssistantMessageOutput
+    info: AssistantMessageOutput | ExternalAssistantMessageOutput
     parts: Array<PartOutput>
   }
 }
@@ -6170,6 +6498,47 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionTakeoverData = {
+  body: {
+    decision: "accept" | "decline"
+    expectedTargetRevision: number
+    blockID: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/takeover"
+}
+
+export type SessionTakeoverErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionTakeoverError = SessionTakeoverErrors[keyof SessionTakeoverErrors]
+
+export type SessionTakeoverResponses = {
+  /**
+   * Current conversation
+   */
+  200: SessionOutput
+}
+
+export type SessionTakeoverResponse = SessionTakeoverResponses[keyof SessionTakeoverResponses]
 
 export type SessionCommandData = {
   body: {
@@ -6434,17 +6803,16 @@ export type SessionImportFullResponses = {
 
 export type SessionImportFullResponse = SessionImportFullResponses[keyof SessionImportFullResponses]
 
-export type CollaborationProductsData = {
+export type CollaborationRoleTemplatesData = {
   body?: never
   path?: never
   query?: {
     directory?: string
-    refresh?: "true" | "false"
   }
-  url: "/collaboration/product"
+  url: "/collaboration/role-template"
 }
 
-export type CollaborationProductsErrors = {
+export type CollaborationRoleTemplatesErrors = {
   /**
    * Validation Error
    */
@@ -6455,96 +6823,50 @@ export type CollaborationProductsErrors = {
   }
 }
 
-export type CollaborationProductsError = CollaborationProductsErrors[keyof CollaborationProductsErrors]
+export type CollaborationRoleTemplatesError = CollaborationRoleTemplatesErrors[keyof CollaborationRoleTemplatesErrors]
 
-export type CollaborationProductsResponses = {
+export type CollaborationRoleTemplatesResponses = {
   /**
-   * Products
+   * Role templates
    */
-  200: Array<CollaborationProduct>
+  200: Array<CollaborationRoleTemplate>
 }
 
-export type CollaborationProductsResponse = CollaborationProductsResponses[keyof CollaborationProductsResponses]
+export type CollaborationRoleTemplatesResponse =
+  CollaborationRoleTemplatesResponses[keyof CollaborationRoleTemplatesResponses]
 
-export type CollaborationProductChangeData = {
+export type CollaborationRoleTemplateChangeData = {
   body:
     | {
         type: "add"
         id: string
-        product: {
-          /**
-           * Executable name or path; may be left out when overriding claude, codex or opencode
-           */
-          command?: string
-          /**
-           * Display name
-           */
-          title?: string
-          /**
-           * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-           */
-          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-          /**
-           * Arguments. The prompt is written to stdin
-           */
-          args?: Array<string>
-          /**
-           * Arguments used when the seat already has a private session. {id} is replaced with that session id
-           */
-          resumeArgs?: Array<string>
-          /**
-           * Regular expression with one capture group for the private session id, for a one-shot command
-           */
-          sessionLine?: string
+        template: {
+          name: string
+          role: string
+          duty: string
         }
       }
     | {
         type: "update"
         id: string
-        product: {
-          /**
-           * Executable name or path; may be left out when overriding claude, codex or opencode
-           */
-          command?: string
-          /**
-           * Display name
-           */
-          title?: string
-          /**
-           * How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol
-           */
-          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-          /**
-           * Arguments. The prompt is written to stdin
-           */
-          args?: Array<string>
-          /**
-           * Arguments used when the seat already has a private session. {id} is replaced with that session id
-           */
-          resumeArgs?: Array<string>
-          /**
-           * Regular expression with one capture group for the private session id, for a one-shot command
-           */
-          sessionLine?: string
+        template: {
+          name: string
+          role: string
+          duty: string
         }
       }
     | {
         type: "remove"
         id: string
       }
-    | {
-        type: "enabled"
-        id: string
-        enabled: boolean
-      }
   path?: never
   query?: {
     directory?: string
   }
-  url: "/collaboration/product"
+  url: "/collaboration/role-template"
 }
 
-export type CollaborationProductChangeErrors = {
+export type CollaborationRoleTemplateChangeErrors = {
   /**
    * Validation Error
    */
@@ -6555,17 +6877,18 @@ export type CollaborationProductChangeErrors = {
   }
 }
 
-export type CollaborationProductChangeError = CollaborationProductChangeErrors[keyof CollaborationProductChangeErrors]
+export type CollaborationRoleTemplateChangeError =
+  CollaborationRoleTemplateChangeErrors[keyof CollaborationRoleTemplateChangeErrors]
 
-export type CollaborationProductChangeResponses = {
+export type CollaborationRoleTemplateChangeResponses = {
   /**
-   * Products
+   * Role templates
    */
-  200: Array<CollaborationProduct>
+  200: Array<CollaborationRoleTemplate>
 }
 
-export type CollaborationProductChangeResponse =
-  CollaborationProductChangeResponses[keyof CollaborationProductChangeResponses]
+export type CollaborationRoleTemplateChangeResponse =
+  CollaborationRoleTemplateChangeResponses[keyof CollaborationRoleTemplateChangeResponses]
 
 export type CollaborationListData = {
   body?: never
@@ -6811,6 +7134,180 @@ export type CollaborationSeatUpdateResponses = {
 }
 
 export type CollaborationSeatUpdateResponse = CollaborationSeatUpdateResponses[keyof CollaborationSeatUpdateResponses]
+
+export type AgentConnectionProductsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    refresh?: "true" | "false"
+  }
+  url: "/agent-connection/product"
+}
+
+export type AgentConnectionProductsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type AgentConnectionProductsError = AgentConnectionProductsErrors[keyof AgentConnectionProductsErrors]
+
+export type AgentConnectionProductsResponses = {
+  /**
+   * Products
+   */
+  200: Array<AgentConnectionProduct>
+}
+
+export type AgentConnectionProductsResponse = AgentConnectionProductsResponses[keyof AgentConnectionProductsResponses]
+
+export type AgentConnectionProductChangeData = {
+  body:
+    | {
+        type: "add"
+        id: string
+        product: {
+          command?: string
+          title?: string
+          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+          args?: Array<string>
+          resumeArgs?: Array<string>
+          sessionLine?: string
+          model?: {
+            id: string
+            providerID?: string
+          }
+        }
+      }
+    | {
+        type: "update"
+        id: string
+        product: {
+          command?: string
+          title?: string
+          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
+          args?: Array<string>
+          resumeArgs?: Array<string>
+          sessionLine?: string
+          model?: {
+            id: string
+            providerID?: string
+          }
+        }
+      }
+    | {
+        type: "remove"
+        id: string
+      }
+    | {
+        type: "enabled"
+        id: string
+        enabled: boolean
+      }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/agent-connection/product"
+}
+
+export type AgentConnectionProductChangeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type AgentConnectionProductChangeError =
+  AgentConnectionProductChangeErrors[keyof AgentConnectionProductChangeErrors]
+
+export type AgentConnectionProductChangeResponses = {
+  /**
+   * Products
+   */
+  200: Array<AgentConnectionProduct>
+}
+
+export type AgentConnectionProductChangeResponse =
+  AgentConnectionProductChangeResponses[keyof AgentConnectionProductChangeResponses]
+
+export type AgentConnectionModelsData = {
+  body?: never
+  path: {
+    productID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/agent-connection/product/{productID}/model"
+}
+
+export type AgentConnectionModelsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type AgentConnectionModelsError = AgentConnectionModelsErrors[keyof AgentConnectionModelsErrors]
+
+export type AgentConnectionModelsResponses = {
+  /**
+   * Models
+   */
+  200: AgentConnectionModels
+}
+
+export type AgentConnectionModelsResponse = AgentConnectionModelsResponses[keyof AgentConnectionModelsResponses]
+
+export type AgentConnectionVerifyData = {
+  body: {
+    expectedRevision: number
+  }
+  path: {
+    productID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/agent-connection/product/{productID}/verify"
+}
+
+export type AgentConnectionVerifyErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    success: false
+    error: Array<unknown>
+    data: unknown
+  }
+}
+
+export type AgentConnectionVerifyError = AgentConnectionVerifyErrors[keyof AgentConnectionVerifyErrors]
+
+export type AgentConnectionVerifyResponses = {
+  /**
+   * Verification result
+   */
+  200: AgentConnectionVerification
+}
+
+export type AgentConnectionVerifyResponse = AgentConnectionVerifyResponses[keyof AgentConnectionVerifyResponses]
 
 export type MemoryListData = {
   body?: never

@@ -286,7 +286,11 @@ export namespace Config {
     if (Flag.MERAKCODE_CONFIG_CONTENT) {
       const inline = parseFlagJson(Flag.MERAKCODE_CONFIG_CONTENT, "MERAKCODE_CONFIG_CONTENT")
       if (inline !== undefined) {
-        const recovered = recoverConfig(Info, inline, "MERAKCODE_CONFIG_CONTENT")
+        const recovered = recoverConfig(
+          Info,
+          globalFields(inline, "MERAKCODE_CONFIG_CONTENT", false),
+          "MERAKCODE_CONFIG_CONTENT",
+        )
         emitWarnings(recovered.warnings)
         // Local plugins go through the same resolver as file config (directory packages resolve to their entry);
         // otherwise they would be installed as npm packages. Inline config has no file to resolve relative paths
@@ -822,31 +826,29 @@ export namespace Config {
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
 
-  /** A collaboration product: a new one, or the fields that change claude, codex or opencode */
-  export const CollaborationProduct = z.object({
-    command: z
-      .string()
-      .optional()
-      .describe("Executable name or path; may be left out when overriding claude, codex or opencode"),
-    enabled: z.boolean().optional().describe("Offer this product for new members; default true"),
-    title: z.string().optional().describe("Display name"),
-    adapter: z
-      .enum(["claude", "codex", "opencode", "command", "member"])
-      .optional()
-      .describe(
-        "How MerakCode drives the product: a built-in adapter for that CLI, a one-shot command, or member: command and args start an adapter that speaks the member protocol",
-      ),
-    args: z.array(z.string()).optional().describe("Arguments. The prompt is written to stdin"),
-    resumeArgs: z
-      .array(z.string())
-      .optional()
-      .describe("Arguments used when the seat already has a private session. {id} is replaced with that session id"),
-    sessionLine: z
-      .string()
-      .optional()
-      .describe("Regular expression with one capture group for the private session id, for a one-shot command"),
+  export const ProductModel = z.object({
+    id: z.string().trim().min(1),
+    providerID: z.string().trim().min(1).optional(),
   })
-  export type CollaborationProduct = z.infer<typeof CollaborationProduct>
+
+  /** An external product shared by every project and conversation */
+  export const AgentConnectionProduct = z.object({
+    command: z.string().optional(),
+    enabled: z.boolean().optional(),
+    title: z.string().optional(),
+    adapter: z.enum(["claude", "codex", "opencode", "command", "member"]).optional(),
+    args: z.array(z.string()).optional(),
+    resumeArgs: z.array(z.string()).optional(),
+    sessionLine: z.string().optional(),
+    model: ProductModel.optional(),
+  })
+  export type AgentConnectionProduct = z.infer<typeof AgentConnectionProduct>
+
+  export const RoleTemplate = z.object({
+    name: z.string().trim().min(1),
+    role: z.string().trim().min(1),
+    duty: z.string().trim().min(1),
+  })
 
   export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
     ref: "PermissionActionConfig",
@@ -1229,12 +1231,13 @@ export namespace Config {
        * zod reject the whole config. `plugin_options`, keyed by plugin id, is the other supported form.
        */
       plugin: z.array(z.union([z.string(), z.tuple([z.string(), z.record(z.string(), z.unknown())])])).optional(),
+      agentConnections: z
+        .object({ products: z.record(z.string(), AgentConnectionProduct).optional() })
+        .optional()
+        .describe("Global external product connections shared by direct and group conversations"),
       collaboration: z
         .object({
-          products: z
-            .record(z.string(), CollaborationProduct)
-            .optional()
-            .describe("Extra products, or overrides for claude, codex and opencode"),
+          roleTemplates: z.record(z.string(), RoleTemplate).optional(),
         })
         .optional()
         .describe("Collaboration groups. The leader is always a Merak seat."),
@@ -1666,8 +1669,8 @@ export namespace Config {
     try {
       return pipe(
         {},
-        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"))),
-        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"))),
+        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"), true)),
+        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"), true)),
       ) as Info
     } finally {
       lastGlobalWarnings = captured
@@ -1675,7 +1678,7 @@ export namespace Config {
     }
   })
 
-  async function loadFile(filepath: string): Promise<Info> {
+  async function loadFile(filepath: string, globalSource = false): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Filesystem.readText(filepath).catch((err) => {
       if (err.code === "ENOENT") return
@@ -1692,10 +1695,10 @@ export namespace Config {
       return
     })
     if (!text) return {}
-    return load(text, filepath)
+    return load(text, filepath, globalSource)
   }
 
-  async function load(text: string, configFilepath: string) {
+  async function load(text: string, configFilepath: string, globalSource = false) {
     const original = text
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       return process.env[varName] || ""
@@ -1779,7 +1782,7 @@ export namespace Config {
     }
 
     // Migrate old fields that have an equivalent, then strip the deprecated ones before schema validation.
-    const cleaned = normalizeDeprecatedForWrite(data)
+    const cleaned = globalFields(normalizeDeprecatedForWrite(data), configFilepath, globalSource)
 
     // Info uses .strip(), so unknown top-level keys do not fail safeParse; they become warnings for the UI.
     // Nothing is written to disk.
@@ -1800,6 +1803,48 @@ export namespace Config {
     const recovered = recoverConfig(Info, cleaned, configFilepath)
     emitWarnings(recovered.warnings)
     return resolvePlugins(recovered.data as Info, configFilepath)
+  }
+
+  function globalFields(value: unknown, filepath: string, globalSource: boolean) {
+    if (!isRecord(value)) return value
+    const result = { ...value }
+    if (isRecord(result.collaboration) && result.collaboration.products !== undefined) {
+      emitWarnings([
+        {
+          path: filepath,
+          item: "collaboration.products",
+          reason: {
+            zh: "旧产品接入配置已移除，请在全局 agentConnections.products 中配置",
+            en: "The old product connection setting was removed; use global agentConnections.products",
+          },
+        },
+      ])
+      const collaboration = { ...result.collaboration }
+      delete collaboration.products
+      result.collaboration = collaboration
+    }
+    const warn = (item: string) =>
+      emitWarnings([
+        {
+          path: filepath,
+          item,
+          reason: {
+            zh: "智能体接入与角色模板仅支持全局配置，已忽略此来源的设置",
+            en: "Agent connections and role templates support global configuration only; ignored this source",
+          },
+        },
+      ])
+    if (!globalSource && result.agentConnections !== undefined) {
+      warn("agentConnections")
+      delete result.agentConnections
+    }
+    if (!globalSource && isRecord(result.collaboration) && result.collaboration.roleTemplates !== undefined) {
+      warn("collaboration.roleTemplates")
+      const collaboration = { ...result.collaboration }
+      delete collaboration.roleTemplates
+      result.collaboration = collaboration
+    }
+    return result
   }
 
   /** Unknown top-level keys: strip drops them silently, so report them as warnings (the file is not changed) */
@@ -2180,6 +2225,14 @@ export namespace Config {
    * @param options.skipDispose only invalidate the config cache instead of disposing the Instance (hot updates)
    */
   export async function updateProjectMerakCode(partial: Info, options?: { skipDispose?: boolean }) {
+    if (partial.agentConnections !== undefined || partial.collaboration?.roleTemplates !== undefined)
+      throw new InvalidError({
+        path: projectMerakCodeFile(),
+        message: await Text.pick({
+          zh: "智能体接入与角色模板仅支持全局配置",
+          en: "Agent connections and role templates support global configuration only",
+        }),
+      })
     const filepath = projectMerakCodeFile()
     const next = await writeConfigWithRetry(filepath, partial)
 
@@ -2199,7 +2252,7 @@ export namespace Config {
 
   /** The parsed global merakcode.json(c) alone, before it is merged with project and managed config */
   export async function loadGlobalMerakCodeFile(): Promise<Info> {
-    return loadFile(globalConfigFile())
+    return loadFile(globalConfigFile(), true)
   }
 
   function isRecord(value: unknown): value is Record<string, unknown> {

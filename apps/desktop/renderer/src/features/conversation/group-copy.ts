@@ -12,7 +12,9 @@ export function copyGroup(group: CollaborationGroupSummary, products: readonly P
     const product = found(seat.product)
     return seat.leader || (!!product?.enabled && product.connected)
   }
-  const seats: Seat[] = group.seats.filter(seated).map((seat, index) => ({ ...seat, id: `copy-${index}` }))
+  const seats: Seat[] = group.seats
+    .filter(seated)
+    .map((seat, index) => ({ ...seat, id: `copy-${index}`, availability: { state: "online" } }))
   const skipped = group.seats
     .filter((seat) => !seated(seat))
     .map((seat) => {

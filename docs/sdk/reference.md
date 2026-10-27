@@ -22,8 +22,10 @@ already fills in from `createMerakCodeClient({ directory })`, so it is left out 
 - [session](#session)
 - [part](#part)
 - [collaboration](#collaboration)
-- [collaboration.product](#collaborationproduct)
+- [collaboration.roleTemplate](#collaborationroletemplate)
 - [collaboration.seat](#collaborationseat)
+- [agentConnection](#agentconnection)
+- [agentConnection.product](#agentconnectionproduct)
 - [memory](#memory)
 - [bash](#bash)
 - [tool.remote](#toolremote)
@@ -555,12 +557,13 @@ Create session.
 
 Create a new MerakCode session for interacting with AI assistants and managing conversations.
 
-| Parameter    | Type                      | Required | Description |
-| ------------ | ------------------------- | -------- | ----------- |
-| `parentID`   | `string`                  | no       |             |
-| `title`      | `string`                  | no       |             |
-| `permission` | `PermissionRuleset`       | no       |             |
-| `metadata`   | `Record<string, unknown>` | no       |             |
+| Parameter    | Type                                                           | Required | Description |
+| ------------ | -------------------------------------------------------------- | -------- | ----------- |
+| `parentID`   | `string`                                                       | no       |             |
+| `title`      | `string`                                                       | no       |             |
+| `permission` | `PermissionRuleset`                                            | no       |             |
+| `metadata`   | `Record<string, unknown>`                                      | no       |             |
+| `target`     | `{ kind: "merak" } \| { kind: "external"; productID: string }` | no       |             |
 
 Returns: `SessionOutput`
 
@@ -813,7 +816,7 @@ Create and send a new message to a session, streaming the AI response.
 | `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
 | `parts`          | `(TextPartInput \| FilePartInput \| AgentPartInput \| SubtaskPartInput)[]` | yes      |                                                                                                       |
 
-Returns: `{ info: AssistantMessageOutput; parts: PartOutput[] }`
+Returns: `{ info: AssistantMessageOutput \| ExternalAssistantMessageOutput; parts: PartOutput[] }`
 
 ### client.session.message
 
@@ -871,6 +874,21 @@ Create and send a new message to a session asynchronously, starting the session 
 | `parts`          | `(TextPartInput \| FilePartInput \| AgentPartInput \| SubtaskPartInput)[]` | yes      |                                                                                                       |
 
 Returns: nothing
+
+### client.session.takeover
+
+`POST /session/{sessionID}/takeover` · operationId `session.takeover`
+
+Decide whether MerakCode takes over a disabled external conversation.
+
+| Parameter                | Type                    | Required | Description |
+| ------------------------ | ----------------------- | -------- | ----------- |
+| `sessionID`              | `string`                | yes      |             |
+| `decision`               | `"accept" \| "decline"` | yes      |             |
+| `expectedTargetRevision` | `number`                | yes      |             |
+| `blockID`                | `string`                | yes      |             |
+
+Returns: `SessionOutput`
 
 ### client.session.command
 
@@ -1007,19 +1025,15 @@ Returns: `PartOutput`
 
 ## collaboration
 
-### client.collaboration.products
+### client.collaboration.roleTemplates
 
-`GET /collaboration/product` · operationId `collaboration.products`
+`GET /collaboration/role-template` · operationId `collaboration.roleTemplates`
 
-List collaboration products.
+List collaboration role templates.
 
-Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.
+No parameters.
 
-| Parameter | Type                | Required | Description |
-| --------- | ------------------- | -------- | ----------- |
-| `refresh` | `"true" \| "false"` | no       |             |
-
-Returns: `CollaborationProduct[]`
+Returns: `CollaborationRoleTemplate[]`
 
 ### client.collaboration.list
 
@@ -1061,21 +1075,19 @@ Get a collaboration group.
 
 Returns: `CollaborationGroup`
 
-## collaboration.product
+## collaboration.roleTemplate
 
-### client.collaboration.product.change
+### client.collaboration.roleTemplate.change
 
-`POST /collaboration/product` · operationId `collaboration.product.change`
+`POST /collaboration/role-template` · operationId `collaboration.roleTemplate.change`
 
-Change collaboration products.
+Change a custom collaboration role template.
 
-Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.
+| Parameter | Type                                                                                                                                                                                                              | Required | Description |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `body`    | `{ type: "add"; id: string; template: { name: string; role: string; duty: string } } \| { type: "update"; id: string; template: { name: string; role: string; duty: string } } \| { type: "remove"; id: string }` | yes      |             |
 
-| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Required | Description |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `body`    | `{ type: "add"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string } } \| { type: "update"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string } } \| { type: "remove"; id: string } \| { type: "enabled"; id: string; enabled: boolean }` | yes      |             |
-
-Returns: `CollaborationProduct[]`
+Returns: `CollaborationRoleTemplate[]`
 
 ## collaboration.seat
 
@@ -1125,6 +1137,59 @@ The Merak leader cannot be removed.
 | `seatID`    | `string` | yes      |             |
 
 Returns: `CollaborationGroup`
+
+## agentConnection
+
+### client.agentConnection.products
+
+`GET /agent-connection/product` · operationId `agentConnection.products`
+
+List global agent connections.
+
+| Parameter | Type                | Required | Description |
+| --------- | ------------------- | -------- | ----------- |
+| `refresh` | `"true" \| "false"` | no       |             |
+
+Returns: `AgentConnectionProduct[]`
+
+### client.agentConnection.models
+
+`GET /agent-connection/product/{productID}/model` · operationId `agentConnection.models`
+
+Discover models for an agent connection.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `productID` | `string` | yes      |             |
+
+Returns: `AgentConnectionModels`
+
+### client.agentConnection.verify
+
+`POST /agent-connection/product/{productID}/verify` · operationId `agentConnection.verify`
+
+Verify a saved agent connection.
+
+| Parameter          | Type     | Required | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `productID`        | `string` | yes      |             |
+| `expectedRevision` | `number` | yes      |             |
+
+Returns: `AgentConnectionVerification`
+
+## agentConnection.product
+
+### client.agentConnection.product.change
+
+`POST /agent-connection/product` · operationId `agentConnection.product.change`
+
+Change a global agent connection.
+
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Required | Description |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ----------- |
+| `body`    | `{ type: "add"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string; model?: object } } \| { type: "update"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string; model?: object } } \| { type: "remove"; id: string } \| { type: "enabled"; id: string; enabled: boolean }` | yes      |             |
+
+Returns: `AgentConnectionProduct[]`
 
 ## memory
 

@@ -20,6 +20,7 @@ import { SessionMemoryPath } from "../session-memory/path"
 import { Instance } from "../project/instance"
 import { SessionRunner } from "./runner"
 import { SessionDispatch } from "./dispatch"
+import { SessionTarget } from "./target"
 import { fn } from "../util/fn"
 import { Command } from "../command"
 import { Snapshot } from "../snapshot"
@@ -59,6 +60,7 @@ export namespace Session {
 
   export const Info = z
     .object({
+      ...SessionTarget.Fields,
       id: Identifier.schema("session"),
       slug: z.string(),
       projectID: z.string(),
@@ -199,15 +201,18 @@ export namespace Session {
         title: z.string().optional(),
         permission: Info.shape.permission,
         metadata: Info.shape.metadata,
+        target: SessionTarget.Schema.optional(),
       })
       .optional(),
     async (input) => {
+      await SessionTarget.assertCreatable(input)
       return createNext({
         parentID: input?.parentID,
         directory: Instance.directory,
         title: input?.title,
         permission: input?.permission,
         metadata: input?.metadata,
+        target: input?.target,
       })
     },
   )
@@ -229,6 +234,7 @@ export namespace Session {
     metadata?: Info["metadata"]
     filterCompacted?: boolean
   }): Promise<Info> {
+    await SessionTarget.assertNativeOperation(input.sessionID, true)
     const original = await get(input.sessionID)
     if (!original) throw new Error("session not found")
     let session = await createNext({
@@ -275,12 +281,13 @@ export namespace Session {
       const newID = Identifier.ascending("message")
       idMap.set(msg.info.id, newID)
       const partIDMap = new Map(msg.parts.map((part) => [part.id, Identifier.ascending("part")]))
-      const commandSource = msg.info.role === "user" ? msg.info.commandSource : undefined
+      const commandSource =
+        msg.info.role === "user" && !Message.isExternal(msg.info) ? msg.info.commandSource : undefined
       const cloned = await updateInfo({
         ...msg.info,
         sessionID: session.id,
         id: newID,
-        ...(msg.info.role === "user" && commandSource
+        ...(msg.info.role === "user" && !Message.isExternal(msg.info) && commandSource
           ? {
               commandSource: {
                 templatePartIDs: commandSource.templatePartIDs.flatMap((id) => {
@@ -360,12 +367,15 @@ export namespace Session {
     directory: string
     permission?: PermissionNext.Ruleset
     metadata?: Info["metadata"]
+    target?: SessionTarget.Value
   }) {
     const workspaceFolders =
       Instance.workspace.folders.length > 1
         ? Instance.workspace.folders.map((f) => ({ name: f.name, path: f.path }))
         : undefined
     const result: Info = {
+      target: input.target ?? { kind: "merak" },
+      targetRevision: 0,
       id: Identifier.descending("session", input.id),
       slug: Slug.create(),
       version: Installation.VERSION,
@@ -456,7 +466,11 @@ export namespace Session {
       logMissing(id)
       throw notFound(id)
     }
-    return session
+    if (session.target?.kind === "external") {
+      const { ExternalSession } = await import("./external")
+      await ExternalSession.reconcile(id)
+    }
+    return SessionTarget.refresh(session)
   })
 
   /**
@@ -640,7 +654,8 @@ export namespace Session {
   )
 
   export async function* list() {
-    for (const session of SessionStore.list(Instance.project.id)) yield migrateRevertToUndoRedo(session) as Info
+    for (const session of SessionStore.list(Instance.project.id))
+      yield await SessionTarget.refresh(migrateRevertToUndoRedo(session) as Info)
   }
 
   export const SearchResult = z
@@ -708,6 +723,7 @@ export namespace Session {
       ["session_diff", sessionID],
       ["todo", sessionID],
       ["memory_extract", sessionID],
+      ["external_session", sessionID],
     ]) {
       await Storage.remove(key)
     }

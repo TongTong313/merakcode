@@ -1,4 +1,4 @@
-import type { AssistantMessage, Part, UserMessage } from "../client/gen/types.gen.js"
+import type { Message, Part } from "../client/gen/types.gen.js"
 import { Locale } from "@merakcode/util/locale"
 import { Text } from "@merakcode/util/text"
 
@@ -20,7 +20,7 @@ export type SessionInfo = {
 }
 
 export type MessageWithParts = {
-  info: UserMessage | AssistantMessage
+  info: Message
   parts: Part[]
 }
 
@@ -48,7 +48,7 @@ export function formatTranscript(
   return transcript
 }
 
-export function formatMessage(msg: UserMessage | AssistantMessage, parts: Part[], options: TranscriptOptions): string {
+export function formatMessage(msg: Message, parts: Part[], options: TranscriptOptions): string {
   const lang = options.lang ?? "zh"
   let result = ""
 
@@ -66,11 +66,16 @@ export function formatMessage(msg: UserMessage | AssistantMessage, parts: Part[]
 }
 
 export function formatAssistantHeader(
-  msg: AssistantMessage,
+  msg: Extract<Message, { role: "assistant" }>,
   includeMetadata: boolean,
   lang: TranscriptOptions["lang"] = "zh",
 ): string {
   const label = Text.format({ zh: "助手", en: "Assistant" }, lang)
+  if (!("agent" in msg)) {
+    const model = msg.execution.actualModel
+    const name = model ? [model.providerID, model.id].filter(Boolean).join("/") : undefined
+    return `## ${label} (${msg.execution.productTitle}${includeMetadata && name ? ` · ${name}` : ""})\n\n`
+  }
   if (!includeMetadata) {
     return `## ${label}\n\n`
   }

@@ -1,4 +1,4 @@
-import type { PermissionMode, UserMessage } from "@merakcode/sdk/client"
+import type { AssistantMessage, PermissionMode, UserMessage } from "@merakcode/sdk/client"
 import { batch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { messagesOf, session, state } from "./store"
@@ -68,7 +68,9 @@ export const choiceKey = (sessionID: string | undefined, directory: string) => s
 
 /** Model last used in the conversation */
 function lastUsed(sessionID: string): { model?: ModelRef } {
-  const last = messagesOf(sessionID).findLast((message): message is UserMessage => message.role === "user")
+  const last = messagesOf(sessionID).findLast(
+    (message): message is UserMessage => message.role === "user" && "model" in message,
+  )
   return last ? { model: last.model } : {}
 }
 
@@ -77,6 +79,7 @@ function sentVariant(sessionID: string, model: ModelRef) {
   const last = messagesOf(sessionID).findLast(
     (message): message is UserMessage =>
       message.role === "user" &&
+      "model" in message &&
       message.model.providerID === model.providerID &&
       message.model.modelID === model.modelID &&
       !!message.variant,
@@ -137,7 +140,9 @@ const contextTokens = (message: Usage) =>
  * cost is summed over all replies
  */
 export function usage(sessionID: string) {
-  const replies = messagesOf(sessionID).filter((message) => message.role === "assistant")
+  const replies = messagesOf(sessionID).filter(
+    (message): message is AssistantMessage => message.role === "assistant" && "tokens" in message,
+  )
   const last = replies.findLast((message) => contextTokens(message) > 0)
   if (!last) return
   const limit = find({ providerID: last.providerID, modelID: last.modelID })?.model.limit.context

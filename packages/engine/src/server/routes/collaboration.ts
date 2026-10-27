@@ -6,11 +6,12 @@ import { lazy } from "../../util/lazy"
 import { Instance } from "../../project/instance"
 import { Session } from "../../session"
 import { GroupError, createGroup } from "../../collaboration/board"
+import type { Group as StoredGroup } from "../../collaboration/board"
 import { Text } from "../../util/text"
 import { porcelain } from "../../collaboration/artifacts"
-import { BUILTIN_PRODUCTS, configuredProducts, probe, productSources } from "../../collaboration/run"
+import { products } from "../../agent-connection/catalog"
 import { all, create, join, leave, load, update } from "../../collaboration/store"
-import { ProductChange, changeProduct } from "../../collaboration/product-config"
+import { RoleTemplate, roleTemplates, RoleTemplateChange, changeRoleTemplate } from "../../collaboration/role-template"
 
 const Seat = z
   .object({
@@ -21,6 +22,7 @@ const Seat = z
     product: z.string(),
     leader: z.boolean(),
     privateSessionID: z.string().optional(),
+    availability: z.object({ state: z.enum(["online", "offline"]), reason: z.string().optional() }),
   })
   .meta({ ref: "CollaborationSeat" })
 
@@ -62,39 +64,6 @@ const GroupSummary = z
   })
   .meta({ ref: "CollaborationGroupSummary" })
 
-const Product = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    connected: z.boolean(),
-    /** Offered for new members; when false the product is left out of the pickers */
-    enabled: z.boolean(),
-    /** Why a product cannot take a member, when it cannot */
-    reason: z.string().optional(),
-    /** One of claude, codex and opencode, or MerakCode itself */
-    builtin: z.boolean(),
-    /** Where the definition comes from; a project's config is shown but not edited in settings */
-    source: z.enum(["builtin", "global", "project"]),
-    /** First line of --version, for a CLI that answered */
-    version: z.string().optional(),
-    /** The command found on this machine */
-    path: z.string().optional(),
-    /** Version the adapter recommends; an older CLI still works, but should be upgraded */
-    recommended: z.string().optional(),
-    /** Command that upgrades the CLI */
-    upgrade: z.string().optional(),
-    /** The CLI found is older than recommended */
-    outdated: z.boolean().optional(),
-    /** How MerakCode drives the product */
-    adapter: z.enum(["claude", "codex", "opencode", "command", "member"]).optional(),
-    /** The definition, for the settings form; MerakCode has none */
-    command: z.string().optional(),
-    args: z.string().array().optional(),
-    resumeArgs: z.string().array().optional(),
-    sessionLine: z.string().optional(),
-  })
-  .meta({ ref: "CollaborationProduct" })
-
 const SeatInput = z.object({
   name: z.string(),
   role: z.string().optional().describe("Short title such as product manager"),
@@ -117,46 +86,9 @@ async function notConnected(products: { id: string; reason?: string }[]) {
   })
 }
 
-/** Every product with whether it can take a member now; the reason is in the user's language */
-async function products(options: { refresh?: boolean } = {}): Promise<z.infer<typeof Product>[]> {
-  const [lang, sourceOf] = await Promise.all([Text.lang(), productSources()])
-  const list = await Promise.all(
-    (await configuredProducts()).map(async (product) => {
-      const { connected, reason, version, path, recommended, upgrade, outdated } = await probe(product, options)
-      return {
-        id: product.id,
-        title: product.title,
-        connected,
-        enabled: product.enabled !== false,
-        reason: reason?.[lang],
-        builtin: BUILTIN_PRODUCTS.some((item) => item.id === product.id),
-        source: sourceOf(product.id),
-        version,
-        path,
-        recommended,
-        upgrade,
-        outdated,
-        adapter: product.adapter,
-        command: product.command,
-        args: product.args,
-        resumeArgs: product.resumeArgs,
-        sessionLine: product.sessionLine,
-      }
-    }),
-  )
-  const merak = {
-    id: "merak",
-    title: "MerakCode",
-    connected: true,
-    enabled: true,
-    builtin: true,
-    source: "builtin" as const,
-  }
-  return [merak, ...list]
-}
-
 /** Products a new seat cannot use: turned off, not installed or not running, with the reason */
 async function disconnected(seats: { product: string }[]) {
+  if (seats.every((seat) => seat.product === "merak")) return []
   const list = await products()
   const off = await Text.pick({ zh: "已关闭", en: "turned off" })
   return [...new Set(seats.map((seat) => seat.product))].flatMap((id) => {
@@ -166,47 +98,52 @@ async function disconnected(seats: { product: string }[]) {
   })
 }
 
+async function availability(seats: { product: string }[]) {
+  const list = seats.some((seat) => seat.product !== "merak") ? await products() : []
+  return (id: string): z.infer<typeof Seat>["availability"] => {
+    const product = list.find((item) => item.id === id)
+    if (id === "merak" || (product?.enabled && product.connected)) return { state: "online" }
+    return { state: "offline", reason: product?.reason }
+  }
+}
+
+async function presentGroup(group: StoredGroup) {
+  const state = await availability(group.seats)
+  return { ...group, seats: group.seats.map((seat) => ({ ...seat, availability: state(seat.product) })) }
+}
+
 export const CollaborationRoutes = lazy(() =>
   new Hono()
     .get(
-      "/product",
+      "/role-template",
       describeRoute({
-        summary: "List collaboration products",
-        description:
-          "Products that can take a seat. Merak is always connected. Others are connected when their command is installed and answers --version within five seconds; otherwise reason says why.",
-        operationId: "collaboration.products",
+        summary: "List collaboration role templates",
+        operationId: "collaboration.roleTemplates",
         responses: {
           200: {
-            description: "Products",
-            content: { "application/json": { schema: resolver(Product.array()) } },
+            description: "Role templates",
+            content: { "application/json": { schema: resolver(RoleTemplate.array()) } },
           },
         },
       }),
-      validator("query", z.object({ refresh: z.enum(["true", "false"]).optional() })),
-      async (c) => c.json(await products({ refresh: c.req.valid("query").refresh === "true" })),
+      async (c) => c.json(await roleTemplates()),
     )
     .post(
-      "/product",
+      "/role-template",
       describeRoute({
-        summary: "Change collaboration products",
-        description:
-          "Adds, edits, removes, or turns on or off a product in the global config. Removing a built-in product restores its default.",
-        operationId: "collaboration.product.change",
+        summary: "Change a custom collaboration role template",
+        operationId: "collaboration.roleTemplate.change",
         responses: {
           200: {
-            description: "Products",
-            content: { "application/json": { schema: resolver(Product.array()) } },
+            description: "Role templates",
+            content: { "application/json": { schema: resolver(RoleTemplate.array()) } },
           },
         },
       }),
-      validator("json", ProductChange),
+      validator("json", RoleTemplateChange),
       async (c) => {
-        try {
-          await changeProduct(c.req.valid("json"))
-          return c.json(await products())
-        } catch (error) {
-          return c.json(await fail(error), 400)
-        }
+        await changeRoleTemplate(c.req.valid("json"))
+        return c.json(await roleTemplates())
       },
     )
     .get(
@@ -223,15 +160,25 @@ export const CollaborationRoutes = lazy(() =>
           },
         },
       }),
-      async (c) =>
-        c.json(
-          (await all()).map(({ session, group }) => ({
+      async (c) => {
+        const groups = await all()
+        const state = await availability(groups.flatMap(({ group }) => group.seats))
+        return c.json(
+          groups.map(({ session, group }) => ({
             sessionID: session.id,
             title: session.title,
             directory: session.directory,
-            seats: group.seats.map(({ name, role, duty, product, leader }) => ({ name, role, duty, product, leader })),
+            seats: group.seats.map(({ name, role, duty, product, leader }) => ({
+              name,
+              role,
+              duty,
+              product,
+              leader,
+              availability: state(product),
+            })),
           })),
-        ),
+        )
+      },
     )
     .post(
       "/",
@@ -274,7 +221,7 @@ export const CollaborationRoutes = lazy(() =>
             { leader: body.leader, seats },
             baseline.map((file) => file.path),
           )
-          return c.json({ sessionID: session.id, group })
+          return c.json({ sessionID: session.id, group: await presentGroup(group) })
         } catch (error) {
           return c.json(await fail(error), 400)
         }
@@ -296,7 +243,7 @@ export const CollaborationRoutes = lazy(() =>
       async (c) => {
         const group = await load(c.req.valid("param").sessionID)
         if (!group) return c.json({ message: await Text.pick({ zh: "没有这个群", en: "Group not found" }) }, 404)
-        return c.json(group)
+        return c.json(await presentGroup(group))
       },
     )
     .post(
@@ -319,7 +266,7 @@ export const CollaborationRoutes = lazy(() =>
         const missing = await disconnected([body])
         if (missing.length) return c.json({ message: await notConnected(missing) }, 400)
         try {
-          return c.json(await join(sessionID, body))
+          return c.json(await presentGroup(await join(sessionID, body)))
         } catch (error) {
           return c.json(await fail(error), 400)
         }
@@ -342,7 +289,7 @@ export const CollaborationRoutes = lazy(() =>
       async (c) => {
         const { sessionID, seatID } = c.req.valid("param")
         try {
-          return c.json(await update(sessionID, seatID, c.req.valid("json")))
+          return c.json(await presentGroup(await update(sessionID, seatID, c.req.valid("json"))))
         } catch (error) {
           return c.json(await fail(error), 400)
         }
@@ -365,7 +312,7 @@ export const CollaborationRoutes = lazy(() =>
       async (c) => {
         const { sessionID, seatID } = c.req.valid("param")
         try {
-          return c.json(await leave(sessionID, seatID))
+          return c.json(await presentGroup(await leave(sessionID, seatID)))
         } catch (error) {
           return c.json(await fail(error), 400)
         }

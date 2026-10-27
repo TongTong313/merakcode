@@ -1,8 +1,7 @@
-import type { Event } from "@merakcode/sdk/client"
 import Folder from "lucide-solid/icons/folder"
 import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
-import { createEffect, createSignal, on, Show } from "solid-js"
+import { createEffect, createSignal, on, onMount, Show } from "solid-js"
 import { produce } from "solid-js/store"
 import { applyEvent } from "@merakcode/sdk/store"
 import { useNavigate } from "@solidjs/router"
@@ -13,6 +12,8 @@ import { choice, choose } from "../../state/models"
 import { call, client } from "../../state/client"
 import { gitState, refreshBranches, switching } from "../../state/git"
 import { folderOf, setState, state } from "../../state/store"
+import { agentConnections, connectionsLoaded, loadConnections } from "../../state/agent-connections"
+import { Select } from "../../ui/select"
 import { Frame } from "../shell/frame"
 import { BranchPicker } from "../git/branch-picker"
 import { Composer, type ComposerDraft, type Submission } from "./composer"
@@ -25,6 +26,7 @@ function preparation() {
   const [creating, setCreating] = createSignal(false)
   const [base, setBase] = createSignal<string>()
   const [draft, setDraft] = createSignal<ComposerDraft>()
+  const [productID, setProductID] = createSignal("merak")
   return {
     id: crypto.randomUUID(),
     worktree,
@@ -35,6 +37,8 @@ function preparation() {
     setBase,
     draft,
     setDraft,
+    productID,
+    setProductID,
     attempt: undefined as WorktreeAttempt | undefined,
     sessions: new Map<string, { id?: string; requested: boolean }>(),
   }
@@ -55,6 +59,9 @@ function preparationFor(directory: string) {
 export function Compose(props: { directory: string }) {
   const navigate = useNavigate()
   const prepared = () => preparationFor(props.directory)
+  const productID = () => prepared().productID()
+  const lockedTarget = () => [...prepared().sessions.values()].some((pending) => pending.requested || pending.id)
+  onMount(() => void loadConnections().catch(() => undefined))
   const worktree = () => prepared().worktree()
   const creating = () => prepared().creating()
   const worktreeBase = () => prepared().base()
@@ -101,7 +108,15 @@ export function Compose(props: { directory: string }) {
         }
         pending.requested = true
         try {
-          return await call(client(dir).session.create({ metadata: { composeAttemptId: current.id } }))
+          return await call(
+            client(dir).session.create({
+              metadata: { composeAttemptId: current.id },
+              target:
+                current.productID() === "merak"
+                  ? { kind: "merak" }
+                  : { kind: "external", productID: current.productID() },
+            }),
+          )
         } catch (error) {
           const status = (error as Error & { status?: number }).status
           if (status && status >= 400 && status < 500 && status !== 408) pending.requested = false
@@ -112,7 +127,7 @@ export function Compose(props: { directory: string }) {
       pending.id = info.id
       setState(
         "sessions",
-        produce((draft) => applyEvent(draft, { type: "session.created", properties: { info } } as Event)),
+        produce((draft) => applyEvent(draft, { type: "session.created", properties: { sessionID: info.id, info } })),
       )
       // Carry the model and mode chosen for the new conversation over to the session
       choose(info.id, directory, { model: picked.model, variant: picked.variant, mode: picked.mode })
@@ -131,6 +146,21 @@ export function Compose(props: { directory: string }) {
         <h1 class="compose-heading">{t("compose.heading", { name: baseName(props.directory) })}</h1>
         <div class="compose-wrap">
           <div class="context-row">
+            <Select
+              label={t("conversation.target")}
+              value={productID()}
+              options={agentConnections()
+                .filter((product) => product.enabled)
+                .map((product) => ({
+                  value: product.id,
+                  label: product.title,
+                  disabled: !product.connected,
+                  description: product.connected ? undefined : product.reason,
+                }))}
+              placeholder="MerakCode"
+              disabled={creating() || lockedTarget() || !connectionsLoaded()}
+              onChange={(id) => !creating() && !lockedTarget() && prepared().setProductID(id)}
+            />
             <span class="chip outlined">
               <Folder class="icon icon-sm" />
               {baseName(props.directory)}
@@ -201,6 +231,7 @@ export function Compose(props: { directory: string }) {
             draft={prepared().draft()}
             onDraftChange={(draft) => prepared().setDraft(draft)}
             busy={false}
+            external={productID() !== "merak"}
             disabled={creating() || switching(props.directory)}
             autofocus
             onSubmit={submit}

@@ -10,6 +10,7 @@ import { SessionReference } from "./reference"
 import { SessionUndoRedo } from "./undo-redo"
 import { cancelSessionTree, awaitLoopStopped } from "./cancel-tree"
 import { Session } from "."
+import { SessionTarget } from "./target"
 import { Storage } from "../storage/storage"
 import { Agent, STANDARD_TOOL_POOL, computeDeferred } from "../agent/agent"
 import { autoActivationMetadata, buildDeferredPlan, buildToolSearchTool } from "../tool/tool-search"
@@ -285,7 +286,7 @@ export namespace SessionRunner {
     },
   ): Promise<Message.FullMsg> {
     SessionExecution.check(input.sessionID)
-    const session = await SessionExecution.wait(async () => Session.get(input.sessionID))
+    const session = await SessionExecution.wait(async () => SessionTarget.assertNativeOperation(input.sessionID))
     if (!session) throw new Storage.NotFoundError({ message: `Resource not found: session ${input.sessionID}` })
 
     // A new message discards the redo history.
@@ -432,12 +433,12 @@ export namespace SessionRunner {
       }),
     }
   }
-  export const prompt = fn(PromptInput, (input) => promptInternal(publicPromptInput(input)))
-  export const promptWhenIdle = fn(PromptInput, (input) =>
-    promptInternal(publicPromptInput(input), { requireIdle: true }),
+  export const prompt = fn(PromptInput, async (input) => Message.native(await promptInternal(publicPromptInput(input))))
+  export const promptWhenIdle = fn(PromptInput, async (input) =>
+    Message.native(await promptInternal(publicPromptInput(input), { requireIdle: true })),
   )
   // Engine-generated memory/dream prompts keep synthetic; not exposed through HTTP or the SDK.
-  export const promptGenerated = fn(PromptInput, promptInternal)
+  export const promptGenerated = fn(PromptInput, async (input) => Message.native(await promptInternal(input)))
   /**
    * Persists a whole-turn refusal as an assistant message without going through loop().
    * The reason and wording belong to the refusing plugin (`message`); the engine only uses a neutral fallback when
@@ -812,6 +813,7 @@ export namespace SessionRunner {
   function findNextUnansweredUser(messages: Message.FullMsg[]): Message.FullMsg | undefined {
     const completedUserIDs = new Set<string>()
     for (const m of messages) {
+      if (Message.isExternal(m.info)) continue
       if (m.info.role !== "assistant") continue
       const info = m.info as Message.AssistantInfo
       if (!info.parentID) continue
@@ -821,6 +823,7 @@ export namespace SessionRunner {
     }
 
     for (const m of messages) {
+      if (Message.isExternal(m.info)) continue
       if (m.info.role === "user" && !completedUserIDs.has(m.info.id)) {
         return m
       }
@@ -876,11 +879,18 @@ export namespace SessionRunner {
       let tasks: (Message.CompactionPart | Message.SubtaskPart)[] = []
       const failedCompactions = new Set(
         msgs
-          .filter((msg) => msg.info.role === "assistant" && msg.info.summary === true && Boolean(msg.info.error))
+          .filter(
+            (msg) =>
+              !Message.isExternal(msg.info) &&
+              msg.info.role === "assistant" &&
+              msg.info.summary === true &&
+              Boolean(msg.info.error),
+          )
           .map((msg) => (msg.info as Message.AssistantInfo).parentID),
       )
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i]
+        if (Message.isExternal(msg.info)) continue
         if (!lastUserInfo && msg.info.role === "user") {
           lastUserInfo = msg.info as Message.UserInfo
           lastUserMessage = msg
@@ -1629,7 +1639,7 @@ export namespace SessionRunner {
   }
 
   async function persistCancelledPrompt(message: Message.FullMsg) {
-    if (message.info.role !== "user") return
+    if (message.info.role !== "user" || Message.isExternal(message.info)) return
     const user = message.info
     const messages = await Message.filterCompacted(Message.stream(user.sessionID))
     if (messages.some((item) => item.info.role === "assistant" && item.info.parentID === user.id)) return
@@ -2143,7 +2153,7 @@ export namespace SessionRunner {
 
   async function lastModel(sessionID: string) {
     for await (const item of Message.stream(sessionID)) {
-      if (item.info.role === "user" && item.info.model) return item.info.model
+      if (!Message.isExternal(item.info) && item.info.role === "user" && item.info.model) return item.info.model
     }
     return Provider.defaultModel()
   }
@@ -2328,7 +2338,10 @@ export namespace SessionRunner {
       if (ids.length === 0) continue
       const assistant = input.messages.findLast(
         (item): item is Message.FullMsg & { info: Message.AssistantInfo } =>
-          item.info.role === "assistant" && message.info.id < item.info.id && isTurnSettled(item.info),
+          !Message.isExternal(item.info) &&
+          item.info.role === "assistant" &&
+          message.info.id < item.info.id &&
+          isTurnSettled(item.info),
       )
       // An interrupted turn (AbortedError) is acked so it is not redelivered in a loop; see shouldAckDeliveredTurn.
       if (!shouldAckDeliveredTurn(assistant?.info)) continue
@@ -2907,6 +2920,7 @@ export namespace SessionRunner {
     const picked = history.some(
       (message) =>
         message.info.role === "user" &&
+        !Message.isExternal(message.info) &&
         message.info.model.providerID === model.providerID &&
         message.info.model.modelID === model.modelID &&
         !!message.info.variant,
@@ -3580,6 +3594,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
   })
   export type ShellInput = z.infer<typeof ShellInput>
   export async function shell(input: ShellInput) {
+    await SessionTarget.assertNativeOperation(input.sessionID)
     const controller = start(input.sessionID)
     if (!controller) {
       throw new Session.BusyError(input.sessionID)
@@ -4141,7 +4156,9 @@ ${skill.content}`
     return { template, system }
   }
 
-  export async function command(input: CommandInput): Promise<Message.FullMsg> {
+  export async function command(input: CommandInput): Promise<Message.NativeFullMsg> {
+    const session = await SessionTarget.assertNativeOperation(input.sessionID)
+    await SessionTarget.assertNewMessage(session, input)
     if (SessionExecution.current() && !SessionExecution.current(input.sessionID)) {
       return SessionExecution.run(undefined, () => SessionRunner.command(input))
     }
@@ -4271,7 +4288,7 @@ ${skill.content}`
       messageID: result.info.id,
     })
 
-    return result
+    return Message.native(result)
   }
 
   async function ensureTitle(input: {

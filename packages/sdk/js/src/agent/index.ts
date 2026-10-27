@@ -10,7 +10,6 @@
 import { createMerakCodeClient, type MerakCodeClient } from "../client/index.js"
 import type {
   AgentConfig,
-  AssistantMessageOutput,
   Event,
   MessageOutput,
   PartOutput,
@@ -49,7 +48,7 @@ export type RunEvent =
   | { type: "text"; partID: string; delta: string }
   | { type: "reasoning"; partID: string; delta: string }
   | { type: "part"; part: PartOutput }
-  | { type: "done"; message: AssistantMessageOutput }
+  | { type: "done"; message: Extract<MessageOutput, { role: "assistant" }> }
   | { type: "error"; error: MerakCodeError }
 
 /** Answer to a permission request: allow once / allow for this session / always (saved to project config) / deny */
@@ -108,7 +107,12 @@ export type MerakCode = {
   /** PID of the started engine; undefined when connected to an existing engine */
   pid: number | undefined
   /** Creates a session, or returns the existing session when an id is given */
-  session(input?: { id?: string; title?: string; parentID?: string }): Promise<MerakCodeSession>
+  session(input?: {
+    id?: string
+    title?: string
+    parentID?: string
+    target?: SessionOutput["target"]
+  }): Promise<MerakCodeSession>
   close(): Promise<void>
 }
 
@@ -223,7 +227,7 @@ export async function createMerakCode(options: MerakCodeOptions = {}): Promise<M
           if (event.type === "session.idle") {
             const messages = await client.session.messages({ sessionID })
             const last = [...(messages.data ?? [])].reverse().find((message) => message.info.role === "assistant")
-            if (last) yield { type: "done", message: last.info as AssistantMessageOutput }
+            if (last?.info.role === "assistant") yield { type: "done", message: last.info }
             if (once) return
           }
         }

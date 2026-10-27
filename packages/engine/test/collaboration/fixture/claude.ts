@@ -21,7 +21,34 @@ const resume = process.argv.indexOf("--resume")
 const session = resume > 0 ? process.argv[resume + 1]! : "claude-session-1"
 
 async function work(prompt: string) {
-  send({ type: "system", subtype: "init", session_id: session })
+  const selected = process.argv.indexOf("--model")
+  const model = selected > 0 ? process.argv[selected + 1] : "fixture-default"
+  send({ type: "system", subtype: "init", session_id: session, model })
+  if (process.env.CLAUDE_FIXTURE_STREAM) {
+    send({
+      type: "stream_event",
+      session_id: session,
+      parent_tool_use_id: null,
+      event: { type: "message_start", message: { id: "reply", model } },
+    })
+    for (const delta of ["Hello ", "world"])
+      send({
+        type: "stream_event",
+        session_id: session,
+        parent_tool_use_id: null,
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: delta } },
+      })
+    send({ type: "assistant", message: { id: "reply", model, content: [{ type: "text", text: "Hello world" }] } })
+    send({
+      type: "result",
+      subtype: "success",
+      is_error: process.env.CLAUDE_FIXTURE_ERROR === "true",
+      terminal_reason: process.env.CLAUDE_FIXTURE_ERROR ? "api_error" : undefined,
+      session_id: session,
+      result: "Hello world",
+    })
+    return
+  }
   const verdicts: string[] = []
   for (const tool of tools) {
     const id = `req_${++asked}`
@@ -48,7 +75,7 @@ async function work(prompt: string) {
     type: "result",
     subtype: "success",
     session_id: session,
-    result: [`prompt: ${prompt}`, ...verdicts].join("\n"),
+    result: process.env.CLAUDE_FIXTURE_REPLY ?? [`prompt: ${prompt}`, ...verdicts].join("\n"),
   })
 }
 

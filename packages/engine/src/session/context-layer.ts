@@ -87,7 +87,8 @@ export namespace SessionContextLayer {
   function findBaseSummary(messages: Message.FullMsg[]) {
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg.info.role !== "assistant" || !msg.info.summary || !msg.info.finish) continue
+      if (msg.info.role !== "assistant" || Message.isExternal(msg.info) || !msg.info.summary || !msg.info.finish)
+        continue
       const summary = summaryText(msg)
       if (!summary) continue
       return { index: i, summary }

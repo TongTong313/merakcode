@@ -1,7 +1,9 @@
-import type { AssistantMessage, Message, Part, ToolPart, UserMessage } from "@merakcode/sdk/client"
+import type { Message, Part, ToolPart } from "@merakcode/sdk/client"
 import { diffLines } from "diff"
 
-export type Turn = { user: UserMessage; replies: AssistantMessage[] }
+export type UserInfo = Extract<Message, { role: "user" }>
+export type AssistantInfo = Extract<Message, { role: "assistant" }>
+export type Turn = { user: UserInfo; replies: AssistantInfo[] }
 
 /**
  * Groups messages into turns: a user message plus the assistant messages replying to it (matched by parentID, or the
@@ -10,7 +12,7 @@ export type Turn = { user: UserMessage; replies: AssistantMessage[] }
  */
 export function turns(messages: readonly Message[]) {
   const list: Turn[] = []
-  const orphans: AssistantMessage[] = []
+  const orphans: AssistantInfo[] = []
   const index = new Map<string, Turn>()
   for (const message of messages) {
     if (message.role === "user") {

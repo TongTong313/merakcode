@@ -72,13 +72,14 @@ export function SandboxControl(props: {
 }
 
 /** Composer control: shows the sandbox state for this project and applies the chosen action. */
-export function SandboxField(props: { directory: string }) {
+export function SandboxField(props: { directory: string; disabled?: boolean }) {
   const [status, { refetch }] = createResource(
     () => props.directory,
     (directory) => call(client(directory).sandbox.status()).catch(() => undefined),
   )
   const [busy, setBusy] = createSignal(false)
   const run = async (action: "install" | "preferred" | "off") => {
+    if (props.disabled) return
     setBusy(true)
     try {
       await changeSandbox(props.directory, action)
@@ -93,7 +94,7 @@ export function SandboxField(props: { directory: string }) {
   return (
     <SandboxControl
       status={status()}
-      busy={busy()}
+      busy={busy() || !!props.disabled}
       onInstall={() => void run("install")}
       onMode={(mode) => void run(mode)}
       onPrepare={() => void refetch()}

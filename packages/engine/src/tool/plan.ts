@@ -82,7 +82,7 @@ function dialog(
 
 async function getLastModel(sessionID: string) {
   for await (const item of Message.stream(sessionID)) {
-    if (item.info.role === "user" && item.info.model) return item.info.model
+    if (!Message.isExternal(item.info) && item.info.role === "user" && item.info.model) return item.info.model
   }
   return Provider.defaultModel()
 }

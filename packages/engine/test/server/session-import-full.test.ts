@@ -93,7 +93,7 @@ describe("session.importFull", () => {
         const app = Server.App()
         const payload = buildExportPayload()
         const user = payload.messages[0]!
-        if (user.info.role !== "user") throw new Error("expected user message")
+        if (user.info.role !== "user" || Message.isExternal(user.info)) throw new Error("expected user message")
         const original = user.parts[0]!
         if (original.type !== "text") throw new Error("expected text part")
         user.info.commandSource = { templatePartIDs: ["missing"] }
@@ -106,7 +106,7 @@ describe("session.importFull", () => {
         const { res, body } = await postImportFull(app, payload)
         expect(res.status).toBe(200)
         const imported = (await Session.messages({ sessionID: body.info.id }))[0]!
-        if (imported.info.role !== "user") throw new Error("expected user message")
+        if (imported.info.role !== "user" || Message.isExternal(imported.info)) throw new Error("expected user message")
         expect(imported.parts.map((part) => part.id)).not.toContain(original.id)
         expect(imported.info.commandSource).toEqual({ templatePartIDs: [imported.parts[0]!.id, imported.parts[1]!.id] })
         expect(Message.userSourceTexts(imported)).toEqual(["模板正文\n遗漏的敏感正文"])
@@ -143,7 +143,7 @@ describe("session.importFull", () => {
         expect(Message.userSourceTexts(afterRejected)).toEqual(Message.userSourceTexts(imported))
         const forked = await Session.fork({ sessionID: body.info.id })
         const cloned = (await Session.messages({ sessionID: forked.id }))[0]!
-        if (cloned.info.role !== "user") throw new Error("expected user message")
+        if (cloned.info.role !== "user" || Message.isExternal(cloned.info)) throw new Error("expected user message")
         expect(cloned.info.commandSource).toEqual({ templatePartIDs: [cloned.parts[0]!.id, cloned.parts[1]!.id] })
         expect(Message.userSourceTexts(cloned)).toEqual(Message.userSourceTexts(imported))
         await Session.remove(forked.id)

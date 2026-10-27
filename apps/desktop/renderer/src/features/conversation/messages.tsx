@@ -1,11 +1,10 @@
 import type {
-  AssistantMessage,
   CollaborationEvent,
+  ExternalDelegateProgress,
   FilePart,
   Part,
   ReasoningPart,
   ToolPart,
-  UserMessage,
 } from "@merakcode/sdk/client"
 import Brain from "lucide-solid/icons/brain"
 import ChevronRight from "lucide-solid/icons/chevron-right"
@@ -39,10 +38,23 @@ import { Markdown } from "../../ui/markdown"
 import { copyDetails, toast } from "../../ui/toast"
 import { summary } from "../../state/error"
 import { fill } from "./composer"
-import { retry, revertTo, submissionOf } from "./send"
+import { historyLocked, retry, revertTo, submissionOf } from "./send"
 import { Avatar, seatMeta, type Product, type Seat } from "./members"
 import { Tool, Explore } from "./tools"
-import { blocks, changes, eventsByTurn, segments, turns, type Block, type Segment, type Turn } from "./turns"
+import {
+  blocks,
+  changes,
+  eventsByTurn,
+  segments,
+  turns,
+  type AssistantInfo as AssistantMessage,
+  type UserInfo as UserMessage,
+  type Block,
+  type Segment,
+  type Turn,
+} from "./turns"
+
+const isSummary = (message: AssistantMessage) => "summary" in message && message.summary
 
 /** What a group conversation adds to the message list: who the members are and when they joined or left */
 export type GroupView = {
@@ -119,24 +131,26 @@ function UserBubble(props: { message: UserMessage; sessionID: string; directory:
   return (
     <Show when={!compaction()} fallback={<div class="divider-label subtle">{t("conversation.compacted")}</div>}>
       <article class="user-turn" aria-label={t("conversation.you")}>
-        <div class="message-actions">
-          <button
-            class="icon-button sm"
-            aria-label={t("conversation.edit")}
-            title={t("conversation.edit")}
-            onClick={() => void edit().catch(failed)}
-          >
-            <Pencil class="icon icon-xs" />
-          </button>
-          <button
-            class="icon-button sm"
-            aria-label={t("conversation.revert")}
-            title={t("conversation.revertHint")}
-            onClick={() => void revert()}
-          >
-            <Undo2 class="icon icon-xs" />
-          </button>
-        </div>
+        <Show when={!historyLocked(props.sessionID)}>
+          <div class="message-actions">
+            <button
+              class="icon-button sm"
+              aria-label={t("conversation.edit")}
+              title={t("conversation.edit")}
+              onClick={() => void edit().catch(failed)}
+            >
+              <Pencil class="icon icon-xs" />
+            </button>
+            <button
+              class="icon-button sm"
+              aria-label={t("conversation.revert")}
+              title={t("conversation.revertHint")}
+              onClick={() => void revert()}
+            >
+              <Undo2 class="icon icon-xs" />
+            </button>
+          </div>
+        </Show>
         <div class="user-message selectable">
           <Show when={files().length}>
             <div class="attachments">
@@ -170,7 +184,7 @@ function TurnActions(props: { turn: Turn; last: boolean; sessionID: string; dire
           <Copy class="icon icon-xs" />
         </button>
       </Show>
-      <Show when={props.last}>
+      <Show when={props.last && !historyLocked(props.sessionID)}>
         <button
           class="icon-button sm"
           aria-label={t("conversation.retryTurn")}
@@ -268,7 +282,7 @@ function Reply(props: {
       .join("\n")
   return (
     <Show
-      when={!props.message.summary}
+      when={!isSummary(props.message)}
       fallback={
         <div class="step">
           <button class="step-head" aria-expanded={open()} onClick={() => setOpen(!open())}>
@@ -283,6 +297,15 @@ function Reply(props: {
         </div>
       }
     >
+      <Show when={props.message.execution?.kind === "external" && props.message.execution}>
+        {(execution) => (
+          <div class="external-signature subtle">
+            {[execution().productTitle, execution().actualModel?.id ?? execution().requestedModel?.id]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        )}
+      </Show>
       <Blocks blocks={list()} done={done} directory={props.directory} onReviewFile={props.onReviewFile} />
       <ErrorCard message={props.message} />
     </Show>
@@ -396,6 +419,7 @@ type DelegateMetadata = {
   steps?: Step[]
   /** When the member left the queue and began */
   started?: number
+  external?: ExternalDelegateProgress
 }
 
 const stepText = (step: Step) => [step.tool, step.detail].filter(Boolean).join(" ")
@@ -454,8 +478,24 @@ export function SeatBubble(props: { part: ToolPart; group: GroupView; stopped?: 
       ? props.group.seats.find((item) => item.id === id)
       : props.group.seats.find((item) => item.name === name())
   }
-  const meta = () =>
-    seatMeta({ product: metadata()?.product ?? seat()?.product ?? "", role: seat()?.role }, props.group.products)
+  const meta = () => {
+    const external = metadata()?.external
+    const productID = metadata()?.product ?? seat()?.product ?? ""
+    const product = props.group.products.find((item) => item.id === productID)
+    const signature = external
+      ? [external.productTitle, external.actualModel?.id ?? external.requestedModel?.id, seat()?.role]
+          .filter(Boolean)
+          .join(" · ")
+      : seatMeta({ product: productID, role: seat()?.role }, props.group.products)
+    return [
+      signature,
+      productID !== "merak" && product?.connected && product.capabilities.textStreaming === false
+        ? t("conversation.outputOnCompletion")
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  }
   /** The task as the leader gave it: who asked, what, and where */
   const task = () => {
     const leader = props.group.seats.find((item) => item.leader)?.name
@@ -497,8 +537,12 @@ export function SeatBubble(props: { part: ToolPart; group: GroupView; stopped?: 
         <div class="bubble-task subtle ellipsis">↳ {task()}</div>
       </Show>
       <div class="bubble">
+        <For each={metadata()?.external?.parts}>{(part) => <Markdown text={part.text} />}</For>
         <Switch>
-          <Match when={reply()}>{(text) => <Markdown text={text()} />}</Match>
+          <Match when={metadata()?.external?.stopReason === "product-disabled"}>
+            <span class="muted">{t("group.offline")}</span>
+          </Match>
+          <Match when={!metadata()?.external?.parts.length && reply()}>{(text) => <Markdown text={text()} />}</Match>
           {/* A stopped call reads as running until the turn is reloaded, then as aborted: both are "stopped" */}
           <Match when={props.stopped}>
             <span class="muted">{t("group.stopped")}</span>
@@ -537,7 +581,7 @@ function GroupReplies(props: {
   onReviewFile: (file: string) => void
 }) {
   const list = createMemo(() =>
-    segments(props.replies.filter((message) => !message.summary).flatMap((message) => partsOf(message.id))),
+    segments(props.replies.filter((message) => !isSummary(message)).flatMap((message) => partsOf(message.id))),
   )
   const leader = () => props.group.seats.find((seat) => seat.leader)
   /** The turn is over and this call did not end on its own: still marked running, or ended by the turn being stopped */
@@ -550,7 +594,7 @@ function GroupReplies(props: {
     !props.last || !busy(props.sessionID) || segment < list().length - 1 || index < blocks - 1
   return (
     <>
-      <For each={props.replies.filter((message) => message.summary)}>
+      <For each={props.replies.filter(isSummary)}>
         {(message) => (
           <Reply
             message={message}
@@ -722,7 +766,7 @@ export function Messages(props: {
                     screen, and hiding the card then leaves no Review button. */}
                 <Changes turn={turn()} directory={props.directory} onReview={props.onReviewTurn} />
                 <Show when={!last() || !running()}>
-                  <Show when={turn().replies.length && !turn().replies.some((message) => message.summary)}>
+                  <Show when={turn().replies.length && !turn().replies.some(isSummary)}>
                     <TurnActions turn={turn()} last={last()} sessionID={props.sessionID} directory={props.directory} />
                   </Show>
                 </Show>

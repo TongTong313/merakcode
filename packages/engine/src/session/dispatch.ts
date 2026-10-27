@@ -4,6 +4,8 @@ import { SessionStatus } from "./status"
 import { Log } from "@merakcode/log/logger"
 import { Message } from "./message"
 import { Checkout } from "../project/checkout"
+import { ExternalSession } from "./external"
+import { SessionTarget } from "./target"
 
 /**
  * Request entry point shared by HTTP and in-process callers. Each request gets its own execution scope; cancelling
@@ -15,6 +17,7 @@ export namespace SessionDispatch {
   const barriers = new Map<string, Promise<void>>()
 
   export async function command(input: SessionRunner.CommandInput) {
+    await SessionTarget.assertNativeOperation(input.sessionID)
     try {
       return await local("command", input.sessionID, () => SessionRunner.command(input))
     } catch (error) {
@@ -26,7 +29,10 @@ export namespace SessionDispatch {
   }
 
   export function prompt(input: SessionRunner.PromptInput) {
-    return local("prompt", input.sessionID, () => SessionRunner.prompt(input))
+    return local("prompt", input.sessionID, async () => {
+      const session = await SessionTarget.assertCanSend(input.sessionID, input)
+      return session.target?.kind === "external" ? ExternalSession.prompt(input) : SessionRunner.prompt(input)
+    })
   }
 
   function local<T>(kind: "command" | "prompt", sessionID: string, execute: () => Promise<T>): Promise<T> {
@@ -65,6 +71,7 @@ export namespace SessionDispatch {
         return result
       } finally {
         await SessionExecution.cancelChildren(scope)
+        await ExternalSession.settleOwner(scope.id)
         requests.delete(scope.id)
         SessionExecution.finish(scope)
         release()

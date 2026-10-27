@@ -4,6 +4,7 @@ import { Server } from "@merakcode/engine/server/server"
 import { Session } from "@merakcode/engine/session/index"
 import { remember } from "@merakcode/engine/collaboration/store"
 import { tmpdir } from "../fixture/fixture"
+import { configureConnections } from "../fixture/agent-connections"
 
 async function post(app: ReturnType<typeof Server.App>, directory: string, body: unknown) {
   const response = await app.request(`/collaboration?directory=${encodeURIComponent(directory)}`, {
@@ -15,7 +16,8 @@ async function post(app: ReturnType<typeof Server.App>, directory: string, body:
 }
 
 test("a group is created with its members in one request, titled by their names when no title is given", async () => {
-  await using tmp = await tmpdir({ config: { collaboration: { products: { node: { command: process.execPath } } } } })
+  await using tmp = await tmpdir()
+  await configureConnections({ node: { command: process.execPath } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
@@ -33,9 +35,8 @@ test("a group is created with its members in one request, titled by their names 
 })
 
 test("a bad member or a product that is not installed creates nothing", async () => {
-  await using tmp = await tmpdir({
-    config: { collaboration: { products: { gone: { command: "merak-missing-cli" } } } },
-  })
+  await using tmp = await tmpdir()
+  await configureConnections({ gone: { command: "merak-missing-cli" } })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
@@ -64,9 +65,9 @@ test("a refused change is explained in the user's language", async () => {
     await using tmp = await tmpdir({
       config: {
         ...(locale ? { locale } : {}),
-        collaboration: { products: { gone: { command: "merak-missing-cli" } } },
       },
     })
+    await configureConnections({ gone: { command: "merak-missing-cli" } })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
@@ -87,9 +88,9 @@ test("a refused change is explained in the user's language", async () => {
 })
 
 test("groups of every project can be listed to copy, newest first, without anyone's private session", async () => {
-  const products = { collaboration: { products: { node: { command: process.execPath } } } }
-  await using a = await tmpdir({ config: products })
-  await using b = await tmpdir({ config: products })
+  await configureConnections({ node: { command: process.execPath } })
+  await using a = await tmpdir()
+  await using b = await tmpdir()
   const made = await Instance.provide({
     directory: a.path,
     fn: async () => {
@@ -119,15 +120,24 @@ test("groups of every project can be listed to copy, newest first, without anyon
           sessionID: made[1],
           title: "支付小组",
           directory: a.path,
-          seats: [{ name: "老大", role: "", duty: "", product: "merak", leader: true }],
+          seats: [
+            { name: "老大", role: "", duty: "", product: "merak", leader: true, availability: { state: "online" } },
+          ],
         },
         {
           sessionID: made[0],
           title: "登录小组",
           directory: a.path,
           seats: [
-            { name: "小主", role: "", duty: "带队", product: "merak", leader: true },
-            { name: "小红", role: "产品经理", duty: "写需求", product: "node", leader: false },
+            { name: "小主", role: "", duty: "带队", product: "merak", leader: true, availability: { state: "online" } },
+            {
+              name: "小红",
+              role: "产品经理",
+              duty: "写需求",
+              product: "node",
+              leader: false,
+              availability: { state: "online" },
+            },
           ],
         },
       ])

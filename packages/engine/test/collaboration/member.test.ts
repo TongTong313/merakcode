@@ -15,6 +15,7 @@ import { Question } from "../../src/question"
 import type { PermissionMode } from "../../src/permission/mode"
 import { create } from "../../src/collaboration/store"
 import { tmpdir } from "../fixture/fixture"
+import { configureConnections } from "../fixture/agent-connections"
 
 const FIXTURE = path.join(import.meta.dirname, "fixture", "adapter.ts")
 
@@ -81,10 +82,8 @@ async function delegate(input: {
       args: [...process.execArgv, FIXTURE, scenario],
     },
   }
-  await using tmp = await tmpdir({
-    git: true,
-    config: { collaboration: { products: { [product.id]: product.config } } },
-  })
+  await using tmp = await tmpdir({ git: true })
+  await configureConnections({ [product.id]: product.config })
   return await Instance.provide({
     directory: tmp.path,
     fn: async () => {
@@ -427,7 +426,7 @@ test("the built-in Claude Code member asks MerakCode before it fetches a page", 
 
 test("a member that ends with no reply fails with the product named, rather than reporting an empty result", async () => {
   const result = await delegate({ mode: "ask", scenario: { reply: "" } })
-  expect(result.error?.message).toContain("Fixture returned no reply")
+  expect(result.error?.message).toMatch(/^MRK-4009: Fixture (?:未返回正文|returned no reply)$/)
 }, 60_000)
 
 for (const name of ["codex", "opencode"] as const) {

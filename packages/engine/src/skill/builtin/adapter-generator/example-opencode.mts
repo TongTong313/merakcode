@@ -1,4 +1,4 @@
-// MerakCode's own adapter, generated from packages/engine/src/collaboration/adapters/opencode.ts. Do not edit.
+// MerakCode's own adapter, generated from packages/engine/src/agent-connection/adapters/opencode.ts. Do not edit.
 /**
  * Built-in member adapter for OpenCode. It runs `opencode serve` on 127.0.0.1 with a random password and drives one
  * session over HTTP: what OpenCode would decide itself is set to ask, only for this run, so each request comes to
@@ -30,6 +30,8 @@ import {
   type Mode,
   type Permission,
   type Question,
+  type Product,
+  type ModelList,
 } from "./merakcode-adapter.mjs"
 
 /**
@@ -93,11 +95,20 @@ function questionsOf(asked: AskedQuestion): Question[] {
 }
 
 adapter({
+  models: opencodeModels,
   inspect: async (product) => ({
     name: "OpenCode",
     path: product.command,
     recommended: "1.19.4",
     upgrade: "opencode upgrade",
+    capabilities: {
+      modelSelection: true,
+      modelDiscovery: true,
+      textStreaming: true,
+      resume: true,
+      permission: "merak",
+      questions: true,
+    },
     ...(await version(product.command || "opencode")),
   }),
   async run(task, host) {
@@ -136,23 +147,90 @@ adapter({
       }
       const events = await fetch(`${base}/event?${query}`, { headers, signal: task.signal })
       const session = task.resume ?? ((await call("POST", "/session", { title: "MerakCode" })) as { id: string }).id
-      await call("POST", `/session/${session}/prompt_async`, { parts: [{ type: "text", text: task.prompt }] })
+      await host.sessionStarted({ sessionId: session })
+      await call("POST", `/session/${session}/prompt_async`, {
+        parts: [{ type: "text", text: task.prompt }],
+        ...(task.model && { model: { providerID: task.model.providerID, modelID: task.model.id } }),
+      })
       await follow(events, session, host, call)
       const messages = (await call("GET", `/session/${session}/message`)) as {
-        info: { role: string }
-        parts: { type: string; text?: string }[]
+        info: {
+          id?: string
+          role: string
+          modelID?: string
+          providerID?: string
+          error?: { data?: { message?: string }; message?: string }
+        }
+        parts: { id?: string; type: string; text?: string }[]
       }[]
       const last = messages.findLast((message) => message.info.role === "assistant")
+      if (last?.info.error)
+        throw new Error(last.info.error.data?.message ?? last.info.error.message ?? "OpenCode failed")
       const text = (last?.parts ?? [])
         .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
         .join("\n")
-      return { text: text.trim(), sessionId: session }
+      return {
+        text: text.trim(),
+        sessionId: session,
+        actualModel: last?.info.modelID ? { id: last.info.modelID, providerID: last.info.providerID } : undefined,
+        final: last
+          ? {
+              messageID: last.info.id ?? "reply",
+              parts: last.parts.flatMap((part, index) =>
+                part.type === "text" && typeof part.text === "string"
+                  ? [{ partID: part.id ?? String(index), text: part.text }]
+                  : [],
+              ),
+            }
+          : undefined,
+      }
     } finally {
       // The server does not end on its own
       await stop(child)
     }
   },
 })
+
+async function opencodeModels(product: Product, signal: AbortSignal): Promise<ModelList> {
+  const password = randomBytes(16).toString("hex")
+  const child = spawn(
+    product.command || "opencode",
+    ["serve", "--hostname", "127.0.0.1", "--port", "0", ...(product.args ?? [])],
+    {
+      stdio: ["ignore", "pipe", "inherit"],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        OPENCODE_SERVER_PASSWORD: password,
+        OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig("readonly")),
+      },
+    },
+  )
+  const cancel = () => void stop(child)
+  signal.addEventListener("abort", cancel, { once: true })
+  try {
+    const base = await listening(child.stdout)
+    const response = await fetch(`${base}/provider?directory=${encodeURIComponent(process.cwd())}`, {
+      headers: { authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64") },
+      signal,
+    })
+    if (!response.ok) throw new Error(`OpenCode model discovery: ${response.status}`)
+    const catalog = (await response.json()) as { all: { id: string; models: Record<string, { name?: string }> }[] }
+    return {
+      models: catalog.all.flatMap((provider) =>
+        Object.entries(provider.models).map(([id, model]) => ({
+          id,
+          providerID: provider.id,
+          title: model.name ?? id,
+        })),
+      ),
+      allowCustomID: true,
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel)
+    await stop(child)
+  }
+}
 
 /** The server's address, from the line it prints once it listens; its later output is read on and dropped */
 function listening(stdout: Readable) {
@@ -189,11 +267,26 @@ async function follow(
   let busy = false
   // A running tool part is updated again as it goes; it is one step
   const stepped = new Set<string>()
+  const assistants = new Set<string>()
   for await (const line of eventLines(events.body)) {
     if (!line.startsWith("data:")) continue
     const event = JSON.parse(line.slice(5)) as { type: string; properties: Record<string, any> }
     const properties = event.properties
     if (properties.sessionID !== undefined && properties.sessionID !== session) continue
+    if (
+      event.type === "message.updated" &&
+      properties.info?.sessionID === session &&
+      properties.info?.role === "assistant"
+    )
+      assistants.add(properties.info.id)
+    if (
+      event.type === "message.part.delta" &&
+      properties.sessionID === session &&
+      properties.field === "text" &&
+      assistants.has(properties.messageID) &&
+      typeof properties.delta === "string"
+    )
+      host.textDelta({ messageID: properties.messageID, partID: properties.partID, delta: properties.delta })
     if (event.type === "permission.asked") {
       const asked = properties as Asked
       void host

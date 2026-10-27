@@ -108,7 +108,7 @@ describe("command injection", () => {
         })
         const texts = user.parts.filter((part) => part.type === "text")
         expect(texts.map((part) => part.text)).toEqual([expanded])
-        if (user.info.role !== "user") throw new Error("expected user message")
+        if (user.info.role !== "user" || Message.isExternal(user.info)) throw new Error("expected user message")
         expect(user.info.commandSource).toEqual({ templatePartIDs: [texts[0]!.id] })
         expect(await Message.toModelMessages([user], testModel)).toEqual([
           { role: "user", content: [{ type: "text", text: expanded }] },
@@ -150,7 +150,8 @@ describe("command injection", () => {
         })
         const users = (await Session.messages({ sessionID: session.id })).filter((item) => item.info.role === "user")
         const user = users.at(-1)
-        if (!user || user.info.role !== "user") throw new Error("expected stored command message")
+        if (!user || user.info.role !== "user" || Message.isExternal(user.info))
+          throw new Error("expected stored command message")
         const templatePart = user.parts.find((part) => part.type === "text" && part.text === template)
         if (!templatePart) throw new Error("expected stored template part")
         expect(user.info.commandSource?.templatePartIDs).toEqual([templatePart.id])
@@ -246,7 +247,8 @@ describe("command injection", () => {
         })
         expect(result.info.role).toBe("assistant")
         const user = (await Session.messages({ sessionID: session.id })).find((item) => item.info.role === "user")
-        if (!user || user.info.role !== "user") throw new Error("expected stored user message")
+        if (!user || user.info.role !== "user" || Message.isExternal(user.info))
+          throw new Error("expected stored user message")
         const subtask = user.parts.find((part) => part.type === "subtask")
         expect(subtask).toMatchObject({ prompt: "子任务：检查 A\n检查 B" })
         expect(user.info.commandSource).toEqual({ templatePartIDs: [subtask!.id] })
@@ -306,7 +308,7 @@ describe("command injection", () => {
           agent: "build",
           model: "openai/gpt-4",
         })
-        if (user.info.role !== "user") throw new Error("expected user message")
+        if (user.info.role !== "user" || Message.isExternal(user.info)) throw new Error("expected user message")
         expect(user.info.system).toContain("Follow this skill")
         expect(user.info.system).not.toContain("The user just ran the /")
         expect(user.parts.some((part) => part.type === "subtask")).toBe(false)
@@ -334,7 +336,7 @@ describe("command injection", () => {
           agent: "build",
           model: "openai/gpt-4",
         })
-        if (user.info.role !== "user") throw new Error("expected user message")
+        if (user.info.role !== "user" || Message.isExternal(user.info)) throw new Error("expected user message")
         const text = user.parts
           .filter((p) => p.type === "text")
           .map((p) => (p as { text: string }).text)

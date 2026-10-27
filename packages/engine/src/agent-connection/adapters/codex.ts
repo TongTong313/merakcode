@@ -28,6 +28,8 @@ import {
   type Question,
   type Result,
   type Task,
+  type Product,
+  type ModelList,
 } from "@merakcode/sdk/adapter"
 
 /** Thread settings for a mode: read-only keeps Codex's sandbox read-only; otherwise it writes the workspace */
@@ -69,11 +71,20 @@ function questionsOf(params: QuestionParams): Question[] {
 }
 
 adapter({
+  models: codexModels,
   inspect: async (product) => ({
     name: "Codex",
     path: product.command,
     recommended: "0.164.0",
     upgrade: "codex update",
+    capabilities: {
+      modelSelection: true,
+      modelDiscovery: true,
+      textStreaming: true,
+      resume: true,
+      permission: "merak",
+      questions: true,
+    },
     ...(await version(product.command || "codex")),
   }),
   async run(task, host) {
@@ -91,12 +102,51 @@ adapter({
   },
 })
 
+async function codexModels(product: Product, signal: AbortSignal): Promise<ModelList> {
+  const child = spawn(product.command || "codex", ["app-server", ...(product.args ?? [])], {
+    stdio: ["pipe", "pipe", "inherit"],
+    windowsHide: true,
+  })
+  const cancel = () => void stop(child)
+  signal.addEventListener("abort", cancel, { once: true })
+  const rpc = connect({
+    lines: readline.createInterface({ input: child.stdout!, crlfDelay: Infinity }),
+    send: (line) => child.stdin!.write(line + "\n"),
+    handlers: {},
+  })
+  try {
+    await rpc.request("initialize", { clientInfo: { name: "merakcode", title: "MerakCode", version: "1" } })
+    rpc.notify("initialized")
+    const models: ModelList["models"] = []
+    let cursor: string | undefined
+    do {
+      const page = await rpc.request<{
+        data: { id: string; model?: string; displayName?: string }[]
+        nextCursor?: string | null
+      }>("model/list", { cursor, limit: 100 })
+      models.push(
+        ...page.data.map((entry) => ({
+          id: entry.model ?? entry.id,
+          title: entry.displayName ?? entry.model ?? entry.id,
+        })),
+      )
+      cursor = page.nextCursor ?? undefined
+    } while (cursor)
+    return { models, allowCustomID: true }
+  } finally {
+    signal.removeEventListener("abort", cancel)
+    await stop(child)
+  }
+}
+
 /** One turn of Codex on a thread, new or resumed, answering its requests until the turn is completed */
 function turn(child: ChildProcess, task: Task, host: Host) {
   return new Promise<Result>((resolve, reject) => {
     // What each item is, seen when it starts: an approval request names only the item
     const items = new Map<string, Item>()
     let reply = ""
+    let final: Result["final"]
+    let actualModel: Result["actualModel"]
     const decision = async (allowed: Promise<{ allow: boolean }>) => ({
       decision: (await allowed).allow ? "accept" : "decline",
     })
@@ -104,13 +154,20 @@ function turn(child: ChildProcess, task: Task, host: Host) {
       lines: readline.createInterface({ input: child.stdout!, crlfDelay: Infinity }),
       send: (line) => child.stdin!.write(line + "\n"),
       handlers: {
+        "item/agentMessage/delta": (params: { threadId: string; itemId: string; delta: string }) => {
+          if (params.threadId !== thread || typeof params.delta !== "string") return
+          host.textDelta({ messageID: params.itemId, partID: "text", delta: params.delta })
+        },
         "item/started": (params: { item: Item }) => {
           const item = params.item
           if (item.id) items.set(item.id, item)
           stepOf(host, item)
         },
         "item/completed": (params: { item: Item }) => {
-          if (params.item.type === "agentMessage" && params.item.text) reply = params.item.text
+          if (params.item.type === "agentMessage" && params.item.text) {
+            reply = params.item.text
+            final = { messageID: params.item.id ?? "reply", parts: [{ partID: "text", text: reply }] }
+          }
         },
         "item/commandExecution/requestApproval": (params: { itemId: string; command?: string }) => {
           const command = unwrapShell(params.command ?? items.get(params.itemId)?.command ?? "")
@@ -136,7 +193,7 @@ function turn(child: ChildProcess, task: Task, host: Host) {
         },
         "turn/completed": (params: { turn: { status: string; error?: { message?: string } } }) => {
           done = true
-          if (params.turn.status === "completed") resolve({ text: reply.trim(), sessionId: thread })
+          if (params.turn.status === "completed") resolve({ text: reply.trim(), sessionId: thread, actualModel, final })
           else reject(new Error(params.turn.error?.message ?? `The Codex turn ${params.turn.status}`))
         },
       },
@@ -146,13 +203,20 @@ function turn(child: ChildProcess, task: Task, host: Host) {
     void (async () => {
       await rpc.request("initialize", { clientInfo: { name: "merakcode", title: "MerakCode", version: "1" } })
       rpc.notify("initialized")
-      const settings = codexThread(task)
-      const started = await rpc.request<{ thread: { id: string } }>(
+      const settings = { ...codexThread(task), ...(task.model && { model: task.model.id }) }
+      const started = await rpc.request<{ thread: { id: string; model?: string }; model?: string }>(
         task.resume ? "thread/resume" : "thread/start",
         task.resume ? { threadId: task.resume, ...settings } : settings,
       )
       thread = started.thread.id
-      await rpc.request("turn/start", { threadId: thread, input: [{ type: "text", text: task.prompt }] })
+      const model = started.model ?? started.thread.model
+      if (model) actualModel = { id: model }
+      await host.sessionStarted({ sessionId: thread })
+      await rpc.request("turn/start", {
+        threadId: thread,
+        input: [{ type: "text", text: task.prompt }],
+        ...(task.model && { model: task.model.id }),
+      })
     })().catch(reject)
     child.once("exit", (code) => !done && reject(new Error(`Codex ended without a reply (exit code ${code})`)))
     child.once("error", reject)
