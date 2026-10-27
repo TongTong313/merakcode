@@ -229,6 +229,7 @@ function ErrorCard(props: { message: AssistantMessage }) {
 
 /** Files the agent changed in this turn; "Review" opens the review for this turn */
 function Changes(props: { turn: Turn; directory: string; onReview: (messageID: string) => void }) {
+  const [open, setOpen] = createSignal(false)
   const diffs = createMemo(() => changes(props.turn.replies.flatMap((message) => partsOf(message.id))))
   const totals = () =>
     diffs().reduce((sum, diff) => ({ add: sum.add + diff.additions, del: sum.del + diff.deletions }), {
@@ -237,28 +238,34 @@ function Changes(props: { turn: Turn; directory: string; onReview: (messageID: s
     })
   return (
     <Show when={diffs().length}>
-      <div class="changes-card">
+      <div class="changes-card" classList={{ open: open() }}>
         <div class="changes-head">
-          <FileDiff class="icon icon-sm" />
-          <span class="title">{t("conversation.changes")}</span>
-          <span class="muted">{t("conversation.changesSummary", { files: diffs().length })}</span>
-          <span class="add">+{totals().add}</span>
-          <span class="del">−{totals().del}</span>
-          <span class="spacer" />
+          <button class="changes-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
+            <ChevronRight class="icon icon-sm chevron" />
+            <FileDiff class="icon icon-sm" />
+            <span class="title">{t("conversation.changes")}</span>
+            <span class="muted">{t("conversation.changesSummary", { files: diffs().length })}</span>
+            <span class="add">+{totals().add}</span>
+            <span class="del">−{totals().del}</span>
+          </button>
           <button class="button secondary sm" onClick={() => props.onReview(props.turn.user.id)}>
             {t("conversation.review")}
           </button>
         </div>
-        <For each={diffs().slice(0, 6)}>
-          {(diff) => (
-            <div class="change-file">
-              <span class="path mono ellipsis">{relative(props.directory, diff.file)}</span>
-              <span class="spacer" />
-              <span class="add">+{diff.additions}</span>
-              <span class="del">−{diff.deletions}</span>
-            </div>
-          )}
-        </For>
+        <Show when={open()}>
+          <div class="change-list scroll">
+            <For each={diffs()}>
+              {(diff) => (
+                <div class="change-file">
+                  <span class="path mono ellipsis">{relative(props.directory, diff.file)}</span>
+                  <span class="spacer" />
+                  <span class="add">+{diff.additions}</span>
+                  <span class="del">−{diff.deletions}</span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </div>
     </Show>
   )

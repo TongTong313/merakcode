@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto"
 import { Identifier } from "@merakcode/util/id"
+import { Log } from "@merakcode/log/logger"
 import { Session } from "."
 import { Message } from "./message"
+import { SessionTitle } from "./title"
 import { SessionExecution } from "./execution"
 import type { SessionRunner } from "./runner"
 import { Instance } from "../project/instance"
@@ -18,6 +20,7 @@ import { Text } from "../util/text"
 import { Lock } from "../util/lock"
 
 export namespace ExternalSession {
+  const log = Log.create({ service: "session.external" })
   type Binding = { productID: string; resumeID?: string; contextMode: "resume" | "replay" }
   const queues = new Map<string, Promise<void>>()
   const pending = new Map<
@@ -113,6 +116,14 @@ export namespace ExternalSession {
       }
       await Session.touch(session.id)
     }
+    // The external product finishes the turn; naming the conversation is MerakCode's own small-model call and must not
+    // delay it, so it runs alongside and is awaited before returning. A session that already has a title (renamed, or
+    // titled on an earlier turn) skips the history read altogether.
+    const titled = Session.isDefaultTitle(session.title)
+      ? Session.messages({ sessionID: session.id })
+          .then((history) => SessionTitle.ensure({ session, history }))
+          .catch((error) => log.error("failed to generate title", { error }))
+      : undefined
     let assistant: Message.ExternalAssistantInfo = {
       id: Identifier.ascending("message"),
       sessionID: session.id,
@@ -319,6 +330,7 @@ export namespace ExternalSession {
         finished.resolve()
       }
     }
+    await titled
     return { info: assistant, parts: [...parts.values()] }
   }
 }

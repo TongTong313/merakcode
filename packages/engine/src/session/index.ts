@@ -469,6 +469,10 @@ export namespace Session {
     if (session.target?.kind === "external") {
       const { ExternalSession } = await import("./external")
       await ExternalSession.reconcile(id)
+    } else {
+      const { SessionCrash } = await import("./crash-reconcile")
+      const { SessionRunner } = await import("./runner")
+      await SessionCrash.reconcile(id, () => Boolean(SessionRunner.resume(id)))
     }
     return SessionTarget.refresh(session)
   })
