@@ -4,13 +4,11 @@ import MessageSquare from "lucide-solid/icons/message-square"
 import Undo2 from "lucide-solid/icons/undo-2"
 import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
-import { toast } from "../../ui/toast"
-import { send } from "../conversation/send"
-import { CommentComposer } from "./compose"
-import { Commit } from "./commit"
 import { ReviewToolbar } from "./toolbar"
 import { FileDiff } from "./diff"
-import { clearComments, commentMessage, commentingOn, commentsOf, review, useReview } from "./state"
+import { CommentDrafts } from "./compose"
+import { CommentSummary, commentsSending, submitComments } from "./comments"
+import { clearComments, commentsOf, review, useReview } from "./state"
 
 export type ReviewData = ReturnType<typeof useReview>
 
@@ -27,34 +25,27 @@ function delayed(when: () => boolean, ms = 300) {
 
 /** Pending comments, sent to the agent together */
 function PendingComments(props: { sessionID?: string; directory: string }) {
-  const comments = () => commentsOf(props.sessionID)
-  const submit = async () => {
-    if (!props.sessionID) return
-    if (comments().some((comment) => comment.stale)) return
-    const sent = await send(props.sessionID, props.directory, { text: commentMessage(comments()), files: [] }).then(
-      () => true,
-      (error: Error) => {
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error })
-        return false
-      },
-    )
-    if (!sent) return
-    clearComments(props.sessionID)
-  }
+  const comments = () => commentsOf(props.sessionID, props.directory)
   return (
     <Show when={comments().length}>
       <div class="pending-comments">
         <MessageSquare class="icon icon-sm" />
-        <span>{t("review.pending", { count: comments().length })}</span>
+        <details class="pending-comment-list">
+          <summary>{t("review.pending", { count: comments().length })}</summary>
+          <For each={comments()}>{(comment) => <CommentSummary comment={comment} />}</For>
+        </details>
         <span class="spacer" />
-        <button class="button ghost sm" onClick={() => props.sessionID && clearComments(props.sessionID)}>
+        <button
+          class="button ghost sm"
+          onClick={() => props.sessionID && clearComments(props.sessionID, undefined, props.directory)}
+        >
           {t("review.clearComments")}
         </button>
         <button
           class="button primary sm"
-          disabled={comments().some((comment) => comment.stale)}
+          disabled={commentsSending(props.sessionID, props.directory) || comments().some((comment) => comment.stale)}
           title={comments().some((comment) => comment.stale) ? t("review.draftStale") : undefined}
-          onClick={() => void submit()}
+          onClick={() => void submitComments(props.sessionID, props.directory)}
         >
           {t("review.send")}
         </button>
@@ -66,7 +57,7 @@ function PendingComments(props: { sessionID?: string; directory: string }) {
 /** Most recent decision with an undo button */
 export function LastDecision(props: { data: ReviewData }) {
   return (
-    <Show when={review.last}>
+    <Show when={props.data.data()?.last}>
       {(last) => (
         <div class="decision" role="status">
           <span class="muted ellipsis">
@@ -74,7 +65,11 @@ export function LastDecision(props: { data: ReviewData }) {
               ? t("review.accepted", { count: last().count })
               : t("review.rejected", { count: last().count })}
           </span>
-          <button class="button ghost sm" onClick={() => void props.data.undo()}>
+          <button
+            class="button ghost sm"
+            disabled={props.data.working() || props.data.refreshing()}
+            onClick={() => void props.data.undo()}
+          >
             <Undo2 class="icon icon-xs" />
             {t("review.undo")}
           </button>
@@ -88,8 +83,9 @@ export function LastDecision(props: { data: ReviewData }) {
 export function ReviewFiles(props: {
   sessionID?: string
   data: ReviewData
+  directory: string
   style: "unified" | "split"
-  active?: string
+  active?: { file: string; id?: string }
   files?: string[]
 }) {
   let scroller!: HTMLDivElement
@@ -104,6 +100,7 @@ export function ReviewFiles(props: {
         const file = focus ? current?.files.find((item) => item.file === focus) : undefined
         if (!file) return
         props.data.setOpen(file, true)
+        props.data.showAll(file)
         requestAnimationFrame(() =>
           scroller?.querySelector(`[data-file="${CSS.escape(file.file)}"]`)?.scrollIntoView({ block: "start" }),
         )
@@ -123,13 +120,7 @@ export function ReviewFiles(props: {
           </div>
         </Match>
         <Match when={result() && !files().length}>
-          <div class="empty-state subtle">
-            {review.scope === "branch" && !result()?.base
-              ? t("git.choose")
-              : review.scope === "turn"
-                ? t("review.emptyTurn")
-                : t("review.empty")}
-          </div>
+          <div class="empty-state subtle">{review.scope === "turn" ? t("review.emptyTurn") : t("review.empty")}</div>
         </Match>
       </Switch>
       <For each={files()}>
@@ -139,9 +130,10 @@ export function ReviewFiles(props: {
             data={props.data}
             sessionID={props.sessionID}
             actions={result()!.actions}
-            scope={review.scope}
+            directory={props.directory}
             style={props.style}
-            active={props.active}
+            active={props.active?.file === file.file ? props.active.id : undefined}
+            disabled={props.data.working() || props.data.refreshing()}
             onDecide={props.data.decide}
           />
         )}
@@ -157,12 +149,20 @@ export function BulkActions(props: { data: ReviewData }) {
   return (
     <>
       <Show when={actions()?.reject && any()}>
-        <button class="button reject" onClick={() => void props.data.decide("reject")}>
-          {review.scope === "staged" ? t("review.unstage") : t("review.rejectAll")}
+        <button
+          class="button reject"
+          disabled={props.data.working() || props.data.refreshing()}
+          onClick={() => void props.data.decide("reject")}
+        >
+          {t("review.rejectAll")}
         </button>
       </Show>
       <Show when={actions()?.accept && any()}>
-        <button class="button accept" onClick={() => void props.data.decide("accept")}>
+        <button
+          class="button accept"
+          disabled={props.data.working() || props.data.refreshing()}
+          onClick={() => void props.data.decide("accept")}
+        >
           <CheckCheck class="icon icon-sm" />
           {t("review.acceptAll")}
         </button>
@@ -172,38 +172,24 @@ export function BulkActions(props: { data: ReviewData }) {
 }
 
 /** The review in the side panel */
-export function ReviewPanel(props: { sessionID?: string; directory: string; folder: string; data: ReviewData }) {
-  const target = () => commentingOn(props.data.data()?.files ?? [], (file) => props.data.detail(file))
+export function ReviewPanel(props: { sessionID?: string; directory: string; data: ReviewData }) {
   return (
     <>
       <div class="review-sub">
-        <ReviewToolbar
-          folder={props.folder}
-          directory={props.directory}
-          data={props.data}
-          sessionID={props.sessionID}
-        />
+        <ReviewToolbar data={props.data} sessionID={props.sessionID} />
       </div>
-      <ReviewFiles sessionID={props.sessionID} data={props.data} style="unified" />
-      <Show when={props.sessionID}>
-        <CommentComposer directory={props.directory} sessionID={props.sessionID} target={target()} />
-      </Show>
+      <ReviewFiles sessionID={props.sessionID} directory={props.directory} data={props.data} style="unified" />
+      <CommentDrafts
+        sessionID={props.sessionID}
+        directory={props.directory}
+        files={props.data.data()?.files.map((file) => file.file)}
+      />
       <PendingComments sessionID={props.sessionID} directory={props.directory} />
       <div class="review-foot">
         <LastDecision data={props.data} />
         <span class="spacer" />
         <BulkActions data={props.data} />
       </div>
-      <Show when={review.scope === "staged" || review.scope === "unstaged"}>
-        <div class="review-commit">
-          <Commit
-            directory={props.directory}
-            all={review.scope === "unstaged"}
-            pending={(props.data.data()?.files.length ?? 0) > 0}
-            onDone={() => void props.data.refetch()}
-          />
-        </div>
-      </Show>
     </>
   )
 }

@@ -4022,6 +4022,22 @@
         "required": ["type", "properties"],
         "additionalProperties": false
       },
+      "Event.vcs.changes.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.changes.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"],
+        "additionalProperties": false
+      },
       "Event": {
         "oneOf": [
           {
@@ -4161,6 +4177,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.review.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.changes.updated"
           }
         ]
       },
@@ -10813,14 +10832,11 @@
           "hunks": {
             "type": "number"
           },
-          "accepted": {
-            "type": "number"
-          },
           "version": {
             "type": "string"
           }
         },
-        "required": ["file", "status", "additions", "deletions", "hunks", "accepted", "version"],
+        "required": ["file", "status", "additions", "deletions", "hunks", "version"],
         "additionalProperties": false
       },
       "ReviewResult": {
@@ -10831,9 +10847,6 @@
           },
           "checkout": {
             "type": ["string", "null"]
-          },
-          "base": {
-            "type": "string"
           },
           "actions": {
             "type": "object",
@@ -10846,6 +10859,22 @@
               }
             },
             "required": ["accept", "reject"],
+            "additionalProperties": false
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": ["accept", "reject"]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["decision", "count"],
             "additionalProperties": false
           },
           "files": {
@@ -10990,7 +11019,7 @@
       },
       "ReviewScope": {
         "type": "string",
-        "enum": ["session", "turn", "unstaged", "staged", "branch"]
+        "enum": ["session", "turn"]
       },
       "ReviewLine": {
         "type": "object",
@@ -11042,10 +11071,6 @@
             "items": {
               "$ref": "#/components/schemas/ReviewLine"
             }
-          },
-          "state": {
-            "type": "string",
-            "const": "accepted"
           }
         },
         "required": ["id", "oldStart", "oldLines", "newStart", "newLines", "lines"],
@@ -11074,6 +11099,45 @@
           }
         },
         "required": ["file", "version", "hunks"],
+        "additionalProperties": false
+      },
+      "GitChangeFile": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["added", "modified", "deleted", "conflicted"]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": ["file", "status", "version"],
+        "additionalProperties": false
+      },
+      "GitChangesResult": {
+        "type": "object",
+        "properties": {
+          "checkout": {
+            "type": ["string", "null"]
+          },
+          "staged": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitChangeFile"
+            }
+          },
+          "unstaged": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitChangeFile"
+            }
+          }
+        },
+        "required": ["checkout", "staged", "unstaged"],
         "additionalProperties": false
       },
       "McpScope": {
@@ -20464,7 +20528,8 @@
             "name": "sessionID",
             "schema": {
               "type": "string"
-            }
+            },
+            "required": true
           },
           {
             "in": "query",
@@ -20472,17 +20537,10 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "base",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "summary": "Get review",
-        "description": "List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.",
+        "description": "List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.",
         "responses": {
           "200": {
             "description": "Review",
@@ -20544,7 +20602,7 @@
           }
         ],
         "summary": "Decide review",
-        "description": "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
+        "description": "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.",
         "responses": {
           "200": {
             "description": "Updated review",
@@ -20603,9 +20661,6 @@
                   "messageID": {
                     "type": "string"
                   },
-                  "base": {
-                    "type": "string"
-                  },
                   "expectedCheckout": {
                     "type": ["string", "null"]
                   },
@@ -20614,11 +20669,15 @@
                     "enum": ["accept", "reject"]
                   },
                   "files": {
+                    "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
                         "file": {
+                          "type": "string"
+                        },
+                        "version": {
                           "type": "string"
                         },
                         "hunks": {
@@ -20628,11 +20687,11 @@
                           }
                         }
                       },
-                      "required": ["file"]
+                      "required": ["file", "version"]
                     }
                   }
                 },
-                "required": ["scope", "expectedCheckout", "decision"]
+                "required": ["scope", "sessionID", "expectedCheckout", "decision", "files"]
               }
             }
           }
@@ -20669,18 +20728,12 @@
             "name": "sessionID",
             "schema": {
               "type": "string"
-            }
+            },
+            "required": true
           },
           {
             "in": "query",
             "name": "messageID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "base",
             "schema": {
               "type": "string"
             }
@@ -20832,14 +20885,11 @@
                   "messageID": {
                     "type": "string"
                   },
-                  "base": {
-                    "type": "string"
-                  },
                   "expectedCheckout": {
                     "type": ["string", "null"]
                   }
                 },
-                "required": ["scope", "expectedCheckout"]
+                "required": ["scope", "sessionID", "expectedCheckout"]
               }
             }
           }
@@ -20848,6 +20898,232 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.review.undo({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/vcs/changes": {
+      "get": {
+        "operationId": "vcs.changes.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Git changes",
+        "description": "List staged and unstaged files from Git, independently of conversation review. A file may appear in both groups.",
+        "responses": {
+          "200": {
+            "description": "Git changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitChangesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.changes.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/vcs/changes/stage": {
+      "post": {
+        "operationId": "vcs.changes.stage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Stage files",
+        "description": "Stage the explicit file versions displayed by vcs.changes.get. Does not change working files or conversation review. Stale versions or checkout contexts fail before writing.",
+        "responses": {
+          "200": {
+            "description": "Updated Git changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitChangesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedCheckout": {
+                    "type": ["string", "null"]
+                  },
+                  "files": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["file", "version"]
+                    }
+                  }
+                },
+                "required": ["expectedCheckout", "files"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.changes.stage({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/vcs/changes/unstage": {
+      "post": {
+        "operationId": "vcs.changes.unstage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Unstage files",
+        "description": "Remove the explicit displayed files from the next commit while preserving working files and review state. Also works before the first commit.",
+        "responses": {
+          "200": {
+            "description": "Updated Git changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitChangesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkout is busy or the request conflicts with its current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedCheckout": {
+                    "type": ["string", "null"]
+                  },
+                  "files": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["file", "version"]
+                    }
+                  }
+                },
+                "required": ["expectedCheckout", "files"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.vcs.changes.unstage({\n  ...\n})"
           }
         ]
       }

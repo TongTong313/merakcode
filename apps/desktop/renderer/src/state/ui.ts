@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { storage } from "../lib/bridge"
 
-export type Tab = "review" | "code" | "browser"
+export type Tab = "review" | "git" | "code" | "browser"
 export type SettingsSection =
   | "general"
   | "models"

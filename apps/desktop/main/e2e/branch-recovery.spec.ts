@@ -18,6 +18,7 @@ test("a failed first message can move to a worktree while retaining the original
   await expect(sidebar.getByRole("link")).toHaveCount(2)
   expect(kit.git("worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(2)
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
   await kit
     .panel()
     .getByRole("button", { name: /^当前分支/ })

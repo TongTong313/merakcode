@@ -12,7 +12,6 @@ const file = (name: string): ReviewFile => ({
   additions: 1,
   deletions: 0,
   hunks: 1,
-  accepted: 0,
   version: "v",
 })
 

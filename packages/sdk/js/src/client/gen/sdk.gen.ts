@@ -313,6 +313,12 @@ import type {
   VcsBranchesResponses,
   VcsBranchOptionsErrors,
   VcsBranchOptionsResponses,
+  VcsChangesGetErrors,
+  VcsChangesGetResponses,
+  VcsChangesStageErrors,
+  VcsChangesStageResponses,
+  VcsChangesUnstageErrors,
+  VcsChangesUnstageResponses,
   VcsCommitErrors,
   VcsCommitResponses,
   VcsDiffErrors,
@@ -3991,15 +3997,14 @@ export class Review extends HeyApiClient {
   /**
    * Get review
    *
-   * List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.
+   * List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       scope: ReviewScope
-      sessionID?: string
+      sessionID: string
       messageID?: string
-      base?: string
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<ReviewGetResponses, ReviewGetErrors, ThrowOnError> {
@@ -4012,7 +4017,6 @@ export class Review extends HeyApiClient {
             { in: "query", key: "scope" },
             { in: "query", key: "sessionID" },
             { in: "query", key: "messageID" },
-            { in: "query", key: "base" },
           ],
         },
       ],
@@ -4027,19 +4031,19 @@ export class Review extends HeyApiClient {
   /**
    * Decide review
    *
-   * Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
+   * Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.
    */
   public decide<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       scope: ReviewScope
-      sessionID?: string
+      sessionID: string
       messageID?: string
-      base?: string
       expectedCheckout: string | null
       decision: "accept" | "reject"
-      files?: Array<{
+      files: Array<{
         file: string
+        version: string
         hunks?: Array<string>
       }>
     },
@@ -4054,7 +4058,6 @@ export class Review extends HeyApiClient {
             { in: "body", key: "scope" },
             { in: "body", key: "sessionID" },
             { in: "body", key: "messageID" },
-            { in: "body", key: "base" },
             { in: "body", key: "expectedCheckout" },
             { in: "body", key: "decision" },
             { in: "body", key: "files" },
@@ -4083,9 +4086,8 @@ export class Review extends HeyApiClient {
     parameters: {
       directory?: string
       scope: ReviewScope
-      sessionID?: string
+      sessionID: string
       messageID?: string
-      base?: string
       file: string
       version?: string
       expectedCheckout?: string | null
@@ -4101,7 +4103,6 @@ export class Review extends HeyApiClient {
             { in: "query", key: "scope" },
             { in: "query", key: "sessionID" },
             { in: "query", key: "messageID" },
-            { in: "query", key: "base" },
             { in: "query", key: "file" },
             { in: "query", key: "version" },
             { in: "query", key: "expectedCheckout" },
@@ -4125,9 +4126,8 @@ export class Review extends HeyApiClient {
     parameters: {
       directory?: string
       scope: ReviewScope
-      sessionID?: string
+      sessionID: string
       messageID?: string
-      base?: string
       expectedCheckout: string | null
     },
     options?: Options<never, ThrowOnError>,
@@ -4141,7 +4141,6 @@ export class Review extends HeyApiClient {
             { in: "body", key: "scope" },
             { in: "body", key: "sessionID" },
             { in: "body", key: "messageID" },
-            { in: "body", key: "base" },
             { in: "body", key: "expectedCheckout" },
           ],
         },
@@ -4157,6 +4156,331 @@ export class Review extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+}
+
+export class Changes extends HeyApiClient {
+  /**
+   * Get Git changes
+   *
+   * List staged and unstaged files from Git, independently of conversation review. A file may appear in both groups.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsChangesGetResponses, VcsChangesGetErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<VcsChangesGetResponses, VcsChangesGetErrors, ThrowOnError>({
+      url: "/vcs/changes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stage files
+   *
+   * Stage the explicit file versions displayed by vcs.changes.get. Does not change working files or conversation review. Stale versions or checkout contexts fail before writing.
+   */
+  public stage<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      expectedCheckout: string | null
+      files: Array<{
+        file: string
+        version: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsChangesStageResponses, VcsChangesStageErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "expectedCheckout" },
+            { in: "body", key: "files" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsChangesStageResponses, VcsChangesStageErrors, ThrowOnError>({
+      url: "/vcs/changes/stage",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Unstage files
+   *
+   * Remove the explicit displayed files from the next commit while preserving working files and review state. Also works before the first commit.
+   */
+  public unstage<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      expectedCheckout: string | null
+      files: Array<{
+        file: string
+        version: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsChangesUnstageResponses, VcsChangesUnstageErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "expectedCheckout" },
+            { in: "body", key: "files" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsChangesUnstageResponses, VcsChangesUnstageErrors, ThrowOnError>({
+      url: "/vcs/changes/unstage",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Vcs extends HeyApiClient {
+  /**
+   * Get VCS info
+   *
+   * Retrieve version control system (VCS) information for the current project, such as git branch.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsGetResponses, VcsGetErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<VcsGetResponses, VcsGetErrors, ThrowOnError>({
+      url: "/vcs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List branches
+   *
+   * Local branch names, sorted.
+   */
+  public branches<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsBranchesResponses, VcsBranchesErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<VcsBranchesResponses, VcsBranchesErrors, ThrowOnError>({
+      url: "/vcs/branches",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get branch options
+   *
+   * Local branches, their worktree occupancy and the current checkout's switch restrictions.
+   */
+  public branchOptions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError>({
+      url: "/vcs/branch-options",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Switch branch
+   *
+   * Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
+   */
+  public switchBranch<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      branch: string
+      expectedCheckout: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "branch" },
+            { in: "body", key: "expectedCheckout" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError>({
+      url: "/vcs/switch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Push
+   *
+   * Push the current branch to its upstream, or to the remote (origin or the only remote) and set it as upstream. Uses the user's own git credentials.
+   */
+  public push<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsPushResponses, VcsPushErrors, ThrowOnError> {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<VcsPushResponses, VcsPushErrors, ThrowOnError>({
+      url: "/vcs/push",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Run a git command
+   *
+   * Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
+   */
+  public run<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      args: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsRunResponses, VcsRunErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "args" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsRunResponses, VcsRunErrors, ThrowOnError>({
+      url: "/vcs/run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get VCS diff
+   *
+   * Get working-tree / branch diff as unified patches.
+   */
+  public diff<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      mode?: "git" | "branch" | "last-turn"
+      context?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsDiffResponses, VcsDiffErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "context" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<VcsDiffResponses, VcsDiffErrors, ThrowOnError>({
+      url: "/vcs/diff",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Commit changes
+   *
+   * Commit staged changes (or all changes with all=true) using the user's git identity.
+   */
+  public commit<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      message: string
+      all?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<VcsCommitResponses, VcsCommitErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "message" },
+            { in: "body", key: "all" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VcsCommitResponses, VcsCommitErrors, ThrowOnError>({
+      url: "/vcs/commit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  private _changes?: Changes
+  get changes(): Changes {
+    return (this._changes ??= new Changes({ client: this.client }))
   }
 }
 
@@ -4995,225 +5319,6 @@ export class Path extends HeyApiClient {
   }
 }
 
-export class Vcs extends HeyApiClient {
-  /**
-   * Get VCS info
-   *
-   * Retrieve version control system (VCS) information for the current project, such as git branch.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsGetResponses, VcsGetErrors, ThrowOnError> {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<VcsGetResponses, VcsGetErrors, ThrowOnError>({
-      url: "/vcs",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List branches
-   *
-   * Local branch names, sorted.
-   */
-  public branches<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsBranchesResponses, VcsBranchesErrors, ThrowOnError> {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<VcsBranchesResponses, VcsBranchesErrors, ThrowOnError>({
-      url: "/vcs/branches",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get branch options
-   *
-   * Local branches, their worktree occupancy and the current checkout's switch restrictions.
-   */
-  public branchOptions<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError> {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<VcsBranchOptionsResponses, VcsBranchOptionsErrors, ThrowOnError>({
-      url: "/vcs/branch-options",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Switch branch
-   *
-   * Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
-   */
-  public switchBranch<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      branch: string
-      expectedCheckout: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError> {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "branch" },
-            { in: "body", key: "expectedCheckout" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<VcsSwitchBranchResponses, VcsSwitchBranchErrors, ThrowOnError>({
-      url: "/vcs/switch",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Push
-   *
-   * Push the current branch to its upstream, or to the remote (origin or the only remote) and set it as upstream. Uses the user's own git credentials.
-   */
-  public push<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsPushResponses, VcsPushErrors, ThrowOnError> {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<VcsPushResponses, VcsPushErrors, ThrowOnError>({
-      url: "/vcs/push",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Run a git command
-   *
-   * Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
-   */
-  public run<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      args: Array<string>
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsRunResponses, VcsRunErrors, ThrowOnError> {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "args" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<VcsRunResponses, VcsRunErrors, ThrowOnError>({
-      url: "/vcs/run",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get VCS diff
-   *
-   * Get working-tree / branch diff as unified patches.
-   */
-  public diff<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      mode?: "git" | "branch" | "last-turn"
-      context?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsDiffResponses, VcsDiffErrors, ThrowOnError> {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "context" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<VcsDiffResponses, VcsDiffErrors, ThrowOnError>({
-      url: "/vcs/diff",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Commit changes
-   *
-   * Commit staged changes (or all changes with all=true) using the user's git identity.
-   */
-  public commit<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      message: string
-      all?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ): RequestResult<VcsCommitResponses, VcsCommitErrors, ThrowOnError> {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "message" },
-            { in: "body", key: "all" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<VcsCommitResponses, VcsCommitErrors, ThrowOnError>({
-      url: "/vcs/commit",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
 export class Sandbox extends HeyApiClient {
   /**
    * Get sandbox status
@@ -5738,6 +5843,11 @@ export class MerakCodeClient extends HeyApiClient {
     return (this._review ??= new Review({ client: this.client }))
   }
 
+  private _vcs?: Vcs
+  get vcs(): Vcs {
+    return (this._vcs ??= new Vcs({ client: this.client }))
+  }
+
   private _mcpManagement?: McpManagement
   get mcpManagement(): McpManagement {
     return (this._mcpManagement ??= new McpManagement({ client: this.client }))
@@ -5776,11 +5886,6 @@ export class MerakCodeClient extends HeyApiClient {
   private _path?: Path
   get path(): Path {
     return (this._path ??= new Path({ client: this.client }))
-  }
-
-  private _vcs?: Vcs
-  get vcs(): Vcs {
-    return (this._vcs ??= new Vcs({ client: this.client }))
   }
 
   private _sandbox?: Sandbox

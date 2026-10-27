@@ -75,6 +75,7 @@ export function onCheckoutChange(listener: (directory: string, change: Change) =
 export function updateCheckout(directory: string, current: Checkout | null, branchChanged?: boolean) {
   const key = gitDirectory(directory)
   const before = identities[key]
+  const previousBranch = before?.branch
   if (before?.checkout === current?.checkout && before !== undefined) {
     setIdentities(key, current)
     return
@@ -85,7 +86,7 @@ export function updateCheckout(directory: string, current: Checkout | null, bran
     branch: current?.branch ?? null,
     head: current?.head ?? null,
     checkout: current?.checkout ?? null,
-    branchChanged: branchChanged ?? (before !== undefined && before?.branch !== current?.branch),
+    branchChanged: branchChanged ?? (before !== undefined && previousBranch !== current?.branch),
   }
   for (const listener of listeners) listener(key, change)
 }

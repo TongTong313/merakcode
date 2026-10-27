@@ -8,9 +8,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- Review shows pending agent edits for This turn and Conversation, with comments on selected code lines, resumable drafts and undo after the list becomes empty. Source Control separately stages and unstages files and commits the index. Review decisions preserve Git index and history; Git rows link only to files still pending review. The Git discard, comparison-review and quick-command interfaces are removed; free commands remain available in the terminal.
+- Breaking SDK change: review scopes are only `session` / `turn`; decisions require explicit file versions. Git file management uses `vcs.changes.get`, `vcs.changes.stage` and `vcs.changes.unstage`, with checkout and version validation.
+
 - A turn's changed files start folded; clicking the card lists them all, scrolling after six rows. Review stays available while folded.
 - New conversations can select a globally configured agent product with its own model and streamed text. Agent Connections settings are separate from Collaboration role templates, including seven read-only built-in roles and custom templates. Turning a product off locks its direct conversations until the user explicitly accepts MerakCode takeover; group members go offline while other members continue.
-- The homepage can switch local branches or prepare a new worktree from a chosen branch. Review keeps its scope, current branch and comparison branch in one toolbar; choosing the comparison branch opens branch review. Unsaved editor buffers and review comments survive view changes and prevent switching.
+- The homepage can switch local branches or prepare a new worktree from a chosen branch. Working-branch controls live in Source Control, independently of conversation review. Unsaved editor buffers and review comments survive view changes and prevent switching.
 - The SDK adds checkout-aware branch operations and HEAD events. Review decisions and undo now require `expectedCheckout` from the displayed review, so stale operations cannot modify another checkout context.
 - The conversation composer shows the sandbox as on or off beside a shield. Hovering context usage, the model, reasoning, the sandbox, or the permission mode says what that control configures, with the current value still on the button. The menu can set the sandbox up (Windows asks for administrator approval once), turn it on, or turn it off, without leaving the conversation. A command waiting only because the sandbox was not ready continues once the sandbox is on, or once you turn it off. An already set up sandbox is warmed when the engine starts.
 - The homepage model menu lists Official before Configured, and "Add model" at its bottom opens the provider list in Settings.
@@ -25,6 +28,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Review comments exclude an unselected line when a native selection ends at its start, and feedback relocated during submission stays pending after the earlier request succeeds.
 - After the engine restarts or is killed mid-turn, unfinished native tool calls no longer stay spinning: loading the conversation (or disposing the instance) marks them interrupted, and the next message starts a new turn instead of continuing under the stuck one.
 - External conversations with agent products such as Claude Code and Codex are titled from the first message with the configured small model, instead of keeping the default `New session - …` title.
 - Delayed product probes and session updates no longer undo newer settings or takeover decisions. Recreated products require a fresh takeover decision; takeover retains observed steps from failed or cancelled turns without text. Final snapshots remove obsolete fragments, and connection settings show the adapter's reported permission owner and retain MRK error codes.
@@ -37,16 +41,18 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Hints on the composer bar open just above their controls: context usage, the model, reasoning, the sandbox, and the permission mode.
 - Typing `/skill-name` after a space, including in the middle of a sentence, loads that skill. Skills are read from Claude's `.claude/skills` and `.agents/skills`, and from `.merakcode/skill` and `.merakcode/skills`. A skill the agent is denied is not loaded.
 - Maximizing the review from a new conversation fills the window with the review.
-- Quick command output in the review bar no longer stays open forever: it has a close button and collapses with the quick command panel.
 - A subagent's question reaches the SDK's `onQuestion` of the conversation that started it, and is dismissed without one, instead of leaving the turn waiting.
 - A member adapter's request with nothing to check (empty `paths` or an empty `command`) is refused instead of allowed.
 - The Linux sandbox helper only runs the request the engine wrote for it.
 
 ### 变更
 
+- 审阅只显示本轮和整个对话的智能体待审改动，支持选中代码行评论、草稿恢复及空列表下撤销审阅。Git 管理独立提供暂存、取消暂存和提交已暂存内容；审阅决定不改变 Git 暂存区及提交历史，Git 文件只跳转到仍待审的改动。移除 Git 页的丢弃、分支比对审阅和快捷命令入口，自由命令由终端承接。
+- SDK 不兼容变更：审阅范围只保留 `session` / `turn`，决定必须携带明确的文件版本；Git 文件管理切换到 `vcs.changes.get`、`vcs.changes.stage` 和 `vcs.changes.unstage`，校验 checkout 和文件版本。
+
 - 每轮的改动文件默认收起；点击卡片标题展开全部文件，超过六行时在列表内滚动。收起时仍可直接审阅。
 - 新建对话可以选择全局配置的智能体产品，使用各产品独立模型和流式正文。「智能体接入」与「协作群」角色模板设置分开，提供七个只读内置角色和自定义模板。关闭产品后，单聊锁定输入，只有用户明确同意才由 MerakCode 接管；群成员仅显示离线，其他成员继续工作。
-- 主页可以切换本地分支，或选择起点后准备创建新工作树。审阅范围、当前分支和比对分支合并为一行工具栏，选择比对分支即可进入分支审阅。未保存的编辑缓冲和审阅评论在切换视图后仍保留，并阻止切换工作分支。
+- 主页可以切换本地分支，或选择起点后准备创建新工作树。工作分支操作移至独立的 Git 管理页，与对话审阅分开。未保存的编辑缓冲和审阅评论在切换视图后仍保留，并阻止切换工作分支。
 - SDK 新增带 checkout 身份的分支操作和 HEAD 事件。审阅决定与撤销现在必须携带所显示审阅的 `expectedCheckout`，防止过期操作修改另一个 checkout 上下文。
 - 对话栏里沙箱是盾牌图标加「开」或「关」。悬停上下文用量、模型、思考档位、沙箱或权限模式，都会说明这个控件是在配置什么，当前的值仍写在按钮上。点开沙箱可以初始化（Windows 会要一次管理员确认）、开启或关闭，不用离开当前对话。只因为沙箱没就绪才在等审批的命令，会在沙箱打开之后继续执行；你把沙箱关掉之后也会继续。已经初始化过的沙箱会在引擎启动时预先准备好。
 - 主页的模型菜单改成「官方供应商」在前、「配置的模型」在后，底部的「添加模型」改为打开设置里的服务商列表。
@@ -61,6 +67,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 原生代码选区结束在下一行行首时，审阅评论不再包含未选中的行；发送期间重新定位的反馈在旧请求成功后仍保留待发送。
 - 引擎在中途重启或被强杀后，未完成的本地工具调用不再一直转圈：打开对话（或销毁实例）时会标为重启中断，下一条消息会开新一轮，而不会挂在卡住的那一轮下面。
 - 使用 Claude Code、Codex 等智能体产品的单聊会在第一条消息后使用配置的 small model 生成标题，不再保留默认的 `New session - …` 标题。
 - 延迟的产品探测和会话更新不会覆盖新设置或接管决定；删除后重建的产品需要重新确认接管。接管保留无正文失败或取消任务的已记录步骤，最终正文快照清除过时片段，接入设置按适配器报告显示权限归属并保留 MRK 错误码。
@@ -73,7 +80,6 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 对话栏上的悬停说明出现在控件正上方，包括上下文用量、模型、思考档位、沙箱和权限模式。
 - 在空格后面输入 `/技能名`（包括写在句子中间）会加载该技能。技能从 Claude 的 `.claude/skills`、`.agents/skills`，以及 `.merakcode/skill`、`.merakcode/skills` 读取。智能体被拒绝使用的技能不会加载。
 - 在新对话里铺满审阅时，窗口显示的是全屏审阅。
-- 审阅栏快捷命令的输出不会再一直留在界面上：右上角有关闭按钮，收起快捷命令时也会一起隐藏。
 - 子智能体的提问会交给发起它的会话的 SDK `onQuestion`，没给 `onQuestion` 时会被跳过，不再让这一轮一直卡着。
 - 成员适配器发来的没有可检查内容的审批请求（`paths` 为空或 `command` 为空）改为拒绝，不再放行。
 - Linux 沙箱的辅助进程只执行引擎为它写好的那条请求。

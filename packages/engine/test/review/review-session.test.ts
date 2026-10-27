@@ -14,12 +14,50 @@ import { tmpdir } from "../fixture/fixture"
 // edited it. Accepting moves the baseline forward and rejecting reverts the hunk on disk. Files only the user changed
 // are not listed.
 
-const decide = async (input: Omit<Review.Decision, "expectedCheckout">) =>
-  Review.decide({ ...input, expectedCheckout: (await Review.get(input)).checkout })
+const decide = async (
+  input: Omit<Review.Decision, "expectedCheckout" | "files"> & { files?: { file: string; hunks?: string[] }[] },
+) => {
+  const shown = await Review.get(input)
+  const files = (input.files ?? shown.files).map((file) => ({
+    file: file.file,
+    hunks: Array.isArray(file.hunks) ? file.hunks : undefined,
+    version: shown.files.find((item) => item.file === file.file)!.version,
+  }))
+  return Review.decide({ ...input, files, expectedCheckout: shown.checkout })
+}
 const undo = async (input: Review.Input) =>
   Review.undo({ ...input, expectedCheckout: (await Review.get(input)).checkout })
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}\n`).join("")
 const hunksOf = async (input: Review.Input, file: string) => (await Review.file({ ...input, file })).hunks
+
+test("conversation review rejects Git scopes", () => {
+  for (const scope of ["unstaged", "staged", "branch"]) expect(Review.Scope.safeParse(scope).success).toBe(false)
+})
+
+test("a whole-file decision refuses content changed after the displayed version", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const file = path.join(tmp.path, "a.txt")
+  await Filesystem.write(file, "before\n")
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      await edit(session.id, file, "agent\n")
+      const input = { scope: "session" as const, sessionID: session.id }
+      const displayed = await Review.get(input)
+      await Filesystem.write(file, "later user edit\n")
+      await expect(
+        Review.decide({
+          ...input,
+          decision: "reject",
+          expectedCheckout: displayed.checkout,
+          files: displayed.files.map((file) => ({ file: file.file, version: file.version })),
+        }),
+      ).rejects.toMatchObject({ name: "ReviewStaleError" })
+      expect(await Filesystem.readText(file)).toBe("later user edit\n")
+    },
+  })
+})
 
 /** Edits a file the way agent edit tools do, backing it up first. */
 async function edit(sessionID: string, file: string, content: string) {
@@ -155,10 +193,60 @@ test("session: undoing an accept lists the hunk again", async () => {
       await edit(session.id, a, "A\n")
       const input = { scope: "session" as const, sessionID: session.id }
       await decide({ ...input, decision: "accept" })
-      expect((await Review.get(input)).files).toEqual([])
+      const accepted = await Review.get(input)
+      expect(accepted.files).toEqual([])
+      expect(accepted.last).toEqual({ decision: "accept", count: 1 })
       // Turn and session scopes share one baseline and one undo history.
       const undone = await undo(input)
       expect(undone.files.map((file) => file.file)).toEqual(["a.txt"])
+      expect(undone.last).toBeUndefined()
+    },
+  })
+})
+
+test("large conversation files retain lazy hunk details without full text", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const file = path.join(tmp.path, "big.txt")
+  const big = Array.from({ length: 6000 }, (_, i) => `${"x".repeat(80)} ${i}\n`).join("")
+  await Filesystem.write(file, big)
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      await edit(session.id, file, big.replace(`${"x".repeat(80)} 10\n`, "ten\n"))
+      const input = { scope: "session" as const, sessionID: session.id }
+      const detail = await Review.file({ ...input, file: "big.txt" })
+      expect(detail.before).toBeUndefined()
+      expect(detail.after).toBeUndefined()
+      expect(detail.hunks[0]!.lines.some((line) => line.kind === "add" && line.text === "ten")).toBe(true)
+      await decide({ ...input, decision: "reject" })
+      expect(await Filesystem.readText(file)).toBe(big)
+    },
+  })
+})
+
+test("conversation decisions preserve CRLF working files and leave the Git index LF", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const file = path.join(tmp.path, "a.txt")
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: tmp.path, encoding: "utf8", windowsHide: true })
+  await Filesystem.write(file, lines(30))
+  git("add", ".")
+  git("commit", "-m", "original")
+  git("config", "core.autocrlf", "true")
+  const crlf = (text: string) => text.replaceAll("\n", "\r\n")
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      const input = { scope: "session" as const, sessionID: session.id }
+      await edit(session.id, file, crlf(lines(30)))
+      expect((await Review.get(input)).files).toEqual([])
+      await edit(session.id, file, crlf(lines(30).replace("line 2\n", "two\n").replace("line 20\n", "twenty\n")))
+      const [first, second] = await hunksOf(input, "a.txt")
+      await decide({ ...input, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] })
+      await decide({ ...input, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] })
+      expect(await Filesystem.readText(file)).toBe(crlf(lines(30).replace("line 2\n", "two\n")))
+      expect(git("show", ":a.txt")).toBe(lines(30))
     },
   })
 })

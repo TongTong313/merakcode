@@ -10,26 +10,16 @@ export type ReviewKey = {
   scope: ReviewScope
   sessionID?: string
   messageID?: string
-  base?: string
   checkout?: string | null
 }
 
 export const keyOf = (input: ReviewKey) =>
-  [
-    input.directory,
-    input.scope,
-    input.sessionID ?? "",
-    input.messageID ?? "",
-    input.base ?? "",
-    input.checkout ?? "",
-  ].join("\u0000")
+  [input.directory, input.scope, input.sessionID ?? "", input.messageID ?? "", input.checkout ?? ""].join("\u0000")
 
 /**
- * Details stay valid while the file's content version and its accepted count are the same (accepting in the branch
- * scope only marks hunks, which changes the count but not the content)
+ * Details stay valid while the file content version is the same
  */
-export const detailKey = (list: string, file: ReviewFile) =>
-  [list, file.file, file.version, file.accepted].join("\u0000")
+export const detailKey = (list: string, file: ReviewFile) => [list, file.file, file.version].join("\u0000")
 
 /** Small reviews open every file; larger ones start collapsed and load a file when it is opened */
 const AUTO_EXPAND = { files: 5, lines: 300 }

@@ -3,6 +3,7 @@ import FileDiff from "lucide-solid/icons/file-diff"
 import Globe from "lucide-solid/icons/globe"
 import Maximize2 from "lucide-solid/icons/maximize-2"
 import X from "lucide-solid/icons/x"
+import GitBranch from "lucide-solid/icons/git-branch"
 import { Match, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
 import { saveLayout, setUi, showTab, togglePanel, ui, type Tab } from "../../state/ui"
@@ -10,6 +11,7 @@ import { Browser } from "../browser/browser"
 import { CodeView } from "../code/code"
 import { ReviewPanel } from "../review/review"
 import { progress, useReview } from "../review/state"
+import { SourceControl } from "../git/source-control"
 
 /** Side panel with review, code and browser tabs; drag the left edge to resize */
 export function Panel(props: { sessionID?: string; directory: string; folder: string }) {
@@ -21,6 +23,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   const count = () => progress(data.data()).total
   const tabs: { id: Tab; label: () => string; icon: typeof Code }[] = [
     { id: "review", label: () => t("panel.review"), icon: FileDiff },
+    { id: "git", label: () => t("panel.git"), icon: GitBranch },
     { id: "code", label: () => t("panel.code"), icon: Code },
     { id: "browser", label: () => t("panel.browser"), icon: Globe },
   ]
@@ -84,7 +87,10 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
       <div class="panel-body" role="tabpanel" id={`panel-${ui.tab}`} aria-labelledby={`panel-tab-${ui.tab}`}>
         <Switch>
           <Match when={ui.tab === "review"}>
-            <ReviewPanel sessionID={props.sessionID} directory={props.directory} folder={props.folder} data={data} />
+            <ReviewPanel sessionID={props.sessionID} directory={props.directory} data={data} />
+          </Match>
+          <Match when={ui.tab === "git"}>
+            <SourceControl sessionID={props.sessionID} directory={props.directory} folder={props.folder} />
           </Match>
           <Match when={ui.tab === "code"}>
             <CodeView directory={props.directory} />

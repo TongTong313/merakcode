@@ -65,6 +65,7 @@ import { PermissionRoutes } from "./routes/permission"
 import { GlobalRoutes } from "./routes/global"
 import { WorkflowRoutes } from "./routes/workflow"
 import { ReviewRoutes } from "./routes/review"
+import { GitChangesRoutes } from "./routes/git-changes"
 import { AssistRoutes } from "./routes/assist"
 import { PluginRoutes } from "./routes/plugin"
 import { RuleRoutes } from "./routes/rule"
@@ -417,6 +418,7 @@ export namespace Server {
       .route("/plugin", PluginRoutes())
       .route("/workflow", WorkflowRoutes())
       .route("/review", ReviewRoutes())
+      .route("/vcs/changes", GitChangesRoutes())
       .route("/mcp-management", McpManagementRoutes())
       .route("/rule", RuleRoutes())
       .route("/", FileRoutes())

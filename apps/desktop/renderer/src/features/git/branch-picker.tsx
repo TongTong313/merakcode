@@ -17,12 +17,11 @@ import {
 import { trackOverlay } from "../../ui/overlay"
 import { toast } from "../../ui/toast"
 
-/** Choosing a comparison or starting point never changes the working directory. */
+/** A starting point is a selection; switching updates the working checkout. */
 export function BranchPicker(props: {
   directory: string
-  purpose: "switch" | "base" | "start"
+  purpose: "switch" | "start"
   value?: string | null
-  active?: boolean
   disabled?: boolean
   onSelect?: (branch: string) => void
   onWorktree?: () => void
@@ -61,9 +60,7 @@ export function BranchPicker(props: {
     if (open() && !items().length && options?.branches.length) setItems(options.branches)
   })
   const disabled = (item: { name: string; worktree?: string }) =>
-    props.purpose === "base"
-      ? item.name === current()?.branch
-      : props.purpose === "switch" && (!!reason() || !!item.worktree || item.name === current()?.branch)
+    props.purpose === "switch" && (!!reason() || !!item.worktree || item.name === current()?.branch)
   const refresh = async () => {
     setError(undefined)
     const directory = props.directory
@@ -117,9 +114,7 @@ export function BranchPicker(props: {
       <Popover.Trigger
         ref={trigger}
         class="branch-chip"
-        classList={{ on: props.active }}
         aria-label={`${label()} ${display() ?? t("git.choose")}`}
-        aria-pressed={props.purpose === "base" ? !!props.active : undefined}
         title={`${label()}：${display() ?? t("git.choose")}`}
         disabled={props.disabled || switching(props.directory)}
         onPointerEnter={() => !open() && void refreshBranches(props.directory)}

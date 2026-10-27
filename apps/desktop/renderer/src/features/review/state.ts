@@ -1,7 +1,7 @@
 /**
  * Review data and actions, shared by the panel and the maximized view.
  *
- * Scopes: this turn / whole conversation (the agent's changes), unstaged / staged / branch (git). The engine lists the
+ * Scopes: this turn / whole conversation (the agent's pending changes). The engine lists the
  * files with counts and a version each (review.get) and returns one file's hunks on request (review.file). Accept /
  * reject go by hunk id (review.decide) and return the new list. A stale version or hunk id returns 409, which shows a
  * notice and refetches the list. Comments live only in the UI and are sent to the agent together.
@@ -10,7 +10,7 @@
  * once while it refreshes, and a refresh only refetches the files that changed. Events only mark lists stale; the
  * review on screen refreshes itself, and fetches details in the background while idle.
  */
-import type { ReviewFile, ReviewFileDetail, ReviewHunk, ReviewResult, ReviewScope } from "@merakcode/sdk/client"
+import type { ReviewFile, ReviewFileDetail, ReviewResult, ReviewScope } from "@merakcode/sdk/client"
 import type { ThemedToken } from "shiki/core"
 import {
   batch,
@@ -29,60 +29,35 @@ import { storage } from "../../lib/bridge"
 import { sameDir } from "../../lib/route"
 import { tokenize } from "../../lib/tokens"
 import { call, client } from "../../state/client"
-import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, identityOf, refreshBranches } from "../../state/git"
+import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, refreshBranches, identityOf } from "../../state/git"
 import { busy, listen, messagesOf, refreshVcs } from "../../state/store"
 import { showTab } from "../../state/ui"
 import { toast } from "../../ui/toast"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
 
-export type Comment = { id: number; file: string; line: number; text: string; excerpt: string; stale?: boolean }
+import { commentLocation, excerptOf, refreshTarget, type CommentTarget, type SelectedLine } from "./selection"
+
+export type Comment = CommentTarget & { id: number; text: string }
 
 type Review = {
   directory?: string
   scope: ReviewScope
   /** For the turn scope: which turn (user message id); defaults to the last one */
   messageID?: string
-  bases: Record<string, string | null | undefined>
   /** File to scroll to */
   focus?: string
-  /** Hunk being commented on */
-  commenting?: string
+  reveal?: { hunk: string; index: number; side: CommentTarget["side"] }
+  /** Selected code and its review context. */
+  commenting?: CommentTarget
+  selecting?: CommentTarget
   comments: Record<string, Comment[]>
   style: "unified" | "split"
-  /** Most recent decision, shown in the status bar and undoable */
-  last?: { decision: "accept" | "reject"; count: number }
 }
 
-export const [review, setReview] = createStore<Review>({ scope: "turn", bases: {}, comments: {}, style: "split" })
-
-const BASES = "review.bases"
-void storage
-  .get<Record<string, string | null>>(BASES, {})
-  .then((saved) => setReview("bases", (current) => ({ ...saved, ...current })))
-
-export const baseFor = (directory: string) => review.bases[gitDirectory(directory)]
+export const [review, setReview] = createStore<Review>({ scope: "turn", comments: {}, style: "split" })
 
 export function selectScope(scope: ReviewScope) {
-  setReview({ scope, messageID: undefined, last: undefined })
-}
-
-export function selectBase(directory: string, base: string) {
-  setReview("bases", gitDirectory(directory), base)
-  void storage.set(BASES, review.bases)
-  selectScope("branch")
-}
-
-export function prepareBase(directory: string, branches: string[], preferred?: string) {
-  const key = gitDirectory(directory)
-  const current = identityOf(directory)?.branch
-  const base = review.bases[key]
-  if (typeof base === "string" && (base === current || !branches.includes(base))) {
-    setReview("bases", key, null)
-    void storage.set(BASES, review.bases)
-    return
-  }
-  if (base === undefined && preferred && preferred !== current && branches.includes(preferred))
-    setReview("bases", key, preferred)
+  setReview({ scope, messageID: undefined })
 }
 
 let next = 1
@@ -93,24 +68,20 @@ export function openReview(view: { scope?: ReviewScope; messageID?: string; file
     ...(view.scope ? { scope: view.scope } : {}),
     messageID: view.messageID,
     focus: view.file,
-    last: undefined,
   })
   showTab("review")
 }
 
 /** User message for the turn scope: the chosen one, or the last one */
 function turnOf(sessionID: string) {
-  return review.messageID ?? messagesOf(sessionID).findLast((message) => message.role === "user")?.id
+  const messages = messagesOf(sessionID)
+  return messages.some((message) => message.role === "user" && message.id === review.messageID)
+    ? review.messageID
+    : messages.findLast((message) => message.role === "user")?.id
 }
 
-const SCOPES: Exclude<ReviewScope, "branch">[] = ["turn", "session", "unstaged", "staged"]
-
-/** Only scopes that apply to this directory and conversation occupy the toolbar. */
-export const scopeOptions = (git: boolean, conversation: boolean) =>
-  SCOPES.filter((scope) => (scope === "turn" || scope === "session" ? conversation : git)).map((scope) => ({
-    value: scope,
-    label: t(`review.scope.${scope}`),
-  }))
+export const scopeOptions = () =>
+  (["turn", "session"] as const).map((scope) => ({ value: scope, label: t(`review.scope.${scope}`) }))
 
 // Lists: one per review, refetched when stale
 
@@ -121,22 +92,12 @@ const currentContext = (input: ReviewKey) => (checkoutOf(input.directory) ?? nul
 
 const params = (input: ReviewKey) => ({
   scope: input.scope,
-  ...(input.sessionID ? { sessionID: input.sessionID } : {}),
+  sessionID: input.sessionID!,
   ...(input.messageID ? { messageID: input.messageID } : {}),
-  ...(input.base ? { base: input.base } : {}),
 })
 
 const empty = (input: ReviewKey): ReviewResult | undefined => {
-  // No conversation yet: only the git scopes have data
-  const conversation = input.scope === "turn" || input.scope === "session"
-  if ((conversation && !input.sessionID) || (input.scope === "turn" && !input.messageID))
-    return {
-      scope: input.scope,
-      checkout: input.checkout ?? null,
-      actions: { accept: false, reject: false },
-      files: [],
-    }
-  if (input.scope === "branch" && !input.base)
+  if (!input.sessionID || (input.scope === "turn" && !input.messageID))
     return {
       scope: input.scope,
       checkout: input.checkout ?? null,
@@ -178,6 +139,17 @@ function show(input: ReviewKey, result: ReviewResult) {
     setLists(key, { loading: false, error: undefined })
   })
   prune(key, result.files)
+  if (input.sessionID) {
+    const files = new Set(result.files.map((file) => file.file))
+    setReview("comments", input.sessionID, (comments = []) =>
+      comments.map((comment) => {
+        const applies =
+          sameDir(gitDirectory(comment.directory), gitDirectory(input.directory)) &&
+          (input.scope === "session" || (comment.scope === input.scope && comment.messageID === input.messageID))
+        return applies && !files.has(comment.file) && !comment.stale ? { ...comment, stale: true } : comment
+      }),
+    )
+  }
 }
 
 const statusTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; refs: boolean }>()
@@ -218,16 +190,13 @@ function watch() {
     }
     prefetching++
     const shown = review.directory && sameDir(gitDirectory(review.directory), directory)
-    if (shown) setReview("last", undefined)
-    if (shown && change.branchChanged) setReview("commenting", undefined)
+    if (shown && change.branchChanged) setReview({ commenting: undefined, selecting: undefined })
     if (change.branchChanged) {
       for (const [sessionID, value] of commentDirectories) {
         if (!sameDir(gitDirectory(value), directory)) continue
         setReview("comments", sessionID, (comments = []) => comments.map((comment) => ({ ...comment, stale: true })))
       }
     }
-    if (shown && change.branchChanged && (review.scope === "turn" || review.scope === "session"))
-      selectScope("unstaged")
   })
   listen((directory, event) => {
     if (event.type === "review.updated") return stale(directory)
@@ -362,20 +331,16 @@ const REFRESH = 1000
  * Review data for one conversation. visible says whether the review is on screen: only then is the list fetched and
  * refreshed.
  */
-export function useReview(
+function useReviewList(
   sessionID: () => string | undefined,
   directory: () => string,
-  visible: () => boolean = () => true,
+  visible: () => boolean,
+  scopeOf: () => ReviewScope,
 ) {
   watch()
-  createEffect(
-    on([directory, visible], ([value, shown]) => {
-      if (shown) setReview("directory", value)
-    }),
-  )
   const input = createMemo(
     (): ReviewKey => {
-      const scope = review.scope
+      const scope = scopeOf()
       const id = sessionID()
       const messageID = scope === "turn" && id ? turnOf(id) : undefined
       return {
@@ -383,7 +348,6 @@ export function useReview(
         scope,
         sessionID: id,
         messageID,
-        base: baseFor(directory()) ?? undefined,
         checkout: checkoutOf(directory()) ?? null,
       }
     },
@@ -394,11 +358,6 @@ export function useReview(
   const list = () => lists[key()]
   const isStale = createMemo(() => !!list()?.stale)
   const loading = createMemo(() => !!list()?.loading)
-  const versions = createMemo(() =>
-    list()
-      ?.result?.files.map((file) => `${file.file}:${file.version}`)
-      .join("|"),
-  )
 
   let timer: ReturnType<typeof setTimeout> | undefined
   onCleanup(() => clearTimeout(timer))
@@ -413,7 +372,8 @@ export function useReview(
       // changes while it is on screen wait a moment
       const switched = !previous || previous[0] !== current || !previous[1]
       if (!outdated && !switched) return
-      timer = setTimeout(() => void load(target), switched ? 0 : REFRESH)
+      if (switched) return void load(target)
+      timer = setTimeout(() => void load(target), REFRESH)
     }),
   )
   // Refresh once more when the agent finishes a turn
@@ -423,6 +383,38 @@ export function useReview(
       (now, before) => before && !now && stale(directory()),
       { defer: true },
     ),
+  )
+  return { input, key, list, refetch: () => load(input()) }
+}
+
+/** Git navigation needs only the pending file names, without loading review details. */
+export function usePendingReview(sessionID: () => string | undefined, directory: () => string) {
+  const { list, refetch } = useReviewList(
+    sessionID,
+    directory,
+    () => true,
+    () => "session",
+  )
+  return { files: () => list()?.result?.files.map((file) => file.file) ?? [], refetch }
+}
+
+/** Review details, presentation state and decisions are owned by the review view. */
+export function useReview(
+  sessionID: () => string | undefined,
+  directory: () => string,
+  visible: () => boolean = () => true,
+) {
+  const { input, key, list, refetch } = useReviewList(sessionID, directory, visible, () => review.scope)
+  const [working, setWorking] = createSignal(false)
+  createEffect(
+    on([directory, visible], ([value, shown]) => {
+      if (shown) setReview("directory", value)
+    }),
+  )
+  const versions = createMemo(() =>
+    list()
+      ?.result?.files.map((file) => `${file.file}:${file.version}`)
+      .join("|"),
   )
   // Prefetch details of the list on screen whenever its files change
   createEffect(
@@ -444,46 +436,54 @@ export function useReview(
   /** Accepts or rejects: no files means everything; a file without hunks means the whole file */
   const decide = async (decision: "accept" | "reject", files?: { file: string; hunks?: string[] }[]) => {
     const current = list()?.result
-    if (!current || !currentContext(input())) return
+    if (!current || working() || list()?.loading || !currentContext(input())) return
     const targets: { file: string; hunks?: string[] }[] =
       files ?? current?.files.map((file) => ({ file: file.file })) ?? []
-    const count = targets.reduce((sum, target) => {
-      const file = current?.files.find((item) => item.file === target.file)
-      return sum + (target.hunks?.length ?? file?.hunks ?? 0)
-    }, 0)
     const target = input()
-    const result = await call(
-      client(target.directory).review.decide({
-        ...params(target),
-        decision,
-        expectedCheckout: current.checkout,
-        ...(files ? { files } : {}),
-      }),
-    ).catch(failed)
-    if (!result || !currentContext(target) || keyOf(target) !== key()) return
-    if (result.checkout !== (target.checkout ?? null)) {
-      await refreshVcs(target.directory)
-      return
+    setWorking(true)
+    try {
+      const result = await call(
+        client(target.directory).review.decide({
+          ...params(target),
+          decision,
+          expectedCheckout: current.checkout,
+          files: targets.map((file) => ({
+            ...file,
+            version: current.files.find((item) => item.file === file.file)!.version,
+          })),
+        }),
+      ).catch(failed)
+      if (!result || !currentContext(target) || keyOf(target) !== key()) return
+      if (result.checkout !== (target.checkout ?? null)) {
+        await refreshVcs(target.directory)
+        return
+      }
+      show(target, result)
+      stale(target.directory)
+    } finally {
+      setWorking(false)
     }
-    show(target, result)
-    setReview("last", { decision, count })
   }
 
   const undo = async () => {
     const target = input()
     const current = list()?.result
-    if (!current || !currentContext(target)) return
-    const result = await call(
-      client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
-    ).catch(failed)
-    if (!result || !currentContext(target) || keyOf(target) !== key()) return
-    if (result.checkout !== (target.checkout ?? null)) {
-      await refreshVcs(target.directory)
-      return
+    if (!current || working() || list()?.loading || !currentContext(target)) return
+    setWorking(true)
+    try {
+      const result = await call(
+        client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
+      ).catch(failed)
+      if (!result || !currentContext(target) || keyOf(target) !== key()) return
+      if (result.checkout !== (target.checkout ?? null)) {
+        await refreshVcs(target.directory)
+        return
+      }
+      show(target, result)
+      toast({ kind: "info", title: t("review.undone") })
+    } finally {
+      setWorking(false)
     }
-    show(target, result)
-    setReview("last", undefined)
-    toast({ kind: "info", title: t("review.undone") })
   }
 
   const auto = createMemo(() => autoExpand(list()?.result?.files ?? []))
@@ -497,10 +497,11 @@ export function useReview(
     /** Nothing to show yet: the first fetch of this list is running */
     loading: () => !list()?.result && !list()?.error,
     /** Showing a list while a newer one is fetched */
-    refreshing: () => !!list()?.result && !!list()?.loading,
+    refreshing: () => !!list()?.result && (!!list()?.loading || !!list()?.stale),
+    working,
     decide,
     undo,
-    refetch: () => load(input()),
+    refetch,
     detail: (file: ReviewFile) => cell(detailKey(key(), file)).get(),
     loadDetail: (file: ReviewFile) => loadDetail(input(), file),
     loadTokens: (file: ReviewFile, lang: string | undefined) => loadTokens(input(), file, lang),
@@ -513,47 +514,133 @@ export function useReview(
   }
 }
 
-export const commentsOf = (sessionID: string | undefined) => (sessionID ? (review.comments[sessionID] ?? []) : [])
-
-/** Line the comment attaches to: the first changed new line, else the old line, else the hunk start */
-export function commentLine(hunk: ReviewHunk) {
-  const changed = hunk.lines.filter((line) => line.kind !== "context")
-  return changed.find((item) => item.new !== undefined)?.new ?? changed[0]?.old ?? hunk.newStart
+/** Inline selections belong to one checkout, conversation and review turn. */
+export function commentInView(target: CommentTarget, directory: string, sessionID: string | undefined) {
+  return (
+    sameDir(gitDirectory(target.directory), gitDirectory(directory)) &&
+    target.sessionID === sessionID &&
+    target.branch === identityOf(directory)?.branch &&
+    target.scope === review.scope &&
+    target.messageID === (review.scope === "turn" && sessionID ? turnOf(sessionID) : undefined)
+  )
 }
 
-/** Hunk selected for a comment, resolved from the files whose details are loaded */
-export function commentingOn(
-  files: readonly ReviewFile[],
-  detail: (file: ReviewFile) => { detail?: { hunks: ReviewHunk[] } },
+export const commentsOf = (sessionID: string | undefined, directory?: string) =>
+  (sessionID ? (review.comments[sessionID] ?? []) : []).filter(
+    (comment) => !directory || sameDir(gitDirectory(comment.directory), gitDirectory(directory)),
+  )
+
+export function beginComment(
+  directory: string,
+  sessionID: string,
+  file: string,
+  version: string,
+  rows: SelectedLine[],
+  side: CommentTarget["side"] = "unified",
+  compose = true,
 ) {
-  const id = review.commenting
-  if (!id) return
-  for (const file of files) {
-    const hunk = detail(file).detail?.hunks.find((item) => item.id === id)
-    if (hunk) return { file: file.file, hunk }
+  if (!rows.length) return
+  const messageID = review.scope === "turn" ? turnOf(sessionID) : undefined
+  const context = gitDirectory(directory)
+  const branch = identityOf(directory)?.branch
+  const previous = review.commenting
+  const continuation =
+    previous?.stale && commentInView(previous, directory, sessionID)
+      ? { relocating: previous.key, editing: previous.editing }
+      : {}
+  const key = continuation.relocating
+    ? crypto.randomUUID()
+    : JSON.stringify([
+        context,
+        branch,
+        sessionID,
+        review.scope,
+        messageID,
+        file,
+        side,
+        rows.map((row) => [row.hunk, row.index]),
+        continuation.editing,
+      ])
+  const target = {
+    key,
+    directory: context,
+    branch,
+    sessionID,
+    scope: review.scope,
+    messageID,
+    file,
+    version,
+    rows,
+    side,
+    stale: false,
+    editing: undefined,
+    relocating: undefined,
+    ...continuation,
   }
+  setReview("selecting", compose ? undefined : target)
+  if (compose) setReview("commenting", target)
+}
+
+export function refreshCommentAnchors(directory: string, sessionID: string, detail: ReviewFileDetail) {
+  const matches = (target: CommentTarget) => commentInView(target, directory, sessionID) && target.file === detail.file
+  for (const key of ["commenting", "selecting"] as const) {
+    const target = review[key]
+    if (!target || !matches(target)) continue
+    const next = refreshTarget(target, detail)
+    if (next !== target) setReview(key, next)
+  }
+  for (const comment of commentsOf(sessionID)) {
+    if (!matches(comment)) continue
+    const next = refreshTarget(comment, detail)
+    if (next !== comment) setReview("comments", sessionID, (item) => item.id === comment.id, next)
+  }
+}
+
+export function revealComment(comment: Comment, edit = false) {
+  const end = comment.rows.at(-1)
+  const branch = identityOf(comment.directory)?.branch
+  setReview({
+    scope: comment.scope,
+    messageID: comment.messageID,
+    focus: comment.file,
+    reveal: end ? { hunk: end.hunk, index: end.index, side: comment.side } : undefined,
+    commenting: edit
+      ? {
+          ...comment,
+          key: JSON.stringify(["edit", comment.sessionID, comment.id]),
+          branch,
+          stale: comment.stale || branch !== comment.branch,
+          editing: comment.id,
+        }
+      : undefined,
+  })
 }
 
 const commentDirectories = new Map<string, string>()
 
 export function commentDirectory(sessionID: string, directory: string) {
+  const previous = commentDirectories.get(sessionID)
+  if (previous && !sameDir(gitDirectory(previous), gitDirectory(directory)))
+    registerDirty(previous, `comments:${sessionID}`, 0)
   commentDirectories.set(sessionID, directory)
-  registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID).length)
+  registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID, directory).length)
 }
 
 function syncComments(sessionID: string) {
   const directory = commentDirectories.get(sessionID)
-  if (directory) registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID).length)
+  if (directory) registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID, directory).length)
 }
 
-export function addComment(sessionID: string, file: string, hunk: ReviewHunk, text: string) {
-  const line = commentLine(hunk)
-  const excerpt = hunk.lines
-    .filter((item) => item.kind !== "context")
-    .slice(0, 12)
-    .map((item) => `${item.kind === "add" ? "+" : "-"}${item.text}`)
-    .join("\n")
-  setReview("comments", sessionID, (list = []) => [...list, { id: next++, file, line, text, excerpt }])
+export function addComment(sessionID: string, target: CommentTarget, text: string) {
+  setReview("comments", sessionID, (list = []) =>
+    target.editing === undefined || !list.some((comment) => comment.id === target.editing)
+      ? [...list, { ...target, id: next++, text, editing: undefined, relocating: undefined }]
+      : list.map((comment) =>
+          comment.id === target.editing
+            ? { ...target, id: comment.id, text, editing: undefined, relocating: undefined }
+            : comment,
+        ),
+  )
   syncComments(sessionID)
   setReview("commenting", undefined)
 }
@@ -566,22 +653,37 @@ export function removeComment(sessionID: string, id: number) {
 /** Turns the collected comments into one message */
 export function commentMessage(comments: Comment[]) {
   const body = comments
-    .map((comment) => `- ${comment.file}:${comment.line} — ${comment.text}\n\n\`\`\`diff\n${comment.excerpt}\n\`\`\``)
+    .map((comment) => `- ${commentLocation(comment)} — ${comment.text}\n\n\`\`\`diff\n${excerptOf(comment)}\n\`\`\``)
     .join("\n\n")
   return `${t("review.commentPrompt")}\n\n${body}`
 }
 
-export function clearComments(sessionID: string) {
-  setReview("comments", sessionID, [])
+export function clearComments(sessionID: string, submitted?: Comment[], directory?: string) {
+  setReview("comments", sessionID, (comments = []) =>
+    comments.filter((comment) => {
+      if (directory && !sameDir(gitDirectory(comment.directory), gitDirectory(directory))) return true
+      return submitted
+        ? !submitted.some(
+            (sent) =>
+              sent.id === comment.id &&
+              sent.version === comment.version &&
+              sent.scope === comment.scope &&
+              sent.messageID === comment.messageID &&
+              sent.branch === comment.branch &&
+              sent.side === comment.side &&
+              commentMessage([sent]) === commentMessage([comment]),
+          )
+        : false
+    }),
+  )
   syncComments(sessionID)
 }
 
-/** Total hunks in this review and how many are accepted (marked, in the branch scope) */
+/** Number of pending hunks in this review. */
 export function progress(data: ReviewResult | undefined) {
   const files = data?.files ?? []
   return {
     total: files.reduce((sum, file) => sum + file.hunks, 0),
-    done: files.reduce((sum, file) => sum + file.accepted, 0),
   }
 }
 
