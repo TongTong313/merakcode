@@ -3,7 +3,6 @@ import type { ThemedToken } from "shiki/core"
 import Check from "lucide-solid/icons/check"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"
-import CircleCheck from "lucide-solid/icons/circle-check"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import MessageSquare from "lucide-solid/icons/message-square"
 import MessageSquarePlus from "lucide-solid/icons/message-square-plus"
@@ -16,7 +15,22 @@ import { languageOf } from "../../lib/highlight"
 import { openInCode } from "../../state/ui"
 import { budget } from "./cache"
 import type { ReviewData } from "./review"
-import { commentsOf, isSeen, removeComment, review, setReview, toggleSeen, type Comment } from "./state"
+import { CommentComposer } from "./compose"
+import { present } from "./present"
+import { commentLocation, excerptOf, type CommentTarget } from "./selection"
+import {
+  beginComment,
+  commentsOf,
+  isSeen,
+  removeComment,
+  review,
+  setReview,
+  toggleSeen,
+  commentInView,
+  refreshCommentAnchors,
+  revealComment,
+  type Comment,
+} from "./state"
 
 type Tokens = { before?: ThemedToken[][]; after?: ThemedToken[][] }
 
@@ -40,17 +54,60 @@ const tokensOf = (tokens: Tokens, line: ReviewLine) =>
 /** The hunk's lines, or only the first limit of them */
 const linesOf = (hunk: ReviewHunk, limit?: number) => (limit === undefined ? hunk.lines : hunk.lines.slice(0, limit))
 
-function Unified(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
+type LineContext = {
+  file: ReviewFile
+  directory: string
+  sessionID?: string
+  hunk: ReviewHunk
+  tokens: Tokens
+  limit?: number
+  side?: "old" | "new"
+}
+
+function selectedLine(props: LineContext, index: number, side: "unified" | "old" | "new") {
+  const target = review.selecting ?? review.commenting
+  return (
+    !!target &&
+    commentInView(target, props.directory, props.sessionID) &&
+    target.file === props.file.file &&
+    (side === "unified" || target.side === "unified" || target.side === side) &&
+    target.rows.some((row) => row.hunk === props.hunk.id && row.index === index)
+  )
+}
+
+function Unified(props: LineContext) {
   return (
     <div class="lines unified">
       <For each={linesOf(props.hunk, props.limit)}>
-        {(line) => (
-          <div class={`line ${line.kind}`}>
-            <span class="n">{line.old ?? ""}</span>
-            <span class="n">{line.new ?? ""}</span>
-            <span class="sign">{sign(line.kind)}</span>
-            <Code text={line.text} tokens={tokensOf(props.tokens, line)} />
-          </div>
+        {(line, index) => (
+          <>
+            <div
+              class={`line ${line.kind}`}
+              classList={{ "selected-code": selectedLine(props, index(), "unified") }}
+              data-line-index={index()}
+              data-hunk-line={props.hunk.id}
+              data-side="unified"
+            >
+              <span class="n">{line.old ?? ""}</span>
+              <span class="n">{line.new ?? ""}</span>
+              <span class="sign">{sign(line.kind)}</span>
+              <Code text={line.text} tokens={tokensOf(props.tokens, line)} />
+              <Show when={props.sessionID}>
+                <button
+                  class="line-comment-add"
+                  aria-label={t("review.commentLine", { line: line.new ?? line.old ?? 0 })}
+                  onClick={() =>
+                    beginComment(props.directory, props.sessionID!, props.file.file, props.file.version, [
+                      { ...line, hunk: props.hunk.id, index: index() },
+                    ])
+                  }
+                >
+                  <MessageSquarePlus class="icon icon-xs" />
+                </button>
+              </Show>
+            </div>
+            <LineComments {...props} index={index()} />
+          </>
         )}
       </For>
     </div>
@@ -77,12 +134,20 @@ function rows(lines: ReviewLine[]) {
   return result
 }
 
-function Split(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
+function Split(props: LineContext) {
   const list = createMemo(() => rows(linesOf(props.hunk, props.limit)))
   const cell = (line: ReviewLine | undefined, side: "left" | "right") => (
     <Show when={line} fallback={<div class="line empty" />}>
       {(value) => (
-        <div class={`line ${value().kind}`}>
+        <div
+          class={`line ${value().kind}`}
+          classList={{
+            "selected-code": selectedLine(props, props.hunk.lines.indexOf(value()), side === "left" ? "old" : "new"),
+          }}
+          data-line-index={props.hunk.lines.indexOf(value())}
+          data-hunk-line={props.hunk.id}
+          data-side={side === "left" ? "old" : "new"}
+        >
           <span class="n">{side === "left" ? value().old : value().new}</span>
           <span class="sign">{sign(value().kind)}</span>
           <Code
@@ -93,6 +158,24 @@ function Split(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
                 : props.tokens.after?.[(value().new ?? 1) - 1]
             }
           />
+          <Show when={props.sessionID}>
+            <button
+              class="line-comment-add"
+              aria-label={t("review.commentLine", { line: (side === "left" ? value().old : value().new) ?? 0 })}
+              onClick={() =>
+                beginComment(
+                  props.directory,
+                  props.sessionID!,
+                  props.file.file,
+                  props.file.version,
+                  [{ ...value(), hunk: props.hunk.id, index: props.hunk.lines.indexOf(value()) }],
+                  side === "left" ? "old" : "new",
+                )
+              }
+            >
+              <MessageSquarePlus class="icon icon-xs" />
+            </button>
+          </Show>
         </div>
       )}
     </Show>
@@ -101,10 +184,24 @@ function Split(props: { hunk: ReviewHunk; tokens: Tokens; limit?: number }) {
     <div class="lines split">
       <For each={list()}>
         {(row) => (
-          <div class="split-row">
-            {cell(row.left, "left")}
-            {cell(row.right, "right")}
-          </div>
+          <>
+            <div class="split-row">
+              {cell(row.left, "left")}
+              {cell(row.right, "right")}
+            </div>
+            <div class="split-row split-annotations">
+              <div>
+                <Show when={row.left}>
+                  <LineComments {...props} side="old" index={props.hunk.lines.indexOf(row.left!)} />
+                </Show>
+              </div>
+              <div>
+                <Show when={row.right}>
+                  <LineComments {...props} side="new" index={props.hunk.lines.indexOf(row.right!)} />
+                </Show>
+              </div>
+            </div>
+          </>
         )}
       </For>
     </div>
@@ -116,8 +213,17 @@ function CommentView(props: { comment: Comment; sessionID: string }) {
     <div class="line-comment">
       <div class="who">
         <MessageSquare class="icon icon-xs" />
-        {props.comment.file}:{props.comment.line}
+        <button class="button ghost sm comment-location" onClick={() => revealComment(props.comment)}>
+          {commentLocation(props.comment)}
+        </button>
         <span class="spacer" />
+        <button
+          class="icon-button sm"
+          aria-label={t("review.editComment")}
+          onClick={() => revealComment(props.comment, true)}
+        >
+          <SquarePen class="icon icon-xs" />
+        </button>
         <button
           class="icon-button sm"
           aria-label={t("common.remove")}
@@ -127,7 +233,52 @@ function CommentView(props: { comment: Comment; sessionID: string }) {
         </button>
       </div>
       <div class="selectable">{props.comment.text}</div>
+      <details>
+        <summary>{t("review.selectedCode")}</summary>
+        <pre class="comment-excerpt">{excerptOf(props.comment)}</pre>
+      </details>
     </div>
+  )
+}
+
+function LineComments(props: LineContext & { index: number }) {
+  const matches = (comment: CommentTarget) =>
+    commentInView(comment, props.directory, props.sessionID) &&
+    comment.file === props.file.file &&
+    (!props.side ||
+      (comment.side === "unified" ? (comment.rows.at(-1)?.new === undefined ? "old" : "new") : comment.side) ===
+        props.side) &&
+    comment.rows.at(-1)?.hunk === props.hunk.id &&
+    comment.rows.at(-1)?.index === props.index
+  const target = () => {
+    const value = review.commenting
+    return value && matches(value) ? value : undefined
+  }
+  const selected = () => {
+    const value = review.selecting
+    return value && matches(value) ? value : undefined
+  }
+  return (
+    <>
+      <Show when={selected()}>
+        {(selection) => (
+          <button
+            class="button secondary sm selection-comment-add"
+            onClick={() => {
+              const value = selection()
+              setReview("selecting", undefined)
+              setReview("commenting", value)
+            }}
+          >
+            {t("review.selectionComment")}
+          </button>
+        )}
+      </Show>
+      <For each={commentsOf(props.sessionID).filter(matches)}>
+        {(comment) => <CommentView comment={comment} sessionID={props.sessionID!} />}
+      </For>
+      <Show when={target()}>{(selection) => <CommentComposer target={selection()} />}</Show>
+    </>
   )
 }
 
@@ -137,6 +288,7 @@ function Hunk(props: {
   file: ReviewFile
   hunk: ReviewHunk
   n: number
+  directory: string
   sessionID?: string
   actions: { accept: boolean; reject: boolean }
   rejectLabel: string
@@ -146,20 +298,14 @@ function Hunk(props: {
   limit?: number
   active: boolean
   onDecide: Decide
+  disabled?: boolean
 }) {
-  const comments = () =>
-    commentsOf(props.sessionID).filter(
-      (comment) =>
-        comment.file === props.file.file &&
-        comment.line >= props.hunk.newStart &&
-        comment.line < props.hunk.newStart + Math.max(1, props.hunk.newLines),
-    )
   const decide = (decision: "accept" | "reject") =>
     void props.onDecide(decision, [{ file: props.file.file, hunks: [props.hunk.id] }])
   return (
     <div
       class="hunk"
-      classList={{ active: props.active, accepted: props.hunk.state === "accepted" }}
+      classList={{ active: props.active }}
       role="group"
       aria-label={t("review.hunk", { file: props.file.file, n: props.n })}
       data-hunk={props.hunk.id}
@@ -170,25 +316,8 @@ function Hunk(props: {
         </span>
         <span class="ctx">{props.hunk.heading ?? ""}</span>
         <span class="spacer" />
-        <Show when={props.hunk.state === "accepted"}>
-          <span class="hunk-state accepted">
-            <CircleCheck class="icon icon-xs" />
-            {t("review.accepted", { count: 1 })}
-          </span>
-        </Show>
-        <Show when={props.sessionID}>
-          <button
-            class="button ghost sm"
-            aria-label={t("review.comment")}
-            aria-pressed={review.commenting === props.hunk.id}
-            onClick={() => setReview("commenting", props.hunk.id)}
-          >
-            <MessageSquarePlus class="icon icon-xs" />
-            <span class="label">{t("review.comment")}</span>
-          </button>
-        </Show>
         <Show when={props.actions.reject}>
-          <button class="button reject sm" onClick={() => decide("reject")}>
+          <button class="button reject sm" disabled={props.disabled} onClick={() => decide("reject")}>
             <X class="icon icon-xs" />
             {props.rejectLabel}
             <Show when={props.active}>
@@ -196,8 +325,8 @@ function Hunk(props: {
             </Show>
           </button>
         </Show>
-        <Show when={props.actions.accept && props.hunk.state !== "accepted"}>
-          <button class="button accept sm" onClick={() => decide("accept")}>
+        <Show when={props.actions.accept}>
+          <button class="button accept sm" disabled={props.disabled} onClick={() => decide("accept")}>
             <Check class="icon icon-xs" />
             {t("review.accept")}
             <Show when={props.active}>
@@ -207,14 +336,10 @@ function Hunk(props: {
         </Show>
       </div>
       <Show when={props.hunk.lines.length}>
-        <Show
-          when={props.style === "split"}
-          fallback={<Unified hunk={props.hunk} tokens={props.tokens} limit={props.limit} />}
-        >
-          <Split hunk={props.hunk} tokens={props.tokens} limit={props.limit} />
+        <Show when={props.style === "split"} fallback={<Unified {...props} />}>
+          <Split {...props} />
         </Show>
       </Show>
-      <For each={comments()}>{(comment) => <CommentView comment={comment} sessionID={props.sessionID!} />}</For>
     </div>
   )
 }
@@ -229,15 +354,47 @@ export function FileDiff(props: {
   data: ReviewData
   sessionID?: string
   actions: { accept: boolean; reject: boolean }
-  scope: string
+  directory: string
   style: "unified" | "split"
   active?: string
   onDecide: Decide
+  disabled?: boolean
 }) {
+  let root!: HTMLElement
+  const selectedCode = (event: MouseEvent) => {
+    if (!props.sessionID || (event.target as Element).closest("button,textarea,input")) return
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed) return
+    const range = selection.getRangeAt(0)
+    const rowOf = (node: Node | null) =>
+      (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>(".line[data-line-index]")
+    const first = rowOf(range.startContainer)
+    const last = rowOf(range.endContainer)
+    if (!first || !last || !root.contains(first) || !root.contains(last) || first.dataset.side !== last.dataset.side)
+      return
+    const side = first.dataset.side as "old" | "new" | "unified"
+    const lines = [...root.querySelectorAll<HTMLElement>(`.line[data-side="${side}"]`)]
+    const start = lines.indexOf(first)
+    const ending = document.createRange()
+    ending.selectNodeContents(last.querySelector(".code")!)
+    ending.setEnd(range.endContainer, range.endOffset)
+    const end = lines.indexOf(last) + (ending.toString() ? 1 : 0)
+    const selected = lines.slice(start, end).flatMap((row) => {
+      const hunk = hunks().find((hunk) => hunk.id === row.dataset.hunkLine)
+      const index = Number(row.dataset.lineIndex)
+      const line = hunk?.lines[index]
+      return line && hunk ? [{ ...line, hunk: hunk.id, index }] : []
+    })
+    beginComment(props.directory, props.sessionID, props.file.file, props.file.version, selected, side, false)
+  }
   const collapsed = () => !props.data.open(props.file)
   const setCollapsed = (value: boolean) => props.data.setOpen(props.file, !value)
   const lang = () => languageOf(props.file.file)
   const detail = () => props.data.detail(props.file)
+  createEffect(() => {
+    const loaded = detail().detail
+    if (loaded && props.sessionID) refreshCommentAnchors(props.directory, props.sessionID, loaded)
+  })
   createEffect(() => {
     if (!collapsed()) void props.data.loadDetail(props.file)
   })
@@ -245,16 +402,49 @@ export function FileDiff(props: {
     if (!collapsed() && detail().detail) void props.data.loadTokens(props.file, lang())
   })
   const hunks = () => detail().detail?.hunks ?? []
+  createEffect(() => {
+    const reveal = review.reveal
+    if (review.focus !== props.file.file || !reveal || !detail().detail) return
+    const line = hunks().find((hunk) => hunk.id === reveal.hunk)?.lines[reveal.index]
+    const side =
+      props.style === "unified"
+        ? "unified"
+        : reveal.side === "unified"
+          ? line?.new === undefined
+            ? "old"
+            : "new"
+          : reveal.side
+    requestAnimationFrame(() => {
+      const line = root?.querySelector(
+        `[data-hunk-line="${CSS.escape(reveal.hunk)}"][data-line-index="${reveal.index}"][data-side="${side}"]`,
+      )
+      if (line) present(line)
+    })
+  })
+  const detached = () => {
+    const target = review.commenting
+    if (!target?.stale || target.file !== props.file.file || !commentInView(target, props.directory, props.sessionID))
+      return
+    const end = target.rows.at(-1)
+    if (!hunks().some((hunk) => hunk.id === end?.hunk && hunk.lines[end.index])) return target
+  }
   const shown = createMemo(() => (props.data.all(props.file) ? undefined : budget(hunks())))
   const rest = () => {
     const counts = shown()
     if (!counts) return 0
     return hunks().reduce((sum, hunk, index) => sum + hunk.lines.length - counts[index]!, 0)
   }
-  const rejectLabel = () => (props.scope === "staged" ? t("review.unstage") : t("review.reject"))
+  const rejectLabel = () => t("review.reject")
   const whole = (decision: "accept" | "reject") => void props.onDecide(decision, [{ file: props.file.file }])
   return (
-    <section class="diff-file" role="region" aria-label={props.file.file} data-file={props.file.file}>
+    <section
+      ref={root}
+      onMouseUp={selectedCode}
+      class="diff-file"
+      role="region"
+      aria-label={props.file.file}
+      data-file={props.file.file}
+    >
       <header class="diff-file-head">
         <button
           class="icon-button sm"
@@ -295,12 +485,12 @@ export function FileDiff(props: {
           {t("review.seen")}
         </label>
         <Show when={props.actions.reject}>
-          <button class="button reject sm" onClick={() => whole("reject")}>
-            {props.scope === "staged" ? t("review.unstage") : t("review.rejectFile")}
+          <button class="button reject sm" disabled={props.disabled} onClick={() => whole("reject")}>
+            {t("review.rejectFile")}
           </button>
         </Show>
         <Show when={props.actions.accept}>
-          <button class="button accept sm" onClick={() => whole("accept")}>
+          <button class="button accept sm" disabled={props.disabled} onClick={() => whole("accept")}>
             {t("review.acceptFile")}
           </button>
         </Show>
@@ -323,6 +513,7 @@ export function FileDiff(props: {
             <Show when={!hunk.lines.length || (shown()?.[index()] ?? hunk.lines.length) > 0}>
               <Hunk
                 file={props.file}
+                directory={props.directory}
                 hunk={hunk}
                 n={index() + 1}
                 sessionID={props.sessionID}
@@ -332,11 +523,13 @@ export function FileDiff(props: {
                 tokens={detail().tokens ?? {}}
                 limit={shown()?.[index()]}
                 active={props.active === hunk.id}
+                disabled={props.disabled}
                 onDecide={props.onDecide}
               />
             </Show>
           )}
         </For>
+        <Show when={detached()}>{(target) => <CommentComposer target={target()} />}</Show>
         <Show when={rest() > 0}>
           <button class="button ghost sm show-rest" onClick={() => props.data.showAll(props.file)}>
             {t("review.showRest", { count: rest() })}

@@ -87,12 +87,6 @@
 .review-toolbar .segmented button {
   padding: 4px 7px;
 }
-.review-branches {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
 .branch-chip {
   height: 29px;
   min-width: 0;
@@ -109,8 +103,7 @@
   font-size: var(--text-sm);
   cursor: pointer;
 }
-.branch-chip:hover,
-.branch-chip.on {
+.branch-chip:hover {
   background: var(--surface-active);
   border-color: var(--accent);
 }
@@ -238,24 +231,6 @@
 .hunk.active .hunk-bar {
   background: var(--accent-soft);
   box-shadow: inset 3px 0 0 var(--accent);
-}
-.hunk.accepted .hunk-bar {
-  background: var(--success-soft);
-}
-.hunk-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-  white-space: nowrap;
-  font-size: var(--text-xs);
-}
-.hunk-state.accepted {
-  color: var(--success-text);
-}
-/* In a narrow panel the comment button shows only its icon */
-.panel .hunk-bar .label {
-  display: none;
 }
 .lines {
   font-family: var(--font-mono);
@@ -434,13 +409,14 @@
   padding: 6px;
 }
 .diff-file-head.flash,
-.hunk-bar.flash {
+.hunk-bar.flash,
+.line.flash {
   animation: review-flash 1.5s ease;
 }
 @keyframes review-flash {
   0% {
-    background: var(--accent);
-    color: var(--text-inverse);
+    background: var(--accent-soft);
+    color: var(--text);
   }
   100% {
     background: transparent;
@@ -719,11 +695,7 @@
   background: var(--warning-soft);
 }
 
-/* Commit and push at the bottom of the review panel */
-.review-commit {
-  padding: 0 12px 12px;
-  flex: none;
-}
+/* Git commit and push controls */
 .commit {
   display: grid;
   gap: 6px;
@@ -746,36 +718,143 @@
 .commit-guard {
   display: inline-flex;
 }
-.git-command {
+/* Source control manages Git snapshots; review owns code and annotations. */
+.source-control {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.git-toolbar {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.source-control > .commit {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.git-files {
+  flex: 1;
+  min-height: 0;
+}
+.git-group {
+  border-bottom: 1px solid var(--border);
+}
+.git-group > summary {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
 }
-.git-command .input {
-  flex: 1;
-  min-width: 0;
-}
-.git-prefix {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
+.git-group > summary::before {
+  content: "▸";
   color: var(--text-muted);
 }
-.git-output-wrap {
+.git-group[open] > summary::before {
+  content: "▾";
+}
+.git-group-actions {
+  padding: 0 8px 6px;
+  flex-wrap: wrap;
+}
+.git-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  min-width: 0;
+}
+.git-file:hover {
+  background: var(--surface-hover);
+}
+.git-file .path {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+.git-review {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-text);
+  text-align: left;
+  cursor: pointer;
+}
+.git-review:hover {
+  text-decoration: underline;
+}
+.git-empty {
+  margin: 0;
+  padding: 10px 12px;
+}
+.lines .line {
   position: relative;
 }
-.git-output {
-  margin: 0;
-  max-height: 160px;
+.line-comment-add {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 22px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--text-inverse);
+  opacity: 0;
+  cursor: pointer;
+}
+.line:hover .line-comment-add,
+.line-comment-add:focus-visible {
+  opacity: 1;
+}
+.line.selected-code {
+  box-shadow: inset 3px 0 var(--accent);
+  background: var(--accent-soft);
+}
+.lines .comment-compose,
+.lines .line-comment {
+  font-family: var(--font-sans);
+  white-space: normal;
+}
+.lines .comment-compose {
+  margin: 4px 8px 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.lines .comment-compose textarea {
+  width: 100%;
+  min-height: 80px;
+}
+.line-comment > details {
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+.line-comment > details > summary {
+  cursor: pointer;
+}
+.comment-excerpt {
   overflow: auto;
-  padding: 8px 36px 8px 8px;
-  border-radius: var(--radius);
-  background: var(--surface-muted);
+  max-height: 160px;
+  margin: 6px 0 0;
+  white-space: pre;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  white-space: pre-wrap;
 }
-.git-output-close {
-  position: absolute;
-  top: 4px;
-  right: 4px;
+.selection-comment-add {
+  margin: 4px 10px 8px;
+}
+.split-annotations > div {
+  min-width: 0;
+}
+.split-annotations .line-comment {
+  margin-left: 8px;
+}
+.review-draft {
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
 }

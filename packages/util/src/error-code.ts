@@ -687,6 +687,27 @@ export namespace ErrorCode {
       errors: ["CheckoutStaleError"],
     },
 
+    GIT_CHANGES_STALE: {
+      code: "MRK-7010",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: { zh: "Git 文件状态已变化", en: "Git file state changed" },
+      hint: { zh: "刷新 Git 文件列表后重新操作。", en: "Refresh the Git file list and retry the operation." },
+      errors: ["GitChangesStaleError"],
+    },
+    GIT_CHANGES_FAILED: {
+      code: "MRK-7011",
+      domain: "workspace",
+      status: 400,
+      retryable: false,
+      title: { zh: "Git 文件操作失败", en: "Git file operation failed" },
+      hint: {
+        zh: "查看 Git 错误信息，处理后刷新列表。",
+        en: "Check the Git error, resolve it and refresh the file list.",
+      },
+      errors: ["GitChangesFailedError"],
+    },
     UPDATE_CHECK_FAILED: {
       code: "MRK-8001",
       domain: "update",

@@ -566,7 +566,9 @@ await engine.close()
 
 `vcs.get` and `vcs.head.updated` carry an opaque `checkout` identity. Both branch switches and commits on the same branch update it; the event's `branchChanged` distinguishes them. Do not parse or order these identities. Re-read the actual state after a connection failure or stale-context response.
 
-**Review write contract change:** `review.decide` and `review.undo` require the displayed `review.get` or decision result's `checkout` as `expectedCheckout`; pass `null` for a non-Git review. A stale context returns 409 and a missing field returns 400. File details also accept `expectedCheckout` alongside the listed `version` to reject old snapshots. Changing the base of `review.get({ scope: "branch", base })` does not switch the working branch.
+**Review and Git management are independent:** `review.get` / `review.file` accept only `session` and `turn` and require `sessionID`. `review.decide` requires explicit `files: [{ file, version, hunks? }]`, with each version taken from the displayed list. Decisions and `review.undo` require the corresponding `expectedCheckout`; pass `null` outside Git. Stale files or contexts return 409; missing fields return 400. Acceptance advances only the review baseline. Rejection and undoing rejection write only working files, preserving the index and commit history. The result's `last` describes the most recent undoable decision, including when no pending files remain.
+
+`vcs.changes.get()` reads independent `staged` / `unstaged` file groups from Git; a file can appear in both. `vcs.changes.stage` / `vcs.changes.unstage` take displayed files with their versions and `expectedCheckout` and change only the index. Staging, committing and pushing do not require a review or completed review. The old `unstaged`, `staged` and `branch` review scopes have been removed; callers must use the Git methods. Rejecting an already staged edit creates a new inverse working diff while preserving the staged snapshot.
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
@@ -579,12 +581,33 @@ try {
     await client.vcs.switchBranch({ branch: "dev", expectedCheckout: options.current.checkout }, { throwOnError: true })
   }
 
-  const input = { scope: "unstaged" as const }
-  const review = (await client.review.get(input, { throwOnError: true })).data
-  if (review.files.length) {
+  const changes = (await client.vcs.changes.get({}, { throwOnError: true })).data
+  if (changes.unstaged.length) {
+    const staged = (
+      await client.vcs.changes.stage(
+        { expectedCheckout: changes.checkout, files: changes.unstaged },
+        { throwOnError: true },
+      )
+    ).data
+    await client.vcs.changes.unstage(
+      { expectedCheckout: staged.checkout, files: staged.staged },
+      { throwOnError: true },
+    )
+  }
+
+  // Use the conversation whose agent changes you want to review.
+  const session = await merak.session()
+  const input = { scope: "session" as const, sessionID: session.id }
+  const pending = (await client.review.get(input, { throwOnError: true })).data
+  if (pending.files.length) {
     const accepted = (
       await client.review.decide(
-        { ...input, decision: "accept", expectedCheckout: review.checkout },
+        {
+          ...input,
+          decision: "accept",
+          expectedCheckout: pending.checkout,
+          files: pending.files.map(({ file, version }) => ({ file, version })),
+        },
         { throwOnError: true },
       )
     ).data

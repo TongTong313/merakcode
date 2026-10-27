@@ -1,21 +1,6 @@
 /**
- * Review: lists a set of changes as files and hunks that can be accepted or rejected one by one.
- *
- * Every scope has a "base" and a "current" version; hunks are the difference between them (see ./hunks):
- * - session: base = the content before the agent (including subsessions) first changed the file, moved forward on
- *   accept; current = disk
- * - turn: same as session, but only files touched in this turn
- * - unstaged: base = git index, current = worktree; accept stages the hunk, reject discards it
- * - staged: base = HEAD, current = index; only reject, which unstages the hunk
- * - branch: base = merge base with the base branch, current = worktree; accept only records a mark, reject writes
- *   back to the worktree
- *
- * Accept moves the base to compose(base, current, accepted hunks); reject reverts the current version to
- * compose(base, current, remaining hunks). Binary, oversized or non-UTF-8 files are a single hunk and can only be
- * accepted or rejected as a whole.
- *
- * get lists files with counts only; file returns one file's hunks. Each file has a version (a hash of base and
- * current), so a client can keep details it already has and the server can tell a stale request apart.
+ * Pending agent changes in a conversation or turn. Accept advances the review baseline; reject writes only the
+ * working file. Git index and commit history are independent of review decisions.
  */
 import path from "path"
 import fs from "fs/promises"
@@ -23,14 +8,11 @@ import { realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
 import z from "zod"
 import { NamedError } from "@merakcode/util/error"
-import { Process } from "@merakcode/util/process"
 import { Log } from "@merakcode/log/logger"
 import { BusEvent } from "../bus/bus-event"
 import { Bus } from "../bus"
 import { Instance } from "../project/instance"
-import { Vcs } from "../project/vcs"
 import { Checkout } from "../project/checkout"
-import { Storage } from "../storage/storage"
 import { ReviewBaseline } from "./baseline"
 import { Snapshot } from "../snapshot"
 import { Session } from "../session"
@@ -44,7 +26,7 @@ export namespace Review {
   /** File details carry the full base and current text (for highlighting) only up to this combined size */
   const TEXT_LIMIT = 400_000
 
-  export const Scope = z.enum(["session", "turn", "unstaged", "staged", "branch"]).meta({ ref: "ReviewScope" })
+  export const Scope = z.enum(["session", "turn"]).meta({ ref: "ReviewScope" })
   export type Scope = z.infer<typeof Scope>
 
   export const Line = z
@@ -66,8 +48,6 @@ export namespace Review {
       newLines: z.number(),
       heading: z.string().optional(),
       lines: Line.array(),
-      /** Already accepted (marked) in the branch scope */
-      state: z.literal("accepted").optional(),
     })
     .meta({ ref: "ReviewHunk" })
   export type Hunk = z.infer<typeof Hunk>
@@ -84,7 +64,6 @@ export namespace Review {
       deletions: z.number(),
       /** Number of hunks; their lines come from Review.file */
       hunks: z.number(),
-      accepted: z.number(),
       /** Hash of checkout context, base and current: changes whenever any of them changes */
       version: z.string(),
     })
@@ -108,9 +87,8 @@ export namespace Review {
       scope: Scope,
       /** Opaque checkout context; null outside Git repositories */
       checkout: z.string().nullable(),
-      /** Base branch used by the branch scope */
-      base: z.string().optional(),
       actions: z.object({ accept: z.boolean(), reject: z.boolean() }),
+      last: z.object({ decision: z.enum(["accept", "reject"]), count: z.number().int() }).optional(),
       files: File.array(),
     })
     .meta({ ref: "ReviewResult" })
@@ -119,19 +97,17 @@ export namespace Review {
   export const Input = z.object({
     scope: Scope,
     /** Required for the session and turn scopes */
-    sessionID: z.string().optional(),
+    sessionID: z.string(),
     /** Turn scope: the user message that starts the turn */
     messageID: z.string().optional(),
-    /** Branch scope: base branch, defaults to the repository's default branch */
-    base: z.string().optional(),
   })
   export type Input = z.infer<typeof Input>
 
   export const Decision = Input.extend({
     expectedCheckout: z.string().nullable(),
     decision: z.enum(["accept", "reject"]),
-    /** Omitted means all files; a file without hunks means all of its hunks */
-    files: z.object({ file: z.string(), hunks: z.string().array().optional() }).array().optional(),
+    /** Explicit displayed versions; a file without hunks means all of its hunks. */
+    files: z.object({ file: z.string(), version: z.string(), hunks: z.string().array().optional() }).array().min(1),
   })
   export type Decision = z.infer<typeof Decision>
 
@@ -164,40 +140,24 @@ export namespace Review {
     path: string
     before: Blob
     after: Blob
-    /** File mode in the index, reused when writing the index */
-    mode?: string
-    /** Hunks already accepted in the branch scope */
-    accepted?: Set<string>
   }
 
   /**
-   * Change to apply to one file: next is the new base (accept) or new current content (reject); whole means the file
-   * cannot be diffed line by line and is handled as a whole
+   * Change to apply to one file: next is the new base (accept) or new current content (reject).
    */
-  type Plan = { entry: Entry; next: Blob; ids: string[]; whole: boolean }
+  type Plan = { entry: Entry; next: Blob; ids: string[] }
 
   /** Undoes one write: check confirms nobody changed what was written since, run restores the previous content */
   type Undo = { check(): Promise<boolean>; run(): Promise<void> }
 
-  type Source = {
-    base?: string
-    actions: { accept: boolean; reject: boolean }
-    entries(): Promise<Entry[]>
-    /** Moves the base forward to next */
-    accept(plan: Plan): Promise<Undo>
-    /** Reverts the current content to next */
-    reject(plan: Plan): Promise<Undo>
-  }
-
   type Text = { before?: string; after?: string }
   type Kind = "binary" | "truncated"
-  type Context = { directory: string; branch: string | null; checkout: string | null }
+  type Context = { directory: string; checkout: string | null }
 
   async function context(expectedCheckout?: string | null): Promise<Context> {
     const identity = expectedCheckout === undefined ? await Checkout.current() : await Checkout.assert(expectedCheckout)
     return {
       directory: identity?.directory ?? canonical(Instance.directory),
-      branch: identity?.branch ?? null,
       checkout: identity?.checkout ?? null,
     }
   }
@@ -291,15 +251,9 @@ export namespace Review {
     return result === undefined ? undefined : Buffer.from(result)
   }
 
-  /** Hunks with their accepted mark (branch scope) */
-  function marked(entry: Entry): Hunk[] {
-    const accepted = entry.accepted ?? new Set()
-    return blocks(entry).list.map((hunk) => (accepted.has(hunk.id) ? { ...hunk, state: "accepted" } : hunk))
-  }
-
   function summary(entry: Entry, current: Context): File {
     const { kind } = blocks(entry)
-    const items = marked(entry)
+    const items = blocks(entry).list
     const rows = items.flatMap((hunk) => hunk.lines)
     return {
       file: entry.file,
@@ -309,7 +263,6 @@ export namespace Review {
       additions: rows.filter((line) => line.kind === "add").length,
       deletions: rows.filter((line) => line.kind === "del").length,
       hunks: items.length,
-      accepted: items.filter((hunk) => hunk.state === "accepted").length,
       version: fileVersion(entry, current),
     }
   }
@@ -320,7 +273,7 @@ export namespace Review {
     return {
       file: entry.file,
       version: fileVersion(entry, current),
-      hunks: marked(entry),
+      hunks: blocks(entry).list,
       ...(full.before !== undefined ? { before: full.before } : {}),
       ...(full.after !== undefined ? { after: full.after } : {}),
     }
@@ -352,14 +305,6 @@ export namespace Review {
     return { check: async () => same(await readDisk(file), after), run: () => writeDisk(file, before) }
   }
 
-  /** Changes a storage entry and records how to undo it; only review writes this storage, so there is no check */
-  async function onStorage<T>(key: string[], fallback: T, change: (value: T) => T): Promise<Undo> {
-    const read = () => Storage.read<T>(key).catch(() => structuredClone(fallback))
-    const before = await read()
-    await Storage.write(key, change(structuredClone(before)))
-    return { check: async () => true, run: () => Storage.write(key, before) }
-  }
-
   /** The real path, or the real parent plus the last segment when the file itself is missing */
   function canonical(file: string): string {
     try {
@@ -386,197 +331,6 @@ export namespace Review {
     return file
   }
 
-  // Blobs are read exactly as stored in the repository (no line ending conversion), and comparisons with the worktree
-  // ignore CRLF/LF. Binary files handled as a whole go through git add / git restore, so filters like LFS still apply.
-
-  const EMPTY = /^0+$/
-
-  function git(args: string[], stdin?: string | Buffer) {
-    return Process.run(["git", "-c", "core.quotepath=off", ...args], { cwd: Instance.worktree, stdin, nothrow: true })
-  }
-
-  async function must(args: string[], stdin?: string | Buffer) {
-    const result = await git(args, stdin)
-    if (result.exitCode !== 0) throw new Error(`git ${args[0]} failed: ${result.stderr.toString().trim()}`)
-    return result.text()
-  }
-
-  type Raw = { file: string; srcMode: string; dstMode: string; srcSha: string; dstSha: string; status: string }
-
-  /** git diff --raw -z: ":srcmode dstmode srcsha dstsha status\0path\0" */
-  async function diffRaw(args: string[]): Promise<Raw[]> {
-    const parts = (await must(["diff", "--raw", "-z", "--no-renames", "--no-abbrev", ...args])).split("\0")
-    return parts.flatMap((meta, index) => {
-      if (!meta.startsWith(":")) return []
-      const [srcMode = "", dstMode = "", srcSha = "", dstSha = "", status = ""] = meta.slice(1).split(" ")
-      const file = parts[index + 1]
-      // Conflicted files, submodules and symlinks are not handled by review
-      if (!file || status === "U" || [srcMode, dstMode].some((mode) => mode === "160000" || mode === "120000"))
-        return []
-      return [{ file, srcMode, dstMode, srcSha, dstSha, status }]
-    })
-  }
-
-  async function untracked() {
-    return (await must(["ls-files", "--others", "--exclude-standard", "-z"])).split("\0").filter(Boolean)
-  }
-
-  /** Reads blobs in one batch (git cat-file --batch); an all-zero sha means the file does not exist */
-  async function blobs(shas: string[]): Promise<Blob[]> {
-    const wanted = [...new Set(shas.filter((sha) => !EMPTY.test(sha)))]
-    const result = new Map<string, Buffer>()
-    if (wanted.length) {
-      const output = (await git(["cat-file", "--batch"], wanted.join("\n") + "\n")).stdout
-      let offset = 0
-      for (const sha of wanted) {
-        const end = output.indexOf(0x0a, offset)
-        if (end === -1) break
-        const header = output.subarray(offset, end).toString().split(" ")
-        offset = end + 1
-        if (header[1] === "missing" || header.length < 3) continue
-        const size = Number(header[2])
-        result.set(sha, output.subarray(offset, offset + size))
-        offset += size + 1
-      }
-    }
-    return shas.map((sha) => result.get(sha))
-  }
-
-  /** Mode used when a new file is written to the index */
-  async function newMode(file: string) {
-    if (process.platform === "win32") return "100644"
-    const stat = await fs.stat(file).catch(() => undefined)
-    return stat && stat.mode & 0o111 ? "100755" : "100644"
-  }
-
-  /** Writes the content to the index unchanged; undefined removes the file from the index */
-  async function writeIndex(entry: Entry, blob: Blob) {
-    if (blob === undefined) {
-      await must(["update-index", "--force-remove", "--", entry.file])
-      return
-    }
-    const sha = (await must(["hash-object", "-w", "--no-filters", "--stdin"], blob)).trim()
-    const mode = entry.mode && !EMPTY.test(entry.mode) ? entry.mode : await newMode(entry.path)
-    await must(["update-index", "--add", "--cacheinfo", `${mode},${sha},${entry.file}`])
-  }
-
-  /** "mode,sha" of the file in the index; undefined when it is not in the index */
-  async function indexEntry(file: string) {
-    const line = (await must(["ls-files", "-s", "-z", "--", file])).split("\0")[0]
-    if (!line) return
-    const [mode, sha] = line.split(/\s/)
-    return `${mode},${sha}`
-  }
-
-  /** Changes the index and records how to undo it */
-  async function onIndex(file: string, write: () => Promise<unknown>): Promise<Undo> {
-    const before = await indexEntry(file)
-    await write()
-    const after = await indexEntry(file)
-    return {
-      check: async () => (await indexEntry(file)) === after,
-      run: async () => {
-        if (before) await must(["update-index", "--add", "--cacheinfo", `${before},${file}`])
-        else await must(["update-index", "--force-remove", "--", file])
-      },
-    }
-  }
-
-  /** Restores the worktree file from source (the index by default); deletes it when the base has no such file */
-  async function restore(plan: Plan, source?: string) {
-    if (plan.next === undefined) return writeDisk(plan.entry.path, undefined)
-    await must(["restore", ...(source ? [`--source=${source}`] : []), "--worktree", "--", plan.entry.file])
-  }
-
-  /** Worktree changes relative to ref (the index by default), including untracked files */
-  async function worktreeEntries(ref?: string): Promise<Entry[]> {
-    const [raw, extra] = await Promise.all([diffRaw(ref ? [ref] : []), untracked()])
-    const tracked = new Set(raw.map((item) => item.file))
-    const list = [
-      ...raw.map((item) => ({ file: item.file, sha: item.srcSha, mode: item.srcMode })),
-      ...extra.filter((file) => !tracked.has(file)).map((file) => ({ file, sha: "0", mode: "0" })),
-    ]
-    const before = await blobs(list.map((item) => item.sha))
-    const entries = await Promise.all(
-      list.map(async (item, index) => {
-        const file = path.join(Instance.worktree, item.file)
-        return { file: item.file, path: file, before: before[index], after: await readDisk(file), mode: item.mode }
-      }),
-    )
-    return entries.filter(changed)
-  }
-
-  function unstaged(): Source {
-    return {
-      actions: { accept: true, reject: true },
-      entries: () => worktreeEntries(),
-      accept: (plan) =>
-        onIndex(plan.entry.file, () =>
-          plan.whole ? must(["add", "-A", "--", plan.entry.file]) : writeIndex(plan.entry, plan.next),
-        ),
-      reject: (plan) =>
-        onDisk(plan.entry.path, () => (plan.whole ? restore(plan) : writeDisk(plan.entry.path, plan.next))),
-    }
-  }
-
-  function staged(): Source {
-    return {
-      actions: { accept: false, reject: true },
-      async entries() {
-        const raw = await diffRaw(["--cached"])
-        const [before, after] = await Promise.all([
-          blobs(raw.map((item) => item.srcSha)),
-          blobs(raw.map((item) => item.dstSha)),
-        ])
-        const entries = raw.map((item, index) => ({
-          file: item.file,
-          path: path.join(Instance.worktree, item.file),
-          before: before[index],
-          after: after[index],
-          mode: EMPTY.test(item.dstMode) ? item.srcMode : item.dstMode,
-        }))
-        return entries.filter(changed)
-      },
-      accept: async () => nothing,
-      reject: (plan) => onIndex(plan.entry.file, () => writeIndex(plan.entry, plan.next)),
-    }
-  }
-
-  type Marks = Record<string, Record<string, string[]>>
-
-  async function branch(input: Input, current: Context): Promise<Source> {
-    const base = input.base ?? (await Vcs.defaultBranch())?.ref
-    const fork = base ? (await git(["merge-base", base, "HEAD"])).text().trim() : ""
-    const key = [
-      "review_branch_checkout",
-      createHash("sha256")
-        .update(`${current.directory}\u0000${current.branch ?? ""}\u0000${base ?? ""}`)
-        .digest("hex"),
-    ]
-    return {
-      base,
-      actions: { accept: true, reject: true },
-      async entries() {
-        if (!base || !fork) return []
-        const marks = await Storage.read<Marks>(key).catch(() => ({}) as Marks)
-        const entries = await worktreeEntries(fork)
-        return entries.map((entry) => ({ ...entry, accepted: new Set(marks[base]?.[entry.file] ?? []) }))
-      },
-      accept(plan) {
-        const current = new Set(blocks(plan.entry).list.map((hunk) => hunk.id))
-        return onStorage<Marks>(key, {}, (marks) => {
-          // Keep only hunks that still exist: an edited hunk gets a new id, so its old mark is obsolete
-          const kept = [...new Set([...(marks[base!]?.[plan.entry.file] ?? []), ...plan.ids])].filter((id) =>
-            current.has(id),
-          )
-          return { ...marks, [base!]: { ...marks[base!], [plan.entry.file]: kept } }
-        })
-      },
-      reject: (plan) =>
-        onDisk(plan.entry.path, () => (plan.whole ? restore(plan, fork) : writeDisk(plan.entry.path, plan.next))),
-    }
-  }
-
   /** Changes a file's review baseline and records how to undo it; only review writes baselines, so there is no check */
   async function onBaseline(sessionID: string, file: string, next: Blob): Promise<Undo> {
     const before = ReviewBaseline.get(sessionID, file)
@@ -597,12 +351,11 @@ export namespace Review {
     return { start: messages[index]!.info.time.created, end: next?.info.time.created ?? Infinity }
   }
 
-  function conversation(input: Input): Source {
+  function conversation(input: Input) {
     const sessionID = input.sessionID
     if (!sessionID) throw new InvalidError({ message: `scope ${input.scope} requires sessionID` })
     if (input.scope === "turn" && !input.messageID) throw new InvalidError({ message: "scope turn requires messageID" })
     return {
-      actions: { accept: true, reject: true },
       async entries() {
         const [history, range] = await Promise.all([
           Session.descendants(sessionID).then((list) => Snapshot.history([sessionID, ...list.map((item) => item.id)])),
@@ -627,26 +380,9 @@ export namespace Review {
         )
         return entries.filter(changed).toSorted((a, b) => a.file.localeCompare(b.file))
       },
-      accept: (plan) => onBaseline(sessionID, plan.entry.path, plan.next),
-      reject: (plan) => onDisk(plan.entry.path, () => writeDisk(plan.entry.path, plan.next)),
+      accept: (plan: Plan) => onBaseline(sessionID, plan.entry.path, plan.next),
+      reject: (plan: Plan) => onDisk(plan.entry.path, () => writeDisk(plan.entry.path, plan.next)),
     }
-  }
-
-  const nothing: Undo = { check: async () => true, run: async () => {} }
-
-  const none: Source = {
-    actions: { accept: false, reject: false },
-    entries: async () => [],
-    accept: async () => nothing,
-    reject: async () => nothing,
-  }
-
-  async function open(input: Input, current: Context): Promise<Source> {
-    if (input.scope === "session" || input.scope === "turn") return conversation(input)
-    if (Instance.project.vcs !== "git") return none
-    if (input.scope === "unstaged") return unstaged()
-    if (input.scope === "staged") return staged()
-    return branch(input, current)
   }
 
   /**
@@ -657,14 +393,9 @@ export namespace Review {
   const SNAPSHOTS = 4
 
   function snapshotKey(input: Input, current: Context) {
-    return [
-      current.directory,
-      current.checkout ?? "",
-      input.scope,
-      input.sessionID ?? "",
-      input.messageID ?? "",
-      input.base ?? "",
-    ].join("\u0000")
+    return [current.directory, current.checkout ?? "", input.scope, input.sessionID ?? "", input.messageID ?? ""].join(
+      "\u0000",
+    )
   }
 
   function remember(input: Input, current: Context, entries: Entry[]) {
@@ -675,15 +406,14 @@ export namespace Review {
   }
 
   async function list(input: Input, current: Context): Promise<Result> {
-    const source = await open(input, current)
-    const entries = await source.entries()
+    const entries = await conversation(input).entries()
     await Checkout.assert(current.checkout)
     remember(input, current, entries)
     return {
       scope: input.scope,
       checkout: current.checkout,
-      ...(source.base ? { base: source.base } : {}),
-      actions: source.actions,
+      actions: { accept: true, reject: true },
+      last: historyFor(current).get(undoKey(input))?.at(-1)?.summary,
       files: entries.map((entry) => summary(entry, current)),
     }
   }
@@ -703,7 +433,7 @@ export namespace Review {
       await Checkout.assert(current.checkout)
       return detail(listed!, current)
     }
-    const entries = await (await open(input, current)).entries()
+    const entries = await conversation(input).entries()
     await Checkout.assert(current.checkout)
     remember(input, current, entries)
     const entry = pick(entries)
@@ -731,20 +461,20 @@ export namespace Review {
    * Recent decisions per scope, undoable step by step. Kept in memory only, so they are lost when the engine restarts.
    * The turn and session scopes share one base, so they also share the undo history.
    */
-  const history = new Map<string, { checkout: string | null; scopes: Map<string, Undo[][]> }>()
+  type Step = { undos: Undo[]; summary: { decision: "accept" | "reject"; count: number } }
+  const history = new Map<string, { checkout: string | null; scopes: Map<string, Step[]> }>()
   const LIMIT = 50
 
   function historyFor(current: Context) {
     const known = history.get(current.directory)
     if (known?.checkout === current.checkout) return known.scopes
-    const scopes = new Map<string, Undo[][]>()
+    const scopes = new Map<string, Step[]>()
     history.set(current.directory, { checkout: current.checkout, scopes })
     return scopes
   }
 
-  function undoKey(input: Input, source: Source) {
-    const scope = input.scope === "turn" ? "session" : input.scope
-    return [scope, input.sessionID ?? "", source.base ?? ""].join("\u0000")
+  function undoKey(input: Input) {
+    return input.sessionID ?? ""
   }
 
   function updated(input: Input) {
@@ -755,20 +485,20 @@ export namespace Review {
     return Checkout.activity(() =>
       serial(canonical(Instance.worktree), async () => {
         const current = await context(input.expectedCheckout)
-        const source = await open(input, current)
-        if (!source.actions[input.decision])
-          throw new InvalidError({ message: `scope ${input.scope} does not support ${input.decision}` })
+        const source = conversation(input)
         const entries = await source.entries()
-        const targets = input.files ?? entries.map((entry) => ({ file: entry.file, hunks: undefined }))
+        const targets = input.files
         // Validate everything before writing: if any target is stale, nothing is changed
         const plans = targets.map((target): Plan => {
           const entry = entries.find((item) => item.file === target.file)
           if (!entry) throw new StaleError({ message: `${target.file} has no changes in scope ${input.scope}` })
-          const { kind, list } = blocks(entry)
+          if (fileVersion(entry, current) !== target.version)
+            throw new StaleError({ message: `${target.file} changed after the displayed version` })
+          const { list } = blocks(entry)
           const ids = target.hunks ?? list.map((hunk) => hunk.id)
           const missing = ids.filter((id) => !list.some((hunk) => hunk.id === id))
           if (missing.length) throw new StaleError({ message: `${target.file}: hunk ${missing.join(", ")} not found` })
-          return { entry, ids, next: apply(entry, input.decision, new Set(ids)), whole: !!kind }
+          return { entry, ids, next: apply(entry, input.decision, new Set(ids)) }
         })
         await Checkout.assert(current.checkout)
         const undos: Undo[] = []
@@ -777,8 +507,9 @@ export namespace Review {
           undos.push(await (input.decision === "accept" ? source.accept(plan) : source.reject(plan)))
         }
         const decisions = historyFor(current)
-        const key = undoKey(input, source)
-        decisions.set(key, [...(decisions.get(key) ?? []), undos].slice(-LIMIT))
+        const key = undoKey(input)
+        const summary = { decision: input.decision, count: plans.reduce((count, plan) => count + plan.ids.length, 0) }
+        decisions.set(key, [...(decisions.get(key) ?? []), { undos, summary }].slice(-LIMIT))
         log.info("decided", { scope: input.scope, decision: input.decision, files: plans.length })
         updated(input)
         return list(input, current)
@@ -795,8 +526,8 @@ export namespace Review {
       serial(canonical(Instance.worktree), async () => {
         const current = await context(input.expectedCheckout)
         const decisions = historyFor(current)
-        const key = undoKey(input, await open(input, current))
-        const undos = decisions.get(key)?.at(-1)
+        const key = undoKey(input)
+        const undos = decisions.get(key)?.at(-1)?.undos
         if (!undos) throw new StaleError({ message: `nothing to undo in scope ${input.scope}` })
         const fresh = await Promise.all(undos.map((item) => item.check()))
         if (fresh.includes(false)) {

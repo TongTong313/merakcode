@@ -25,34 +25,26 @@ beforeAll(async () => {
   merak = await createMerakCode({ cwd: env.project, executablePath: engine, env: env.env })
 }, 120_000)
 
-test("requires a checkout token before review decisions and undo can write", async () => {
-  await using isolated = await sandbox(model.url)
-  const connection = await createMerakCode({ cwd: isolated.project, executablePath: engine, env: isolated.env })
-  try {
-    const { client } = connection
-    await client.file.write({ path: "draft.txt", content: "keep this draft\n" }, { throwOnError: true })
-    // Exercise server validation when a caller bypasses the SDK's required-field type.
-    const input = { scope: "unstaged" as const, expectedCheckout: undefined as never }
-    const decision = await client.review.decide({ ...input, decision: "reject", files: [{ file: "draft.txt" }] })
-    expect(decision.response.status).toBe(400)
-    const undone = await client.review.undo(input)
-    expect(undone.response.status).toBe(400)
-    expect((await client.file.read({ path: "draft.txt" }, { throwOnError: true })).data.content).toBe(
-      "keep this draft\n",
-    )
-  } finally {
-    await connection.close()
+test("Git changes use explicit methods and old Git review scopes are invalid", async () => {
+  const { client } = merak
+  await client.file.write({ path: "draft.txt", content: "keep this draft\n" }, { throwOnError: true })
+  const listed = (await client.vcs.changes.get(undefined, { throwOnError: true })).data
+  const missing = await client.vcs.changes.stage({ expectedCheckout: undefined as never, files: listed.unstaged })
+  expect(missing.response.status).toBe(400)
+  for (const scope of ["unstaged", "staged", "branch"]) {
+    const invalid = await client.review.get({ scope: scope as never, sessionID: "invalid" })
+    expect(invalid.response.status).toBe(400)
   }
+  expect((await client.file.read({ path: "draft.txt" }, { throwOnError: true })).data.content).toBe("keep this draft\n")
 }, 120_000)
 
-test("review decisions, file versions and undo cannot cross checkout contexts", async () => {
+test("Git mutations reject stale checkouts and file versions without changing working files", async () => {
   await using isolated = await sandbox(model.url)
   const connection = await createMerakCode({ cwd: isolated.project, executablePath: engine, env: isolated.env })
   try {
     const { client } = connection
     const run = async (...args: string[]) => {
-      const result = (await client.vcs.run({ args }, { throwOnError: true })).data
-      expect(result.exitCode).toBe(0)
+      expect((await client.vcs.run({ args }, { throwOnError: true })).data.exitCode).toBe(0)
     }
     await run("config", "user.name", "Review Test")
     await run("config", "user.email", "review@example.test")
@@ -60,89 +52,31 @@ test("review decisions, file versions and undo cannot cross checkout contexts", 
     await run("add", "a.txt")
     await run("commit", "-m", "initial")
     await client.file.write({ path: "a.txt", content: "after\n" }, { throwOnError: true })
-    const input = { scope: "unstaged" as const }
-    const listed = (await client.review.get(input, { throwOnError: true })).data
-    expect(listed.checkout).toEqual(expect.any(String))
-    const oldDetail = (await client.review.file({ ...input, file: "a.txt" }, { throwOnError: true })).data
-    const decision = {
-      ...input,
-      expectedCheckout: listed.checkout,
-      decision: "reject" as const,
-      files: [{ file: "a.txt" }],
-    }
-    await client.review.decide(decision, { throwOnError: true })
+    const old = (await client.vcs.changes.get(undefined, { throwOnError: true })).data
     await run("switch", "-c", "other")
-    await client.file.write({ path: "a.txt", content: "after\n" }, { throwOnError: true })
-
-    const staleDecision = await client.review.decide(decision)
-    expect(staleDecision.response.status).toBe(409)
-    expect(staleDecision.error).toMatchObject({ name: "CheckoutStaleError" })
-    const staleHunk = await client.review.decide({
-      ...decision,
-      files: [{ file: "a.txt", hunks: [oldDetail.hunks[0]!.id] }],
-    })
-    expect(staleHunk.response.status).toBe(409)
-    expect(staleHunk.error).toMatchObject({ name: "CheckoutStaleError" })
-    const undo = { ...input, expectedCheckout: listed.checkout }
-    const staleUndo = await client.review.undo(undo)
-    expect(staleUndo.response.status).toBe(409)
-    expect(staleUndo.error).toMatchObject({ name: "CheckoutStaleError" })
-    const staleFile = await client.review.file({
-      ...input,
-      file: "a.txt",
-      version: listed.files[0]!.version,
-      expectedCheckout: listed.checkout,
-    })
-    expect(staleFile.response.status).toBe(409)
-    expect(staleFile.error).toMatchObject({ name: "CheckoutStaleError" })
-    const staleVersion = await client.review.file({ ...input, file: "a.txt", version: listed.files[0]!.version })
-    expect(staleVersion.response.status).toBe(409)
-    expect(staleVersion.error).toMatchObject({ name: "ReviewStaleError" })
-    expect((await client.file.read({ path: "a.txt" }, { throwOnError: true })).data.content).toBe("after\n")
-    const fresh = (await client.review.get(input, { throwOnError: true })).data
-    expect(fresh.files[0]!.version).not.toBe(listed.files[0]!.version)
-    const detail = (await client.review.file({ ...input, file: "a.txt" }, { throwOnError: true })).data
-    expect(detail.after).toBe("after\n")
-    const freshDecision = await client.review.decide(
-      { ...decision, expectedCheckout: fresh.checkout },
-      { throwOnError: true },
-    )
-    expect(freshDecision.data.files).toEqual([])
-  } finally {
-    await connection.close()
-  }
-}, 120_000)
-
-test("branch review acceptance belongs to its checkout even when another worktree uses the same branch", async () => {
-  await using isolated = await sandbox(model.url)
-  const connection = await createMerakCode({ cwd: isolated.project, executablePath: engine, env: isolated.env })
-  try {
-    const { client } = connection
-    const run = async (...args: string[]) => {
-      const result = (await client.vcs.run({ args }, { throwOnError: true })).data
-      expect(result.exitCode).toBe(0)
-    }
-    await run("config", "user.name", "Review Test")
-    await run("config", "user.email", "review@example.test")
-    await client.file.write({ path: "a.txt", content: "before\n" }, { throwOnError: true })
-    await run("add", "a.txt")
-    await run("commit", "-m", "initial")
-    const base = (await client.vcs.get(undefined, { throwOnError: true })).data.branch
-    await run("switch", "-c", "feature")
-    await client.file.write({ path: "a.txt", content: "after\n" }, { throwOnError: true })
-    await run("commit", "-am", "feature")
-    const linked = path.join(isolated.root, "linked")
-    await run("worktree", "add", "--force", linked, "feature")
-    const input = { scope: "branch" as const, base }
-    const first = (await client.review.get(input, { throwOnError: true })).data
-    const accepted = await client.review.decide(
-      { ...input, expectedCheckout: first.checkout, decision: "accept", files: [{ file: "a.txt" }] },
-      { throwOnError: true },
-    )
-    expect(accepted.data.files[0]!.accepted).toBe(1)
-    const other = (await client.review.get({ ...input, directory: linked }, { throwOnError: true })).data
-    expect(other.files[0]!.accepted).toBe(0)
-    expect(other.checkout).not.toBe(first.checkout)
+    const stale = await client.vcs.changes.stage({ expectedCheckout: old.checkout, files: old.unstaged })
+    expect(stale.response.status).toBe(409)
+    expect(stale.error).toMatchObject({ name: "CheckoutStaleError" })
+    const fresh = (await client.vcs.changes.get(undefined, { throwOnError: true })).data
+    const staged = (
+      await client.vcs.changes.stage(
+        { expectedCheckout: fresh.checkout, files: fresh.unstaged },
+        { throwOnError: true },
+      )
+    ).data
+    expect(staged.staged.map((file) => file.file)).toEqual(["a.txt"])
+    const unstaged = (
+      await client.vcs.changes.unstage(
+        { expectedCheckout: staged.checkout, files: staged.staged },
+        { throwOnError: true },
+      )
+    ).data
+    expect(unstaged.staged).toEqual([])
+    await client.file.write({ path: "a.txt", content: "later\n" }, { throwOnError: true })
+    const changed = await client.vcs.changes.stage({ expectedCheckout: unstaged.checkout, files: unstaged.unstaged })
+    expect(changed.response.status).toBe(409)
+    expect(changed.error).toMatchObject({ name: "GitChangesStaleError" })
+    expect((await client.file.read({ path: "a.txt" }, { throwOnError: true })).data.content).toBe("later\n")
   } finally {
     await connection.close()
   }
@@ -192,7 +126,7 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
   })()
 
   const accepted = await client.review.decide(
-    { ...writeInput, decision: "accept", files: [{ file: "a.txt", hunks: [first!.id] }] },
+    { ...writeInput, decision: "accept", files: [{ file: "a.txt", version: listed.version, hunks: [first!.id] }] },
     { throwOnError: true },
   )
   expect(accepted.data.files.find((file) => file.file === "a.txt")!.hunks).toBe(1)
@@ -206,7 +140,17 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
   expect(old.error).toMatchObject({ name: "ReviewStaleError" })
 
   await client.review.decide(
-    { ...writeInput, decision: "reject", files: [{ file: "a.txt", hunks: [second!.id] }] },
+    {
+      ...writeInput,
+      decision: "reject",
+      files: [
+        {
+          file: "a.txt",
+          version: accepted.data.files.find((file) => file.file === "a.txt")!.version,
+          hunks: [second!.id],
+        },
+      ],
+    },
     { throwOnError: true },
   )
   expect(await Filesystem.readText(a)).toBe(lines(30).replace("line 2\n", "two\n"))
@@ -214,7 +158,13 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
   const stale = await client.review.decide({
     ...writeInput,
     decision: "reject",
-    files: [{ file: "a.txt", hunks: [second!.id] }],
+    files: [
+      {
+        file: "a.txt",
+        version: accepted.data.files.find((file) => file.file === "a.txt")!.version,
+        hunks: [second!.id],
+      },
+    ],
   })
   expect(stale.response.status).toBe(409)
   expect(stale.error).toMatchObject({ name: "ReviewStaleError" })

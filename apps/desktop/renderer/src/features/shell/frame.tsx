@@ -27,10 +27,7 @@ export function Frame(props: {
   children: JSX.Element
 }) {
   return (
-    <Show
-      when={!ui.maximized}
-      fallback={<ReviewFull sessionID={props.sessionID} directory={props.directory} folder={props.folder} />}
-    >
+    <Show when={!ui.maximized} fallback={<ReviewFull sessionID={props.sessionID} directory={props.directory} />}>
       <main class="main">
         <div class="topbar drag">
           {props.title}

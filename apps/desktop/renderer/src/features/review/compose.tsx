@@ -1,151 +1,179 @@
-import type { ReviewHunk } from "@merakcode/sdk/client"
-import { createEffect, createMemo, on, Show } from "solid-js"
-import { createStore, reconcile } from "solid-js/store"
+import { createEffect, on, Show, For } from "solid-js"
+import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { sameDir } from "../../lib/route"
-import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty } from "../../state/git"
-import { addComment, commentDirectory, commentLine, setReview } from "./state"
+import { gitDirectory, identityOf, onCheckoutChange, registerDirty } from "../../state/git"
+import { addComment, commentDirectory, commentsOf, commentInView, review, setReview } from "./state"
+import { commentLocation, type CommentTarget } from "./selection"
 
-type Target = { file: string; hunk: ReviewHunk }
-type Draft = { text: string; target: Target; stale?: boolean }
-const [drafts, setDrafts] = createStore<
-  Record<string, { directory: string; sessionID: string; active?: string; items: Record<string, Draft> }>
->({})
-const sync = (key: string) => {
-  const value = drafts[key]
-  if (value)
-    registerDirty(
-      value.directory,
-      `draft:${value.sessionID}`,
-      Object.values(value.items).filter((item) => item.text.trim()).length,
-    )
-}
+type Draft = { target: CommentTarget; text: string; stale?: boolean }
+const [drafts, setDrafts] = createStore<Record<string, Draft>>({})
+const sync = (target: CommentTarget) =>
+  registerDirty(
+    target.directory,
+    `draft:${target.sessionID}`,
+    Object.values(drafts).filter(
+      (draft) =>
+        sameDir(gitDirectory(draft.target.directory), gitDirectory(target.directory)) &&
+        draft.target.sessionID === target.sessionID &&
+        draft.text.trim(),
+    ).length,
+  )
 onCheckoutChange((directory, change) => {
   if (!change.branchChanged) return
-  for (const [key, value] of Object.entries(drafts)) {
-    if (gitDirectory(value.directory) !== directory) continue
-    for (const id of Object.keys(value.items)) setDrafts(key, "items", id, "stale", true)
-  }
+  for (const [key, draft] of Object.entries(drafts))
+    if (sameDir(gitDirectory(draft.target.directory), gitDirectory(directory))) setDrafts(key, "stale", true)
 })
 
-/** Comment input for the review sidebar. A hunk button only selects the target; the text is written here. */
-export function CommentComposer(props: { directory: string; sessionID?: string; target?: Target }) {
-  const context = () => `${gitDirectory(props.directory)}\u0000${props.sessionID ?? ""}`
-  const selected = () => drafts[context()]?.active
-  const draft = () => {
-    const id = selected()
-    const value = id ? drafts[context()]?.items[id] : undefined
-    return props.target || value?.text ? value : undefined
-  }
+/** The selected code owns its editor; drafts survive a diff or layout remount. */
+export function CommentComposer(props: { target: CommentTarget }) {
+  let box!: HTMLTextAreaElement
+  const draft = () => drafts[props.target.key]
   const text = () => draft()?.text ?? ""
-  const target = () => draft()?.target ?? props.target
-  const setText = (text: string) => {
-    const id = selected()
-    if (!id) return
-    setDrafts(context(), "items", id, "text", text)
-    sync(context())
-  }
-  let box: HTMLTextAreaElement | undefined
-  // A memo: data refreshes hand out new target objects for the same hunk, and only picking another hunk starts over
-  const hunk = createMemo(() => props.target?.hunk.id)
   createEffect(
-    on([hunk, context], ([id, key], previous) => {
-      const previousKey = previous?.[1]
-      const previousDraft = previousKey ? drafts[previousKey] : undefined
-      if (
-        previousKey &&
-        previousKey !== key &&
-        previousDraft &&
-        previousDraft.sessionID === props.sessionID &&
-        sameDir(gitDirectory(previousDraft.directory), gitDirectory(props.directory))
-      ) {
-        setDrafts(key, { ...previousDraft, directory: props.directory })
-        setDrafts(previousKey, undefined!)
-      }
-      if (props.sessionID) commentDirectory(props.sessionID, props.directory)
-      if (!id || !props.target || !props.sessionID) return
-      const existing = draft()
-      if (existing?.target.hunk.id !== id || existing.stale) {
-        const entry = `${checkoutOf(props.directory) ?? ""}:${id}`
-        const value = props.target
-        setDrafts(key, (previous) => ({
-          ...previous,
-          directory: props.directory,
-          sessionID: props.sessionID!,
-          active: entry,
-          items: {
-            ...previous?.items,
-            [entry]: previous?.items[entry] ?? {
-              text: "",
-              target: {
-                file: value.file,
-                hunk: { ...value.hunk, lines: value.hunk.lines.map((line) => ({ ...line })) },
-              },
-            },
-          },
-        }))
-      }
-      box?.focus()
-    }),
+    on(
+      () => props.target.key,
+      (key) => {
+        commentDirectory(props.target.sessionID, props.target.directory)
+        const relocating = props.target.relocating
+        const previous = relocating ? drafts[relocating] : undefined
+        if (!drafts[key]) {
+          setDrafts(key, {
+            target: props.target,
+            text:
+              previous?.text ??
+              commentsOf(props.target.sessionID).find((comment) => comment.id === props.target.editing)?.text ??
+              "",
+          })
+          if (relocating && relocating !== key) setDrafts(relocating, undefined!)
+        }
+        sync(props.target)
+        queueMicrotask(() => box?.focus())
+      },
+    ),
   )
   const add = () => {
-    const valueTarget = target()
+    if (!text().trim() || draft()?.stale || props.target.stale) return
+    const target = props.target
     const value = text().trim()
-    if (!valueTarget || !props.sessionID || !value || draft()?.stale) return
-    addComment(props.sessionID, valueTarget.file, valueTarget.hunk, value)
-    setText("")
+    setDrafts(target.key, undefined!)
+    sync(target)
+    addComment(target.sessionID, target, value)
+  }
+  const discard = () => {
+    setDrafts(props.target.key, undefined!)
+    sync(props.target)
+    setReview("commenting", undefined)
   }
   return (
     <div class="comment-compose">
-      <Show when={target()}>
-        {(target) => (
-          <div class="loc">
-            {target().file}:{commentLine(target().hunk)}
-          </div>
-        )}
-      </Show>
+      <div class="loc">{commentLocation(props.target)}</div>
       <textarea
         ref={box}
         class="input"
         aria-label={t("review.commentLabel")}
-        placeholder={target() ? t("review.commentPlaceholder") : t("review.commentPick")}
-        disabled={!target() || !props.sessionID}
+        placeholder={t("review.commentPlaceholder")}
         value={text()}
-        onInput={(event) => setText(event.currentTarget.value)}
+        onInput={(event) => {
+          setDrafts(props.target.key, "text", event.currentTarget.value)
+          sync(props.target)
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && text().trim()) add()
-          if (event.key === "Escape") setReview("commenting", undefined)
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault()
+            add()
+          }
+          if (event.key === "Escape") {
+            event.preventDefault()
+            setReview("commenting", undefined)
+          }
         }}
       />
-      <Show when={draft()?.stale}>
+      <Show when={draft()?.stale || props.target.stale}>
         <p class="branch-notice" role="status">
           {t("review.draftStale")}
         </p>
       </Show>
       <div class="row">
-        <Show when={Object.values(drafts[context()]?.items ?? {}).some((item) => item.text.trim())}>
-          <button
-            class="button ghost sm"
-            onClick={() => {
-              const key = context()
-              const value = drafts[key]
-              if (value) setDrafts(key, reconcile({ ...value, items: {}, active: undefined }))
-              sync(key)
-              setReview("commenting", undefined)
-            }}
-          >
-            {t("review.discardDraft")}
-          </button>
-        </Show>
+        <button class="button ghost sm" data-discard-draft onClick={discard}>
+          {t("review.discardDraft")}
+        </button>
         <span class="spacer" />
         <button
           class="button primary sm"
-          disabled={!target() || !props.sessionID || !text().trim() || draft()?.stale}
+          disabled={!text().trim() || draft()?.stale || props.target.stale}
           onClick={add}
         >
           {t("common.add")}
         </button>
       </div>
     </div>
+  )
+}
+
+/** Inactive drafts stay reachable even after their source hunk leaves the pending list. */
+export function CommentDrafts(props: { directory: string; sessionID?: string; files: string[] | undefined }) {
+  const matches = (target: CommentTarget) =>
+    sameDir(gitDirectory(target.directory), gitDirectory(props.directory)) && target.sessionID === props.sessionID
+  const inactive = () =>
+    Object.entries(drafts).filter(
+      ([key, draft]) =>
+        matches(draft.target) &&
+        draft.text.trim() &&
+        (review.commenting?.key !== key || !commentInView(draft.target, props.directory, props.sessionID)),
+    )
+  const orphan = () => {
+    const target = review.commenting
+    return target &&
+      props.files &&
+      commentInView(target, props.directory, props.sessionID) &&
+      !props.files.includes(target.file)
+      ? target
+      : undefined
+  }
+  createEffect(() => {
+    const target = orphan()
+    if (target && !target.stale) setReview("commenting", "stale", true)
+  })
+  return (
+    <>
+      <For each={inactive()}>
+        {([key, draft]) => (
+          <div class="review-draft row">
+            <button
+              class="button ghost sm ellipsis"
+              aria-label={t("review.resumeDraft")}
+              onClick={() =>
+                setReview({
+                  scope: draft.target.scope,
+                  messageID: draft.target.messageID,
+                  focus: draft.target.file,
+                  commenting: {
+                    ...draft.target,
+                    branch: identityOf(props.directory)?.branch,
+                    stale: draft.stale || draft.target.stale,
+                  },
+                })
+              }
+            >
+              {commentLocation(draft.target)}
+            </button>
+            <span class="subtle ellipsis grow">{draft.text}</span>
+            <button
+              class="button ghost sm"
+              data-discard-draft
+              onClick={() => {
+                const target = draft.target
+                setDrafts(key, undefined!)
+                sync(target)
+              }}
+            >
+              {t("review.discardDraft")}
+            </button>
+          </div>
+        )}
+      </For>
+      <Show when={orphan()}>{(target) => <CommentComposer target={target()} />}</Show>
+    </>
   )
 }

@@ -3,12 +3,11 @@
  * model, and the development engine command. There are no platform packages in development, so the engine runs from
  * the repo's apps/cli source (the same way as the desktop app in development).
  */
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises"
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { Filesystem } from "@merakcode/util/filesystem"
 import { seedCatalog } from "../../../../../script/node/seed-catalog.ts"
 
 const repo = path.resolve(import.meta.dirname, "../../../../..")
@@ -44,7 +43,7 @@ export async function sandbox(model: string, extra: Record<string, unknown> = {}
     path.join(root, "node_modules/zod"),
     "junction",
   ).catch(() => undefined)
-  await Filesystem.write(
+  await writeFile(
     path.join(root, "merakcode.json"),
     JSON.stringify({
       model: "alibaba-cn/qwen-plus",

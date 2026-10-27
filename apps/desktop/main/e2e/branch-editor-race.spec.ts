@@ -47,11 +47,8 @@ test("a delayed checkout reload does not target a closed editor after the same f
     release.resolve()
     await delivered.promise
 
-    await panel.getByRole("tab", { name: /^审阅/ }).click()
-    await panel
-      .getByRole("toolbar", { name: "审阅工具栏" })
-      .getByRole("button", { name: /^当前分支/ })
-      .click()
+    await panel.getByRole("tab", { name: "Git 管理" }).click()
+    await panel.getByRole("button", { name: /^当前分支/ }).click()
     await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
     await expect(kit.page.getByRole("option", { name: new RegExp(`^${main}(?:\\s|$)`) })).toHaveAttribute(
       "aria-disabled",

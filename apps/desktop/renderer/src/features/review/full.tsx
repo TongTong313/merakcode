@@ -10,35 +10,23 @@ import { session } from "../../state/store"
 import { setUi } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
 import { overlays } from "../../ui/overlay"
-import { toast } from "../../ui/toast"
-import { send } from "../conversation/send"
-import { CommentComposer } from "./compose"
-import { Commit } from "./commit"
+import { CommentSummary, commentsSending, submitComments } from "./comments"
+import { CommentDrafts } from "./compose"
 import { present } from "./present"
 import { ReviewToolbar } from "./toolbar"
 import { ReviewTree } from "./tree"
 import { BulkActions, LastDecision, ReviewFiles } from "./review"
-import {
-  clearComments,
-  commentMessage,
-  commentingOn,
-  commentsOf,
-  removeComment,
-  review,
-  setReview,
-  useReview,
-} from "./state"
+import { beginComment, commentsOf, review, setReview, useReview } from "./state"
 
 /**
- * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments and
- * commit on the right. Keys: J / K next / previous hunk, A accept, R reject, C comment, ] next file.
+ * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments on the right. Keys: J / K next / previous hunk, A accept, R reject, C comment, ] next file.
  */
-export function ReviewFull(props: { sessionID?: string; directory: string; folder: string }) {
+export function ReviewFull(props: { sessionID?: string; directory: string }) {
   const data = useReview(
     () => props.sessionID,
     () => props.directory,
   )
-  const [active, setActive] = createSignal<string>()
+  const [active, setActive] = createSignal<{ file: string; id?: string }>()
   const files = () => data.data()?.files ?? []
   // Every hunk in order; a file whose hunks are not loaded yet stands in as one entry without an id
   const hunks = createMemo(() =>
@@ -49,15 +37,17 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
         : [{ file, id: undefined }]
     }),
   )
-  const comments = () => commentsOf(props.sessionID)
+  const comments = () => commentsOf(props.sessionID, props.directory)
 
   const focus = (file: ReviewFile, id: string | undefined) => {
-    setActive(id)
+    setActive({ file: file.file, id })
     if (!id) return
     data.setOpen(file, true)
     data.showAll(file)
     requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-hunk="${CSS.escape(id)}"] .hunk-bar`)
+      const el = document.querySelector(
+        `[data-file="${CSS.escape(file.file)}"] [data-hunk="${CSS.escape(id)}"] .hunk-bar`,
+      )
       if (el) present(el)
     })
   }
@@ -66,7 +56,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
     data.setOpen(file, true)
     const detail = await data.loadDetail(file)
     const id = detail?.hunks[0]?.id
-    if (id) setActive(id)
+    setActive({ file: file.file, id })
     const el = document.querySelector(`[data-file="${CSS.escape(file.file)}"] .diff-file-head`)
     if (el) present(el)
   }
@@ -78,7 +68,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
   }
   const move = (step: number) => {
     const list = hunks()
-    const index = list.findIndex((item) => item.id !== undefined && item.id === active())
+    const index = list.findIndex((item) => item.file.file === active()?.file && item.id === active()?.id)
     const target = list[Math.min(list.length - 1, Math.max(0, index + step))]
     if (!target) return
     if (target.id) return focus(target.file, target.id)
@@ -90,7 +80,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
       if (event.defaultPrevented || overlays()) return
       const target = event.target as HTMLElement
       if (target.closest("input, textarea, [contenteditable]") || event.ctrlKey || event.metaKey || event.altKey) return
-      const current = hunks().find((item) => item.id !== undefined && item.id === active())
+      const current = hunks().find((item) => item.file.file === active()?.file && item.id === active()?.id)
       const key = event.key.toLowerCase()
       if (key === "j") move(1)
       else if (key === "k") move(-1)
@@ -98,8 +88,20 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
         void data.decide("accept", [{ file: current.file.file, hunks: [current.id] }])
       else if (key === "r" && current?.id && data.data()?.actions.reject)
         void data.decide("reject", [{ file: current.file.file, hunks: [current.id] }])
-      else if (key === "c" && current?.id) setReview("commenting", current.id)
-      else if (key === "]") {
+      else if (key === "c" && current?.id && props.sessionID) {
+        const hunk = data.detail(current.file).detail?.hunks.find((hunk) => hunk.id === current.id)
+        const index = hunk?.lines.findIndex((line) => line.kind !== "context") ?? -1
+        const line = hunk?.lines[index]
+        if (hunk && line)
+          beginComment(
+            props.directory,
+            props.sessionID,
+            current.file.file,
+            current.file.version,
+            [{ ...line, hunk: hunk.id, index }],
+            review.style === "split" ? (line.new === undefined ? "old" : "new") : "unified",
+          )
+      } else if (key === "]") {
         const index = files().findIndex((file) => file.file === current?.file.file)
         const file = files()[(index + 1) % Math.max(1, files().length)]
         if (file) void openFile(file)
@@ -110,21 +112,6 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
     window.addEventListener("keydown", listener)
     onCleanup(() => window.removeEventListener("keydown", listener))
   })
-
-  const sendComments = async () => {
-    const sessionID = props.sessionID
-    if (!sessionID) return
-    if (comments().some((comment) => comment.stale)) return
-    const sent = await send(sessionID, props.directory, { text: commentMessage(comments()), files: [] }).then(
-      () => true,
-      (error: Error) => {
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error })
-        return false
-      },
-    )
-    if (!sent) return
-    clearComments(sessionID)
-  }
 
   return (
     <main class="review-full" aria-label={t("review.label")}>
@@ -138,7 +125,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
           <Show when={props.sessionID}>{(id) => ` · ${session(id())?.title ?? ""}`}</Show>
         </span>
         <div class="no-drag row grow">
-          <ReviewToolbar folder={props.folder} directory={props.directory} data={data} sessionID={props.sessionID} />
+          <ReviewToolbar data={data} sessionID={props.sessionID} />
           <Segmented
             label={t("review.split")}
             options={[
@@ -156,11 +143,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
       </div>
       <div class="review-full-body">
         <aside class="review-tree" aria-label={t("review.files")}>
-          <ReviewTree
-            files={files()}
-            activeFile={hunks().find((item) => item.id !== undefined && item.id === active())?.file.file}
-            onOpen={(file) => void openFile(file)}
-          />
+          <ReviewTree files={files()} activeFile={active()?.file} onOpen={(file) => void openFile(file)} />
           <div class="keys">
             <span>
               <kbd>J</kbd>
@@ -186,65 +169,44 @@ export function ReviewFull(props: { sessionID?: string; directory: string; folde
           </div>
         </aside>
         <section class="review-center">
-          <ReviewFiles sessionID={props.sessionID} data={data} style={review.style} active={active()} />
+          <ReviewFiles
+            sessionID={props.sessionID}
+            directory={props.directory}
+            data={data}
+            style={review.style}
+            active={active()}
+          />
           <div class="review-foot">
             <LastDecision data={data} />
           </div>
         </section>
         <aside class="review-side" aria-label={t("review.comments")}>
           <div class="side-head">{t("review.comments")}</div>
-          <Show when={props.sessionID}>
-            <CommentComposer
-              directory={props.directory}
-              sessionID={props.sessionID}
-              target={commentingOn(files(), (file) => data.detail(file))}
-            />
-          </Show>
+          <CommentDrafts
+            sessionID={props.sessionID}
+            directory={props.directory}
+            files={data.data()?.files.map((file) => file.file)}
+          />
           <div class="side-list scroll">
             <Show when={comments().length} fallback={<p class="subtle side-empty">{t("review.noComments")}</p>}>
-              <For each={comments()}>
-                {(comment) => (
-                  <div class="comment-item">
-                    <div class="loc">
-                      {comment.file}:{comment.line}
-                      <span class="spacer" />
-                      <button
-                        class="icon-button sm"
-                        aria-label={t("common.remove")}
-                        onClick={() => {
-                          const sessionID = props.sessionID
-                          if (sessionID) removeComment(sessionID, comment.id)
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div class="selectable">{comment.text}</div>
-                  </div>
-                )}
-              </For>
+              <For each={comments()}>{(comment) => <CommentSummary comment={comment} />}</For>
             </Show>
           </div>
           <div class="side-foot">
             <Show when={props.sessionID}>
               <button
                 class="button primary"
-                disabled={!comments().length || comments().some((comment) => comment.stale)}
+                disabled={
+                  commentsSending(props.sessionID, props.directory) ||
+                  !comments().length ||
+                  comments().some((comment) => comment.stale)
+                }
                 title={comments().some((comment) => comment.stale) ? t("review.draftStale") : undefined}
-                onClick={() => void sendComments()}
+                onClick={() => void submitComments(props.sessionID, props.directory)}
               >
                 <Bot class="icon icon-sm" />
                 {t("review.send")}
               </button>
-            </Show>
-            <Show when={review.scope === "staged" || review.scope === "unstaged"}>
-              <hr class="divider" />
-              <Commit
-                directory={props.directory}
-                all={review.scope === "unstaged"}
-                pending={files().length > 0}
-                onDone={() => void data.refetch()}
-              />
             </Show>
           </div>
         </aside>

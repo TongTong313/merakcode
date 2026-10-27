@@ -29,7 +29,7 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Get review",
         description:
-          "List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.",
+          "List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.",
         operationId: "review.get",
         responses: {
           200: { description: "Review", content: { "application/json": { schema: resolver(Review.Result) } } },
@@ -64,7 +64,7 @@ export const ReviewRoutes = lazy(() =>
       describeRoute({
         summary: "Decide review",
         description:
-          "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.",
+          "Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.",
         operationId: "review.decide",
         responses: {
           200: { description: "Updated review", content: { "application/json": { schema: resolver(Review.Result) } } },

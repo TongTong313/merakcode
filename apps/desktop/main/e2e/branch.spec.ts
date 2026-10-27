@@ -5,39 +5,20 @@ import { expect, test } from "./fixture"
 
 test.use({ git: true })
 
-test("review uses one toolbar and selecting its remembered base enters comparison without checkout", async ({
-  kit,
-}) => {
+test("Git branch management has its own panel outside review scopes", async ({ kit }) => {
   const current = kit.git("branch", "--show-current").trim()
   kit.git("branch", "feature")
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
-  const toolbar = panel.getByRole("toolbar", { name: "审阅工具栏" })
-  const working = toolbar.getByRole("button", { name: /^当前分支/ })
-  const base = toolbar.getByRole("button", { name: /^比对分支/ })
+  await expect(panel.getByRole("toolbar", { name: "审阅工具栏" }).getByRole("radio")).toHaveCount(0)
+  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await expect(panel.getByRole("button", { name: /^比对分支/ })).toHaveCount(0)
+  const working = panel.getByRole("button", { name: /^当前分支/ })
   await expect(working).toContainText(current)
-  await expect(toolbar.getByRole("radio", { name: "本轮" })).toHaveCount(0)
-  await expect(toolbar.getByRole("radio", { name: "会话" })).toHaveCount(0)
-  await expect(toolbar.getByRole("radio", { name: "分支对比" })).toHaveCount(0)
-  await expect(toolbar.getByRole("radiogroup").getByRole("button", { name: /^当前分支/ })).toHaveCount(0)
-  const bounds = await Promise.all([
-    working.boundingBox(),
-    base.boundingBox(),
-    toolbar.getByRole("radiogroup").boundingBox(),
-  ])
-  expect(Math.max(...bounds.map((box) => box!.y)) - Math.min(...bounds.map((box) => box!.y))).toBeLessThan(6)
-
-  await base.click()
+  await working.click()
   await kit.page.getByRole("option", { name: /^feature/ }).click()
-  await expect(base).toHaveAttribute("aria-pressed", "true")
-  expect(kit.git("branch", "--show-current").trim()).toBe(current)
-  await toolbar.getByRole("radio", { name: "未暂存" }).click()
-  await base.click()
-  await kit.page.keyboard.press("Escape")
-  await expect(toolbar.getByRole("radio", { name: "未暂存" })).toHaveAttribute("aria-checked", "true")
-  await base.click()
-  await kit.page.getByRole("option", { name: /^feature/ }).click()
-  await expect(base).toHaveAttribute("aria-pressed", "true")
+  await expect(working).toContainText("feature")
+  expect(kit.git("branch", "--show-current").trim()).toBe("feature")
 })
 
 test("home switches the actual branch in two steps and review shows that checkout", async ({ kit }) => {
@@ -49,6 +30,7 @@ test("home switches the actual branch in two steps and review shows that checkou
   await expect(working).toBeFocused()
   expect(kit.git("branch", "--show-current").trim()).toBe("feature")
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
   await expect(kit.panel().getByRole("button", { name: /^当前分支/ })).toContainText("feature")
 })
 
@@ -115,6 +97,7 @@ test("a worktree starting branch is only used when sending and never checks out 
   await expect(readFile(path.join(directory, "local.txt"))).rejects.toThrow()
   expect(kit.git("branch", "--show-current").trim()).toBe(main)
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
   await kit
     .panel()
     .getByRole("button", { name: /^当前分支/ })
@@ -147,52 +130,6 @@ test("a rejected worktree starting branch preserves the draft and permits cancel
   await expect(kit.text("OK")).toBeVisible({ timeout: 60_000 })
   expect(kit.git("worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(2)
   expect(kit.git("branch", "--show-current").trim()).toBe(current)
-})
-
-test("switching to the comparison base clears it and the same branch context survives full screen", async ({ kit }) => {
-  kit.git("branch", "feature")
-  await kit.page.getByRole("button", { name: "右侧面板" }).click()
-  const panel = kit.panel()
-  const base = panel.getByRole("button", { name: /^比对分支/ })
-  await base.click()
-  await kit.page.getByRole("option", { name: /^feature/ }).click()
-  await panel.getByRole("button", { name: /^当前分支/ }).click()
-  await kit.page.getByRole("option", { name: /^feature/ }).click()
-  await expect(base).toContainText("选择分支")
-  await expect(panel.getByRole("button", { name: /^当前分支/ })).toContainText("feature")
-  await panel.getByRole("button", { name: "铺满" }).click()
-  const toolbar = kit.page.getByRole("toolbar", { name: "审阅工具栏" })
-  await expect(toolbar.getByRole("button", { name: /^当前分支/ })).toContainText("feature")
-  await expect(toolbar.getByRole("button", { name: /^比对分支/ })).toContainText("选择分支")
-  await kit.page.getByRole("button", { name: "返回对话" }).click()
-  await expect(kit.page.locator(".context-row").getByRole("button", { name: /^当前分支/ })).toContainText("feature")
-})
-
-test("deleting the selected comparison branch externally clears it without another picker interaction", async ({
-  kit,
-}) => {
-  const pending = new Set<{ url(): string }>()
-  const isBranches = (url: string) => new URL(url).pathname === "/vcs/branch-options"
-  kit.page.on("request", (request) => {
-    if (isBranches(request.url())) pending.add(request)
-  })
-  const finished = (request: { url(): string }) => {
-    pending.delete(request)
-  }
-  kit.page.on("requestfinished", finished)
-  kit.page.on("requestfailed", finished)
-  kit.git("branch", "feature")
-  await kit.page.getByRole("button", { name: "右侧面板" }).click()
-  const panel = kit.panel()
-  const base = panel.getByRole("button", { name: /^比对分支/ })
-  await base.click()
-  await kit.page.getByRole("option", { name: /^feature/ }).click()
-  await expect(base).toContainText("feature")
-  await panel.getByRole("radio", { name: "未暂存" }).click()
-  await expect.poll(() => pending.size).toBe(0)
-  kit.git("branch", "-D", "feature")
-  await expect(base).toContainText("选择分支")
-  await expect(panel.getByRole("radio", { name: "未暂存" })).toHaveAttribute("aria-checked", "true")
 })
 
 test("a prepared worktree and its task draft survive opening full-screen review", async ({ kit }) => {

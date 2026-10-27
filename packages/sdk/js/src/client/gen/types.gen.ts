@@ -1338,6 +1338,13 @@ export type EventReviewUpdated = {
   }
 }
 
+export type EventVcsChangesUpdated = {
+  type: "vcs.changes.updated"
+  properties: {
+    [key: string]: never
+  }
+}
+
 export type Event =
   | EventServerConnected
   | EventGlobalDisposed
@@ -1385,6 +1392,7 @@ export type Event =
   | EventWorktreeReady
   | EventWorktreeFailed
   | EventReviewUpdated
+  | EventVcsChangesUpdated
 
 export type GlobalEvent = {
   directory: string
@@ -4059,17 +4067,19 @@ export type ReviewFile = {
   additions: number
   deletions: number
   hunks: number
-  accepted: number
   version: string
 }
 
 export type ReviewResult = {
   scope: ReviewScope
   checkout: string | null
-  base?: string
   actions: {
     accept: boolean
     reject: boolean
+  }
+  last?: {
+    decision: "accept" | "reject"
+    count: number
   }
   files: Array<ReviewFile>
 }
@@ -4115,7 +4125,7 @@ export type CheckoutBlockedError = {
   }
 }
 
-export type ReviewScope = "session" | "turn" | "unstaged" | "staged" | "branch"
+export type ReviewScope = "session" | "turn"
 
 export type ReviewLine = {
   kind: "context" | "add" | "del"
@@ -4133,7 +4143,6 @@ export type ReviewHunk = {
   newLines: number
   heading?: string
   lines: Array<ReviewLine>
-  state?: "accepted"
 }
 
 export type ReviewFileDetail = {
@@ -4142,6 +4151,18 @@ export type ReviewFileDetail = {
   hunks: Array<ReviewHunk>
   before?: string
   after?: string
+}
+
+export type GitChangeFile = {
+  file: string
+  status: "added" | "modified" | "deleted" | "conflicted"
+  version: string
+}
+
+export type GitChangesResult = {
+  checkout: string | null
+  staged: Array<GitChangeFile>
+  unstaged: Array<GitChangeFile>
 }
 
 export type McpScope = "project" | "global"
@@ -8431,9 +8452,8 @@ export type ReviewGetData = {
   query: {
     directory?: string
     scope: ReviewScope
-    sessionID?: string
+    sessionID: string
     messageID?: string
-    base?: string
   }
   url: "/review"
 }
@@ -8463,13 +8483,13 @@ export type ReviewGetResponse = ReviewGetResponses[keyof ReviewGetResponses]
 export type ReviewDecideData = {
   body: {
     scope: ReviewScope
-    sessionID?: string
+    sessionID: string
     messageID?: string
-    base?: string
     expectedCheckout: string | null
     decision: "accept" | "reject"
-    files?: Array<{
+    files: Array<{
       file: string
+      version: string
       hunks?: Array<string>
     }>
   }
@@ -8508,9 +8528,8 @@ export type ReviewFileData = {
   query: {
     directory?: string
     scope: ReviewScope
-    sessionID?: string
+    sessionID: string
     messageID?: string
-    base?: string
     file: string
     version?: string
     expectedCheckout?: string | null
@@ -8543,9 +8562,8 @@ export type ReviewFileResponse = ReviewFileResponses[keyof ReviewFileResponses]
 export type ReviewUndoData = {
   body: {
     scope: ReviewScope
-    sessionID?: string
+    sessionID: string
     messageID?: string
-    base?: string
     expectedCheckout: string | null
   }
   path?: never
@@ -8576,6 +8594,111 @@ export type ReviewUndoResponses = {
 }
 
 export type ReviewUndoResponse = ReviewUndoResponses[keyof ReviewUndoResponses]
+
+export type VcsChangesGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/changes"
+}
+
+export type VcsChangesGetErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type VcsChangesGetError = VcsChangesGetErrors[keyof VcsChangesGetErrors]
+
+export type VcsChangesGetResponses = {
+  /**
+   * Git changes
+   */
+  200: GitChangesResult
+}
+
+export type VcsChangesGetResponse = VcsChangesGetResponses[keyof VcsChangesGetResponses]
+
+export type VcsChangesStageData = {
+  body: {
+    expectedCheckout: string | null
+    files: Array<{
+      file: string
+      version: string
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/changes/stage"
+}
+
+export type VcsChangesStageErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type VcsChangesStageError = VcsChangesStageErrors[keyof VcsChangesStageErrors]
+
+export type VcsChangesStageResponses = {
+  /**
+   * Updated Git changes
+   */
+  200: GitChangesResult
+}
+
+export type VcsChangesStageResponse = VcsChangesStageResponses[keyof VcsChangesStageResponses]
+
+export type VcsChangesUnstageData = {
+  body: {
+    expectedCheckout: string | null
+    files: Array<{
+      file: string
+      version: string
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/changes/unstage"
+}
+
+export type VcsChangesUnstageErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type VcsChangesUnstageError = VcsChangesUnstageErrors[keyof VcsChangesUnstageErrors]
+
+export type VcsChangesUnstageResponses = {
+  /**
+   * Updated Git changes
+   */
+  200: GitChangesResult
+}
+
+export type VcsChangesUnstageResponse = VcsChangesUnstageResponses[keyof VcsChangesUnstageResponses]
 
 export type McpManagementReadData = {
   body?: never

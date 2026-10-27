@@ -8,26 +8,24 @@ const file = (name: string, lines = 2, extra: Partial<ReviewFile> = {}): ReviewF
   additions: lines / 2,
   deletions: lines / 2,
   hunks: 1,
-  accepted: 0,
   version: `v-${name}`,
   ...extra,
 })
 
 describe("review cache keys", () => {
-  test("each scope, turn and base branch is its own list", () => {
-    const base = { directory: "/repo", scope: "branch" as const }
-    expect(keyOf({ ...base, base: "main" })).not.toBe(keyOf({ ...base, base: "dev" }))
+  test("each conversation, turn and checkout is its own list", () => {
+    const base = { directory: "/repo", scope: "session" as const }
+    expect(keyOf({ ...base, checkout: "one" })).not.toBe(keyOf({ ...base, checkout: "two" }))
     expect(keyOf({ directory: "/repo", scope: "turn", sessionID: "s", messageID: "m1" })).not.toBe(
       keyOf({ directory: "/repo", scope: "turn", sessionID: "s", messageID: "m2" }),
     )
   })
 
-  test("details stay valid until the content version or the accepted count changes", () => {
-    const list = keyOf({ directory: "/repo", scope: "unstaged" })
+  test("details stay valid until the content version changes", () => {
+    const list = keyOf({ directory: "/repo", scope: "session" })
     const a = file("a.ts")
     expect(detailKey(list, { ...a })).toBe(detailKey(list, a))
     expect(detailKey(list, { ...a, version: "v2" })).not.toBe(detailKey(list, a))
-    expect(detailKey(list, { ...a, accepted: 1 })).not.toBe(detailKey(list, a))
   })
 })
 

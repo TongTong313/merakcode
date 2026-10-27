@@ -566,7 +566,9 @@ await engine.close()
 
 `vcs.get` 和 `vcs.head.updated` 带有 opaque `checkout` 标识；换分支和同分支新提交都会更新它，事件的 `branchChanged` 可区分两者。不要解析或按大小排序这个标识；连接中断、上下文过期时重新读取实际状态。
 
-**审阅写契约变化：** `review.decide` 和 `review.undo` 必须传入当前 `review.get`／决定结果的 `checkout` 作为 `expectedCheckout`；非 Git 审阅传 `null`。旧上下文返回 409，缺字段返回 400。文件详情也可传 `expectedCheckout`，并配合列表里的 `version` 防止读取旧快照。只改变 `review.get({ scope: "branch", base })` 的 base 不会切换工作分支。
+**审阅与 Git 管理独立：** `review.get` / `review.file` 只支持 `session` 和 `turn`，且必须传 `sessionID`。`review.decide` 接受明确的 `files: [{ file, version, hunks? }]`，每个 `version` 必须来自显示的列表；`review.decide` / `review.undo` 必须携带对应的 `expectedCheckout`，非 Git 项目传 `null`。过期文件或上下文返回 409，缺字段返回 400。接受只推进审阅基线，拒绝和撤销拒绝只修改工作区文件；它们不会更改暂存区或提交历史。结果中的 `last` 表示仍可撤销的最近一次决定，待审列表为空时也可存在。
+
+`vcs.changes.get()` 从 Git 返回独立的 `staged` / `unstaged` 文件分组，同一文件可以出现在两组。`vcs.changes.stage` / `vcs.changes.unstage` 接受显示的文件及其 `version` 和 `expectedCheckout`，只改变 index。没有审阅或未完成审阅时，也可以暂存、提交和推送。旧 `review` 的 `unstaged`、`staged`、`branch` scope 已删除，调用者必须迁移到 Git 接口。拒绝已经暂存的修改会产生新的未暂存反向差异，暂存快照保持原值。
 
 ```ts
 import { createMerakCode } from "@merakcode/sdk"
@@ -579,12 +581,33 @@ try {
     await client.vcs.switchBranch({ branch: "dev", expectedCheckout: options.current.checkout }, { throwOnError: true })
   }
 
-  const input = { scope: "unstaged" as const }
-  const review = (await client.review.get(input, { throwOnError: true })).data
-  if (review.files.length) {
+  const changes = (await client.vcs.changes.get({}, { throwOnError: true })).data
+  if (changes.unstaged.length) {
+    const staged = (
+      await client.vcs.changes.stage(
+        { expectedCheckout: changes.checkout, files: changes.unstaged },
+        { throwOnError: true },
+      )
+    ).data
+    await client.vcs.changes.unstage(
+      { expectedCheckout: staged.checkout, files: staged.staged },
+      { throwOnError: true },
+    )
+  }
+
+  // Use the conversation whose agent changes you want to review.
+  const session = await merak.session()
+  const input = { scope: "session" as const, sessionID: session.id }
+  const pending = (await client.review.get(input, { throwOnError: true })).data
+  if (pending.files.length) {
     const accepted = (
       await client.review.decide(
-        { ...input, decision: "accept", expectedCheckout: review.checkout },
+        {
+          ...input,
+          decision: "accept",
+          expectedCheckout: pending.checkout,
+          files: pending.files.map(({ file, version }) => ({ file, version })),
+        },
         { throwOnError: true },
       )
     ).data

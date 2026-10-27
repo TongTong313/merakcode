@@ -38,6 +38,7 @@ already fills in from `createMerakCodeClient({ directory })`, so it is left out 
 - [plugin](#plugin)
 - [workflow](#workflow)
 - [review](#review)
+- [vcs.changes](#vcschanges)
 - [mcpManagement](#mcpmanagement)
 - [ruleManagement](#rulemanagement)
 - [find](#find)
@@ -1645,14 +1646,13 @@ Returns: `boolean`
 
 Get review.
 
-List the files changed in a review scope, with line and hunk counts and a version per file: the agent's changes in a session or one turn, unstaged or staged git changes, or the branch against its base. Hunks come from review.file.
+List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.
 
 | Parameter   | Type          | Required | Description |
 | ----------- | ------------- | -------- | ----------- |
 | `scope`     | `ReviewScope` | yes      |             |
-| `sessionID` | `string`      | no       |             |
+| `sessionID` | `string`      | yes      |             |
 | `messageID` | `string`      | no       |             |
-| `base`      | `string`      | no       |             |
 
 Returns: `ReviewResult`
 
@@ -1662,17 +1662,16 @@ Returns: `ReviewResult`
 
 Decide review.
 
-Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Accepting moves the baseline (stages the hunk for unstaged changes); rejecting writes the reverted content back. Returns the updated review.
+Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.
 
-| Parameter          | Type                                     | Required | Description |
-| ------------------ | ---------------------------------------- | -------- | ----------- |
-| `scope`            | `ReviewScope`                            | yes      |             |
-| `sessionID`        | `string`                                 | no       |             |
-| `messageID`        | `string`                                 | no       |             |
-| `base`             | `string`                                 | no       |             |
-| `expectedCheckout` | `string \| null`                         | yes      |             |
-| `decision`         | `"accept" \| "reject"`                   | yes      |             |
-| `files`            | `({ file: string; hunks?: string[] })[]` | no       |             |
+| Parameter          | Type                                                      | Required | Description |
+| ------------------ | --------------------------------------------------------- | -------- | ----------- |
+| `scope`            | `ReviewScope`                                             | yes      |             |
+| `sessionID`        | `string`                                                  | yes      |             |
+| `messageID`        | `string`                                                  | no       |             |
+| `expectedCheckout` | `string \| null`                                          | yes      |             |
+| `decision`         | `"accept" \| "reject"`                                    | yes      |             |
+| `files`            | `({ file: string; version: string; hunks?: string[] })[]` | yes      |             |
 
 Returns: `ReviewResult`
 
@@ -1687,9 +1686,8 @@ Hunks of one file in a review scope, with the full base and current text when th
 | Parameter          | Type             | Required | Description |
 | ------------------ | ---------------- | -------- | ----------- |
 | `scope`            | `ReviewScope`    | yes      |             |
-| `sessionID`        | `string`         | no       |             |
+| `sessionID`        | `string`         | yes      |             |
 | `messageID`        | `string`         | no       |             |
-| `base`             | `string`         | no       |             |
 | `file`             | `string`         | yes      |             |
 | `version`          | `string`         | no       |             |
 | `expectedCheckout` | `string \| null` | no       |             |
@@ -1707,12 +1705,55 @@ Undo the most recent decision in a review scope. Pass expectedCheckout from revi
 | Parameter          | Type             | Required | Description |
 | ------------------ | ---------------- | -------- | ----------- |
 | `scope`            | `ReviewScope`    | yes      |             |
-| `sessionID`        | `string`         | no       |             |
+| `sessionID`        | `string`         | yes      |             |
 | `messageID`        | `string`         | no       |             |
-| `base`             | `string`         | no       |             |
 | `expectedCheckout` | `string \| null` | yes      |             |
 
 Returns: `ReviewResult`
+
+## vcs.changes
+
+### client.vcs.changes.get
+
+`GET /vcs/changes` · operationId `vcs.changes.get`
+
+Get Git changes.
+
+List staged and unstaged files from Git, independently of conversation review. A file may appear in both groups.
+
+No parameters.
+
+Returns: `GitChangesResult`
+
+### client.vcs.changes.stage
+
+`POST /vcs/changes/stage` · operationId `vcs.changes.stage`
+
+Stage files.
+
+Stage the explicit file versions displayed by vcs.changes.get. Does not change working files or conversation review. Stale versions or checkout contexts fail before writing.
+
+| Parameter          | Type                                    | Required | Description |
+| ------------------ | --------------------------------------- | -------- | ----------- |
+| `expectedCheckout` | `string \| null`                        | yes      |             |
+| `files`            | `({ file: string; version: string })[]` | yes      |             |
+
+Returns: `GitChangesResult`
+
+### client.vcs.changes.unstage
+
+`POST /vcs/changes/unstage` · operationId `vcs.changes.unstage`
+
+Unstage files.
+
+Remove the explicit displayed files from the next commit while preserving working files and review state. Also works before the first commit.
+
+| Parameter          | Type                                    | Required | Description |
+| ------------------ | --------------------------------------- | -------- | ----------- |
+| `expectedCheckout` | `string \| null`                        | yes      |             |
+| `files`            | `({ file: string; version: string })[]` | yes      |             |
+
+Returns: `GitChangesResult`
 
 ## mcpManagement
 

@@ -117,6 +117,8 @@ what to do.
 | MRK-7007    | 目标分支无效           | The target branch is invalid            | 刷新分支列表，选择一个仍然存在的本地分支。<br>Refresh the branch list and select an existing local branch.                                                                          |
 | MRK-7008    | 切换分支失败           | Could not switch the branch             | 查看 Git 的错误信息，处理后刷新实际分支状态再重试。<br>Check the Git error, resolve it and refresh the actual branch before retrying.                                               |
 | MRK-7009    | 工作目录上下文已变化   | The checkout context changed            | 刷新分支和审阅内容，按当前工作目录重新操作。<br>Refresh the branch and review, then repeat the operation using the current checkout.                                                |
+| MRK-7010    | Git 文件状态已变化     | Git file state changed                  | 刷新 Git 文件列表后重新操作。<br>Refresh the Git file list and retry the operation.                                                                                                 |
+| MRK-7011    | Git 文件操作失败       | Git file operation failed               | 查看 Git 错误信息，处理后刷新列表。<br>Check the Git error, resolve it and refresh the file list.                                                                                   |
 
 ## 8xxx 安装与更新 · Install and update
 
