@@ -34,6 +34,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Hints on the composer bar open just above their controls: context usage, the model, reasoning, the sandbox, and the permission mode.
 - Typing `/skill-name` after a space, including in the middle of a sentence, loads that skill. Skills are read from Claude's `.claude/skills` and `.agents/skills`, and from `.merakcode/skill` and `.merakcode/skills`. A skill the agent is denied is not loaded.
 - Maximizing the review from a new conversation fills the window with the review.
+- Quick command output in the review bar no longer stays open forever: it has a close button and collapses with the quick command panel.
 - A subagent's question reaches the SDK's `onQuestion` of the conversation that started it, and is dismissed without one, instead of leaving the turn waiting.
 - A member adapter's request with nothing to check (empty `paths` or an empty `command`) is refused instead of allowed.
 - The Linux sandbox helper only runs the request the engine wrote for it.
@@ -66,6 +67,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 对话栏上的悬停说明出现在控件正上方，包括上下文用量、模型、思考档位、沙箱和权限模式。
 - 在空格后面输入 `/技能名`（包括写在句子中间）会加载该技能。技能从 Claude 的 `.claude/skills`、`.agents/skills`，以及 `.merakcode/skill`、`.merakcode/skills` 读取。智能体被拒绝使用的技能不会加载。
 - 在新对话里铺满审阅时，窗口显示的是全屏审阅。
+- 审阅栏快捷命令的输出不会再一直留在界面上：右上角有关闭按钮，收起快捷命令时也会一起隐藏。
 - 子智能体的提问会交给发起它的会话的 SDK `onQuestion`，没给 `onQuestion` 时会被跳过，不再让这一轮一直卡着。
 - 成员适配器发来的没有可检查内容的审批请求（`paths` 为空或 `command` 为空）改为拒绝，不再放行。
 - Linux 沙箱的辅助进程只执行引擎为它写好的那条请求。
