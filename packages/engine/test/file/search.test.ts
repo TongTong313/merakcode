@@ -19,8 +19,7 @@ test("fuzzy file search honors the caller's limit instead of the default count",
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // The file index is built in the background; nothing matches until the scan finishes
-      await expect.poll(() => File.search({ query: "widget", limit: 200, type: "file" })).toHaveLength(30)
+      expect(await File.search({ query: "widget", limit: 200, type: "file" })).toHaveLength(30)
 
       const few = await File.search({ query: "widget", limit: 5, type: "file" })
       expect(few).toHaveLength(5)

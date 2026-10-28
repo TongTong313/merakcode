@@ -29,7 +29,7 @@ async function shim(dir: string, name: string, script: string) {
   await fs.writeFile(
     command,
     process.platform === "win32"
-      ? `@"${process.execPath}" "${js}" %*\r\n`
+      ? `@node "%~dp0${name}.mjs" %*\r\n`
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`,
     { mode: 0o755 },
   )
@@ -77,7 +77,7 @@ test("a member cannot be added with a product that does not run, and the refusal
   await fs.writeFile(
     command,
     process.platform === "win32"
-      ? `@"${process.execPath}" "${js}" %*\r\n`
+      ? `@node "%~dp0codex.mjs" %*\r\n`
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`,
     { mode: 0o755 },
   )
@@ -105,7 +105,7 @@ test("the product list does not run every CLI again each time it is opened", asy
   await fs.writeFile(
     command,
     process.platform === "win32"
-      ? `@"${process.execPath}" "${js}" %*\r\n`
+      ? `@node "%~dp0codex.mjs" %*\r\n`
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`,
     { mode: 0o755 },
   )

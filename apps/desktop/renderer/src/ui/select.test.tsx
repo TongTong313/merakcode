@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { type JSX } from "solid-js"
+import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { expect, test } from "vitest"
 import { Select } from "./select"
@@ -29,6 +29,29 @@ function mount(node: () => JSX.Element) {
     },
   }
 }
+
+test("refreshing option objects does not report the unchanged selection as a user choice", async () => {
+  const [rows, setRows] = createSignal(options)
+  const changes: string[] = []
+  const view = mount(() => (
+    <Select label="Default model" options={rows()} value="anthropic/claude" onChange={(value) => changes.push(value)} />
+  ))
+  try {
+    setRows(options.map((option) => ({ ...option })))
+    await Promise.resolve()
+    expect(changes).toEqual([])
+    view.host
+      .querySelector("button")!
+      .dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) =>
+      item.textContent?.includes("Qwen3.5 Flash"),
+    )!
+    option.click()
+    expect(changes).toEqual(["alibaba-cn/qwen3.5-flash"])
+  } finally {
+    view.cleanup()
+  }
+})
 
 test("the open model menu shows each model's provider logo and name", () => {
   const view = mount(() => (

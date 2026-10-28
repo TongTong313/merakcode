@@ -391,6 +391,7 @@
 }
 .composer-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   padding: 6px 8px 8px;
@@ -964,6 +965,7 @@
   max-width: var(--content-width);
   margin: 0 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 .approval {

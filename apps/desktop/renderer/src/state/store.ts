@@ -30,6 +30,7 @@ import { toast } from "../ui/toast"
 import { providerChanged, type SeenFailures } from "./catalog-refresh"
 import { call, client } from "./client"
 import { checkoutOf, gitDirectory, onCheckoutChange, updateCheckout } from "./git"
+import { MessageSnapshot } from "./message-snapshot"
 
 type Providers = ProviderListResponses[200]
 
@@ -104,6 +105,7 @@ onCheckoutChange((directory, current) => {
 type Listener = (directory: string, event: Event) => void
 const listeners = new Set<Listener>()
 const pendingSnapshots = new Map<string, { events: Event[] }>()
+const messageLoads = new Map<string, { snapshot: MessageSnapshot; promise: Promise<void> }>()
 const pendingEvent = (event: Event) =>
   event.type === "permission.asked" ||
   event.type === "permission.replied" ||
@@ -124,6 +126,7 @@ function reduce(draft: SessionsState, event: Event) {
 let catalogFailures: SeenFailures = {}
 
 function dispatch(directory: string, event: Event) {
+  for (const load of messageLoads.values()) load.snapshot.observe(event)
   if (pendingEvent(event))
     for (const [dir, snapshot] of pendingSnapshots) {
       if (sameDir(directory, dir)) snapshot.events.push(event)
@@ -210,7 +213,8 @@ export function connect() {
  * entries are replaced with reconcile rather than set to {}.
  */
 async function resync() {
-  const opened = Object.keys(state.loaded).filter((id) => state.loaded[id])
+  const opened = [...new Set([...Object.keys(state.loaded).filter((id) => state.loaded[id]), ...messageLoads.keys()])]
+  messageLoads.clear()
   setState("loaded", reconcile({}))
   setState("sessions", "session_status", reconcile({}))
   await Promise.all(state.folders.map((folder) => refresh(folder.directory).catch(() => {})))
@@ -456,21 +460,29 @@ export async function ensureSession(id: string, directory: string) {
 
 export async function messages(id: string) {
   if (state.loaded[id]) return
+  const pending = messageLoads.get(id)
+  if (pending) return pending.promise
   const info = session(id)
   if (!info) return
-  const list = await call(client(info.directory).session.messages({ sessionID: info.id, limit: 400 }))
-  batch(() => {
-    setState(
-      "sessions",
-      produce((draft) => {
-        for (const item of list) {
-          reduce(draft, { type: "message.updated", properties: { info: item.info } } as Event)
-          for (const part of item.parts) reduce(draft, { type: "message.part.updated", properties: { part } } as Event)
-        }
-      }),
-    )
-    setState("loaded", id, true)
+  const snapshot = new MessageSnapshot(id)
+  const promise = (async () => {
+    const list = await call(client(info.directory).session.messages({ sessionID: info.id, limit: 400 }))
+    if (messageLoads.get(id)?.snapshot !== snapshot) return
+    batch(() => {
+      let loaded = false
+      setState(
+        "sessions",
+        produce((draft) => {
+          loaded = snapshot.apply(draft, list)
+        }),
+      )
+      if (loaded) setState("loaded", id, true)
+    })
+  })().finally(() => {
+    if (messageLoads.get(id)?.snapshot === snapshot) messageLoads.delete(id)
   })
+  messageLoads.set(id, { snapshot, promise })
+  return promise
 }
 
 /** Messages hidden by a revert; they can still be restored until the next message makes the engine delete them */

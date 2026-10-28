@@ -292,11 +292,11 @@ test("keeps inherited background pipes protected after their parent exits and ca
   const spawner = path.join(env.root, "spawner.cjs")
   await Filesystem.write(
     child,
-    'const fs = require("node:fs"); process.on("disconnect", () => fs.writeFileSync(process.argv[2], "ready")); process.send("ready"); const end = Date.now() + 15000; const timer = setInterval(() => { if (!fs.existsSync(process.argv[3]) && Date.now() < end) return; clearInterval(timer); fs.writeFileSync(process.argv[4], "finished"); }, 25);',
+    'const fs = require("node:fs"); process.on("disconnect", () => fs.writeFileSync(process.argv[2], "ready")); process.send("ready"); const end = Date.now() + 60000; const timer = setInterval(() => { if (!fs.existsSync(process.argv[3]) && Date.now() < end) return; clearInterval(timer); fs.writeFileSync(process.argv[4], "finished"); }, 25);',
   )
   await Filesystem.write(
     spawner,
-    `const child = require("node:child_process").spawn(process.execPath, ${JSON.stringify([child, marker, release, path.join(env.project, "descendant.txt")])}, { detached: process.platform === "win32", windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"] }); child.on("message", () => process.exit(0));`,
+    `const child = require("node:child_process").spawn(process.execPath, ${JSON.stringify([child, marker, release, path.join(env.project, "descendant.txt")])}, { detached: true, windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"] }); child.on("message", () => process.exit(0));`,
   )
   reply = (turn) =>
     turn.results.length || !turn.prompt.includes("inherited background")
@@ -347,6 +347,80 @@ test("keeps inherited background pipes protected after their parent exits and ca
         .toBe("finished")
     await client.session.abort({ sessionID: session.id })
     await client.file.delete({ path: "descendant.txt" })
+  }
+  await expect
+    .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason)
+    .not.toBe("busy")
+  const settled = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
+  expect((await client.vcs.switchBranch({ branch: "dev", expectedCheckout: settled.checkout })).response.status).toBe(
+    200,
+  )
+}, 120_000)
+
+test("stopping a background job ends its live parent and child and releases the checkout", async () => {
+  const { client } = merak
+  const marker = path.join(env.root, "background-pids.json")
+  const spawner = path.join(env.root, "attached-spawner.cjs")
+  await Filesystem.write(
+    spawner,
+    `
+const fs = require("node:fs")
+const child = require("node:child_process").spawn(process.execPath, ["-e", 'process.send("ready"); setInterval(() => {}, 1000)'], {
+  windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"]
+})
+child.on("message", () => fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify([process.pid, child.pid])))
+setInterval(() => {}, 1000)
+`,
+  )
+  reply = (turn) =>
+    turn.results.length || !turn.prompt.includes("Start the attached background processes")
+      ? { text: "started" }
+      : {
+          tool: "bash_background",
+          args: { command: `node "${spawner.replaceAll("\\", "/")}"`, description: "Start a parent and child" },
+        }
+  const session = await merak.session()
+  let jobID: string | undefined
+  try {
+    for await (const event of session.run("Start the attached background processes", { mode: "auto" })) void event
+    await expect.poll(() => Filesystem.readText(marker).catch(() => ""), { timeout: 10_000 }).not.toBe("")
+    const pids = JSON.parse(await Filesystem.readText(marker)) as number[]
+    expect(pids).toHaveLength(2)
+    const parts = (await client.session.messages({ sessionID: session.id }, { throwOnError: true })).data.flatMap(
+      (message) => message.parts,
+    )
+    const part = parts.find((part) => part.type === "tool" && part.tool === "bash_background")
+    const id = part?.type === "tool" && part.state.status === "completed" && part.state.metadata.jobId
+    expect(typeof id).toBe("string")
+    jobID = String(id)
+    expect((await client.bash.jobStop({ id: jobID }, { throwOnError: true })).data).toBe(true)
+    await client.session.abort({ sessionID: session.id }, { throwOnError: true })
+    await expect
+      .poll(
+        () =>
+          pids.every((pid) => {
+            try {
+              process.kill(pid, 0)
+              return false
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+              return true
+            }
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true)
+    await expect
+      .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason)
+      .not.toBe("busy")
+    const before = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
+    expect((await client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout })).response.status).toBe(
+      200,
+    )
+  } finally {
+    reply = () => ({ text: "OK" })
+    if (jobID) await client.bash.jobStop({ id: jobID })
+    await client.session.abort({ sessionID: session.id })
   }
 }, 120_000)
 

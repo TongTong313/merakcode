@@ -48,7 +48,9 @@ export function Select<T extends string>(props: {
       optionTextValue="label"
       optionDisabled="disabled"
       value={selected() ?? null}
-      onChange={(option) => option && props.onChange(option.value)}
+      onChange={(option) => {
+        if (option && option.value !== props.value) props.onChange(option.value)
+      }}
       open={open()}
       onOpenChange={(value) => {
         setOpen(value)

@@ -10,7 +10,7 @@ const run = promisify(execFile)
 
 /** The single-file library, its types and an adapter written with them, in a fresh directory removed after the test */
 async function workspace(adapter: string) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-adapter-"))
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-adapter 中文 space-"))
   await fs.writeFile(path.join(dir, "merakcode-adapter.mjs"), await bundle())
   await fs.writeFile(path.join(dir, "merakcode-adapter.d.mts"), await declarations())
   await fs.writeFile(path.join(dir, "adapter.mts"), adapter)
@@ -59,8 +59,7 @@ adapter({
   await fs.mkdir(bin)
   const script = path.join(bin, "democli.js")
   await fs.writeFile(script, "process.stdout.write(JSON.stringify(process.argv.slice(2)))")
-  if (process.platform === "win32")
-    await fs.writeFile(path.join(bin, "democli.cmd"), `@"${process.execPath}" "${script}" %*\r\n`)
+  if (process.platform === "win32") await fs.writeFile(path.join(bin, "democli.cmd"), `@node "%~dp0democli.js" %*\r\n`)
   else
     await fs.writeFile(path.join(bin, "democli"), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, {
       mode: 0o755,
@@ -79,8 +78,7 @@ async function npmCommand(dir: string, name: string, script: string) {
   await fs.mkdir(bin, { recursive: true })
   const file = path.join(bin, `${name}.js`)
   await fs.writeFile(file, script)
-  if (process.platform === "win32")
-    await fs.writeFile(path.join(bin, `${name}.cmd`), `@"${process.execPath}" "${file}" %*\r\n`)
+  if (process.platform === "win32") await fs.writeFile(path.join(bin, `${name}.cmd`), `@node "%~dp0${name}.js" %*\r\n`)
   else
     await fs.writeFile(path.join(bin, name), `#!/bin/sh\nexec "${process.execPath}" "${file}" "$@"\n`, { mode: 0o755 })
   return bin

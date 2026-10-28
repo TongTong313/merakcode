@@ -15,6 +15,7 @@ import { SourceControl } from "../git/source-control"
 
 /** Side panel with review, code and browser tabs; drag the left edge to resize */
 export function Panel(props: { sessionID?: string; directory: string; folder: string }) {
+  let panel!: HTMLElement
   const data = useReview(
     () => props.sessionID,
     () => props.directory,
@@ -30,9 +31,12 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
 
   const resize = (event: PointerEvent) => {
     const start = event.clientX
-    const width = ui.panelWidth
+    const width = panel.getBoundingClientRect().width
+    const available = panel.parentElement!.clientWidth
+    const minimum = Math.min(360, available / 2)
+    const maximum = available - minimum
     const move = (next: PointerEvent) =>
-      setUi("panelWidth", Math.min(Math.max(360, width + start - next.clientX), window.innerWidth - 420))
+      setUi("panelWidth", Math.min(Math.max(minimum, width + start - next.clientX), maximum))
     const up = () => {
       window.removeEventListener("pointermove", move)
       saveLayout()
@@ -52,7 +56,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   }
 
   return (
-    <aside class="panel" aria-label={t("panel.label")} style={{ width: `${ui.panelWidth}px` }}>
+    <aside ref={panel} class="panel" aria-label={t("panel.label")} style={{ width: `${ui.panelWidth}px` }}>
       <div class="panel-resize" onPointerDown={resize} />
       <div class="panel-tabs">
         <div role="tablist" aria-label={t("panel.tabs")} class="row" onKeyDown={key}>
