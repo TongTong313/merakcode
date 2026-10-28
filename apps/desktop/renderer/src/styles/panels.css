@@ -18,15 +18,22 @@
 }
 .panel-tabs {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 2px;
-  height: 44px;
-  padding: 0 8px 0 10px;
+  min-height: 44px;
+  padding: 8px 8px 8px 10px;
   border-bottom: 1px solid var(--border);
   flex: none;
 }
+.panel-tabs > [role="tablist"] {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
 .panel-tab {
   display: inline-flex;
+  flex: none;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
   height: 28px;

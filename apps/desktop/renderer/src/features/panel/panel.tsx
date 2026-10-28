@@ -78,7 +78,6 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
             </button>
           ))}
         </div>
-        <span class="spacer" />
         <Show when={ui.tab === "review"}>
           <button class="icon-button" aria-label={t("panel.maximize")} onClick={() => setUi("maximized", true)}>
             <Maximize2 class="icon icon-sm" />

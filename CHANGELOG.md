@@ -28,7 +28,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
-- The composer stays usable beside the side panel when the window shrinks, and delayed conversation history no longer replaces completed member replies or restores deleted messages.
+- The composer and side panel navigation stay usable when the window shrinks, and delayed conversation history no longer replaces completed member replies or restores deleted messages.
 - External agent cleanup on Linux and macOS finds the system process tools even when PATH has no system commands.
 - The first file search waits for the initial index, so an existing file can be mentioned without typing again.
 - Refreshing dropdown options no longer resaves an unchanged setting and interrupts a conversation with a config reload.
@@ -72,7 +72,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
-- 窗口缩小时，右侧面板旁的消息输入框仍可正常使用；延迟返回的对话历史不再覆盖已完成的成员回复或恢复已删除的消息。
+- 窗口缩小时，消息输入框与右侧面板导航仍可正常使用；延迟返回的对话历史不再覆盖已完成的成员回复或恢复已删除的消息。
 - Linux 和 macOS 上，即使 PATH 不包含系统命令，外部智能体清理仍能找到系统进程工具。
 - 首次文件搜索会等待初始索引完成，引用已有文件时不必再次输入才能看到补全结果。
 - 下拉选项刷新时不再重复保存未改变的设置，避免配置重载中断刚开始的对话。
