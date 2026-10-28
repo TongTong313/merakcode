@@ -37,15 +37,29 @@ export function useGitChanges(directory: () => string) {
     }
   }
   let timer: ReturnType<typeof setTimeout> | undefined
+  let pending = false
   const backgroundRefresh = () => {
     // Do not supersede the refresh awaited by an index action.
-    if (!entry()?.working) void refresh()
+    if (entry()?.working) {
+      pending = true
+      return
+    }
+    pending = false
+    void refresh()
   }
   const schedule = () => {
     clearTimeout(timer)
     timer = setTimeout(backgroundRefresh, 250)
   }
   createEffect(on([directory, () => checkoutOf(directory())], backgroundRefresh))
+  createEffect(
+    on(
+      () => entry()?.working,
+      (working) => {
+        if (!working && pending) backgroundRefresh()
+      },
+    ),
+  )
   onCleanup(
     listen((dir, event) => {
       if (!sameDir(gitDirectory(dir), key())) return

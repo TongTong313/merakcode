@@ -171,9 +171,10 @@ test("Git selection and all-file index actions preserve working files and pendin
     await staged.getByRole("button", { name: "取消暂存所选 1 个文件" }).click()
     await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("manual-b.txt")
     await firstRead.promise
+    await writeFile(path.join(kit.project, "late.txt"), "late change\n")
     await kit.page.evaluate(() => window.dispatchEvent(new Event("focus")))
-    // A background refresh may arrive while the post-mutation response is delayed.
-    await kit.page.waitForTimeout(350)
+    // Let focus and file watcher events arrive while the post-mutation response is delayed.
+    await kit.page.waitForTimeout(1200)
     releaseFirst!()
     await expect(unstaged.locator(".git-file")).toHaveCount(2)
     await expect(unstaged.getByRole("button", { name: "暂存全部", exact: true })).toBeEnabled()
@@ -184,16 +185,19 @@ test("Git selection and all-file index actions preserve working files and pendin
     kit.page.off("response", changed)
     await kit.page.unroute(pattern)
   }
+  await expect(unstaged.locator(".git-file")).toHaveCount(3)
   await unstaged.getByRole("button", { name: "暂存全部", exact: true }).click()
-  await expect(staged.locator(".git-file")).toHaveCount(3)
+  await expect(staged.locator(".git-file")).toHaveCount(4)
   expect(kit.git("diff", "--cached", "--name-only").trim().split("\n")).toEqual([
+    "late.txt",
     "manual-a.txt",
     "manual-b.txt",
     "new.txt",
   ])
   await staged.getByRole("button", { name: "全部取消暂存", exact: true }).click()
   await expect(staged.locator(".git-file")).toHaveCount(0)
-  await expect(unstaged.locator(".git-file")).toHaveCount(3)
+  await expect(unstaged.locator(".git-file")).toHaveCount(4)
+  expect(await readFile(path.join(kit.project, "late.txt"), "utf8")).toBe("late change\n")
   expect(await readFile(path.join(kit.project, "manual-a.txt"), "utf8")).toBe("manual A\n")
   expect(await readFile(path.join(kit.project, "manual-b.txt"), "utf8")).toBe("manual B\n")
   expect(await readFile(path.join(kit.project, "new.txt"), "utf8")).toBe("new\n")

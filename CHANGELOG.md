@@ -33,7 +33,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - The first file search waits for the initial index, so an existing file can be mentioned without typing again.
 - Refreshing dropdown options no longer resaves an unchanged setting and interrupts a conversation with a config reload.
 - Concurrent project configuration loads retain their own warnings instead of losing or mixing them.
-- Git index actions finish refreshing their file list before accepting the next action, so Stage all includes files just unstaged even when a background refresh overlaps.
+- Git index actions finish refreshing their file list before accepting the next action and preserve background refreshes, so Stage all includes files just unstaged or created during the operation.
 - Review comments exclude an unselected line when a native selection ends at its start, and feedback relocated during submission stays pending after the earlier request succeeds.
 - After the engine restarts or is killed mid-turn, unfinished native tool calls no longer stay spinning: loading the conversation (or disposing the instance) marks them interrupted, and the next message starts a new turn instead of continuing under the stuck one.
 - External conversations with agent products such as Claude Code and Codex are titled from the first message with the configured small model, instead of keeping the default `New session - …` title.
@@ -78,7 +78,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 首次文件搜索会等待初始索引完成，引用已有文件时不必再次输入才能看到补全结果。
 - 下拉选项刷新时不再重复保存未改变的设置，避免配置重载中断刚开始的对话。
 - 多个项目并行加载配置时，告警按各自项目收集，不再丢失或串到其他项目。
-- Git 索引操作在文件列表刷新完成后才接受下一次操作，后台刷新重叠时，“暂存全部”也会包含刚取消暂存的文件。
+- Git 索引操作在文件列表刷新完成后才接受下一次操作，并保留期间的后台刷新，“暂存全部”也会包含刚取消暂存或在操作期间新建的文件。
 - 原生代码选区结束在下一行行首时，审阅评论不再包含未选中的行；发送期间重新定位的反馈在旧请求成功后仍保留待发送。
 - 引擎在中途重启或被强杀后，未完成的本地工具调用不再一直转圈：打开对话（或销毁实例）时会标为重启中断，下一条消息会开新一轮，而不会挂在卡住的那一轮下面。
 - 使用 Claude Code、Codex 等智能体产品的单聊会在第一条消息后使用配置的 small model 生成标题，不再保留默认的 `New session - …` 标题。
