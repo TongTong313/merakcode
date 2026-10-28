@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Atomic } from "../file/atomic"
 import { Relay } from "../provider/relay"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../global"
@@ -1787,9 +1788,7 @@ export namespace Config {
     if (parsed.success) {
       if (!parsed.data.$schema) {
         parsed.data.$schema = SCHEMA
-        // Write the $schema to the original text to preserve variables like {env:VAR}
-        const updated = original.replace(/^\s*\{/, () => `{\n  "$schema": "${SCHEMA}",`)
-        await Filesystem.write(configFilepath, updated).catch(() => {})
+        await addSchema(configFilepath, original).catch(() => {})
       }
       return resolvePlugins(parsed.data, configFilepath)
     }
@@ -1798,6 +1797,15 @@ export namespace Config {
     const recovered = recoverConfig(Info, cleaned, configFilepath)
     emitWarnings(recovered.warnings)
     return resolvePlugins(recovered.data as Info, configFilepath)
+  }
+
+  async function addSchema(filepath: string, original: string) {
+    using _ = await Lock.write(`config:${ConfigWriteGuard.normalizePath(filepath)}`)
+    // Substitutions can await file reads. A patch or deletion since this load must not be overwritten or recreated.
+    if ((await Filesystem.readText(filepath)) !== original) return
+    const updated = original.replace(/^\s*\{/, () => `{\n  "$schema": "${SCHEMA}",`)
+    await Atomic.write(filepath, updated)
+    ConfigWriteGuard.registerSelfWrite(filepath, updated)
   }
 
   function globalFields(value: unknown, filepath: string, globalSource: boolean) {
@@ -2339,7 +2347,7 @@ export namespace Config {
       const before = await readConfigFile(filepath)
       const { merged, written } = await prepareConfigWrite(filepath, before, patch)
       if (await ConfigWriteGuard.changed(snap, filepath)) continue
-      await Filesystem.write(filepath, written)
+      await Atomic.write(filepath, written)
       ConfigWriteGuard.registerSelfWrite(filepath, written)
       return merged
     }

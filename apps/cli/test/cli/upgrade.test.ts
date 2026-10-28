@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import http from "node:http"
 import type { AddressInfo } from "node:net"
+import semver from "semver"
 import { Process } from "@merakcode/util/process"
 import { newer } from "../../src/cli/upgrade"
 import { Installation } from "../../src/cli/installation"
@@ -17,6 +18,7 @@ const releases = [
   { tag_name: "v0.4.0-beta.1", draft: true, prerelease: true },
   { tag_name: "v0.2.0-beta.5", draft: false, prerelease: true },
 ]
+const nextVersion = semver.inc(Installation.VERSION, "major")!
 
 let server: http.Server
 let api = ""
@@ -26,6 +28,10 @@ let none = ""
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json")
+    if (req.url === "/newer/releases/latest")
+      return res.end(JSON.stringify({ tag_name: `v${nextVersion}`, draft: false, prerelease: false }))
+    if (req.url === "/current/releases/latest")
+      return res.end(JSON.stringify({ tag_name: `v${Installation.VERSION}`, draft: false, prerelease: false }))
     if (req.url?.startsWith("/releases/latest")) return res.end(JSON.stringify(releases[2]))
     if (req.url?.startsWith("/releases")) return res.end(JSON.stringify(releases))
     res.statusCode = 404
@@ -139,11 +145,20 @@ describe("merak upgrade", () => {
     "without a terminal and without --yes it only checks, and says how to install",
     { timeout: 60_000 },
     async () => {
-      const result = await merak("upgrade")
+      expect(newer(nextVersion, Installation.VERSION)).toBe(true)
+      const result = await run(`${api}/newer`, "upgrade")
       expect(result.code, result.output).toBe(0)
       expect(result.output).toContain("--yes")
     },
   )
+
+  test("the current version needs no upgrade even without a terminal", { timeout: 60_000 }, async () => {
+    const result = await run(`${api}/current`, "upgrade")
+    expect(result.code, result.output).toBe(0)
+    expect(result.output).toContain("Already up to date")
+    expect(result.output).not.toContain("--yes")
+    expect(result.output).not.toMatch(/Upgrading|Upgraded/)
+  })
 
   test("before anything is published, --check says so in plain words", { timeout: 60_000 }, async () => {
     const result = await run(none, "upgrade", "--check")

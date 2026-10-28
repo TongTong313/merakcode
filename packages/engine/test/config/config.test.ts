@@ -223,6 +223,41 @@ test("preserves env variables when adding $schema to config", async () => {
   }
 })
 
+test.each(["json", "jsonc"])(
+  "a delayed %s schema insertion cannot overwrite a newer global patch",
+  async (extension) => {
+    await using tmp = await tmpdir()
+    using _global = globalConfig(tmp.path)
+    const filepath = path.join(tmp.path, `merakcode.${extension}`)
+    const reference = path.join(tmp.path, "agent.txt")
+    await Filesystem.write(reference, "test-agent")
+    await Filesystem.write(filepath, JSON.stringify({ default_agent: "{file:./agent.txt}" }))
+    const reading = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const read = Filesystem.readText
+    const spy = vi.spyOn(Filesystem, "readText").mockImplementation(async (file) => {
+      const content = await read(file)
+      if (file === reference) {
+        reading.resolve()
+        await release.promise
+      }
+      return content
+    })
+    const loading = Config.getGlobal()
+    try {
+      await reading.promise
+      await Config.updateGlobal({ $schema: Config.SCHEMA, locale: "en-US" }, { skipDispose: true })
+    } finally {
+      release.resolve()
+      await loading
+      spy.mockRestore()
+    }
+    const written = await Filesystem.readJson(filepath)
+    expect(written.locale).toBe("en-US")
+    expect(written.default_agent).toBe("{file:./agent.txt}")
+  },
+)
+
 test("handles file inclusion substitution", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

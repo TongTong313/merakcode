@@ -6,6 +6,16 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- Configuration schema insertion no longer overwrites newer settings, and configuration writes replace the file atomically when supported.
+- Global events without a directory no longer interrupt Git panel updates, and a failed event listener no longer drops subsequent conversation events.
+
+### 修复
+
+- 配置文件自动补写 schema 时不再覆盖较新的设置，配置写入在系统支持时通过原子替换完成。
+- 不带目录的全局事件不再中断 Git 面板更新，单个事件监听器异常也不再丢失后续对话事件。
+
 ## [0.2.0] - 2026-10-28
 
 ### Changed

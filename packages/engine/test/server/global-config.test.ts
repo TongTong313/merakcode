@@ -109,12 +109,14 @@ describe("global config routes", () => {
       })
 
     const disableResponse = await patch(false)
-    expect(disableResponse.status).toBe(200)
-    expect(read((await disableResponse.json()) as Shape)).toBe(false)
+    const disabled = await disableResponse.json()
+    expect(disableResponse.status, JSON.stringify(disabled)).toBe(200)
+    expect(read(disabled as Shape)).toBe(false)
 
     const enableResponse = await patch(true)
-    expect(enableResponse.status).toBe(200)
-    expect(read((await enableResponse.json()) as Shape)).toBe(true)
+    const enabled = await enableResponse.json()
+    expect(enableResponse.status, JSON.stringify(enabled)).toBe(200)
+    expect(read(enabled as Shape)).toBe(true)
   })
 
   test("unknown top-level keys are stripped, and sibling keys in plugin_options survive a write", async () => {
