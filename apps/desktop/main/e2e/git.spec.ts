@@ -172,9 +172,35 @@ test("Git selection and all-file index actions preserve working files and pendin
     await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("manual-b.txt")
     await firstRead.promise
     await writeFile(path.join(kit.project, "late.txt"), "late change\n")
-    await kit.page.evaluate(() => window.dispatchEvent(new Event("focus")))
-    // Let focus and file watcher events arrive while the post-mutation response is delayed.
-    await kit.page.waitForTimeout(1200)
+    await kit.page.evaluate(async () => {
+      // Observe the real focus debounce finishing, including rescheduling by a file watcher.
+      // Neither its delay nor its callback is replaced with simulated behavior.
+      const timers: Pick<Window, "setTimeout"> = window
+      const schedule = timers.setTimeout
+      const callbacks = new Set<TimerHandler>()
+      const completed = Promise.withResolvers<void>()
+      let dispatching = true
+      timers.setTimeout = (handler, delay, ...args) => {
+        if (dispatching && typeof handler === "function") callbacks.add(handler)
+        if (!callbacks.has(handler)) return schedule(handler, delay, ...args)
+        return schedule(() => {
+          try {
+            if (typeof handler === "function") handler(...args)
+          } finally {
+            callbacks.delete(handler)
+            if (!callbacks.size) completed.resolve()
+          }
+        }, delay)
+      }
+      try {
+        window.dispatchEvent(new Event("focus"))
+        dispatching = false
+        if (!callbacks.size) throw new Error("Focus did not schedule a refresh")
+        await completed.promise
+      } finally {
+        timers.setTimeout = schedule
+      }
+    })
     releaseFirst!()
     await expect(unstaged.locator(".git-file")).toHaveCount(2)
     await expect(unstaged.getByRole("button", { name: "暂存全部", exact: true })).toBeEnabled()

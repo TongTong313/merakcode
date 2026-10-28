@@ -310,6 +310,9 @@ export const test = base.extend<{
       if (section) await page.getByText(section).filter({ visible: true }).first().click()
     }
     const panel = () => page.getByRole("complementary", { name: /^(右侧面板|Side panel)$/ })
+    // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
+    const tracing = app.context().tracing
+    await tracing.start({ screenshots: true, snapshots: true, sources: true })
     await use({
       app,
       page,
@@ -327,6 +330,11 @@ export const test = base.extend<{
       panel,
       git: run,
     })
+    if (info.status !== info.expectedStatus) {
+      const trace = info.outputPath("electron-trace.zip")
+      await tracing.stop({ path: trace })
+      await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
+    } else await tracing.stop()
     await app.close().catch(() => undefined)
     fake.close()
     if (info.status !== info.expectedStatus) console.log("KEPT", root)
