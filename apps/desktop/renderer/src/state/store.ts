@@ -162,7 +162,13 @@ function dispatch(directory: string, event: Event) {
     const project = event.properties
     setState("folders", (folder) => folder.project?.id === project.id && project.id !== "global", "project", project)
   }
-  for (const fn of listeners) fn(directory, event)
+  for (const fn of listeners) {
+    try {
+      fn(directory, event)
+    } catch (error) {
+      log("error", "event listener failed", { type: event.type, error: String(error) })
+    }
+  }
 }
 
 /**
@@ -179,7 +185,8 @@ export function connect() {
     const items = queue
     queue = []
     batch(() => {
-      for (const item of items) dispatch(item.directory, item.payload)
+      // Project broadcasts and transport heartbeats have no directory on the wire.
+      for (const item of items) dispatch(item.directory ?? "global", item.payload)
     })
   }
   void (async () => {
