@@ -94,8 +94,52 @@ describe("FileTime.withLock", () => {
       directory: tmp.path,
       fn: async () => {
         const file = `${tmp.path}/a.txt`
-        await FileTime.withLock(file, async () => {})
-        expect(FileTime.state().locks.has(file)).toBe(false)
+        await FileTime.withLock(file, async () => {
+          expect(FileTime.state().locks.size).toBe(1)
+        })
+        await expect.poll(() => FileTime.state().locks.size).toBe(0)
+        await FileTime.withLock(file, async () => Filesystem.write(file, "next write"))
+        expect(await Filesystem.readText(file)).toBe("next write")
+        await expect.poll(() => FileTime.state().locks.size).toBe(0)
+      },
+    })
+  })
+
+  test("cancelling a queued writer does not release an earlier writer or block the next one", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const file = `${tmp.path}/queued.txt`
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const first = FileTime.withLock(file, async () => {
+          entered.resolve()
+          await release.promise
+          await Filesystem.write(file, "first")
+        })
+        await entered.promise
+        const abort = new AbortController()
+        const cancelled = FileTime.withLock(file, async () => Filesystem.write(file, "cancelled"), abort.signal)
+        const rejected = expect(cancelled).rejects.toThrow("cancel queued writer")
+        abort.abort(new Error("cancel queued writer"))
+        await rejected
+        let finished = false
+        const next = FileTime.withLock(file, async () => {
+          expect(await Filesystem.readText(file)).toBe("first")
+          await Filesystem.write(file, "next")
+          finished = true
+        })
+        try {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          expect(finished).toBe(false)
+          expect(FileTime.state().locks.size).toBe(1)
+        } finally {
+          release.resolve()
+          await Promise.all([first, next])
+        }
+        expect(await Filesystem.readText(file)).toBe("next")
+        await expect.poll(() => FileTime.state().locks.size).toBe(0)
       },
     })
   })

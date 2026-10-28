@@ -32,9 +32,24 @@ test("creates and continues a direct external conversation through the existing 
   await kit.send("first direct message")
   await expect(kit.text("External reply: first direct message")).toBeVisible()
   await expect(kit.text(/Direct CLI.*fixture-selected/)).toBeVisible()
+  await expect(page.getByRole("link", { name: /E2E/ })).toBeVisible()
+  expect(kit.modelRequests().slice(requests)).toEqual([
+    {
+      model: "qwen-plus",
+      system: expect.stringContaining("You are a title generator."),
+      prompt: "first direct message",
+      tools: 0,
+    },
+  ])
   await kit.send("second direct message")
   await expect(kit.text("External reply: second direct message")).toBeVisible()
-  expect(kit.requests()).toBe(requests)
+  expect(kit.requests()).toBe(requests + 1)
+  expect(
+    kit
+      .modelRequests()
+      .slice(requests)
+      .every((request) => request.system.includes("You are a title generator.")),
+  ).toBe(true)
 })
 
 test("keeps a refused external chat locked after reconnect and restores its product when enabled", async ({ kit }) => {

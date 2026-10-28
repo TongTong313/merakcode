@@ -160,9 +160,9 @@ function windowsShort(file: string) {
     [
       "-NoProfile",
       "-Command",
-      `(New-Object -ComObject Scripting.FileSystemObject).GetFile(${JSON.stringify(file)}).ShortPath`,
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); (New-Object -ComObject Scripting.FileSystemObject).GetFile($env:MERAKCODE_TEST_SHORT_PATH).ShortPath",
     ],
-    { encoding: "utf8", windowsHide: true },
+    { encoding: "utf8", windowsHide: true, env: { ...process.env, MERAKCODE_TEST_SHORT_PATH: file } },
   ).trim()
   return listed || file
 }

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import type { Page } from "@playwright/test"
 import { test, expect } from "./fixture"
 
@@ -519,18 +520,19 @@ test.describe("collaboration settings", () => {
  * the config can name it before the app starts: a config written later would leave the real claude to be run.
  */
 function fakeClaude(name: string, tools: unknown[]) {
-  const dir = path.join(os.tmpdir(), "merakcode-e2e-claude", name)
+  const dir = path.join(os.tmpdir(), "merakcode-e2e-claude 中文 space", name)
   mkdirSync(dir, { recursive: true })
   const script = path.join(import.meta.dirname, "fake-claude.ts")
   const run = `"${process.execPath}" --import ${LOADER} --disable-warning=ExperimentalWarning "${script}"`
   // The tools go in a file: quotes and Chinese text do not survive a .cmd set line
   const file = path.join(dir, "tools.json")
   writeFileSync(file, JSON.stringify(tools))
+  writeFileSync(path.join(dir, "run.mjs"), `await import(${JSON.stringify(pathToFileURL(script).href)})\n`)
   const command = path.join(dir, process.platform === "win32" ? "claude.cmd" : "claude")
   writeFileSync(
     command,
     process.platform === "win32"
-      ? `@set "CLAUDE_FIXTURE_FILE=${file}"\r\n@${run} %*\r\n`
+      ? `@set "CLAUDE_FIXTURE_FILE=%~dp0tools.json"\r\n@node --import ${LOADER} --disable-warning=ExperimentalWarning "%~dp0run.mjs" %*\r\n`
       : `#!/bin/sh\nexport CLAUDE_FIXTURE_FILE="${file}"\nexec ${run} "$@"\n`,
     { mode: 0o755 },
   )
@@ -632,6 +634,62 @@ test.describe("a Claude Code member refused with a reason", () => {
     await card.getByRole("button", { name: "拒绝", exact: true }).click()
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText(/WebFetch denied: .*先用本地资料/, { timeout: 60_000 })
+  })
+
+  test("retains the completed member and refusal reason when an earlier history response arrives late", async ({
+    kit,
+  }) => {
+    const { page } = kit
+    const loaded = await page.reload()
+    const authorization = (await loaded!.request().allHeaders()).authorization
+    expect(authorization).toBeTruthy()
+    const started = Promise.withResolvers<void>()
+    const released = Promise.withResolvers<void>()
+    let capture!: () => Promise<void>
+    await page.route(
+      "**/session/*/message?*",
+      async (route) => {
+        let response: Awaited<ReturnType<typeof route.fetch>>
+        capture = async () => {
+          response = await route.fetch({ headers: { ...route.request().headers(), authorization: authorization! } })
+          expect(response.status()).toBe(200)
+          const history = (await response.json()) as { parts: { tool?: string; state?: { status: string } }[] }[]
+          expect(history.flatMap((item) => item.parts).find((part) => part.tool === "delegate")?.state?.status).toBe(
+            "running",
+          )
+        }
+        started.resolve()
+        await released.promise
+        await route.fulfill({ response: response! })
+      },
+      { times: 1 },
+    )
+    try {
+      await createGroup(page, { product: "Claude Code", name: "小明" })
+      await started.promise
+      await kit.send("@小明 查资料")
+      const card = kit.approval()
+      await expect(card).toBeVisible({ timeout: 60_000 })
+      await capture()
+      await card.getByText("拒绝并说明…").click()
+      await card.getByRole("textbox", { name: "拒绝原因" }).fill("先用本地资料")
+      await card.getByRole("button", { name: "拒绝", exact: true }).click()
+      const member = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
+      await expect(member).toContainText(/WebFetch denied: .*先用本地资料/, { timeout: 60_000 })
+      await expect(kit.text("好了")).toBeVisible()
+      const finished = page.waitForResponse(
+        (response) => response.url().includes("/message?") && response.request().method() === "GET",
+      )
+      released.resolve()
+      await (await finished).finished()
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      await expect(member).toContainText(/WebFetch denied: .*先用本地资料/)
+      await expect(member).not.toContainText("已停止")
+    } finally {
+      released.resolve()
+    }
   })
 })
 

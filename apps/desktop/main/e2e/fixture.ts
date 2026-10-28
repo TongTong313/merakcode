@@ -38,6 +38,8 @@ export type Script = (input: {
   model: string
 }) => Reply | Promise<Reply>
 
+type ModelRequest = { model: string; system: string; prompt: string; tools: number }
+
 export type Kit = {
   app: ElectronApplication
   page: Page
@@ -46,6 +48,8 @@ export type Kit = {
   root: string
   /** Number of requests the fake model received */
   requests: () => number
+  /** Every inference request, including titles and other background work */
+  modelRequests: () => readonly ModelRequest[]
   /** Fake model URL (OpenAI-compatible, up to /v1) */
   modelURL: string
   send: (text: string) => Promise<void>
@@ -109,7 +113,7 @@ function stream(reply: Reply) {
 }
 
 async function model(script: Script) {
-  let count = 0
+  const requests: ModelRequest[] = []
   const server: Server = createServer(async (request, response) => {
     if (request.method === "GET" && (request.url ?? "").includes("/models")) {
       response.writeHead(200, { "content-type": "application/json" })
@@ -126,7 +130,12 @@ async function model(script: Script) {
       .slice(user + 1)
       .flatMap((message) => (message.role === "tool" ? [text(message.content)] : []))
     const system = messages.flatMap((message) => (message.role === "system" ? [text(message.content)] : [])).join("\n")
-    count++
+    requests.push({
+      model: body.model ?? "",
+      system,
+      prompt,
+      tools: (body as { tools?: unknown[] }).tools?.length ?? 0,
+    })
     // Background requests without tools (titles, summaries) always get a short text
     const reply = (body as { tools?: unknown[] }).tools?.length
       ? await script({ prompt, toolResults, system, model: body.model ?? "" })
@@ -137,7 +146,12 @@ async function model(script: Script) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("model server has no port")
-  return { url: `http://127.0.0.1:${address.port}/v1`, count: () => count, close: () => server.close() }
+  return {
+    url: `http://127.0.0.1:${address.port}/v1`,
+    count: () => requests.length,
+    requests: () => requests.slice(),
+    close: () => server.close(),
+  }
 }
 
 /**
@@ -302,6 +316,7 @@ export const test = base.extend<{
       project,
       root,
       requests: fake.count,
+      modelRequests: fake.requests,
       modelURL: fake.url,
       send,
       text,

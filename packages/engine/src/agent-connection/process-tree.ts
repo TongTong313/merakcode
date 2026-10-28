@@ -12,7 +12,7 @@ export async function containAdapter(child: Process.Child, marker: string): Prom
       await Shell.killTree(child)
       if (!child.pid) return
       for (;;) {
-        const listing = await Process.run(["ps", "-A", "-o", "pgid=", "-o", "stat="], { nothrow: true })
+        const listing = await Process.run(["/bin/ps", "-A", "-o", "pgid=", "-o", "stat="], { nothrow: true })
         if (listing.exitCode !== 0)
           throw new Error(
             await Text.pick({
@@ -123,7 +123,7 @@ async function taggedProcesses(marker: string): Promise<number[]> {
     }
     return result
   }
-  const listing = await Process.run(["ps", "-A", "-Eww", "-o", "pid=,stat=,command="], { nothrow: true })
+  const listing = await Process.run(["/bin/ps", "-A", "-Eww", "-o", "pid=,stat=,command="], { nothrow: true })
   if (listing.exitCode !== 0)
     throw new Error(
       await Text.pick({ zh: "无法确认外部进程已退出", en: "Could not confirm the external processes exited" }),

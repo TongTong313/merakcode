@@ -49,18 +49,18 @@ test("a one-shot command receives the prompt on stdin, can write the workspace, 
 
 test("stopping a one-shot member ends its command, and what the command started, as with an npm shim", async () => {
   await using tmp = await tmpdir()
-  const file = path.join(tmp.path, "wait.mjs")
-  const pidFile = path.join(tmp.path, "pid")
+  const directory = path.join(tmp.path, "shim 中文 space")
+  await fs.mkdir(directory)
+  const file = path.join(directory, "wait.mjs")
+  const pidFile = path.join(directory, "pid")
   await fs.writeFile(
     file,
     `import fs from "node:fs"\nfs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))\nsetInterval(() => {}, 1000)\n`,
   )
-  const shim = process.platform === "win32" ? path.join(tmp.path, "seat.cmd") : path.join(tmp.path, "seat")
+  const shim = path.join(directory, process.platform === "win32" ? "seat.cmd" : "seat")
   await fs.writeFile(
     shim,
-    process.platform === "win32"
-      ? `@"${process.execPath}" "${file}" %*\r\n`
-      : `#!/bin/sh\n"${process.execPath}" "${file}"\n`,
+    process.platform === "win32" ? `@node "%~dp0wait.mjs" %*\r\n` : `#!/bin/sh\n"${process.execPath}" "${file}"\n`,
     { mode: 0o755 },
   )
   const abort = new AbortController()

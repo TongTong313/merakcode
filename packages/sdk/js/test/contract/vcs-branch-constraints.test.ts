@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { access, chmod, rm, rmdir, symlink, unlink } from "node:fs/promises"
+import { access, chmod, mkdir, realpath, rm, rmdir, symlink, unlink } from "node:fs/promises"
 import { afterAll, beforeAll, expect, test } from "vitest"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { createMerakCode, type MerakCode } from "@merakcode/sdk"
@@ -114,21 +114,35 @@ test("allows switching one checkout while another checkout in the same project i
   }
 }, 120_000)
 
-test("reports branches used by another worktree and refuses to switch to them", async () => {
-  const target = path.join(env.root, "occupied")
-  git("worktree", "add", "--quiet", target, "dev")
-  try {
-    const { client } = merak
-    const listed = (await client.vcs.branchOptions({}, { throwOnError: true })).data
-    const switched = await client.vcs.switchBranch({ branch: "dev", expectedCheckout: listed.current!.checkout })
-    expect(switched.response.status).toBe(409)
-    expect(switched.error).toMatchObject({ name: "CheckoutBlockedError", data: { reason: "occupied" } })
-    expect(listed.branches.find((branch) => branch.name === "dev")).toMatchObject({ worktree: target })
-    expect((await client.vcs.get({}, { throwOnError: true })).data.branch).toBe("main")
-  } finally {
-    git("worktree", "remove", "--force", target)
-  }
-}, 120_000)
+test.each(["direct", "alias"] as const)(
+  "reports branches used by another worktree through a %s path and refuses to switch to them",
+  async (kind) => {
+    const physical = path.join(env.root, "worktree-parent")
+    const alias = path.join(env.root, "worktree-alias")
+    await mkdir(physical, { recursive: true })
+    if (kind === "alias") await symlink(physical, alias, process.platform === "win32" ? "junction" : "dir")
+    const target = path.join(kind === "alias" ? alias : physical, "occupied")
+    git("worktree", "add", "--quiet", target, "dev")
+    try {
+      const { client } = merak
+      const listed = (await client.vcs.branchOptions({}, { throwOnError: true })).data
+      const switched = await client.vcs.switchBranch({ branch: "dev", expectedCheckout: listed.current!.checkout })
+      expect(switched.response.status).toBe(409)
+      expect(switched.error).toMatchObject({ name: "CheckoutBlockedError", data: { reason: "occupied" } })
+      const occupied = listed.branches.find((branch) => branch.name === "dev")?.worktree
+      expect(occupied).toBeTypeOf("string")
+      expect(await realpath(occupied!)).toBe(await realpath(target))
+      expect((await client.vcs.get({}, { throwOnError: true })).data.branch).toBe("main")
+    } finally {
+      git("worktree", "remove", "--force", target)
+      if (kind === "alias") {
+        if (process.platform === "win32") await rmdir(alias)
+        else await unlink(alias)
+      }
+    }
+  },
+  120_000,
+)
 
 test("keeps a managed worktree bound to its branch", async () => {
   const { client } = merak

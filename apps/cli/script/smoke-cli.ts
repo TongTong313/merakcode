@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 import { Project } from "@merakcode/util/project"
+import z from "zod"
 
 // Smoke gate for the release package: minimal checks on the build.ts output (the bin/merak launcher).
 // Makes sure statically and dynamically imported chunks resolve after bundling, --help/--version of each command
@@ -179,9 +180,14 @@ async function smokeServer() {
     else fail("adapter-generator skill files", generator ? "its instructions name no example" : "the skill is missing")
 
     // The engine starts each built-in member adapter from lib/; whether a CLI is installed, the adapter must answer
-    const products = (await fetch(`${base}/collaboration/product?directory=${directory}`)
-      .then((response) => response.json())
-      .catch(() => [])) as { id: string; reason?: string }[]
+    const response = await expectHttpStatus("agent connection products", `${base}/agent-connection/product`, 200)
+    if (!response) return
+    const parsed = z.array(z.object({ id: z.string(), reason: z.string().optional() })).safeParse(await response.json())
+    if (!parsed.success) {
+      fail("member adapters through the engine", `invalid product list: ${parsed.error.message}`)
+      return
+    }
+    const products = parsed.data
     const broken = ["claude", "codex", "opencode"].flatMap((id) => {
       const reason = products.find((item) => item.id === id)?.reason ?? ""
       return !products.some((item) => item.id === id) || /ended before it answered|did not answer/i.test(reason)

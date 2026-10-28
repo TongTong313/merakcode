@@ -30,6 +30,8 @@ test("a new conversation works while another runs; the sidebar shows it running,
   const sidebar = kit.page.getByRole("navigation", { name: /^(对话|Conversations)$/ })
   await kit.send("慢任务")
   await expect(sidebar.getByRole("link", { name: /运行中/ })).toHaveCount(1, { timeout: 60_000 })
+  const slowHref = await sidebar.getByRole("link", { name: /运行中/ }).getAttribute("href")
+  expect(slowHref).toBeTruthy()
 
   await sidebar.getByRole("button", { name: "新对话" }).click()
   await kit.send("快任务")
@@ -40,6 +42,7 @@ test("a new conversation works while another runs; the sidebar shows it running,
   release()
   await expect(sidebar.getByRole("link", { name: /运行中/ })).toHaveCount(0, { timeout: 60_000 })
   // Conversations are sorted by last update, so the slow task that just finished is on top
+  await expect(sidebar.getByRole("link").first()).toHaveAttribute("href", slowHref!)
   await sidebar.getByRole("link").first().click()
   await expect(kit.text("慢任务完成")).toBeVisible()
 })

@@ -379,10 +379,11 @@ export namespace File {
         fetching = false
       }
     }
-    fn(cache)
+    const initial = fn(cache)
 
     return {
       async files() {
+        await initial
         if (!fetching) {
           fn({
             files: [],
