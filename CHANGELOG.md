@@ -6,6 +6,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Changed
 
 - Review shows pending agent edits for This turn and Conversation, with comments on selected code lines, resumable drafts and undo after the list becomes empty. Source Control separately stages and unstages files and commits the index. Review decisions preserve Git index and history; Git rows link only to files still pending review. The Git discard, comparison-review and quick-command interfaces are removed; free commands remain available in the terminal.
