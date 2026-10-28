@@ -118,6 +118,9 @@ test("rejecting after an unreviewed push preserves history and undo restores Git
 })
 
 test("Git selection and all-file index actions preserve working files and pending review", async ({ kit }) => {
+  const loaded = await kit.page.reload()
+  const authorization = (await loaded!.request().allHeaders()).authorization
+  expect(authorization).toBeTruthy()
   await kit.send("Write a file")
   await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
   await writeFile(path.join(kit.project, "manual-a.txt"), "manual A\n")
@@ -134,10 +137,60 @@ test("Git selection and all-file index actions preserve working files and pendin
     .poll(() => kit.git("diff", "--cached", "--name-only").trim().split("\n"))
     .toEqual(["manual-a.txt", "manual-b.txt"])
   await staged.getByRole("checkbox", { name: "选择 manual-a.txt" }).check()
-  await staged.getByRole("button", { name: "取消暂存所选 1 个文件" }).click()
-  await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("manual-b.txt")
+  const firstRead = Promise.withResolvers<void>()
+  const held: { release: () => void; done: Promise<void> }[] = []
+  let capture = true
+  let changedIndex = false
+  let refreshedVcs = false
+  let releaseFirst: (() => void) | undefined
+  const changed = (response: import("@playwright/test").Response) => {
+    if (response.url().includes("/vcs/changes/unstage") && response.status() === 200) changedIndex = true
+    if (changedIndex && new URL(response.url()).pathname === "/vcs" && response.status() === 200) refreshedVcs = true
+  }
+  kit.page.on("response", changed)
+  const pattern = /\/vcs\/changes(?:\?|$)/
+  await kit.page.route(pattern, async (route) => {
+    if (!capture) return route.continue()
+    const afterVcs = refreshedVcs
+    const gate = Promise.withResolvers<void>()
+    const done = Promise.withResolvers<void>()
+    held.push({ release: () => gate.resolve(), done: done.promise })
+    try {
+      const response = await route.fetch({ headers: { ...route.request().headers(), authorization: authorization! } })
+      if (afterVcs && !releaseFirst) {
+        releaseFirst = () => gate.resolve()
+        firstRead.resolve()
+      }
+      await gate.promise
+      await route.fulfill({ response })
+    } finally {
+      done.resolve()
+    }
+  })
+  try {
+    await staged.getByRole("button", { name: "取消暂存所选 1 个文件" }).click()
+    await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("manual-b.txt")
+    await firstRead.promise
+    await kit.page.evaluate(() => window.dispatchEvent(new Event("focus")))
+    // A background refresh may arrive while the post-mutation response is delayed.
+    await kit.page.waitForTimeout(350)
+    releaseFirst!()
+    await expect(unstaged.locator(".git-file")).toHaveCount(2)
+    await expect(unstaged.getByRole("button", { name: "暂存全部", exact: true })).toBeEnabled()
+  } finally {
+    capture = false
+    for (const response of held) response.release()
+    await Promise.all(held.map((response) => response.done))
+    kit.page.off("response", changed)
+    await kit.page.unroute(pattern)
+  }
   await unstaged.getByRole("button", { name: "暂存全部", exact: true }).click()
   await expect(staged.locator(".git-file")).toHaveCount(3)
+  expect(kit.git("diff", "--cached", "--name-only").trim().split("\n")).toEqual([
+    "manual-a.txt",
+    "manual-b.txt",
+    "new.txt",
+  ])
   await staged.getByRole("button", { name: "全部取消暂存", exact: true }).click()
   await expect(staged.locator(".git-file")).toHaveCount(0)
   await expect(unstaged.locator(".git-file")).toHaveCount(3)
