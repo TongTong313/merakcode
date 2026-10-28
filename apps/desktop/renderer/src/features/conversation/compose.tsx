@@ -11,7 +11,7 @@ import { baseName, sameDir, sessionPath } from "../../lib/route"
 import { choice, choose } from "../../state/models"
 import { call, client } from "../../state/client"
 import { gitState, refreshBranches, switching } from "../../state/git"
-import { folderOf, setState, state } from "../../state/store"
+import { branchOf, folderOf, setState, state } from "../../state/store"
 import { agentConnections, connectionsLoaded, loadConnections } from "../../state/agent-connections"
 import { Select } from "../../ui/select"
 import { Frame } from "../shell/frame"
@@ -68,7 +68,7 @@ export function Compose(props: { directory: string }) {
   const setWorktreeBase = (base: string) => prepared().setBase(base)
   const folder = () => folderOf(props.directory)
   const git = () => folder()?.project?.vcs === "git"
-  const branch = () => state.branch[props.directory]
+  const branch = () => branchOf(props.directory)
   createEffect(
     on([git, () => props.directory], ([enabled, directory]) => {
       if (enabled) void refreshBranches(directory)
