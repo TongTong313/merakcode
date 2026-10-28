@@ -1,4 +1,5 @@
 import { globalConfigFile } from "@merakcode/util/paths"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { Log } from "@merakcode/log/logger"
 import { Lock } from "../util/lock"
 import path from "path"
@@ -63,12 +64,12 @@ export namespace Config {
     })
     .meta({ ref: "ConfigWarning" })
 
-  /** Degradation warnings collected while state() loads. Nothing is written to disk; the user fixes the file. */
-  let activeWarnings: ConfigWarning[] | undefined
+  /** Concurrent configuration loads must not share a warning collector. */
+  const warningContext = new AsyncLocalStorage<ConfigWarning[]>()
 
   /**
-   * global() is a process-wide lazy. The desktop app often calls getGlobal() first, before any Instance or
-   * activeWarnings exist, so unknown-key warnings written only to activeWarnings would be lost. This keeps the
+   * global() is a process-wide lazy. The desktop app often calls getGlobal() before any Instance exists, so
+   * warnings collected only during state() would be lost. This keeps the
    * warnings of the last global load for state() to merge.
    */
   let lastGlobalWarnings: ConfigWarning[] = []
@@ -76,7 +77,7 @@ export namespace Config {
   function emitWarnings(list: ConfigWarning[]) {
     for (const warning of list) {
       log.warn("config degraded, skipped invalid item", warning)
-      activeWarnings?.push(warning)
+      warningContext.getStore()?.push(warning)
     }
   }
 
@@ -135,12 +136,7 @@ export namespace Config {
 
   export const state = Instance.state(async () => {
     const warnings: ConfigWarning[] = []
-    activeWarnings = warnings
-    try {
-      return await loadState(warnings)
-    } finally {
-      activeWarnings = undefined
-    }
+    return warningContext.run(warnings, () => loadState(warnings))
   })
 
   async function loadState(warnings: ConfigWarning[]) {
@@ -1664,18 +1660,17 @@ export namespace Config {
   export const global = lazy(async () => {
     // Collect the warnings of this global load separately, whether or not the caller runs inside Instance.state.
     const captured: ConfigWarning[] = []
-    const prev = activeWarnings
-    activeWarnings = captured
-    try {
-      return pipe(
-        {},
-        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"), true)),
-        mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"), true)),
-      ) as Info
-    } finally {
-      lastGlobalWarnings = captured
-      activeWarnings = prev
-    }
+    return warningContext.run(captured, async () => {
+      try {
+        return pipe(
+          {},
+          mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"), true)),
+          mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"), true)),
+        ) as Info
+      } finally {
+        lastGlobalWarnings = captured
+      }
+    })
   })
 
   async function loadFile(filepath: string, globalSource = false): Promise<Info> {
