@@ -107,6 +107,8 @@ test("unsaved editor contents survive closing the code panel and still block bra
     await nextRead(() => home.dispatchEvent("pointerenter"))
     for (const response of older) response.release()
     await Promise.all(older.map((response) => response.done))
+    // A checkout update can require another read; only the intended overlapping requests stay gated.
+    capture = false
     for (const response of held) response.release()
     await Promise.all(held.map((response) => response.done))
     await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
