@@ -54,6 +54,16 @@ test("an unsubmitted review comment survives panel changes and blocks branch swi
 })
 
 test("unsaved editor contents survive closing the code panel and still block branch switching", async ({ kit }) => {
+  const loaded = await kit.page.reload()
+  const authorization = (await loaded!.request().allHeaders()).authorization
+  expect(authorization).toBeTruthy()
+  const home = kit.page.getByRole("button", { name: /^当前分支/ }).first()
+  await home.click()
+  await expect(kit.page.getByRole("option")).toHaveCount(1)
+  await Promise.all([
+    kit.page.waitForResponse((response) => new URL(response.url()).pathname === "/vcs/branch-options"),
+    kit.page.keyboard.press("Escape"),
+  ])
   kit.git("branch", "feature")
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
@@ -64,10 +74,43 @@ test("unsaved editor contents survive closing the code panel and still block bra
   await editor.click()
   await kit.page.keyboard.press("Control+End")
   await kit.page.keyboard.type("unsaved branch draft")
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await panel.getByRole("button", { name: /^当前分支/ }).click()
-  await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
-  await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
+  const held: { release: () => void; done: Promise<void> }[] = []
+  let capture = true
+  const pattern = /\/vcs\/branch-options(?:\?|$)/
+  await kit.page.route(pattern, async (route) => {
+    if (!capture) return route.continue()
+    const gate = Promise.withResolvers<void>()
+    const done = Promise.withResolvers<void>()
+    held.push({ release: () => gate.resolve(), done: done.promise })
+    try {
+      const response = await route.fetch({ headers: { ...route.request().headers(), authorization: authorization! } })
+      await gate.promise
+      await route.fulfill({ response })
+    } finally {
+      done.resolve()
+    }
+  })
+  try {
+    await panel.getByRole("tab", { name: "Git 管理" }).click()
+    await panel.getByRole("button", { name: /^当前分支/ }).click()
+    await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
+    await expect.poll(() => held.length).toBeGreaterThan(0)
+    // Let the panel's hover, focus and open requests enter before the other picker refreshes.
+    await kit.page.waitForTimeout(100)
+    const older = held.slice()
+    await home.dispatchEvent("pointerenter")
+    await expect.poll(() => held.length).toBeGreaterThan(older.length)
+    for (const response of older) response.release()
+    await Promise.all(older.map((response) => response.done))
+    for (const response of held) response.release()
+    await Promise.all(held.map((response) => response.done))
+    await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
+  } finally {
+    capture = false
+    for (const response of held) response.release()
+    await Promise.all(held.map((response) => response.done))
+    await kit.page.unroute(pattern)
+  }
   await kit.page.keyboard.press("Escape")
   await panel.getByRole("tab", { name: "代码", exact: true }).click()
   await expect(editor).toContainText("unsaved branch draft")

@@ -57,7 +57,7 @@ export function BranchPicker(props: {
   )
   createEffect(() => {
     const options = data()?.options
-    if (open() && !items().length && options?.branches.length) setItems(options.branches)
+    if (open() && options) setItems(options.branches)
   })
   const disabled = (item: { name: string; worktree?: string }) =>
     props.purpose === "switch" && (!!reason() || !!item.worktree || item.name === current()?.branch)
