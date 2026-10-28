@@ -4,7 +4,7 @@ import { PermissionNext } from "@merakcode/engine/permission/next"
 import { Instance } from "@merakcode/engine/project/instance"
 import { Server } from "@merakcode/engine/server/server"
 import { Auth } from "@merakcode/engine/auth/index"
-import { tmpdir } from "../fixture/fixture"
+import { globalConfig, tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
@@ -36,6 +36,32 @@ test("loads config with defaults when no files exist", async () => {
       expect(config.plugin).toEqual([])
     },
   })
+})
+
+test("concurrent project loads keep configuration warnings in their own project", async () => {
+  await using user = await tmpdir()
+  using _global = globalConfig(user.path)
+  await Config.getGlobal()
+  const config = { agentConnections: { products: { example: { command: "missing-example-cli" } } } }
+  await using first = await tmpdir({ config })
+  await using second = await tmpdir({ config })
+  const load = (directory: string) =>
+    Instance.provide({
+      directory,
+      fn: async () => {
+        await Config.get()
+        return Config.warnings()
+      },
+    })
+  const warnings = await Promise.all([load(first.path), load(second.path)])
+  for (const [index, directory] of [first.path, second.path].entries()) {
+    expect(warnings[index]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: path.join(directory, "merakcode.json"), item: "agentConnections" }),
+      ]),
+    )
+    expect(warnings[index]!.filter((warning) => warning.item === "agentConnections")).toHaveLength(1)
+  }
 })
 
 test("skips dependency install when zod is already available", async () => {
