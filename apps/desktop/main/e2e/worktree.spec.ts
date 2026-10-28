@@ -31,30 +31,38 @@ const worktrees = (kit: Kit) =>
     .split("\n")
     .filter((line) => line.startsWith("worktree ")).length - 1
 
-test("writes in a new worktree without touching the main tree; merging brings the file over and cleans up", async ({
-  kit,
-}) => {
-  const errors: string[] = []
-  kit.page.on("pageerror", (error) => errors.push(error.stack ?? error.message))
-  await start(kit)
-  expect(errors).toEqual([])
-  const sidebar = kit.page.getByRole("navigation", { name: "对话" })
-  await expect(sidebar.getByRole("link")).toHaveCount(1)
-  expect(worktrees(kit)).toBe(1)
+for (const spelling of ["original", "alternate"]) {
+  test(`writes in a new worktree through an ${spelling} path; merging preserves the main tree and cleans up`, async ({
+    kit,
+  }) => {
+    const errors: string[] = []
+    kit.page.on("pageerror", (error) => errors.push(error.stack ?? error.message))
+    const main = kit.git("rev-parse", "--abbrev-ref", "HEAD").trim()
+    if (spelling === "alternate") {
+      await expect(kit.page.getByRole("button", { name: `当前分支 ${main}` })).toBeVisible()
+      const directory = kit.project.replaceAll("\\", "/") + "/"
+      const route = `/${Buffer.from(directory).toString("base64url")}/session`
+      await kit.page.goto(new URL(route, kit.page.url()).href)
+    }
+    await start(kit)
+    expect(errors).toEqual([])
+    const sidebar = kit.page.getByRole("navigation", { name: "对话" })
+    await expect(sidebar.getByRole("link")).toHaveCount(1)
+    expect(worktrees(kit)).toBe(1)
 
-  const main = kit.git("rev-parse", "--abbrev-ref", "HEAD").trim()
-  await kit.page.getByRole("button", { name: `合并到 ${main}` }).click()
-  const dialog = kit.page.getByRole("dialog")
-  await expect(dialog.getByRole("switch", { name: /合并后清理/ })).toBeChecked()
-  await dialog.getByRole("button", { name: "合并" }).click()
-  await expect
-    .poll(() => readFile(path.join(kit.project, "feature.txt"), "utf8").catch(() => ""))
-    .toBe("from worktree\n")
-  await expect(kit.text(/已合并到/)).toBeVisible()
-  await expect.poll(() => worktrees(kit)).toBe(0)
-  await expect(sidebar.getByRole("link")).toHaveCount(0)
-  await expect(kit.page.getByText("要在 project 里做什么？")).toBeVisible()
-})
+    await kit.page.getByRole("button", { name: `合并到 ${main}` }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await expect(dialog.getByRole("switch", { name: /合并后清理/ })).toBeChecked()
+    await dialog.getByRole("button", { name: "合并" }).click()
+    await expect
+      .poll(() => readFile(path.join(kit.project, "feature.txt"), "utf8").catch(() => ""))
+      .toBe("from worktree\n")
+    await expect(kit.text(/已合并到/)).toBeVisible()
+    await expect.poll(() => worktrees(kit)).toBe(0)
+    await expect(sidebar.getByRole("link")).toHaveCount(0)
+    await expect(kit.page.getByText("要在 project 里做什么？")).toBeVisible()
+  })
+}
 
 test("deleting a worktree removes it with its branch and conversation, leaving the main tree alone", async ({
   kit,

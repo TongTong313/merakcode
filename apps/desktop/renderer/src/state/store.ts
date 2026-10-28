@@ -29,7 +29,7 @@ import { fromConfig, setLocale, t } from "../i18n"
 import { toast } from "../ui/toast"
 import { providerChanged, type SeenFailures } from "./catalog-refresh"
 import { call, client } from "./client"
-import { checkoutOf, gitDirectory, onCheckoutChange, updateCheckout } from "./git"
+import { checkoutOf, gitDirectory, identityOf, onCheckoutChange, updateCheckout } from "./git"
 import { MessageSnapshot } from "./message-snapshot"
 
 type Providers = ProviderListResponses[200]
@@ -314,6 +314,13 @@ export async function bootstrap() {
 }
 
 export const folderOf = (directory: string) => state.folders.find((folder) => sameDir(folder.directory, directory))
+
+/** Checkout identity resolves alternate directory spellings before reading the branch. */
+export function branchOf(directory: string) {
+  const current = identityOf(directory)
+  if (current !== undefined) return current ? (current.branch ?? "HEAD") : undefined
+  return state.branch[directory]
+}
 
 /** Opens a project: moves it to the top of the sidebar and loads its sessions */
 export async function openFolder(directory: string) {

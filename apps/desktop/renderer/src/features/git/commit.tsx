@@ -4,7 +4,7 @@ import Sparkles from "lucide-solid/icons/sparkles"
 import { createSignal, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
-import { refreshVcs, state } from "../../state/store"
+import { branchOf, refreshVcs, state } from "../../state/store"
 import { switching, gitDirectory } from "../../state/git"
 import { createStore } from "solid-js/store"
 import { toast } from "../../ui/toast"
@@ -38,7 +38,7 @@ export function Commit(props: {
   }
   const busy = () => working() || props.working || switching(props.directory)
   const info = () => state.remote[props.directory]
-  const branch = () => state.branch[props.directory] || ""
+  const branch = () => branchOf(props.directory) || ""
 
   const hasChanges = () => props.pending ?? (info()?.staged ?? 0) > 0
 

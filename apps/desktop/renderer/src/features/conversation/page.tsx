@@ -14,6 +14,7 @@ import { sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
 import {
   busy,
+  branchOf,
   connected,
   ensureSession,
   folderOf,
@@ -23,7 +24,6 @@ import {
   pending,
   listen,
   session,
-  state,
   setState,
 } from "../../state/store"
 import { choose } from "../../state/models"
@@ -299,12 +299,12 @@ export function Conversation(props: { id: string; directory: string }) {
           <Show when={worktree()}>
             <span class="chip outlined no-drag">
               <GitBranch class="icon icon-sm" />
-              {state.branch[worktree()!] ?? ""}
-              <span class="subtle">← {state.branch[props.directory] ?? ""}</span>
+              {branchOf(worktree()!) ?? ""}
+              <span class="subtle">← {branchOf(props.directory) ?? ""}</span>
             </span>
             <button class="button secondary sm no-drag" onClick={() => setMerging(true)}>
               <GitMerge class="icon icon-xs" />
-              {t("topbar.merge", { branch: state.branch[props.directory] ?? "" })}
+              {t("topbar.merge", { branch: branchOf(props.directory) ?? "" })}
             </button>
           </Show>
           <Show when={requests().permissions.length}>
@@ -466,12 +466,12 @@ export function Conversation(props: { id: string; directory: string }) {
           sessionID={props.id}
           worktree={worktree()!}
           directory={props.directory}
-          branch={state.branch[props.directory] ?? ""}
+          branch={branchOf(props.directory) ?? ""}
         />
         <Confirm
           open={discarding()}
           title={t("worktree.discardTitle")}
-          description={t("worktree.discardDetail", { branch: state.branch[worktree()!] ?? "" })}
+          description={t("worktree.discardDetail", { branch: branchOf(worktree()!) ?? "" })}
           confirm={t("sidebar.delete")}
           cancel={t("common.cancel")}
           danger

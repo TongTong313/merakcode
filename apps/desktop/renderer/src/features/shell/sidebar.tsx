@@ -17,7 +17,17 @@ import { bridge, mac } from "../../lib/bridge"
 import { baseName, sameDir, sessionPath } from "../../lib/route"
 import { call, client } from "../../state/client"
 import { unsavedReason } from "../../state/git"
-import { closeFolder, listen, loadMore, openFolder, sessionsOf, state, statusOf, type Folder } from "../../state/store"
+import {
+  branchOf,
+  closeFolder,
+  listen,
+  loadMore,
+  openFolder,
+  sessionsOf,
+  state,
+  statusOf,
+  type Folder,
+} from "../../state/store"
 import { setUi, ui } from "../../state/ui"
 import { updateState } from "../update/state"
 import { Confirm } from "../../ui/dialog"
@@ -124,7 +134,7 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
             </Show>
             <Show when={worktree()}>
               <GitBranch class="icon icon-xs" />
-              <span class="ellipsis">{state.branch[props.session.directory] ?? t("sidebar.worktree")}</span>
+              <span class="ellipsis">{branchOf(props.session.directory) ?? t("sidebar.worktree")}</span>
             </Show>
             <Show when={props.session.metadata?.group === true}>
               <GroupNames sessionID={props.session.id} directory={props.session.directory} />
