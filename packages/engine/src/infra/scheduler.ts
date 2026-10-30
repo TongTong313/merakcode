@@ -1,4 +1,4 @@
-import { Instance } from "../../infra/project/instance"
+import { Instance } from "./project/instance"
 import { Log } from "@merakcode/log/logger"
 
 export namespace Scheduler {

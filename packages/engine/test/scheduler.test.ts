@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Scheduler } from "@merakcode/engine/app/task/scheduler"
+import { Scheduler } from "@merakcode/engine/infra/scheduler"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "./fixture/fixture"
 

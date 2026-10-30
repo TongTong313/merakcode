@@ -281,6 +281,9 @@ export namespace SessionProcessor {
     }
 
     const result = {
+      get stoppedByTool() {
+        return stopTurn
+      },
       get message() {
         return input.assistantInfo
       },

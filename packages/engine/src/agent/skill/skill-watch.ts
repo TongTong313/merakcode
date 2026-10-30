@@ -42,6 +42,7 @@ export namespace SkillWatch {
   const pendingProject = new Map<string, Pending>()
 
   let globalInit = false
+  let globalStarting: Promise<void> | undefined
   let globalSubs: ParcelWatcher.AsyncSubscription[] = []
   let globalPoll: ReturnType<typeof setInterval> | undefined
   let globalSnapshot = new Map<string, number>()
@@ -160,16 +161,16 @@ export namespace SkillWatch {
     return false
   }
 
-  export function initGlobal() {
-    if (Flag.MERAKCODE_DISABLE_SKILL_WATCH) return
-    if (globalInit) return
+  export function initGlobal(): Promise<void> {
+    if (Flag.MERAKCODE_DISABLE_SKILL_WATCH) return Promise.resolve()
+    if (globalInit) return globalStarting ?? Promise.resolve()
     globalInit = true
 
     const backend = parcelWatcherBackend()
     const w = parcelWatcher()
     const roots = globalRoots()
 
-    void (async () => {
+    globalStarting = (async () => {
       if (w && backend) {
         for (const root of roots) {
           if (!existsSync(root)) continue
@@ -207,9 +208,12 @@ export namespace SkillWatch {
         }, POLL_MS)
       }
     })()
+    return globalStarting
   }
 
   export async function disposeGlobal() {
+    await globalStarting
+    globalStarting = undefined
     for (const sub of globalSubs) await sub.unsubscribe().catch(() => undefined)
     globalSubs = []
     if (globalPoll) clearInterval(globalPoll)

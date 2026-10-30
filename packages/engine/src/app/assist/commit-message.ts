@@ -1,7 +1,7 @@
 // Pure logic of /assist/commit-message (no Hono, Provider, git or model), kept separate for unit tests.
 
-import type { Text } from "../../../agent/prompt/text"
-import { stripFences } from "./inline-edit-logic"
+import type { Text } from "../../agent/prompt/text"
+import { stripFences } from "./inline-edit"
 
 /**
  * Parses the output of `git log -n 5 --format=%B%x00` into the recent commit messages.

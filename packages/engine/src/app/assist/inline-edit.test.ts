@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { buildInlineEditPrompt, cleanInlineEditResult, validateInlineEditBody } from "./inline-edit-logic"
+import { buildInlineEditPrompt, cleanInlineEditResult, validateInlineEditBody } from "./inline-edit"
 
 describe("buildInlineEditPrompt", () => {
   test("includes the instruction, selection and language, and asks for code only", () => {

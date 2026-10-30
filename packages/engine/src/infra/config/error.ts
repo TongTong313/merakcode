@@ -9,3 +9,11 @@ export const InvalidError = NamedError.create(
     message: z.string().optional(),
   }),
 )
+
+export const JsonError = NamedError.create(
+  "ConfigJsonError",
+  z.object({
+    path: z.string(),
+    message: z.string().optional(),
+  }),
+)

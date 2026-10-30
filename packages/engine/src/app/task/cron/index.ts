@@ -3,9 +3,7 @@ import { ulid } from "ulid"
 import { Instance } from "../../../infra/project/instance"
 import { Storage } from "../../../infra/storage/storage"
 import { Log } from "@merakcode/log/logger"
-import { LoopStatus } from "../../../agent/loop/status"
 import { Loop } from "../../../agent/loop/index"
-import { LoopExecution } from "../../../agent/loop/execution"
 import type { PermissionMode } from "../../../agent/permission/mode"
 import type { Workspace } from "../../../infra/project/workspace"
 
@@ -123,15 +121,7 @@ export namespace CronScheduler {
       resolveProject: discoverProject,
       directory: task.directory,
       workspace: task.workspaceFolders ? { folders: task.workspaceFolders } : undefined,
-      fn: () =>
-        LoopExecution.run(undefined, async () => {
-          // Skip this run when the session is busy, so an ongoing conversation is never interrupted
-          if (LoopStatus.get(task.sessionID).type !== "idle") {
-            log.info("session busy, task skipped", { taskID: task.id, sessionID: task.sessionID })
-            return
-          }
-          await execute(task)
-        }),
+      fn: () => execute(task),
     }).catch((error) => {
       log.error("task tick failed", { taskID: id, error: error instanceof Error ? error.message : String(error) })
     })
@@ -141,7 +131,7 @@ export namespace CronScheduler {
   async function execute(task: CronTask) {
     log.info("task executing", { taskID: task.id, sessionID: task.sessionID })
     try {
-      await Loop.prompt({
+      const ran = await Loop.background({
         sessionID: task.sessionID,
         parts: [{ type: "text", text: task.prompt }],
         noReply: false,
@@ -150,6 +140,10 @@ export namespace CronScheduler {
         ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}),
         ...(task.model ? { model: task.model } : {}),
       })
+      if (!ran) {
+        log.info("session busy, task skipped", { taskID: task.id, sessionID: task.sessionID })
+        return
+      }
       await patch(task.id, { lastRun: Date.now(), nextRun: Date.now() + task.interval, lastStatus: "success" })
       log.info("task completed", { taskID: task.id, sessionID: task.sessionID })
     } catch (error) {

@@ -108,6 +108,15 @@ export namespace Loop {
   }
   /** Process-local busy/retry state and the existing session status events. */
   export const Status = LoopStatus
+
+  /** Starts an idle session outside the request that created its background task. */
+  export function background(input: PromptInput): Promise<boolean> {
+    return LoopExecution.run(undefined, async () => {
+      if (LoopStatus.get(input.sessionID).type !== "idle") return false
+      await Loop.prompt(input)
+      return true
+    })
+  }
   const log = Log.create({ service: "session.runner" })
   const WRITE_PIVOT_TOOLS = new Set(["bash", "write", "edit", "multi_edit"])
 
@@ -1589,8 +1598,13 @@ export namespace Loop {
       }
 
       if (result === "stop") {
-        // Schedule memory extraction only for the final response without tool calls, so intermediate steps do not
-        // fork extraction sessions.
+        // A tool may end the turn while the provider reports tool-calls. Persist the terminal state so the owner
+        // queue does not treat this user message as unanswered and execute it again.
+        if (processor.stoppedByTool && !processor.message.error) {
+          processor.message.finish = "stop"
+          await Session.updateInfo(processor.message)
+        }
+        // Schedule only for this terminal response; intermediate steps do not fork extraction sessions.
         scheduleTurnCompletion({
           session,
           assistant: processor.message,

@@ -1,3 +1,4 @@
+import { Global } from "../../infra/global"
 /**
  * The engine's only entry point for programs that host it (the `merak serve`, `generate` and `debug` commands).
  * Everything else talks to the engine over HTTP through the SDK.
@@ -6,6 +7,11 @@ import { closeParcelWatchers } from "../../infra/file/parcel-binding"
 import { withInstance } from "./bootstrap"
 import { openapi } from "./openapi"
 import { serve, type NetworkArgs } from "./serve"
+
+async function diagnostic<T>(load: () => Promise<T>) {
+  await Global.initialize()
+  return load()
+}
 
 export type { NetworkArgs }
 
@@ -20,14 +26,14 @@ export const EngineHost = {
   cleanup: closeParcelWatchers,
   /** Developer diagnostics behind `merak debug`; each loads only when used */
   debug: {
-    agent: () => import("./debug/agent"),
-    config: () => import("./debug/config"),
-    file: () => import("./debug/file"),
-    lsp: () => import("./debug/lsp"),
-    process: () => import("./debug/process"),
-    ripgrep: () => import("./debug/ripgrep"),
-    scrap: () => import("./debug/scrap"),
-    skill: () => import("./debug/skill"),
-    snapshot: () => import("./debug/snapshot"),
+    agent: () => diagnostic(() => import("./debug/agent")),
+    config: () => diagnostic(() => import("./debug/config")),
+    file: () => diagnostic(() => import("./debug/file")),
+    lsp: () => diagnostic(() => import("./debug/lsp")),
+    process: () => diagnostic(() => import("./debug/process")),
+    ripgrep: () => diagnostic(() => import("./debug/ripgrep")),
+    scrap: () => diagnostic(() => import("./debug/scrap")),
+    skill: () => diagnostic(() => import("./debug/skill")),
+    snapshot: () => diagnostic(() => import("./debug/snapshot")),
   },
 }

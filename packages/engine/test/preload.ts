@@ -75,6 +75,8 @@ for (const key of Object.keys(process.env))
 
 // Now safe to import from src/
 const { Log } = await import("@merakcode/log/logger")
+const { Global } = await import("../src/infra/global")
+await Global.initialize()
 await import("../src/app/config/files/config")
 // Bind application capabilities after the test module has registered its external-boundary replacements.
 beforeAll(async () => {

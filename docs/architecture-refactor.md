@@ -22,7 +22,7 @@ Approved source baseline: `8b1b8b5e6d4869148e09aec101e7f3c20c34bf25`.
 
 Keep each batch reviewable, with its validation and limitations recorded here. Intermediate paths can coexist while their batch is pending; do not add compatibility forwarding modules for internal source paths.
 
-All batches are uncommitted on approved baseline `8b1b8b5`. The earlier Batch 1 commit `beb9b78` was withdrawn locally with `git reset --mixed`, preserving its files in the worktree, and withdrawn from `origin/dev-v0.3.0` with an exact expected-SHA lease. No new commit will be created before the user reviews one commit message for the complete change.
+The initial implementation was committed as `1911b9e` after its commit message was provided for user review. The earlier Batch 1 commit `beb9b78` had been withdrawn locally and remotely while preserving its changes. The original-proposal completion work below remains uncommitted; no further commit is created without user approval.
 
 ## Batch 1 evidence
 
@@ -129,7 +129,7 @@ The engine retains five existing expected failures and three existing skips; the
 
 Final SDK generation into the separate artifact directory confirmed **15 generated files: 14 byte-identical, the remaining type file AST-equivalent after declaration/union ordering**. OpenAPI is identical after ordering the same 47 event-union members and normalizing the existing stored `info.version` difference (`0.1.2` versus product `0.2.0`). Repository-generated files and `schema/config.json` remain untouched. The current-source Windows release was rebuilt and passed every smoke gate, with real model calls disabled.
 
-Independent spec and standards reviews have no remaining concrete architecture blockers. Local acceptance is complete: only `agent`, `infra` and `app` contain engine source, product capabilities use the SDK, and removals have the evidence recorded above. Linux/macOS runtime enforcement still requires the retained CI matrix. All changes remain unstaged and uncommitted on `8b1b8b5`; one commit message is provided for user review before any commit is created.
+That initial code-level acceptance confirmed the three source layers, SDK boundaries and removal evidence. A later comparison with the original HTML identified additional responsibility and lifecycle requirements; the initial acceptance did not prove complete conformance to that proposal. See the follow-up below.
 
 ### Post-review migration cleanup
 
@@ -140,3 +140,40 @@ Independent spec and standards reviews have no remaining concrete architecture b
 - A fresh recursive inventory finds no empty directory outside dependency, build and cache trees. Repository files contain no obsolete `packages/engine/src/<old-root>` references. Historical removal evidence and intentionally synthetic boundary-test paths remain valid.
 - The same 1,392 implementation, test, script, schema and dependency-manifest files have an identical combined SHA-256 before and after cleanup: `38a8c5455666351f32cff0460d86733172de6fd2144891674481f0519ef17e7e`. No executable source or contract changed in this cleanup, so the complete behavioral results above remain applicable; those heavy suites were not rerun.
 - The maintenance script suite passed again: 12 files / 61 tests. The complete `pnpm check` passed after cleanup and documentation updates, including dependency boundaries, schema/API checks and unused-code analysis. `git diff --check` also passed. The work remains unstaged and uncommitted on the approved baseline.
+
+## Original-proposal completion follow-up
+
+The reference for this phase is the original `architecture-review-20261029.html` supplied from the user's WeChat files, rather than the subsequently updated visualization. The user explicitly limits local runtime validation to Windows; Linux/macOS continue through the existing GitHub CI matrix.
+
+- Configuration cache lifetimes, diagnostic capture, native watching/polling, JSONC parsing/patching and guarded file writes now live in `infra/config`. App configuration selects sources and schemas and coordinates reloads/events. Plugin/instruction merge rules and permission, agent and model compatibility rules live with their module definitions. The existing process/workspace caches and their invalidation interfaces are retained; no schema registry or service container is added.
+- `Global.initialize()` explicitly performs the existing cache lock/reset, directory creation and legacy migration. Importing paths no longer performs IO. Host startup, instance-hosting operations, project discovery and lazy debug entry points initialize before consuming global resources; OpenAPI generation does not initialize them.
+- Server listening records the actual address synchronously before returning its listener. Host awaits sandbox warmup and global watcher preparation before listening, then preserves the SDK readiness line and three-second memory drain window. Startup failures and shutdown dispose prestarted global watchers.
+- Assist generation and prompt/context helpers live in `app/assist`; its routes retain validation, OpenAPI metadata and response mapping. The existing SDK endpoints, model parameters and timeout behavior are preserved.
+- The generic scheduler lives in `infra/scheduler.ts`, while registration and persistent cron behavior remain in app. `Loop.background` owns detaching an inherited request scope, checking idle state and starting a background prompt; cron does not import execution/status internals.
+- Port registration, pre-listen warmup and side-effect-free Global imports were observed failing before their fixes. Existing legacy/multiprocess initialization, assist, scheduler, queue and configuration behavior tests are reused. A startup-failure test observes residual watcher timers; temporarily removing the cleanup makes it fail, and the exact implementation is restored afterward.
+- The seven-scene memory regression uses a real HTTP model fixture and observes actual background child sessions for normal stop, unknown finish, tool stop, error, cancellation, retry and child sessions. It exposed a real tool-stop bug: the processor stopped, but the persisted `tool-calls` finish made the owner queue run the same user message again. An explicit tool stop now persists the existing `stop` finish before completion scheduling. The processor exposes its existing stop flag as a read-only property so permission rejections retain the model's follow-up explanation. The test requires one root model call (two only for the explicit retry), one completed tool result, and exactly one child per eligible memory job; failed, cancelled and child turns create none.
+
+### Follow-up validation and acceptance
+
+- The first full SDK run caught two permission-denial regressions in an overly broad terminal-finish normalization. The fix now reads the processor's existing tool-stop flag and only normalizes an explicit successful tool stop. The unchanged denial tests and all seven memory scenarios passed, followed by the complete SDK suite at its default concurrency. The failed run is retained under `.cache/original-proposal-final-20261030-161010`; it is not counted as a passing run.
+- After that correction, the complete `pnpm check` passed: seven package typechecks, strict sandbox types, **1,247 files / zero dependency violations**, unchanged configuration schema and SDK public API, and no unused files, exports or dependencies. The product-to-SDK, agent-to-app, infra and host/server rules all remain enforced.
+- Every workspace unit suite and the root maintenance scripts passed on the same frozen source tree at default concurrency:
+
+| Suite            | Files passed | Tests passed |
+| ---------------- | ------------ | ------------ |
+| Root scripts     | 12           | 61           |
+| Util             | 12           | 92           |
+| Log              | 7            | 43           |
+| TypeScript SDK   | 24           | 164          |
+| CLI              | 33           | 110          |
+| Desktop main     | 9            | 28           |
+| Desktop renderer | 47           | 272          |
+| Engine           | 358          | 2,723        |
+| **Total**        | **502**      | **3,493**    |
+
+- The engine run took 459.05 seconds with no unexpected failures or unhandled errors; its five existing expected failures and three existing skips remain recorded. Independent Windows OS conformance with `MERAKCODE_SANDBOX_REQUIRED=1`, without the engine test preload, passed **12/12** scenarios with no skips.
+- Real-process CLI/SDK end-to-end tests passed **21/21**. Both desktop production builds passed, followed by **99/99 desktop end-to-end tests in one run** (12.4 minutes). The Windows CLI release build and every release-package smoke gate passed with real model calls disabled.
+- SDK generation into a separate artifact directory again produced **15 files: 14 byte-identical, one AST-equivalent after declaration/union ordering**. OpenAPI is identical after ordering the same 47 event-union members and normalizing the existing stored `info.version` difference (`0.1.2` versus product `0.2.0`). Repository-generated files and the configuration schema are untouched.
+- A final physical inventory finds only `agent`, `app`, `infra` and `runtime.d.ts` at the engine source root, and no empty directories outside dependency/build/cache trees. The 1,397 implementation, test, script, schema and dependency-manifest files have combined SHA-256 `56ac8d87acf81466558632ddaeb94ff8b9db36ce8009144500f30258ea70df4c`, unchanged throughout this final verification. Logs and exit codes are under `.cache/original-proposal-final-20261030-161554`.
+
+The six original-proposal gaps identified by the follow-up review are now closed. No outstanding requirement violation, unsupported removal or additional framework abstraction was found in the final review. New lifecycle and tool-stop defects have observed failing-then-passing regressions; pure relocations reuse existing behavior tests and contract comparisons. This does not assert a reconstructable test-first history for every earlier edit. Windows validation is complete; Linux/macOS runtime validation is left to the existing GitHub CI as requested. This follow-up remains unstaged and uncommitted on `1911b9ee0f908191b3eb1b6dbf9569e3101c62d3`; no commit is authorized without the user's review.

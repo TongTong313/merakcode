@@ -2,6 +2,7 @@ import { expect, test } from "vitest"
 import { createServer } from "node:net"
 import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
+import { EngineAddress } from "../../src/infra/process/engine-address"
 
 Log.init({ print: false })
 
@@ -10,6 +11,7 @@ test("port 0 lets the OS pick a port instead of 4096, as the SDK, CLI and deskto
   try {
     expect(listener.port).toBeGreaterThan(0)
     expect(listener.port).not.toBe(4096)
+    expect(EngineAddress.port()).toBe(listener.port)
   } finally {
     await listener.stop(true)
   }

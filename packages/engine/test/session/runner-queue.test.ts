@@ -90,6 +90,13 @@ test("prompt sent while the session is running queues behind the current task wi
       await prompt1Started
       expect(buildCallCount).toBe(1)
       expect(LoopStatus.get(session.id).type).toBe("busy")
+      expect(
+        await Loop.background({
+          sessionID: session.id,
+          parts: [{ type: "text", text: "background follow-up" }],
+        }),
+      ).toBe(false)
+      expect(buildCallCount).toBe(1)
 
       let p2Settled = false
       const p2Promise = Loop.prompt({

@@ -135,4 +135,28 @@ export namespace ModelSettings {
       })
       .optional(),
   }
+
+  /** Whether a model id points to the provider being deleted, or to the given model of it */
+  export function modelRefStale(value: string, providerID: string, modelID?: string): boolean {
+    if (modelID !== undefined) return value === `${providerID}/${modelID}`
+    return value.startsWith(`${providerID}/`)
+  }
+
+  /** Removes, in memory, the model references that point to the provider/model being deleted */
+  export function clearStaleModelRefs(cfg: Record<string, unknown>, providerID: string, modelID?: string) {
+    const hit = (v: unknown) => typeof v === "string" && modelRefStale(v, providerID, modelID)
+
+    for (const key of ["model", "small_model"]) {
+      if (hit(cfg[key])) delete cfg[key]
+    }
+
+    const agent = cfg["agent"]
+    if (agent && typeof agent === "object" && !Array.isArray(agent)) {
+      for (const [, entry] of Object.entries(agent)) {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
+        const rec = entry as Record<string, unknown>
+        if (hit(rec["model"])) delete rec["model"]
+      }
+    }
+  }
 }

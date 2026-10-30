@@ -1,32 +1,29 @@
+import { ModelSettings } from "../../../agent/model/config"
+import { AgentSettings } from "../../../agent/config"
+import { JsonError as ConfigJsonError } from "../../../infra/config/error"
+import { ConfigFile } from "../../../infra/config/file"
+import { PermissionCompatibility } from "../../../agent/permission/config"
+import { PluginSettings } from "../../../agent/plugin/config"
+import { RuleSettings } from "../../../agent/prompt/rules/config"
+import { configurationCache } from "../../../infra/config/cache"
 import { ConfigUpdated } from "../../../infra/config/event"
 import { ConfigEdit } from "../../../infra/config/edit"
 import { InvalidError as InvalidConfigError } from "../../../infra/config/error"
 import * as PluginSpecifier from "../../../agent/plugin/specifier"
 import { Config as RuntimeConfig } from "../../../agent/settings"
 import { globalConfigFile } from "@merakcode/util/paths"
-import { AsyncLocalStorage } from "node:async_hooks"
 import { Log } from "@merakcode/log/logger"
-import { Lock } from "@merakcode/engine/infra/concurrency/lock"
 import path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
 import z from "zod"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Atomic } from "../../../infra/file/atomic"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../../../infra/global"
 import { AppConfig } from "../schema"
 import fs from "fs/promises"
-import { lazy } from "@merakcode/util/lazy"
 import { NamedError } from "@merakcode/util/error"
 import { Flag } from "../../../infra/flag/flag"
 import { Auth } from "@merakcode/engine/agent/model/credentials"
-import {
-  type ParseError as JsoncParseError,
-  applyEdits,
-  modify,
-  parse as parseJsonc,
-  printParseErrorCode,
-} from "jsonc-parser"
 import { Instance } from "../../../infra/project/instance"
 import { ProjectReload } from "../../project/reload"
 import { Npm } from "../../../infra/package"
@@ -38,8 +35,7 @@ import { GlobalBus } from "../../../infra/bus/global"
 import { Event } from "../../server/event"
 import { proxied } from "../../../infra/scope/proxied"
 import { iife } from "@merakcode/util/iife"
-import { ConfigWriteGuard } from "../../../infra/config/write-guard"
-import { parseConfigSource } from "../../../infra/config/source"
+import { parseConfigSource, parseInjectedJson } from "../../../infra/config/source"
 import { validateConfig, recoverConfig, type ConfigWarning } from "../../../infra/config/recover"
 import { Glob } from "@merakcode/util/glob"
 import { Text } from "../../../agent/prompt/text"
@@ -85,40 +81,22 @@ export namespace Config {
     })
     .meta({ ref: "ConfigWarning" })
 
-  /** Concurrent configuration loads must not share a warning collector. */
-  const warningContext = new AsyncLocalStorage<ConfigWarning[]>()
-
-  /**
-   * global() is a process-wide lazy. The desktop app often calls getGlobal() before any Instance exists, so
-   * warnings collected only during state() would be lost. This keeps the
-   * warnings of the last global load for state() to merge.
-   */
-  let lastGlobalWarnings: ConfigWarning[] = []
+  const { DEPRECATED_SAFETY_FIELDS, detectDeprecated, normalizeDeprecatedForWrite, normalizeDeprecatedJsoncForWrite } =
+    PermissionCompatibility
+  const cache = configurationCache<Info, Awaited<ReturnType<typeof loadState>>, ConfigWarning>(loadGlobal, loadState)
 
   function emitWarnings(list: ConfigWarning[]) {
     for (const warning of list) {
       log.warn("config degraded, skipped invalid item", warning)
-      warningContext.getStore()?.push(warning)
+      cache.warn(warning)
     }
   }
 
   /** Parses JSON injected through a flag. On failure it is skipped with a warning so it cannot poison Config.state. */
-  function parseFlagJson(text: string, flagName: string): unknown | undefined {
-    try {
-      return JSON.parse(text)
-    } catch (err) {
-      emitWarnings([
-        {
-          path: flagName,
-          item: flagName,
-          reason: {
-            zh: `无效 JSON（${err instanceof Error ? err.message : String(err)}）；已临时跳过，请修正环境变量后重载`,
-            en: `Invalid JSON (${err instanceof Error ? err.message : String(err)}); skipped for now. Fix the environment variable and reload.`,
-          },
-        },
-      ])
-      return
-    }
+  function parseFlagJson(text: string, flagName: string) {
+    const parsed = parseInjectedJson(text, flagName)
+    emitWarnings(parsed.warnings)
+    return parsed.data
   }
 
   /** Config changed (after the project or global config file was written) */
@@ -143,22 +121,15 @@ export namespace Config {
     return input.replace(/\0/g, "")
   }
 
-  // Custom merge function that concatenates array fields instead of replacing them
-  function mergeConfigConcatArrays(target: Info, source: Info): Info {
-    const merged = mergeDeep(target, source)
-    if (target.plugin && source.plugin) {
-      merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
-    }
-    if (target.instructions && source.instructions) {
-      merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
-    }
-    return merged
+  function mergeSources(target: Info, source: Info): Info {
+    return Object.assign(
+      mergeDeep(target, source),
+      PluginSettings.merge(target, source),
+      RuleSettings.merge(target, source),
+    )
   }
 
-  export const state = Instance.state(async () => {
-    const warnings: ConfigWarning[] = []
-    return warningContext.run(warnings, () => loadState(warnings))
-  })
+  export const state = cache.state
 
   async function loadState(warnings: ConfigWarning[]) {
     const auth = await Auth.all()
@@ -185,29 +156,26 @@ export namespace Config {
         const remoteConfig = wellknown.config ?? {}
         // Add $schema to prevent load() from trying to write back to a non-existent file
         if (!remoteConfig.$schema) remoteConfig.$schema = SCHEMA
-        result = mergeConfigConcatArrays(
-          result,
-          await load(JSON.stringify(remoteConfig), `${key}/.well-known/merakcode`),
-        )
+        result = mergeSources(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/merakcode`))
         log.debug("loaded remote config from well-known", { url: key })
       }
     }
 
     // Global user config overrides remote config.
-    result = mergeConfigConcatArrays(result, await global())
+    result = mergeSources(result, await global())
     // global() may already have been warmed up by getGlobal(): merge its cached warnings into this Instance.
-    if (lastGlobalWarnings.length > 0) warnings.push(...lastGlobalWarnings)
+    if (cache.globalWarnings.length > 0) warnings.push(...cache.globalWarnings)
 
     // Custom config path overrides global config.
     if (Flag.MERAKCODE_CONFIG) {
-      result = mergeConfigConcatArrays(result, await loadFile(Flag.MERAKCODE_CONFIG))
+      result = mergeSources(result, await loadFile(Flag.MERAKCODE_CONFIG))
       log.debug("loaded custom config", { path: Flag.MERAKCODE_CONFIG })
     }
 
     // Workspace layer: above global/custom, below the primary project config. Not used for single-root projects.
     if (Instance.project.kind === "workspace") {
       const wsFile = workspaceMerakCodeFile()
-      result = mergeConfigConcatArrays(result, await loadFile(wsFile))
+      result = mergeSources(result, await loadFile(wsFile))
       log.debug("loaded workspace config", { path: wsFile })
     }
 
@@ -219,7 +187,7 @@ export namespace Config {
       for (const file of ["merakcode.jsonc", "merakcode.json"]) {
         const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
         for (const resolved of found.toReversed()) {
-          result = mergeConfigConcatArrays(result, await loadFile(resolved))
+          result = mergeSources(result, await loadFile(resolved))
         }
       }
     }
@@ -263,7 +231,7 @@ export namespace Config {
       if ((dir.endsWith(".merakcode") && !globalDir) || dir === Flag.MERAKCODE_CONFIG_DIR) {
         for (const file of ["merakcode.jsonc", "merakcode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
-          result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
+          result = mergeSources(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
           result.agent ??= {}
           result.mode ??= {}
@@ -293,7 +261,7 @@ export namespace Config {
         if (!existsSync(dir)) continue
         result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
         for (const file of ["merakcode.jsonc", "merakcode.json"]) {
-          result = mergeConfigConcatArrays(result, pickSecondaryRootConfig(await loadFile(path.join(dir, file))))
+          result = mergeSources(result, pickSecondaryRootConfig(await loadFile(path.join(dir, file))))
         }
         if (!directories.includes(dir)) directories.push(dir)
       }
@@ -317,7 +285,7 @@ export namespace Config {
           path.join(Instance.directory, "MERAKCODE_CONFIG_CONTENT"),
           (spec) => path.isAbsolute(spec),
         )
-        result = mergeConfigConcatArrays(result, data)
+        result = mergeSources(result, data)
         log.debug("loaded custom config from MERAKCODE_CONFIG_CONTENT")
       }
     }
@@ -328,19 +296,11 @@ export namespace Config {
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedConfigDir)) {
       for (const file of ["merakcode.jsonc", "merakcode.json"]) {
-        result = mergeConfigConcatArrays(result, await loadFile(path.join(managedConfigDir, file)))
+        result = mergeSources(result, await loadFile(path.join(managedConfigDir, file)))
       }
     }
 
-    // Migrate deprecated mode field to agent field
-    for (const [name, mode] of Object.entries(result.mode ?? {})) {
-      result.agent = mergeDeep(result.agent ?? {}, {
-        [name]: {
-          ...mode,
-          mode: "primary" as const,
-        },
-      })
-    }
+    result.agent = AgentSettings.migrateModes(result.agent, result.mode)
 
     if (Flag.MERAKCODE_PERMISSION) {
       const perms = parseFlagJson(Flag.MERAKCODE_PERMISSION, "MERAKCODE_PERMISSION")
@@ -349,30 +309,7 @@ export namespace Config {
       }
     }
 
-    // Backward compatibility with the legacy top-level `tools` config:
-    // - write / edit / patch / multiedit all map to edit (the old coarse-grained meaning).
-    // - list migrates to ls; task migrates to subagent.
-    // This keeps existing safety settings from silently stopping to apply after tools were renamed or merged.
-    if (result.tools) {
-      const perms: Record<string, Config.PermissionAction> = {}
-      for (const [tool, enabled] of Object.entries(result.tools)) {
-        const action: Config.PermissionAction = enabled ? "allow" : "deny"
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
-          perms.edit = action
-          continue
-        }
-        if (tool === "list") {
-          perms.ls = action
-          continue
-        }
-        if (tool === "task") {
-          perms.subagent = action
-          continue
-        }
-        perms[tool] = action
-      }
-      result.permission = mergeDeep(perms, result.permission ?? {})
-    }
+    result.permission = PermissionCompatibility.toolsPermission(result.tools, result.permission)
 
     // Deprecated permission fields are detected and stripped in load() (see DEPRECATED_SAFETY_FIELDS).
 
@@ -819,21 +756,15 @@ export namespace Config {
   export const Info = AppConfig.Info
   export type Info = AppConfig.Info
 
-  export const global = lazy(async () => {
-    // Collect the warnings of this global load separately, whether or not the caller runs inside Instance.state.
-    const captured: ConfigWarning[] = []
-    return warningContext.run(captured, async () => {
-      try {
-        return pipe(
-          {},
-          mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"), true)),
-          mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"), true)),
-        ) as Info
-      } finally {
-        lastGlobalWarnings = captured
-      }
-    })
-  })
+  export const global = cache.global
+
+  async function loadGlobal() {
+    return pipe(
+      {},
+      mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.json"), true)),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "merakcode.jsonc"), true)),
+    ) as Info
+  }
 
   async function loadFile(filepath: string, globalSource = false): Promise<Info> {
     log.info("loading", { path: filepath })
@@ -883,14 +814,7 @@ export namespace Config {
     return resolvePlugins(parsed.data, configFilepath)
   }
 
-  async function addSchema(filepath: string, original: string) {
-    using _ = await Lock.write(`config:${ConfigWriteGuard.normalizePath(filepath)}`)
-    // Substitutions can await file reads. A patch or deletion since this load must not be overwritten or recreated.
-    if ((await Filesystem.readText(filepath)) !== original) return
-    const updated = original.replace(/^\s*\{/, () => `{\n  "$schema": "${SCHEMA}",`)
-    await Atomic.write(filepath, updated)
-    ConfigWriteGuard.registerSelfWrite(filepath, updated)
-  }
+  const addSchema = (filepath: string, original: string) => ConfigFile.addSchema(filepath, original, SCHEMA)
 
   function globalFields(value: unknown, filepath: string, globalSource: boolean) {
     if (!isRecord(value)) return value
@@ -984,13 +908,7 @@ export namespace Config {
     }
     return data
   }
-  export const JsonError = NamedError.create(
-    "ConfigJsonError",
-    z.object({
-      path: z.string(),
-      message: z.string().optional(),
-    }),
-  )
+  export const JsonError = ConfigJsonError
 
   const WRITE_CONFLICT = {
     zh: "并发写入配置失败，请重试",
@@ -1008,215 +926,7 @@ export namespace Config {
 
   export const InvalidError = InvalidConfigError
 
-  /**
-   * Deprecated config fields. load() first migrates them to their equivalents, then strips them with a warning.
-   *
-   * A field with an equivalent is migrated; only fields without one, or internal protocol keys, are removed. Old
-   * configs must neither fail the strict schema (the client would not open) nor silently lose tool settings.
-   *
-   * - permission.list: the tool was renamed to ls; migrates to permission.ls.
-   * - permission.task: the tool was renamed to subagent; migrates to permission.subagent.
-   * - permission.todoread: the tool was removed; deleted (the rule would never match).
-   * - permission.todowrite/doom_loop/plan_enter/plan_exit: internal agent protocol (INTERNAL_PERMISSION_KEYS); deleted.
-   *
-   * permission.question is not listed: custom agents may still configure it; builtin agents use restrictedRules.
-   * The removed safety section (safety.bash.* / safety.allowExternalDirectory) is not listed either: it is gone from
-   * the Info schema, so it is reported as an unrecognized top-level key and never read or written back.
-   */
-  const DEPRECATED_SAFETY_FIELDS = [
-    "permission.list",
-    "permission.task",
-    "permission.todoread",
-    "permission.todowrite",
-    "permission.doom_loop",
-    "permission.plan_enter",
-    "permission.plan_exit",
-  ]
-
-  /** Renamed permission keys, old -> new (migrated only when the new key is absent) */
-  const PERMISSION_KEY_RENAMES: Record<string, string> = {
-    list: "ls",
-    task: "subagent",
-  }
-
-  /** Migrates list -> ls and task -> subagent in one permission object; an existing new key wins */
-  function migratePermissionKeys(permission: Record<string, unknown>): Record<string, unknown> {
-    const next: Record<string, unknown> = { ...permission }
-    for (const [oldKey, newKey] of Object.entries(PERMISSION_KEY_RENAMES)) {
-      if (next[oldKey] !== undefined && next[newKey] === undefined) {
-        next[newKey] = next[oldKey]
-      }
-    }
-    return next
-  }
-
-  function detectDeprecated(obj: unknown, fields: string[]): string[] {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return []
-    const found: string[] = []
-    for (const field of fields) {
-      const parts = field.split(".")
-      let current: any = obj
-      let exists = true
-      for (const part of parts) {
-        if (!isRecord(current) || !(part in current)) {
-          exists = false
-          break
-        }
-        current = current[part]
-      }
-      if (exists) found.push(field)
-    }
-    return found
-  }
-
-  function stripDeprecated(obj: any, fields: string[]): any {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj
-    const result = { ...obj }
-    for (const field of fields) {
-      const parts = field.split(".")
-      if (parts.length === 1) {
-        delete result[parts[0]]
-      } else {
-        let current = result
-        for (let i = 0; i < parts.length - 1; i++) {
-          if (!current[parts[i]]) break
-          current = current[parts[i]]
-        }
-        if (current && typeof current === "object") {
-          delete current[parts[parts.length - 1]]
-        }
-      }
-    }
-    return result
-  }
-
-  /**
-   * Compatibility normalization before a config is read or written back:
-   * - permission: migrate list -> ls and task -> subagent;
-   * - agent.<name>.permission: the same migration and stripping for nested agent config;
-   * - finally stripDeprecated removes deprecated fields (internal protocol keys, removed tools, ...).
-   */
-  function normalizeDeprecatedForWrite(obj: unknown): unknown {
-    if (!isRecord(obj)) return obj
-
-    const result: Record<string, any> = { ...obj }
-    if (isRecord(obj.permission)) {
-      result.permission = migratePermissionKeys(obj.permission)
-    }
-    if (isRecord(obj.tools)) {
-      const permission = isRecord(result.permission) ? { ...result.permission } : {}
-      for (const [tool, enabled] of Object.entries(obj.tools)) {
-        const action = enabled ? "allow" : "deny"
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
-          permission.edit ??= action
-          continue
-        }
-        if (tool === "list") {
-          permission.ls ??= action
-          continue
-        }
-        if (tool === "task") {
-          permission.subagent ??= action
-          continue
-        }
-        permission[tool] ??= action
-      }
-      result.permission = permission
-    }
-    if (isRecord(obj.agent)) {
-      const agentNext: Record<string, any> = {}
-      for (const [name, raw] of Object.entries(obj.agent)) {
-        if (!isRecord(raw)) {
-          agentNext[name] = raw
-          continue
-        }
-        const next: Record<string, any> = { ...raw }
-        if (isRecord(raw.permission)) {
-          next.permission = migratePermissionKeys(raw.permission)
-        }
-        // Remove deprecated permission keys from nested agents, matching permission.* in DEPRECATED_SAFETY_FIELDS.
-        if (isRecord(next.permission)) {
-          for (const field of DEPRECATED_SAFETY_FIELDS) {
-            const [scope, key] = field.split(".")
-            if (scope !== "permission" || !key) continue
-            delete (next.permission as Record<string, unknown>)[key]
-          }
-        }
-        agentNext[name] = next
-      }
-      result.agent = agentNext
-    }
-
-    return stripDeprecated(result, DEPRECATED_SAFETY_FIELDS)
-  }
-
-  function parseConfigDataForWrite(text: string, filepath: string): unknown {
-    const errors: JsoncParseError[] = []
-    const data = parseJsonc(text, errors, { allowTrailingComma: true })
-    if (!errors.length) return data ?? {}
-
-    // Reuse parseConfig for a detailed JSONC parse error with line and column context.
-    parseConfig(text, filepath)
-    return {}
-  }
-
-  /** Applies the same migration as normalizeDeprecatedForWrite to JSONC text, keeping comments and formatting */
-  function normalizeDeprecatedJsoncForWrite(input: string): string {
-    const errors: JsoncParseError[] = []
-    const data = parseJsonc(input, errors, { allowTrailingComma: true })
-    if (errors.length || !isRecord(data)) return input
-
-    let result = input
-    const permission = data.permission
-    if (isRecord(permission)) {
-      for (const [oldKey, newKey] of Object.entries(PERMISSION_KEY_RENAMES)) {
-        if (permission[oldKey] !== undefined && permission[newKey] === undefined) {
-          result = patchJsonc(result, { permission: { [newKey]: permission[oldKey] } })
-        }
-      }
-    }
-
-    if (isRecord(data.agent)) {
-      for (const [agentName, raw] of Object.entries(data.agent)) {
-        if (!isRecord(raw) || !isRecord(raw.permission)) continue
-        const agentPermission = raw.permission
-        for (const [oldKey, newKey] of Object.entries(PERMISSION_KEY_RENAMES)) {
-          if (agentPermission[oldKey] !== undefined && agentPermission[newKey] === undefined) {
-            const edits = modify(result, ["agent", agentName, "permission", newKey], agentPermission[oldKey], {
-              formattingOptions: { insertSpaces: true, tabSize: 2 },
-            })
-            result = applyEdits(result, edits)
-          }
-        }
-      }
-    }
-
-    // Top-level and permission.* fields
-    result = detectDeprecated(data, DEPRECATED_SAFETY_FIELDS).reduce((text, field) => {
-      const edits = modify(text, field.split("."), undefined, {
-        formattingOptions: { insertSpaces: true, tabSize: 2 },
-      })
-      return applyEdits(text, edits)
-    }, result)
-
-    // Deprecated keys in nested agent.<name>.permission
-    if (isRecord(data.agent)) {
-      for (const [agentName, raw] of Object.entries(data.agent)) {
-        if (!isRecord(raw) || !isRecord(raw.permission)) continue
-        for (const field of DEPRECATED_SAFETY_FIELDS) {
-          const [scope, key] = field.split(".")
-          if (scope !== "permission" || !key) continue
-          if ((raw.permission as Record<string, unknown>)[key] === undefined) continue
-          const edits = modify(result, ["agent", agentName, "permission", key], undefined, {
-            formattingOptions: { insertSpaces: true, tabSize: 2 },
-          })
-          result = applyEdits(result, edits)
-        }
-      }
-    }
-
-    return result
-  }
+  const parseConfigDataForWrite = (text: string, filepath: string) => ConfigFile.parseInput(Info, text, filepath)
 
   export async function get() {
     return state().then((x) => x.config)
@@ -1312,63 +1022,8 @@ export namespace Config {
     return !!value && typeof value === "object" && !Array.isArray(value)
   }
 
-  function patchJsonc(input: string, patch: unknown, path: string[] = []): string {
-    if (!isRecord(patch)) {
-      const edits = modify(input, path, patch, {
-        formattingOptions: {
-          insertSpaces: true,
-          tabSize: 2,
-        },
-      })
-      return applyEdits(input, edits)
-    }
-
-    return Object.entries(patch).reduce((result, [key, value]) => {
-      if (value === undefined) return result
-      return patchJsonc(result, value, [...path, key])
-    }, input)
-  }
-
-  function parseConfig(text: string, filepath: string): Info {
-    const errors: JsoncParseError[] = []
-    const data = parseJsonc(text, errors, { allowTrailingComma: true })
-    if (errors.length) {
-      const lines = text.split("\n")
-      const errorDetails = errors
-        .map((e) => {
-          const beforeOffset = text.substring(0, e.offset).split("\n")
-          const line = beforeOffset.length
-          const column = beforeOffset[beforeOffset.length - 1].length + 1
-          const problemLine = lines[line - 1]
-
-          const error = `${printParseErrorCode(e.error)} at line ${line}, column ${column}`
-          if (!problemLine) return error
-
-          return `${error}\n   Line ${line}: ${problemLine}\n${"".padStart(column + 9)}^`
-        })
-        .join("\n")
-
-      throw new JsonError({
-        path: filepath,
-        message: `\n--- JSONC Input ---\n${text}\n--- Errors ---\n${errorDetails}\n--- End ---`,
-      })
-    }
-
-    const parsed = Info.safeParse(data)
-    if (parsed.success) return parsed.data
-
-    throw new InvalidError({
-      path: filepath,
-      issues: parsed.error.issues,
-    })
-  }
-
-  async function readConfigFile(filepath: string) {
-    return Filesystem.readText(filepath).catch((err) => {
-      if (err.code === "ENOENT") return "{}"
-      throw new JsonError({ path: filepath }, { cause: err })
-    })
-  }
+  const patchJsonc = ConfigFile.patch
+  const parseConfig = (text: string, filepath: string) => ConfigFile.parse(Info, text, filepath)
 
   /** Merges the patch into the text to write and the parsed result, without writing to disk */
   async function prepareConfigWrite(filepath: string, before: string, patch: Info) {
@@ -1386,23 +1041,12 @@ export namespace Config {
     return { merged, written }
   }
 
-  async function writeConfigWithRetry(filepath: string, patch: Info) {
-    await fs.mkdir(path.dirname(filepath), { recursive: true }).catch(() => undefined)
-    // One lock per file, so writes to the global config and to each project never block each other.
-    const lockKey = `config:${ConfigWriteGuard.normalizePath(filepath)}`
-
-    for (let attempt = 0; attempt < ConfigWriteGuard.maxRetries(); attempt++) {
-      using _ = await Lock.write(lockKey)
-      const snap = await ConfigWriteGuard.snapshot(filepath)
-      const before = await readConfigFile(filepath)
-      const { merged, written } = await prepareConfigWrite(filepath, before, patch)
-      if (await ConfigWriteGuard.changed(snap, filepath)) continue
-      await Atomic.write(filepath, written)
-      ConfigWriteGuard.registerSelfWrite(filepath, written)
-      return merged
-    }
-
-    throw new JsonError({ path: filepath, message: await Text.pick(WRITE_CONFLICT) })
+  function writeConfigWithRetry(filepath: string, patch: Info) {
+    return ConfigFile.write(
+      filepath,
+      (before) => prepareConfigWrite(filepath, before, patch),
+      async () => new JsonError({ path: filepath, message: await Text.pick(WRITE_CONFLICT) }),
+    )
   }
 
   /**
@@ -1451,47 +1095,15 @@ export namespace Config {
     action?: PermissionAction
   }) {
     const filepath = input.scope === "global" ? globalConfigFile() : projectMerakCodeFile()
-    await fs.mkdir(path.dirname(filepath), { recursive: true }).catch(() => undefined)
-    const lockKey = `config:${ConfigWriteGuard.normalizePath(filepath)}`
-    for (let attempt = 0; attempt < ConfigWriteGuard.maxRetries(); attempt++) {
-      using _ = await Lock.write(lockKey)
-      const snap = await ConfigWriteGuard.snapshot(filepath)
-      const current = await readConfigFile(filepath)
-      const errors: JsoncParseError[] = []
-      const data = parseJsonc(current, errors, { allowTrailingComma: true })
-      if (errors.length || !isRecord(data))
-        throw new JsonError({
-          path: filepath,
-          message: await Text.pick({ zh: "配置文件不是合法的 JSON", en: "The config file is not valid JSON" }),
-        })
-      const permission = isRecord(data.permission) ? data.permission : {}
-      const existing = permission[input.permission]
-      const rules: Record<string, unknown> =
-        typeof existing === "string" ? { "*": existing } : isRecord(existing) ? { ...existing } : {}
-      if (input.action) rules[input.pattern] = input.action
-      else delete rules[input.pattern]
-      const empty = Object.keys(rules).length === 0
-      const remaining = Object.keys(permission).filter((key) => key !== input.permission).length
-      const target = empty && remaining === 0 ? ["permission"] : ["permission", input.permission]
-      const edits = modify(current, target, empty ? undefined : rules, {
-        formattingOptions: { insertSpaces: true, tabSize: 2 },
-      })
-      const next = applyEdits(current, edits)
-      if (next === current) return
-      if (await ConfigWriteGuard.changed(snap, filepath)) continue
-      await Filesystem.write(filepath, next)
-      ConfigWriteGuard.registerSelfWrite(filepath, next)
-      break
-    }
-    if (input.scope === "global") {
-      global.reset()
-      state.invalidateAll()
-      void Bus.publishGlobal(UpdatedEvent, {})
-      if (Instance.has()) void Bus.publish(UpdatedEvent, {}).catch(() => undefined)
-      return
-    }
-    state.invalidate()
-    void Bus.publish(UpdatedEvent, {})
+    const message = await Text.pick({ zh: "配置文件不是合法的 JSON", en: "The config file is not valid JSON" })
+    if (
+      await ConfigFile.editExisting(
+        filepath,
+        (text) => PermissionCompatibility.editRule(text, input, filepath, message),
+        true,
+      )
+    )
+      invalidateConfigCache(input.scope)
   }
 
   /**
@@ -1500,107 +1112,15 @@ export namespace Config {
    */
   export async function deletePermission(scope: "project" | "global") {
     const filepath = scope === "global" ? globalConfigFile() : projectMerakCodeFile()
-    const before = await Filesystem.readText(filepath).catch((err) => {
-      if (err.code === "ENOENT") return undefined
-      throw new JsonError({ path: filepath }, { cause: err })
-    })
-    if (before === undefined) return
-
-    // jsonc-parser's modify with undefined deletes the field, for both JSON and JSONC.
-    const edits = modify(before, ["permission"], undefined, {
-      formattingOptions: { insertSpaces: true, tabSize: 2 },
-    })
-    const written = applyEdits(before, edits)
-    if (written === before) return
-
-    const lockKey = `config:${ConfigWriteGuard.normalizePath(filepath)}`
-    for (let attempt = 0; attempt < ConfigWriteGuard.maxRetries(); attempt++) {
-      using _ = await Lock.write(lockKey)
-      const snap = await ConfigWriteGuard.snapshot(filepath)
-      const current = await Filesystem.readText(filepath).catch((err) => {
-        if (err.code === "ENOENT") return undefined
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
-      if (current === undefined) return
-      const nextEdits = modify(current, ["permission"], undefined, {
-        formattingOptions: { insertSpaces: true, tabSize: 2 },
-      })
-      const nextWritten = applyEdits(current, nextEdits)
-      if (nextWritten === current) return
-      if (await ConfigWriteGuard.changed(snap, filepath)) continue
-      await Filesystem.write(filepath, nextWritten)
-      ConfigWriteGuard.registerSelfWrite(filepath, nextWritten)
-      break
-    }
-
-    // Invalidate the cache and publish events, the same downstream behavior as update* with skipDispose.
-    if (scope === "global") {
-      global.reset()
-      state.invalidateAll()
-      void Bus.publishGlobal(UpdatedEvent, {})
-      if (Instance.has()) {
-        void Bus.publish(UpdatedEvent, {}).catch(() => undefined)
-      }
-    } else {
-      state.invalidate()
-      void Bus.publish(UpdatedEvent, {})
-    }
+    await commitConfigTextEdit(filepath, scope, (text) => ConfigEdit.set(text, ["permission"], undefined))
   }
 
-  /** Whether a model id points to the provider being deleted, or to the given model of it */
-  export function modelRefStale(value: string, providerID: string, modelID?: string): boolean {
-    if (modelID !== undefined) return value === `${providerID}/${modelID}`
-    return value.startsWith(`${providerID}/`)
-  }
+  export const modelRefStale = ModelSettings.modelRefStale
+  export const clearStaleModelRefs = ModelSettings.clearStaleModelRefs
+  const parseConfigObject = ConfigFile.parseObject
 
-  function parseConfigObject(text: string): Record<string, unknown> {
-    const errors: JsoncParseError[] = []
-    const data = parseJsonc(text, errors)
-    if (errors.length || !data || typeof data !== "object" || Array.isArray(data)) return {}
-    return data as Record<string, unknown>
-  }
-
-  /** Removes, in memory, the model references that point to the provider/model being deleted */
-  export function clearStaleModelRefs(cfg: Record<string, unknown>, providerID: string, modelID?: string) {
-    const hit = (v: unknown) => typeof v === "string" && modelRefStale(v, providerID, modelID)
-
-    for (const key of ["model", "small_model"]) {
-      if (hit(cfg[key])) delete cfg[key]
-    }
-
-    const agent = cfg["agent"]
-    if (agent && typeof agent === "object" && !Array.isArray(agent)) {
-      for (const [, entry] of Object.entries(agent)) {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
-        const rec = entry as Record<string, unknown>
-        if (hit(rec["model"])) delete rec["model"]
-      }
-    }
-  }
-
-  function patchConfigTopLevelKeys(
-    text: string,
-    before: Record<string, unknown>,
-    after: Record<string, unknown>,
-  ): string {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
-    return [...keys].reduce((acc, key) => {
-      const prev = before[key]
-      const next = after[key]
-      if (JSON.stringify(prev) === JSON.stringify(next)) return acc
-      const edits = modify(acc, [key], next === undefined ? undefined : next, {
-        formattingOptions: { insertSpaces: true, tabSize: 2 },
-      })
-      return applyEdits(acc, edits)
-    }, text)
-  }
-
-  function applyConfigFieldDeletes(text: string, paths: string[][]): string {
-    return paths.reduce((acc, path) => {
-      const edits = modify(acc, path, undefined, { formattingOptions: { insertSpaces: true, tabSize: 2 } })
-      return applyEdits(acc, edits)
-    }, text)
-  }
+  const patchConfigTopLevelKeys = ConfigFile.patchTopLevelKeys
+  const applyConfigFieldDeletes = ConfigFile.deleteFields
 
   function invalidateConfigCache(scope: "project" | "global") {
     if (scope === "global") {
@@ -1623,33 +1143,7 @@ export namespace Config {
     scope: "project" | "global",
     transform: (text: string) => string,
   ) {
-    const before = await Filesystem.readText(filepath).catch((err) => {
-      if (err.code === "ENOENT") return undefined
-      throw new JsonError({ path: filepath }, { cause: err })
-    })
-    if (before === undefined) return
-
-    const written = transform(before)
-    if (written === before) return
-
-    const lockKey = `config:${ConfigWriteGuard.normalizePath(filepath)}`
-    for (let attempt = 0; attempt < ConfigWriteGuard.maxRetries(); attempt++) {
-      using _ = await Lock.write(lockKey)
-      const snap = await ConfigWriteGuard.snapshot(filepath)
-      const current = await Filesystem.readText(filepath).catch((err) => {
-        if (err.code === "ENOENT") return undefined
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
-      if (current === undefined) return
-      const nextWritten = transform(current)
-      if (nextWritten === current) return
-      if (await ConfigWriteGuard.changed(snap, filepath)) continue
-      await Filesystem.write(filepath, nextWritten)
-      ConfigWriteGuard.registerSelfWrite(filepath, nextWritten)
-      break
-    }
-
-    invalidateConfigCache(scope)
+    if (await ConfigFile.editExisting(filepath, transform)) invalidateConfigCache(scope)
   }
 
   /**
