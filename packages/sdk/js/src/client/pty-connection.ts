@@ -44,7 +44,8 @@ export function connectPty(input: PtyConnectionOptions): PtyConnection {
   return {
     send(data) {
       if (closed) return
-      if (socket.readyState === WebSocket.OPEN) socket.send(data)
+      // onOpen can send before the existing input queue has drained.
+      if (socket.readyState === WebSocket.OPEN && queued.length === 0) socket.send(data)
       else queued.push(data)
     },
     close() {

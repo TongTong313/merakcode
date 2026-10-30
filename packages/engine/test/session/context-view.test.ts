@@ -437,6 +437,21 @@ describe("SessionContextView.build", () => {
   })
 })
 
+// Git context is best effort with a 500 ms command budget. These placement tests need an actual status snapshot.
+async function buildWithGitStatus(input: Parameters<typeof SessionContextView.build>[0]) {
+  let view: Awaited<ReturnType<typeof SessionContextView.build>> | undefined
+  await expect
+    .poll(
+      async () => {
+        view = await SessionContextView.build(input)
+        return JSON.stringify(view.messages)
+      },
+      { timeout: 10_000 },
+    )
+    .toContain("Status:")
+  return view!
+}
+
 test("git status comes after the history, so editing a file leaves everything before it as it was", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
@@ -446,7 +461,7 @@ test("git status comes after the history, so editing a file leaves everything be
         { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "改一下 a.ts")] },
       ]
       const build = () =>
-        SessionContextView.build({
+        buildWithGitStatus({
           messages,
           sessionID,
           user: messages[0]!.info as Message.UserInfo,
@@ -471,7 +486,7 @@ test("the /context breakdown counts the context after the history as user contex
     fn: async () => {
       await writeFile(join(tmp.path, "a.ts"), "export const a = 1\n")
       const messages: Message.FullMsg[] = [{ info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "hi")] }]
-      const view = await SessionContextView.build({
+      const view = await buildWithGitStatus({
         messages,
         sessionID,
         user: messages[0]!.info as Message.UserInfo,
@@ -493,7 +508,7 @@ test("the /context breakdown counts the context after the history as user contex
 describe("context that changes from step to step", () => {
   const agent = { id: "build", mode: "primary", prompt: "Agent prompt" } as Agent.Info
   const build = (messages: Message.FullMsg[], step: number) =>
-    SessionContextView.build({
+    buildWithGitStatus({
       messages,
       sessionID,
       user: messages[0]!.info as Message.UserInfo,
