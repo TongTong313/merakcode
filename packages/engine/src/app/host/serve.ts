@@ -9,9 +9,9 @@ import { ConfigWatch } from "../config/files/config-watch"
 import { SkillWatch } from "../../agent/skill/skill-watch"
 import { RuleWatch } from "../../agent/prompt/rules/watch"
 import { PermissionExecution } from "../../agent/permission/execution"
-import { EngineAddress } from "../../infra/process/engine-address"
 import { Provider } from "../../agent/model/provider"
 import { Log } from "@merakcode/log/logger"
+import { Global } from "../../infra/global"
 
 export type NetworkArgs = {
   port?: number
@@ -53,24 +53,31 @@ export async function serve(
     onListening?: (url: URL) => void
   },
 ) {
-  const server = await Server.listen(await resolveNetwork(args))
-  EngineAddress.set(server.url)
-  // An already set up sandbox is prepared before the first command. Setup itself still waits for the user.
-  await PermissionExecution.wake().catch((error) => Log.Default.warn("sandbox wake failed", { error }))
-  ConfigWatch.initGlobal()
-  SkillWatch.initGlobal()
-  RuleWatch.initGlobal()
-  // The SDK reads this exact line from stdout to learn the address (see packages/sdk/js/src/process)
-  console.log(`MerakCode server listening on http://${server.hostname}:${server.port}`)
-  hooks.onListening?.(new URL(`http://${server.hostname}:${server.port}`))
-  await hooks.waitForShutdown(async () => {
-    const deadline = Date.now() + 3000
-    const listener = server.stop(true)
-    Provider.invalidateAll()
-    const remaining = () => Math.max(0, deadline - Date.now())
-    await Instance.forEach(() =>
-      Promise.all([MemoryExtract.drain(remaining()), SessionMemory.drain(remaining()), AutoDream.drain(remaining())]),
-    )
-    await Promise.all([listener, BashJobStore.stopAll(), Instance.disposeAll()])
-  })
+  await Global.initialize()
+  let stop = async () => {}
+  try {
+    // An already set up sandbox is prepared before the first command. Setup itself still waits for the user.
+    await PermissionExecution.wake().catch((error) => Log.Default.warn("sandbox wake failed", { error }))
+    await ConfigWatch.initGlobal()
+    await SkillWatch.initGlobal()
+    RuleWatch.initGlobal()
+    const server = await Server.listen(await resolveNetwork(args))
+    let stopping: Promise<void> | undefined
+    stop = () => (stopping ??= server.stop(true))
+    // The SDK reads this exact line from stdout to learn the address (see packages/sdk/js/src/process)
+    console.log(`MerakCode server listening on http://${server.hostname}:${server.port}`)
+    hooks.onListening?.(new URL(`http://${server.hostname}:${server.port}`))
+    await hooks.waitForShutdown(async () => {
+      const deadline = Date.now() + 3000
+      const listener = stop()
+      Provider.invalidateAll()
+      const remaining = () => Math.max(0, deadline - Date.now())
+      await Instance.forEach(() =>
+        Promise.all([MemoryExtract.drain(remaining()), SessionMemory.drain(remaining()), AutoDream.drain(remaining())]),
+      )
+      await Promise.all([listener, BashJobStore.stopAll(), Instance.disposeAll()])
+    })
+  } finally {
+    await Promise.all([stop(), ConfigWatch.disposeGlobal(), SkillWatch.disposeGlobal(), RuleWatch.disposeGlobal()])
+  }
 }

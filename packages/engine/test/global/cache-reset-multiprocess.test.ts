@@ -9,7 +9,7 @@ import { evaluate, tmpdir } from "../fixture/fixture"
 
 const global = pathToFileURL(path.join(import.meta.dirname, "../../src/infra/global/index.ts")).href
 const start = (home: string) =>
-  Process.spawn(evaluate(`await import(${JSON.stringify(global)})`), {
+  Process.spawn(evaluate(`const { Global } = await import(${JSON.stringify(global)}); await Global.initialize()`), {
     env: { ...process.env, MERAKCODE_HOME: home },
     stdout: "pipe",
     stderr: "pipe",
@@ -32,7 +32,7 @@ test("engines starting together after a cache version change all start and clear
     await using home = await tmpdir({ init: (dir) => oldCache(dir, 2000) })
     const results = await Promise.all(
       Array.from({ length: 16 }, () =>
-        Process.run(evaluate(`await import(${JSON.stringify(global)})`), {
+        Process.run(evaluate(`const { Global } = await import(${JSON.stringify(global)}); await Global.initialize()`), {
           env: { ...process.env, MERAKCODE_HOME: home.path },
           nothrow: true,
         }),

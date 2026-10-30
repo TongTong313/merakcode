@@ -1,5 +1,5 @@
 // Pure logic of /assist/inline-edit (no Hono, Provider or model), kept separate for unit tests.
-import type { Text } from "../../../agent/prompt/text"
+import type { Text } from "../../agent/prompt/text"
 
 /** Strips a markdown code fence (``` or ```lang) from model output; text without a fence is returned as is */
 export function stripFences(text: string): string {

@@ -12,7 +12,7 @@ import {
   selectSnippetPaths,
   formatSnippetContent,
   SNIPPET_MAX_CHARS,
-} from "@merakcode/engine/app/server/routes/commit-message-logic"
+} from "@merakcode/engine/app/assist/commit-message"
 
 describe("parseRecentCommits", () => {
   test("splits git log --format=%B%x00 output on NUL", () => {

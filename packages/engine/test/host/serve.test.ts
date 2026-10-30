@@ -4,18 +4,50 @@ import { resolveNetwork } from "@merakcode/engine/app/host/serve"
 import { tmpdir } from "../fixture/fixture"
 import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
 import { EngineAddress } from "@merakcode/engine/infra/process/engine-address"
+import { evaluate } from "../fixture/fixture"
+import { Process } from "@merakcode/util/process"
+import { pathToFileURL } from "node:url"
+import path from "node:path"
 
 const defaults = { hostname: "127.0.0.1", mdns: false, "mdns-domain": "merakcode.local", cors: [] as string[] }
 
 describe("EngineHost.serve", () => {
+  test("a failed bind releases global watcher timers", async () => {
+    const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/app/host/index.ts")).href
+    const result = await Process.run(
+      evaluate(`
+      const { createServer } = await import("node:net")
+      const blocker = createServer()
+      await new Promise(resolve => blocker.listen(0, "127.0.0.1", resolve))
+      const { EngineHost } = await import(${JSON.stringify(source)})
+      try {
+        await EngineHost.serve({ hostname: "127.0.0.1", port: blocker.address().port, mdns: false, "mdns-domain": "merakcode.local" }, { waitForShutdown: async () => { throw new Error("Unexpected listener") } })
+        throw new Error("Expected a bind failure")
+      } catch (error) {
+        if (!error.message.includes("Failed to start server")) throw error
+        console.log("failed-cleanly")
+      } finally {
+        await new Promise(resolve => blocker.close(resolve))
+        await EngineHost.cleanup()
+        if (process.getActiveResourcesInfo().includes("Timeout")) throw new Error("Global watcher timers survived failed startup")
+        process.exit(0)
+      }
+    `),
+      { env: { ...process.env }, signal: AbortSignal.timeout(10_000), nothrow: true },
+    )
+    expect(result.exitCode, result.text() + result.stderr.toString()).toBe(0)
+    expect(result.text()).toContain("failed-cleanly")
+  }, 15_000)
   test("prepares an existing sandbox and records the actual listener port", async () => {
     const previous = process.env.MERAKCODE_SANDBOX_MODE
     process.env.MERAKCODE_SANDBOX_MODE = "preferred"
     let prepared = false
     let listenerPort: number | undefined
+    const previousPort = EngineAddress.port()
     PermissionExecution.useBackendForTest({
       status: async () => ({ status: "on", backend: "landlock" }),
       warm: async () => {
+        expect(EngineAddress.port()).toBe(previousPort)
         prepared = true
       },
       wrap: async () => {

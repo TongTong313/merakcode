@@ -5,6 +5,7 @@ import { Log } from "@merakcode/log/logger"
 import { describeRoute, generateSpecs, resolver, openAPIRouteHandler } from "hono-openapi"
 import { validator } from "./validator"
 import { Hono } from "hono"
+import { EngineAddress } from "../../infra/process/engine-address"
 import { cors } from "hono/cors"
 import { bodyLimit } from "hono/body-limit"
 import { randomUUID } from "node:crypto"
@@ -1356,8 +1357,10 @@ export namespace Server {
         http.once("listening", () => {
           const address = http.address() as AddressInfo
           const host = opts.hostname.includes(":") ? `[${opts.hostname}]` : opts.hostname
+          const url = new URL(`http://${host}:${address.port}`)
+          EngineAddress.set(url)
           resolve({
-            url: new URL(`http://${host}:${address.port}`),
+            url,
             hostname: opts.hostname,
             port: address.port,
             stop: (closeActiveConnections) => {

@@ -4,6 +4,24 @@ import { Filesystem } from "@merakcode/util/filesystem"
 import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import type { ConfigWarning } from "./recover"
 
+/** Parses an injected JSON source with the same recoverable diagnostics as file sources. */
+export function parseInjectedJson(text: string, source: string) {
+  const warnings: ConfigWarning[] = []
+  try {
+    return { data: JSON.parse(text) as unknown, warnings }
+  } catch (error) {
+    warnings.push({
+      path: source,
+      item: source,
+      reason: {
+        zh: `无效 JSON（${error instanceof Error ? error.message : String(error)}）；已临时跳过，请修正环境变量后重载`,
+        en: `Invalid JSON (${error instanceof Error ? error.message : String(error)}); skipped for now. Fix the environment variable and reload.`,
+      },
+    })
+    return { data: undefined, warnings }
+  }
+}
+
 /** Substitutes file and environment references, then parses a JSONC source without changing it on disk. */
 export async function parseConfigSource(text: string, configFilepath: string) {
   const warnings: ConfigWarning[] = []

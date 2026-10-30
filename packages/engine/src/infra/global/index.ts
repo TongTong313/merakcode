@@ -1,3 +1,4 @@
+import { lazy } from "@merakcode/util/lazy"
 import fs from "fs/promises"
 import { constants, existsSync } from "fs"
 import path from "path"
@@ -11,6 +12,7 @@ import { Paths } from "@merakcode/util/paths"
  */
 export namespace Global {
   export const Path = Paths
+  export const initialize = lazy(initializePaths)
 }
 
 async function mkdirp(dir: string) {
@@ -39,53 +41,59 @@ const RESET_STALE_MS = 30_000
 
 const cacheVersion = () => Filesystem.readText(path.join(Global.Path.cache, "version")).catch(() => "0")
 
-while ((await cacheVersion()) !== CACHE_VERSION) {
-  await mkdirp(Global.Path.cache)
-  const lock = path.join(Global.Path.cache, RESET_LOCK)
-  const held = await fs.mkdir(lock).then(
-    () => true,
-    () => false,
-  )
-  if (!held) {
-    const since = await fs.stat(lock).then(
-      (stat) => stat.mtimeMs,
-      () => undefined,
+async function initializePaths() {
+  while ((await cacheVersion()) !== CACHE_VERSION) {
+    await mkdirp(Global.Path.cache)
+    const lock = path.join(Global.Path.cache, RESET_LOCK)
+    const held = await fs.mkdir(lock).then(
+      () => true,
+      () => false,
     )
-    if (since !== undefined && Date.now() - since > RESET_STALE_MS) await fs.rm(lock, { recursive: true, force: true })
-    await sleep(20)
-    continue
+    if (!held) {
+      const since = await fs.stat(lock).then(
+        (stat) => stat.mtimeMs,
+        () => undefined,
+      )
+      if (since !== undefined && Date.now() - since > RESET_STALE_MS)
+        await fs.rm(lock, { recursive: true, force: true })
+      await sleep(20)
+      continue
+    }
+    try {
+      if ((await cacheVersion()) === CACHE_VERSION) break
+      const contents = await fs.readdir(Global.Path.cache).catch(() => [])
+      await Promise.all(
+        contents
+          .filter((item) => item !== RESET_LOCK)
+          .map((item) => fs.rm(path.join(Global.Path.cache, item), { recursive: true, force: true }).catch(() => {})),
+      )
+      await Filesystem.write(path.join(Global.Path.cache, "version"), CACHE_VERSION)
+    } finally {
+      await fs.rm(lock, { recursive: true, force: true })
+    }
   }
-  try {
-    if ((await cacheVersion()) === CACHE_VERSION) break
-    const contents = await fs.readdir(Global.Path.cache).catch(() => [])
-    await Promise.all(
-      contents
-        .filter((item) => item !== RESET_LOCK)
-        .map((item) => fs.rm(path.join(Global.Path.cache, item), { recursive: true, force: true }).catch(() => {})),
-    )
-    await Filesystem.write(path.join(Global.Path.cache, "version"), CACHE_VERSION)
-  } finally {
-    await fs.rm(lock, { recursive: true, force: true })
+
+  const fresh = !existsSync(Global.Path.data)
+
+  for (const dir of [Global.Path.data, Global.Path.config, Global.Path.bin]) {
+    await mkdirp(dir)
   }
-}
 
-const fresh = !existsSync(Global.Path.data)
-
-for (const dir of [Global.Path.data, Global.Path.config, Global.Path.bin]) {
-  await mkdirp(dir)
-}
-
-// Earlier versions kept config and data in separate XDG directories: a new default root takes over the global config
-// and the saved credentials once. A root moved by MERAKCODE_HOME (tests set one) starts empty, and nothing that
-// already exists is overwritten
-if (fresh && !process.env.MERAKCODE_HOME) {
-  const config = path.join(Global.Path.home, ".config", "merakcode")
-  const data = path.join(Global.Path.home, ".local", "share", "merakcode")
-  const files = [
-    ...["merakcode.jsonc", "merakcode.json", "AGENTS.md"].map((name) => [path.join(config, name), Global.Path.config]),
-    [path.join(data, "auth.json"), Global.Path.data],
-  ] as const
-  for (const [file, dir] of files)
-    if (existsSync(file))
-      await fs.copyFile(file, path.join(dir, path.basename(file)), constants.COPYFILE_EXCL).catch(() => {})
+  // Earlier versions kept config and data in separate XDG directories: a new default root takes over the global config
+  // and the saved credentials once. A root moved by MERAKCODE_HOME (tests set one) starts empty, and nothing that
+  // already exists is overwritten
+  if (fresh && !process.env.MERAKCODE_HOME) {
+    const config = path.join(Global.Path.home, ".config", "merakcode")
+    const data = path.join(Global.Path.home, ".local", "share", "merakcode")
+    const files = [
+      ...["merakcode.jsonc", "merakcode.json", "AGENTS.md"].map((name) => [
+        path.join(config, name),
+        Global.Path.config,
+      ]),
+      [path.join(data, "auth.json"), Global.Path.data],
+    ] as const
+    for (const [file, dir] of files)
+      if (existsSync(file))
+        await fs.copyFile(file, path.join(dir, path.basename(file)), constants.COPYFILE_EXCL).catch(() => {})
+  }
 }

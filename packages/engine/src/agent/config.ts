@@ -1,3 +1,4 @@
+import { mergeDeep } from "remeda"
 import z from "zod"
 import { PermissionConfig } from "./permission/config"
 import { ModelId } from "./model/config"
@@ -155,5 +156,19 @@ export namespace AgentSettings {
       .catchall(Agent)
       .optional()
       .describe("Agent configuration"),
+  }
+
+  export function migrateModes(agent: z.output<typeof fields.agent>, modes: z.output<typeof fields.mode>) {
+    // Migrate deprecated mode field to agent field
+    for (const [name, mode] of Object.entries(modes ?? {})) {
+      agent = mergeDeep(agent ?? {}, {
+        [name]: {
+          ...mode,
+          mode: "primary" as const,
+        },
+      })
+    }
+
+    return agent
   }
 }
