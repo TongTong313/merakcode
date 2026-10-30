@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
-import { SessionNotification } from "@merakcode/engine/session/notification"
-import { WorkflowState } from "@merakcode/engine/workflow/state"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { SessionNotification } from "@merakcode/engine/agent/session/notification"
+import { WorkflowState } from "@merakcode/engine/app/task/workflow/state"
 import { tmpdir } from "../fixture/fixture"
 
 /**

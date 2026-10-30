@@ -7,6 +7,7 @@ import { release } from "node:os"
 export namespace Log {
   export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
   export type Level = z.infer<typeof Level>
+  export const ConfigLevel = Level.optional().describe("Log level")
 
   const priorities: Record<Level, number> = {
     DEBUG: 0,

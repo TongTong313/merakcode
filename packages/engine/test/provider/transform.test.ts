@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ProviderTransform } from "@merakcode/engine/provider/transform"
+import { ProviderTransform } from "@merakcode/engine/agent/model/transform"
 
 describe("ProviderTransform.options - setCacheKey", () => {
   const sessionID = "test-session-123"

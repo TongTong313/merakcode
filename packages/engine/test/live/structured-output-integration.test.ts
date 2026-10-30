@@ -5,11 +5,11 @@
  */
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { Log } from "@merakcode/log/logger"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Message } from "@merakcode/engine/session/message"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Message } from "@merakcode/engine/agent/session/message"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -32,7 +32,7 @@ describe("StructuredOutput Integration", () => {
       await withInstance(async () => {
         const session = await Session.create({ title: "Structured Output Test" })
 
-        const result = await SessionRunner.prompt({
+        const result = await Loop.prompt({
           sessionID: session.id,
           parts: [
             {
@@ -80,7 +80,7 @@ describe("StructuredOutput Integration", () => {
       await withInstance(async () => {
         const session = await Session.create({ title: "Nested Schema Test" })
 
-        const result = await SessionRunner.prompt({
+        const result = await Loop.prompt({
           sessionID: session.id,
           parts: [
             {
@@ -143,7 +143,7 @@ describe("StructuredOutput Integration", () => {
       await withInstance(async () => {
         const session = await Session.create({ title: "Text Output Test" })
 
-        const result = await SessionRunner.prompt({
+        const result = await Loop.prompt({
           sessionID: session.id,
           parts: [
             {
@@ -179,7 +179,7 @@ describe("StructuredOutput Integration", () => {
       await withInstance(async () => {
         const session = await Session.create({ title: "OutputFormat Storage Test" })
 
-        await SessionRunner.prompt({
+        await Loop.prompt({
           sessionID: session.id,
           parts: [
             {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import type { Message } from "@merakcode/engine/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import type { Message } from "@merakcode/engine/agent/session/message"
 
 const assistant = (finish: Message.AssistantInfo["finish"], error?: Message.AssistantInfo["error"]) =>
   ({
@@ -46,10 +46,10 @@ const toolPart = {
   },
 } satisfies Message.ToolPart
 
-describe("SessionRunner.shouldStopUnknownFinish", () => {
+describe("Loop.shouldStopUnknownFinish", () => {
   test("treats unknown finish as stop when the assistant produced text without tools", () => {
     expect(
-      SessionRunner.shouldStopUnknownFinish({
+      Loop.shouldStopUnknownFinish({
         assistant: assistant("unknown"),
         parts: [textPart("你好，有什么可以帮你？")],
       }),
@@ -58,7 +58,7 @@ describe("SessionRunner.shouldStopUnknownFinish", () => {
 
   test("does not stop unknown finish when a tool was used", () => {
     expect(
-      SessionRunner.shouldStopUnknownFinish({
+      Loop.shouldStopUnknownFinish({
         assistant: assistant("unknown"),
         parts: [textPart("我来检查一下。"), toolPart],
       }),
@@ -67,14 +67,14 @@ describe("SessionRunner.shouldStopUnknownFinish", () => {
 
   test("does not stop unknown finish for empty text or errors", () => {
     expect(
-      SessionRunner.shouldStopUnknownFinish({
+      Loop.shouldStopUnknownFinish({
         assistant: assistant("unknown"),
         parts: [textPart("   ")],
       }),
     ).toBe(false)
 
     expect(
-      SessionRunner.shouldStopUnknownFinish({
+      Loop.shouldStopUnknownFinish({
         assistant: assistant("unknown", { name: "UnknownError", data: { message: "failed" } }),
         parts: [textPart("partial answer")],
       }),
@@ -83,7 +83,7 @@ describe("SessionRunner.shouldStopUnknownFinish", () => {
 
   test("keeps standard stop handling outside the unknown-finish fallback", () => {
     expect(
-      SessionRunner.shouldStopUnknownFinish({
+      Loop.shouldStopUnknownFinish({
         assistant: assistant("stop"),
         parts: [textPart("done")],
       }),

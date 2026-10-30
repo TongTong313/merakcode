@@ -44,9 +44,9 @@ beforeEach(() => {
 })
 
 // Import MCP after mocking
-const { MCP } = await import("@merakcode/engine/mcp/index")
-const { Config } = await import("@merakcode/engine/config/config")
-const { Instance } = await import("@merakcode/engine/project/instance")
+const { MCP } = await import("@merakcode/engine/agent/mcp/index")
+const { Config } = await import("@merakcode/engine/app/config/files/config")
+const { Instance } = await import("@merakcode/engine/infra/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
 test("headers are passed to transports by default", async () => {

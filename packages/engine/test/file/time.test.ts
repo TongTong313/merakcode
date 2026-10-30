@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { FileTime } from "@merakcode/engine/file/time"
-import { Instance } from "@merakcode/engine/project/instance"
+import { FileTime } from "@merakcode/engine/infra/file/time"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { setTimeout as delay } from "node:timers/promises"

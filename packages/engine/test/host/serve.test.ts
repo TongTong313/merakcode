@@ -1,11 +1,49 @@
 import { describe, expect, test } from "vitest"
 import { EngineHost } from "@merakcode/engine/host"
-import { resolveNetwork } from "@merakcode/engine/host/serve"
+import { resolveNetwork } from "@merakcode/engine/app/host/serve"
 import { tmpdir } from "../fixture/fixture"
+import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
+import { EngineAddress } from "@merakcode/engine/infra/process/engine-address"
 
 const defaults = { hostname: "127.0.0.1", mdns: false, "mdns-domain": "merakcode.local", cors: [] as string[] }
 
 describe("EngineHost.serve", () => {
+  test("prepares an existing sandbox and records the actual listener port", async () => {
+    const previous = process.env.MERAKCODE_SANDBOX_MODE
+    process.env.MERAKCODE_SANDBOX_MODE = "preferred"
+    let prepared = false
+    let listenerPort: number | undefined
+    PermissionExecution.useBackendForTest({
+      status: async () => ({ status: "on", backend: "landlock" }),
+      warm: async () => {
+        prepared = true
+      },
+      wrap: async () => {
+        throw new Error("unused")
+      },
+    })
+    try {
+      await EngineHost.serve(
+        { ...defaults, port: 0 },
+        {
+          waitForShutdown: async (cleanup) => {
+            try {
+              expect(prepared).toBe(true)
+              expect(EngineAddress.port()).toBe(listenerPort)
+            } finally {
+              await cleanup()
+            }
+          },
+          onListening: (url) => (listenerPort = Number(url.port)),
+        },
+      )
+    } finally {
+      PermissionExecution.useBackendForTest(undefined)
+      if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
+      else process.env.MERAKCODE_SANDBOX_MODE = previous
+    }
+  })
+
   test("listens on a free port, answers requests, and stops when shutdown is requested", async () => {
     await using tmp = await tmpdir()
     let url: URL | undefined

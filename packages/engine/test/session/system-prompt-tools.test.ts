@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { SystemPrompt } from "@merakcode/engine/session/system"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { SystemPrompt } from "@merakcode/engine/agent/context/system"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 
 /** Minimal Model stub; SystemPrompt.provider only picks the prompt by api.id. */
 function model(apiID: string): Provider.Model {

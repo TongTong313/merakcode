@@ -1,7 +1,7 @@
 import { expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { tmpdir } from "../fixture/fixture"
 
 // The desktop app sends messages through prompt_async, which answers 204 right away and streams the reply as events.

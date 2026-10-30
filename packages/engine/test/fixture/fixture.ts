@@ -1,8 +1,8 @@
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
-import { Config } from "@merakcode/engine/config/config"
-import { Global } from "@merakcode/engine/global/index"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 

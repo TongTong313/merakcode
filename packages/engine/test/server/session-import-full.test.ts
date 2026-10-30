@@ -1,9 +1,10 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 
 const projectRoot = path.join(__dirname, "../..")
@@ -146,8 +147,8 @@ describe("session.importFull", () => {
         if (cloned.info.role !== "user" || Message.isExternal(cloned.info)) throw new Error("expected user message")
         expect(cloned.info.commandSource).toEqual({ templatePartIDs: [cloned.parts[0]!.id, cloned.parts[1]!.id] })
         expect(Message.userSourceTexts(cloned)).toEqual(Message.userSourceTexts(imported))
-        await Session.remove(forked.id)
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(forked.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -176,7 +177,7 @@ describe("session.importFull", () => {
         const updated = (await Session.messages({ sessionID: body.info.id }))[0]!
         expect(Message.userSourceTexts(updated)).toEqual(["更新后的正文"])
         expect(updated.parts[0]).not.toHaveProperty("synthetic", true)
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -194,7 +195,7 @@ describe("session.importFull", () => {
         expect(body.info.id).not.toBe(payload.info.id)
         expect(body.info.id.startsWith("ses_")).toBe(true)
 
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -225,8 +226,8 @@ describe("session.importFull", () => {
         expect(text1?.type === "text" ? text1.text : undefined).toBe("你好，有什么可以帮你？")
         expect(text2?.type === "text" ? text2.text : undefined).toBe("你好，有什么可以帮你？")
 
-        await Session.remove(import1.info.id)
-        await Session.remove(import2.info.id)
+        await SessionOperations.remove(import1.info.id)
+        await SessionOperations.remove(import2.info.id)
       },
     })
   })
@@ -255,8 +256,8 @@ describe("session.importFull", () => {
         const importedMessages = await Session.messages({ sessionID: body.info.id })
         expect(importedMessages).toHaveLength(2)
 
-        await Session.remove(existing.id)
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(existing.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -277,7 +278,7 @@ describe("session.importFull", () => {
         expect(user.info.id).not.toBe(payload.messages[0]!.info.id)
         expect(assistant.info.role === "assistant" ? assistant.info.parentID : undefined).toBe(user.info.id)
 
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -293,7 +294,7 @@ describe("session.importFull", () => {
 
         expect(body.info.parentID).toBeUndefined()
 
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })
@@ -316,7 +317,7 @@ describe("session.importFull", () => {
         expect(user.info.metadata).toEqual({ tenant: "acme" })
         expect(assistant.info.metadata).toEqual({ tenant: "acme", reviewed: true })
 
-        await Session.remove(body.info.id)
+        await SessionOperations.remove(body.info.id)
       },
     })
   })

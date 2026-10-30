@@ -1,8 +1,5 @@
-import { config } from "../../script/node/vitest.ts"
+import { defineConfig } from "vitest/config"
 
-export default config({
-  include: ["src/**/*.test.ts", "test/**/*.test.ts", "test/**/*.test.tsx"],
-  // test/live calls real model APIs and only runs explicitly (vitest.live.config.ts)
-  exclude: ["test/live/**", "**/node_modules/**"],
-  setupFiles: ["./test/preload.ts"],
+export default defineConfig({
+  test: { projects: ["./vitest.engine.config.ts", "./vitest.sandbox.config.ts"] },
 })

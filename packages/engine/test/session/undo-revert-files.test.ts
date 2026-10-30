@@ -1,12 +1,13 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import { chmod } from "fs/promises"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionUndoRedo } from "@merakcode/engine/session/undo-redo"
-import { Message } from "@merakcode/engine/session/message"
-import { Snapshot } from "@merakcode/engine/snapshot/index"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { SessionUndoRedo } from "@merakcode/engine/agent/loop/undo-redo"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Snapshot } from "@merakcode/engine/infra/project/snapshot/index"
 import { Log } from "@merakcode/log/logger"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -81,7 +82,7 @@ describe("SessionUndoRedo.revertFiles", () => {
         const visible = await Session.messages({ sessionID })
         expect(visible.some((m) => m.info.id === userMsg.id)).toBe(false)
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -146,7 +147,7 @@ describe("SessionUndoRedo.revertFiles", () => {
         expect(visible.some((m) => m.info.id === userMsg.id)).toBe(true)
         expect(await Filesystem.readText(filePath)).toBe("MODIFIED")
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -216,7 +217,7 @@ describe("SessionUndoRedo.revertFiles", () => {
         await SessionUndoRedo.redo({ sessionID })
         expect(await Filesystem.readText(filePath)).toBe("MODIFIED")
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -275,7 +276,7 @@ describe("SessionUndoRedo.revertFiles", () => {
 
         expect(await Filesystem.isFile(newFile)).toBe(false)
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -353,7 +354,7 @@ describe("SessionUndoRedo.revertFiles", () => {
           await chmod(newFile, 0o644).catch(() => {})
         }
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -431,7 +432,7 @@ describe("SessionUndoRedo.revertFiles", () => {
         const visible = await Session.messages({ sessionID })
         expect(visible.some((m) => m.info.id === userMsg.id)).toBe(true)
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -457,7 +458,7 @@ describe("SessionUndoRedo.revertFiles", () => {
         expect(SessionUndoRedo.RevertFailedError.isInstance(caught)).toBe(true)
         expect(caught.data.message).toMatch(/找不到要撤回的消息/)
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })
@@ -518,7 +519,7 @@ describe("SessionUndoRedo.revertFiles", () => {
 
         expect(await Filesystem.readText(filePath)).toBe("ORIGINAL")
 
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })

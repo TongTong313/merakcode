@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 const SEED = path.resolve(import.meta.dirname, "../../packages/engine/test/provider/catalog/seed")
-/** Must match CACHE_VERSION in packages/engine/src/global/index.ts, or the engine clears the cache on start. */
+/** Must match CACHE_VERSION in packages/engine/src/infra/global/index.ts, or the engine clears the cache on start. */
 const CACHE_VERSION = "21"
 
 /** Writes the model catalog cache a test engine reads instead of calling providers. Shared by every test setup. */

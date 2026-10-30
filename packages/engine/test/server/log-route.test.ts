@@ -11,7 +11,7 @@ test("log ingestion enforces authentication, component validation and payload bo
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-log-api-"))
   try {
     const script = path.join(root, "api.mts")
-    const source = pathToFileURL(path.join(import.meta.dirname, "../../src/server/server.ts")).href
+    const source = pathToFileURL(path.join(import.meta.dirname, "../../src/app/server/server.ts")).href
     await Filesystem.write(
       script,
       `const { Server } = await import(${JSON.stringify(source)})

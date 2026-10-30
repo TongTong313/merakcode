@@ -4,12 +4,12 @@
  * subagent: deny, overriding any subagent: allow in session.permission.
  */
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { PermissionNext } from "@merakcode/engine/permission/next"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 
 test("buildToolExecutionRuleset applies session.permission changes within the same step (read ask -> allow)", async () => {
   await using tmp = await tmpdir({ git: true })
@@ -21,12 +21,12 @@ test("buildToolExecutionRuleset applies session.permission changes within the sa
 
       const session = await Session.create({})
       session.permission = PermissionNext.fromConfig({ read: "ask" })
-      const ruleset1 = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session })
+      const ruleset1 = Loop.buildToolExecutionRuleset({ agent: agent!, session })
       expect(PermissionNext.evaluate("read", "*", ruleset1).action).toBe("ask")
 
       // "Always allow" in the permission dialog makes runner.ts write the rule to session.permission (Session.update).
       session.permission = PermissionNext.fromConfig({ read: "allow" })
-      const ruleset2 = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session })
+      const ruleset2 = Loop.buildToolExecutionRuleset({ agent: agent!, session })
       expect(PermissionNext.evaluate("read", "*", ruleset2).action).toBe("allow")
     },
   })
@@ -45,7 +45,7 @@ test("buildToolExecutionRuleset forces subagent deny in child sessions over an a
       const child = await Session.create({ parentID: parent.id })
       child.permission = PermissionNext.fromConfig({ subagent: "allow" })
 
-      const ruleset = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session: child })
+      const ruleset = Loop.buildToolExecutionRuleset({ agent: agent!, session: child })
       expect(PermissionNext.evaluate("subagent", "*", ruleset).action).toBe("deny")
     },
   })
@@ -60,7 +60,7 @@ test("buildToolExecutionRuleset allows everything in auto mode but still blocks 
       expect(agent).toBeDefined()
 
       const session = await Session.create({})
-      const ruleset = SessionRunner.buildToolExecutionRuleset({
+      const ruleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
         permissionMode: "auto",
@@ -72,7 +72,7 @@ test("buildToolExecutionRuleset allows everything in auto mode but still blocks 
       // A main session in auto mode is not a child session, so subagent is allowed too.
       expect(PermissionNext.evaluate("subagent", "*", ruleset).action).toBe("allow")
 
-      const childRuleset = SessionRunner.buildToolExecutionRuleset({
+      const childRuleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
         permissionMode: "auto",
@@ -94,7 +94,7 @@ test("buildToolExecutionRuleset denies subagent with an explicit child=true even
       expect(agent).toBeDefined()
 
       const session = await Session.create({})
-      const ruleset = SessionRunner.buildToolExecutionRuleset({
+      const ruleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
         child: true,

@@ -5,7 +5,7 @@ import path from "path"
 import fs from "fs/promises"
 import fsSync from "fs"
 import { fileURLToPath } from "url"
-import { afterAll } from "vitest"
+import { afterAll, beforeAll } from "vitest"
 
 const dir = path.join(os.tmpdir(), "merakcode-test-data-" + process.pid)
 // Remove before creating: the directory is named after the pid. If a test process exits before afterAll (crash or
@@ -19,12 +19,12 @@ afterAll(async () => {
   // Close file watchers before exiting, as the CLI does: exiting with live subscriptions crashes the watcher module
   // (Linux 134, Windows 0xC0000005). Then wait for tmpdir's background removals. These modules depend on engine
   // sources and must load after the env vars above are set, hence the dynamic imports.
-  const { closeParcelWatchers } = await import("../src/file/parcel-binding")
+  const { closeParcelWatchers } = await import("../src/infra/file/parcel-binding")
   await closeParcelWatchers()
   const { removing } = await import("./fixture/fixture")
   await removing()
   // An open database keeps its files locked on Windows
-  const { Database } = await import("../src/storage/db")
+  const { Database } = await import("../src/infra/storage/db")
   Database.close()
   try {
     fsSync.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
@@ -75,6 +75,14 @@ for (const key of Object.keys(process.env))
 
 // Now safe to import from src/
 const { Log } = await import("@merakcode/log/logger")
+await import("../src/app/config/files/config")
+// Bind application capabilities after the test module has registered its external-boundary replacements.
+beforeAll(async () => {
+  const { installTaskCapabilities } = await import("../src/app/task/install")
+  installTaskCapabilities()
+  const { installPluginClient } = await import("../src/app/server/plugin-client")
+  installPluginClient()
+})
 
 Log.init({
   print: false,

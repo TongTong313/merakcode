@@ -3,12 +3,12 @@ import path from "path"
 import * as fs from "fs/promises"
 // Import Session first so message.ts is fully initialized; otherwise the tool/multi_edit -> ../lsp ->
 // ../session/message import chain sees the LSP namespace before it is ready.
-import "@merakcode/engine/session/index"
-import { MultiEditTool } from "@merakcode/engine/tool/multi_edit"
-import { Instance } from "@merakcode/engine/project/instance"
+import "@merakcode/engine/agent/session/index"
+import { MultiEditTool } from "@merakcode/engine/agent/tools/multi_edit"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { FileTime } from "@merakcode/engine/file/time"
-import { Global } from "@merakcode/engine/global/index"
+import { FileTime } from "@merakcode/engine/infra/file/time"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 const makeCtx = (

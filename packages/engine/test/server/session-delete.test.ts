@@ -1,17 +1,18 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Global } from "@merakcode/engine/global/index"
-import { ReviewBaseline } from "@merakcode/engine/review/baseline"
-import { SessionMemoryPath } from "@merakcode/engine/session-memory/path"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { ReviewBaseline } from "@merakcode/engine/agent/session/review/baseline"
+import { SessionMemoryPath } from "@merakcode/engine/agent/memory/session-memory/path"
 import { Identifier } from "@merakcode/util/id"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { Transcript } from "@merakcode/engine/session/transcript"
-import { Storage } from "@merakcode/engine/storage/storage"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Transcript } from "@merakcode/engine/agent/session/transcript"
+import { Storage } from "@merakcode/engine/infra/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -179,7 +180,7 @@ describe("DELETE /session/:sessionID", () => {
         } finally {
           unsubscribe()
           await fs.rm(blocked, { recursive: true, force: true })
-          await Session.remove(parent.id)
+          await SessionOperations.remove(parent.id)
         }
       },
     })

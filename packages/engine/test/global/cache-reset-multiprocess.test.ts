@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "timers/promises"
 import { Process } from "@merakcode/util/process"
 import { evaluate, tmpdir } from "../fixture/fixture"
 
-const global = pathToFileURL(path.join(import.meta.dirname, "../../src/global/index.ts")).href
+const global = pathToFileURL(path.join(import.meta.dirname, "../../src/infra/global/index.ts")).href
 const start = (home: string) =>
   Process.spawn(evaluate(`await import(${JSON.stringify(global)})`), {
     env: { ...process.env, MERAKCODE_HOME: home },

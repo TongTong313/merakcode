@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { createPluginShell } from "../../src/plugin/shell"
+import { createPluginShell } from "../../src/agent/plugin/shell"
 import { tmpdir } from "../fixture/fixture"
 
 const $ = createPluginShell()

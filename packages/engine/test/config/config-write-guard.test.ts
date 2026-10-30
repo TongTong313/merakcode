@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { ConfigWriteGuard } from "@merakcode/engine/config/config-write-guard"
+import { ConfigWriteGuard } from "@merakcode/engine/infra/config/write-guard"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { setTimeout as delay } from "node:timers/promises"

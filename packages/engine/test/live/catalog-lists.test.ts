@@ -5,9 +5,9 @@
  * A provider without a key in the environment is reported as skipped.
  */
 import { expect, test } from "vitest"
-import * as Catalog from "../../src/provider/catalog"
-import { CatalogModel } from "../../src/provider/catalog/model"
-import { OFFICIAL } from "../../src/provider/official"
+import * as Catalog from "../../src/agent/model/catalog"
+import { CatalogModel } from "../../src/agent/model/catalog/model"
+import { OFFICIAL } from "../../src/agent/model/official"
 
 for (const spec of Object.values(OFFICIAL)) {
   const key = spec.env.map((name) => process.env[name]).find(Boolean)

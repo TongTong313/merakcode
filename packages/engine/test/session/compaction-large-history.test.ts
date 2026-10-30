@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, test } from "vitest"
-import { LLM } from "@merakcode/engine/session/llm"
+import { LLM } from "@merakcode/engine/agent/model/llm"
 
 const stream = LLM.stream
 
@@ -33,9 +33,9 @@ afterEach(() => {
  */
 test("SessionCompaction.process completes on a large multi-boundary history without slowdown or errors", async () => {
   const { Identifier } = await import("@merakcode/util/id")
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { SessionCompaction } = await import("@merakcode/engine/session/compaction")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { SessionCompaction } = await import("@merakcode/engine/agent/context/compaction")
   const { Log } = await import("@merakcode/log/logger")
   const { tmpdir } = await import("../fixture/fixture")
 

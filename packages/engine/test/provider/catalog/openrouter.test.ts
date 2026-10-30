@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import * as OpenRouter from "../../../src/provider/catalog/openrouter"
+import * as OpenRouter from "../../../src/agent/model/catalog/openrouter"
 import { load, parseItems } from "./fixture"
 
 const body = await load("openrouter")

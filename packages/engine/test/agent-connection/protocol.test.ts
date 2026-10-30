@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { runMember, discoverModels, inspectMember } from "../../src/agent-connection/runtime"
+import { runMember, discoverModels, inspectMember } from "../../src/agent/external/runtime"
 import { tmpdir } from "../fixture/fixture"
-import { builtinLaunch } from "../../src/agent-connection/adapters"
+import { builtinLaunch } from "../../src/agent/external/adapters"
 import { shim } from "../collaboration/fixture/shim"
 import type { ProductModel } from "@merakcode/sdk/adapter"
 import { execFile } from "node:child_process"
@@ -263,7 +263,7 @@ test("rejects an invalid adapter result instead of treating it as a successful r
 test("keeps the host alive after model discovery returns an unsupported capability", async () => {
   await using tmp = await tmpdir()
   const script = path.join(tmp.path, "host.mts")
-  const runtime = pathToFileURL(path.join(import.meta.dirname, "../../src/agent-connection/runtime.ts")).href
+  const runtime = pathToFileURL(path.join(import.meta.dirname, "../../src/agent/external/runtime.ts")).href
   const fixture = path.join(import.meta.dirname, "adapter-fixture.ts")
   await fs.writeFile(
     script,

@@ -365,10 +365,11 @@ apps/cli              the merak command; merak serve is the engine, and the desk
 apps/desktop/main     desktop app main process (Electron)
 apps/desktop/renderer desktop app UI (SolidJS)
 packages/engine       the engine: sessions, models, tools, permissions, HTTP and event stream server
-packages/sandbox      the OS sandbox (Windows / Linux / macOS)
+  src/agent           agent loop, sessions, context, models, tools and permissions
+  src/infra           sandbox, config IO, storage, processes and workspace mechanisms
+  src/app             task, project and session composition, server and host
 packages/sdk/js       TypeScript SDK
 packages/util, log    shared helpers and logging
-packages/client-core  approval options for the desktop app
 ```
 
 Neither the desktop app nor the command-line commands (other than `serve`, `generate` and `debug`) import engine code. They start a `merak serve` process through the SDK and talk to it over HTTP and an event stream. `pnpm check` enforces this. See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest of the conventions.

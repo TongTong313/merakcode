@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
-import { Server } from "@merakcode/engine/server/server"
+import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { globalConfig, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"

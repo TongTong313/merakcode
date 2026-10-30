@@ -42,8 +42,6 @@ jobs:
         package:
           - packages/util
           - packages/log
-          - packages/sandbox
-          - packages/client-core
           - packages/sdk/js
           - packages/engine
           - apps/cli
@@ -93,15 +91,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Set up the sandbox (Windows needs a one-time setup; the runner is already an administrator)
-        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts setup
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts setup
       - name: Conformance must run, not skip
-        run: pnpm test test/conformance.test.ts
-        working-directory: packages/sandbox
+        run: pnpm test:sandbox test/sandbox/os/conformance.test.ts
+        working-directory: packages/engine
         env:
           MERAKCODE_SANDBOX_REQUIRED: "1"
       - name: Reset leaves nothing behind
         if: runner.os == 'Windows'
-        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts reset
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts reset
 
   build:
     name: Build and smoke test (${{ matrix.os }})

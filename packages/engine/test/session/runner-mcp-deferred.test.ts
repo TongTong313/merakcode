@@ -3,16 +3,16 @@
 // stub tools so no real MCP server is needed.
 import { test, expect } from "vitest"
 import { jsonSchema } from "ai"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { MCP } from "@merakcode/engine/mcp/index"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { MCP } from "@merakcode/engine/agent/mcp/index"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 
 const model = {
   id: "gpt-4",
@@ -96,7 +96,7 @@ test("resolveTools leaves inactive deferred MCP tools out, keeps eager ones, and
         mocksrv_eager_tool: mockMcpTool("eager_tool", false),
       },
       async () => {
-        const { tools } = await SessionRunner.resolveTools({
+        const { tools } = await Loop.resolveTools({
           agent,
           model,
           session,
@@ -143,7 +143,7 @@ test("resolveTools re-injects a deferred MCP tool after a past tool_search call 
           },
         ],
       } as unknown as Message.FullMsg
-      const { tools } = await SessionRunner.resolveTools({
+      const { tools } = await Loop.resolveTools({
         agent,
         model,
         session,

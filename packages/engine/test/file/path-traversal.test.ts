@@ -2,9 +2,9 @@ import { test, expect, describe } from "vitest"
 import path from "path"
 import fs from "fs/promises"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { File } from "@merakcode/engine/file/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Global } from "@merakcode/engine/global/index"
+import { File } from "@merakcode/engine/agent/workspace/file/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Filesystem.contains", () => {

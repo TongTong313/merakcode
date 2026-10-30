@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config"
-import base from "./vitest.config.ts"
+import base from "./vitest.engine.config.ts"
 
 // test/live calls real model APIs (needs their API keys), so it stays out of the normal suite and only runs on request.
 // MERAKCODE_LIVE tells test/preload.ts to keep the *_API_KEY variables it clears for every other test.

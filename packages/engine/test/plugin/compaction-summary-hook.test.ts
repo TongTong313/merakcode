@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test, type Mock, vi } from "vitest"
 import { Identifier } from "@merakcode/util/id"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionCompaction } from "@merakcode/engine/session/compaction"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { SessionCompaction } from "@merakcode/engine/agent/context/compaction"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 

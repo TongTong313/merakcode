@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { RemoteTool } from "@merakcode/engine/tool/remote"
-import { ToolRegistry } from "@merakcode/engine/tool/registry"
-import type { Tool } from "@merakcode/engine/tool/tool"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { RemoteTool } from "@merakcode/engine/agent/tools/remote"
+import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import { tmpdir } from "../fixture/fixture"
 
 const lookup = { type: "object", properties: { id: { type: "string" } }, required: ["id"] }

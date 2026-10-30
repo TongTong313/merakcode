@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Message } from "@merakcode/engine/session/message"
+import { Message } from "@merakcode/engine/agent/session/message"
 
 /**
  * workflow_run is fire-and-forget: once detached to the background, its tool part stays at state.status="running"

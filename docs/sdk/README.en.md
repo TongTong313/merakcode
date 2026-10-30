@@ -536,6 +536,28 @@ Each method takes one object as its first argument, with path parameters, query 
 
 `client.event.subscribe()` resolves to `{ stream }`, an async iterator over every event for the current folder. It only connects once you start iterating, and the first event is `server.connected`: send messages after that, or the first events are lost. `client.global.event()` covers every folder, and each item is `{ directory, payload }`: `payload` is the event and `directory` the project folder it belongs to (events that belong to no folder, such as `server.connected`, have none).
 
+`connectPty` handles the terminal's live connection. Create a PTY with `client.pty.create()` first, then connect from a same-origin page. `PtyConnectionOptions` supplies the engine URL, PTY ID, directory, replay cursor and callbacks; the returned `PtyConnection` sends input and closes the connection. Input sent before the socket opens is queued, and `onData` receives text or binary output. Browser WebSockets cannot add HTTP authentication headers; a password-protected desktop host must attach authorization during the upgrade.
+
+```ts
+import { connectPty, createMerakCodeClient, type PtyConnection, type PtyConnectionOptions } from "@merakcode/sdk/client"
+
+const directory = "/path/to/project"
+const client = createMerakCodeClient({ baseUrl: location.origin, directory })
+const created = await client.pty.create({ cwd: directory }, { throwOnError: true })
+const options: PtyConnectionOptions = {
+  baseUrl: location.origin,
+  ptyID: created.data.id,
+  directory,
+  cursor: 0,
+  onData(data) {
+    if (typeof data === "string") console.log(data)
+  },
+}
+const connection: PtyConnection = connectPty(options)
+connection.send("echo hello\r")
+window.addEventListener("beforeunload", () => connection.close(), { once: true })
+```
+
 ```ts
 import { createMerakCodeClient, fromResponse } from "@merakcode/sdk"
 import { startEngine } from "@merakcode/sdk/process"

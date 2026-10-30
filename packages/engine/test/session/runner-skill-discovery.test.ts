@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest"
 import type { Agent } from "@merakcode/engine/agent/agent"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SkillSearch } from "@merakcode/engine/skill/search"
-import type { Skill } from "@merakcode/engine/skill/skill"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SkillSearch } from "@merakcode/engine/agent/skill/search"
+import type { Skill } from "@merakcode/engine/agent/skill/skill"
 import { tmpdir } from "../fixture/fixture"
 
 const sessionID = "session"
@@ -82,10 +82,10 @@ function assistantMessage(id: string, tool: string): Message.FullMsg {
   }
 }
 
-describe("SessionRunner skill discovery helpers", () => {
+describe("Loop skill discovery helpers", () => {
   test("uses the first user message as the first-turn trigger", () => {
     const info = user()
-    const trigger = SessionRunner.skillDiscoveryTrigger({
+    const trigger = Loop.skillDiscoveryTrigger({
       step: 1,
       messages: [{ info, parts: [] }],
       user: info,
@@ -97,7 +97,7 @@ describe("SessionRunner skill discovery helpers", () => {
 
   test("does not trigger after non-write tools", () => {
     const info = user()
-    const trigger = SessionRunner.skillDiscoveryTrigger({
+    const trigger = Loop.skillDiscoveryTrigger({
       step: 2,
       messages: [{ info, parts: [] }, assistantMessage("msg_assistant", "read")],
       user: info,
@@ -110,7 +110,7 @@ describe("SessionRunner skill discovery helpers", () => {
   test("uses the latest completed write tool as a one-time trigger", () => {
     const info = user()
     const messages = [{ info, parts: [] }, assistantMessage("msg_assistant", "edit")]
-    const trigger = SessionRunner.skillDiscoveryTrigger({
+    const trigger = Loop.skillDiscoveryTrigger({
       step: 2,
       messages,
       user: info,
@@ -120,7 +120,7 @@ describe("SessionRunner skill discovery helpers", () => {
 
     expect(trigger).toEqual({ id: "msg_assistant", kind: "write_pivot" })
     expect(
-      SessionRunner.skillDiscoveryTrigger({
+      Loop.skillDiscoveryTrigger({
         step: 2,
         messages,
         user: info,
@@ -165,7 +165,7 @@ describe("SessionRunner skill discovery helpers", () => {
             ],
           },
         ]
-        const filtered = await SessionRunner.filterSkillAttachment({
+        const filtered = await Loop.filterSkillAttachment({
           attachment,
           trigger: { id: "msg_write", kind: "write_pivot" },
           messages,
@@ -189,7 +189,7 @@ describe("SessionRunner skill discovery helpers", () => {
       fn: async () => {
         const info = user()
         const image = skill({ name: "imagegen", description: "Generate and edit images." })
-        const filtered = await SessionRunner.filterSkillAttachment({
+        const filtered = await Loop.filterSkillAttachment({
           attachment: {
             text: SkillSearch.renderAttachment([image]),
             skills: [image],

@@ -365,10 +365,11 @@ apps/cli              merak 命令；merak serve 就是引擎，桌面客户端�
 apps/desktop/main     桌面客户端主进程（Electron）
 apps/desktop/renderer 桌面客户端界面（SolidJS）
 packages/engine       引擎：会话、模型、工具、权限、HTTP 和事件流服务
-packages/sandbox      系统沙箱（Windows / Linux / macOS）
+  src/agent           智能体 loop、会话、上下文、模型、工具与权限
+  src/infra           沙箱、配置 IO、存储、进程与工作区机制
+  src/app             任务、项目和会话编排、server 与 host
 packages/sdk/js       TypeScript SDK
 packages/util、log    共用的工具函数和日志
-packages/client-core  桌面客户端的审批选项
 ```
 
 桌面客户端和命令行的命令（`serve`、`generate`、`debug` 除外）都不直接引用引擎代码，而是通过 SDK 启动一个 `merak serve` 进程，再走 HTTP 和事件流通信。`pnpm check` 会检查这条边界。更多约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

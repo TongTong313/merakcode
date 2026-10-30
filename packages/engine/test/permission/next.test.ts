@@ -1,10 +1,10 @@
 import { test, expect } from "vitest"
 import os from "os"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { tmpdir } from "../fixture/fixture"
 
 // fromConfig tests
@@ -706,7 +706,7 @@ test("abortPending - stopping a session rejects its pending permissions and emit
   })
 })
 
-test("SessionRunner.cancel clears the session's pending permissions so the approval bar goes away", async () => {
+test("Loop.cancel clears the session's pending permissions so the approval bar goes away", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -725,7 +725,7 @@ test("SessionRunner.cancel clears the session's pending permissions so the appro
       const unsub = Bus.subscribe(PermissionNext.Event.Replied, (event) => {
         replied.resolve(event.properties.requestID)
       })
-      SessionRunner.cancel(session.id)
+      Loop.cancel(session.id)
       expect(await replied.promise).toBe("permission_cancel")
       unsub()
 

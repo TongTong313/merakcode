@@ -3,16 +3,16 @@
  * (parallel tool calls and subagents).
  */
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Config } from "@merakcode/engine/config/config"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { InstanceBootstrap } from "@merakcode/engine/project/bootstrap"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { InstanceBootstrap } from "@merakcode/engine/app/project/bootstrap"
 
 async function waitForFlush(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -30,7 +30,7 @@ test("parallel write asks are all resolved after permission.write=allow is writt
 
       const agent = await Agent.get("build")
       expect(agent).toBeDefined()
-      const ruleset = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session })
+      const ruleset = Loop.buildToolExecutionRuleset({ agent: agent!, session })
       expect(PermissionNext.evaluate("write", "src/foo.ts", ruleset).action).toBe("ask")
 
       const sessionID = session.id
@@ -98,7 +98,7 @@ test("child session: buildToolExecutionRuleset ends with subagent deny (asserts 
 
       const agent = await Agent.get("build")
       expect(agent).toBeDefined()
-      const ruleset = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session: child })
+      const ruleset = Loop.buildToolExecutionRuleset({ agent: agent!, session: child })
       expect(PermissionNext.evaluate("subagent", "general", ruleset).action).toBe("deny")
     },
   })
@@ -113,7 +113,7 @@ test("pending ask from explicit permission.read=ask is resolved after config cha
       const session = await Session.create({})
       const agent = await Agent.get("build")
       expect(agent).toBeDefined()
-      const ruleset = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session })
+      const ruleset = Loop.buildToolExecutionRuleset({ agent: agent!, session })
       expect(PermissionNext.evaluate("read", "README.md", ruleset).action).toBe("ask")
 
       const sessionID = session.id
@@ -175,7 +175,7 @@ test("glob=allow alone does not resolve a pending read ask", async () => {
 
       const agent = await Agent.get("build")
       expect(agent).toBeDefined()
-      const ruleset = SessionRunner.buildToolExecutionRuleset({ agent: agent!, session })
+      const ruleset = Loop.buildToolExecutionRuleset({ agent: agent!, session })
 
       const sessionID = session.id
       const user = await Session.updateInfo({

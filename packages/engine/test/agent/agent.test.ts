@@ -1,14 +1,14 @@
 import { test, expect } from "vitest"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import type { PermissionMode } from "@merakcode/engine/permission/mode"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import type { Session } from "@merakcode/engine/session/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import type { PermissionMode } from "@merakcode/engine/agent/permission/mode"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import type { Session } from "@merakcode/engine/agent/session/index"
 
-/** Uses the real rule chain (SessionRunner.buildToolExecutionRuleset): mode defaults + user config + agent limits. */
+/** Uses the real rule chain (Loop.buildToolExecutionRuleset): mode defaults + user config + agent limits. */
 function evalPerm(
   agent: Agent.Info | undefined,
   permission: string,
@@ -20,7 +20,7 @@ function evalPerm(
   return PermissionNext.evaluate(
     permission,
     pattern,
-    SessionRunner.buildToolExecutionRuleset({ agent, session, permissionMode }),
+    Loop.buildToolExecutionRuleset({ agent, session, permissionMode }),
   ).action
 }
 

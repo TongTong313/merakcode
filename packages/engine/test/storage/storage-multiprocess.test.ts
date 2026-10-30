@@ -1,7 +1,7 @@
 import { expect, test } from "vitest"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { Storage } from "../../src/storage/storage"
+import { Storage } from "../../src/infra/storage/storage"
 import { evaluate, tmpdir, runtime } from "../fixture/fixture"
 import { Process } from "@merakcode/util/process"
 import { setTimeout as delay } from "node:timers/promises"
@@ -69,7 +69,7 @@ test("another process never reads a partial record during Storage.write or updat
 // Setting WAL on a database another process was creating or recovering failed as busy without waiting, so one of two
 // engines started together (the desktop app and the command line) could not open the database at all
 test("processes opening a new database at the same time all get to write", async () => {
-  const db = pathToFileURL(path.join(import.meta.dirname, "../../src/storage/db.ts")).href
+  const db = pathToFileURL(path.join(import.meta.dirname, "../../src/infra/storage/db.ts")).href
   const code = `const { Database } = await import(${JSON.stringify(db)})
 Database.transaction(() => Database.query("INSERT INTO record (key, data) VALUES (?, ?)").run(process.argv[1], "x"))
 Database.close()`

@@ -10,7 +10,7 @@ import { evaluate, tmpdir } from "../fixture/fixture"
  * default root takes them over once at engine startup; a root moved by MERAKCODE_HOME starts empty.
  */
 async function start(home: string, root?: string) {
-  const source = pathToFileURL(path.join(import.meta.dirname, "../../src/global/index.ts")).href
+  const source = pathToFileURL(path.join(import.meta.dirname, "../../src/infra/global/index.ts")).href
   const child = Process.spawn(evaluate(`await import(${JSON.stringify(source)})`), {
     env: {
       ...process.env,

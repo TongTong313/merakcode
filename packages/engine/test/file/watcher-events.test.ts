@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "vitest"
 import path from "path"
-import { Bus } from "@merakcode/engine/bus/index"
-import { FileWatcher } from "@merakcode/engine/file/watcher"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { FileWatcher } from "@merakcode/engine/agent/workspace/file/watcher"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 

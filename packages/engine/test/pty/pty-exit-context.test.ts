@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Pty } from "@merakcode/engine/pty/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Pty } from "@merakcode/engine/app/terminal/index"
 import { tmpdir } from "../fixture/fixture"
 import { setTimeout as delay } from "node:timers/promises"
 

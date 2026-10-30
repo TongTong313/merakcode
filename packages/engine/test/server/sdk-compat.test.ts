@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -116,7 +116,7 @@ describe("session.deleteMessage", () => {
         const app = Server.App()
         const session = await Session.create({})
         const prompt = (text: string) =>
-          SessionRunner.prompt({
+          Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model,

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { SessionNotification } from "@merakcode/engine/session/notification"
-import { WorkflowState } from "@merakcode/engine/workflow/state"
-import type { WorkflowRunCache } from "@merakcode/engine/workflow/types"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { SessionNotification } from "@merakcode/engine/agent/session/notification"
+import { WorkflowState } from "@merakcode/engine/app/task/workflow/state"
+import type { WorkflowRunCache } from "@merakcode/engine/app/task/workflow/types"
 import { tmpdir } from "../fixture/fixture"
 
 describe("WorkflowState", () => {

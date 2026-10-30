@@ -2,7 +2,7 @@ import { expect, test } from "vitest"
 import { pathToFileURL } from "node:url"
 import path from "path"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir, runtime } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -21,7 +21,7 @@ test("two processes writing to one session store every part complete", async () 
   const count = 120
   const big = 1_000_000
   const script = path.join(tmp.path, "append.mts")
-  const module = path.join(import.meta.dirname, "../../../../packages/engine/src/session/transcript.ts")
+  const module = path.join(import.meta.dirname, "../../../../packages/engine/src/agent/session/transcript.ts")
   await Filesystem.write(
     script,
     `import { Transcript } from ${JSON.stringify(pathToFileURL(module).href)}

@@ -2,8 +2,8 @@ import path from "node:path"
 import { expect, test } from "vitest"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Instance } from "@merakcode/engine/project/instance"
-import { GitChanges } from "@merakcode/engine/project/git-changes"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { GitChanges } from "@merakcode/engine/app/project/git-changes"
 import { tmpdir } from "../fixture/fixture"
 
 const git = (cwd: string, ...args: string[]) => Process.run(["git", ...args], { cwd }).then((result) => result.text())

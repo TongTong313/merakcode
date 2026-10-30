@@ -1,5 +1,5 @@
 import { test, expect } from "vitest"
-import { FileIgnore } from "@merakcode/engine/file/ignore"
+import { FileIgnore } from "@merakcode/engine/infra/file/ignore"
 
 test("match nested and non-nested", () => {
   expect(FileIgnore.match("node_modules/index.js")).toBe(true)

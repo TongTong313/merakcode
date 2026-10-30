@@ -8,7 +8,7 @@ import {
   termScore,
   termsForRank,
   tokenize,
-} from "@merakcode/engine/util/text-rank"
+} from "@merakcode/engine/infra/match/text-rank"
 
 describe("text-rank: normalize", () => {
   test("lowercases and collapses non-alphanumerics into single spaces, keeping _ and -", () => {

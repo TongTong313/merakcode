@@ -3,15 +3,16 @@
 // - a past tool_search call re-activates its tool with the full schema
 // - deferred tools removed for child sessions stay out of the tool_search list, so activating them can't fail
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import { SessionContextView } from "@merakcode/engine/agent/context/context-view"
 
 const model = {
   id: "gpt-4",
@@ -94,7 +95,7 @@ async function withSession(
 
 test("resolveTools defers pdf_parse/excel_parse/excel_write/workflow_run by default and injects tool_search", async () => {
   await withSession(async ({ session, user, agent, processor }) => {
-    const { tools } = await SessionRunner.resolveTools({
+    const { tools } = await Loop.resolveTools({
       agent,
       model,
       session,
@@ -120,7 +121,7 @@ test("resolveTools defers pdf_parse/excel_parse/excel_write/workflow_run by defa
 
 test("resolveTools re-injects pdf_parse after a past tool_search(pdf_parse) call and keeps the rest deferred", async () => {
   await withSession(async ({ session, user, agent, processor }) => {
-    const { tools } = await SessionRunner.resolveTools({
+    const { tools } = await Loop.resolveTools({
       agent,
       model,
       session,
@@ -142,7 +143,7 @@ test("resolveTools re-injects pdf_parse after a past tool_search(pdf_parse) call
 
 test("resolveTools leaves workflow_run out of the child session tool_search list", async () => {
   await withSession(async ({ session, user, agent, processor }) => {
-    const { tools } = await SessionRunner.resolveTools({
+    const { tools } = await Loop.resolveTools({
       agent,
       model,
       session,
@@ -160,3 +161,50 @@ test("resolveTools leaves workflow_run out of the child session tool_search list
     expect(desc).toContain("pdf_parse")
   })
 })
+
+for (const scenario of [
+  { name: "root", child: false, mode: "ask" as const },
+  { name: "readonly child", child: true, mode: "readonly" as const },
+  { name: "automatic root", child: false, mode: "auto" as const },
+]) {
+  test("context tool names match the prepared model tools for a " + scenario.name, async () => {
+    await withSession(async ({ session, user, agent, processor }) => {
+      const reportingModel = { ...model, limit: { output: 4096, input: 8192, context: 16384 } }
+      const messages = [{ info: user, parts: [] }] as Message.FullMsg[]
+      const resolved = await Loop.resolveTools({
+        agent,
+        session,
+        model: reportingModel,
+        processor,
+        bypassAgentCheck: false,
+        messages,
+        permissionMode: scenario.mode,
+        child: scenario.child,
+        step: 2,
+      })
+      const view = await SessionContextView.build({
+        agent,
+        user,
+        sessionID: session.id,
+        model: reportingModel,
+        messages,
+        step: 2,
+        includeToolStats: true,
+        child: scenario.child,
+        preparedTools: resolved.prepared,
+      })
+      expect([...view.stats.tools.standard.names, ...view.stats.tools.mcp.names].sort()).toEqual(
+        Object.keys(resolved.tools).sort(),
+      )
+      expect(view.stats.tools.standard.names).toContain("read")
+      if (scenario.child) {
+        for (const id of ["subagent", "workflow_run", "plan_enter", "plan_exit"])
+          expect(view.stats.tools.standard.names).not.toContain(id)
+      }
+      if (scenario.mode === "auto") {
+        expect(view.stats.tools.standard.names).not.toContain("question")
+        expect(view.stats.tools.standard.names).not.toContain("plan_enter")
+      }
+    })
+  })
+}

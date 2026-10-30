@@ -10,7 +10,7 @@
 
 # The engine's public entry and the only CLI files that load it
 /packages/engine/package.json @TongTong313
-/packages/engine/src/host/ @TongTong313
+/packages/engine/src/app/host/ @TongTong313
 /apps/cli/src/cli/cmd/serve.ts @TongTong313
 /apps/cli/src/cli/cmd/generate.ts @TongTong313
 /apps/cli/src/cli/cmd/debug/host.ts @TongTong313

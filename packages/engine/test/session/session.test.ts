@@ -1,8 +1,9 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
-import { Session } from "@merakcode/engine/session/index"
-import { Bus } from "@merakcode/engine/bus/index"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Bus } from "@merakcode/engine/infra/bus/index"
 import { Log } from "@merakcode/log/logger"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -32,7 +33,7 @@ describe("session.started event", () => {
         expect(receivedInfo?.directory).toBe(session.directory)
         expect(receivedInfo?.title).toBe(session.title)
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })
@@ -61,7 +62,7 @@ describe("session.started event", () => {
         expect(events).toContain("updated")
         expect(events.indexOf("started")).toBeLessThan(events.indexOf("updated"))
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })

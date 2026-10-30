@@ -1,14 +1,15 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, expect, test } from "vitest"
 import path from "node:path"
-import { BashBackgroundTool, BashJobStore } from "@merakcode/engine/tool/bash-background"
-import { Instance } from "@merakcode/engine/project/instance"
+import { BashBackgroundTool, BashJobStore } from "@merakcode/engine/agent/tools/bash-background"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionExecution } from "@merakcode/engine/session/execution"
-import { Shell } from "@merakcode/engine/shell/shell"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LoopExecution } from "@merakcode/engine/agent/loop/execution"
+import { Shell } from "@merakcode/engine/infra/process/shell/shell"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { setTimeout as delay } from "node:timers/promises"
@@ -40,7 +41,7 @@ for (const outcome of ["finished", "cancelled"] as const) {
     })) as unknown as typeof Provider.getModel
     const promptScopes: Array<string | undefined> = []
     Plugin.trigger = (async (name, _input, output) => {
-      if (name === "chat.message") promptScopes.push(SessionExecution.current()?.id)
+      if (name === "chat.message") promptScopes.push(LoopExecution.current()?.id)
       if (name === "experimental.chat.guard") {
         Object.assign(output as object, { refuse: true, message: "Background notification received" })
       }
@@ -60,11 +61,11 @@ console.log("background-result")
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ title: "Background scope regression" })
-        const scope = SessionExecution.create({ id: `background-${outcome}`, sessionID: session.id })
+        const scope = LoopExecution.create({ id: `background-${outcome}`, sessionID: session.id })
         const tool = await BashBackgroundTool.init()
         const executable = process.execPath.replaceAll("\\", "/")
         const invoke = /(?:^|[\\/])(?:powershell|pwsh)(?:\.exe)?$/i.test(Shell.acceptable()) ? "& " : ""
-        const result = await SessionExecution.run(scope, () =>
+        const result = await LoopExecution.run(scope, () =>
           tool.execute(
             {
               command: `${invoke}"${executable}" background.mjs`,
@@ -86,8 +87,8 @@ console.log("background-result")
           ),
         )
         try {
-          const cancellation = outcome === "cancelled" ? SessionExecution.cancel(session.id, [scope.id]) : undefined
-          SessionExecution.finish(scope)
+          const cancellation = outcome === "cancelled" ? LoopExecution.cancel(session.id, [scope.id]) : undefined
+          LoopExecution.finish(scope)
           await cancellation
           await Filesystem.write(path.join(tmp.path, "release-job"), "release")
           const job = BashJobStore.get(result.metadata.jobId)!
@@ -118,9 +119,9 @@ console.log("background-result")
               .some((part) => part.type === "text" && part.text.includes("background-result")),
           ).toBe(true)
         } finally {
-          SessionExecution.finish(scope)
+          LoopExecution.finish(scope)
           await BashJobStore.stopAll()
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         }
       },
     })

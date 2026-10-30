@@ -1,8 +1,8 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { afterAll, beforeAll, expect, test } from "vitest"
-import { Global } from "@merakcode/engine/global/index"
-import { Ripgrep } from "@merakcode/engine/file/ripgrep"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { Ripgrep } from "@merakcode/engine/infra/file/ripgrep"
 
 // No rg on PATH and no download, so only a binary placed in Global.Path.bin counts
 const saved = { path: process.env.PATH, download: process.env.MERAKCODE_RIPGREP_DISABLE_DOWNLOAD }

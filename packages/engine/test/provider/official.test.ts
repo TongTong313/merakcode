@@ -1,10 +1,9 @@
-import { expect, test } from "vitest"
+import { afterEach, beforeEach, expect, test } from "vitest"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Env } from "@merakcode/engine/env/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 test("the catalog exposed to clients lists only the official providers", async () => {
@@ -33,7 +32,8 @@ test("a saved api key connects an official provider and an environment variable 
   await Instance.provide({
     directory: tmp.path,
     init: async () => {
-      Env.set("ANTHROPIC_API_KEY", "env-key")
+      process.env.ANTHROPIC_API_KEY = "sentinel-environment-key"
+      expect(process.env.ANTHROPIC_API_KEY).toBe("sentinel-environment-key")
     },
     fn: async () => {
       expect((await Provider.list())["anthropic"]).toBeUndefined()
@@ -68,7 +68,8 @@ test("a custom provider lists only the models written in config", async () => {
   await Instance.provide({
     directory: tmp.path,
     init: async () => {
-      Env.set("GROQ_API_KEY", "env-key")
+      process.env.GROQ_API_KEY = "sentinel-environment-key"
+      expect(process.env.GROQ_API_KEY).toBe("sentinel-environment-key")
     },
     fn: async () => {
       const providers = await Provider.list()
@@ -87,10 +88,22 @@ test("a custom provider lists only the models written in config", async () => {
   await Instance.provide({
     directory: named.path,
     init: async () => {
-      Env.set("GROQ_API_KEY", "env-key")
+      process.env.GROQ_API_KEY = "sentinel-environment-key"
+      expect(process.env.GROQ_API_KEY).toBe("sentinel-environment-key")
     },
     fn: async () => {
       expect(await Provider.list()).toEqual({})
     },
   })
+})
+
+const environment = new Map<string, string | undefined>()
+beforeEach(() => {
+  for (const key of ["ANTHROPIC_API_KEY", "GROQ_API_KEY"]) environment.set(key, process.env[key])
+})
+afterEach(() => {
+  for (const [key, value] of environment) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
 })

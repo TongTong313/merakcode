@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
 import path from "path"
-import { Auth } from "@merakcode/engine/auth/index"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
 import { tmpdir } from "../fixture/fixture"
 
 test("concurrent auth.json updates preserve every entry", async () => {

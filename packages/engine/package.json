@@ -6,12 +6,13 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.sandbox.json",
     "test": "vitest run",
-    "test:live": "vitest run --config vitest.live.config.ts"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "test:sandbox": "vitest run --config vitest.sandbox.config.ts"
   },
   "exports": {
-    "./host": "./src/host/index.ts",
+    "./host": "./src/app/host/index.ts",
     "./*": "./src/*.ts",
     "./*.js": "./src/*.ts",
     "./*.ts": "./src/*.ts"
@@ -33,7 +34,6 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "@merakcode/log": "workspace:*",
     "@merakcode/sdk": "workspace:*",
-    "@merakcode/sandbox": "workspace:*",
     "@merakcode/util": "workspace:*",
     "@napi-rs/canvas": "1.0.11",
     "@openrouter/ai-sdk-provider": "3.1.0",

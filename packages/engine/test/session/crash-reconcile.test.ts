@@ -1,14 +1,15 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, beforeEach, expect, test } from "vitest"
 import { Identifier } from "@merakcode/util/id"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionDispatch } from "@merakcode/engine/session/dispatch"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { LLM } from "@merakcode/engine/session/llm"
-import { Database } from "@merakcode/engine/storage/db"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LoopRequest } from "@merakcode/engine/agent/loop/request"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Database } from "@merakcode/engine/infra/storage/db"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 import { setTimeout as delay } from "node:timers/promises"
@@ -96,7 +97,7 @@ function toolRows(sessionID: string) {
   return rows.map((row) => JSON.parse(row.data)).filter((part) => part.type === "tool")
 }
 
-test("Session.get after a restart marks a stuck running tool as an interrupted error", async () => {
+test("the application read after a restart marks a stuck running tool as an interrupted error", async () => {
   await using tmp = await tmpdir({ git: true })
   let sessionID = ""
 
@@ -113,7 +114,7 @@ test("Session.get after a restart marks a stuck running tool as an interrupted e
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      await Session.get(sessionID)
+      await SessionOperations.get(sessionID)
       const messages = await Session.messages({ sessionID })
       const tools = messages
         .flatMap((message) => message.parts)
@@ -136,7 +137,7 @@ test("disposing a live session settles its unfinished tools", async () => {
     fn: async () => {
       const session = await Session.create({})
       sessionID = session.id
-      const running = SessionRunner.shell({
+      const running = Loop.shell({
         sessionID,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -166,7 +167,7 @@ test("disposing a live session settles its unfinished tools", async () => {
   })
 }, 30_000)
 
-test("Session.get after a restart leaves a detached workflow_run tool running for WorkflowState to settle", async () => {
+test("the application read after a restart leaves a detached workflow_run tool running for WorkflowState to settle", async () => {
   await using tmp = await tmpdir({ git: true })
   let sessionID = ""
 
@@ -197,7 +198,7 @@ test("Session.get after a restart leaves a detached workflow_run tool running fo
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      await Session.get(sessionID)
+      await SessionOperations.get(sessionID)
       const messages = await Session.messages({ sessionID })
       const tool = messages
         .flatMap((message) => message.parts)
@@ -236,8 +237,7 @@ test("a prompt after crash recovery replies under the new user message, not the 
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      await Session.get(sessionID)
-      const reply = await SessionDispatch.prompt({
+      const reply = await LoopRequest.prompt({
         sessionID,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -256,3 +256,34 @@ test("a prompt after crash recovery replies under the new user message, not the 
     },
   })
 }, 60_000)
+
+for (const entry of ["shell", "context"] as const) {
+  test("a direct " + entry + " entry recovers crashed tools before starting a new operation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        const seeded = await seedStuckBash(session.id)
+        if (entry === "shell")
+          await Loop.shell({
+            sessionID: session.id,
+            agent: "build",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            command: "echo recovered",
+          })
+        else
+          await Loop.command({
+            sessionID: session.id,
+            agent: "build",
+            model: "test-provider/test-model",
+            command: "context",
+            arguments: "",
+          })
+        const message = await Message.get({ sessionID: session.id, messageID: seeded.reply.id })
+        const tool = message.parts.find((part) => part.type === "tool")
+        expect(tool?.type === "tool" && tool.state.status).toBe("error")
+      },
+    })
+  })
+}

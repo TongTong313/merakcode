@@ -3,15 +3,15 @@
  * the model receives the notification and replies, and the notification is then acknowledged.
  */
 import { afterEach, beforeEach, expect, test } from "vitest"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { LLM } from "@merakcode/engine/session/llm"
-import { SessionNotification } from "@merakcode/engine/session/notification"
-import { SessionNotificationDelivery } from "@merakcode/engine/session/notification-delivery"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { SessionNotification } from "@merakcode/engine/agent/session/notification"
+import { SessionNotificationDelivery } from "@merakcode/engine/agent/loop/notification-delivery"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 import { setTimeout as delay } from "node:timers/promises"
@@ -69,7 +69,7 @@ test("notification to an idle session starts a turn, reaches the model, and is a
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await SessionRunner.prompt({
+      await Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },

@@ -1,8 +1,8 @@
 import fs from "fs/promises"
 import path from "path"
-import { Global } from "@merakcode/engine/global/index"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
-import type { CatalogModel } from "../../../src/provider/catalog/model"
+import type { CatalogModel } from "../../../src/agent/model/catalog/model"
 import { seedCatalog } from "../../../../../script/node/seed-catalog.ts"
 
 /** A saved provider response under fixtures/. */

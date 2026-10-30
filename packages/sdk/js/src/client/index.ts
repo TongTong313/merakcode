@@ -6,6 +6,7 @@ import { MerakCodeClient } from "./gen/sdk.gen.js"
 import { createSdkClient } from "./client-factory.js"
 import type { Logger } from "../logger.js"
 export * from "./request-deadline.js"
+export { connectPty, type PtyConnection, type PtyConnectionOptions } from "./pty-connection.js"
 export { type Config as MerakCodeClientConfig, MerakCodeClient }
 
 export function createMerakCodeClient(

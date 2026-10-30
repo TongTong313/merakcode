@@ -14,8 +14,8 @@ import { Filesystem } from "@merakcode/util/filesystem"
 
 const root = path.resolve(import.meta.dirname, "..", "..", "..", "..")
 const source = path.join(root, "packages", "sdk", "js", "src", "adapter", "index.ts")
-const adapters = path.join(root, "packages", "engine", "src", "agent-connection", "adapters")
-const folder = path.join(root, "packages", "engine", "src", "skill", "builtin", "adapter-generator")
+const adapters = path.join(root, "packages", "engine", "src", "agent", "external", "adapters")
+const folder = path.join(root, "packages", "engine", "src", "agent", "skill", "builtin", "adapter-generator")
 /** Each example, and the built-in adapter it is */
 const EXAMPLES = {
   "example-claude-code.mts": "claude",
@@ -79,7 +79,7 @@ async function example(name: string) {
   for (const [, specifier] of code.matchAll(/\bfrom\s+"([^"]+)"/g))
     if (!specifier!.startsWith("node:") && specifier !== "./merakcode-adapter.mjs")
       throw new Error(`${file} imports ${specifier}; an example may use only Node and the adapter library`)
-  return `// MerakCode's own adapter, generated from packages/engine/src/agent-connection/adapters/${name}.ts. Do not edit.\n${code}`
+  return `// MerakCode's own adapter, generated from packages/engine/src/agent/external/adapters/${name}.ts. Do not edit.\n${code}`
 }
 
 /** Each generated file's path and text, formatted as the repo formats its code */

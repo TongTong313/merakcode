@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Project } from "@merakcode/engine/project/project"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Project } from "@merakcode/engine/infra/project/project"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 

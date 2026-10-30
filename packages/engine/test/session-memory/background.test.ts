@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import { Identifier } from "@merakcode/util/id"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import type { Message } from "@merakcode/engine/session/message"
-import { SessionMemory } from "@merakcode/engine/session-memory/session-memory"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import type { Message } from "@merakcode/engine/agent/session/message"
+import { SessionMemory } from "@merakcode/engine/agent/memory/session-memory/session-memory"
 import { tmpdir } from "../fixture/fixture"
 
 test("session memory works in a background child, which does not count as the conversation running", async () => {
