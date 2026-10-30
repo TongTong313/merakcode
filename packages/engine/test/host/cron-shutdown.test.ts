@@ -70,7 +70,10 @@ test("shutdown stops cron before draining memory and restart restores the persis
             })
           })
           await memoryStarted.promise
-          await expect.poll(() => inProject(() => CronScheduler.list(sessionID)[0]?.lastRun)).toBeTypeOf("number")
+          // Poll retries also advance fake timers, so the whole poll needs the project context.
+          await inProject(async () => {
+            await expect.poll(() => CronScheduler.list(sessionID)[0]?.lastRun).toBeTypeOf("number")
+          })
           lastRun = await inProject(() => CronScheduler.list(sessionID)[0].lastRun!)
           const beforeShutdown = requests
           const shuttingDown = cleanup()
@@ -103,10 +106,12 @@ test("shutdown stops cron before draining memory and restart restores the persis
           const restored = await inProject(() => CronScheduler.list(sessionID))
           expect(restored).toMatchObject([{ id: taskID, status: "running", lastRun }])
           await inProject(() => vi.advanceTimersByTimeAsync(1_000))
-          await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(beforeRestart)
-          await expect
-            .poll(() => inProject(() => CronScheduler.list(sessionID)[0]?.lastRun), { timeout: 10_000 })
-            .toBeGreaterThan(lastRun)
+          await inProject(async () => {
+            await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(beforeRestart)
+            await expect
+              .poll(() => CronScheduler.list(sessionID)[0]?.lastRun, { timeout: 10_000 })
+              .toBeGreaterThan(lastRun)
+          })
         } finally {
           await cleanup()
         }

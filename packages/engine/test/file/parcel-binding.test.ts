@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import fs from "fs/promises"
 import path from "path"
 import { setTimeout as sleep } from "timers/promises"
@@ -6,8 +6,6 @@ import { pathToFileURL } from "url"
 import { evaluate, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Worker } from "node:worker_threads"
-import { once } from "node:events"
 
 // Loaded in a real Node process: Vitest injects require into the test process, which would hide ESM-only problems
 test("file watcher native module loads under Node", async () => {
@@ -115,36 +113,27 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
         (_, events) => seen.push(...events.map((event) => path.relative(tmp.path, event.path))),
         { ignore: ["ignored"] },
       )
-      // Keep real writes independent of the test's event loop and filesystem queue under load.
-      const stop = new Int32Array(new SharedArrayBuffer(4))
-      const writer = new Worker(
-        `
-          const fs = require("node:fs")
-          const path = require("node:path")
-          const { parentPort, workerData } = require("node:worker_threads")
-          for (let i = 0; !Atomics.load(workerData.stop, 0); i++) {
-            fs.writeFileSync(path.join(workerData.dir, "f" + (i % 20) + ".txt"), String(i))
-            if (i === 0) parentPort.postMessage("ready")
-            Atomics.wait(workerData.stop, 0, 0, 5)
-          }
-        `,
-        { eval: true, workerData: { dir: path.join(tmp.path, folder), stop } },
-      )
-      const exited = once(writer, "exit")
+      // Control the quiet-period clock; a loaded filesystem cannot guarantee uninterrupted real-time writes.
+      // Native subscriptions, file writes and notification delivery remain real.
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
       try {
-        await once(writer, "message")
+        await fs.writeFile(path.join(tmp.path, folder, "f.txt"), "initial")
         await sleep(1_000)
         await subscription.unsubscribe()
-        await sleep(2_000)
-        expect(pendingParcelCancels()).toBe(1)
+        for (let i = 0; i < 4; i++) {
+          await vi.advanceTimersByTimeAsync(500)
+          await fs.writeFile(path.join(tmp.path, folder, "f.txt"), String(i))
+          // timers/promises is real: let the native backend deliver this batch before moving the clock again.
+          await sleep(1_000)
+          expect(pendingParcelCancels()).toBe(1)
+        }
+        await vi.advanceTimersByTimeAsync(1_000)
+        await expect.poll(() => pendingParcelCancels()).toBe(0)
       } finally {
-        Atomics.store(stop, 0, 1)
-        Atomics.notify(stop, 0)
-        expect((await exited)[0]).toBe(0)
+        await subscription.unsubscribe()
+        await vi.advanceTimersByTimeAsync(2_000)
+        vi.useRealTimers()
       }
-      const deadline = Date.now() + 10_000
-      while (pendingParcelCancels() > 0 && Date.now() < deadline) await sleep(50)
-      expect(pendingParcelCancels()).toBe(0)
       // macOS also reports the watched directory itself ("") when files inside it change
       if (folder === "ignored") expect(seen.filter((file) => file.split(path.sep)[0] === "ignored")).toEqual([])
       else expect(seen.filter((file) => file.startsWith("f")).length).toBeGreaterThan(0)

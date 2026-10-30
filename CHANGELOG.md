@@ -8,26 +8,32 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
-- The SDK now provides `connectPty` for terminal WebSocket input and output; the desktop terminal uses this entry point.
-
-### 变更
-
-- SDK 新增终端 WebSocket 输入输出接口 `connectPty`，桌面终端改为通过该接口连接。
+- Reorganize the engine into `agent`, `infra`, and `app`: agent capabilities, shared mechanisms, and engine service composition now have explicit dependency boundaries.
+- Consolidate execution in `agent/loop`, including dispatch, queues, cancellation, recovery, and turn completion. Persistent session and message records remain in `agent/session`; execution and context reports share tool preparation, and turn completion shares memory scheduling.
+- Separate permission decisions from OS isolation: `agent/permission` owns authorization and policy, while `infra/sandbox` enforces them through the existing platform backends and independent conformance tests.
+- Move configuration fields and defaults beside their owning modules, share configuration IO and validation in infrastructure, and keep project initialization and reload orchestration in the application layer. Host startup and shutdown call the server in one direction.
+- Make the SDK the entry point for desktop and CLI product capabilities, including terminal connections through `connectPty`. Terminal input keeps its send order across connection startup; existing HTTP, event, configuration, and persisted-data contracts remain compatible.
+- Remove obsolete sandbox and client-core package shells and utility forwarding modules while retaining their implementations with their actual consumers.
 
 ### Fixed
 
-- Scheduled tasks stop starting new runs before shutdown drains memory work and resume after the next startup.
-- A tool that ends a turn no longer causes the same user request to run again before background memory work.
-- Configuration edits retry temporary Windows file sharing conflicts while preserving concurrent external changes.
-- Configuration schema insertion no longer overwrites newer settings, and configuration writes replace the file atomically when supported.
+- Preserve lifecycle ordering during the refactor: shutdown stops scheduled runs before draining memory work, persisted tasks resume after startup, and an explicit tool stop no longer runs the same user request again.
+- Preserve concurrent configuration edits during schema insertion and temporary Windows file sharing conflicts, using atomic replacement when supported.
 - Global events without a directory no longer interrupt Git panel updates, and a failed event listener no longer drops subsequent conversation events.
+
+### 变更
+
+- 引擎统一为 `agent`、`infra`、`app` 三层，分别承载智能体能力、基础机制和引擎服务编排，并明确约束依赖方向。
+- 将请求分发、队列、取消、恢复和回合收尾统一到 `agent/loop`；会话与消息的持久数据留在 `agent/session`。执行与上下文报告共享工具准备结果，回合完成后统一安排记忆任务。
+- 分离权限决策与系统隔离：`agent/permission` 负责授权和策略，`infra/sandbox` 通过现有平台后端执行隔离，并保留独立的系统一致性测试。
+- 配置字段和默认规则归各自模块，基础层统一提供配置读写与校验，应用层负责项目初始化和重载编排；宿主单向调用服务端，统一管理启动与退出顺序。
+- 桌面和 CLI 的产品能力统一通过 SDK 使用引擎，终端连接也由 `connectPty` 承接，并在连接建立前后保持输入发送顺序；现有 HTTP、事件、配置和持久数据契约保持兼容。
+- 移除 sandbox、client-core 的多余包壳及工具函数转发模块，将实际实现保留在所属模块或真实使用方。
 
 ### 修复
 
-- 退出时先停止定时任务触发，再排空记忆任务；持久任务在下次启动后恢复。
-- 工具结束当前回合后，不再重复执行同一条用户请求，再进行后台记忆处理。
-- 配置编辑会重试 Windows 文件临时占用导致的冲突，并保留同时发生的外部修改。
-- 配置文件自动补写 schema 时不再覆盖较新的设置，配置写入在系统支持时通过原子替换完成。
+- 完善重构中的生命周期顺序：退出时先停止定时任务触发，再排空记忆任务；持久任务在启动后恢复，工具明确结束回合后不再重复执行同一条用户请求。
+- 配置自动补写 schema 或遇到 Windows 文件临时占用时保留并发修改，并在系统支持时通过原子替换完成写入。
 - 不带目录的全局事件不再中断 Git 面板更新，单个事件监听器异常也不再丢失后续对话事件。
 
 ## [0.2.0] - 2026-10-28

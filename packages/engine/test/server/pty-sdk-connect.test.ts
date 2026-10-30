@@ -3,8 +3,34 @@ import { connectPty, createMerakCodeClient } from "@merakcode/sdk/client"
 import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
+import { once } from "node:events"
+import { WebSocketServer } from "ws"
 
 Log.init({ print: false })
+
+test("the SDK preserves terminal input order when onOpen sends more input", async () => {
+  const server = new WebSocketServer({ host: "127.0.0.1", port: 0 })
+  server.on("connection", (socket) => socket.on("message", (data) => socket.send(data.toString())))
+  await once(server, "listening")
+  const address = server.address()
+  if (typeof address === "string" || !address) throw new Error("Expected a TCP listener")
+  const received: Array<string | ArrayBuffer> = []
+  const connection = connectPty({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    ptyID: "input-order",
+    onData: (data) => received.push(data),
+    onOpen: () => connection.send("second"),
+  })
+  try {
+    connection.send("first")
+    await expect.poll(() => received, { timeout: 10_000 }).toHaveLength(2)
+    expect(received).toEqual(["first", "second"])
+  } finally {
+    connection.close()
+    for (const socket of server.clients) socket.terminate()
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  }
+})
 
 test("the SDK queues terminal input before the real WebSocket opens and receives PTY output", async () => {
   await using root = await tmpdir({ git: true })
