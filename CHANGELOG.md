@@ -16,6 +16,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Scheduled tasks stop starting new runs before shutdown drains memory work and resume after the next startup.
 - A tool that ends a turn no longer causes the same user request to run again before background memory work.
 - Configuration edits retry temporary Windows file sharing conflicts while preserving concurrent external changes.
 - Configuration schema insertion no longer overwrites newer settings, and configuration writes replace the file atomically when supported.
@@ -23,6 +24,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 退出时先停止定时任务触发，再排空记忆任务；持久任务在下次启动后恢复。
 - 工具结束当前回合后，不再重复执行同一条用户请求，再进行后台记忆处理。
 - 配置编辑会重试 Windows 文件临时占用导致的冲突，并保留同时发生的外部修改。
 - 配置文件自动补写 schema 时不再覆盖较新的设置，配置写入在系统支持时通过原子替换完成。

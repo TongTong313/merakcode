@@ -12,6 +12,7 @@ import { PermissionExecution } from "../../agent/permission/execution"
 import { Provider } from "../../agent/model/provider"
 import { Log } from "@merakcode/log/logger"
 import { Global } from "../../infra/global"
+import { CronScheduler } from "../task/cron"
 
 export type NetworkArgs = {
   port?: number
@@ -54,6 +55,7 @@ export async function serve(
   },
 ) {
   await Global.initialize()
+  CronScheduler.start()
   let stop = async () => {}
   try {
     // An already set up sandbox is prepared before the first command. Setup itself still waits for the user.
@@ -70,6 +72,7 @@ export async function serve(
     await hooks.waitForShutdown(async () => {
       const deadline = Date.now() + 3000
       const listener = stop()
+      CronScheduler.stop()
       Provider.invalidateAll()
       const remaining = () => Math.max(0, deadline - Date.now())
       await Instance.forEach(() =>
@@ -78,6 +81,7 @@ export async function serve(
       await Promise.all([listener, BashJobStore.stopAll(), Instance.disposeAll()])
     })
   } finally {
+    CronScheduler.stop()
     await Promise.all([stop(), ConfigWatch.disposeGlobal(), SkillWatch.disposeGlobal(), RuleWatch.disposeGlobal()])
   }
 }
