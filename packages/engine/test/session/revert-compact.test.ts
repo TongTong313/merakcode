@@ -1,9 +1,10 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRevert } from "@merakcode/engine/session/revert"
-import { Message } from "@merakcode/engine/session/message"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { SessionRevert } from "@merakcode/engine/agent/loop/revert"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { Log } from "@merakcode/log/logger"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
 import { tmpdir } from "../fixture/fixture"
 
@@ -181,7 +182,7 @@ describe("revert + compact workflow", () => {
         expect(sessionInfo.revert).toBeUndefined()
 
         // Clean up
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })
@@ -275,7 +276,7 @@ describe("revert + compact workflow", () => {
         expect(messages.length).toBe(0) // All messages should be reverted
 
         // Clean up
-        await Session.remove(sessionID)
+        await SessionOperations.remove(sessionID)
       },
     })
   })

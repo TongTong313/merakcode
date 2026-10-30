@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
-import { Server } from "@merakcode/engine/server/server"
+import { Server } from "@merakcode/engine/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"

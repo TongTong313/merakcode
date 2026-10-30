@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "vitest"
 import path from "path"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { LLM } from "@merakcode/engine/session/llm"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionUndoRedo } from "@merakcode/engine/session/undo-redo"
-import { Snapshot } from "@merakcode/engine/snapshot/index"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionUndoRedo } from "@merakcode/engine/agent/loop/undo-redo"
+import { Snapshot } from "@merakcode/engine/infra/project/snapshot/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
@@ -73,7 +73,7 @@ test("file changed by a tool before the step starts is recorded in that step and
         }
       }) as unknown as typeof LLM.stream
 
-      await SessionRunner.prompt({
+      await Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },

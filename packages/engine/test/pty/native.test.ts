@@ -5,7 +5,7 @@ import { runtime, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 
-const native = pathToFileURL(path.resolve(import.meta.dirname, "../../src/pty/native.ts")).href
+const native = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/process/pty.ts")).href
 const shell = process.platform === "win32" ? `["cmd.exe", ["/c", "echo pty-ok"]]` : `["/bin/sh", ["-c", "echo pty-ok"]]`
 
 // Runs in a separate process because the point is whether the host exits on its own after the terminal program does.

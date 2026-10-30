@@ -4,6 +4,59 @@ import { violations } from "./check-deps"
 const host = 'const { EngineHost } = await import("@merakcode/engine/host")\n'
 
 describe("violations", () => {
+  test("agent code cannot import application implementations through types or lazy loads", () => {
+    const found = violations([
+      {
+        path: "packages/engine/src/agent/plugin/index.ts",
+        text: 'import type { Server } from "../../app/server/server"',
+      },
+      { path: "packages/engine/src/agent/loop/index.ts", text: 'await import("@merakcode/engine/app/task/cron")' },
+      { path: "packages/engine/src/agent/session/index.ts", text: 'import { Loop } from "../loop/index"' },
+    ])
+    expect(found.map((entry) => entry.rule)).toEqual([
+      "agent-does-not-import-app",
+      "agent-does-not-import-app",
+      "session-records-do-not-import-loop",
+    ])
+  })
+  test("engine infrastructure cannot import agent or application code, including types and lazy loads", () => {
+    const found = violations([
+      {
+        path: "packages/engine/src/infra/sandbox/index.ts",
+        text: [
+          'import type { Scope } from "../../agent/permission/execution"',
+          'const server = await import("@merakcode/engine/app/server/server")',
+          'export { Config } from "../../config/config"',
+          'import { Policy } from "./policy"',
+          'import { ChildEnv } from "@merakcode/util/child-env"',
+        ].join("\n"),
+      },
+      {
+        path: "packages/engine/src/infra/sandbox/index.test.ts",
+        text: 'import { Policy } from "../../agent/permission/sandbox-policy"',
+      },
+      {
+        path: "packages/engine/src/agent/permission/execution.ts",
+        text: 'import { Sandbox } from "../../infra/sandbox/index"',
+      },
+    ])
+    expect(found.map((item) => [item.rule, item.line])).toEqual([
+      ["engine-infra-only", 1],
+      ["engine-infra-only", 2],
+      ["engine-infra-only", 3],
+    ])
+  })
+
+  test("server protocol modules cannot import the host lifecycle", () => {
+    const found = violations([
+      {
+        path: "packages/engine/src/app/server/server.ts",
+        text: 'import { serve } from "../host/serve"\n',
+      },
+    ])
+    expect(found.map((item) => [item.rule, item.line])).toEqual([["server-does-not-import-host", 1]])
+  })
+
   test("the desktop app may not import the engine at all", () => {
     const found = violations([
       {
@@ -45,7 +98,7 @@ describe("violations", () => {
   })
 
   test("the CLI reaches the engine only through @merakcode/engine/host, and only from the host commands", () => {
-    const internal = 'import { Server } from "@merakcode/engine/server/server"\n'
+    const internal = 'import { Server } from "@merakcode/engine/app/server/server"\n'
     const found = violations([
       { path: "apps/cli/src/cli/cmd/serve.ts", text: host },
       { path: "apps/cli/src/cli/cmd/generate.ts", text: host },
@@ -54,7 +107,10 @@ describe("violations", () => {
       { path: "apps/cli/src/cli/cmd/acp.ts", text: host },
       { path: "apps/cli/src/cli/cmd/run.handler.ts", text: internal },
       { path: "apps/cli/test/agent/agent.test.ts", text: 'import { Agent } from "@merakcode/engine/agent/agent"\n' },
-      { path: "apps/cli/script/schema.ts", text: 'import { Config } from "@merakcode/engine/config/config"\n' },
+      {
+        path: "apps/cli/script/schema.ts",
+        text: 'import { Config } from "@merakcode/engine/app/config/files/config"\n',
+      },
     ])
     expect(found.map((item) => [item.rule, item.file])).toEqual([
       ["client-through-sdk", "apps/cli/src/cli/cmd/debug/lsp.ts"],
@@ -124,7 +180,7 @@ describe("violations", () => {
         path: "apps/desktop/main/src/a.ts",
         text: [
           'const name = "@merakcode/engine"',
-          'const engine = require("@merakcode/engine/server/server")',
+          'const engine = require("@merakcode/engine/app/server/server")',
           'import "@merakcode/engine/util/log"',
         ].join("\n"),
       },
@@ -136,7 +192,7 @@ describe("violations", () => {
       },
     ])
     expect(found.map((item) => [item.file, item.target])).toEqual([
-      ["apps/desktop/main/src/a.ts", "@merakcode/engine/server/server"],
+      ["apps/desktop/main/src/a.ts", "@merakcode/engine/app/server/server"],
       ["apps/desktop/main/src/a.ts", "@merakcode/engine/util/log"],
       ["apps/desktop/main/package.json", "@merakcode/engine"],
     ])

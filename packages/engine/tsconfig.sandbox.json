@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "src/infra/sandbox",
+    "src/agent/permission/sandbox-policy.ts",
+    "src/agent/permission/sandbox-policy.test.ts",
+    "test/sandbox/os",
+    "script/sandbox-ci.ts"
+  ]
+}

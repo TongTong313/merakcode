@@ -2,8 +2,8 @@ import { describe, expect, test as baseTest } from "vitest"
 // ripgrep streaming and Instance.provide setup are slow on Windows, so every test gets 30s
 const test = (name: string, fn: () => void | Promise<void>, timeout = 30_000) => baseTest(name, fn, timeout)
 import path from "path"
-import { GrepTool } from "@merakcode/engine/tool/grep"
-import { Instance } from "@merakcode/engine/project/instance"
+import { GrepTool } from "@merakcode/engine/agent/tools/grep"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -32,7 +32,7 @@ describe("tool.grep", () => {
         const result = await grep.execute(
           {
             pattern: "export",
-            path: path.join(projectRoot, "packages/engine/src/tool"),
+            path: path.join(projectRoot, "packages/engine/src/agent/tools"),
             include: "*.ts",
           },
           ctx,

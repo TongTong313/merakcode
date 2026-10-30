@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -16,7 +16,7 @@ afterEach(() => {
 // When the prompt fails before any reply (corrupt message file, model resolution error...), the client needs
 // session.error to end the turn, and the message must be a generic one without internal details such as paths.
 test("a prompt failing before any reply emits session.error without internal error details", async () => {
-  vi.spyOn(SessionRunner, "prompt").mockRejectedValue(new Error("boom at /secret/path"))
+  vi.spyOn(Loop, "prompt").mockRejectedValue(new Error("boom at /secret/path"))
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,

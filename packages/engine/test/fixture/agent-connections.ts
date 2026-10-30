@@ -1,6 +1,6 @@
 import { Filesystem } from "@merakcode/util/filesystem"
 import { globalConfigFile } from "@merakcode/util/paths"
-import { Config } from "../../src/config/config"
+import { Config } from "../../src/app/config/files/config"
 
 /** Installs isolated global connection fixtures without probing real coding CLIs. */
 export async function configureConnections(products: Record<string, Config.AgentConnectionProduct>) {

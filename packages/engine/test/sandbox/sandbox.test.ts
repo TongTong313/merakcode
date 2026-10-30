@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { Sandbox } from "@merakcode/engine/sandbox/index"
-import { PermissionPolicy } from "@merakcode/engine/permission/policy"
-import { PermissionNext } from "@merakcode/engine/permission/next"
+import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 
 // What a sandboxed command may do comes from the session: the workspace, temp dir and approved folders are
 // writable; credential folders are unreadable; the network goes through the proxy with the allow list and the
@@ -14,7 +14,7 @@ const tmp = path.resolve("/tmp/merakcode")
 
 describe("sandbox policy", () => {
   test("writable: workspace, temp dir, package caches, approved and configured folders; never the home itself", () => {
-    const policy = Sandbox.policy({
+    const policy = PermissionExecution.policy({
       workspace,
       home,
       tmp,
@@ -50,14 +50,14 @@ describe("sandbox policy", () => {
       }),
       ...PermissionNext.fromConfig({ sandbox: { [dir("blocked")]: "deny" } }),
     ]
-    const writable = Sandbox.policy({ workspace, home, tmp, ruleset }).write.allow
+    const writable = PermissionExecution.policy({ workspace, home, tmp, ruleset }).write.allow
     expect(writable).toContain(path.join(home, "out"))
     expect(writable).not.toContain(path.join(home, "blocked"))
     expect(writable.some((item) => item.includes("npm publish"))).toBe(false)
   })
 
   test("credential folders and configured folders cannot be read", () => {
-    const policy = Sandbox.policy({ workspace, home, tmp, config: { read: { deny: ["~/private"] } } })
+    const policy = PermissionExecution.policy({ workspace, home, tmp, config: { read: { deny: ["~/private"] } } })
     for (const dir of PermissionPolicy.SENSITIVE_HOME_DIRS)
       expect(policy.read.deny, dir).toContain(path.join(home, dir))
     expect(policy.read.deny).toContain(path.join(home, "private"))
@@ -67,18 +67,18 @@ describe("sandbox policy", () => {
     const ruleset = PermissionNext.fromConfig({
       network: { "github.com": "deny", "*.example.com": "deny", "exa*mple.org": "deny", "gitee.cn": "allow" },
     })
-    const policy = Sandbox.policy({ workspace, home, tmp, ruleset })
+    const policy = PermissionExecution.policy({ workspace, home, tmp, ruleset })
     expect(policy.network.allow).toEqual(expect.arrayContaining([...PermissionPolicy.NETWORK_ALLOW, "gitee.cn"]))
     expect(policy.network.deny).toEqual(["github.com", "*.example.com"])
   })
 
   test('network: "deny" refuses every host', () => {
     const ruleset = PermissionNext.fromConfig({ network: "deny" })
-    expect(Sandbox.policy({ workspace, home, tmp, ruleset }).network.deny).toEqual(["*"])
+    expect(PermissionExecution.policy({ workspace, home, tmp, ruleset }).network.deny).toEqual(["*"])
   })
 
   test("the engine's own port is never reachable; configured local ports are", () => {
-    const policy = Sandbox.policy({
+    const policy = PermissionExecution.policy({
       workspace,
       home,
       tmp,

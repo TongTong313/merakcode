@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Config } from "@merakcode/engine/config/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { tmpdir } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 

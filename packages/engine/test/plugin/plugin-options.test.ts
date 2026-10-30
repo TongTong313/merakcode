@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
 import { pathToFileURL } from "url"
 import path from "path"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

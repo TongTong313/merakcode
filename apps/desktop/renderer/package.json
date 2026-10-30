@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
-    "@merakcode/client-core": "workspace:*",
     "@merakcode/sdk": "workspace:*",
     "@solidjs/router": "catalog:",
     "diff": "catalog:",

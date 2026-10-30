@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline"
-import { Storage } from "../../src/storage/storage"
+import { Storage } from "../../src/infra/storage/storage"
 
 type Value = { id: string; revision: number; payload: string }
 

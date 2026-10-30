@@ -1,9 +1,9 @@
 import { describe, expect, test, beforeEach } from "vitest"
 import path from "path"
 import { pathToFileURL } from "url"
-import { LSPClient } from "@merakcode/engine/lsp/client"
-import { LSPServer } from "@merakcode/engine/lsp/server"
-import { Instance } from "@merakcode/engine/project/instance"
+import { LSPClient } from "@merakcode/engine/infra/lsp/client"
+import { LSPServer } from "@merakcode/engine/infra/lsp/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Log } from "@merakcode/log/logger"
 
 // Minimal fake LSP server that speaks JSON-RPC over stdio

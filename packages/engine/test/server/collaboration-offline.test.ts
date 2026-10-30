@@ -1,11 +1,12 @@
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { afterEach, expect, test } from "vitest"
-import { Server } from "../../src/server/server"
+import { Server } from "../../src/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 import { fakeModel } from "../../../sdk/js/test/fixture/model"
 import { Runtime } from "@merakcode/util/runtime"
-import { ConfigEdit } from "../../src/config/config-edit"
-import { Instance } from "../../src/project/instance"
+import { ConfigEdit } from "../../src/infra/config/edit"
+import { Instance } from "../../src/infra/project/instance"
 import path from "node:path"
 import fs from "node:fs/promises"
 import type { CollaborationGroup, Part, PermissionRequest, QuestionRequest, Todo } from "@merakcode/sdk/client"
@@ -73,7 +74,7 @@ test.each([
       })
     ).json()
     if (kind === "config")
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "unsupported"], {
           command: process.execPath,
           adapter: "claude",

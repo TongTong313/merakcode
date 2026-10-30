@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import * as Alibaba from "../../../src/provider/catalog/alibaba"
+import * as Alibaba from "../../../src/agent/model/catalog/alibaba"
 import { load, parseItems } from "./fixture"
 
 const body = await load("alibaba")

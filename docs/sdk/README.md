@@ -536,6 +536,28 @@ export const guard: Plugin = async ({ directory, $ }) => {
 
 `client.event.subscribe()` 返回 `{ stream }`，是当前目录所有事件的异步迭代器。它在开始迭代后才真正连上引擎，连上后第一个事件是 `server.connected`：要在这之后再发消息，否则开头的事件会丢。`client.global.event()` 是所有目录的事件，每一项是 `{ directory, payload }`：`payload` 是事件本身，`directory` 是它属于哪个项目目录（`server.connected` 这类不属于任何目录的事件没有它）。
 
+终端的实时连接由 `connectPty` 提供。先用 `client.pty.create()` 创建 PTY，再从同源页面连接；`PtyConnectionOptions` 设置引擎地址、PTY ID、目录、回放游标和回调，返回的 `PtyConnection` 可发送输入并关闭连接。打开前发送的输入会排队，文本和二进制输出分别交给 `onData`。浏览器 WebSocket 不能自行添加 HTTP 鉴权头；带口令的桌面宿主需在连接升级时附加鉴权。
+
+```ts
+import { connectPty, createMerakCodeClient, type PtyConnection, type PtyConnectionOptions } from "@merakcode/sdk/client"
+
+const directory = "/path/to/project"
+const client = createMerakCodeClient({ baseUrl: location.origin, directory })
+const created = await client.pty.create({ cwd: directory }, { throwOnError: true })
+const options: PtyConnectionOptions = {
+  baseUrl: location.origin,
+  ptyID: created.data.id,
+  directory,
+  cursor: 0,
+  onData(data) {
+    if (typeof data === "string") console.log(data)
+  },
+}
+const connection: PtyConnection = connectPty(options)
+connection.send("echo hello\r")
+window.addEventListener("beforeunload", () => connection.close(), { once: true })
+```
+
 ```ts
 import { createMerakCodeClient, fromResponse } from "@merakcode/sdk"
 import { startEngine } from "@merakcode/sdk/process"

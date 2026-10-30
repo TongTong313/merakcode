@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { Server } from "../../src/server/server"
+import { Server } from "../../src/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 import { fakeModel } from "../../../sdk/js/test/fixture/model"

@@ -3,18 +3,18 @@ import path from "path"
 import fs from "fs/promises"
 import { fileURLToPath } from "url"
 import { jsonSchema, type Tool as AITool } from "ai"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { MCP } from "@merakcode/engine/mcp/index"
-import { Bus } from "@merakcode/engine/bus/index"
-import { SubAgentTool } from "@merakcode/engine/tool/subagent"
-import { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { MCP } from "@merakcode/engine/agent/mcp/index"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { SubAgentTool } from "@merakcode/engine/agent/tools/subagent"
+import { Provider } from "@merakcode/engine/agent/model/provider"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -115,7 +115,7 @@ async function withTools(fn: (ctx: { dir: string; tools: Record<string, AITool> 
         parentID: user.id,
         time: { created: Date.now() },
       })) as Message.AssistantInfo
-      const { tools } = await SessionRunner.resolveTools({
+      const { tools } = await Loop.resolveTools({
         agent: (await Agent.get("build"))!,
         model,
         session,
@@ -223,11 +223,11 @@ describe("gate hooks reject by throwing", () => {
             const part = event.properties.part
             if (part.type !== "tool" || part.sessionID !== session.id || part.tool !== SubAgentTool.id) return
             if (part.state.status === "running" || part.state.status === "pending") return
-            SessionRunner.cancel(session.id)
+            Loop.cancel(session.id)
             settled.resolve(part)
           })
           try {
-            await SessionRunner.prompt({
+            await Loop.prompt({
               sessionID: session.id,
               agent: "build",
               model: { providerID: "openai", modelID: "gpt-4" },
@@ -260,7 +260,7 @@ describe("gate hooks reject by throwing", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
-          const running = SessionRunner.command({
+          const running = Loop.command({
             sessionID: session.id,
             command: "gatecheck",
             arguments: "",

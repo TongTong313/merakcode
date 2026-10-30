@@ -3,8 +3,8 @@ import path from "path"
 import fs from "fs/promises"
 import { fileURLToPath } from "url"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "@merakcode/engine/project/instance"
-import { ProviderAuth } from "@merakcode/engine/provider/auth"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { ProviderAuth } from "@merakcode/engine/agent/model/auth"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 describe("plugin.auth", () => {

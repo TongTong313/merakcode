@@ -1,12 +1,12 @@
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 
 test("command input accepts permissionMode=auto", () => {
   expect(
-    SessionRunner.CommandInput.parse({
+    Loop.CommandInput.parse({
       sessionID: "ses_command_auto",
       command: "loop",
       arguments: "check",
@@ -21,7 +21,7 @@ test("shell input persists permissionMode=auto on the synthetic user message", a
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await SessionRunner.shell({
+      await Loop.shell({
         sessionID: session.id,
         agent: "build",
         permissionMode: "auto",

@@ -1,6 +1,7 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
@@ -48,7 +49,7 @@ describe("CLI single-root contract", () => {
     } finally {
       await Instance.provide({
         directory: tmp.path,
-        fn: () => Session.remove(session.id),
+        fn: () => SessionOperations.remove(session.id),
       }).catch(() => undefined)
     }
   })

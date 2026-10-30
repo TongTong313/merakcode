@@ -5,17 +5,17 @@ import path from "node:path"
 import { generateText } from "ai"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Http } from "@merakcode/util/http"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Relay } from "@merakcode/engine/provider/relay"
-import { Server } from "@merakcode/engine/server/server"
-import { LLM } from "@merakcode/engine/session/llm"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Relay } from "@merakcode/engine/agent/model/relay"
+import { Server } from "@merakcode/engine/app/server/server"
+import { LLM } from "@merakcode/engine/agent/model/llm"
 import type { Agent } from "@merakcode/engine/agent/agent"
-import type { Message } from "@merakcode/engine/session/message"
+import type { Message } from "@merakcode/engine/agent/session/message"
 import { tmpdir } from "../fixture/fixture"
-import * as OpenRouter from "../../src/provider/catalog/openrouter"
-import { parseItems } from "../../src/provider/catalog/model"
+import * as OpenRouter from "../../src/agent/model/catalog/openrouter"
+import { parseItems } from "../../src/agent/model/catalog/model"
 import { load, restoreCatalog, writeCatalog } from "./catalog/fixture"
 
 test("a relay model list keeps the context and output limits the station returned", () => {
@@ -146,7 +146,7 @@ test("discover asks the station for its model list and keeps the limits it retur
 
 test("discover fills a bare model id from the model catalog", async () => {
   const limit = { context: 1047576, output: 32768 }
-  const { Auth } = await import("@merakcode/engine/auth/index")
+  const { Auth } = await import("@merakcode/engine/agent/model/credentials")
   await Auth.set("openai", { type: "api", key: "sk-test" })
   const server = createServer((_request, response) => {
     response.end(JSON.stringify({ data: [{ id: "gpt-4.1-nano" }] }))

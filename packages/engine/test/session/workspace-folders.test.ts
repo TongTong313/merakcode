@@ -1,7 +1,8 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { Worktree } from "@merakcode/engine/worktree/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Worktree } from "@merakcode/engine/app/project/worktree/index"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Session.workspaceFolders", () => {
@@ -35,7 +36,7 @@ describe("Session.workspaceFolders", () => {
           expect(listed[0]!.directory).toBe(a.path)
           expect(listed[0]!.directory).not.toBe(b.path)
         } finally {
-          await Session.remove(created.id)
+          await SessionOperations.remove(created.id)
         }
       },
     })
@@ -50,7 +51,7 @@ describe("Session.workspaceFolders", () => {
         try {
           expect(created.workspaceFolders).toBeUndefined()
         } finally {
-          await Session.remove(created.id)
+          await SessionOperations.remove(created.id)
         }
       },
     })

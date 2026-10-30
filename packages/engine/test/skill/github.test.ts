@@ -1,6 +1,6 @@
 import path from "path"
 import { afterEach, describe, expect, test } from "vitest"
-import { SkillGithub } from "@merakcode/engine/skill/github"
+import { SkillGithub } from "@merakcode/engine/agent/skill/github"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"

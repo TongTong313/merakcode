@@ -1,24 +1,28 @@
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LoopRequest } from "@merakcode/engine/agent/loop/request"
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { afterEach, beforeEach, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 import { Runtime } from "@merakcode/util/runtime"
 import path from "node:path"
-import { ConfigEdit } from "@merakcode/engine/config/config-edit"
+import { ConfigEdit } from "@merakcode/engine/infra/config/edit"
 import fs from "node:fs/promises"
 import { Identifier } from "@merakcode/util/id"
 import { fakeModel } from "../../../sdk/js/test/fixture/model"
 import { configureConnections } from "../fixture/agent-connections"
 
 beforeEach(async () => {
-  await ConfigEdit.commit("global", (text) => ConfigEdit.set(text, ["agentConnections", "products"], {}))
+  await Config.edit("global", (text) => ConfigEdit.set(text, ["agentConnections", "products"], {}))
 })
 
 afterEach(() => Instance.disposeAll())
 
 test("updates external conversation activity only after a message is admitted", async () => {
   await using tmp = await tmpdir()
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "activity-fixture"], {
       command: process.execPath,
       args: ["-e", "process.stdin.resume(); process.stdout.write('Reply')"],
@@ -37,12 +41,12 @@ test("updates external conversation activity only after a message is admitted", 
   let previous = created.time.updated
   for (const text of ["First turn", "Second turn"]) {
     await expect.poll(() => Date.now()).toBeGreaterThan(previous)
-    const reply = await (
-      await request(`/session/${created.id}/message`, {
-        parts: [{ type: "text", text }],
-        permissionMode: "ask",
-      })
-    ).json()
+    const response = await request(`/session/${created.id}/message`, {
+      parts: [{ type: "text", text }],
+      permissionMode: "ask",
+    })
+    const reply = await response.json()
+    expect(response.status, JSON.stringify(reply)).toBe(200)
     expect(reply.info.terminal).toBe("completed")
     const updated = await current()
     expect(updated.time.updated).toBeGreaterThan(previous)
@@ -61,7 +65,7 @@ test.each([-60_000, 60_000])(
   "replays the previous assistant reply with a client clock offset of %i ms",
   async (offset) => {
     await using tmp = await tmpdir()
-    await ConfigEdit.commit("global", (text) =>
+    await Config.edit("global", (text) =>
       ConfigEdit.set(text, ["agentConnections", "products", "clock-fixture"], {
         command: process.execPath,
         adapter: "command",
@@ -124,7 +128,7 @@ test.each([
   async (partCount, empty, final) => {
     await using tmp = await tmpdir()
     const gate = path.join(tmp.path, "release-final-text")
-    await ConfigEdit.commit("global", (text) =>
+    await Config.edit("global", (text) =>
       ConfigEdit.set(text, ["agentConnections", "products", "final"], {
         command: process.execPath,
         adapter: "member",
@@ -201,7 +205,7 @@ test.each([
   ["en-US", "The product is disabled"],
 ] as const)("reports a disabled external target in %s", async (locale, message) => {
   await using tmp = await tmpdir({ config: { locale } })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "disabled-locale"], {
       command: process.execPath,
       enabled: false,
@@ -225,7 +229,7 @@ test.each([
   ["en-US", "malformed-step", "The adapter sent an invalid step event"],
 ] as const)("reports an invalid adapter reply in %s (%s)", async (locale, fixture, message) => {
   await using tmp = await tmpdir({ config: { locale } })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "invalid-locale"], {
       command: process.execPath,
       adapter: "member",
@@ -260,7 +264,7 @@ test("blocks a disabled external conversation before accepting async input", asy
         )
       const created = await request("/session", { target: { kind: "external", productID: "codex" } })
       const session = (await created.json()) as { id: string }
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "codex"], { enabled: false }),
       )
       const response = await request(`/session/${session.id}/prompt_async`, {
@@ -288,7 +292,7 @@ test("persists a declined takeover for the same disable cycle", async () => {
         )
       const created = await request("/session", { target: { kind: "external", productID: "opencode" } })
       const { id } = (await created.json()) as { id: string }
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "opencode"], { enabled: false }),
       )
       const blocked = (await (await request(`/session/${id}`)).json()) as {
@@ -302,7 +306,7 @@ test("persists a declined takeover for the same disable cycle", async () => {
       })
       expect(response.status).toBe(200)
       const declined = (await response.json()) as { targetRevision: number }
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "opencode", "title"], "Renamed"),
       )
       expect(await (await request(`/session/${id}`)).json()).toMatchObject({
@@ -329,7 +333,8 @@ test.each(["accept", "decline"] as const)(
       adapter: "member",
       args: [...Runtime.execArgv(), path.join(import.meta.dirname, "fixture/external-adapter.ts")],
     }
-    expect((await request("/agent-connection/product", { type: "add", id: "reused", product })).status).toBe(200)
+    const added = await request("/agent-connection/product", { type: "add", id: "reused", product })
+    expect(added.status, await added.text()).toBe(200)
     const { id } = await (await request("/session", { target: { kind: "external", productID: "reused" } })).json()
     expect((await request("/agent-connection/product", { type: "enabled", id: "reused", enabled: false })).status).toBe(
       200,
@@ -383,7 +388,7 @@ test("takes over only the explicitly accepted conversation and rejects stale dec
       const second = (await (
         await request("/session", { target: { kind: "external", productID: "claude" } })
       ).json()) as { id: string }
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "claude"], { enabled: false }),
       )
       const block = (await (await request(`/session/${first.id}`)).json()) as {
@@ -416,7 +421,7 @@ test("takes over only the explicitly accepted conversation and rejects stale dec
 test("stops an external turn and preserves its streamed partial text", async () => {
   await using tmp = await tmpdir({ git: true })
   const gate = path.join(tmp.path, "release")
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "stop-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -468,7 +473,7 @@ test("stops an external turn and preserves its streamed partial text", async () 
 test("cancels the active external product when it is disabled", async () => {
   await using tmp = await tmpdir({ git: true })
   const gate = path.join(tmp.path, "release-disabled")
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "disable-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -509,7 +514,7 @@ test("cancels the active external product when it is disabled", async () => {
 test("queues external turns and reads the model when each turn starts", async () => {
   await using tmp = await tmpdir({ git: true })
   const gate = path.join(tmp.path, "release-queue")
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "queue-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -540,7 +545,7 @@ test("queues external turns and reads the model when each turn starts", async ()
         await request(`/session/${id}/prompt_async`, { parts: [{ type: "text", text: "second turn" }] })
         await expect.poll(async () => (await replies()).length).toBe(2)
         expect((await replies())[1]?.parts).toEqual([])
-        await ConfigEdit.commit("global", (text) =>
+        await Config.edit("global", (text) =>
           ConfigEdit.set(text, ["agentConnections", "products", "queue-fixture", "model"], { id: "model-B" }),
         )
         await fs.writeFile(gate, "release")
@@ -583,7 +588,7 @@ test.each([
   "rejects editing an existing external message before accepting $route (takeover: $takeover)",
   async ({ route, takeover }) => {
     await using tmp = await tmpdir({ git: true })
-    await ConfigEdit.commit("global", (text) =>
+    await Config.edit("global", (text) =>
       ConfigEdit.set(text, ["agentConnections", "products", "history-fixture"], {
         command: process.execPath,
         adapter: "member",
@@ -603,7 +608,7 @@ test.each([
     const original = await (await request(`/session/${id}/message`)).json()
     const user = original.find((message: { info: { role: string } }) => message.info.role === "user")
     if (takeover) {
-      await ConfigEdit.commit("global", (text) =>
+      await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "history-fixture", "enabled"], false),
       )
       const blocked = await (await request(`/session/${id}`)).json()
@@ -627,7 +632,7 @@ test.each([
 
 test("rejects moving an existing external text part into a new message", async () => {
   await using tmp = await tmpdir({ git: true })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "part-history-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -715,7 +720,7 @@ test.each([0, 60_000])(
   "admits a client message ID only once across racing sends and retry (clock offset: %i)",
   async (offset) => {
     await using tmp = await tmpdir({ git: true })
-    await ConfigEdit.commit("global", (text) =>
+    await Config.edit("global", (text) =>
       ConfigEdit.set(text, ["agentConnections", "products", "concurrent-history-fixture"], {
         command: process.execPath,
         adapter: "member",
@@ -761,7 +766,7 @@ test.each([false, true])(
   "replays saved text history without resume support (session line: %s)",
   async (hasSessionLine) => {
     await using tmp = await tmpdir({ git: true })
-    await ConfigEdit.commit("global", (text) =>
+    await Config.edit("global", (text) =>
       ConfigEdit.set(text, ["agentConnections", "products", "replay-fixture"], {
         command: process.execPath,
         adapter: "command",
@@ -853,7 +858,7 @@ test("rejects unknown products and external targets on collaboration groups", as
 
 test("preserves observed external tool steps without inventing tool results", async () => {
   await using tmp = await tmpdir({ git: true })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "steps-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -882,7 +887,7 @@ test("preserves observed external tool steps without inventing tool results", as
 
 test("applies a readonly turn mode over a previously stored auto mode", async () => {
   await using tmp = await tmpdir({ git: true })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "permission-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -915,7 +920,7 @@ test("applies a readonly turn mode over a previously stored auto mode", async ()
 
 test("sends an external text turn without configuring a native provider", async () => {
   await using tmp = await tmpdir({ git: true })
-  await ConfigEdit.commit("global", (text) =>
+  await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "direct-fixture"], {
       command: process.execPath,
       adapter: "member",
@@ -949,6 +954,51 @@ test("sends an external text turn without configuring a native provider", async 
           .map((p) => p.text)
           .join(""),
       ).toMatch(/^Hello world \(.+; fixture-explicit\)$/)
+    },
+  })
+})
+
+test("a direct external prompt recovers an unfinished old turn without a prior application read", async () => {
+  await using tmp = await tmpdir()
+  await Config.edit("global", (text) =>
+    ConfigEdit.set(text, ["agentConnections", "products", "restart-fixture"], {
+      command: process.execPath,
+      args: ["-e", "process.stdin.resume(); process.stdout.write('Reply')"],
+    }),
+  )
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ target: { kind: "external", productID: "restart-fixture" } })
+      const execution = {
+        kind: "external" as const,
+        productID: "restart-fixture",
+        productTitle: "Restart fixture",
+        runID: "crashed-run",
+        targetRevision: 0,
+      }
+      const asked = await Session.updateInfo({
+        id: Identifier.ascending("message"),
+        sessionID: session.id,
+        role: "user",
+        time: { created: Date.now() },
+        permissionMode: "ask",
+        execution,
+      })
+      const stuck = await Session.updateInfo({
+        id: Identifier.ascending("message"),
+        sessionID: session.id,
+        role: "assistant",
+        parentID: asked.id,
+        time: { created: Date.now() },
+        path: { cwd: tmp.path, root: tmp.path },
+        execution,
+      })
+      await LoopRequest.prompt({ sessionID: session.id, parts: [{ type: "text", text: "Continue" }] })
+      const recovered = await Message.get({ sessionID: session.id, messageID: stuck.id })
+      expect(Message.isExternal(recovered.info) && recovered.info.role === "assistant" && recovered.info.terminal).toBe(
+        "interrupted",
+      )
     },
   })
 })

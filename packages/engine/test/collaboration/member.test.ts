@@ -3,17 +3,17 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { Identifier } from "@merakcode/util/id"
 import type { Permission, Verdict } from "@merakcode/sdk/adapter"
-import { Bus } from "../../src/bus"
-import { Instance } from "../../src/project/instance"
-import { Session } from "../../src/session"
-import { DelegateTool } from "../../src/tool/delegate"
+import { Bus } from "../../src/infra/bus"
+import { Instance } from "../../src/infra/project/instance"
+import { Session } from "../../src/agent/session"
+import { DelegateTool } from "../../src/app/task/tools/delegate"
 import { Agent } from "../../src/agent/agent"
-import { Config } from "../../src/config/config"
-import { SessionRunner } from "../../src/session/runner"
-import { PermissionNext } from "../../src/permission/next"
-import { Question } from "../../src/question"
-import type { PermissionMode } from "../../src/permission/mode"
-import { create } from "../../src/collaboration/store"
+import { Config } from "../../src/app/config/files/config"
+import { Loop } from "../../src/agent/loop/index"
+import { PermissionNext } from "../../src/agent/permission/next"
+import { Question } from "../../src/agent/session/question"
+import type { PermissionMode } from "../../src/agent/permission/mode"
+import { create } from "../../src/app/task/collaboration/store"
 import { tmpdir } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 
@@ -121,7 +121,7 @@ async function delegate(input: {
       const call = async () => {
         const tool = await DelegateTool.init()
         const agent = (await Agent.get("build"))!
-        const ruleset = SessionRunner.buildToolExecutionRuleset({
+        const ruleset = Loop.buildToolExecutionRuleset({
           agent,
           session: await Session.get(current.id),
           permissionMode: input.mode,

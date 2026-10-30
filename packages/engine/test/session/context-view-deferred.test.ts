@@ -1,14 +1,14 @@
 // /context tool stats (SessionContextView.build -> resolveToolStats) apply the same deferred filtering as
 // runner.resolveTools: deferred tools are excluded, tool_search is counted, and activated tools are counted again.
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionContextView } from "@merakcode/engine/session/context-view"
+import { SessionContextView } from "@merakcode/engine/agent/context/context-view"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 
 const model = {
   id: "claude-test",

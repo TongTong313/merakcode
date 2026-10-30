@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test, type Mock, vi } from "vitest"
 import path from "path"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { ReadTool } from "@merakcode/engine/tool/read"
-import { ToolPathGuard } from "@merakcode/engine/tool/path-guard"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { ReadTool } from "@merakcode/engine/agent/tools/read"
+import { ToolPathGuard } from "@merakcode/engine/agent/tools/path-guard"
 import { tmpdir } from "../fixture/fixture"
-import type { Message } from "@merakcode/engine/session/message"
+import type { Message } from "@merakcode/engine/agent/session/message"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 /**

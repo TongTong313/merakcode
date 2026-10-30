@@ -1,5 +1,5 @@
 /**
- * End-to-end wiring of retryCount in the SessionRunner.prompt loop (shouldRetryStructuredOutput itself is unit-tested
+ * End-to-end wiring of retryCount in the Loop.prompt loop (shouldRetryStructuredOutput itself is unit-tested
  * separately). The mocked model always replies with plain text and stops, never calling the StructuredOutput tool:
  *   1) without structured output, each retry appends a synthetic user prompt carrying the format;
  *   2) after the retry limit the run ends with an explicit StructuredOutputError instead of degrading silently;
@@ -7,14 +7,14 @@
  * Only workflow agent({schema}) uses structured output, so this path affects workflow child sessions, not chat.
  */
 import { afterEach, beforeEach, test, expect } from "vitest"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { Message } from "@merakcode/engine/session/message"
-import { LLM } from "@merakcode/engine/session/llm"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LLM } from "@merakcode/engine/agent/model/llm"
 import { Log } from "@merakcode/log/logger"
-import { SessionStatus } from "@merakcode/engine/session/status"
+import { LoopStatus } from "@merakcode/engine/agent/loop/status"
 import { tmpdir } from "../fixture/fixture"
 import { setTimeout as delay } from "node:timers/promises"
 
@@ -61,7 +61,7 @@ test("missing structured output retries with a correction prompt, then fails wit
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      const result = await SessionRunner.prompt({
+      const result = await Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -117,7 +117,7 @@ test("structured retries keep queued messages out of their context, and each cal
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ title: "Structured retry queue" })
-      const first = SessionRunner.prompt({
+      const first = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -130,7 +130,7 @@ test("structured retries keep queued messages out of their context, and each cal
       })
       await firstStarted.promise
       const queuedText = "QUEUED_INDEPENDENT_PROMPT"
-      const queued = SessionRunner.prompt({
+      const queued = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -156,7 +156,7 @@ test("structured retries keep queued messages out of their context, and each cal
         expect(result.parts.some((part) => part.type === "text" && part.text === "response-2")).toBe(true)
         expect(contexts[1]).toContain(RETRY_PROMPT)
         expect(contexts[1]).not.toContain(queuedText)
-        expect(SessionStatus.get(session.id).type).toBe("busy")
+        expect(LoopStatus.get(session.id).type).toBe("busy")
 
         finishQueued.resolve()
         const queuedResult = await queued
@@ -164,11 +164,11 @@ test("structured retries keep queued messages out of their context, and each cal
         expect(queuedResult.parts.some((part) => part.type === "text" && part.text === "response-3")).toBe(true)
         expect(contexts).toHaveLength(3)
         expect(contexts[2]).toContain(queuedText)
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
       } finally {
         finishFirst.resolve()
         finishQueued.resolve()
-        await SessionRunner.cancelAndSettle(session.id)
+        await Loop.cancelAndSettle(session.id)
         await Promise.allSettled([first, queued])
       }
     },

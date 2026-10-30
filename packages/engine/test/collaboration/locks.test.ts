@@ -1,10 +1,10 @@
 import { expect, test } from "vitest"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
-import { Instance } from "../../src/project/instance"
-import { FileTime } from "../../src/file/time"
+import { Instance } from "../../src/infra/project/instance"
+import { FileTime } from "../../src/infra/file/time"
 import { tmpdir } from "../fixture/fixture"
-import { runAdmitted } from "../../src/collaboration/schedule"
+import { runAdmitted } from "../../src/infra/process/admission"
 
 /**
  * Whether a Merak write to file gets in while an external member holds paths. The member works until the check is

@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import path from "node:path"
-import { Command } from "../../src/command"
-import { Config } from "../../src/config/config"
-import { Instance } from "../../src/project/instance"
-import { MCP } from "../../src/mcp"
+import { Command } from "../../src/agent/prompt/command"
+import { Config } from "../../src/app/config/files/config"
+import { Instance } from "../../src/infra/project/instance"
+import { MCP } from "../../src/agent/mcp"
 import { tmpdir, runtime } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

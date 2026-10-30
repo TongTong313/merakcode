@@ -47,6 +47,30 @@ const TESTS = /\.test\.[cm]?[jt]sx?$/
 
 const rules: Rule[] = [
   {
+    name: "agent-does-not-import-app",
+    from: /^packages\/engine\/src\/agent\//,
+    except: [TESTS],
+    to: /^(packages\/engine\/src\/app\/|@merakcode\/engine\/app\/)/,
+  },
+  {
+    name: "session-records-do-not-import-loop",
+    from: /^packages\/engine\/src\/agent\/session\//,
+    except: [TESTS],
+    to: /^(packages\/engine\/src\/agent\/loop\/|@merakcode\/engine\/agent\/loop\/)/,
+  },
+  {
+    name: "engine-infra-only",
+    from: /^packages\/engine\/src\/infra\//,
+    except: [TESTS],
+    to: /^(packages\/engine\/src\/(?!infra\/)|@merakcode\/engine(?:$|\/(?!infra\/)))/,
+  },
+  {
+    name: "server-does-not-import-host",
+    from: /^packages\/engine\/src\/app\/server\//,
+    except: [TESTS],
+    to: /^(packages\/engine\/src\/app\/host\/|@merakcode\/engine\/app\/host\/)/,
+  },
+  {
     name: "engine-only-from-cli",
     from: /^(apps|packages)\//,
     except: [/^(apps\/cli|packages\/engine)\//],
@@ -103,7 +127,7 @@ const rules: Rule[] = [
   {
     // With the SDK's typed client, a changed route fails the typecheck instead of the user's request
     name: "requests-through-sdk",
-    from: /^(apps\/(.+\/)?src|packages\/client-core\/src)\//,
+    from: /^apps\/(.+\/)?src\//,
     except: [
       TESTS,
       // Third-party servers: releases, the npm registry, connectivity checks, a provider's login endpoint
@@ -111,8 +135,6 @@ const rules: Rule[] = [
       "apps/cli/src/cli/installation/release.ts",
       "apps/cli/src/cli/doctor.ts",
       "apps/cli/src/cli/cmd/provider.ts",
-      // The SDK has no WebSocket client; the terminal connects to /pty/{ptyID}/connect from the OpenAPI spec
-      "apps/desktop/renderer/src/features/terminal/terminal.tsx",
     ],
     to: /^((node:)?(https?|http2)|undici|ws)$/,
     uses: /^(fetch\(\)|new (WebSocket|EventSource|XMLHttpRequest)\(\))$/,
@@ -120,7 +142,7 @@ const rules: Rule[] = [
   {
     // Everything a client knows about the engine's config and data comes through the SDK, except what these files need
     name: "engine-files-through-sdk",
-    from: /^(apps\/(.+\/)?src|packages\/(client-core|sdk\/js)\/src)\//,
+    from: /^(apps\/(.+\/)?src|packages\/sdk\/js\/src)\//,
     except: [
       TESTS,
       // The language, needed before the engine starts
@@ -136,8 +158,8 @@ const rules: Rule[] = [
     // Provider list adapters stay inside the catalog. Session, UI and billing code see Provider.Model only.
     name: "catalog-adapters-private",
     from: /^packages\/engine\/src\//,
-    except: ["packages/engine/src/provider/catalog.ts", /^packages\/engine\/src\/provider\/catalog\//, TESTS],
-    to: /^packages\/engine\/src\/provider\/catalog\/(deepseek|alibaba|openrouter|anthropic|openai|google|zhipu|moonshot|relay|config)\.ts$/,
+    except: ["packages/engine/src/agent/model/catalog.ts", /^packages\/engine\/src\/agent\/model\/catalog\//, TESTS],
+    to: /^packages\/engine\/src\/agent\/model\/catalog\/(deepseek|alibaba|openrouter|anthropic|openai|google|zhipu|moonshot|relay|config)\.ts$/,
   },
 ]
 

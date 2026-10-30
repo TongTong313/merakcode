@@ -3,14 +3,14 @@
  * the transcript instead of being lost with the unwritten deltas.
  */
 import { afterEach, expect, test } from "vitest"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { Session } from "@merakcode/engine/session/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { LLM } from "@merakcode/engine/session/llm"
-import { Database } from "@merakcode/engine/storage/db"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Database } from "@merakcode/engine/infra/storage/db"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -36,7 +36,7 @@ test("stopping mid-stream writes the partial text to the transcript when the mes
       })(),
     }) as unknown as Awaited<ReturnType<typeof LLM.stream>>
 
-  const { SessionProcessor } = await import("@merakcode/engine/session/processor")
+  const { SessionProcessor } = await import("@merakcode/engine/agent/loop/processor")
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,

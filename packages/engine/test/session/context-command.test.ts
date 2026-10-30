@@ -1,12 +1,13 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { LLM } from "@merakcode/engine/session/llm"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionStatus } from "@merakcode/engine/session/status"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { LoopStatus } from "@merakcode/engine/agent/loop/status"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -72,16 +73,16 @@ describe("context sync command lifecycle", () => {
 
         // A sync /context never sets busy. It sends session.status idle to reset clients that optimistically went busy,
         // but not session.idle, which would make the desktop show a false "reply ready" notice.
-        const offStatus = Bus.subscribe(SessionStatus.Event.Status, (event) => {
+        const offStatus = Bus.subscribe(LoopStatus.Event.Status, (event) => {
           if (event.properties.sessionID !== session.id) return
           if (event.properties.status.type === "idle") events.push("session.status:idle")
         })
-        const offIdle = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
+        const offIdle = Bus.subscribe(LoopStatus.Event.Idle, (event) => {
           if (event.properties.sessionID !== session.id) return
           events.push("session.idle")
         })
 
-        const result = await SessionRunner.command({
+        const result = await Loop.command({
           sessionID: session.id,
           command: "context",
           arguments: "",
@@ -104,10 +105,10 @@ describe("context sync command lifecycle", () => {
         expect(userText?.text).toBe("/context")
         expect(userText?.ignored).toBe(true)
 
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
         expect(events).toEqual(["session.status:idle"])
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   }, 15000)
@@ -121,16 +122,16 @@ describe("context sync command lifecycle", () => {
       fn: async () => {
         const session = await Session.create({})
         const events: string[] = []
-        const offStatus = Bus.subscribe(SessionStatus.Event.Status, (event) => {
+        const offStatus = Bus.subscribe(LoopStatus.Event.Status, (event) => {
           if (event.properties.sessionID !== session.id) return
           if (event.properties.status.type === "idle") events.push("session.status:idle")
         })
-        const offIdle = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
+        const offIdle = Bus.subscribe(LoopStatus.Event.Idle, (event) => {
           if (event.properties.sessionID !== session.id) return
           events.push("session.idle")
         })
 
-        const result = await SessionRunner.command({
+        const result = await Loop.command({
           sessionID: session.id,
           command: "context",
           arguments: "分析一下这个结果",
@@ -176,18 +177,18 @@ describe("context sync command lifecycle", () => {
         }
 
         // The trailing LLM run goes busy -> idle and broadcasts session.idle exactly once.
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
         expect(events).toContain("session.status:idle")
         expect(events).toContain("session.idle")
         expect(events.filter((e) => e === "session.idle")).toHaveLength(1)
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   }, 30000)
 
   test("buildSyncFollowupSystem injects the command output into the system prompt", () => {
-    const system = SessionRunner.__test.buildSyncFollowupSystem("context", "## 上下文报告\n\ntokens: 100")
+    const system = Loop.__test.buildSyncFollowupSystem("context", "## 上下文报告\n\ntokens: 100")
     expect(system).toContain("The user just ran the /context command")
     expect(system).toContain("## 上下文报告")
     expect(system).toContain("tokens: 100")

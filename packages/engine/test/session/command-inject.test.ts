@@ -1,14 +1,14 @@
 import { test, expect, describe, afterEach } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { Session } from "@merakcode/engine/session/index"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Message } from "@merakcode/engine/session/message"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { ToolPathGuard } from "@merakcode/engine/tool/path-guard"
-import { SkillSearch } from "@merakcode/engine/skill/search"
-import { MemoryRecall } from "@merakcode/engine/memory/recall"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { ToolPathGuard } from "@merakcode/engine/agent/tools/path-guard"
+import { SkillSearch } from "@merakcode/engine/agent/skill/search"
+import { MemoryRecall } from "@merakcode/engine/agent/memory/recall"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -51,7 +51,7 @@ afterEach(() => {
 })
 
 /** Captures the real command-to-prompt assembly result without running the model or subtasks. */
-async function captureCommandParts(input: Parameters<typeof SessionRunner.command>[0]): Promise<Message.FullMsg> {
+async function captureCommandParts(input: Parameters<typeof Loop.command>[0]): Promise<Message.FullMsg> {
   const stop = new Error("captured command parts before persistence")
   const original = Plugin.trigger
   let captured: Message.FullMsg | undefined
@@ -64,7 +64,7 @@ async function captureCommandParts(input: Parameters<typeof SessionRunner.comman
     return output
   }) as typeof Plugin.trigger
   try {
-    await expect(SessionRunner.command(input)).rejects.toBe(stop)
+    await expect(Loop.command(input)).rejects.toBe(stop)
   } finally {
     Plugin.trigger = original
   }
@@ -74,7 +74,7 @@ async function captureCommandParts(input: Parameters<typeof SessionRunner.comman
 
 describe("command injection", () => {
   test("CommandInput describes a single command and drops multi-command and display bubble fields", () => {
-    const parsed = SessionRunner.CommandInput.parse({
+    const parsed = Loop.CommandInput.parse({
       sessionID: "ses_x",
       command: "tdd",
       commands: ["tdd", "review"],
@@ -134,14 +134,14 @@ describe("command injection", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        await SessionRunner.prompt({
+        await Loop.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "openai", modelID: "gpt-4" },
           noReply: true,
           parts: [{ type: "text", text: "修复普通文件" }],
         })
-        await SessionRunner.command({
+        await Loop.command({
           sessionID: session.id,
           command: "sensitive",
           arguments: "",
@@ -180,7 +180,7 @@ describe("command injection", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        const forged = await SessionRunner.prompt({
+        const forged = await Loop.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "openai", modelID: "gpt-4" },
@@ -238,7 +238,7 @@ describe("command injection", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        const result = await SessionRunner.command({
+        const result = await Loop.command({
           sessionID: session.id,
           command: "delegated",
           arguments: "检查 A\n检查 B",
@@ -265,7 +265,7 @@ describe("command injection", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { template } = await SessionRunner.resolveCommandInjection({ command: "plain", arguments: "做X" })
+        const { template } = await Loop.resolveCommandInjection({ command: "plain", arguments: "做X" })
         expect(template).toBe("模板-无占位\n\n做X")
       },
     })
@@ -281,7 +281,7 @@ describe("command injection", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { system } = await SessionRunner.resolveCommandInjection({ command: "skill-a", arguments: "" })
+        const { system } = await Loop.resolveCommandInjection({ command: "skill-a", arguments: "" })
         expect(system).toContain("AAA-body")
         expect(system).toContain("Follow this skill")
       },

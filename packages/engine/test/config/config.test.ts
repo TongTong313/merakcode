@@ -1,14 +1,14 @@
 import { test, expect, describe, afterEach, vi } from "vitest"
-import { Config } from "@merakcode/engine/config/config"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Auth } from "@merakcode/engine/auth/index"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
 import { globalConfig, tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
-import { Global } from "@merakcode/engine/global/index"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 // Get managed config directory from environment (set in preload.ts)
@@ -228,6 +228,8 @@ test.each(["json", "jsonc"])(
   async (extension) => {
     await using tmp = await tmpdir()
     using _global = globalConfig(tmp.path)
+    // An earlier reader may warm the cache while the fixture files are still being prepared.
+    await Config.getGlobal()
     const filepath = path.join(tmp.path, `merakcode.${extension}`)
     const reference = path.join(tmp.path, "agent.txt")
     await Filesystem.write(reference, "test-agent")
@@ -243,6 +245,7 @@ test.each(["json", "jsonc"])(
       }
       return content
     })
+    Config.global.reset()
     const loading = Config.getGlobal()
     try {
       await reading.promise

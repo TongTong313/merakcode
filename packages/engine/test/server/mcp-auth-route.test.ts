@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { Http } from "@merakcode/util/http"
-import { Config } from "@merakcode/engine/config/config"
-import { Server } from "@merakcode/engine/server/server"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Server } from "@merakcode/engine/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 
 function json(body: unknown, status = 200) {

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import path from "path"
-import { InstructionPrompt } from "@merakcode/engine/session/instruction"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Global } from "@merakcode/engine/global/index"
+import { InstructionPrompt } from "@merakcode/engine/agent/context/instruction"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

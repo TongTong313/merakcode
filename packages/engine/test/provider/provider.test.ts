@@ -4,11 +4,11 @@ import path from "path"
 
 import { tmpdir } from "../fixture/fixture"
 import { restoreCatalog, writeCatalog } from "./catalog/fixture"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Auth } from "@merakcode/engine/auth/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "@merakcode/engine/config/config"
+import { Config } from "@merakcode/engine/app/config/files/config"
 
 afterEach(async () => {
   for (const id of ["anthropic", "openai", "alibaba-cn", "google", "openrouter"]) await Auth.remove(id)

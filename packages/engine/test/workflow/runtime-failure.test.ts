@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { WorkflowRuntime } from "@merakcode/engine/workflow/runtime"
-import { WorkflowScriptParser } from "@merakcode/engine/workflow/script"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { WorkflowRuntime } from "@merakcode/engine/app/task/workflow/runtime"
+import { WorkflowScriptParser } from "@merakcode/engine/app/task/workflow/script"
 import { tmpdir } from "../fixture/fixture"
 
 /**

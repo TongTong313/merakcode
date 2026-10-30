@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Workspace } from "@merakcode/engine/project/workspace"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Workspace } from "@merakcode/engine/infra/project/workspace"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Workspace.resolvePath", () => {

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "vitest"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Http } from "@merakcode/util/http"
-import { Instance } from "@merakcode/engine/project/instance"
-import { ProviderVerify } from "@merakcode/engine/provider/verify"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { ProviderVerify } from "@merakcode/engine/agent/model/verify"
 import { tmpdir } from "../fixture/fixture"
 
 // After connecting a provider, a minimal request surfaces a wrong key or region (China vs international Model Studio)

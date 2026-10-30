@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { APICallError } from "ai"
-import { Message } from "@merakcode/engine/session/message"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 
 const sessionID = "session"
 const model: Provider.Model = {

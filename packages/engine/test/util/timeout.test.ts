@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { withFallbackTimeout, withTimeout } from "@merakcode/engine/util/timeout"
+import { withFallbackTimeout, withTimeout } from "@merakcode/engine/infra/concurrency/timeout"
 
 describe("util.timeout", () => {
   test("should resolve when promise completes before timeout", async () => {

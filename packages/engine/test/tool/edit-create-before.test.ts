@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { EditTool } from "@merakcode/engine/tool/edit"
-import { Instance } from "@merakcode/engine/project/instance"
+import { EditTool } from "@merakcode/engine/agent/tools/edit"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

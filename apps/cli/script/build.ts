@@ -127,14 +127,14 @@ async function bundle(out: string) {
   await build({
     entryPoints: {
       main: path.join(dir, "src/index.ts"),
-      // Linux sandbox helper, started as its own process (see packages/sandbox/src/linux/index.ts)
-      "sandbox-linux": path.join(root, "packages/sandbox/src/linux/exec.ts"),
+      // Linux sandbox helper, started as its own process (see engine src/infra/sandbox/linux/index.ts)
+      "sandbox-linux": path.join(root, "packages/engine/src/infra/sandbox/linux/exec.ts"),
       // Built-in member adapters, each started as its own process for a collaboration member (see
-      // packages/engine/src/agent-connection/adapters/index.ts)
+      // packages/engine/src/agent/external/adapters/index.ts)
       ...Object.fromEntries(
         ["claude", "codex", "opencode", "command"].map((name) => [
           `adapter-${name}`,
-          path.join(root, `packages/engine/src/agent-connection/adapters/${name}.ts`),
+          path.join(root, `packages/engine/src/agent/external/adapters/${name}.ts`),
         ]),
       ),
     },
@@ -183,9 +183,9 @@ async function bundle(out: string) {
   // The output is ESM: without "type", Node first parses it as CommonJS, retries, and prints a warning
   await Filesystem.write(path.join(out, "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n")
   // The adapter-generator skill's files, read by the engine and copied by the model (see
-  // packages/engine/src/skill/builtin/adapter-generator/index.ts); its code is bundled
+  // packages/engine/src/agent/skill/builtin/adapter-generator/index.ts); its code is bundled
   await fs.cp(
-    path.join(root, "packages/engine/src/skill/builtin/adapter-generator"),
+    path.join(root, "packages/engine/src/agent/skill/builtin/adapter-generator"),
     path.join(out, "skills", "adapter-generator"),
     {
       recursive: true,

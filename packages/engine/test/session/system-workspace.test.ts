@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { SystemPrompt } from "@merakcode/engine/session/system"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { SystemPrompt } from "@merakcode/engine/agent/context/system"
 import { tmpdir } from "../fixture/fixture"
 
 describe("SystemPrompt.userContext multi-root", () => {

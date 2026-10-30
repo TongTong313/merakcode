@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
-import { WorkflowRegistry } from "@merakcode/engine/workflow/registry"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { WorkflowRegistry } from "@merakcode/engine/app/task/workflow/registry"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

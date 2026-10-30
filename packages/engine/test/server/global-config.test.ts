@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import path from "path"
 import { unlink } from "fs/promises"
-import { Global } from "@merakcode/engine/global/index"
-import { Server } from "@merakcode/engine/server/server"
-import { Config } from "@merakcode/engine/config/config"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 /**

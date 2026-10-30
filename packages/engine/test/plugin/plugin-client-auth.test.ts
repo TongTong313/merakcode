@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
 import { pathToFileURL } from "url"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Identifier } from "@merakcode/util/id"
-import { setLocalSecretForTest } from "@merakcode/engine/auth/local-secret"
+import { setLocalSecretForTest } from "@merakcode/engine/app/server/auth/local-secret"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "../../src/config/config"
+import { Config } from "../../src/app/config/files/config"
 
 /**
  * The plugin's in-process client must send the local auth header, as opencode 1.16.2 does with

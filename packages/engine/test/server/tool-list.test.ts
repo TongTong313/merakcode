@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { Server } from "@merakcode/engine/server/server"
+import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 

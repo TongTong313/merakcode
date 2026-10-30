@@ -2,13 +2,12 @@ import { describe, expect, test } from "vitest"
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Agent } from "@merakcode/engine/agent/agent"
-import { Instance } from "@merakcode/engine/project/instance"
-import type { Provider } from "@merakcode/engine/provider/provider"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionContextBudget } from "@merakcode/engine/session/context-budget"
-import { SessionContextView } from "@merakcode/engine/session/context-view"
-import { SystemPrompt } from "@merakcode/engine/session/system"
-import { Token } from "@merakcode/engine/util/token"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { SessionContextBudget } from "@merakcode/engine/agent/context/context-budget"
+import { SessionContextView } from "@merakcode/engine/agent/context/context-view"
+import { Token } from "@merakcode/engine/agent/context/token"
 import { tmpdir } from "../fixture/fixture"
 
 const sessionID = "session"
@@ -480,9 +479,12 @@ test("the /context breakdown counts the context after the history as user contex
         model: createModel(),
         step: 1,
       })
-      const tail = SessionContextView.toUserContextMessages(await SystemPrompt.gitStatus())
-      expect(tail).toHaveLength(1)
-      const reminders = [view.messages[0]!, ...tail]
+      const last = view.messages.at(-1)!
+      if (last.role !== "user" || typeof last.content === "string") throw new Error("Expected the user's message")
+      expect(last.content[0]).toEqual({ type: "text", text: "hi" })
+      const tail = last.content.slice(1)
+      expect(tail).toEqual([expect.objectContaining({ type: "text", text: expect.stringContaining("<git-status>") })])
+      const reminders = [view.messages[0]!, { ...last, content: tail }]
       expect(view.stats.tokens.userContext).toBe(SessionContextView.estimate({ system: [], messages: reminders }))
     },
   })

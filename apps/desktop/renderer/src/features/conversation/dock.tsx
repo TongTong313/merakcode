@@ -1,10 +1,5 @@
 import type { PermissionRequest, QuestionRequest } from "@merakcode/sdk/client"
-import {
-  permissionChoices,
-  permissionKind,
-  permissionTags,
-  type PermissionChoice,
-} from "@merakcode/client-core/permission"
+import { permissionChoices, permissionKind, permissionTags, type PermissionChoice } from "./permission"
 import MessageCircleQuestion from "lucide-solid/icons/message-circle-question-mark"
 import ShieldAlert from "lucide-solid/icons/shield-alert"
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js"

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest"
 import { Http } from "@merakcode/util/http"
-import { Discovery } from "@merakcode/engine/skill/discovery"
+import { Discovery } from "@merakcode/engine/agent/skill/discovery"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Glob } from "@merakcode/util/glob"

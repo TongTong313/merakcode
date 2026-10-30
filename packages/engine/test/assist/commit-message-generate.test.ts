@@ -2,9 +2,9 @@ import { afterAll, beforeEach, describe, expect, test, vi } from "vitest"
 import fs from "fs"
 import os from "os"
 import path from "path"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { ProviderTransform } from "@merakcode/engine/provider/transform"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { ProviderTransform } from "@merakcode/engine/agent/model/transform"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Log } from "@merakcode/log/logger"
 import { Process } from "@merakcode/util/process"
 
@@ -145,7 +145,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("returns the cleaned model output for staged changes", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithStaged()
     cleanup.push(dir)
 
@@ -161,7 +161,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("summarizes and samples many untracked files in the prompt instead of listing every path", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithManyUntracked(50)
     cleanup.push(dir)
 
@@ -182,7 +182,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("reads the prefix of untracked files over 2KB and marks them truncated", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithLargeUntracked()
     cleanup.push(dir)
 
@@ -202,7 +202,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("untracked non-ASCII and spaced paths reach the prompt as plain UTF-8, without quotePath escaping", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithMixedPathUntracked()
     cleanup.push(dir)
 
@@ -222,7 +222,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("staged Chinese paths reach the prompt as plain UTF-8", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithStagedChinese()
     cleanup.push(dir)
 
@@ -239,7 +239,7 @@ describe("POST /assist/commit-message (happy path, only the external LLM mocked)
   })
 
   test("unstaged changes to tracked Chinese paths reach the prompt as plain UTF-8", async () => {
-    const { AssistRoutes } = await import("@merakcode/engine/server/routes/assist")
+    const { AssistRoutes } = await import("@merakcode/engine/app/server/routes/assist")
     const dir = await makeRepoWithWorkingChinese()
     cleanup.push(dir)
 

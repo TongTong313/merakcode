@@ -3,8 +3,8 @@ import fs from "fs/promises"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Vcs } from "@merakcode/engine/project/vcs"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Vcs } from "@merakcode/engine/app/project/vcs"
 import { tmpdir } from "../fixture/fixture"
 
 // The desktop app polls the git status in the background. A plain git status rewrites .git/index (under

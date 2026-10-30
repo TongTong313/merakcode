@@ -40,7 +40,7 @@ SOFTWARE.
 ## pi-mono
 
 - Project: https://github.com/badlogic/pi-mono
-- Used in: the patterns that detect "context window exceeded" errors in `packages/engine/src/provider/error.ts`
+- Used in: the patterns that detect "context window exceeded" errors in `packages/engine/src/agent/model/error.ts`
 - License: MIT
 
 ```

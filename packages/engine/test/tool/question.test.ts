@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from "vitest"
-import { QuestionTool } from "@merakcode/engine/tool/question"
-import * as QuestionModule from "@merakcode/engine/question/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { QuestionTool } from "@merakcode/engine/agent/tools/question"
+import * as QuestionModule from "@merakcode/engine/agent/session/question/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {

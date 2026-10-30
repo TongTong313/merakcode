@@ -1,14 +1,14 @@
 import { test, expect } from "vitest"
 import z from "zod"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Agent } from "@merakcode/engine/agent/agent"
 import { Identifier } from "@merakcode/util/id"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SubAgentTool, summarizeSubagentMetrics } from "@merakcode/engine/tool/subagent"
-import type { Tool } from "@merakcode/engine/tool/tool"
-import { PermissionNext } from "@merakcode/engine/permission/next"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SubAgentTool, summarizeSubagentMetrics } from "@merakcode/engine/agent/tools/subagent"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 import { tmpdir } from "../fixture/fixture"
 
 test("starting a subagent asks in ask mode, is allowed in auto mode and is denied inside a child session", async () => {
@@ -23,7 +23,7 @@ test("starting a subagent asks in ask mode, is allowed in auto mode and is denie
         PermissionNext.evaluate(
           "subagent",
           "explore",
-          SessionRunner.buildToolExecutionRuleset({ agent: build, session: target, permissionMode }),
+          Loop.buildToolExecutionRuleset({ agent: build, session: target, permissionMode }),
         ).action
       expect(decide(session, "ask")).toBe("ask")
       expect(decide(session, "auto")).toBe("allow")
@@ -250,9 +250,9 @@ test("SubAgentTool routes omitted mode, fork, and task_id without changing their
         ask: async () => {},
       } satisfies Tool.Context
 
-      const calls: SessionRunner.PromptInput[] = []
-      const originalPrompt = SessionRunner.prompt
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (input) => {
+      const calls: Loop.PromptInput[] = []
+      const originalPrompt = Loop.prompt
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input) => {
         calls.push(input)
         const created = Date.now() - 1000
         return {
@@ -282,7 +282,7 @@ test("SubAgentTool routes omitted mode, fork, and task_id without changing their
             },
           ],
         } as unknown as Message.FullMsg
-      }) as typeof SessionRunner.prompt
+      }) as typeof Loop.prompt
 
       try {
         const tool = await SubAgentTool.init()
@@ -313,7 +313,7 @@ test("SubAgentTool routes omitted mode, fork, and task_id without changing their
         expect(calls.at(-1)?.sessionID).toBe(resumable.id)
         expect(await Session.children(parent.id)).toHaveLength(childrenBeforeResume.length)
       } finally {
-        ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = originalPrompt
+        ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = originalPrompt
       }
     },
   })

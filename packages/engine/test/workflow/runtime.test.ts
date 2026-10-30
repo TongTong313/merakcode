@@ -1,17 +1,17 @@
 import { describe, expect, test } from "vitest"
 import z from "zod"
-import { Bus } from "@merakcode/engine/bus/index"
+import { Bus } from "@merakcode/engine/infra/bus/index"
 import { Identifier } from "@merakcode/util/id"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { ToolRegistry } from "@merakcode/engine/tool/registry"
-import { WorkflowRuntime } from "@merakcode/engine/workflow/runtime"
-import { WorkflowState } from "@merakcode/engine/workflow/state"
-import type { WorkflowRunMetadata, WorkflowScript } from "@merakcode/engine/workflow/types"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
+import { WorkflowRuntime } from "@merakcode/engine/app/task/workflow/runtime"
+import { WorkflowState } from "@merakcode/engine/app/task/workflow/state"
+import type { WorkflowRunMetadata, WorkflowScript } from "@merakcode/engine/app/task/workflow/types"
 import { tmpdir } from "../fixture/fixture"
 
 function script(body: string, extra: Partial<WorkflowScript> = {}): WorkflowScript {
@@ -140,16 +140,16 @@ describe("WorkflowRuntime", () => {
 
   test("uses workflow meta concurrency as a local agent queue", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     let running = 0
     let peak = 0
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async () => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async () => {
       running++
       peak = Math.max(peak, running)
       await new Promise((resolve) => setTimeout(resolve, 20))
       running--
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -185,24 +185,22 @@ describe("WorkflowRuntime", () => {
       expect(updates.findLast((item) => item.status === "completed")?.maxConcurrentAgents).toBe(2)
       expect(updates.some((item) => item.queuedAgentCount === 1)).toBe(true)
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("fanout launches one agent per work unit and records units", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     let running = 0
     let peak = 0
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       running++
       peak = Math.max(peak, running)
       await new Promise((resolve) => setTimeout(resolve, 20))
       running--
       return message(input.parts.find((part) => part.type === "text")?.text ?? "done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -240,15 +238,15 @@ describe("WorkflowRuntime", () => {
         ["billing", "completed", "agent-2"],
       ])
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("fanout keeps duplicate work unit ids unique", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async () =>
-      message("done")) as unknown as typeof SessionRunner.prompt
+    const original = Loop.prompt
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async () =>
+      message("done")) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -279,17 +277,15 @@ describe("WorkflowRuntime", () => {
       expect(final?.workUnits?.map((unit) => unit.id)).toEqual(["same", "same-2"])
       expect(final?.workUnits?.map((unit) => unit.agentId)).toEqual(["agent-1", "agent-2"])
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("fanout string results expose content/text/output aliases inside workflow scripts", async () => {
-    const original = SessionRunner.prompt
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    const original = Loop.prompt
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       return message(input.parts.find((part) => part.type === "text")?.text ?? "done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -325,27 +321,25 @@ describe("WorkflowRuntime", () => {
       })
       expect(("host string" as unknown as { content?: string }).content).toBeUndefined()
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("workflow child sessions inherit caller rules while preserving workflow restrictions", async () => {
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     const captured: {
-      kind?: SessionRunner.PromptInput["kind"]
+      kind?: Loop.PromptInput["kind"]
       permission?: PermissionNext.Ruleset
       edit?: PermissionNext.Action
       externalDirectory?: PermissionNext.Action
       workflowRun?: PermissionNext.Action
       subagent?: PermissionNext.Action
     } = {}
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       const child = await Session.get(input.sessionID)
       const agent = await Agent.get("workflow-subagent")
       expect(agent).toBeDefined()
-      const rules = SessionRunner.buildToolExecutionRuleset({
+      const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
         permissionMode: input.kind,
@@ -357,7 +351,7 @@ describe("WorkflowRuntime", () => {
       captured.workflowRun = PermissionNext.evaluate("workflow_run", "demo", rules).action
       captured.subagent = PermissionNext.evaluate("subagent", "general", rules).action
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     const callerRuleset = PermissionNext.fromConfig({ "*": "allow" })
 
@@ -387,24 +381,22 @@ describe("WorkflowRuntime", () => {
       expect(captured.workflowRun).toBe("deny")
       expect(captured.subagent).toBe("deny")
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("workflow script kind option cannot elevate inherited non-auto rules", async () => {
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     const captured: {
-      kind?: SessionRunner.PromptInput["kind"]
+      kind?: Loop.PromptInput["kind"]
       edit?: PermissionNext.Action
       write?: PermissionNext.Action
     } = {}
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       const child = await Session.get(input.sessionID)
       const agent = await Agent.get("workflow-subagent")
       expect(agent).toBeDefined()
-      const rules = SessionRunner.buildToolExecutionRuleset({
+      const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
         permissionMode: input.kind,
@@ -413,7 +405,7 @@ describe("WorkflowRuntime", () => {
       captured.edit = PermissionNext.evaluate("edit", "src/file.ts", rules).action
       captured.write = PermissionNext.evaluate("write", "src/file.ts", rules).action
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -441,17 +433,17 @@ describe("WorkflowRuntime", () => {
       expect(captured.edit).toBe("deny")
       expect(captured.write).toBe("deny")
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("workflow resume cache is scoped by inherited caller permissions", async () => {
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     let calls = 0
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async () => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async () => {
       calls++
       return message(`run-${calls}`)
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -515,12 +507,12 @@ describe("WorkflowRuntime", () => {
         },
       })
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("workflow allowedTools narrows visible tools and child permissions", async () => {
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     const captured: {
       tools?: Record<string, boolean>
       permission?: PermissionNext.Ruleset
@@ -528,13 +520,11 @@ describe("WorkflowRuntime", () => {
       edit?: PermissionNext.Action
       bash?: PermissionNext.Action
     } = {}
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       const child = await Session.get(input.sessionID)
       const agent = await Agent.get("workflow-subagent")
       expect(agent).toBeDefined()
-      const rules = SessionRunner.buildToolExecutionRuleset({
+      const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
         permissionMode: input.kind,
@@ -545,7 +535,7 @@ describe("WorkflowRuntime", () => {
       captured.edit = PermissionNext.evaluate("edit", "*", rules).action
       captured.bash = PermissionNext.evaluate("bash", "*", rules).action
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -576,12 +566,12 @@ describe("WorkflowRuntime", () => {
       expect(captured.edit).toBe("deny")
       expect(captured.bash).toBe("deny")
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("workflow allowedTools narrows custom tools from the target agent pool", async () => {
-    const originalPrompt = SessionRunner.prompt
+    const originalPrompt = Loop.prompt
     const originalAgentGet = Agent.get
     const captured: {
       tools?: Record<string, boolean>
@@ -616,13 +606,11 @@ describe("WorkflowRuntime", () => {
 
           ;(Agent as unknown as { get: typeof Agent.get }).get = (async (id: string) =>
             id === "workflow-custom" ? custom : originalAgentGet(id)) as typeof Agent.get
-          ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-            input: SessionRunner.PromptInput,
-          ) => {
+          ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
             const child = await Session.get(input.sessionID)
             const agent = await Agent.get(input.agent ?? "workflow-subagent")
             expect(agent).toBeDefined()
-            const rules = SessionRunner.buildToolExecutionRuleset({
+            const rules = Loop.buildToolExecutionRuleset({
               agent: agent!,
               session: child,
               permissionMode: input.kind,
@@ -630,7 +618,7 @@ describe("WorkflowRuntime", () => {
             captured.tools = input.tools
             captured.custom = PermissionNext.evaluate("custom_lookup", "*", rules).action
             return message("done")
-          }) as unknown as typeof SessionRunner.prompt
+          }) as unknown as typeof Loop.prompt
 
           await WorkflowRuntime.run({
             script: script("return await agent('scan', { agent: 'workflow-custom', allowedTools: ['read'] })"),
@@ -650,19 +638,17 @@ describe("WorkflowRuntime", () => {
       expect(captured.tools?.custom_lookup).toBe(false)
       expect(captured.custom).toBe("deny")
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = originalPrompt
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = originalPrompt
       ;(Agent as unknown as { get: typeof Agent.get }).get = originalAgentGet
     }
   })
 
   test("keeps agents grouped by the phase active when they are launched", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    const original = Loop.prompt
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       return message(input.parts.find((part) => part.type === "text")?.text ?? "done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -704,18 +690,18 @@ describe("WorkflowRuntime", () => {
         ["source two", "Start", "agent-2"],
       ])
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("fanout records planned agent labels before children start", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
+    const original = Loop.prompt
     const gate = Promise.withResolvers<void>()
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async () => {
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async () => {
       await gate.promise
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -759,16 +745,14 @@ describe("WorkflowRuntime", () => {
       await run
     } finally {
       gate.resolve()
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
   test("records the latest tool activity for each workflow agent", async () => {
     const updates: WorkflowRunMetadata[] = []
-    const original = SessionRunner.prompt
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (
-      input: SessionRunner.PromptInput,
-    ) => {
+    const original = Loop.prompt
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input: Loop.PromptInput) => {
       const messageID = Identifier.ascending("message")
       await Bus.publish(Message.Event.PartUpdated, {
         part: {
@@ -806,7 +790,7 @@ describe("WorkflowRuntime", () => {
         },
       })
       return message("done")
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -838,7 +822,7 @@ describe("WorkflowRuntime", () => {
       })
       expect(final?.agents[0]?.toolCount).toBe(2)
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 
@@ -908,15 +892,15 @@ describe("WorkflowRuntime schema failures are not silently downgraded", () => {
   })
 
   test("agent({ schema }) marks the agent failed and fails the workflow when no structured output is produced", async () => {
-    const original = SessionRunner.prompt
-    ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async () => {
+    const original = Loop.prompt
+    ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async () => {
       const msg = message("def bubble(arr): ...") // plain text, no structured output
       ;(msg.info as { error?: unknown }).error = new Message.StructuredOutputError({
         message: "Model did not produce structured output",
         retries: 2,
       }).toObject()
       return msg
-    }) as unknown as typeof SessionRunner.prompt
+    }) as unknown as typeof Loop.prompt
 
     try {
       await using tmp = await tmpdir()
@@ -947,7 +931,7 @@ describe("WorkflowRuntime schema failures are not silently downgraded", () => {
       expect(failedAgent).toBeDefined()
       expect(failedAgent?.error ?? "").toMatch(/structured/i)
     } finally {
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
     }
   })
 })

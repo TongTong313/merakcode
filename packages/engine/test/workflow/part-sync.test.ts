@@ -13,13 +13,17 @@
  * session/processor-workflow-terminal.test.ts.
  */
 import { expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { Identifier } from "@merakcode/util/id"
-import { WorkflowState } from "@merakcode/engine/workflow/state"
-import { WorkflowPartSync } from "@merakcode/engine/workflow/part-sync"
-import type { WorkflowRunControl, WorkflowRunMetadata, WorkflowRunRecord } from "@merakcode/engine/workflow/types"
+import { WorkflowState } from "@merakcode/engine/app/task/workflow/state"
+import { WorkflowPartSync } from "@merakcode/engine/app/task/workflow/part-sync"
+import type {
+  WorkflowRunControl,
+  WorkflowRunMetadata,
+  WorkflowRunRecord,
+} from "@merakcode/engine/app/task/workflow/types"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 

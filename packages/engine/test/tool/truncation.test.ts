@@ -1,5 +1,5 @@
 import { describe, test, expect, afterAll } from "vitest"
-import { Truncate } from "@merakcode/engine/tool/truncation"
+import { Truncate } from "@merakcode/engine/agent/tools/truncation"
 import { Identifier } from "@merakcode/util/id"
 import fs from "fs/promises"
 import path from "path"

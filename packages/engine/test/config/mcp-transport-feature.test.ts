@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { Config } from "@merakcode/engine/config/config"
+import { Config } from "@merakcode/engine/app/config/files/config"
 
 test("remote MCP config accepts explicit transport in both variants", () => {
   const parsed = Config.Mcp.safeParse({ type: "remote", url: "https://example.com/mcp", transport: "sse" })

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { getBuiltinSkill } from "@merakcode/engine/skill/builtin"
-import { CronCreateTool } from "@merakcode/engine/tool/loop"
+import { getBuiltinSkill } from "@merakcode/engine/agent/skill/builtin"
+import { CronCreateTool } from "@merakcode/engine/app/task/tools/cron"
 
 const content = getBuiltinSkill("loop")?.content ?? ""
 

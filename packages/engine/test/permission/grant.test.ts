@@ -1,10 +1,10 @@
 import { expect, test } from "vitest"
 import path from "path"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { PermissionPolicy } from "@merakcode/engine/permission/policy"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { tmpdir } from "../fixture/fixture"
 
 // Approval center: the segments of one command share a single approval; "this session" grants are stored on the main

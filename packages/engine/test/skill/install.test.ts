@@ -1,6 +1,6 @@
 import { afterEach, describe, test, expect } from "vitest"
 import path from "path"
-import { SkillInstall } from "@merakcode/engine/skill/install"
+import { SkillInstall } from "@merakcode/engine/agent/skill/install"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"

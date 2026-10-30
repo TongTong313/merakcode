@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import path from "path"
 import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib"
-import { PdfParseTool } from "@merakcode/engine/tool/pdf-parse"
-import { prepareCanvasForPdfjs } from "@merakcode/engine/util/canvas-native"
-import { Instance } from "@merakcode/engine/project/instance"
+import { PdfParseTool } from "@merakcode/engine/agent/tools/pdf-parse"
+import { prepareCanvasForPdfjs } from "@merakcode/engine/infra/document/pdf/canvas-native"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 

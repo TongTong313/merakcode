@@ -1,8 +1,8 @@
 import { expect, test } from "vitest"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 
 // The editor and review "revert here" read a file, change part of it and write it back. Reads must return the exact

@@ -1,6 +1,6 @@
 import { readFile, rm } from "node:fs/promises"
 import { describe, expect, test } from "vitest"
-import { createToolOutputSink } from "@merakcode/engine/tool/output-sink"
+import { createToolOutputSink } from "@merakcode/engine/agent/tools/output-sink"
 
 describe("tool output sink", () => {
   test("strips color codes, including escape sequences split across chunks", async () => {

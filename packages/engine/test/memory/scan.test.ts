@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
-import { MemoryScan } from "@merakcode/engine/memory/scan"
+import { MemoryScan } from "@merakcode/engine/agent/memory/scan"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

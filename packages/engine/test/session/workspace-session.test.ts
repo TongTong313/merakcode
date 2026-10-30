@@ -1,8 +1,9 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { Server } from "@merakcode/engine/server/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -65,12 +66,12 @@ describe("Session restore by workspace", () => {
       await Instance.provide({
         directory: a.path,
         workspace: { folders },
-        fn: () => Session.remove(wsSession.id),
+        fn: () => SessionOperations.remove(wsSession.id),
       }).catch(() => undefined)
       await Instance.disposeAll()
       await Instance.provide({
         directory: a.path,
-        fn: () => Session.remove(soloSession.id),
+        fn: () => SessionOperations.remove(soloSession.id),
       }).catch(() => undefined)
     }
   })
@@ -112,7 +113,7 @@ describe("Session restore by workspace", () => {
       await Instance.provide({
         directory: a.path,
         workspace: { folders: foldersAB },
-        fn: () => Session.remove(created.id),
+        fn: () => SessionOperations.remove(created.id),
       }).catch(() => undefined)
     }
   })

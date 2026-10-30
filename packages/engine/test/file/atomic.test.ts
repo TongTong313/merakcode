@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { Atomic } from "@merakcode/engine/file/atomic"
+import { Atomic } from "@merakcode/engine/infra/file/atomic"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

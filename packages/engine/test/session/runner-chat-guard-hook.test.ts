@@ -1,9 +1,10 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test, type Mock, vi } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 
-import { Plugin } from "@merakcode/engine/plugin/index"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
 import { tmpdir } from "../fixture/fixture"
 
 /**
@@ -20,7 +21,7 @@ import { tmpdir } from "../fixture/fixture"
 
 /**
  * Neutral fallback the engine uses when a plugin refuses without text (`GENERIC_REFUSAL_MESSAGE` in
- * `session/runner.ts`). Written as a literal instead of imported: it is a user-facing text contract, so changing it
+ * `agent/loop/index.ts`). Written as a literal instead of imported: it is a user-facing text contract, so changing it
  * should fail here rather than drift silently with the implementation.
  */
 const GENERIC_REFUSAL_MESSAGE = "抱歉，这个请求已被安全策略拒绝。"
@@ -49,7 +50,7 @@ describe("experimental.chat.guard", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        const msg = await SessionRunner.prompt({
+        const msg = await Loop.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "openai", modelID: "__no_such_model_for_test__" },
@@ -59,7 +60,7 @@ describe("experimental.chat.guard", () => {
         expect(msg.parts.some((p) => p.type === "text" && p.text === "插件自定义拒绝文案")).toBe(true)
         expect(seenInput?.sessionID).toBe(session.id)
         expect(seenInput?.role).toBe("user")
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })
@@ -77,14 +78,14 @@ describe("experimental.chat.guard", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        const msg = await SessionRunner.prompt({
+        const msg = await Loop.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "openai", modelID: "__no_such_model_for_test__" },
           parts: [{ type: "text", text: "普通的无害请求" }],
         })
         expect(msg.parts.some((p) => p.type === "text" && p.text === GENERIC_REFUSAL_MESSAGE)).toBe(true)
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })
@@ -97,7 +98,7 @@ describe("experimental.chat.guard", () => {
         const session = await Session.create({})
         let refused = false
         try {
-          const msg = await SessionRunner.prompt({
+          const msg = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "openai", modelID: "__no_such_model_for_test__" },
@@ -108,7 +109,7 @@ describe("experimental.chat.guard", () => {
           // Expected: past the guard, model resolution throws, so the request was not refused.
         }
         expect(refused).toBe(false)
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })

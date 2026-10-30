@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
 import { pathToFileURL } from "url"
-import type { Tool } from "@merakcode/engine/tool/tool"
-import { Instance } from "@merakcode/engine/project/instance"
-import { SkillTool } from "@merakcode/engine/tool/skill"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { SkillTool } from "@merakcode/engine/agent/tools/skill"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

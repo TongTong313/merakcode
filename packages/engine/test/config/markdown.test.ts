@@ -1,5 +1,5 @@
 import { expect, test, describe } from "vitest"
-import { ConfigMarkdown } from "@merakcode/engine/config/markdown"
+import { ConfigMarkdown } from "@merakcode/engine/infra/config/markdown"
 
 describe("ConfigMarkdown: normal template", () => {
   const template = `This is a @valid/path/to/a/file and it should also match at

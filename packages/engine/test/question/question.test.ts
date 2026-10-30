@@ -1,7 +1,7 @@
 import { test, expect } from "vitest"
-import { Question } from "@merakcode/engine/question/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Bus } from "@merakcode/engine/bus/index"
+import { Question } from "@merakcode/engine/agent/session/question/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Bus } from "@merakcode/engine/infra/bus/index"
 import { tmpdir } from "../fixture/fixture"
 
 test("ask - returns pending promise", async () => {

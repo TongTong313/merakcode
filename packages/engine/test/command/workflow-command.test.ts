@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
-import { Command } from "@merakcode/engine/command/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Command } from "@merakcode/engine/agent/prompt/command/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

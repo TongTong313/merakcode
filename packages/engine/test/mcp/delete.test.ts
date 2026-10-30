@@ -27,8 +27,8 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
   },
 }))
 
-const { MCP } = await import("@merakcode/engine/mcp/index")
-const { Instance } = await import("@merakcode/engine/project/instance")
+const { MCP } = await import("@merakcode/engine/agent/mcp/index")
+const { Instance } = await import("@merakcode/engine/infra/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
 const LOCAL = { type: "local" as const, command: ["dummy"], enabled: true }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { FileWatcher } from "@merakcode/engine/file/watcher"
-import { Instance } from "@merakcode/engine/project/instance"
+import { FileWatcher } from "@merakcode/engine/agent/workspace/file/watcher"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 

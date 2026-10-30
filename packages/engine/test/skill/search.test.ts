@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
 import type { Agent } from "@merakcode/engine/agent/agent"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Message } from "@merakcode/engine/session/message"
-import { SkillSearch } from "@merakcode/engine/skill/search"
-import type { Skill } from "@merakcode/engine/skill/skill"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { SkillSearch } from "@merakcode/engine/agent/skill/search"
+import type { Skill } from "@merakcode/engine/agent/skill/skill"
 
 const sessionID = "session"
 

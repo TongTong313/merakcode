@@ -1,14 +1,14 @@
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import type { Provider } from "@merakcode/engine/provider/provider"
-import { ToolRegistry } from "@merakcode/engine/tool/registry"
+import { Message } from "@merakcode/engine/agent/session/message"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
 import z from "zod"
 
 test("resolveTools drops question and plan mode tools in auto mode, and also subagent in child sessions", async () => {
@@ -59,7 +59,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         abort: new AbortController().signal,
       })
 
-      const { tools: toolsMain } = await SessionRunner.resolveTools({
+      const { tools: toolsMain } = await Loop.resolveTools({
         agent: agent!,
         model,
         session,
@@ -79,7 +79,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
       expect(toolsMain.pdf_parse).toBeUndefined()
       expect(toolsMain.tool_search).toBeDefined()
 
-      const { tools: toolsSub } = await SessionRunner.resolveTools({
+      const { tools: toolsSub } = await Loop.resolveTools({
         agent: agent!,
         model,
         session,
@@ -146,7 +146,7 @@ test("resolveTools respects per-message standard tool disables", async () => {
         model,
         abort: new AbortController().signal,
       })
-      const { tools } = await SessionRunner.resolveTools({
+      const { tools } = await Loop.resolveTools({
         agent: agent!,
         model,
         session,
@@ -224,9 +224,9 @@ test("resolveTools exposes dynamic plugin tools to primary agents but not explor
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
       }
-      const { tools: buildTools } = await SessionRunner.resolveTools({ ...base, agent: build! })
-      const { tools: exploreTools } = await SessionRunner.resolveTools({ ...base, agent: explore! })
-      const { tools: disabledTools } = await SessionRunner.resolveTools({
+      const { tools: buildTools } = await Loop.resolveTools({ ...base, agent: build! })
+      const { tools: exploreTools } = await Loop.resolveTools({ ...base, agent: explore! })
+      const { tools: disabledTools } = await Loop.resolveTools({
         ...base,
         agent: build!,
         tools: { plugin_smoke: false },
@@ -283,7 +283,7 @@ test("resolveTools drops subagent for sessions with a parentID, even outside aut
         model,
         abort: new AbortController().signal,
       })
-      const { tools } = await SessionRunner.resolveTools({
+      const { tools } = await Loop.resolveTools({
         agent: agent!,
         model,
         session,

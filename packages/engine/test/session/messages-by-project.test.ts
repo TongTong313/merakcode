@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
-import { Session } from "@merakcode/engine/session/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
 test("read messages of a session from another project when its project ID is provided", async () => {

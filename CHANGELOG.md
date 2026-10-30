@@ -6,13 +6,23 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- The SDK now provides `connectPty` for terminal WebSocket input and output; the desktop terminal uses this entry point.
+
+### 变更
+
+- SDK 新增终端 WebSocket 输入输出接口 `connectPty`，桌面终端改为通过该接口连接。
+
 ### Fixed
 
+- Configuration edits retry temporary Windows file sharing conflicts while preserving concurrent external changes.
 - Configuration schema insertion no longer overwrites newer settings, and configuration writes replace the file atomically when supported.
 - Global events without a directory no longer interrupt Git panel updates, and a failed event listener no longer drops subsequent conversation events.
 
 ### 修复
 
+- 配置编辑会重试 Windows 文件临时占用导致的冲突，并保留同时发生的外部修改。
 - 配置文件自动补写 schema 时不再覆盖较新的设置，配置写入在系统支持时通过原子替换完成。
 - 不带目录的全局事件不再中断 Git 面板更新，单个事件监听器异常也不再丢失后续对话事件。
 

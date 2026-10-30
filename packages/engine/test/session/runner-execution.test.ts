@@ -1,14 +1,15 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, expect, test } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Command } from "@merakcode/engine/command/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionExecution } from "@merakcode/engine/session/execution"
-import { LLM } from "@merakcode/engine/session/llm"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Command } from "@merakcode/engine/agent/prompt/command/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { LoopExecution } from "@merakcode/engine/agent/loop/execution"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { tmpdir } from "../fixture/fixture"
 
 const realTrigger = Plugin.trigger
@@ -80,7 +81,7 @@ test("cancelled command preparation drops late plugin output and leaves the lega
       const unsubscribe = Bus.subscribe(Command.Event.Executed, () => {
         completed++
       })
-      const scope = SessionExecution.create({ id: "command-preparation", sessionID: session.id })
+      const scope = LoopExecution.create({ id: "command-preparation", sessionID: session.id })
       const input = {
         sessionID: session.id,
         command: "check",
@@ -88,12 +89,10 @@ test("cancelled command preparation drops late plugin output and leaves the lega
         agent: "build",
         model: "test/test-model",
       }
-      const pending = SessionExecution.run(scope, () => SessionRunner.command(input)).finally(() =>
-        SessionExecution.finish(scope),
-      )
+      const pending = LoopExecution.run(scope, () => Loop.command(input)).finally(() => LoopExecution.finish(scope))
       void pending.catch(() => {})
       await entered.promise
-      await SessionExecution.cancel(session.id, [scope.id])
+      await LoopExecution.cancel(session.id, [scope.id])
       await expect(pending).rejects.toMatchObject({ name: "AbortError" })
       block = false
       release.resolve()
@@ -102,13 +101,13 @@ test("cancelled command preparation drops late plugin output and leaves the lega
       expect(calls()).toBe(0)
       expect(completed).toBe(0)
 
-      const result = await SessionRunner.command({ ...input, arguments: "legacy" })
+      const result = await Loop.command({ ...input, arguments: "legacy" })
       expect(result.info.role).toBe("assistant")
       expect(result.parts.some((part) => part.type === "text" && part.text === "Controlled local response")).toBe(true)
       expect(completed).toBe(1)
       expect(calls()).toBe(0)
       unsubscribe()
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 }, 30000)
@@ -130,18 +129,18 @@ test("cancelling after user persistence settles the user before ACK and ignores 
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ title: "Persisted cancellation" })
-      const scope = SessionExecution.create({ id: "persisted-preparation", sessionID: session.id })
-      const pending = SessionExecution.run(scope, () =>
-        SessionRunner.prompt({
+      const scope = LoopExecution.create({ id: "persisted-preparation", sessionID: session.id })
+      const pending = LoopExecution.run(scope, () =>
+        Loop.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "test", modelID: "test-model" },
           parts: [{ type: "text", text: "Cancelled before the model starts" }],
         }),
-      ).finally(() => SessionExecution.finish(scope))
+      ).finally(() => LoopExecution.finish(scope))
       void pending.catch(() => {})
       await entered.promise
-      await SessionExecution.cancel(session.id, [scope.id])
+      await LoopExecution.cancel(session.id, [scope.id])
       await expect(pending).rejects.toMatchObject({ name: "AbortError" })
       const messages = await Message.filterCompacted(Message.stream(session.id))
       const user = messages.find((message) => message.info.role === "user")!
@@ -158,7 +157,7 @@ test("cancelling after user persistence settles the user before ACK and ignores 
           .flatMap((message) => message.parts)
           .some((part) => part.type === "text" && part.text === "Late refusal must be discarded"),
       ).toBe(false)
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 }, 30000)
@@ -177,7 +176,7 @@ test("command writes the mode it carries back to the session", async () => {
       await Session.update(session.id, (draft) => {
         draft.permissionMode = "auto"
       })
-      await SessionRunner.command({
+      await Loop.command({
         sessionID: session.id,
         command: "check",
         arguments: "",
@@ -186,7 +185,7 @@ test("command writes the mode it carries back to the session", async () => {
         permissionMode: "ask",
       })
       expect((await Session.get(session.id)).permissionMode).toBe("ask")
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 }, 30000)

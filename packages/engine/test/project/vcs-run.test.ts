@@ -2,8 +2,8 @@ import { expect, test } from "vitest"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Vcs } from "@merakcode/engine/project/vcs"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Vcs } from "@merakcode/engine/app/project/vcs"
 import { tmpdir } from "../fixture/fixture"
 
 // Quick git commands run as git itself, in the worktree, and return the text git printed.

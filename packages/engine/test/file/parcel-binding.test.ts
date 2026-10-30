@@ -6,10 +6,12 @@ import { pathToFileURL } from "url"
 import { evaluate, tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
+import { Worker } from "node:worker_threads"
+import { once } from "node:events"
 
 // Loaded in a real Node process: Vitest injects require into the test process, which would hide ESM-only problems
 test("file watcher native module loads under Node", async () => {
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const result = await Process.run(
     evaluate(
       `const { parcelWatcher } = await import(${JSON.stringify(source)}); console.log(typeof parcelWatcher()?.subscribe)`,
@@ -24,7 +26,7 @@ test("file watcher native module loads under Node", async () => {
 // config directory while the write itself produces events. Runs in a child process so a crash shows up as the exit code.
 test("repeatedly unsubscribing and resubscribing while the directory changes does not crash", async () => {
   await using tmp = await tmpdir()
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const code = `
     import fs from "node:fs/promises"
     import path from "node:path"
@@ -63,7 +65,7 @@ test("repeatedly unsubscribing and resubscribing while the directory changes doe
 // are already in flight, not only for queued ones. The crash is intermittent, so several processes run.
 test("exiting right after closing watchers on busy directories does not crash", async () => {
   await using tmp = await tmpdir()
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const code = `
     import fs from "node:fs/promises"
     import path from "node:path"
@@ -106,28 +108,39 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
     async (_, folder) => {
       await using tmp = await tmpdir()
       await fs.mkdir(path.join(tmp.path, "ignored"))
-      const { parcelWatcher, pendingParcelCancels } = await import("@merakcode/engine/file/parcel-binding")
+      const { parcelWatcher, pendingParcelCancels } = await import("@merakcode/engine/infra/file/parcel-binding")
       const seen: string[] = []
       const subscription = await parcelWatcher()!.subscribe(
         tmp.path,
         (_, events) => seen.push(...events.map((event) => path.relative(tmp.path, event.path))),
         { ignore: ["ignored"] },
       )
-      let writing = true
-      const writer = (async () => {
-        for (let i = 0; writing; i++) {
-          await fs.writeFile(path.join(tmp.path, folder, `f${i % 20}.txt`), String(i))
-          await sleep(5)
-        }
-      })()
+      // Keep real writes independent of the test's event loop and filesystem queue under load.
+      const stop = new Int32Array(new SharedArrayBuffer(4))
+      const writer = new Worker(
+        `
+          const fs = require("node:fs")
+          const path = require("node:path")
+          const { parentPort, workerData } = require("node:worker_threads")
+          for (let i = 0; !Atomics.load(workerData.stop, 0); i++) {
+            fs.writeFileSync(path.join(workerData.dir, "f" + (i % 20) + ".txt"), String(i))
+            if (i === 0) parentPort.postMessage("ready")
+            Atomics.wait(workerData.stop, 0, 0, 5)
+          }
+        `,
+        { eval: true, workerData: { dir: path.join(tmp.path, folder), stop } },
+      )
+      const exited = once(writer, "exit")
       try {
+        await once(writer, "message")
         await sleep(1_000)
         await subscription.unsubscribe()
         await sleep(2_000)
         expect(pendingParcelCancels()).toBe(1)
       } finally {
-        writing = false
-        await writer
+        Atomics.store(stop, 0, 1)
+        Atomics.notify(stop, 0)
+        expect((await exited)[0]).toBe(0)
       }
       const deadline = Date.now() + 10_000
       while (pendingParcelCancels() > 0 && Date.now() < deadline) await sleep(50)
@@ -145,7 +158,7 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
 test("tracks every file watcher subscription so all can be closed before exit", async () => {
   await using tmp = await tmpdir()
   const { parcelWatcher, closeParcelWatchers, activeParcelWatchers } =
-    await import("@merakcode/engine/file/parcel-binding")
+    await import("@merakcode/engine/infra/file/parcel-binding")
   const watcher = parcelWatcher()!
   const events: string[] = []
   const first = await watcher.subscribe(tmp.path, (_, list) => events.push(...list.map((e) => e.path)))

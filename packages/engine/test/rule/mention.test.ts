@@ -1,11 +1,12 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import { pathToFileURL } from "node:url"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { RuleSession } from "@merakcode/engine/rule/session-state"
-import { RulesPrompt } from "@merakcode/engine/rule/prompt"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { RuleSession } from "@merakcode/engine/agent/prompt/rules/session-state"
+import { RulesPrompt } from "@merakcode/engine/agent/prompt/rules/prompt"
 import { tmpdir } from "../fixture/fixture"
 import { isolate, nativeRule } from "./isolate"
 
@@ -40,7 +41,7 @@ describe("user @mention of a manual rule file", () => {
         fn: async () => {
           const session = await Session.create({})
           const filepath = path.join(tmp.path, ".merakcode", "rules", "review.mdc")
-          const msg = await SessionRunner.prompt({
+          const msg = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -74,7 +75,7 @@ describe("user @mention of a manual rule file", () => {
           expect(active.pinned.map((r) => r.name)).toEqual(["review"])
           expect(active.blocks.join("\n")).toContain("MANUAL-REVIEW")
 
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -98,7 +99,7 @@ describe("user @mention of a manual rule file", () => {
         fn: async () => {
           const session = await Session.create({})
           const filepath = path.join(tmp.path, ".merakcode", "rules", "always.mdc")
-          const msg = await SessionRunner.prompt({
+          const msg = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -124,7 +125,7 @@ describe("user @mention of a manual rule file", () => {
           const pinned = await RuleSession.snapshot(session.id)
           expect(pinned.pinned).toEqual([])
 
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -148,7 +149,7 @@ describe("user @mention of a manual rule file", () => {
         fn: async () => {
           const session = await Session.create({})
           const filepath = path.join(tmp.path, ".merakcode", "rules", "rpc.mdc")
-          await SessionRunner.prompt({
+          await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -167,7 +168,7 @@ describe("user @mention of a manual rule file", () => {
           const active = await RulesPrompt.active({ sessionID: session.id, agent: "build", messages: [] })
           expect(active.pinned.map((r) => r.name)).toEqual(["rpc"])
           expect(active.blocks.join("\n")).toContain("RPC-BODY")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -203,9 +204,9 @@ describe("session fork copies pinned rules", () => {
           const childSnap = await RuleSession.snapshot(child.id)
           expect(childSnap.pinned).toEqual([])
 
-          await Session.remove(child.id)
-          await Session.remove(sibling.id)
-          await Session.remove(session.id)
+          await SessionOperations.remove(child.id)
+          await SessionOperations.remove(sibling.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })

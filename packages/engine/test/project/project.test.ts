@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest"
-import type { Project as ProjectNS } from "@merakcode/engine/project/project"
+import type { Project as ProjectNS } from "@merakcode/engine/infra/project/project"
 import { Log } from "@merakcode/log/logger"
-import { Storage } from "@merakcode/engine/storage/storage"
+import { Storage } from "@merakcode/engine/infra/storage/storage"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -10,13 +10,14 @@ import { Process } from "@merakcode/util/process"
 Log.init({ print: false })
 
 // vi.mock is hoisted to the top of the file, so the real implementation must be imported explicitly
-const { git: originalGit } =
-  await vi.importActual<typeof import("@merakcode/engine/util/git")>("@merakcode/engine/util/git")
+const { git: originalGit } = await vi.importActual<typeof import("@merakcode/engine/infra/project/git")>(
+  "@merakcode/engine/infra/project/git",
+)
 
 type Mode = "none" | "rev-list-fail" | "top-fail" | "common-dir-fail"
 let mode: Mode = "none"
 
-vi.mock("@merakcode/engine/util/git", () => ({
+vi.mock("@merakcode/engine/infra/project/git", () => ({
   git: (args: string[], opts: { cwd: string; env?: Record<string, string> }) => {
     const cmd = ["git", ...args].join(" ")
     if (
@@ -63,7 +64,7 @@ async function withMode(next: Mode, run: () => Promise<void>) {
 }
 
 async function loadProject() {
-  return (await import("@merakcode/engine/project/project")).Project
+  return (await import("@merakcode/engine/infra/project/project")).Project
 }
 
 describe("Project.fromDirectory", () => {

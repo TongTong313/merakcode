@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Redact } from "@merakcode/engine/util/redact"
+import { Redact } from "@merakcode/engine/infra/security/redact"
 
 describe("Redact.secrets", () => {
   test("API keys and tokens by their well-known shapes", () => {

@@ -1,14 +1,15 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import path from "path"
 import { describe, expect, test } from "vitest"
 import { fileURLToPath } from "url"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Log } from "@merakcode/log/logger"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { Message } from "@merakcode/engine/session/message"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "../../src/config/config"
+import { Config } from "../../src/app/config/files/config"
 
 Log.init({ print: false })
 
@@ -48,7 +49,7 @@ describe("session.prompt special characters", () => {
       fn: async () => {
         const session = await Session.create({})
         const template = "Read @file#name.txt"
-        const parts = await SessionRunner.resolvePromptParts(template)
+        const parts = await Loop.resolvePromptParts(template)
         const fileParts = parts.filter((part) => part.type === "file")
 
         expect(fileParts.length).toBe(1)
@@ -61,7 +62,7 @@ describe("session.prompt special characters", () => {
         const decodedPath = fileURLToPath(fileParts[0].url)
         expect(decodedPath).toBe(path.join(tmp.path, "file#name.txt"))
 
-        const message = await SessionRunner.prompt({
+        const message = await Loop.prompt({
           sessionID: session.id,
           parts,
           noReply: true,
@@ -73,7 +74,7 @@ describe("session.prompt special characters", () => {
         const hasContent = textParts.some((part) => part.text.includes("special content"))
         expect(hasContent).toBe(true)
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })

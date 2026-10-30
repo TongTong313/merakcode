@@ -4,8 +4,8 @@ import {
   compactBashOutput,
   compactBashOutputFile,
   clearSessionDeltaCache,
-} from "@merakcode/engine/tool/bash-output-compaction/index"
-import type { OutputCompactionConfig } from "@merakcode/engine/tool/bash-output-compaction/index"
+} from "@merakcode/engine/agent/tools/bash-output-compaction/index"
+import type { OutputCompactionConfig } from "@merakcode/engine/agent/tools/bash-output-compaction/index"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 
 const paths = ["/mcp-management", "/mcp-management/change"]

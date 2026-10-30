@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
-import { WebFetchTool } from "@merakcode/engine/tool/webfetch"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { WebFetchTool } from "@merakcode/engine/agent/tools/webfetch"
 
 const projectRoot = path.join(import.meta.dirname, "../..")
 

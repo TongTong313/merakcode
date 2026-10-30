@@ -1,13 +1,14 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
-import { Rule } from "@merakcode/engine/rule/rule"
-import { RulesPrompt } from "@merakcode/engine/rule/prompt"
-import { RuleSession } from "@merakcode/engine/rule/session-state"
-import { ContextAttach } from "@merakcode/engine/session/context-attach"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
+import { Rule } from "@merakcode/engine/agent/prompt/rules/rule"
+import { RulesPrompt } from "@merakcode/engine/agent/prompt/rules/prompt"
+import { RuleSession } from "@merakcode/engine/agent/prompt/rules/session-state"
+import { ContextAttach } from "@merakcode/engine/agent/context/context-attach"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { tmpdir } from "../fixture/fixture"
 import { cursorRule, isolate, nativeRule } from "./isolate"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -233,7 +234,7 @@ describe("RulesPrompt.snapshot", () => {
           expect(snap.glob.map((r) => r.name)).not.toContain("css")
           expect(snap.dropped).toEqual([])
           expect(snap.alwaysBudget).toBe(RulesPrompt.MAX_SYSTEM_BYTES)
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -258,7 +259,7 @@ describe("RulesPrompt.snapshot", () => {
           const active = await RulesPrompt.active({ sessionID: session.id, agent: "build", messages: [] })
           expect(active.glob.map((r) => r.name)).toEqual(["ts"])
           expect(active.blocks.join("\n")).toContain("TS-RULE")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -284,7 +285,7 @@ describe("RulesPrompt.snapshot", () => {
           expect(snap.pinned.map((r) => r.name)).toEqual(["review"])
           expect(snap.pinned[0].type).toBe("manual")
           expect(snap.glob).toEqual([])
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })

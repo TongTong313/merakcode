@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Lock } from "@merakcode/engine/util/lock"
+import { Lock } from "@merakcode/engine/infra/concurrency/lock"
 
 function tick() {
   return new Promise<void>((r) => queueMicrotask(r))

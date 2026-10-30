@@ -4,8 +4,8 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import readline from "node:readline"
 import type { Mode, Permission, Question, Step } from "@merakcode/sdk/adapter"
-import { runMember } from "../../src/agent-connection/runtime"
-import { builtinLaunch } from "../../src/agent-connection/adapters"
+import { runMember } from "../../src/agent/external/runtime"
+import { builtinLaunch } from "../../src/agent/external/adapters"
 import { tmpdir } from "../fixture/fixture"
 import { shim } from "./fixture/shim"
 
@@ -190,7 +190,7 @@ test("Codex reads only in read-only mode, and continues its thread on the next t
 }, 60_000)
 
 test("the shell Codex wraps a command in is taken off before MerakCode judges it", async () => {
-  const { unwrapShell } = await import("../../src/agent-connection/adapters/codex")
+  const { unwrapShell } = await import("../../src/agent/external/adapters/codex")
   expect(
     unwrapShell(`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Command 'node -e "console.log(42)"'`),
   ).toBe(`node -e "console.log(42)"`)
@@ -338,8 +338,8 @@ test("when MerakCode itself exits mid-task, the CLI of a member at work does not
   const pidFile = path.join(tmp.path, "server.pid")
   // A host like the engine: it runs a member, and exits while the member's question is still open
   const host = path.join(tmp.path, "host.mts")
-  const member = pathToFileURL(path.join(import.meta.dirname, "../../src/agent-connection/runtime.ts")).href
-  const adapters = pathToFileURL(path.join(import.meta.dirname, "../../src/agent-connection/adapters/index.ts")).href
+  const member = pathToFileURL(path.join(import.meta.dirname, "../../src/agent/external/runtime.ts")).href
+  const adapters = pathToFileURL(path.join(import.meta.dirname, "../../src/agent/external/adapters/index.ts")).href
   await fs.writeFile(
     host,
     [

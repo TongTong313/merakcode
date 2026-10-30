@@ -1,18 +1,18 @@
 // Engine integration tests for citing past conversations (#Past Chats): create real sessions and messages, render
-// them as injectable context, and run the full createUserMessage expansion via SessionRunner.prompt({ noReply })
+// them as injectable context, and run the full createUserMessage expansion via Loop.prompt({ noReply })
 // without calling the LLM.
 import path from "path"
 import { describe, expect, test } from "vitest"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionReference } from "@merakcode/engine/session/reference"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { Message } from "@merakcode/engine/session/message"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { SessionReference } from "@merakcode/engine/agent/session/reference"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { Identifier } from "@merakcode/util/id"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "../../src/config/config"
+import { Config } from "../../src/app/config/files/config"
 
 Log.init({ print: false })
 
@@ -400,7 +400,7 @@ describe("session:// file part expansion (#Past Chats end to end)", () => {
         await turn(past.id, "为什么打包变慢了", "因为 sourcemap 开了 full")
 
         const current = await Session.create({ title: "本次任务" })
-        const message = await SessionRunner.prompt({
+        const message = await Loop.prompt({
           sessionID: current.id,
           noReply: true,
           parts: [
@@ -436,7 +436,7 @@ describe("session:// file part expansion (#Past Chats end to end)", () => {
       directory: tmp.path,
       fn: async () => {
         const current = await Session.create({ title: "本次任务" })
-        const message = await SessionRunner.prompt({
+        const message = await Loop.prompt({
           sessionID: current.id,
           noReply: true,
           parts: [
@@ -468,10 +468,10 @@ describe("session:// file part expansion (#Past Chats end to end)", () => {
       directory: tmp.path,
       fn: async () => {
         const current = await Session.create({})
-        const parts = await SessionRunner.resolvePromptParts("看 @note.txt")
+        const parts = await Loop.resolvePromptParts("看 @note.txt")
         expect(parts.filter((part) => part.type === "file")).toHaveLength(1)
 
-        const message = await SessionRunner.prompt({ sessionID: current.id, noReply: true, parts })
+        const message = await Loop.prompt({ sessionID: current.id, noReply: true, parts })
         const stored = await Message.get({ sessionID: current.id, messageID: message.info.id })
         const texts = stored.parts.filter((part) => part.type === "text")
 

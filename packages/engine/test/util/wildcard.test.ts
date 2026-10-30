@@ -1,5 +1,5 @@
 import { test, expect } from "vitest"
-import { Wildcard } from "@merakcode/engine/util/wildcard"
+import { Wildcard } from "@merakcode/engine/infra/match/wildcard"
 
 test("match handles glob tokens", () => {
   expect(Wildcard.match("file1.txt", "file?.txt")).toBe(true)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 
 describe("structured-output.OutputFormat", () => {
   test("parses text format", () => {
@@ -157,7 +157,7 @@ describe("structured-output.AssistantMessage", () => {
 
 describe("structured-output.createStructuredOutputTool", () => {
   test("creates tool with description", () => {
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: { type: "object" },
       onSuccess: () => {},
     })
@@ -175,7 +175,7 @@ describe("structured-output.createStructuredOutputTool", () => {
       required: ["company"],
     }
 
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema,
       onSuccess: () => {},
     })
@@ -194,7 +194,7 @@ describe("structured-output.createStructuredOutputTool", () => {
       properties: { name: { type: "string" } },
     }
 
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema,
       onSuccess: () => {},
     })
@@ -207,7 +207,7 @@ describe("structured-output.createStructuredOutputTool", () => {
   test("execute calls onSuccess with valid args", async () => {
     let capturedOutput: unknown
 
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: { type: "object", properties: { name: { type: "string" } } },
       onSuccess: (output) => {
         capturedOutput = output
@@ -232,7 +232,7 @@ describe("structured-output.createStructuredOutputTool", () => {
     // Note: The AI SDK validates the input against the schema BEFORE calling execute()
     // So invalid inputs never reach the tool's execute function
     // This test documents the expected schema behavior
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: {
         type: "object",
         properties: {
@@ -255,7 +255,7 @@ describe("structured-output.createStructuredOutputTool", () => {
     // Note: The AI SDK validates the input against the schema BEFORE calling execute()
     // So invalid inputs never reach the tool's execute function
     // This test documents the expected schema behavior
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: {
         type: "object",
         properties: {
@@ -275,7 +275,7 @@ describe("structured-output.createStructuredOutputTool", () => {
   test("execute handles nested objects", async () => {
     let capturedOutput: unknown
 
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: {
         type: "object",
         properties: {
@@ -319,7 +319,7 @@ describe("structured-output.createStructuredOutputTool", () => {
   test("execute handles arrays", async () => {
     let capturedOutput: unknown
 
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: {
         type: "object",
         properties: {
@@ -356,7 +356,7 @@ describe("structured-output.createStructuredOutputTool", () => {
   })
 
   test("toModelOutput returns text value", async () => {
-    const tool = SessionRunner.createStructuredOutputTool({
+    const tool = Loop.createStructuredOutputTool({
       schema: { type: "object" },
       onSuccess: () => {},
     })
@@ -380,16 +380,16 @@ describe("structured-output.createStructuredOutputTool", () => {
 // once. The decision is a pure function because the loop's continue/break can't be tested without a mock model.
 describe("structured-output.shouldRetryStructuredOutput", () => {
   test("retryCount=2 retries the first two missing outputs and gives up on the third", () => {
-    expect(SessionRunner.shouldRetryStructuredOutput({ attempt: 1, retryCount: 2 })).toBe(true)
-    expect(SessionRunner.shouldRetryStructuredOutput({ attempt: 2, retryCount: 2 })).toBe(true)
-    expect(SessionRunner.shouldRetryStructuredOutput({ attempt: 3, retryCount: 2 })).toBe(false)
+    expect(Loop.shouldRetryStructuredOutput({ attempt: 1, retryCount: 2 })).toBe(true)
+    expect(Loop.shouldRetryStructuredOutput({ attempt: 2, retryCount: 2 })).toBe(true)
+    expect(Loop.shouldRetryStructuredOutput({ attempt: 3, retryCount: 2 })).toBe(false)
   })
 
   test("retryCount=0 never retries", () => {
-    expect(SessionRunner.shouldRetryStructuredOutput({ attempt: 1, retryCount: 0 })).toBe(false)
+    expect(Loop.shouldRetryStructuredOutput({ attempt: 1, retryCount: 0 })).toBe(false)
   })
 
   test("missing retryCount is treated as 0", () => {
-    expect(SessionRunner.shouldRetryStructuredOutput({ attempt: 1, retryCount: undefined })).toBe(false)
+    expect(Loop.shouldRetryStructuredOutput({ attempt: 1, retryCount: undefined })).toBe(false)
   })
 })

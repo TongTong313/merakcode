@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import { createServer } from "node:http"
 import type { AddressInfo, Socket } from "node:net"
 import path from "node:path"
-import { Npm } from "../../src/npm"
+import { Npm } from "../../src/infra/package"
 import { Process } from "@merakcode/util/process"
 import { tmpdir } from "../fixture/fixture"
 

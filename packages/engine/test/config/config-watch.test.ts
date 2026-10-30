@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
-import { ConfigWriteGuard } from "@merakcode/engine/config/config-write-guard"
-import { ConfigWatch } from "@merakcode/engine/config/config-watch"
-import { Global } from "@merakcode/engine/global/index"
+import { ConfigWriteGuard } from "@merakcode/engine/infra/config/write-guard"
+import { ConfigWatch } from "@merakcode/engine/app/config/files/config-watch"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { setTimeout as delay } from "node:timers/promises"
 
 describe("ConfigWatch", () => {

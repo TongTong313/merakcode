@@ -1,7 +1,8 @@
 import { expect, test } from "vitest"
-import { Text } from "@merakcode/engine/util/text"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Text } from "@merakcode/engine/agent/prompt/text"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
+import { Process } from "@merakcode/util/process"
 
 // Engine text sent to the UI is Chinese or English depending on the configured locale; Chinese by default
 
@@ -44,4 +45,22 @@ test("MERAKCODE_LOCALE takes precedence over config", async () => {
 
 test("outside a project uses the global config, falling back to Chinese", async () => {
   expect(await Text.lang()).toBe("zh")
+})
+
+test("a standalone process falls back to Chinese before application configuration is bound", async () => {
+  const module = new URL("../../src/agent/prompt/text.ts", import.meta.url).href
+  const result = await Process.run(
+    [
+      process.execPath,
+      ...process.execArgv,
+      "--input-type=module",
+      "--eval",
+      `delete process.env.MERAKCODE_LOCALE
+const { Text } = await import(${JSON.stringify(module)})
+console.log(await Text.pick({ zh: "default-language", en: "unexpected-language" }))`,
+    ],
+    { nothrow: true },
+  )
+  expect(result.exitCode, result.stderr.toString()).toBe(0)
+  expect(result.text().trim()).toBe("default-language")
 })

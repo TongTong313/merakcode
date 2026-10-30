@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { Global } from "@merakcode/engine/global/index"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { PermissionPolicy } from "@merakcode/engine/permission/policy"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
 
 // Default decisions for each kind of operation in the three modes. User rules come after the mode defaults and can
 // override them; read-only mode denials come after user rules and cannot be overridden.
