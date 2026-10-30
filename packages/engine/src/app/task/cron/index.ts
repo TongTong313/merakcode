@@ -18,6 +18,23 @@ import type { Workspace } from "../../../infra/project/workspace"
  */
 export namespace CronScheduler {
   const log = Log.create({ service: "scheduler.loop" })
+  let running = true
+  const timerGroups = new Set<Map<string, ReturnType<typeof setInterval>>>()
+
+  /** Enables scheduling for this process; project bootstrap restores persisted tasks separately. */
+  export function start() {
+    running = true
+  }
+
+  /** Stops new runs before shutdown drains existing work, without changing persisted task status. */
+  export function stop() {
+    running = false
+    // Only visit existing timers: stopping must not wait for an unfinished project bootstrap.
+    for (const timers of timerGroups) {
+      for (const timer of timers.values()) clearInterval(timer)
+      timers.clear()
+    }
+  }
 
   export interface CronTask {
     id: string
@@ -52,14 +69,16 @@ export namespace CronScheduler {
    * This only holds tasks running in this process; Storage is the authoritative, recoverable copy.
    */
   const state = Instance.state(
-    () => ({
-      tasks: new Map<string, CronTask>(),
-      timers: new Map<string, ReturnType<typeof setInterval>>(),
-    }),
+    () => {
+      const timers = new Map<string, ReturnType<typeof setInterval>>()
+      timerGroups.add(timers)
+      return { tasks: new Map<string, CronTask>(), timers }
+    },
     async (entry) => {
       for (const timer of entry.timers.values()) clearInterval(timer)
       entry.timers.clear()
       entry.tasks.clear()
+      timerGroups.delete(entry.timers)
     },
   )
 
@@ -93,6 +112,7 @@ export namespace CronScheduler {
 
   /** Arms the timer without running now, so recovery does not catch up missed runs */
   function arm(task: CronTask) {
+    if (!running) return
     const { timers } = state()
     const prev = timers.get(task.id)
     if (prev) clearInterval(prev)
@@ -114,6 +134,7 @@ export namespace CronScheduler {
    * or cancelled request.
    */
   async function tick(id: string) {
+    if (!running) return
     const task = state().tasks.get(id)
     if (!task || task.status !== "running") return
 
@@ -129,6 +150,7 @@ export namespace CronScheduler {
 
   /** Runs the task in the background and records the outcome in memory and Storage */
   async function execute(task: CronTask) {
+    if (!running || state().tasks.get(task.id) !== task) return
     log.info("task executing", { taskID: task.id, sessionID: task.sessionID })
     try {
       const ran = await Loop.background({
