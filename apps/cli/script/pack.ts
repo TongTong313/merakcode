@@ -48,9 +48,10 @@ export function mainPackage(cli: Manifest, platforms: Record<string, string>) {
 }
 
 /** Platform directories built by build.ts under dist: name → path. Every one must be at `version` */
-export function platformPackages(dist: string, version: string) {
+export function platformPackages(dist: string, version: string, only?: string) {
   const found: Record<string, string> = {}
   for (const entry of readdirSync(dist, { withFileTypes: true })) {
+    if (only && entry.name !== `merakcode-${version}-${only}`) continue
     const manifest = path.join(dist, entry.name, "package.json")
     if (!entry.isDirectory() || !entry.name.startsWith("merakcode-") || !existsSync(manifest)) continue
     const parsed = JSON.parse(readFileSync(manifest, "utf8")) as Manifest
@@ -125,7 +126,10 @@ if (import.meta.main) {
     manifest,
     JSON.parse(await fs.readFile(path.join(cli, "../../packages/sdk/js/package.json"), "utf8")) as Manifest,
   )
-  const platforms = platformPackages(dist, manifest.version)
+  const only = process.argv.includes("--single")
+    ? `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`
+    : undefined
+  const platforms = platformPackages(dist, manifest.version, only)
   if (Object.keys(platforms).length === 0) throw new Error("No platform packages in dist; run pnpm build first")
 
   const npm = path.join(dist, "npm")

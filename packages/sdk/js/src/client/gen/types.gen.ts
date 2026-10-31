@@ -4,1575 +4,976 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type FileDiffOutput = {
-  file: string
-  before: string
-  after: string
-  additions: number
-  deletions: number
-  status?: "added" | "deleted" | "modified"
-}
-
-export type PermissionRuleOutput = {
-  permission: string
-  pattern: string
-  action: PermissionAction
-}
-
-export type PermissionRulesetOutput = Array<PermissionRuleOutput>
-
-export type SessionOutput = {
-  target?:
-    | {
-        kind: "merak"
-      }
-    | {
-        kind: "external"
-        productID: string
-      }
-  targetRevision?: number
-  targetBlock?: {
-    blockID: string
-    productID: string
-    disabledCycleID: string
-    decision: "pending" | "declined"
-  }
-  takeover?: {
-    at: number
-    fromProductID: string
-    blockID: string
-  }
-  readOnlyReason?: "imported-external-history"
-  id: string
-  slug: string
-  projectID: string
-  directory: string
-  workspaceFolders?: Array<{
-    name: string
-    path: string
-  }>
-  parentID?: string
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiffOutput>
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
-  permission?: PermissionRulesetOutput
-  permissionMode?: PermissionMode
-  undoRedo?: {
-    stack: Array<{
-      hiddenMessages: Array<string>
-      fileSnapshot: string
-      targetMessageID: string
-      timestamp: number
-    }>
-  }
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
-  rules?: {
-    pinned?: Array<{
-      filepath: string
-      source: "mention" | "fetch"
-    }>
-    recentFiles?: Array<{
-      path: string
-      userMessageID: string
-    }>
-    userTurns?: Array<string>
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type SessionStats = {
-  totalSessions: number
-  totalMessages: number
-  totalCost: {
-    [key: string]: number
-  }
-  totalTokens: {
-    input: number
-    output: number
-    cache: {
-      read: number
-      write: number
-    }
-    reasoning: number
-  }
-  toolUsage: {
-    [key: string]: number
-  }
-  modelUsage: {
-    [key: string]: {
-      messages: number
-      tokens: {
-        input: number
-        output: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      currency?: "USD" | "CNY"
-    }
-  }
-  dateRange: {
-    earliest: number
-    latest: number
-  }
-  days: number
-  costPerDay: {
-    [key: string]: number
-  }
-  tokensPerSession: number
-  medianTokensPerSession: number
-}
-
-export type EventServerConnected = {
-  type: "server.connected"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type EventGlobalDisposed = {
-  type: "global.disposed"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type EventNotifyToastShow = {
-  type: "notify.toast.show"
-  properties: {
-    title?: string
-    message: string
-    variant: "info" | "success" | "warning" | "error"
-    /**
-     * Duration in milliseconds
-     */
-    duration?: number
-    titleCode?: string
-    messageCode?: string
-    params?: {
-      [key: string]: unknown
-    }
-  }
-}
-
-export type Project = {
-  id: string
-  worktree: string
-  vcs?: "git"
-  name?: string
-  kind?: "workspace"
-  folders?: Array<string>
-  icon?: {
-    url?: string
-    override?: string
-    color?: string
-  }
-  commands?: {
-    /**
-     * Startup script to run when creating a new workspace (worktree)
-     */
-    start?: string
-  }
-  time: {
-    created: number
-    updated: number
-    initialized?: number
-  }
-  sandboxes: Array<string>
-}
-
-export type EventProjectUpdated = {
-  type: "project.updated"
-  properties: Project
-}
-
-export type EventServerInstanceDisposed = {
-  type: "server.instance.disposed"
-  properties: {
-    directory: string
-  }
-}
-
-export type EventWorkflowUpdated = {
-  type: "workflow.updated"
-  properties: {
-    sessionID: string
-    runId: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type CatalogRefreshError = {
-  name: "CatalogRefreshError"
+export type ApiError = {
   code?: string
   data: {
-    providerID: string
-    message: string
-    statusCode?: number
-  }
-}
-
-export type EventProviderChanged = {
-  type: "provider.changed"
-  properties: {
-    providerID?: string
-    reason: "connected" | "disconnected" | "refreshed" | "refresh-failed"
-    error?: CatalogRefreshError
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
-  }
-}
-
-export type EventVcsHeadUpdated = {
-  type: "vcs.head.updated"
-  properties: {
-    branch: string | null
-    head: string | null
-    checkout: string | null
-    branchChanged: boolean
-  }
-}
-
-export type PermissionGrant = {
-  scope: "file" | "directory" | "prefix" | "agent" | "tool" | "domain"
-  pattern: string
-}
-
-export type PermissionRequest = {
-  id: string
-  sessionID: string
-  executionID?: string
-  root?: string
-  permission: string
-  patterns: Array<string>
-  metadata: {
-    [key: string]: unknown
-  }
-  grants?: Array<PermissionGrant>
-  always?: boolean
-  source?: {
-    sessionID: string
-    agent: string
-    title?: string
-  }
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
-  }
-}
-
-export type OutputFormatTextOutput = {
-  type: "text"
-}
-
-export type OutputFormatJsonSchemaOutput = {
-  type: "json_schema"
-  schema: JsonSchema
-  retryCount: number
-}
-
-export type OutputFormatOutput = OutputFormatTextOutput | OutputFormatJsonSchemaOutput
-
-export type UserMessageOutput = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  execution?: {
-    kind: "merak"
-  }
-  role: "user"
-  time: {
-    created: number
-  }
-  format?: OutputFormatOutput
-  summary?: {
-    title?: string
-    body?: string
-    diffs: Array<FileDiffOutput>
-  }
-  agent: string
-  permissionMode?: PermissionMode
-  model: {
-    providerID: string
-    modelID: string
-  }
-  system?: string
-  commandSource?: {
-    templatePartIDs: Array<string>
-  }
-  tools?: {
-    [key: string]: boolean
-  }
-  variant?: string
-}
-
-export type ProviderAuthErrorOutput = {
-  name: "ProviderAuthError"
-  code?: string
-  data: {
-    providerID: string
-    message: string
-  }
-}
-
-export type UnknownErrorOutput = {
-  name: "UnknownError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type MessageOutputLengthErrorOutput = {
-  name: "MessageOutputLengthError"
-  code?: string
-  data: {
-    [key: string]: never
-  }
-}
-
-export type MessageAbortedErrorOutput = {
-  name: "MessageAbortedError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type StructuredOutputErrorOutput = {
-  name: "StructuredOutputError"
-  code?: string
-  data: {
-    message: string
-    retries: number
-  }
-}
-
-export type ContextOverflowErrorOutput = {
-  name: "ContextOverflowError"
-  code?: string
-  data: {
-    message: string
-    responseBody?: string
-  }
-}
-
-export type CompactionBlockedErrorOutput = {
-  name: "CompactionBlockedError"
-  code?: string
-  data: {
-    message: string
-    tokens?: number
-    usable?: number
-  }
-}
-
-export type ApiErrorOutput = {
-  name: "APIError"
-  code?: string
-  data: {
-    message: string
-    statusCode?: number
     isRetryable: boolean
-    responseHeaders?: {
-      [key: string]: string
-    }
-    responseBody?: string
+    message: string
     metadata?: {
       [key: string]: string
     }
-  }
-}
-
-export type ModelNotFoundErrorOutput = {
-  name: "ModelNotFoundError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
+    responseBody?: string
+    responseHeaders?: {
+      [key: string]: string
     }
-    providerID: string
-    modelID: string
-    suggestions?: Array<string>
+    statusCode?: number
   }
+  name: "APIError"
 }
 
-export type CommandNotFoundErrorOutput = {
-  name: "CommandNotFoundError"
+export type ApiErrorOutput = {
   code?: string
   data: {
+    isRetryable: boolean
     message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
+    metadata?: {
+      [key: string]: string
     }
-    command: string
-  }
-}
-
-export type AgentNotFoundErrorOutput = {
-  name: "AgentNotFoundError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
+    responseBody?: string
+    responseHeaders?: {
+      [key: string]: string
     }
-    agent: string
-    available?: Array<string>
+    statusCode?: number
   }
+  name: "APIError"
 }
 
-export type ConfigParseErrorOutput = {
-  name: "ConfigParseError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    kind: "command" | "agent" | "mode" | "skill" | "rule"
-    path: string
-    reason: string
-  }
-}
-
-export type PluginInstallErrorOutput = {
-  name: "PluginInstallError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    package: string
-    version: string
-    reason: string
-  }
-}
-
-export type WorktreeResetDirtyErrorOutput = {
-  name: "WorktreeResetDirtyError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    dirty: string
-  }
-}
-
-export type ExternalAdapterErrorOutput = {
-  name: "ExternalAdapterError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type AssistantMessageOutput = {
+export type Agent = {
+  color?: string
+  description?: string
+  hidden?: boolean
   id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  execution?: {
-    kind: "merak"
-  }
-  role: "assistant"
-  time: {
-    created: number
-    completed?: number
-  }
-  error?:
-    | ProviderAuthErrorOutput
-    | UnknownErrorOutput
-    | MessageOutputLengthErrorOutput
-    | MessageAbortedErrorOutput
-    | StructuredOutputErrorOutput
-    | ContextOverflowErrorOutput
-    | CompactionBlockedErrorOutput
-    | ApiErrorOutput
-    | ModelNotFoundErrorOutput
-    | CommandNotFoundErrorOutput
-    | AgentNotFoundErrorOutput
-    | ConfigParseErrorOutput
-    | PluginInstallErrorOutput
-    | WorktreeResetDirtyErrorOutput
-    | ExternalAdapterErrorOutput
-  parentID: string
-  modelID: string
-  providerID: string
-  mode: string
-  agent: string
-  path: {
-    cwd: string
-    root: string
-  }
-  summary?: boolean
-  cost: number
-  tokens: {
-    total?: number
-    input: number
-    output: number
-    reasoning: number
-    cache: {
-      read: number
-      write: number
-    }
-  }
-  contextBreakdown?: {
-    systemBase: number
-    environment: number
-    rules: number
-    toolDefinitions: number
-    mcp: number
-    skills: number
-    subagents: number
-    conversation: number
-    total: number
-  }
-  structured?: unknown
-  variant?: string
-  finish?: string
-}
-
-export type ExternalUserMessageOutput = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  role: "user"
-  time: {
-    created: number
-  }
-  permissionMode: PermissionMode
-  execution: {
-    kind: "external"
-    productID: string
-    productTitle: string
-    runID: string
-    targetRevision: number
-    requestedModel?: {
-      id: string
-      providerID?: string
-    }
-    actualModel?: {
-      id: string
-      providerID?: string
-    }
-  }
-}
-
-export type ExternalAssistantMessageOutput = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  role: "assistant"
-  time: {
-    created: number
-    completed?: number
-  }
-  parentID: string
-  path: {
-    cwd: string
-    root: string
-  }
-  execution: {
-    kind: "external"
-    productID: string
-    productTitle: string
-    runID: string
-    targetRevision: number
-    requestedModel?: {
-      id: string
-      providerID?: string
-    }
-    actualModel?: {
-      id: string
-      providerID?: string
-    }
-  }
-  error?:
-    | ProviderAuthErrorOutput
-    | UnknownErrorOutput
-    | MessageOutputLengthErrorOutput
-    | MessageAbortedErrorOutput
-    | StructuredOutputErrorOutput
-    | ContextOverflowErrorOutput
-    | CompactionBlockedErrorOutput
-    | ApiErrorOutput
-    | ModelNotFoundErrorOutput
-    | CommandNotFoundErrorOutput
-    | AgentNotFoundErrorOutput
-    | ConfigParseErrorOutput
-    | PluginInstallErrorOutput
-    | WorktreeResetDirtyErrorOutput
-    | ExternalAdapterErrorOutput
-  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
-}
-
-export type MessageOutput =
-  UserMessageOutput | AssistantMessageOutput | ExternalUserMessageOutput | ExternalAssistantMessageOutput
-
-export type EventMessageUpdated = {
-  type: "message.updated"
-  properties: {
-    sessionID: string
-    info: MessageOutput
-  }
-}
-
-export type EventMessageRemoved = {
-  type: "message.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-  }
-}
-
-export type TextPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type SubtaskPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "subtask"
-  prompt: string
-  description: string
-  agent: string
+  mode: "all" | "primary" | "subagent"
   model?: {
-    providerID: string
     modelID: string
+    providerID: string
   }
-  command?: string
-}
-
-export type ReasoningPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "reasoning"
-  text: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end?: number
-  }
-}
-
-export type FilePartSourceTextOutput = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSourceOutput = {
-  text: FilePartSourceTextOutput
-  type: "file"
-  path: string
-}
-
-export type RangeOutput = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSourceOutput = {
-  text: FilePartSourceTextOutput
-  type: "symbol"
-  path: string
-  range: RangeOutput
   name: string
-  kind: number
-}
-
-export type ResourceSourceOutput = {
-  text: FilePartSourceTextOutput
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type FilePartSourceOutput = FileSourceOutput | SymbolSourceOutput | ResourceSourceOutput
-
-export type FilePartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  source?: FilePartSourceOutput
-}
-
-export type ToolStatePendingOutput = {
-  status: "pending"
-  input: {
+  native?: boolean
+  options: {
     [key: string]: unknown
   }
-  raw: string
-}
-
-export type ExternalDelegateProgressOutput = {
-  runID: string
-  productTitle: string
-  requestedModel?: {
-    id: string
-    providerID?: string
+  permission: PermissionRulesetOutput
+  profile?: {
+    availableTools: Array<string>
+    deferTools?: Array<string>
+    restrictedRules: PermissionRulesetOutput
   }
-  actualModel?: {
-    id: string
-    providerID?: string
-  }
-  parts: Array<{
-    id: string
-    text: string
-  }>
-  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
-  stopReason?: "product-disabled" | "user"
-}
-
-export type ToolStateRunningOutput = {
-  status: "running"
-  input: {
-    [key: string]: unknown
-  }
-  title?: string
-  metadata?: {
-    external?: ExternalDelegateProgressOutput
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-  }
-}
-
-export type ToolStateCompletedOutput = {
-  status: "completed"
-  input: {
-    [key: string]: unknown
-  }
-  output: string
-  title: string
-  metadata: {
-    mcpIsError?: boolean
-    external?: ExternalDelegateProgressOutput
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-    compacted?: number
-  }
-  attachments?: Array<FilePartOutput>
-}
-
-export type ToolStateErrorOutput = {
-  status: "error"
-  input: {
-    [key: string]: unknown
-  }
-  error: string
-  metadata?: {
-    errorKind?: "permission_rejected" | "timeout" | "execution" | "invalid_arguments"
-    external?: ExternalDelegateProgressOutput
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-  }
-}
-
-export type ToolStateOutput =
-  ToolStatePendingOutput | ToolStateRunningOutput | ToolStateCompletedOutput | ToolStateErrorOutput
-
-export type ToolPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "tool"
-  callID: string
-  tool: string
-  state: ToolStateOutput
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type StepStartPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "step-start"
-  snapshot?: string
-}
-
-export type StepFinishPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "step-finish"
-  reason: string
-  snapshot?: string
-  cost: number
-  tokens: {
-    total?: number
-    input: number
-    output: number
-    reasoning: number
-    cache: {
-      read: number
-      write: number
-    }
-  }
-}
-
-export type SnapshotPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "snapshot"
-  snapshot: string
-}
-
-export type PatchPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "patch"
-  backupID: string
-  files: Array<string>
-  additions: number
-  deletions: number
-}
-
-export type AgentPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "agent"
-  name: string
-  source?: {
-    value: string
-    start: number
-    end: number
-  }
-}
-
-export type RetryPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "retry"
-  attempt: number
-  error: ApiErrorOutput
-  time: {
-    created: number
-  }
-}
-
-export type CompactionPartOutput = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "compaction"
-  auto: boolean
-  permissionMode?: PermissionMode
-  preCompactActivatedTools?: Array<string>
-}
-
-export type PartOutput =
-  | TextPartOutput
-  | SubtaskPartOutput
-  | ReasoningPartOutput
-  | FilePartOutput
-  | ToolPartOutput
-  | StepStartPartOutput
-  | StepFinishPartOutput
-  | SnapshotPartOutput
-  | PatchPartOutput
-  | AgentPartOutput
-  | RetryPartOutput
-  | CompactionPartOutput
-
-export type EventMessagePartUpdated = {
-  type: "message.part.updated"
-  properties: {
-    part: PartOutput
-    delta?: string
-  }
-}
-
-export type EventMessagePartRemoved = {
-  type: "message.part.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-    partID: string
-  }
-}
-
-export type EventMcpToolsChanged = {
-  type: "mcp.tools.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type QuestionOption = {
-  /**
-   * Display text (1-5 words, concise)
-   */
-  label: string
-  /**
-   * Explanation of choice
-   */
-  description: string
-}
-
-export type QuestionInfo = {
-  /**
-   * Complete question
-   */
-  question: string
-  /**
-   * Very short label (max 30 chars)
-   */
-  header: string
-  /**
-   * Available choices
-   */
-  options: Array<QuestionOption>
-  /**
-   * Allow selecting multiple choices
-   */
-  multiple?: boolean
-  /**
-   * Allow typing a custom answer (default: true)
-   */
-  custom?: boolean
-  /**
-   * Allow dismissing the prompt without selecting an option (default: true)
-   */
-  dismiss?: boolean
-}
-
-export type QuestionRequest = {
-  id: string
-  sessionID: string
-  executionID?: string
-  root?: string
-  /**
-   * Questions to ask
-   */
-  questions: Array<QuestionInfo>
-  expiresAt?: number
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventQuestionAsked = {
-  type: "question.asked"
-  properties: QuestionRequest
-}
-
-export type EventQuestionReplied = {
-  type: "question.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    answers: Array<QuestionAnswer>
-  }
-}
-
-export type EventQuestionRejected = {
-  type: "question.rejected"
-  properties: {
-    sessionID: string
-    requestID: string
-  }
-}
-
-export type EventRuleUpdated = {
-  type: "rule.updated"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type Todo = {
-  /**
-   * Brief description of the task
-   */
-  content: string
-  /**
-   * Current status of the task: pending, in_progress, completed, cancelled
-   */
-  status: string
-  /**
-   * Priority level of the task: high, medium, low
-   */
-  priority: string
-  /**
-   * Unique identifier for the todo item
-   */
-  id: string
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventCollaborationUpdated = {
-  type: "collaboration.updated"
-  properties: {
-    sessionID: string
-  }
-}
-
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-    }
-
-export type EventSessionStatus = {
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  type: "session.idle"
-  properties: {
-    sessionID: string
-  }
-}
-
-export type EventSessionNotificationCreated = {
-  type: "session.notification.created"
-  properties: {
-    sessionID: string
-    notificationID: string
-  }
-}
-
-export type EventToolRemoteCall = {
-  type: "tool.remote.call"
-  properties: {
-    callID: string
-    tool: string
-    args: unknown
-    sessionID: string
-    messageID: string
-  }
-}
-
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventSessionCreated = {
-  type: "session.created"
-  properties: {
-    sessionID: string
-    info: SessionOutput
-  }
-}
-
-export type EventSessionUpdated = {
-  type: "session.updated"
-  properties: {
-    sessionID: string
-    info: SessionOutput
-  }
-}
-
-export type EventSessionDeleted = {
-  type: "session.deleted"
-  properties: {
-    sessionID: string
-    info: SessionOutput
-  }
-}
-
-export type EventSessionDiff = {
-  type: "session.diff"
-  properties: {
-    sessionID: string
-    diff: Array<FileDiffOutput>
-  }
-}
-
-export type EventSessionError = {
-  type: "session.error"
-  properties: {
-    sessionID?: string
-    error?:
-      | ProviderAuthErrorOutput
-      | UnknownErrorOutput
-      | MessageOutputLengthErrorOutput
-      | MessageAbortedErrorOutput
-      | StructuredOutputErrorOutput
-      | ContextOverflowErrorOutput
-      | CompactionBlockedErrorOutput
-      | ApiErrorOutput
-      | ModelNotFoundErrorOutput
-      | CommandNotFoundErrorOutput
-      | AgentNotFoundErrorOutput
-      | ConfigParseErrorOutput
-      | PluginInstallErrorOutput
-      | WorktreeResetDirtyErrorOutput
-      | ExternalAdapterErrorOutput
-  }
-}
-
-export type EventSkillUpdated = {
-  type: "skill.updated"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type Pty = {
-  id: string
-  title: string
-  command: string
-  args: Array<string>
-  cwd: string
-  status: "running" | "exited"
-  pid: number
-}
-
-export type EventPtyCreated = {
-  type: "pty.created"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyUpdated = {
-  type: "pty.updated"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyExited = {
-  type: "pty.exited"
-  properties: {
-    id: string
-    exitCode: number
-  }
-}
-
-export type EventPtyDeleted = {
-  type: "pty.deleted"
-  properties: {
-    id: string
-  }
-}
-
-export type EventWorktreeReady = {
-  type: "worktree.ready"
-  properties: {
-    name: string
-    branch: string
-  }
-}
-
-export type EventWorktreeFailed = {
-  type: "worktree.failed"
-  properties: {
-    message: string
-  }
-}
-
-export type EventReviewUpdated = {
-  type: "review.updated"
-  properties: {
-    scope: ReviewScope
-    sessionID?: string
-  }
-}
-
-export type EventVcsChangesUpdated = {
-  type: "vcs.changes.updated"
-  properties: {
-    [key: string]: never
-  }
-}
-
-export type Event =
-  | EventServerConnected
-  | EventGlobalDisposed
-  | EventNotifyToastShow
-  | EventProjectUpdated
-  | EventServerInstanceDisposed
-  | EventWorkflowUpdated
-  | EventConfigUpdated
-  | EventProviderChanged
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventFileEdited
-  | EventFileWatcherUpdated
-  | EventVcsBranchUpdated
-  | EventVcsHeadUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
-  | EventMessageUpdated
-  | EventMessageRemoved
-  | EventMessagePartUpdated
-  | EventMessagePartRemoved
-  | EventMcpToolsChanged
-  | EventQuestionAsked
-  | EventQuestionReplied
-  | EventQuestionRejected
-  | EventRuleUpdated
-  | EventTodoUpdated
-  | EventCollaborationUpdated
-  | EventSessionStatus
-  | EventSessionIdle
-  | EventSessionNotificationCreated
-  | EventToolRemoteCall
-  | EventSessionCompacted
-  | EventCommandExecuted
-  | EventSessionCreated
-  | EventSessionUpdated
-  | EventSessionDeleted
-  | EventSessionDiff
-  | EventSessionError
-  | EventSkillUpdated
-  | EventPtyCreated
-  | EventPtyUpdated
-  | EventPtyExited
-  | EventPtyDeleted
-  | EventWorktreeReady
-  | EventWorktreeFailed
-  | EventReviewUpdated
-  | EventVcsChangesUpdated
-
-export type GlobalEvent = {
-  directory: string
-  payload: Event
-}
-
-export type PermissionConfigOutput = {
-  [key: string]: PermissionRuleConfig
-}
-
-export type AgentConfigOutput = {
-  model?: string
-  /**
-   * Default model variant for this agent (applies only when using the agent's configured model).
-   */
-  variant?: string
-  temperature?: number
-  top_p?: number
   prompt?: string
+  steps?: number
+  temperature?: number
+  topP?: number
+  triggerHints?: Array<string>
+  variant?: string
+}
+
+export type AgentConfig = {
+  /**
+   * Hex color code (e.g., #FF5733) or theme color (e.g., primary)
+   */
+  color?: "accent" | "error" | "info" | "primary" | "secondary" | "success" | "warning" | string
+  /**
+   * Tool ids to defer-load: kept out of the tools array (only a one-line summary in the tool_search description) until the model activates one via tool_search, after which it is available with full parameters on the next turn. Defaults to [pdf_parse, excel_parse, excel_write, workflow_run]. Pass an empty array to disable deferral entirely (load all tools eagerly). Only applies to tools still in the pool (respecting disableTools).
+   */
+  deferTools?: Array<string>
+  /**
+   * Description of when to use the agent
+   */
+  description?: string
+  disable?: boolean
+  /**
+   * Tool ids to remove from this agent's available-tools pool (e.g. pdf_parse, workflow_run) — reduces per-turn tool-schema token cost for tools this agent will never use. Only ever narrows the existing pool; unknown ids are ignored.
+   */
+  disableTools?: Array<string>
+  /**
+   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
+   */
+  hidden?: boolean
+  /**
+   * @deprecated Use 'steps' field instead.
+   */
+  maxSteps?: number
+  mode?: "all" | "primary" | "subagent"
+  model?: string
+  options?: {
+    [key: string]: unknown
+  }
+  permission?: PermissionConfig
+  prompt?: string
+  /**
+   * Maximum number of agentic iterations before forcing text-only response
+   */
+  steps?: number
+  temperature?: number
   /**
    * @deprecated Use 'permission' field instead
    */
   tools?: {
     [key: string]: boolean
   }
-  disable?: boolean
+  top_p?: number
+  /**
+   * Default model variant for this agent (applies only when using the agent's configured model).
+   */
+  variant?: string
+  [key: string]: unknown
+}
+
+export type AgentConfigOutput = {
+  /**
+   * Hex color code (e.g., #FF5733) or theme color (e.g., primary)
+   */
+  color?: "accent" | "error" | "info" | "primary" | "secondary" | "success" | "warning" | string
+  /**
+   * Tool ids to defer-load: kept out of the tools array (only a one-line summary in the tool_search description) until the model activates one via tool_search, after which it is available with full parameters on the next turn. Defaults to [pdf_parse, excel_parse, excel_write, workflow_run]. Pass an empty array to disable deferral entirely (load all tools eagerly). Only applies to tools still in the pool (respecting disableTools).
+   */
+  deferTools?: Array<string>
   /**
    * Description of when to use the agent
    */
   description?: string
-  mode?: "subagent" | "primary" | "all"
-  /**
-   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
-   */
-  hidden?: boolean
-  options?: {
-    [key: string]: unknown
-  }
-  /**
-   * Hex color code (e.g., #FF5733) or theme color (e.g., primary)
-   */
-  color?: string | "primary" | "secondary" | "accent" | "success" | "warning" | "error" | "info"
-  /**
-   * Maximum number of agentic iterations before forcing text-only response
-   */
-  steps?: number
-  /**
-   * @deprecated Use 'steps' field instead.
-   */
-  maxSteps?: number
-  permission?: PermissionConfigOutput
+  disable?: boolean
   /**
    * Tool ids to remove from this agent's available-tools pool (e.g. pdf_parse, workflow_run) — reduces per-turn tool-schema token cost for tools this agent will never use. Only ever narrows the existing pool; unknown ids are ignored.
    */
   disableTools?: Array<string>
   /**
-   * Tool ids to defer-load: kept out of the tools array (only a one-line summary in the tool_search description) until the model activates one via tool_search, after which it is available with full parameters on the next turn. Defaults to [pdf_parse, excel_parse, excel_write, workflow_run]. Pass an empty array to disable deferral entirely (load all tools eagerly). Only applies to tools still in the pool (respecting disableTools).
+   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
    */
-  deferTools?: Array<string>
+  hidden?: boolean
+  /**
+   * @deprecated Use 'steps' field instead.
+   */
+  maxSteps?: number
+  mode?: "all" | "primary" | "subagent"
+  model?: string
+  options?: {
+    [key: string]: unknown
+  }
+  permission?: PermissionConfigOutput
+  prompt?: string
+  /**
+   * Maximum number of agentic iterations before forcing text-only response
+   */
+  steps?: number
+  temperature?: number
+  /**
+   * @deprecated Use 'permission' field instead
+   */
+  tools?: {
+    [key: string]: boolean
+  }
+  top_p?: number
+  /**
+   * Default model variant for this agent (applies only when using the agent's configured model).
+   */
+  variant?: string
   [key: string]: unknown
 }
 
-export type ProviderConfigOutput = {
-  api?: string
-  name?: string
-  env?: Array<string>
-  id?: string
-  npm?: string
-  whitelist?: Array<string>
-  blacklist?: Array<string>
-  /**
-   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
-   */
-  picker?: {
-    include?: Array<string>
-    exclude?: Array<string>
-  }
-  relay?: {
-    station: string
-    group: string
-    kind: "claude-code" | "codex" | "standard" | "custom"
-    auth?: "bearer" | "x-api-key"
-  }
-  models?: {
-    [key: string]: {
-      id?: string
-      name?: string
-      family?: string
-      release_date?: string
-      attachment?: boolean
-      reasoning?: boolean
-      temperature?: boolean
-      tool_call?: boolean
-      interleaved?:
-        | true
-        | {
-            field: "reasoning_content" | "reasoning_details"
-          }
-      cost?: {
-        input?: number
-        output?: number
-        cache_read?: number
-        cache_write?: number
-      }
-      limit?: {
-        context?: number
-        input?: number
-        output?: number
-      }
-      modalities?: {
-        input?: Array<"text" | "audio" | "image" | "video" | "pdf">
-        output?: Array<"text" | "audio" | "image" | "video" | "pdf">
-      }
-      status?: "alpha" | "beta" | "deprecated" | "active"
-      options?: {
-        [key: string]: unknown
-      }
-      headers?: {
-        [key: string]: string
-      }
-      provider?: {
-        npm?: string
-        api?: string
-      }
-      /**
-       * Variant-specific configuration
-       */
-      variants?: {
-        [key: string]: {
-          /**
-           * Disable this variant for the model
-           */
-          disabled?: boolean
-          [key: string]: unknown
-        }
-      }
-    }
-  }
-  options?: {
-    apiKey?: string
-    baseURL?: string
-    /**
-     * Enable promptCacheKey for this provider (default false)
-     */
-    setCacheKey?: boolean
-    /**
-     * OpenAI prompt cache retention policy when promptCacheKey is enabled.
-     */
-    promptCacheRetention?: "in_memory" | "24h"
-    /**
-     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
-     */
-    timeout?: number | false
-    [key: string]: unknown
-  }
+export type AgentConnectionModels = {
+  allowCustomID: boolean
+  models: Array<{
+    id: string
+    providerID?: string
+    title: string
+  }>
 }
 
-export type ConfigOutput = {
+export type AgentConnectionProduct = {
+  adapter?: "claude" | "codex" | "command" | "member" | "opencode"
+  args?: Array<string>
+  builtin: boolean
+  capabilities: {
+    modelDiscovery: boolean
+    modelSelection: boolean
+    permission: "external" | "merak"
+    questions: boolean
+    resume: boolean
+    textStreaming: boolean
+  }
+  command?: string
+  connected: boolean
+  enabled: boolean
+  id: string
+  model?: {
+    id: string
+    providerID?: string
+  }
+  outdated?: boolean
+  path?: string
+  reason?: string
+  recommended?: string
+  resumeArgs?: Array<string>
+  revision: number
+  sessionLine?: string
+  source: "builtin" | "global"
+  title: string
+  upgrade?: string
+  version?: string
+}
+
+export type AgentConnectionVerification = {
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  checkedAt: number
+  error?: {
+    code: string
+    message: string
+  }
+  productID: string
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  revision: number
+  status: "failed" | "passed"
+  streamingObserved: boolean
+}
+
+export type AgentNotFoundError = {
+  code?: string
+  data: {
+    agent: string
+    available?: Array<string>
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+  }
+  name: "AgentNotFoundError"
+}
+
+export type AgentNotFoundErrorOutput = {
+  code?: string
+  data: {
+    agent: string
+    available?: Array<string>
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+  }
+  name: "AgentNotFoundError"
+}
+
+export type AgentPart = {
+  id: string
+  messageID: string
+  name: string
+  sessionID: string
+  source?: {
+    end: number
+    start: number
+    value: string
+  }
+  type: "agent"
+}
+
+export type AgentPartInput = {
+  id?: string
+  name: string
+  source?: {
+    end: number
+    start: number
+    value: string
+  }
+  type: "agent"
+}
+
+export type AgentPartOutput = {
+  id: string
+  messageID: string
+  name: string
+  sessionID: string
+  source?: {
+    end: number
+    start: number
+    value: string
+  }
+  type: "agent"
+}
+
+export type ApiAuth = {
+  key: string
+  type: "api"
+}
+
+export type AssistantMessage = {
+  agent: string
+  contextBreakdown?: {
+    conversation: number
+    environment: number
+    mcp: number
+    rules: number
+    skills: number
+    subagents: number
+    systemBase: number
+    toolDefinitions: number
+    total: number
+  }
+  cost: number
+  error?:
+    | ApiError
+    | AgentNotFoundError
+    | CommandNotFoundError
+    | CompactionBlockedError
+    | ConfigParseError
+    | ContextOverflowError
+    | ExternalAdapterError
+    | MessageAbortedError
+    | MessageOutputLengthError
+    | ModelNotFoundError
+    | PluginInstallError
+    | ProviderAuthError
+    | StructuredOutputError
+    | UnknownError
+    | WorktreeResetDirtyError
+  execution?: {
+    kind: "merak"
+  }
+  finish?: string
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  mode: string
+  modelID: string
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  providerID: string
+  role: "assistant"
+  sessionID: string
+  structured?: unknown
+  summary?: boolean
+  time: {
+    completed?: number
+    created: number
+  }
+  tokens: {
+    cache: {
+      read: number
+      write: number
+    }
+    input: number
+    output: number
+    reasoning: number
+    total?: number
+  }
+  variant?: string
+}
+
+export type AssistantMessageOutput = {
+  agent: string
+  contextBreakdown?: {
+    conversation: number
+    environment: number
+    mcp: number
+    rules: number
+    skills: number
+    subagents: number
+    systemBase: number
+    toolDefinitions: number
+    total: number
+  }
+  cost: number
+  error?:
+    | ApiErrorOutput
+    | AgentNotFoundErrorOutput
+    | CommandNotFoundErrorOutput
+    | CompactionBlockedErrorOutput
+    | ConfigParseErrorOutput
+    | ContextOverflowErrorOutput
+    | ExternalAdapterErrorOutput
+    | MessageAbortedErrorOutput
+    | MessageOutputLengthErrorOutput
+    | ModelNotFoundErrorOutput
+    | PluginInstallErrorOutput
+    | ProviderAuthErrorOutput
+    | StructuredOutputErrorOutput
+    | UnknownErrorOutput
+    | WorktreeResetDirtyErrorOutput
+  execution?: {
+    kind: "merak"
+  }
+  finish?: string
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  mode: string
+  modelID: string
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  providerID: string
+  role: "assistant"
+  sessionID: string
+  structured?: unknown
+  summary?: boolean
+  time: {
+    completed?: number
+    created: number
+  }
+  tokens: {
+    cache: {
+      read: number
+      write: number
+    }
+    input: number
+    output: number
+    reasoning: number
+    total?: number
+  }
+  variant?: string
+}
+
+export type Auth = ApiAuth | OAuth | WellKnownAuth
+
+export type CatalogRefreshError = {
+  code?: string
+  data: {
+    message: string
+    providerID: string
+    statusCode?: number
+  }
+  name: "CatalogRefreshError"
+}
+
+export type CheckoutBlockedError = {
+  code?: string
+  data: {
+    branch?: string
+    message: string
+    operation?: string
+    reason: "busy" | "dirty" | "git_operation" | "managed_worktree" | "not_git" | "occupied" | "unborn"
+    staged?: number
+    unstaged?: number
+    untracked?: number
+    worktree?: string
+  }
+  name: "CheckoutBlockedError"
+}
+
+export type CheckoutStaleError = {
+  code?: string
+  data: {
+    checkout: string | null
+    expectedCheckout: string | null
+    message: string
+  }
+  name: "CheckoutStaleError"
+}
+
+export type CollaborationEvent = {
+  at: number
+  kind: "join" | "leave" | "rename"
+  names: Array<string>
+}
+
+export type CollaborationGroup = {
+  baseline: Array<string>
+  events: Array<CollaborationEvent>
+  results: Array<CollaborationResult>
+  seats: Array<CollaborationSeat>
+  seq: number
+}
+
+export type CollaborationGroupSummary = {
+  directory: string
+  seats: Array<{
+    availability: {
+      reason?: string
+      state: "offline" | "online"
+    }
+    duty: string
+    leader: boolean
+    name: string
+    product: string
+    role: string
+  }>
+  sessionID: string
+  title: string
+}
+
+export type CollaborationResult = {
+  at: number
+  name: string
+  requestID: string
+  seatID: string
+  text: string
+}
+
+export type CollaborationRoleTemplate = {
+  builtin: boolean
+  description?: string
+  duty: string
+  editable: boolean
+  id: string
+  name: string
+  role: string
+}
+
+export type CollaborationSeat = {
+  availability: {
+    reason?: string
+    state: "offline" | "online"
+  }
+  duty: string
+  id: string
+  leader: boolean
+  name: string
+  privateSessionID?: string
+  product: string
+  role: string
+}
+
+export type Command = {
+  agent?: string
+  description?: string
+  handler?: "context"
+  hints: Array<string>
+  model?: string
+  name: string
+  source?: "command" | "mcp" | "skill"
+  subtask?: boolean
+  template: string
+}
+
+export type CommandNotFoundError = {
+  code?: string
+  data: {
+    command: string
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+  }
+  name: "CommandNotFoundError"
+}
+
+export type CommandNotFoundErrorOutput = {
+  code?: string
+  data: {
+    command: string
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+  }
+  name: "CommandNotFoundError"
+}
+
+export type CompactionBlockedError = {
+  code?: string
+  data: {
+    message: string
+    tokens?: number
+    usable?: number
+  }
+  name: "CompactionBlockedError"
+}
+
+export type CompactionBlockedErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    tokens?: number
+    usable?: number
+  }
+  name: "CompactionBlockedError"
+}
+
+export type CompactionPart = {
+  auto: boolean
+  id: string
+  messageID: string
+  permissionMode?: PermissionMode
+  preCompactActivatedTools?: Array<string>
+  sessionID: string
+  type: "compaction"
+}
+
+export type CompactionPartOutput = {
+  auto: boolean
+  id: string
+  messageID: string
+  permissionMode?: PermissionMode
+  preCompactActivatedTools?: Array<string>
+  sessionID: string
+  type: "compaction"
+}
+
+export type Config = {
   /**
    * JSON schema reference for configuration validation
    */
   $schema?: string
   /**
-   * UI language (zh-CN or en-US)
+   * Agent configuration
    */
-  locale?: "zh-CN" | "en-US"
-  logLevel?: LogLevel
-  server?: ServerConfig
+  agent?: {
+    build?: AgentConfig
+    compaction?: AgentConfig
+    explore?: AgentConfig
+    general?: AgentConfig
+    "memory-extractor"?: AgentConfig
+    plan?: AgentConfig
+    simplifier?: AgentConfig
+    summary?: AgentConfig
+    title?: AgentConfig
+    [key: string]: AgentConfig | undefined
+  }
+  /**
+   * Global external product connections shared by direct and group conversations
+   */
+  agentConnections?: {
+    products?: {
+      [key: string]: {
+        adapter?: "claude" | "codex" | "command" | "member" | "opencode"
+        args?: Array<string>
+        command?: string
+        enabled?: boolean
+        model?: {
+          id: string
+          providerID?: string
+        }
+        resumeArgs?: Array<string>
+        sessionLine?: string
+        title?: string
+      }
+    }
+  }
+  /**
+   * Collaboration groups. The leader is always a Merak seat.
+   */
+  collaboration?: {
+    roleTemplates?: {
+      [key: string]: {
+        duty: string
+        name: string
+        role: string
+      }
+    }
+  }
   /**
    * Command configuration
    */
   command?: {
     [key: string]: {
-      template: string
-      description?: string
       agent?: string
+      description?: string
       model?: string
       subtask?: boolean
+      template: string
     }
   }
+  compaction?: {
+    /**
+     * Enable automatic compaction when context is full (default: true)
+     */
+    auto?: boolean
+    /**
+     * After the breaker trips, hard-stop and notify the user if the context still exceeds capacity (default true)
+     */
+    blockingLimit?: boolean
+    /**
+     * After this many consecutive auto-compaction failures, trip the breaker and switch to aggressive prune + blocking limit (default 3)
+     */
+    failureThreshold?: number
+    /**
+     * Tool input content truncation (on by default). Projection layer: content fields in write/edit/multi_edit/apply_patch inputs that exceed the dynamic budget are truncated (filePath/path are kept) and a marker says the file can be re-read with Read. Independent of output cleanup and its dynamic budget. Inputs within the last recent_turns turns are not truncated, to keep the cache.
+     */
+    input_budget?:
+      | {
+          /**
+           * Whether to truncate tool input content (default true). Set false to disable.
+           */
+          enabled?: boolean
+          /**
+           * Upper bound of the dynamic budget in tokens, default 20000
+           */
+          max?: number
+          /**
+           * Maximum length of a single content field after truncation (characters), default 4000
+           */
+          max_chars_per_field?: number
+          /**
+           * Lower bound of the dynamic budget in tokens, default 4000
+           */
+          min?: number
+          /**
+           * Dynamic budget share: budget = clamp(usable * share, min, max), default 0.1
+           */
+          share?: number
+        }
+      | boolean
+    /**
+     * Lossless folding of tool output (default true). Strips ANSI color codes and folds adjacent repeated lines, repeated blocks and repeated path prefixes; every transform is round-trip checked and skipped if it cannot be restored exactly. No information is lost, and it runs before lossy compaction and truncation.
+     */
+    lossless?:
+      | {
+          enabled?: boolean
+          max_block_fold_bytes?: number
+          min_bytes?: number
+        }
+      | boolean
+    /**
+     * Enable pruning of old tool outputs (default: true)
+     */
+    prune?: boolean
+    /**
+     * Read lifecycle management (default true). Projection layer: a Read is marked stale when the same file is edited afterwards, and superseded when it is read again with an overlapping range; either is replaced with a short notice. Storage is untouched and this is recomputed every turn. Reads within the last recent_turns turns are left alone to keep the cache.
+     */
+    read_lifecycle?:
+      | {
+          enabled?: boolean
+          min_size_bytes?: number
+          /**
+           * Protection window: Reads within the last N user turns are not replaced, to keep the prompt cache stable (default 2)
+           */
+          recent_turns?: number
+          /**
+           * Handle Reads whose content is outdated (a quality issue, default true)
+           */
+          stale?: boolean
+          /**
+           * Handle redundant repeated Reads (saves space, default true)
+           */
+          superseded?: boolean
+        }
+      | boolean
+    /**
+     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
+     */
+    reserved?: number
+  }
+  /**
+   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.
+   */
+  default_agent?: string
+  /**
+   * Disable providers that are loaded automatically
+   */
+  disabled_providers?: Array<string>
+  /**
+   * When set, ONLY these providers will be enabled. All other providers will be ignored
+   */
+  enabled_providers?: Array<string>
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
+  experimental?: {
+    /**
+     * Enable Bash output compaction, or configure thresholds for the compactor.
+     */
+    bash_output_compaction?:
+      | {
+          enabled?: boolean
+          max_input_bytes?: number
+          max_output_bytes?: number
+          min_bytes?: number
+          mode?: "aggressive" | "safe"
+          session_delta?: boolean
+        }
+      | boolean
+    /**
+     * Continue the agent loop when a tool call is denied
+     */
+    continue_loop_on_deny?: boolean
+    disable_paste_summary?: boolean
+    /**
+     * Timeout in milliseconds for model context protocol (MCP) requests
+     */
+    mcp_timeout?: number
+    /**
+     * Tools that should only be available to primary agents.
+     */
+    primary_tools?: Array<string>
+    /**
+     * Collapse unchanged repeated glob/grep/ls results within a short session TTL.
+     */
+    tool_result_delta?: boolean
+  }
+  formatter?:
+    | {
+        [key: string]: {
+          command?: Array<string>
+          disabled?: boolean
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+    | false
+  /**
+   * Additional instruction files or patterns to include
+   */
+  instructions?: Array<string>
+  layout?: LayoutConfig
+  /**
+   * UI language (zh-CN or en-US)
+   */
+  locale?: "en-US" | "zh-CN"
+  logLevel?: LogLevel
+  lsp?:
+    | {
+        [key: string]:
+          | {
+              command: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              extensions?: Array<string>
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+          | {
+              disabled: true
+            }
+      }
+    | false
+  /**
+   * MCP (Model Context Protocol) server configurations
+   */
+  mcp?: {
+    [key: string]:
+      | {
+          enabled: boolean
+        }
+      | McpLocalConfig
+      | McpRemoteConfig
+  }
+  memory?: {
+    /**
+     * Whether to enable AutoDream (memory consolidation). Default false (off). When on, a child session is forked periodically to review the memory directory and merge, deduplicate, refine and prune the index, consolidating fragmented memories into organized, non-redundant long-term memory. Only applies when auto_extract is on (no extraction means nothing to consolidate).
+     */
+    auto_dream?: boolean
+    /**
+     * Post-turn memory extraction policy. Default signals (extract only when needed). false disables it; true/signals extracts only on turns with memory signals; always extracts at the end of every root turn; unset means signals.
+     */
+    auto_extract?: "always" | "signals" | boolean
+    /**
+     * Whether to enable memory recall. Default false (off): past memories are not recalled into the context automatically. true: at the start of every user turn, relevant memories are recalled by keyword (optionally reranked by an LLM) and injected into the context.
+     */
+    auto_recall?: boolean
+    /**
+     * AutoDream time gate: minimum hours since the last consolidation, default 24. Consolidation runs only when dream_min_sessions is also met.
+     */
+    dream_min_hours?: number
+    /**
+     * AutoDream session gate: minimum number of new sessions since the last consolidation, default 5. Consolidation runs only when dream_min_hours is also met.
+     */
+    dream_min_sessions?: number
+    /**
+     * Memory extraction throttle: extract once every N finished turns, default 1 (every turn). Larger values fork fewer child sessions and save cost.
+     */
+    extract_interval?: number
+    /**
+     * Model for post-turn memory extraction. Defaults to small_model, then the turn model.
+     */
+    model?: string
+    /**
+     * Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.
+     */
+    recall_rerank?: "auto" | "off"
+    /**
+     * Whether to enable SessionMemory (session notes). Default true (on). When on, a forked small model maintains per-session notes at token thresholds (10K to start, then every 5K) so context can be restored after compaction. Set false to turn it off completely.
+     */
+    session_memory?: boolean
+    /**
+     * Use the SessionMemory notes instead of an LLM summary during compaction (saves one LLM call). Default true (on). Only applies when session_memory is not disabled; falls back to the LLM summary automatically when the notes are empty or fail. Set false to always use the LLM summary.
+     */
+    session_memory_compact?: boolean
+  }
+  /**
+   * @deprecated Use `agent` field instead.
+   */
+  mode?: {
+    build?: AgentConfig
+    plan?: AgentConfig
+    [key: string]: AgentConfig | undefined
+  }
+  /**
+   * Model to use in the format of provider/model, eg anthropic/claude-2
+   */
+  model?: string
+  permission?: PermissionConfig
+  plugin?: Array<
+    | [
+        string,
+        {
+          [key: string]: unknown
+        },
+      ]
+    | string
+  >
+  plugin_options?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
+  /**
+   * Custom provider configurations and model overrides
+   */
+  provider?: {
+    [key: string]: ProviderConfig
+  }
+  rules?: {
+    /**
+     * Global user rules, always applied across all projects. Only read from global config; ignored in project config.
+     */
+    user?: Array<string>
+  }
+  /**
+   * Sandbox for the commands the agent runs.
+   */
+  sandbox?: {
+    /**
+     * preferred (default): use the sandbox when it is ready; until then commands that change things ask first, even in auto mode. required: refuse to run commands while the sandbox is not ready. off: never use the sandbox.
+     */
+    mode?: "off" | "preferred" | "required"
+    network?: {
+      /**
+       * Linux only: local ports commands may connect to directly, for example a database at 127.0.0.1:5432.
+       */
+      allowLocalPorts?: Array<number>
+    }
+    read?: {
+      /**
+       * Extra folders commands cannot read, besides ~/.ssh, ~/.aws and the other credential folders. ~/ means your home folder.
+       */
+      deny?: Array<string>
+    }
+    /**
+     * Hide API keys, tokens and passwords in command output before the model sees it. Defaults to true.
+     */
+    redactSecrets?: boolean
+    write?: {
+      /**
+       * Extra folders commands can always write, besides the workspace, the temp folder and package caches.
+       */
+      allow?: Array<string>
+    }
+  }
+  server?: ServerConfig
   /**
    * Additional skill folder paths
    */
@@ -1586,284 +987,16 @@ export type ConfigOutput = {
      */
     urls?: Array<string>
   }
-  watcher?: {
-    ignore?: Array<string>
-  }
-  plugin?: Array<
-    | string
-    | [
-        string,
-        {
-          [key: string]: unknown
-        },
-      ]
-  >
-  /**
-   * Global external product connections shared by direct and group conversations
-   */
-  agentConnections?: {
-    products?: {
-      [key: string]: {
-        command?: string
-        enabled?: boolean
-        title?: string
-        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-        args?: Array<string>
-        resumeArgs?: Array<string>
-        sessionLine?: string
-        model?: {
-          id: string
-          providerID?: string
-        }
-      }
-    }
-  }
-  /**
-   * Collaboration groups. The leader is always a Merak seat.
-   */
-  collaboration?: {
-    roleTemplates?: {
-      [key: string]: {
-        name: string
-        role: string
-        duty: string
-      }
-    }
-  }
-  snapshot?: boolean
-  /**
-   * Disable providers that are loaded automatically
-   */
-  disabled_providers?: Array<string>
-  /**
-   * When set, ONLY these providers will be enabled. All other providers will be ignored
-   */
-  enabled_providers?: Array<string>
-  /**
-   * Model to use in the format of provider/model, eg anthropic/claude-2
-   */
-  model?: string
   /**
    * Small model to use for tasks like title generation in the format of provider/model
    */
   small_model?: string
-  /**
-   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.
-   */
-  default_agent?: string
-  /**
-   * @deprecated Use `agent` field instead.
-   */
-  mode?: {
-    build?: AgentConfigOutput
-    plan?: AgentConfigOutput
-    [key: string]: AgentConfigOutput | undefined
-  }
-  /**
-   * Agent configuration
-   */
-  agent?: {
-    plan?: AgentConfigOutput
-    build?: AgentConfigOutput
-    general?: AgentConfigOutput
-    explore?: AgentConfigOutput
-    title?: AgentConfigOutput
-    summary?: AgentConfigOutput
-    compaction?: AgentConfigOutput
-    "memory-extractor"?: AgentConfigOutput
-    simplifier?: AgentConfigOutput
-    [key: string]: AgentConfigOutput | undefined
-  }
-  /**
-   * Custom provider configurations and model overrides
-   */
-  provider?: {
-    [key: string]: ProviderConfigOutput
-  }
-  /**
-   * MCP (Model Context Protocol) server configurations
-   */
-  mcp?: {
-    [key: string]:
-      | McpLocalConfig
-      | McpRemoteConfig
-      | {
-          enabled: boolean
-        }
-  }
-  formatter?:
-    | false
-    | {
-        [key: string]: {
-          disabled?: boolean
-          command?: Array<string>
-          environment?: {
-            [key: string]: string
-          }
-          extensions?: Array<string>
-        }
-      }
-  lsp?:
-    | false
-    | {
-        [key: string]:
-          | {
-              disabled: true
-            }
-          | {
-              command: Array<string>
-              extensions?: Array<string>
-              disabled?: boolean
-              env?: {
-                [key: string]: string
-              }
-              initialization?: {
-                [key: string]: unknown
-              }
-            }
-      }
-  /**
-   * Additional instruction files or patterns to include
-   */
-  instructions?: Array<string>
-  rules?: {
+  snapshot?: boolean
+  storage?: {
     /**
-     * Global user rules, always applied across all projects. Only read from global config; ignored in project config.
+     * Delete sessions inactive for more than N days; by default no history is deleted
      */
-    user?: Array<string>
-  }
-  layout?: LayoutConfig
-  permission?: PermissionConfigOutput
-  tools?: {
-    [key: string]: boolean
-  }
-  enterprise?: {
-    /**
-     * Enterprise URL
-     */
-    url?: string
-  }
-  compaction?: {
-    /**
-     * Enable automatic compaction when context is full (default: true)
-     */
-    auto?: boolean
-    /**
-     * Enable pruning of old tool outputs (default: true)
-     */
-    prune?: boolean
-    /**
-     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
-     */
-    reserved?: number
-    /**
-     * After this many consecutive auto-compaction failures, trip the breaker and switch to aggressive prune + blocking limit (default 3)
-     */
-    failureThreshold?: number
-    /**
-     * After the breaker trips, hard-stop and notify the user if the context still exceeds capacity (default true)
-     */
-    blockingLimit?: boolean
-    /**
-     * Lossless folding of tool output (default true). Strips ANSI color codes and folds adjacent repeated lines, repeated blocks and repeated path prefixes; every transform is round-trip checked and skipped if it cannot be restored exactly. No information is lost, and it runs before lossy compaction and truncation.
-     */
-    lossless?:
-      | boolean
-      | {
-          enabled?: boolean
-          min_bytes?: number
-          max_block_fold_bytes?: number
-        }
-    /**
-     * Read lifecycle management (default true). Projection layer: a Read is marked stale when the same file is edited afterwards, and superseded when it is read again with an overlapping range; either is replaced with a short notice. Storage is untouched and this is recomputed every turn. Reads within the last recent_turns turns are left alone to keep the cache.
-     */
-    read_lifecycle?:
-      | boolean
-      | {
-          enabled?: boolean
-          /**
-           * Handle Reads whose content is outdated (a quality issue, default true)
-           */
-          stale?: boolean
-          /**
-           * Handle redundant repeated Reads (saves space, default true)
-           */
-          superseded?: boolean
-          min_size_bytes?: number
-          /**
-           * Protection window: Reads within the last N user turns are not replaced, to keep the prompt cache stable (default 2)
-           */
-          recent_turns?: number
-        }
-    /**
-     * Tool input content truncation (on by default). Projection layer: content fields in write/edit/multi_edit/apply_patch inputs that exceed the dynamic budget are truncated (filePath/path are kept) and a marker says the file can be re-read with Read. Independent of output cleanup and its dynamic budget. Inputs within the last recent_turns turns are not truncated, to keep the cache.
-     */
-    input_budget?:
-      | boolean
-      | {
-          /**
-           * Whether to truncate tool input content (default true). Set false to disable.
-           */
-          enabled?: boolean
-          /**
-           * Dynamic budget share: budget = clamp(usable * share, min, max), default 0.1
-           */
-          share?: number
-          /**
-           * Lower bound of the dynamic budget in tokens, default 4000
-           */
-          min?: number
-          /**
-           * Upper bound of the dynamic budget in tokens, default 20000
-           */
-          max?: number
-          /**
-           * Maximum length of a single content field after truncation (characters), default 4000
-           */
-          max_chars_per_field?: number
-        }
-  }
-  memory?: {
-    /**
-     * Post-turn memory extraction policy. Default signals (extract only when needed). false disables it; true/signals extracts only on turns with memory signals; always extracts at the end of every root turn; unset means signals.
-     */
-    auto_extract?: boolean | "signals" | "always"
-    /**
-     * Whether to enable memory recall. Default false (off): past memories are not recalled into the context automatically. true: at the start of every user turn, relevant memories are recalled by keyword (optionally reranked by an LLM) and injected into the context.
-     */
-    auto_recall?: boolean
-    /**
-     * Model for post-turn memory extraction. Defaults to small_model, then the turn model.
-     */
-    model?: string
-    /**
-     * Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.
-     */
-    recall_rerank?: "off" | "auto"
-    /**
-     * Whether to enable SessionMemory (session notes). Default true (on). When on, a forked small model maintains per-session notes at token thresholds (10K to start, then every 5K) so context can be restored after compaction. Set false to turn it off completely.
-     */
-    session_memory?: boolean
-    /**
-     * Use the SessionMemory notes instead of an LLM summary during compaction (saves one LLM call). Default true (on). Only applies when session_memory is not disabled; falls back to the LLM summary automatically when the notes are empty or fail. Set false to always use the LLM summary.
-     */
-    session_memory_compact?: boolean
-    /**
-     * Memory extraction throttle: extract once every N finished turns, default 1 (every turn). Larger values fork fewer child sessions and save cost.
-     */
-    extract_interval?: number
-    /**
-     * Whether to enable AutoDream (memory consolidation). Default false (off). When on, a child session is forked periodically to review the memory directory and merge, deduplicate, refine and prune the index, consolidating fragmented memories into organized, non-redundant long-term memory. Only applies when auto_extract is on (no extraction means nothing to consolidate).
-     */
-    auto_dream?: boolean
-    /**
-     * AutoDream time gate: minimum hours since the last consolidation, default 24. Consolidation runs only when dream_min_sessions is also met.
-     */
-    dream_min_hours?: number
-    /**
-     * AutoDream session gate: minimum number of new sessions since the last consolidation, default 5. Consolidation runs only when dream_min_hours is also met.
-     */
-    dream_min_sessions?: number
+    retention_days?: number
   }
   tool_discovery?: {
     /**
@@ -1873,41 +1006,18 @@ export type ConfigOutput = {
     /**
      * Small-model selection for deferred tool search (default off). off uses keyword scoring only; auto, when the candidate count reaches the threshold (mostly with many MCP servers) and small_model is configured, lets the small model pick and activate the tools that are actually needed. Falls back to keywords only when not configured, on timeout or on failure.
      */
-    rerank?: "off" | "auto"
+    rerank?: "auto" | "off"
   }
-  experimental?: {
-    disable_paste_summary?: boolean
-    /**
-     * Enable Bash output compaction, or configure thresholds for the compactor.
-     */
-    bash_output_compaction?:
-      | boolean
-      | {
-          enabled?: boolean
-          mode?: "safe" | "aggressive"
-          session_delta?: boolean
-          min_bytes?: number
-          max_input_bytes?: number
-          max_output_bytes?: number
-        }
-    /**
-     * Collapse unchanged repeated glob/grep/ls results within a short session TTL.
-     */
-    tool_result_delta?: boolean
-    /**
-     * Tools that should only be available to primary agents.
-     */
-    primary_tools?: Array<string>
-    /**
-     * Continue the agent loop when a tool call is denied
-     */
-    continue_loop_on_deny?: boolean
-    /**
-     * Timeout in milliseconds for model context protocol (MCP) requests
-     */
-    mcp_timeout?: number
+  tools?: {
+    [key: string]: boolean
   }
   ui?: {
+    chat?: {
+      /**
+       * Auto-scroll the conversation to the bottom
+       */
+      autoScroll?: boolean
+    }
     models?: {
       /**
        * Hidden models, as providerID/modelID
@@ -1924,23 +1034,338 @@ export type ConfigOutput = {
         [key: string]: string
       }
     }
-    chat?: {
-      /**
-       * Auto-scroll the conversation to the bottom
-       */
-      autoScroll?: boolean
+  }
+  watcher?: {
+    ignore?: Array<string>
+  }
+}
+
+export type ConfigOutput = {
+  /**
+   * JSON schema reference for configuration validation
+   */
+  $schema?: string
+  /**
+   * Agent configuration
+   */
+  agent?: {
+    build?: AgentConfigOutput
+    compaction?: AgentConfigOutput
+    explore?: AgentConfigOutput
+    general?: AgentConfigOutput
+    "memory-extractor"?: AgentConfigOutput
+    plan?: AgentConfigOutput
+    simplifier?: AgentConfigOutput
+    summary?: AgentConfigOutput
+    title?: AgentConfigOutput
+    [key: string]: AgentConfigOutput | undefined
+  }
+  /**
+   * Global external product connections shared by direct and group conversations
+   */
+  agentConnections?: {
+    products?: {
+      [key: string]: {
+        adapter?: "claude" | "codex" | "command" | "member" | "opencode"
+        args?: Array<string>
+        command?: string
+        enabled?: boolean
+        model?: {
+          id: string
+          providerID?: string
+        }
+        resumeArgs?: Array<string>
+        sessionLine?: string
+        title?: string
+      }
     }
   }
+  /**
+   * Collaboration groups. The leader is always a Merak seat.
+   */
+  collaboration?: {
+    roleTemplates?: {
+      [key: string]: {
+        duty: string
+        name: string
+        role: string
+      }
+    }
+  }
+  /**
+   * Command configuration
+   */
+  command?: {
+    [key: string]: {
+      agent?: string
+      description?: string
+      model?: string
+      subtask?: boolean
+      template: string
+    }
+  }
+  compaction?: {
+    /**
+     * Enable automatic compaction when context is full (default: true)
+     */
+    auto?: boolean
+    /**
+     * After the breaker trips, hard-stop and notify the user if the context still exceeds capacity (default true)
+     */
+    blockingLimit?: boolean
+    /**
+     * After this many consecutive auto-compaction failures, trip the breaker and switch to aggressive prune + blocking limit (default 3)
+     */
+    failureThreshold?: number
+    /**
+     * Tool input content truncation (on by default). Projection layer: content fields in write/edit/multi_edit/apply_patch inputs that exceed the dynamic budget are truncated (filePath/path are kept) and a marker says the file can be re-read with Read. Independent of output cleanup and its dynamic budget. Inputs within the last recent_turns turns are not truncated, to keep the cache.
+     */
+    input_budget?:
+      | {
+          /**
+           * Whether to truncate tool input content (default true). Set false to disable.
+           */
+          enabled?: boolean
+          /**
+           * Upper bound of the dynamic budget in tokens, default 20000
+           */
+          max?: number
+          /**
+           * Maximum length of a single content field after truncation (characters), default 4000
+           */
+          max_chars_per_field?: number
+          /**
+           * Lower bound of the dynamic budget in tokens, default 4000
+           */
+          min?: number
+          /**
+           * Dynamic budget share: budget = clamp(usable * share, min, max), default 0.1
+           */
+          share?: number
+        }
+      | boolean
+    /**
+     * Lossless folding of tool output (default true). Strips ANSI color codes and folds adjacent repeated lines, repeated blocks and repeated path prefixes; every transform is round-trip checked and skipped if it cannot be restored exactly. No information is lost, and it runs before lossy compaction and truncation.
+     */
+    lossless?:
+      | {
+          enabled?: boolean
+          max_block_fold_bytes?: number
+          min_bytes?: number
+        }
+      | boolean
+    /**
+     * Enable pruning of old tool outputs (default: true)
+     */
+    prune?: boolean
+    /**
+     * Read lifecycle management (default true). Projection layer: a Read is marked stale when the same file is edited afterwards, and superseded when it is read again with an overlapping range; either is replaced with a short notice. Storage is untouched and this is recomputed every turn. Reads within the last recent_turns turns are left alone to keep the cache.
+     */
+    read_lifecycle?:
+      | {
+          enabled?: boolean
+          min_size_bytes?: number
+          /**
+           * Protection window: Reads within the last N user turns are not replaced, to keep the prompt cache stable (default 2)
+           */
+          recent_turns?: number
+          /**
+           * Handle Reads whose content is outdated (a quality issue, default true)
+           */
+          stale?: boolean
+          /**
+           * Handle redundant repeated Reads (saves space, default true)
+           */
+          superseded?: boolean
+        }
+      | boolean
+    /**
+     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
+     */
+    reserved?: number
+  }
+  /**
+   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.
+   */
+  default_agent?: string
+  /**
+   * Disable providers that are loaded automatically
+   */
+  disabled_providers?: Array<string>
+  /**
+   * When set, ONLY these providers will be enabled. All other providers will be ignored
+   */
+  enabled_providers?: Array<string>
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
+  experimental?: {
+    /**
+     * Enable Bash output compaction, or configure thresholds for the compactor.
+     */
+    bash_output_compaction?:
+      | {
+          enabled?: boolean
+          max_input_bytes?: number
+          max_output_bytes?: number
+          min_bytes?: number
+          mode?: "aggressive" | "safe"
+          session_delta?: boolean
+        }
+      | boolean
+    /**
+     * Continue the agent loop when a tool call is denied
+     */
+    continue_loop_on_deny?: boolean
+    disable_paste_summary?: boolean
+    /**
+     * Timeout in milliseconds for model context protocol (MCP) requests
+     */
+    mcp_timeout?: number
+    /**
+     * Tools that should only be available to primary agents.
+     */
+    primary_tools?: Array<string>
+    /**
+     * Collapse unchanged repeated glob/grep/ls results within a short session TTL.
+     */
+    tool_result_delta?: boolean
+  }
+  formatter?:
+    | {
+        [key: string]: {
+          command?: Array<string>
+          disabled?: boolean
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+    | false
+  /**
+   * Additional instruction files or patterns to include
+   */
+  instructions?: Array<string>
+  layout?: LayoutConfig
+  /**
+   * UI language (zh-CN or en-US)
+   */
+  locale?: "en-US" | "zh-CN"
+  logLevel?: LogLevel
+  lsp?:
+    | {
+        [key: string]:
+          | {
+              command: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              extensions?: Array<string>
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+          | {
+              disabled: true
+            }
+      }
+    | false
+  /**
+   * MCP (Model Context Protocol) server configurations
+   */
+  mcp?: {
+    [key: string]:
+      | {
+          enabled: boolean
+        }
+      | McpLocalConfig
+      | McpRemoteConfig
+  }
+  memory?: {
+    /**
+     * Whether to enable AutoDream (memory consolidation). Default false (off). When on, a child session is forked periodically to review the memory directory and merge, deduplicate, refine and prune the index, consolidating fragmented memories into organized, non-redundant long-term memory. Only applies when auto_extract is on (no extraction means nothing to consolidate).
+     */
+    auto_dream?: boolean
+    /**
+     * Post-turn memory extraction policy. Default signals (extract only when needed). false disables it; true/signals extracts only on turns with memory signals; always extracts at the end of every root turn; unset means signals.
+     */
+    auto_extract?: "always" | "signals" | boolean
+    /**
+     * Whether to enable memory recall. Default false (off): past memories are not recalled into the context automatically. true: at the start of every user turn, relevant memories are recalled by keyword (optionally reranked by an LLM) and injected into the context.
+     */
+    auto_recall?: boolean
+    /**
+     * AutoDream time gate: minimum hours since the last consolidation, default 24. Consolidation runs only when dream_min_sessions is also met.
+     */
+    dream_min_hours?: number
+    /**
+     * AutoDream session gate: minimum number of new sessions since the last consolidation, default 5. Consolidation runs only when dream_min_hours is also met.
+     */
+    dream_min_sessions?: number
+    /**
+     * Memory extraction throttle: extract once every N finished turns, default 1 (every turn). Larger values fork fewer child sessions and save cost.
+     */
+    extract_interval?: number
+    /**
+     * Model for post-turn memory extraction. Defaults to small_model, then the turn model.
+     */
+    model?: string
+    /**
+     * Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.
+     */
+    recall_rerank?: "auto" | "off"
+    /**
+     * Whether to enable SessionMemory (session notes). Default true (on). When on, a forked small model maintains per-session notes at token thresholds (10K to start, then every 5K) so context can be restored after compaction. Set false to turn it off completely.
+     */
+    session_memory?: boolean
+    /**
+     * Use the SessionMemory notes instead of an LLM summary during compaction (saves one LLM call). Default true (on). Only applies when session_memory is not disabled; falls back to the LLM summary automatically when the notes are empty or fail. Set false to always use the LLM summary.
+     */
+    session_memory_compact?: boolean
+  }
+  /**
+   * @deprecated Use `agent` field instead.
+   */
+  mode?: {
+    build?: AgentConfigOutput
+    plan?: AgentConfigOutput
+    [key: string]: AgentConfigOutput | undefined
+  }
+  /**
+   * Model to use in the format of provider/model, eg anthropic/claude-2
+   */
+  model?: string
+  permission?: PermissionConfigOutput
+  plugin?: Array<
+    | [
+        string,
+        {
+          [key: string]: unknown
+        },
+      ]
+    | string
+  >
   plugin_options?: {
     [key: string]: {
       [key: string]: unknown
     }
   }
-  storage?: {
+  /**
+   * Custom provider configurations and model overrides
+   */
+  provider?: {
+    [key: string]: ProviderConfigOutput
+  }
+  rules?: {
     /**
-     * Delete sessions inactive for more than N days; by default no history is deleted
+     * Global user rules, always applied across all projects. Only read from global config; ignored in project config.
      */
-    retention_days?: number
+    user?: Array<string>
   }
   /**
    * Sandbox for the commands the agent runs.
@@ -1949,59 +1374,2247 @@ export type ConfigOutput = {
     /**
      * preferred (default): use the sandbox when it is ready; until then commands that change things ask first, even in auto mode. required: refuse to run commands while the sandbox is not ready. off: never use the sandbox.
      */
-    mode?: "preferred" | "required" | "off"
-    read?: {
-      /**
-       * Extra folders commands cannot read, besides ~/.ssh, ~/.aws and the other credential folders. ~/ means your home folder.
-       */
-      deny?: Array<string>
-    }
-    write?: {
-      /**
-       * Extra folders commands can always write, besides the workspace, the temp folder and package caches.
-       */
-      allow?: Array<string>
-    }
+    mode?: "off" | "preferred" | "required"
     network?: {
       /**
        * Linux only: local ports commands may connect to directly, for example a database at 127.0.0.1:5432.
        */
       allowLocalPorts?: Array<number>
     }
+    read?: {
+      /**
+       * Extra folders commands cannot read, besides ~/.ssh, ~/.aws and the other credential folders. ~/ means your home folder.
+       */
+      deny?: Array<string>
+    }
     /**
      * Hide API keys, tokens and passwords in command output before the model sees it. Defaults to true.
      */
     redactSecrets?: boolean
+    write?: {
+      /**
+       * Extra folders commands can always write, besides the workspace, the temp folder and package caches.
+       */
+      allow?: Array<string>
+    }
+  }
+  server?: ServerConfig
+  /**
+   * Additional skill folder paths
+   */
+  skills?: {
+    /**
+     * Additional paths to skill folders
+     */
+    paths?: Array<string>
+    /**
+     * URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)
+     */
+    urls?: Array<string>
+  }
+  /**
+   * Small model to use for tasks like title generation in the format of provider/model
+   */
+  small_model?: string
+  snapshot?: boolean
+  storage?: {
+    /**
+     * Delete sessions inactive for more than N days; by default no history is deleted
+     */
+    retention_days?: number
+  }
+  tool_discovery?: {
+    /**
+     * Auto-activate deferred tools on a strong match (default true). When a word in the user's request exactly matches an id segment or alias of a deferred tool, its full schema is injected in this turn, so the model does not need an extra tool_search round. Set false to go back to the old behavior where the model discovers tools on its own.
+     */
+    auto_activate?: boolean
+    /**
+     * Small-model selection for deferred tool search (default off). off uses keyword scoring only; auto, when the candidate count reaches the threshold (mostly with many MCP servers) and small_model is configured, lets the small model pick and activate the tools that are actually needed. Falls back to keywords only when not configured, on timeout or on failure.
+     */
+    rerank?: "auto" | "off"
+  }
+  tools?: {
+    [key: string]: boolean
+  }
+  ui?: {
+    chat?: {
+      /**
+       * Auto-scroll the conversation to the bottom
+       */
+      autoScroll?: boolean
+    }
+    models?: {
+      /**
+       * Hidden models, as providerID/modelID
+       */
+      hidden?: Array<string>
+      /**
+       * Recently used models, as providerID/modelID
+       */
+      recent?: Array<string>
+      /**
+       * Selected variant per model
+       */
+      variant?: {
+        [key: string]: string
+      }
+    }
+  }
+  watcher?: {
+    ignore?: Array<string>
   }
 }
 
+export type ConfigParseError = {
+  code?: string
+  data: {
+    kind: "agent" | "command" | "mode" | "rule" | "skill"
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+    path: string
+    reason: string
+  }
+  name: "ConfigParseError"
+}
+
+export type ConfigParseErrorOutput = {
+  code?: string
+  data: {
+    kind: "agent" | "command" | "mode" | "rule" | "skill"
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
+    path: string
+    reason: string
+  }
+  name: "ConfigParseError"
+}
+
+export type ConfigWarning = {
+  /**
+   * Path of the config item, e.g. mcp.foo
+   */
+  item: string
+  /**
+   * Path of the config file with the problem
+   */
+  path: string
+  /**
+   * Human-readable reason
+   */
+  reason: string
+}
+
+export type ContextOverflowError = {
+  code?: string
+  data: {
+    message: string
+    responseBody?: string
+  }
+  name: "ContextOverflowError"
+}
+
+export type ContextOverflowErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    responseBody?: string
+  }
+  name: "ContextOverflowError"
+}
+
 export type ErrorResponse = {
-  name: string
   /**
    * Stable error code, e.g. MRK-1011 (see docs/errors.md)
    */
   code: string
-  message?: string
   data: unknown
+  message?: string
+  name: string
   /**
    * Same as the x-request-id response header; quote it in bug reports
    */
   requestID?: string
 }
 
+export type Event =
+  | EventCollaborationUpdated
+  | EventCommandExecuted
+  | EventConfigUpdated
+  | EventFileEdited
+  | EventFileWatcherUpdated
+  | EventGlobalDisposed
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventMcpToolsChanged
+  | EventMessagePartRemoved
+  | EventMessagePartUpdated
+  | EventMessageRemoved
+  | EventMessageUpdated
+  | EventNotifyToastShow
+  | EventPermissionAsked
+  | EventPermissionReplied
+  | EventProjectUpdated
+  | EventProviderChanged
+  | EventPtyCreated
+  | EventPtyDeleted
+  | EventPtyExited
+  | EventPtyUpdated
+  | EventQuestionAsked
+  | EventQuestionRejected
+  | EventQuestionReplied
+  | EventReviewUpdated
+  | EventRuleUpdated
+  | EventServerConnected
+  | EventServerInstanceDisposed
+  | EventSessionCompacted
+  | EventSessionCreated
+  | EventSessionDeleted
+  | EventSessionDiff
+  | EventSessionError
+  | EventSessionIdle
+  | EventSessionNotificationCreated
+  | EventSessionStatus
+  | EventSessionUpdated
+  | EventSkillUpdated
+  | EventTodoUpdated
+  | EventToolRemoteCall
+  | EventVcsBranchUpdated
+  | EventVcsChangesUpdated
+  | EventVcsHeadUpdated
+  | EventWorkflowUpdated
+  | EventWorktreeFailed
+  | EventWorktreeReady
+
+export type EventCollaborationUpdated = {
+  properties: {
+    sessionID: string
+  }
+  type: "collaboration.updated"
+}
+
+export type EventCommandExecuted = {
+  properties: {
+    arguments: string
+    messageID: string
+    name: string
+    sessionID: string
+  }
+  type: "command.executed"
+}
+
+export type EventConfigUpdated = {
+  properties: {
+    [key: string]: never
+  }
+  type: "config.updated"
+}
+
+export type EventFileEdited = {
+  properties: {
+    file: string
+  }
+  type: "file.edited"
+}
+
+export type EventFileWatcherUpdated = {
+  properties: {
+    event: "add" | "change" | "unlink"
+    file: string
+  }
+  type: "file.watcher.updated"
+}
+
+export type EventGlobalDisposed = {
+  properties: {
+    [key: string]: never
+  }
+  type: "global.disposed"
+}
+
+export type EventLspClientDiagnostics = {
+  properties: {
+    path: string
+    serverID: string
+  }
+  type: "lsp.client.diagnostics"
+}
+
+export type EventLspUpdated = {
+  properties: {
+    [key: string]: never
+  }
+  type: "lsp.updated"
+}
+
+export type EventMcpToolsChanged = {
+  properties: {
+    server: string
+  }
+  type: "mcp.tools.changed"
+}
+
+export type EventMessagePartRemoved = {
+  properties: {
+    messageID: string
+    partID: string
+    sessionID: string
+  }
+  type: "message.part.removed"
+}
+
+export type EventMessagePartUpdated = {
+  properties: {
+    delta?: string
+    part: PartOutput
+  }
+  type: "message.part.updated"
+}
+
+export type EventMessageRemoved = {
+  properties: {
+    messageID: string
+    sessionID: string
+  }
+  type: "message.removed"
+}
+
+export type EventMessageUpdated = {
+  properties: {
+    info: MessageOutput
+    sessionID: string
+  }
+  type: "message.updated"
+}
+
+export type EventNotifyToastShow = {
+  properties: {
+    /**
+     * Duration in milliseconds
+     */
+    duration?: number
+    message: string
+    messageCode?: string
+    params?: {
+      [key: string]: unknown
+    }
+    title?: string
+    titleCode?: string
+    variant: "error" | "info" | "success" | "warning"
+  }
+  type: "notify.toast.show"
+}
+
+export type EventPermissionAsked = {
+  properties: PermissionRequest
+  type: "permission.asked"
+}
+
+export type EventPermissionReplied = {
+  properties: {
+    reply: "always" | "once" | "reject" | "session"
+    requestID: string
+    sessionID: string
+  }
+  type: "permission.replied"
+}
+
+export type EventProjectUpdated = {
+  properties: Project
+  type: "project.updated"
+}
+
+export type EventProviderChanged = {
+  properties: {
+    error?: CatalogRefreshError
+    providerID?: string
+    reason: "connected" | "disconnected" | "refresh-failed" | "refreshed"
+  }
+  type: "provider.changed"
+}
+
+export type EventPtyCreated = {
+  properties: {
+    info: Pty
+  }
+  type: "pty.created"
+}
+
+export type EventPtyDeleted = {
+  properties: {
+    id: string
+  }
+  type: "pty.deleted"
+}
+
+export type EventPtyExited = {
+  properties: {
+    exitCode: number
+    id: string
+  }
+  type: "pty.exited"
+}
+
+export type EventPtyUpdated = {
+  properties: {
+    info: Pty
+  }
+  type: "pty.updated"
+}
+
+export type EventQuestionAsked = {
+  properties: QuestionRequest
+  type: "question.asked"
+}
+
+export type EventQuestionRejected = {
+  properties: {
+    requestID: string
+    sessionID: string
+  }
+  type: "question.rejected"
+}
+
+export type EventQuestionReplied = {
+  properties: {
+    answers: Array<QuestionAnswer>
+    requestID: string
+    sessionID: string
+  }
+  type: "question.replied"
+}
+
+export type EventReviewUpdated = {
+  properties: {
+    scope: ReviewScope
+    sessionID?: string
+  }
+  type: "review.updated"
+}
+
+export type EventRuleUpdated = {
+  properties: {
+    [key: string]: never
+  }
+  type: "rule.updated"
+}
+
+export type EventServerConnected = {
+  properties: {
+    [key: string]: never
+  }
+  type: "server.connected"
+}
+
+export type EventServerInstanceDisposed = {
+  properties: {
+    directory: string
+  }
+  type: "server.instance.disposed"
+}
+
+export type EventSessionCompacted = {
+  properties: {
+    sessionID: string
+  }
+  type: "session.compacted"
+}
+
+export type EventSessionCreated = {
+  properties: {
+    info: SessionOutput
+    sessionID: string
+  }
+  type: "session.created"
+}
+
+export type EventSessionDeleted = {
+  properties: {
+    info: SessionOutput
+    sessionID: string
+  }
+  type: "session.deleted"
+}
+
+export type EventSessionDiff = {
+  properties: {
+    diff: Array<FileDiffOutput>
+    sessionID: string
+  }
+  type: "session.diff"
+}
+
+export type EventSessionError = {
+  properties: {
+    error?:
+      | ApiErrorOutput
+      | AgentNotFoundErrorOutput
+      | CommandNotFoundErrorOutput
+      | CompactionBlockedErrorOutput
+      | ConfigParseErrorOutput
+      | ContextOverflowErrorOutput
+      | ExternalAdapterErrorOutput
+      | MessageAbortedErrorOutput
+      | MessageOutputLengthErrorOutput
+      | ModelNotFoundErrorOutput
+      | PluginInstallErrorOutput
+      | ProviderAuthErrorOutput
+      | StructuredOutputErrorOutput
+      | UnknownErrorOutput
+      | WorktreeResetDirtyErrorOutput
+    sessionID?: string
+  }
+  type: "session.error"
+}
+
+export type EventSessionIdle = {
+  properties: {
+    sessionID: string
+  }
+  type: "session.idle"
+}
+
+export type EventSessionNotificationCreated = {
+  properties: {
+    notificationID: string
+    sessionID: string
+  }
+  type: "session.notification.created"
+}
+
+export type EventSessionStatus = {
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+  type: "session.status"
+}
+
+export type EventSessionUpdated = {
+  properties: {
+    info: SessionOutput
+    sessionID: string
+  }
+  type: "session.updated"
+}
+
+export type EventSkillUpdated = {
+  properties: {
+    [key: string]: never
+  }
+  type: "skill.updated"
+}
+
+export type EventTodoUpdated = {
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+  type: "todo.updated"
+}
+
+export type EventToolRemoteCall = {
+  properties: {
+    args: unknown
+    callID: string
+    messageID: string
+    sessionID: string
+    tool: string
+  }
+  type: "tool.remote.call"
+}
+
+export type EventVcsBranchUpdated = {
+  properties: {
+    branch?: string
+  }
+  type: "vcs.branch.updated"
+}
+
+export type EventVcsChangesUpdated = {
+  properties: {
+    [key: string]: never
+  }
+  type: "vcs.changes.updated"
+}
+
+export type EventVcsHeadUpdated = {
+  properties: {
+    branch: string | null
+    branchChanged: boolean
+    checkout: string | null
+    head: string | null
+  }
+  type: "vcs.head.updated"
+}
+
+export type EventWorkflowUpdated = {
+  properties: {
+    runId: string
+    sessionID: string
+  }
+  type: "workflow.updated"
+}
+
+export type EventWorktreeFailed = {
+  properties: {
+    message: string
+  }
+  type: "worktree.failed"
+}
+
+export type EventWorktreeReady = {
+  properties: {
+    branch: string
+    name: string
+  }
+  type: "worktree.ready"
+}
+
+export type ExternalAdapterError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "ExternalAdapterError"
+}
+
+export type ExternalAdapterErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "ExternalAdapterError"
+}
+
+export type ExternalAssistantMessage = {
+  error?:
+    | ApiError
+    | AgentNotFoundError
+    | CommandNotFoundError
+    | CompactionBlockedError
+    | ConfigParseError
+    | ContextOverflowError
+    | ExternalAdapterError
+    | MessageAbortedError
+    | MessageOutputLengthError
+    | ModelNotFoundError
+    | PluginInstallError
+    | ProviderAuthError
+    | StructuredOutputError
+    | UnknownError
+    | WorktreeResetDirtyError
+  execution: {
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+    kind: "external"
+    productID: string
+    productTitle: string
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    runID: string
+    targetRevision: number
+  }
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  role: "assistant"
+  sessionID: string
+  terminal?: "cancelled" | "completed" | "failed" | "interrupted"
+  time: {
+    completed?: number
+    created: number
+  }
+}
+
+export type ExternalAssistantMessageOutput = {
+  error?:
+    | ApiErrorOutput
+    | AgentNotFoundErrorOutput
+    | CommandNotFoundErrorOutput
+    | CompactionBlockedErrorOutput
+    | ConfigParseErrorOutput
+    | ContextOverflowErrorOutput
+    | ExternalAdapterErrorOutput
+    | MessageAbortedErrorOutput
+    | MessageOutputLengthErrorOutput
+    | ModelNotFoundErrorOutput
+    | PluginInstallErrorOutput
+    | ProviderAuthErrorOutput
+    | StructuredOutputErrorOutput
+    | UnknownErrorOutput
+    | WorktreeResetDirtyErrorOutput
+  execution: {
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+    kind: "external"
+    productID: string
+    productTitle: string
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    runID: string
+    targetRevision: number
+  }
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  parentID: string
+  path: {
+    cwd: string
+    root: string
+  }
+  role: "assistant"
+  sessionID: string
+  terminal?: "cancelled" | "completed" | "failed" | "interrupted"
+  time: {
+    completed?: number
+    created: number
+  }
+}
+
+export type ExternalDelegateProgress = {
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  parts: Array<{
+    id: string
+    text: string
+  }>
+  productTitle: string
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  runID: string
+  stopReason?: "product-disabled" | "user"
+  terminal?: "cancelled" | "completed" | "failed" | "interrupted"
+}
+
+export type ExternalDelegateProgressOutput = {
+  actualModel?: {
+    id: string
+    providerID?: string
+  }
+  parts: Array<{
+    id: string
+    text: string
+  }>
+  productTitle: string
+  requestedModel?: {
+    id: string
+    providerID?: string
+  }
+  runID: string
+  stopReason?: "product-disabled" | "user"
+  terminal?: "cancelled" | "completed" | "failed" | "interrupted"
+}
+
+export type ExternalUserMessage = {
+  execution: {
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+    kind: "external"
+    productID: string
+    productTitle: string
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    runID: string
+    targetRevision: number
+  }
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  permissionMode: PermissionMode
+  role: "user"
+  sessionID: string
+  time: {
+    created: number
+  }
+}
+
+export type ExternalUserMessageOutput = {
+  execution: {
+    actualModel?: {
+      id: string
+      providerID?: string
+    }
+    kind: "external"
+    productID: string
+    productTitle: string
+    requestedModel?: {
+      id: string
+      providerID?: string
+    }
+    runID: string
+    targetRevision: number
+  }
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  permissionMode: PermissionMode
+  role: "user"
+  sessionID: string
+  time: {
+    created: number
+  }
+}
+
+export type File = {
+  added: number
+  path: string
+  removed: number
+  status: "added" | "deleted" | "modified"
+}
+
+export type FileContent = {
+  checksum?: string
+  content: string
+  diff?: string
+  encoding?: "base64"
+  mimeType?: string
+  patch?: {
+    hunks: Array<{
+      lines: Array<string>
+      newLines: number
+      newStart: number
+      oldLines: number
+      oldStart: number
+    }>
+    index?: string
+    newFileName: string
+    newHeader?: string
+    oldFileName: string
+    oldHeader?: string
+  }
+  type: "binary" | "text"
+}
+
+export type FileDiff = {
+  additions: number
+  after: string
+  before: string
+  deletions: number
+  file: string
+  status?: "added" | "deleted" | "modified"
+}
+
+export type FileDiffOutput = {
+  additions: number
+  after: string
+  before: string
+  deletions: number
+  file: string
+  status?: "added" | "deleted" | "modified"
+}
+
+export type FileNode = {
+  absolute: string
+  ignored: boolean
+  name: string
+  path: string
+  type: "directory" | "file"
+}
+
+export type FilePart = {
+  filename?: string
+  id: string
+  messageID: string
+  mime: string
+  sessionID: string
+  source?: FilePartSource
+  type: "file"
+  url: string
+}
+
+export type FilePartInput = {
+  filename?: string
+  id?: string
+  mime: string
+  source?: FilePartSource
+  type: "file"
+  url: string
+}
+
+export type FilePartOutput = {
+  filename?: string
+  id: string
+  messageID: string
+  mime: string
+  sessionID: string
+  source?: FilePartSourceOutput
+  type: "file"
+  url: string
+}
+
+export type FilePartSource = FileSource | ResourceSource | SymbolSource
+
+export type FilePartSourceOutput = FileSourceOutput | ResourceSourceOutput | SymbolSourceOutput
+
+export type FilePartSourceText = {
+  end: number
+  start: number
+  value: string
+}
+
+export type FilePartSourceTextOutput = {
+  end: number
+  start: number
+  value: string
+}
+
+export type FileSource = {
+  path: string
+  text: FilePartSourceText
+  type: "file"
+}
+
+export type FileSourceOutput = {
+  path: string
+  text: FilePartSourceTextOutput
+  type: "file"
+}
+
+export type FormatterStatus = {
+  enabled: boolean
+  extensions: Array<string>
+  name: string
+}
+
+export type GitChangeFile = {
+  file: string
+  status: "added" | "conflicted" | "deleted" | "modified"
+  version: string
+}
+
+export type GitChangesResult = {
+  checkout: string | null
+  staged: Array<GitChangeFile>
+  unstaged: Array<GitChangeFile>
+}
+
+export type GlobalEvent = {
+  directory: string
+  payload: Event
+}
+
+export type JsonSchema = {
+  [key: string]: unknown
+}
+
+export type LspStatus = {
+  id: string
+  name: string
+  root: string
+  status: "connected" | "error"
+}
+
+/**
+ * @deprecated Always uses stretch layout.
+ */
+export type LayoutConfig = "auto" | "stretch"
+
 /**
  * Log level
  */
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
+export type LogLevel = "DEBUG" | "ERROR" | "INFO" | "WARN"
+
+export type McpStatus =
+  McpStatusConnected | McpStatusDisabled | McpStatusFailed | McpStatusNeedsAuth | McpStatusNeedsClientRegistration
+
+export type McpStatusConnected = {
+  scope?: McpScope
+  status: "connected"
+}
+
+export type McpStatusDisabled = {
+  scope?: McpScope
+  status: "disabled"
+}
+
+export type McpStatusFailed = {
+  error: string
+  scope?: McpScope
+  status: "failed"
+}
+
+export type McpStatusNeedsAuth = {
+  scope?: McpScope
+  status: "needs_auth"
+}
+
+export type McpStatusNeedsClientRegistration = {
+  error: string
+  scope?: McpScope
+  status: "needs_client_registration"
+}
+
+export type McpAuthRemove = {
+  success: true
+}
+
+export type McpAuthStart = {
+  authorizationUrl: string
+  oauthState: string
+}
+
+export type McpLocalConfig = {
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
+   */
+  deferred?: boolean
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+}
+
+export type McpManagementLocalInput = {
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
+   */
+  deferred?: boolean
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+}
+
+export type McpManagementRemoteInput = {
+  /**
+   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
+   */
+  deferred?: boolean
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Headers to send with the request
+   */
+  headers?: {
+    [key: string]: string
+  }
+  /**
+   * Remote MCP OAuth. Set false to keep header auth only.
+   */
+  oauth?:
+    | {
+        /**
+         * Pre-registered OAuth client id
+         */
+        clientId?: string
+        /**
+         * Pre-registered OAuth client secret
+         */
+        clientSecret?: string
+        /**
+         * OAuth scope
+         */
+        scope?: string
+      }
+    | false
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+  /**
+   * Explicit remote MCP transport protocol
+   */
+  transport?: "http" | "sse"
+  /**
+   * Type of MCP server connection
+   */
+  type: "remote"
+  /**
+   * URL of the remote MCP server
+   */
+  url: string
+}
+
+export type McpRemoteConfig = {
+  /**
+   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
+   */
+  deferred?: boolean
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Headers to send with the request
+   */
+  headers?: {
+    [key: string]: string
+  }
+  /**
+   * Remote MCP OAuth. Set false to keep header auth only.
+   */
+  oauth?:
+    | {
+        /**
+         * Pre-registered OAuth client id
+         */
+        clientId?: string
+        /**
+         * Pre-registered OAuth client secret
+         */
+        clientSecret?: string
+        /**
+         * OAuth scope
+         */
+        scope?: string
+      }
+    | false
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+  /**
+   * Explicit transport protocol for the remote MCP server
+   */
+  transport?: "http" | "sse"
+  /**
+   * Type of MCP server connection
+   */
+  type: "remote"
+  /**
+   * URL of the remote MCP server
+   */
+  url: string
+}
+
+export type McpResource = {
+  client: string
+  description?: string
+  mimeType?: string
+  name: string
+  uri: string
+}
+
+export type McpScope = "global" | "project"
+
+export type MemoryEntry = {
+  description: string | null
+  /**
+   * Path relative to the memory root, same form as MEMORY.md index links
+   */
+  filename: string
+  mtimeMs: number
+  name: string | null
+  /**
+   * Absolute path, so clients can open it in the editor
+   */
+  path: string
+  /**
+   * user / feedback / project / reference
+   */
+  type?: string
+}
+
+export type MemorySnapshot = {
+  directory: string
+  entries: Array<MemoryEntry>
+  entrypoint: string
+  /**
+   * MEMORY.md body - the index that is injected into every turn
+   */
+  index: string
+}
+
+export type Message = AssistantMessage | ExternalAssistantMessage | ExternalUserMessage | UserMessage
+
+export type MessageAbortedError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "MessageAbortedError"
+}
+
+export type MessageAbortedErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "MessageAbortedError"
+}
+
+export type MessageOutput =
+  AssistantMessageOutput | ExternalAssistantMessageOutput | ExternalUserMessageOutput | UserMessageOutput
+
+export type MessageOutputLengthError = {
+  code?: string
+  data: {
+    [key: string]: unknown
+  }
+  name: "MessageOutputLengthError"
+}
+
+export type MessageOutputLengthErrorOutput = {
+  code?: string
+  data: {
+    [key: string]: never
+  }
+  name: "MessageOutputLengthError"
+}
+
+export type Model = {
+  api: {
+    id: string
+    npm: string
+    url: string
+  }
+  capabilities: {
+    attachment: boolean
+    input: {
+      audio: boolean
+      image: boolean
+      pdf: boolean
+      text: boolean
+      video: boolean
+    }
+    interleaved:
+      | {
+          field: "reasoning_content" | "reasoning_details"
+        }
+      | boolean
+    output: {
+      audio: boolean
+      image: boolean
+      pdf: boolean
+      text: boolean
+      video: boolean
+    }
+    reasoning: boolean
+    temperature: boolean
+    toolcall: boolean
+  }
+  cost?: {
+    cache: {
+      read: number
+      write: number
+    }
+    currency?: "CNY" | "USD"
+    input: number
+    output: number
+    thinking?: {
+      cache: {
+        read: number
+        write: number
+      }
+      input: number
+      output: number
+    }
+    tiers?: Array<{
+      above: number
+      cache: {
+        read: number
+        write: number
+      }
+      input: number
+      output: number
+      thinking?: {
+        cache: {
+          read: number
+          write: number
+        }
+        input: number
+        output: number
+      }
+    }>
+  }
+  defaultVariant?: string
+  family?: string
+  headers: {
+    [key: string]: string
+  }
+  homepage?: boolean
+  id: string
+  limit: {
+    context: number
+    input?: number
+    output: number
+  }
+  name: string
+  options: {
+    [key: string]: unknown
+  }
+  providerID: string
+  release_date: string
+  status: "active" | "alpha" | "beta" | "deprecated"
+  variants?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
+}
+
+export type ModelNotFoundError = {
+  code?: string
+  data: {
+    message: string
+    messageKey?: string
+    modelID: string
+    params?: {
+      [key: string]: unknown
+    }
+    providerID: string
+    suggestions?: Array<string>
+  }
+  name: "ModelNotFoundError"
+}
+
+export type ModelNotFoundErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    messageKey?: string
+    modelID: string
+    params?: {
+      [key: string]: unknown
+    }
+    providerID: string
+    suggestions?: Array<string>
+  }
+  name: "ModelNotFoundError"
+}
+
+export type OAuth = {
+  access: string
+  accountId?: string
+  enterpriseUrl?: string
+  expires: number
+  refresh: string
+  type: "oauth"
+}
+
+export type OutputFormat = OutputFormatJsonSchema | OutputFormatText
+
+export type OutputFormatJsonSchema = {
+  retryCount?: number
+  schema: JsonSchema
+  type: "json_schema"
+}
+
+export type OutputFormatJsonSchemaOutput = {
+  retryCount: number
+  schema: JsonSchema
+  type: "json_schema"
+}
+
+export type OutputFormatOutput = OutputFormatJsonSchemaOutput | OutputFormatTextOutput
+
+export type OutputFormatText = {
+  type: "text"
+}
+
+export type OutputFormatTextOutput = {
+  type: "text"
+}
+
+export type Part =
+  | AgentPart
+  | CompactionPart
+  | FilePart
+  | PatchPart
+  | ReasoningPart
+  | RetryPart
+  | SnapshotPart
+  | StepFinishPart
+  | StepStartPart
+  | SubtaskPart
+  | TextPart
+  | ToolPart
+
+export type PartOutput =
+  | AgentPartOutput
+  | CompactionPartOutput
+  | FilePartOutput
+  | PatchPartOutput
+  | ReasoningPartOutput
+  | RetryPartOutput
+  | SnapshotPartOutput
+  | StepFinishPartOutput
+  | StepStartPartOutput
+  | SubtaskPartOutput
+  | TextPartOutput
+  | ToolPartOutput
+
+export type PatchPart = {
+  additions?: number
+  backupID: string
+  deletions?: number
+  files: Array<string>
+  id: string
+  messageID: string
+  sessionID: string
+  type: "patch"
+}
+
+export type PatchPartOutput = {
+  additions: number
+  backupID: string
+  deletions: number
+  files: Array<string>
+  id: string
+  messageID: string
+  sessionID: string
+  type: "patch"
+}
+
+export type Path = {
+  config: string
+  data: string
+  directory: string
+  home: string
+  workspace?: {
+    folders: Array<{
+      name: string
+      path: string
+      worktree?: string
+    }>
+    id?: string
+    primary: string
+  }
+  worktree: string
+}
+
+export type PermissionAction = "allow" | "ask" | "deny"
+
+export type PermissionActionConfig = "allow" | "ask" | "deny"
+
+export type PermissionConfig =
+  | PermissionActionConfig
+  | {
+      __originalKeys?: Array<string>
+      /**
+       * Run other commands
+       */
+      bash?: PermissionRuleConfig
+      /**
+       * Run commands that delete files (rm, git clean, ...)
+       */
+      bash_delete?: PermissionRuleConfig
+      /**
+       * Run commands that wipe the system or home folder, format disks or write raw disks (denied unless allowed here)
+       */
+      bash_forbidden?: PermissionRuleConfig
+      /**
+       * Run read-only commands (ls, git status, ...)
+       */
+      bash_readonly?: PermissionRuleConfig
+      /**
+       * Run risky commands (sudo, git push, npm publish, ...)
+       */
+      bash_risky?: PermissionRuleConfig
+      /**
+       * Run a command that may change things while the sandbox is not ready
+       */
+      bash_unsandboxed?: PermissionRuleConfig
+      /**
+       * Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's
+       */
+      config_write?: PermissionRuleConfig
+      cron?: PermissionRuleConfig
+      /**
+       * Write files inside the workspace
+       */
+      edit?: PermissionRuleConfig
+      /**
+       * Read files outside the workspace
+       */
+      external_read?: PermissionRuleConfig
+      /**
+       * Write files outside the workspace
+       */
+      external_write?: PermissionRuleConfig
+      glob?: PermissionRuleConfig
+      grep?: PermissionRuleConfig
+      ls?: PermissionRuleConfig
+      lsp?: PermissionRuleConfig
+      /**
+       * Call an MCP tool (pattern: server/tool)
+       */
+      mcp?: PermissionRuleConfig
+      /**
+       * Connect to a domain
+       */
+      network?: PermissionRuleConfig
+      /**
+       * Write .git and dotfiles inside the workspace
+       */
+      protected_write?: PermissionRuleConfig
+      /**
+       * Read files inside the workspace
+       */
+      read?: PermissionRuleConfig
+      /**
+       * Run a command with extra sandbox permissions
+       */
+      sandbox?: PermissionRuleConfig
+      /**
+       * Read secrets: .env, keys, certificates, credentials
+       */
+      sensitive_read?: PermissionRuleConfig
+      skill?: PermissionRuleConfig
+      /**
+       * Start a subagent
+       */
+      subagent?: PermissionRuleConfig
+      /**
+       * Start a workflow
+       */
+      workflow_run?: PermissionRuleConfig
+      [key: string]: PermissionRuleConfig | Array<string> | undefined
+    }
+
+export type PermissionConfigOutput = {
+  [key: string]: PermissionRuleConfig
+}
+
+export type PermissionGrant = {
+  pattern: string
+  scope: "agent" | "directory" | "domain" | "file" | "prefix" | "tool"
+}
+
+export type PermissionMode = "ask" | "auto" | "readonly"
+
+export type PermissionObjectConfig = {
+  [key: string]: PermissionActionConfig
+}
+
+export type PermissionRequest = {
+  always?: boolean
+  executionID?: string
+  grants?: Array<PermissionGrant>
+  id: string
+  metadata: {
+    [key: string]: unknown
+  }
+  patterns: Array<string>
+  permission: string
+  root?: string
+  sessionID: string
+  source?: {
+    agent: string
+    sessionID: string
+    title?: string
+  }
+  tool?: {
+    callID: string
+    messageID: string
+  }
+}
+
+export type PermissionRule = {
+  action: PermissionAction
+  pattern: string
+  permission: string
+}
+
+export type PermissionRuleConfig = PermissionActionConfig | PermissionObjectConfig
+
+export type PermissionRuleOutput = {
+  action: PermissionAction
+  pattern: string
+  permission: string
+}
+
+export type PermissionRuleset = Array<PermissionRule>
+
+export type PermissionRulesetOutput = Array<PermissionRuleOutput>
+
+export type PluginInstallError = {
+  code?: string
+  data: {
+    message: string
+    messageKey?: string
+    package: string
+    params?: {
+      [key: string]: unknown
+    }
+    reason: string
+    version: string
+  }
+  name: "PluginInstallError"
+}
+
+export type PluginInstallErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    messageKey?: string
+    package: string
+    params?: {
+      [key: string]: unknown
+    }
+    reason: string
+    version: string
+  }
+  name: "PluginInstallError"
+}
+
+export type Project = {
+  commands?: {
+    /**
+     * Startup script to run when creating a new workspace (worktree)
+     */
+    start?: string
+  }
+  folders?: Array<string>
+  icon?: {
+    color?: string
+    override?: string
+    url?: string
+  }
+  id: string
+  kind?: "workspace"
+  name?: string
+  sandboxes: Array<string>
+  time: {
+    created: number
+    initialized?: number
+    updated: number
+  }
+  vcs?: "git"
+  worktree: string
+}
+
+export type Provider = {
+  env: Array<string>
+  id: string
+  key?: string
+  models: {
+    [key: string]: Model
+  }
+  name: string
+  options: {
+    [key: string]: unknown
+  }
+  origin?: "configured" | "official"
+  source: "api" | "config" | "custom" | "env"
+}
+
+export type ProviderAuthAuthorization = {
+  instructions: string
+  method: "auto" | "code"
+  url: string
+}
+
+export type ProviderAuthError = {
+  code?: string
+  data: {
+    message: string
+    providerID: string
+  }
+  name: "ProviderAuthError"
+}
+
+export type ProviderAuthErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    providerID: string
+  }
+  name: "ProviderAuthError"
+}
+
+export type ProviderAuthMethod = {
+  label: string
+  type: "api" | "oauth"
+}
+
+export type ProviderAuthPrompt =
+  | {
+      key: string
+      message: string
+      options: Array<{
+        hint?: string
+        label: string
+        value: string
+      }>
+      type: "select"
+    }
+  | {
+      key: string
+      message: string
+      placeholder?: string
+      type: "text"
+    }
+
+export type ProviderConfig = {
+  api?: string
+  blacklist?: Array<string>
+  env?: Array<string>
+  id?: string
+  models?: {
+    [key: string]: {
+      attachment?: boolean
+      cost?: {
+        cache_read?: number
+        cache_write?: number
+        input?: number
+        output?: number
+      }
+      family?: string
+      headers?: {
+        [key: string]: string
+      }
+      id?: string
+      interleaved?:
+        | {
+            field: "reasoning_content" | "reasoning_details"
+          }
+        | true
+      limit?: {
+        context?: number
+        input?: number
+        output?: number
+      }
+      modalities?: {
+        input?: Array<"audio" | "image" | "pdf" | "text" | "video">
+        output?: Array<"audio" | "image" | "pdf" | "text" | "video">
+      }
+      name?: string
+      options?: {
+        [key: string]: unknown
+      }
+      provider?: {
+        api?: string
+        npm?: string
+      }
+      reasoning?: boolean
+      release_date?: string
+      status?: "active" | "alpha" | "beta" | "deprecated"
+      temperature?: boolean
+      tool_call?: boolean
+      /**
+       * Variant-specific configuration
+       */
+      variants?: {
+        [key: string]: {
+          /**
+           * Disable this variant for the model
+           */
+          disabled?: boolean
+          [key: string]: unknown
+        }
+      }
+    }
+  }
+  name?: string
+  npm?: string
+  options?: {
+    apiKey?: string
+    baseURL?: string
+    /**
+     * OpenAI prompt cache retention policy when promptCacheKey is enabled.
+     */
+    promptCacheRetention?: "24h" | "in_memory"
+    /**
+     * Enable promptCacheKey for this provider (default false)
+     */
+    setCacheKey?: boolean
+    /**
+     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
+     */
+    timeout?: false | number
+    [key: string]: unknown
+  }
+  /**
+   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
+   */
+  picker?: {
+    exclude?: Array<string>
+    include?: Array<string>
+  }
+  relay?: {
+    auth?: "bearer" | "x-api-key"
+    group: string
+    kind: "claude-code" | "codex" | "custom" | "standard"
+    station: string
+  }
+  whitelist?: Array<string>
+}
+
+export type ProviderConfigOutput = {
+  api?: string
+  blacklist?: Array<string>
+  env?: Array<string>
+  id?: string
+  models?: {
+    [key: string]: {
+      attachment?: boolean
+      cost?: {
+        cache_read?: number
+        cache_write?: number
+        input?: number
+        output?: number
+      }
+      family?: string
+      headers?: {
+        [key: string]: string
+      }
+      id?: string
+      interleaved?:
+        | {
+            field: "reasoning_content" | "reasoning_details"
+          }
+        | true
+      limit?: {
+        context?: number
+        input?: number
+        output?: number
+      }
+      modalities?: {
+        input?: Array<"audio" | "image" | "pdf" | "text" | "video">
+        output?: Array<"audio" | "image" | "pdf" | "text" | "video">
+      }
+      name?: string
+      options?: {
+        [key: string]: unknown
+      }
+      provider?: {
+        api?: string
+        npm?: string
+      }
+      reasoning?: boolean
+      release_date?: string
+      status?: "active" | "alpha" | "beta" | "deprecated"
+      temperature?: boolean
+      tool_call?: boolean
+      /**
+       * Variant-specific configuration
+       */
+      variants?: {
+        [key: string]: {
+          /**
+           * Disable this variant for the model
+           */
+          disabled?: boolean
+          [key: string]: unknown
+        }
+      }
+    }
+  }
+  name?: string
+  npm?: string
+  options?: {
+    apiKey?: string
+    baseURL?: string
+    /**
+     * OpenAI prompt cache retention policy when promptCacheKey is enabled.
+     */
+    promptCacheRetention?: "24h" | "in_memory"
+    /**
+     * Enable promptCacheKey for this provider (default false)
+     */
+    setCacheKey?: boolean
+    /**
+     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
+     */
+    timeout?: false | number
+    [key: string]: unknown
+  }
+  /**
+   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
+   */
+  picker?: {
+    exclude?: Array<string>
+    include?: Array<string>
+  }
+  relay?: {
+    auth?: "bearer" | "x-api-key"
+    group: string
+    kind: "claude-code" | "codex" | "custom" | "standard"
+    station: string
+  }
+  whitelist?: Array<string>
+}
+
+export type Pty = {
+  args: Array<string>
+  command: string
+  cwd: string
+  id: string
+  pid: number
+  status: "exited" | "running"
+  title: string
+}
+
+export type QuestionAnswer = Array<string>
+
+export type QuestionInfo = {
+  /**
+   * Allow typing a custom answer (default: true)
+   */
+  custom?: boolean
+  /**
+   * Allow dismissing the prompt without selecting an option (default: true)
+   */
+  dismiss?: boolean
+  /**
+   * Very short label (max 30 chars)
+   */
+  header: string
+  /**
+   * Allow selecting multiple choices
+   */
+  multiple?: boolean
+  /**
+   * Available choices
+   */
+  options: Array<QuestionOption>
+  /**
+   * Complete question
+   */
+  question: string
+}
+
+export type QuestionOption = {
+  /**
+   * Explanation of choice
+   */
+  description: string
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+}
+
+export type QuestionRequest = {
+  executionID?: string
+  expiresAt?: number
+  id: string
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionInfo>
+  root?: string
+  sessionID: string
+  tool?: {
+    callID: string
+    messageID: string
+  }
+}
+
+export type Range = {
+  end: {
+    character: number
+    line: number
+  }
+  start: {
+    character: number
+    line: number
+  }
+}
+
+export type RangeOutput = {
+  end: {
+    character: number
+    line: number
+  }
+  start: {
+    character: number
+    line: number
+  }
+}
+
+export type ReasoningPart = {
+  id: string
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  text: string
+  time: {
+    end?: number
+    start: number
+  }
+  type: "reasoning"
+}
+
+export type ReasoningPartOutput = {
+  id: string
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  text: string
+  time: {
+    end?: number
+    start: number
+  }
+  type: "reasoning"
+}
+
+export type ResourceSource = {
+  clientName: string
+  text: FilePartSourceText
+  type: "resource"
+  uri: string
+}
+
+export type ResourceSourceOutput = {
+  clientName: string
+  text: FilePartSourceTextOutput
+  type: "resource"
+  uri: string
+}
+
+export type RetryPart = {
+  attempt: number
+  error: ApiError
+  id: string
+  messageID: string
+  sessionID: string
+  time: {
+    created: number
+  }
+  type: "retry"
+}
+
+export type RetryPartOutput = {
+  attempt: number
+  error: ApiErrorOutput
+  id: string
+  messageID: string
+  sessionID: string
+  time: {
+    created: number
+  }
+  type: "retry"
+}
+
+export type ReviewFile = {
+  additions: number
+  binary?: true
+  deletions: number
+  file: string
+  hunks: number
+  status: "added" | "deleted" | "modified"
+  truncated?: true
+  version: string
+}
+
+export type ReviewFileDetail = {
+  after?: string
+  before?: string
+  file: string
+  hunks: Array<ReviewHunk>
+  version: string
+}
+
+export type ReviewHunk = {
+  heading?: string
+  id: string
+  lines: Array<ReviewLine>
+  newLines: number
+  newStart: number
+  oldLines: number
+  oldStart: number
+}
+
+export type ReviewInvalidError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "ReviewInvalidError"
+}
+
+export type ReviewLine = {
+  kind: "add" | "context" | "del"
+  new?: number
+  noNewline?: true
+  old?: number
+  text: string
+}
+
+export type ReviewResult = {
+  actions: {
+    accept: boolean
+    reject: boolean
+  }
+  checkout: string | null
+  files: Array<ReviewFile>
+  last?: {
+    count: number
+    decision: "accept" | "reject"
+  }
+  scope: ReviewScope
+}
+
+export type ReviewScope = "session" | "turn"
+
+export type ReviewStaleError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "ReviewStaleError"
+}
+
+export type RuleFields = {
+  agents?: Array<string>
+  alwaysApply: boolean
+  body: string
+  description?: string
+  exclude?: Array<string>
+  globs?: Array<string>
+  name?: string
+}
+
+export type RuleFileEntry = {
+  active: boolean
+  agents?: Array<string>
+  alwaysApply?: boolean
+  body: string
+  bytes: number
+  clipped: boolean
+  content: string
+  description: string
+  editable: boolean
+  exclude: Array<string>
+  filepath: string
+  globs: Array<string>
+  kind: "external" | "instruction" | "native"
+  label: string
+  name: string
+  problem?: string
+  removable: boolean
+  scope: "global" | "project"
+  structured: boolean
+  truncated: boolean
+  type?: "agent-requested" | "always" | "auto" | "manual"
+}
+
+export type RuleManageError = {
+  code:
+    | "already_exists"
+    | "invalid_filename"
+    | "invalid_path"
+    | "not_editable"
+    | "not_found"
+    | "not_removable"
+    | "too_large"
+    | "write_failed"
+  message: string
+}
+
+export type RuleShadowed = {
+  by: number
+  directory: string
+}
+
+export type RuleSnapshot = {
+  disabled: {
+    cursorRules: boolean
+    rules: boolean
+  }
+  files: Array<RuleFileEntry>
+  shadowed: Array<RuleShadowed>
+  targets: Array<RuleTarget>
+  user: Array<RuleUserEntry>
+}
+
+export type RuleTarget = {
+  directory: string
+  id: string
+  kind: "external" | "instruction" | "native"
+  label: string
+  occupied?: string
+  shadowed: boolean
+}
+
+export type RuleUserEntry = {
+  bytes: number
+  index: number
+  text: string
+  truncated: boolean
+}
+
+export type SandboxStatus = {
+  backend?: "landlock" | "seatbelt" | "windows-account"
+  degraded?: Array<string>
+  installable?: boolean
+  reason?: string
+  status: "off" | "on" | "unsupported"
+}
 
 /**
  * Server configuration for merak serve and web commands
  */
 export type ServerConfig = {
   /**
-   * Port to listen on
+   * Additional domains to allow for CORS
    */
-  port?: number
+  cors?: Array<string>
   /**
    * Hostname to listen on
    */
@@ -2015,1444 +3628,32 @@ export type ServerConfig = {
    */
   mdnsDomain?: string
   /**
-   * Additional domains to allow for CORS
+   * Port to listen on
    */
-  cors?: Array<string>
-}
-
-export type PermissionActionConfig = "ask" | "allow" | "deny"
-
-export type PermissionObjectConfig = {
-  [key: string]: PermissionActionConfig
-}
-
-export type PermissionRuleConfig = PermissionActionConfig | PermissionObjectConfig
-
-export type PermissionConfig =
-  | {
-      __originalKeys?: Array<string>
-      /**
-       * Read files inside the workspace
-       */
-      read?: PermissionRuleConfig
-      /**
-       * Read files outside the workspace
-       */
-      external_read?: PermissionRuleConfig
-      /**
-       * Read secrets: .env, keys, certificates, credentials
-       */
-      sensitive_read?: PermissionRuleConfig
-      /**
-       * Write files inside the workspace
-       */
-      edit?: PermissionRuleConfig
-      /**
-       * Write .git and dotfiles inside the workspace
-       */
-      protected_write?: PermissionRuleConfig
-      /**
-       * Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's
-       */
-      config_write?: PermissionRuleConfig
-      /**
-       * Write files outside the workspace
-       */
-      external_write?: PermissionRuleConfig
-      /**
-       * Run read-only commands (ls, git status, ...)
-       */
-      bash_readonly?: PermissionRuleConfig
-      /**
-       * Run other commands
-       */
-      bash?: PermissionRuleConfig
-      /**
-       * Run commands that delete files (rm, git clean, ...)
-       */
-      bash_delete?: PermissionRuleConfig
-      /**
-       * Run risky commands (sudo, git push, npm publish, ...)
-       */
-      bash_risky?: PermissionRuleConfig
-      /**
-       * Run commands that wipe the system or home folder, format disks or write raw disks (denied unless allowed here)
-       */
-      bash_forbidden?: PermissionRuleConfig
-      /**
-       * Run a command that may change things while the sandbox is not ready
-       */
-      bash_unsandboxed?: PermissionRuleConfig
-      /**
-       * Run a command with extra sandbox permissions
-       */
-      sandbox?: PermissionRuleConfig
-      /**
-       * Connect to a domain
-       */
-      network?: PermissionRuleConfig
-      /**
-       * Start a subagent
-       */
-      subagent?: PermissionRuleConfig
-      /**
-       * Start a workflow
-       */
-      workflow_run?: PermissionRuleConfig
-      cron?: PermissionRuleConfig
-      /**
-       * Call an MCP tool (pattern: server/tool)
-       */
-      mcp?: PermissionRuleConfig
-      glob?: PermissionRuleConfig
-      grep?: PermissionRuleConfig
-      ls?: PermissionRuleConfig
-      lsp?: PermissionRuleConfig
-      skill?: PermissionRuleConfig
-      [key: string]: PermissionRuleConfig | Array<string> | undefined
-    }
-  | PermissionActionConfig
-
-export type AgentConfig = {
-  model?: string
-  /**
-   * Default model variant for this agent (applies only when using the agent's configured model).
-   */
-  variant?: string
-  temperature?: number
-  top_p?: number
-  prompt?: string
-  /**
-   * @deprecated Use 'permission' field instead
-   */
-  tools?: {
-    [key: string]: boolean
-  }
-  disable?: boolean
-  /**
-   * Description of when to use the agent
-   */
-  description?: string
-  mode?: "subagent" | "primary" | "all"
-  /**
-   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
-   */
-  hidden?: boolean
-  options?: {
-    [key: string]: unknown
-  }
-  /**
-   * Hex color code (e.g., #FF5733) or theme color (e.g., primary)
-   */
-  color?: string | "primary" | "secondary" | "accent" | "success" | "warning" | "error" | "info"
-  /**
-   * Maximum number of agentic iterations before forcing text-only response
-   */
-  steps?: number
-  /**
-   * @deprecated Use 'steps' field instead.
-   */
-  maxSteps?: number
-  permission?: PermissionConfig
-  /**
-   * Tool ids to remove from this agent's available-tools pool (e.g. pdf_parse, workflow_run) — reduces per-turn tool-schema token cost for tools this agent will never use. Only ever narrows the existing pool; unknown ids are ignored.
-   */
-  disableTools?: Array<string>
-  /**
-   * Tool ids to defer-load: kept out of the tools array (only a one-line summary in the tool_search description) until the model activates one via tool_search, after which it is available with full parameters on the next turn. Defaults to [pdf_parse, excel_parse, excel_write, workflow_run]. Pass an empty array to disable deferral entirely (load all tools eagerly). Only applies to tools still in the pool (respecting disableTools).
-   */
-  deferTools?: Array<string>
-  [key: string]: unknown
-}
-
-export type ProviderConfig = {
-  api?: string
-  name?: string
-  env?: Array<string>
-  id?: string
-  npm?: string
-  whitelist?: Array<string>
-  blacklist?: Array<string>
-  /**
-   * Homepage visibility delta. include turns a model on, exclude turns a default model off.
-   */
-  picker?: {
-    include?: Array<string>
-    exclude?: Array<string>
-  }
-  relay?: {
-    station: string
-    group: string
-    kind: "claude-code" | "codex" | "standard" | "custom"
-    auth?: "bearer" | "x-api-key"
-  }
-  models?: {
-    [key: string]: {
-      id?: string
-      name?: string
-      family?: string
-      release_date?: string
-      attachment?: boolean
-      reasoning?: boolean
-      temperature?: boolean
-      tool_call?: boolean
-      interleaved?:
-        | true
-        | {
-            field: "reasoning_content" | "reasoning_details"
-          }
-      cost?: {
-        input?: number
-        output?: number
-        cache_read?: number
-        cache_write?: number
-      }
-      limit?: {
-        context?: number
-        input?: number
-        output?: number
-      }
-      modalities?: {
-        input?: Array<"text" | "audio" | "image" | "video" | "pdf">
-        output?: Array<"text" | "audio" | "image" | "video" | "pdf">
-      }
-      status?: "alpha" | "beta" | "deprecated" | "active"
-      options?: {
-        [key: string]: unknown
-      }
-      headers?: {
-        [key: string]: string
-      }
-      provider?: {
-        npm?: string
-        api?: string
-      }
-      /**
-       * Variant-specific configuration
-       */
-      variants?: {
-        [key: string]: {
-          /**
-           * Disable this variant for the model
-           */
-          disabled?: boolean
-          [key: string]: unknown
-        }
-      }
-    }
-  }
-  options?: {
-    apiKey?: string
-    baseURL?: string
-    /**
-     * Enable promptCacheKey for this provider (default false)
-     */
-    setCacheKey?: boolean
-    /**
-     * OpenAI prompt cache retention policy when promptCacheKey is enabled.
-     */
-    promptCacheRetention?: "in_memory" | "24h"
-    /**
-     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
-     */
-    timeout?: number | false
-    [key: string]: unknown
-  }
-}
-
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
-   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
-   */
-  timeout?: number
-  /**
-   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
-   */
-  deferred?: boolean
-}
-
-export type McpRemoteConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "remote"
-  /**
-   * URL of the remote MCP server
-   */
-  url: string
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
-   * Headers to send with the request
-   */
-  headers?: {
-    [key: string]: string
-  }
-  /**
-   * Remote MCP OAuth. Set false to keep header auth only.
-   */
-  oauth?:
-    | false
-    | {
-        /**
-         * Pre-registered OAuth client id
-         */
-        clientId?: string
-        /**
-         * Pre-registered OAuth client secret
-         */
-        clientSecret?: string
-        /**
-         * OAuth scope
-         */
-        scope?: string
-      }
-  /**
-   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
-   */
-  timeout?: number
-  /**
-   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
-   */
-  deferred?: boolean
-  /**
-   * Explicit transport protocol for the remote MCP server
-   */
-  transport?: "http" | "sse"
-}
-
-/**
- * @deprecated Always uses stretch layout.
- */
-export type LayoutConfig = "auto" | "stretch"
-
-export type Config = {
-  /**
-   * JSON schema reference for configuration validation
-   */
-  $schema?: string
-  /**
-   * UI language (zh-CN or en-US)
-   */
-  locale?: "zh-CN" | "en-US"
-  logLevel?: LogLevel
-  server?: ServerConfig
-  /**
-   * Command configuration
-   */
-  command?: {
-    [key: string]: {
-      template: string
-      description?: string
-      agent?: string
-      model?: string
-      subtask?: boolean
-    }
-  }
-  /**
-   * Additional skill folder paths
-   */
-  skills?: {
-    /**
-     * Additional paths to skill folders
-     */
-    paths?: Array<string>
-    /**
-     * URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)
-     */
-    urls?: Array<string>
-  }
-  watcher?: {
-    ignore?: Array<string>
-  }
-  plugin?: Array<
-    | string
-    | [
-        string,
-        {
-          [key: string]: unknown
-        },
-      ]
-  >
-  /**
-   * Global external product connections shared by direct and group conversations
-   */
-  agentConnections?: {
-    products?: {
-      [key: string]: {
-        command?: string
-        enabled?: boolean
-        title?: string
-        adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-        args?: Array<string>
-        resumeArgs?: Array<string>
-        sessionLine?: string
-        model?: {
-          id: string
-          providerID?: string
-        }
-      }
-    }
-  }
-  /**
-   * Collaboration groups. The leader is always a Merak seat.
-   */
-  collaboration?: {
-    roleTemplates?: {
-      [key: string]: {
-        name: string
-        role: string
-        duty: string
-      }
-    }
-  }
-  snapshot?: boolean
-  /**
-   * Disable providers that are loaded automatically
-   */
-  disabled_providers?: Array<string>
-  /**
-   * When set, ONLY these providers will be enabled. All other providers will be ignored
-   */
-  enabled_providers?: Array<string>
-  /**
-   * Model to use in the format of provider/model, eg anthropic/claude-2
-   */
-  model?: string
-  /**
-   * Small model to use for tasks like title generation in the format of provider/model
-   */
-  small_model?: string
-  /**
-   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.
-   */
-  default_agent?: string
-  /**
-   * @deprecated Use `agent` field instead.
-   */
-  mode?: {
-    build?: AgentConfig
-    plan?: AgentConfig
-    [key: string]: AgentConfig | undefined
-  }
-  /**
-   * Agent configuration
-   */
-  agent?: {
-    plan?: AgentConfig
-    build?: AgentConfig
-    general?: AgentConfig
-    explore?: AgentConfig
-    title?: AgentConfig
-    summary?: AgentConfig
-    compaction?: AgentConfig
-    "memory-extractor"?: AgentConfig
-    simplifier?: AgentConfig
-    [key: string]: AgentConfig | undefined
-  }
-  /**
-   * Custom provider configurations and model overrides
-   */
-  provider?: {
-    [key: string]: ProviderConfig
-  }
-  /**
-   * MCP (Model Context Protocol) server configurations
-   */
-  mcp?: {
-    [key: string]:
-      | McpLocalConfig
-      | McpRemoteConfig
-      | {
-          enabled: boolean
-        }
-  }
-  formatter?:
-    | false
-    | {
-        [key: string]: {
-          disabled?: boolean
-          command?: Array<string>
-          environment?: {
-            [key: string]: string
-          }
-          extensions?: Array<string>
-        }
-      }
-  lsp?:
-    | false
-    | {
-        [key: string]:
-          | {
-              disabled: true
-            }
-          | {
-              command: Array<string>
-              extensions?: Array<string>
-              disabled?: boolean
-              env?: {
-                [key: string]: string
-              }
-              initialization?: {
-                [key: string]: unknown
-              }
-            }
-      }
-  /**
-   * Additional instruction files or patterns to include
-   */
-  instructions?: Array<string>
-  rules?: {
-    /**
-     * Global user rules, always applied across all projects. Only read from global config; ignored in project config.
-     */
-    user?: Array<string>
-  }
-  layout?: LayoutConfig
-  permission?: PermissionConfig
-  tools?: {
-    [key: string]: boolean
-  }
-  enterprise?: {
-    /**
-     * Enterprise URL
-     */
-    url?: string
-  }
-  compaction?: {
-    /**
-     * Enable automatic compaction when context is full (default: true)
-     */
-    auto?: boolean
-    /**
-     * Enable pruning of old tool outputs (default: true)
-     */
-    prune?: boolean
-    /**
-     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
-     */
-    reserved?: number
-    /**
-     * After this many consecutive auto-compaction failures, trip the breaker and switch to aggressive prune + blocking limit (default 3)
-     */
-    failureThreshold?: number
-    /**
-     * After the breaker trips, hard-stop and notify the user if the context still exceeds capacity (default true)
-     */
-    blockingLimit?: boolean
-    /**
-     * Lossless folding of tool output (default true). Strips ANSI color codes and folds adjacent repeated lines, repeated blocks and repeated path prefixes; every transform is round-trip checked and skipped if it cannot be restored exactly. No information is lost, and it runs before lossy compaction and truncation.
-     */
-    lossless?:
-      | boolean
-      | {
-          enabled?: boolean
-          min_bytes?: number
-          max_block_fold_bytes?: number
-        }
-    /**
-     * Read lifecycle management (default true). Projection layer: a Read is marked stale when the same file is edited afterwards, and superseded when it is read again with an overlapping range; either is replaced with a short notice. Storage is untouched and this is recomputed every turn. Reads within the last recent_turns turns are left alone to keep the cache.
-     */
-    read_lifecycle?:
-      | boolean
-      | {
-          enabled?: boolean
-          /**
-           * Handle Reads whose content is outdated (a quality issue, default true)
-           */
-          stale?: boolean
-          /**
-           * Handle redundant repeated Reads (saves space, default true)
-           */
-          superseded?: boolean
-          min_size_bytes?: number
-          /**
-           * Protection window: Reads within the last N user turns are not replaced, to keep the prompt cache stable (default 2)
-           */
-          recent_turns?: number
-        }
-    /**
-     * Tool input content truncation (on by default). Projection layer: content fields in write/edit/multi_edit/apply_patch inputs that exceed the dynamic budget are truncated (filePath/path are kept) and a marker says the file can be re-read with Read. Independent of output cleanup and its dynamic budget. Inputs within the last recent_turns turns are not truncated, to keep the cache.
-     */
-    input_budget?:
-      | boolean
-      | {
-          /**
-           * Whether to truncate tool input content (default true). Set false to disable.
-           */
-          enabled?: boolean
-          /**
-           * Dynamic budget share: budget = clamp(usable * share, min, max), default 0.1
-           */
-          share?: number
-          /**
-           * Lower bound of the dynamic budget in tokens, default 4000
-           */
-          min?: number
-          /**
-           * Upper bound of the dynamic budget in tokens, default 20000
-           */
-          max?: number
-          /**
-           * Maximum length of a single content field after truncation (characters), default 4000
-           */
-          max_chars_per_field?: number
-        }
-  }
-  memory?: {
-    /**
-     * Post-turn memory extraction policy. Default signals (extract only when needed). false disables it; true/signals extracts only on turns with memory signals; always extracts at the end of every root turn; unset means signals.
-     */
-    auto_extract?: boolean | "signals" | "always"
-    /**
-     * Whether to enable memory recall. Default false (off): past memories are not recalled into the context automatically. true: at the start of every user turn, relevant memories are recalled by keyword (optionally reranked by an LLM) and injected into the context.
-     */
-    auto_recall?: boolean
-    /**
-     * Model for post-turn memory extraction. Defaults to small_model, then the turn model.
-     */
-    model?: string
-    /**
-     * Rerank strategy for memory recall (only applies when auto_recall=true). off disables it (keyword scoring only); auto reranks the top-N candidates with the small model when memory.model/small_model is configured, and falls back to keyword scoring when it is not configured or the call fails.
-     */
-    recall_rerank?: "off" | "auto"
-    /**
-     * Whether to enable SessionMemory (session notes). Default true (on). When on, a forked small model maintains per-session notes at token thresholds (10K to start, then every 5K) so context can be restored after compaction. Set false to turn it off completely.
-     */
-    session_memory?: boolean
-    /**
-     * Use the SessionMemory notes instead of an LLM summary during compaction (saves one LLM call). Default true (on). Only applies when session_memory is not disabled; falls back to the LLM summary automatically when the notes are empty or fail. Set false to always use the LLM summary.
-     */
-    session_memory_compact?: boolean
-    /**
-     * Memory extraction throttle: extract once every N finished turns, default 1 (every turn). Larger values fork fewer child sessions and save cost.
-     */
-    extract_interval?: number
-    /**
-     * Whether to enable AutoDream (memory consolidation). Default false (off). When on, a child session is forked periodically to review the memory directory and merge, deduplicate, refine and prune the index, consolidating fragmented memories into organized, non-redundant long-term memory. Only applies when auto_extract is on (no extraction means nothing to consolidate).
-     */
-    auto_dream?: boolean
-    /**
-     * AutoDream time gate: minimum hours since the last consolidation, default 24. Consolidation runs only when dream_min_sessions is also met.
-     */
-    dream_min_hours?: number
-    /**
-     * AutoDream session gate: minimum number of new sessions since the last consolidation, default 5. Consolidation runs only when dream_min_hours is also met.
-     */
-    dream_min_sessions?: number
-  }
-  tool_discovery?: {
-    /**
-     * Auto-activate deferred tools on a strong match (default true). When a word in the user's request exactly matches an id segment or alias of a deferred tool, its full schema is injected in this turn, so the model does not need an extra tool_search round. Set false to go back to the old behavior where the model discovers tools on its own.
-     */
-    auto_activate?: boolean
-    /**
-     * Small-model selection for deferred tool search (default off). off uses keyword scoring only; auto, when the candidate count reaches the threshold (mostly with many MCP servers) and small_model is configured, lets the small model pick and activate the tools that are actually needed. Falls back to keywords only when not configured, on timeout or on failure.
-     */
-    rerank?: "off" | "auto"
-  }
-  experimental?: {
-    disable_paste_summary?: boolean
-    /**
-     * Enable Bash output compaction, or configure thresholds for the compactor.
-     */
-    bash_output_compaction?:
-      | boolean
-      | {
-          enabled?: boolean
-          mode?: "safe" | "aggressive"
-          session_delta?: boolean
-          min_bytes?: number
-          max_input_bytes?: number
-          max_output_bytes?: number
-        }
-    /**
-     * Collapse unchanged repeated glob/grep/ls results within a short session TTL.
-     */
-    tool_result_delta?: boolean
-    /**
-     * Tools that should only be available to primary agents.
-     */
-    primary_tools?: Array<string>
-    /**
-     * Continue the agent loop when a tool call is denied
-     */
-    continue_loop_on_deny?: boolean
-    /**
-     * Timeout in milliseconds for model context protocol (MCP) requests
-     */
-    mcp_timeout?: number
-  }
-  ui?: {
-    models?: {
-      /**
-       * Hidden models, as providerID/modelID
-       */
-      hidden?: Array<string>
-      /**
-       * Recently used models, as providerID/modelID
-       */
-      recent?: Array<string>
-      /**
-       * Selected variant per model
-       */
-      variant?: {
-        [key: string]: string
-      }
-    }
-    chat?: {
-      /**
-       * Auto-scroll the conversation to the bottom
-       */
-      autoScroll?: boolean
-    }
-  }
-  plugin_options?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
-  storage?: {
-    /**
-     * Delete sessions inactive for more than N days; by default no history is deleted
-     */
-    retention_days?: number
-  }
-  /**
-   * Sandbox for the commands the agent runs.
-   */
-  sandbox?: {
-    /**
-     * preferred (default): use the sandbox when it is ready; until then commands that change things ask first, even in auto mode. required: refuse to run commands while the sandbox is not ready. off: never use the sandbox.
-     */
-    mode?: "preferred" | "required" | "off"
-    read?: {
-      /**
-       * Extra folders commands cannot read, besides ~/.ssh, ~/.aws and the other credential folders. ~/ means your home folder.
-       */
-      deny?: Array<string>
-    }
-    write?: {
-      /**
-       * Extra folders commands can always write, besides the workspace, the temp folder and package caches.
-       */
-      allow?: Array<string>
-    }
-    network?: {
-      /**
-       * Linux only: local ports commands may connect to directly, for example a database at 127.0.0.1:5432.
-       */
-      allowLocalPorts?: Array<number>
-    }
-    /**
-     * Hide API keys, tokens and passwords in command output before the model sees it. Defaults to true.
-     */
-    redactSecrets?: boolean
-  }
-}
-
-export type OAuth = {
-  type: "oauth"
-  refresh: string
-  access: string
-  expires: number
-  accountId?: string
-  enterpriseUrl?: string
-}
-
-export type ApiAuth = {
-  type: "api"
-  key: string
-}
-
-export type WellKnownAuth = {
-  type: "wellknown"
-  key: string
-  token: string
-}
-
-export type Auth = OAuth | ApiAuth | WellKnownAuth
-
-export type ConfigWarning = {
-  /**
-   * Path of the config file with the problem
-   */
-  path: string
-  /**
-   * Path of the config item, e.g. mcp.foo
-   */
-  item: string
-  /**
-   * Human-readable reason
-   */
-  reason: string
-}
-
-export type Model = {
-  id: string
-  providerID: string
-  api: {
-    id: string
-    url: string
-    npm: string
-  }
-  name: string
-  family?: string
-  capabilities: {
-    temperature: boolean
-    reasoning: boolean
-    attachment: boolean
-    toolcall: boolean
-    input: {
-      text: boolean
-      audio: boolean
-      image: boolean
-      video: boolean
-      pdf: boolean
-    }
-    output: {
-      text: boolean
-      audio: boolean
-      image: boolean
-      video: boolean
-      pdf: boolean
-    }
-    interleaved:
-      | boolean
-      | {
-          field: "reasoning_content" | "reasoning_details"
-        }
-  }
-  cost?: {
-    input: number
-    output: number
-    cache: {
-      read: number
-      write: number
-    }
-    currency?: "USD" | "CNY"
-    tiers?: Array<{
-      input: number
-      output: number
-      cache: {
-        read: number
-        write: number
-      }
-      above: number
-      thinking?: {
-        input: number
-        output: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-    }>
-    thinking?: {
-      input: number
-      output: number
-      cache: {
-        read: number
-        write: number
-      }
-    }
-  }
-  limit: {
-    context: number
-    input?: number
-    output: number
-  }
-  status: "alpha" | "beta" | "deprecated" | "active"
-  options: {
-    [key: string]: unknown
-  }
-  headers: {
-    [key: string]: string
-  }
-  release_date: string
-  homepage?: boolean
-  variants?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
-  defaultVariant?: string
-}
-
-export type Provider = {
-  id: string
-  name: string
-  source: "env" | "config" | "custom" | "api"
-  origin?: "official" | "configured"
-  env: Array<string>
-  key?: string
-  options: {
-    [key: string]: unknown
-  }
-  models: {
-    [key: string]: Model
-  }
-}
-
-export type ToolIds = Array<string>
-
-export type ToolListItem = {
-  id: string
-  description: string
-  parameters: unknown
-}
-
-export type ToolList = Array<ToolListItem>
-
-export type Worktree = {
-  name: string
-  branch: string
-  directory: string
-}
-
-export type WorktreeCreateInput = {
-  name?: string
-  /**
-   * Branch or commit to start the worktree from; defaults to the current HEAD
-   */
-  base?: string
-  /**
-   * Additional startup script to run after the project's start command
-   */
-  startCommand?: string
-}
-
-export type WorktreeRemoveInput = {
-  directory: string
-}
-
-export type WorktreeResetInput = {
-  directory: string
-}
-
-export type WorktreeMergeResult =
-  | {
-      ok: true
-      commit: string
-    }
-  | {
-      ok: false
-      reason: "conflict"
-      files: Array<string>
-    }
-  | {
-      ok: false
-      reason: "failed"
-      message: string
-    }
-
-export type WorktreeMergeInput = {
-  directory: string
-  /**
-   * Squash the worktree branch into a single commit
-   */
-  squash?: boolean
-  /**
-   * Commit message for uncommitted changes in the worktree and for the merge or squash commit
-   */
-  message?: string
-}
-
-export type McpResource = {
-  name: string
-  uri: string
-  description?: string
-  mimeType?: string
-  client: string
-}
-
-export type SessionSearchResult = {
-  session: SessionOutput
-  /**
-   * The latest conversation text containing the search, shortened around it
-   */
-  match?: {
-    messageID: string
-    text: string
-  }
-}
-
-export type PermissionAction = "allow" | "deny" | "ask"
-
-export type PermissionRule = {
-  permission: string
-  pattern: string
-  action: PermissionAction
-}
-
-export type PermissionRuleset = Array<PermissionRule>
-
-export type PermissionMode = "readonly" | "ask" | "auto"
-
-export type TextPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type SubtaskPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "subtask"
-  prompt: string
-  description: string
-  agent: string
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  command?: string
-}
-
-export type ReasoningPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "reasoning"
-  text: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end?: number
-  }
-}
-
-export type FilePartSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: FilePartSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: FilePartSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: FilePartSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type FilePartSource = FileSource | SymbolSource | ResourceSource
-
-export type FilePart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  source?: FilePartSource
-}
-
-export type ToolStatePending = {
-  status: "pending"
-  input: {
-    [key: string]: unknown
-  }
-  raw: string
-}
-
-export type ExternalDelegateProgress = {
-  runID: string
-  productTitle: string
-  requestedModel?: {
-    id: string
-    providerID?: string
-  }
-  actualModel?: {
-    id: string
-    providerID?: string
-  }
-  parts: Array<{
-    id: string
-    text: string
-  }>
-  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
-  stopReason?: "product-disabled" | "user"
-}
-
-export type ToolStateRunning = {
-  status: "running"
-  input: {
-    [key: string]: unknown
-  }
-  title?: string
-  metadata?: {
-    external?: ExternalDelegateProgress
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-  }
-}
-
-export type ToolStateCompleted = {
-  status: "completed"
-  input: {
-    [key: string]: unknown
-  }
-  output: string
-  title: string
-  metadata: {
-    mcpIsError?: boolean
-    external?: ExternalDelegateProgress
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-    compacted?: number
-  }
-  attachments?: Array<FilePart>
-}
-
-export type ToolStateError = {
-  status: "error"
-  input: {
-    [key: string]: unknown
-  }
-  error: string
-  metadata?: {
-    errorKind?: "permission_rejected" | "timeout" | "execution" | "invalid_arguments"
-    external?: ExternalDelegateProgress
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-  }
-}
-
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
-
-export type ToolPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "tool"
-  callID: string
-  tool: string
-  state: ToolState
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type StepStartPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "step-start"
-  snapshot?: string
-}
-
-export type StepFinishPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "step-finish"
-  reason: string
-  snapshot?: string
-  cost: number
-  tokens: {
-    total?: number
-    input: number
-    output: number
-    reasoning: number
-    cache: {
-      read: number
-      write: number
-    }
-  }
-}
-
-export type SnapshotPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "snapshot"
-  snapshot: string
-}
-
-export type PatchPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "patch"
-  backupID: string
-  files: Array<string>
-  additions?: number
-  deletions?: number
-}
-
-export type AgentPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "agent"
-  name: string
-  source?: {
-    value: string
-    start: number
-    end: number
-  }
-}
-
-export type ApiError = {
-  name: "APIError"
-  code?: string
-  data: {
-    message: string
-    statusCode?: number
-    isRetryable: boolean
-    responseHeaders?: {
-      [key: string]: string
-    }
-    responseBody?: string
-    metadata?: {
-      [key: string]: string
-    }
-  }
-}
-
-export type RetryPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "retry"
-  attempt: number
-  error: ApiError
-  time: {
-    created: number
-  }
-}
-
-export type CompactionPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "compaction"
-  auto: boolean
-  permissionMode?: PermissionMode
-  preCompactActivatedTools?: Array<string>
-}
-
-export type Part =
-  | TextPart
-  | SubtaskPart
-  | ReasoningPart
-  | FilePart
-  | ToolPart
-  | StepStartPart
-  | StepFinishPart
-  | SnapshotPart
-  | PatchPart
-  | AgentPart
-  | RetryPart
-  | CompactionPart
-
-export type OutputFormatText = {
-  type: "text"
-}
-
-export type JsonSchema = {
-  [key: string]: unknown
-}
-
-export type OutputFormatJsonSchema = {
-  type: "json_schema"
-  schema: JsonSchema
-  retryCount?: number
-}
-
-export type OutputFormat = OutputFormatText | OutputFormatJsonSchema
-
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type FilePartInput = {
-  id?: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  source?: FilePartSource
-}
-
-export type AgentPartInput = {
-  id?: string
-  type: "agent"
-  name: string
-  source?: {
-    value: string
-    start: number
-    end: number
-  }
-}
-
-export type SubtaskPartInput = {
-  id?: string
-  type: "subtask"
-  prompt: string
-  description: string
-  agent: string
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  command?: string
-}
-
-export type FileDiff = {
-  file: string
-  before: string
-  after: string
-  additions: number
-  deletions: number
-  status?: "added" | "deleted" | "modified"
+  port?: number
 }
 
 export type Session = {
-  target?:
-    | {
-        kind: "merak"
-      }
-    | {
-        kind: "external"
-        productID: string
-      }
-  targetRevision?: number
-  targetBlock?: {
-    blockID: string
-    productID: string
-    disabledCycleID: string
-    decision: "pending" | "declined"
-  }
-  takeover?: {
-    at: number
-    fromProductID: string
-    blockID: string
-  }
-  readOnlyReason?: "imported-external-history"
-  id: string
-  slug: string
-  projectID: string
   directory: string
-  workspaceFolders?: Array<{
-    name: string
-    path: string
-  }>
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
   parentID?: string
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
   permission?: PermissionRuleset
   permissionMode?: PermissionMode
-  undoRedo?: {
-    stack: Array<{
-      hiddenMessages: Array<string>
-      fileSnapshot: string
-      targetMessageID: string
-      timestamp: number
-    }>
-  }
+  projectID: string
+  readOnlyReason?: "imported-external-history"
   revert?: {
+    diff?: string
     messageID: string
     partID?: string
     snapshot?: string
-    diff?: string
   }
   rules?: {
     pinned?: Array<{
       filepath: string
-      source: "mention" | "fetch"
+      source: "fetch" | "mention"
     }>
     recentFiles?: Array<{
       path: string
@@ -3460,39 +3661,635 @@ export type Session = {
     }>
     userTurns?: Array<string>
   }
+  slug: string
+  summary?: {
+    additions: number
+    deletions: number
+    diffs?: Array<FileDiff>
+    files: number
+  }
+  takeover?: {
+    at: number
+    blockID: string
+    fromProductID: string
+  }
+  target?:
+    | {
+        kind: "external"
+        productID: string
+      }
+    | {
+        kind: "merak"
+      }
+  targetBlock?: {
+    blockID: string
+    decision: "declined" | "pending"
+    disabledCycleID: string
+    productID: string
+  }
+  targetRevision?: number
+  time: {
+    archived?: number
+    compacting?: number
+    created: number
+    updated: number
+  }
+  title: string
+  undoRedo?: {
+    stack: Array<{
+      fileSnapshot: string
+      hiddenMessages: Array<string>
+      targetMessageID: string
+      timestamp: number
+    }>
+  }
+  version: string
+  workspaceFolders?: Array<{
+    name: string
+    path: string
+  }>
+}
+
+export type SessionOutput = {
+  directory: string
+  id: string
   metadata?: {
     [key: string]: unknown
   }
+  parentID?: string
+  permission?: PermissionRulesetOutput
+  permissionMode?: PermissionMode
+  projectID: string
+  readOnlyReason?: "imported-external-history"
+  revert?: {
+    diff?: string
+    messageID: string
+    partID?: string
+    snapshot?: string
+  }
+  rules?: {
+    pinned?: Array<{
+      filepath: string
+      source: "fetch" | "mention"
+    }>
+    recentFiles?: Array<{
+      path: string
+      userMessageID: string
+    }>
+    userTurns?: Array<string>
+  }
+  slug: string
+  summary?: {
+    additions: number
+    deletions: number
+    diffs?: Array<FileDiffOutput>
+    files: number
+  }
+  takeover?: {
+    at: number
+    blockID: string
+    fromProductID: string
+  }
+  target?:
+    | {
+        kind: "external"
+        productID: string
+      }
+    | {
+        kind: "merak"
+      }
+  targetBlock?: {
+    blockID: string
+    decision: "declined" | "pending"
+    disabledCycleID: string
+    productID: string
+  }
+  targetRevision?: number
+  time: {
+    archived?: number
+    compacting?: number
+    created: number
+    updated: number
+  }
+  title: string
+  undoRedo?: {
+    stack: Array<{
+      fileSnapshot: string
+      hiddenMessages: Array<string>
+      targetMessageID: string
+      timestamp: number
+    }>
+  }
+  version: string
+  workspaceFolders?: Array<{
+    name: string
+    path: string
+  }>
+}
+
+export type SessionSearchResult = {
+  /**
+   * The latest conversation text containing the search, shortened around it
+   */
+  match?: {
+    messageID: string
+    text: string
+  }
+  session: SessionOutput
+}
+
+export type SessionStats = {
+  costPerDay: {
+    [key: string]: number
+  }
+  dateRange: {
+    earliest: number
+    latest: number
+  }
+  days: number
+  medianTokensPerSession: number
+  modelUsage: {
+    [key: string]: {
+      cost: number
+      currency?: "CNY" | "USD"
+      messages: number
+      tokens: {
+        cache: {
+          read: number
+          write: number
+        }
+        input: number
+        output: number
+      }
+    }
+  }
+  tokensPerSession: number
+  toolUsage: {
+    [key: string]: number
+  }
+  totalCost: {
+    [key: string]: number
+  }
+  totalMessages: number
+  totalSessions: number
+  totalTokens: {
+    cache: {
+      read: number
+      write: number
+    }
+    input: number
+    output: number
+    reasoning: number
+  }
+}
+
+export type SessionStatus =
+  | {
+      attempt: number
+      message: string
+      next: number
+      type: "retry"
+    }
+  | {
+      type: "busy"
+    }
+  | {
+      type: "idle"
+    }
+
+export type SnapshotPart = {
+  id: string
+  messageID: string
+  sessionID: string
+  snapshot: string
+  type: "snapshot"
+}
+
+export type SnapshotPartOutput = {
+  id: string
+  messageID: string
+  sessionID: string
+  snapshot: string
+  type: "snapshot"
+}
+
+export type StepFinishPart = {
+  cost: number
+  id: string
+  messageID: string
+  reason: string
+  sessionID: string
+  snapshot?: string
+  tokens: {
+    cache: {
+      read: number
+      write: number
+    }
+    input: number
+    output: number
+    reasoning: number
+    total?: number
+  }
+  type: "step-finish"
+}
+
+export type StepFinishPartOutput = {
+  cost: number
+  id: string
+  messageID: string
+  reason: string
+  sessionID: string
+  snapshot?: string
+  tokens: {
+    cache: {
+      read: number
+      write: number
+    }
+    input: number
+    output: number
+    reasoning: number
+    total?: number
+  }
+  type: "step-finish"
+}
+
+export type StepStartPart = {
+  id: string
+  messageID: string
+  sessionID: string
+  snapshot?: string
+  type: "step-start"
+}
+
+export type StepStartPartOutput = {
+  id: string
+  messageID: string
+  sessionID: string
+  snapshot?: string
+  type: "step-start"
+}
+
+export type StructuredOutputError = {
+  code?: string
+  data: {
+    message: string
+    retries: number
+  }
+  name: "StructuredOutputError"
+}
+
+export type StructuredOutputErrorOutput = {
+  code?: string
+  data: {
+    message: string
+    retries: number
+  }
+  name: "StructuredOutputError"
+}
+
+export type SubtaskPart = {
+  agent: string
+  command?: string
+  description: string
+  id: string
+  messageID: string
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  prompt: string
+  sessionID: string
+  type: "subtask"
+}
+
+export type SubtaskPartInput = {
+  agent: string
+  command?: string
+  description: string
+  id?: string
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  prompt: string
+  type: "subtask"
+}
+
+export type SubtaskPartOutput = {
+  agent: string
+  command?: string
+  description: string
+  id: string
+  messageID: string
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  prompt: string
+  sessionID: string
+  type: "subtask"
+}
+
+export type Symbol = {
+  kind: number
+  location: {
+    range: RangeOutput
+    uri: string
+  }
+  name: string
+}
+
+export type SymbolSource = {
+  kind: number
+  name: string
+  path: string
+  range: Range
+  text: FilePartSourceText
+  type: "symbol"
+}
+
+export type SymbolSourceOutput = {
+  kind: number
+  name: string
+  path: string
+  range: RangeOutput
+  text: FilePartSourceTextOutput
+  type: "symbol"
+}
+
+export type TextPart = {
+  id: string
+  ignored?: boolean
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  synthetic?: boolean
+  text: string
+  time?: {
+    end?: number
+    start: number
+  }
+  type: "text"
+}
+
+export type TextPartInput = {
+  id?: string
+  ignored?: boolean
+  metadata?: {
+    [key: string]: unknown
+  }
+  synthetic?: boolean
+  text: string
+  time?: {
+    end?: number
+    start: number
+  }
+  type: "text"
+}
+
+export type TextPartOutput = {
+  id: string
+  ignored?: boolean
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  synthetic?: boolean
+  text: string
+  time?: {
+    end?: number
+    start: number
+  }
+  type: "text"
+}
+
+export type Todo = {
+  /**
+   * Brief description of the task
+   */
+  content: string
+  /**
+   * Unique identifier for the todo item
+   */
+  id: string
+  /**
+   * Priority level of the task: high, medium, low
+   */
+  priority: string
+  /**
+   * Current status of the task: pending, in_progress, completed, cancelled
+   */
+  status: string
+}
+
+export type ToolIds = Array<string>
+
+export type ToolList = Array<ToolListItem>
+
+export type ToolListItem = {
+  description: string
+  id: string
+  parameters: unknown
+}
+
+export type ToolPart = {
+  callID: string
+  id: string
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  state: ToolState
+  tool: string
+  type: "tool"
+}
+
+export type ToolPartOutput = {
+  callID: string
+  id: string
+  messageID: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  sessionID: string
+  state: ToolStateOutput
+  tool: string
+  type: "tool"
+}
+
+export type ToolState = ToolStateCompleted | ToolStateError | ToolStatePending | ToolStateRunning
+
+export type ToolStateCompleted = {
+  attachments?: Array<FilePart>
+  input: {
+    [key: string]: unknown
+  }
+  metadata: {
+    external?: ExternalDelegateProgress
+    mcpIsError?: boolean
+    [key: string]: unknown
+  }
+  output: string
+  status: "completed"
+  time: {
+    compacted?: number
+    end: number
+    start: number
+  }
+  title: string
+}
+
+export type ToolStateCompletedOutput = {
+  attachments?: Array<FilePartOutput>
+  input: {
+    [key: string]: unknown
+  }
+  metadata: {
+    external?: ExternalDelegateProgressOutput
+    mcpIsError?: boolean
+    [key: string]: unknown
+  }
+  output: string
+  status: "completed"
+  time: {
+    compacted?: number
+    end: number
+    start: number
+  }
+  title: string
+}
+
+export type ToolStateError = {
+  error: string
+  input: {
+    [key: string]: unknown
+  }
+  metadata?: {
+    errorKind?: "execution" | "invalid_arguments" | "permission_rejected" | "timeout"
+    external?: ExternalDelegateProgress
+    [key: string]: unknown
+  }
+  status: "error"
+  time: {
+    end: number
+    start: number
+  }
+}
+
+export type ToolStateErrorOutput = {
+  error: string
+  input: {
+    [key: string]: unknown
+  }
+  metadata?: {
+    errorKind?: "execution" | "invalid_arguments" | "permission_rejected" | "timeout"
+    external?: ExternalDelegateProgressOutput
+    [key: string]: unknown
+  }
+  status: "error"
+  time: {
+    end: number
+    start: number
+  }
+}
+
+export type ToolStateOutput =
+  ToolStateCompletedOutput | ToolStateErrorOutput | ToolStatePendingOutput | ToolStateRunningOutput
+
+export type ToolStatePending = {
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  status: "pending"
+}
+
+export type ToolStatePendingOutput = {
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  status: "pending"
+}
+
+export type ToolStateRunning = {
+  input: {
+    [key: string]: unknown
+  }
+  metadata?: {
+    external?: ExternalDelegateProgress
+    [key: string]: unknown
+  }
+  status: "running"
+  time: {
+    start: number
+  }
+  title?: string
+}
+
+export type ToolStateRunningOutput = {
+  input: {
+    [key: string]: unknown
+  }
+  metadata?: {
+    external?: ExternalDelegateProgressOutput
+    [key: string]: unknown
+  }
+  status: "running"
+  time: {
+    start: number
+  }
+  title?: string
+}
+
+export type UnknownError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "UnknownError"
+}
+
+export type UnknownErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "UnknownError"
 }
 
 export type UserMessage = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
+  agent: string
+  commandSource?: {
+    templatePartIDs: Array<string>
   }
   execution?: {
     kind: "merak"
   }
-  role: "user"
-  time: {
-    created: number
-  }
   format?: OutputFormat
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  model: {
+    modelID: string
+    providerID: string
+  }
+  permissionMode?: PermissionMode
+  role: "user"
+  sessionID: string
   summary?: {
-    title?: string
     body?: string
     diffs: Array<FileDiff>
-  }
-  agent: string
-  permissionMode?: PermissionMode
-  model: {
-    providerID: string
-    modelID: string
+    title?: string
   }
   system?: string
-  commandSource?: {
-    templatePartIDs: Array<string>
+  time: {
+    created: number
   }
   tools?: {
     [key: string]: boolean
@@ -3500,1003 +4297,112 @@ export type UserMessage = {
   variant?: string
 }
 
-export type ProviderAuthError = {
-  name: "ProviderAuthError"
-  code?: string
-  data: {
-    providerID: string
-    message: string
-  }
-}
-
-export type UnknownError = {
-  name: "UnknownError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type MessageOutputLengthError = {
-  name: "MessageOutputLengthError"
-  code?: string
-  data: {
-    [key: string]: unknown
-  }
-}
-
-export type MessageAbortedError = {
-  name: "MessageAbortedError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type StructuredOutputError = {
-  name: "StructuredOutputError"
-  code?: string
-  data: {
-    message: string
-    retries: number
-  }
-}
-
-export type ContextOverflowError = {
-  name: "ContextOverflowError"
-  code?: string
-  data: {
-    message: string
-    responseBody?: string
-  }
-}
-
-export type CompactionBlockedError = {
-  name: "CompactionBlockedError"
-  code?: string
-  data: {
-    message: string
-    tokens?: number
-    usable?: number
-  }
-}
-
-export type ModelNotFoundError = {
-  name: "ModelNotFoundError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    providerID: string
-    modelID: string
-    suggestions?: Array<string>
-  }
-}
-
-export type CommandNotFoundError = {
-  name: "CommandNotFoundError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    command: string
-  }
-}
-
-export type AgentNotFoundError = {
-  name: "AgentNotFoundError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    agent: string
-    available?: Array<string>
-  }
-}
-
-export type ConfigParseError = {
-  name: "ConfigParseError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    kind: "command" | "agent" | "mode" | "skill" | "rule"
-    path: string
-    reason: string
-  }
-}
-
-export type PluginInstallError = {
-  name: "PluginInstallError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    package: string
-    version: string
-    reason: string
-  }
-}
-
-export type WorktreeResetDirtyError = {
-  name: "WorktreeResetDirtyError"
-  code?: string
-  data: {
-    message: string
-    messageKey?: string
-    params?: {
-      [key: string]: unknown
-    }
-    dirty: string
-  }
-}
-
-export type ExternalAdapterError = {
-  name: "ExternalAdapterError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type AssistantMessage = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
+export type UserMessageOutput = {
+  agent: string
+  commandSource?: {
+    templatePartIDs: Array<string>
   }
   execution?: {
     kind: "merak"
   }
-  role: "assistant"
-  time: {
-    created: number
-    completed?: number
-  }
-  error?:
-    | ProviderAuthError
-    | UnknownError
-    | MessageOutputLengthError
-    | MessageAbortedError
-    | StructuredOutputError
-    | ContextOverflowError
-    | CompactionBlockedError
-    | ApiError
-    | ModelNotFoundError
-    | CommandNotFoundError
-    | AgentNotFoundError
-    | ConfigParseError
-    | PluginInstallError
-    | WorktreeResetDirtyError
-    | ExternalAdapterError
-  parentID: string
-  modelID: string
-  providerID: string
-  mode: string
-  agent: string
-  path: {
-    cwd: string
-    root: string
-  }
-  summary?: boolean
-  cost: number
-  tokens: {
-    total?: number
-    input: number
-    output: number
-    reasoning: number
-    cache: {
-      read: number
-      write: number
-    }
-  }
-  contextBreakdown?: {
-    systemBase: number
-    environment: number
-    rules: number
-    toolDefinitions: number
-    mcp: number
-    skills: number
-    subagents: number
-    conversation: number
-    total: number
-  }
-  structured?: unknown
-  variant?: string
-  finish?: string
-}
-
-export type ExternalUserMessage = {
+  format?: OutputFormatOutput
   id: string
-  sessionID: string
   metadata?: {
     [key: string]: unknown
   }
+  model: {
+    modelID: string
+    providerID: string
+  }
+  permissionMode?: PermissionMode
   role: "user"
+  sessionID: string
+  summary?: {
+    body?: string
+    diffs: Array<FileDiffOutput>
+    title?: string
+  }
+  system?: string
   time: {
     created: number
   }
-  permissionMode: PermissionMode
-  execution: {
-    kind: "external"
-    productID: string
-    productTitle: string
-    runID: string
-    targetRevision: number
-    requestedModel?: {
-      id: string
-      providerID?: string
-    }
-    actualModel?: {
-      id: string
-      providerID?: string
-    }
+  tools?: {
+    [key: string]: boolean
   }
+  variant?: string
 }
 
-export type ExternalAssistantMessage = {
-  id: string
-  sessionID: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  role: "assistant"
-  time: {
-    created: number
-    completed?: number
-  }
-  parentID: string
-  path: {
-    cwd: string
-    root: string
-  }
-  execution: {
-    kind: "external"
-    productID: string
-    productTitle: string
-    runID: string
-    targetRevision: number
-    requestedModel?: {
-      id: string
-      providerID?: string
-    }
-    actualModel?: {
-      id: string
-      providerID?: string
-    }
-  }
-  error?:
-    | ProviderAuthError
-    | UnknownError
-    | MessageOutputLengthError
-    | MessageAbortedError
-    | StructuredOutputError
-    | ContextOverflowError
-    | CompactionBlockedError
-    | ApiError
-    | ModelNotFoundError
-    | CommandNotFoundError
-    | AgentNotFoundError
-    | ConfigParseError
-    | PluginInstallError
-    | WorktreeResetDirtyError
-    | ExternalAdapterError
-  terminal?: "completed" | "failed" | "cancelled" | "interrupted"
-}
-
-export type Message = UserMessage | AssistantMessage | ExternalUserMessage | ExternalAssistantMessage
-
-export type CollaborationRoleTemplate = {
-  id: string
-  name: string
-  role: string
-  duty: string
-  description?: string
-  builtin: boolean
-  editable: boolean
-}
-
-export type CollaborationGroupSummary = {
-  sessionID: string
-  title: string
-  directory: string
-  seats: Array<{
-    name: string
-    role: string
-    duty: string
-    product: string
-    leader: boolean
-    availability: {
-      state: "online" | "offline"
-      reason?: string
-    }
-  }>
-}
-
-export type CollaborationSeat = {
-  id: string
-  name: string
-  role: string
-  duty: string
-  product: string
-  leader: boolean
-  privateSessionID?: string
-  availability: {
-    state: "online" | "offline"
-    reason?: string
-  }
-}
-
-export type CollaborationEvent = {
-  at: number
-  kind: "join" | "leave" | "rename"
-  names: Array<string>
-}
-
-export type CollaborationResult = {
-  seatID: string
-  name: string
-  text: string
-  requestID: string
-  at: number
-}
-
-export type CollaborationGroup = {
-  seats: Array<CollaborationSeat>
-  events: Array<CollaborationEvent>
-  results: Array<CollaborationResult>
-  baseline: Array<string>
-  seq: number
-}
-
-export type AgentConnectionProduct = {
-  command?: string
-  enabled: boolean
-  title: string
-  adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-  args?: Array<string>
-  resumeArgs?: Array<string>
-  sessionLine?: string
-  model?: {
-    id: string
-    providerID?: string
-  }
-  id: string
-  connected: boolean
-  reason?: string
-  builtin: boolean
-  source: "builtin" | "global"
-  revision: number
-  version?: string
-  path?: string
-  recommended?: string
-  upgrade?: string
-  outdated?: boolean
-  capabilities: {
-    modelSelection: boolean
-    modelDiscovery: boolean
-    textStreaming: boolean
-    resume: boolean
-    permission: "merak" | "external"
-    questions: boolean
-  }
-}
-
-export type AgentConnectionModels = {
-  models: Array<{
-    id: string
-    providerID?: string
-    title: string
-  }>
-  allowCustomID: boolean
-}
-
-export type AgentConnectionVerification = {
-  productID: string
-  revision: number
-  status: "passed" | "failed"
-  requestedModel?: {
-    id: string
-    providerID?: string
-  }
-  actualModel?: {
-    id: string
-    providerID?: string
-  }
-  streamingObserved: boolean
-  checkedAt: number
-  error?: {
-    code: string
-    message: string
-  }
-}
-
-export type MemoryEntry = {
-  /**
-   * Path relative to the memory root, same form as MEMORY.md index links
-   */
-  filename: string
-  /**
-   * Absolute path, so clients can open it in the editor
-   */
-  path: string
-  name: string | null
-  description: string | null
-  /**
-   * user / feedback / project / reference
-   */
-  type?: string
-  mtimeMs: number
-}
-
-export type MemorySnapshot = {
-  directory: string
-  entrypoint: string
-  /**
-   * MEMORY.md body - the index that is injected into every turn
-   */
-  index: string
-  entries: Array<MemoryEntry>
-}
-
-export type QuestionAnswer = Array<string>
-
-export type ProviderAuthMethod = {
-  type: "oauth" | "api"
-  label: string
-}
-
-export type ProviderAuthPrompt =
-  | {
-      type: "text"
-      key: string
-      message: string
-      placeholder?: string
-    }
-  | {
-      type: "select"
-      key: string
-      message: string
-      options: Array<{
-        label: string
-        value: string
-        hint?: string
-      }>
-    }
-
-export type ProviderAuthAuthorization = {
-  url: string
-  method: "auto" | "code"
-  instructions: string
-}
-
-export type WorkflowRun = {
-  status: "running" | "completed" | "failed" | "aborted"
-  workflowName: string
-  description?: string
-  runId: string
-  messageID: string
-  scriptPath?: string
-  phase?: string
-  phases: Array<{
-    title: string
-    detail?: string
-    model?: string
-  }>
-  agents: Array<{
-    id: string
-    label: string
-    phase?: string
-    agent: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
-    sessionId?: string
-    status: "queued" | "running" | "completed" | "failed" | "cached"
-    startedAt?: number
-    completedAt?: number
-    error?: string
-    toolCount?: number
-    latestTool?: {
-      tool: string
-      callID: string
-      status: "pending" | "running" | "completed" | "error"
-      title?: string
-      summary?: string
-      startedAt?: number
-      completedAt?: number
-      updatedAt: number
-    }
-  }>
-  workUnits?: Array<{
-    id: string
-    title: string
-    description?: string
-    phase?: string
-    files?: Array<string>
-    agentId?: string
-    agentLabel?: string
-    agentType?: string
-    status: "queued" | "running" | "completed" | "failed" | "cached"
-  }>
-  logs: Array<{
-    id: string
-    level: "log" | "narrate"
-    message: string
-    phase?: string
-    at: number
-  }>
-  result?: unknown
-  error?: string
-  resumable: boolean
-  createdAt: number
-  updatedAt: number
-  completedAt?: number
-  maxConcurrentAgents?: number
-  maxTotalAgents?: number
-  agentCount?: number
-  queuedAgentCount?: number
-  runningAgentCount?: number
-  completedAgentCount?: number
-  failedAgentCount?: number
-  cachedAgentCount?: number
-  sessionID: string
-}
-
-export type ReviewFile = {
-  file: string
-  status: "added" | "deleted" | "modified"
-  binary?: true
-  truncated?: true
-  additions: number
-  deletions: number
-  hunks: number
-  version: string
-}
-
-export type ReviewResult = {
-  scope: ReviewScope
-  checkout: string | null
-  actions: {
-    accept: boolean
-    reject: boolean
-  }
-  last?: {
-    decision: "accept" | "reject"
-    count: number
-  }
-  files: Array<ReviewFile>
-}
-
-export type ReviewInvalidError = {
-  name: "ReviewInvalidError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type ReviewStaleError = {
-  name: "ReviewStaleError"
-  code?: string
-  data: {
-    message: string
-  }
-}
-
-export type CheckoutStaleError = {
-  name: "CheckoutStaleError"
-  code?: string
-  data: {
-    message: string
-    expectedCheckout: string | null
-    checkout: string | null
-  }
-}
-
-export type CheckoutBlockedError = {
-  name: "CheckoutBlockedError"
-  code?: string
-  data: {
-    reason: "not_git" | "unborn" | "managed_worktree" | "dirty" | "busy" | "git_operation" | "occupied"
-    message: string
-    branch?: string
-    worktree?: string
+export type VcsBranchOptions = {
+  blocked?: {
     operation?: string
+    reason: "busy" | "dirty" | "git_operation" | "managed_worktree" | "not_git" | "unborn"
     staged?: number
     unstaged?: number
     untracked?: number
   }
+  branches: Array<{
+    name: string
+    worktree?: string
+  }>
+  current: {
+    branch: string | null
+    checkout: string
+    head: string | null
+  } | null
+  defaultBranch?: string
+  directory: string
 }
 
-export type ReviewScope = "session" | "turn"
+export type VcsCommitResult =
+  | {
+      error: string
+      ok: false
+    }
+  | {
+      hash: string
+      ok: true
+    }
 
-export type ReviewLine = {
-  kind: "context" | "add" | "del"
-  text: string
-  old?: number
-  new?: number
-  noNewline?: true
-}
-
-export type ReviewHunk = {
-  id: string
-  oldStart: number
-  oldLines: number
-  newStart: number
-  newLines: number
-  heading?: string
-  lines: Array<ReviewLine>
-}
-
-export type ReviewFileDetail = {
+export type VcsFileDiff = {
+  additions: number
+  deletions: number
   file: string
-  version: string
-  hunks: Array<ReviewHunk>
-  before?: string
-  after?: string
-}
-
-export type GitChangeFile = {
-  file: string
-  status: "added" | "modified" | "deleted" | "conflicted"
-  version: string
-}
-
-export type GitChangesResult = {
-  checkout: string | null
-  staged: Array<GitChangeFile>
-  unstaged: Array<GitChangeFile>
-}
-
-export type McpScope = "project" | "global"
-
-export type McpStatusConnected = {
-  status: "connected"
-  scope?: McpScope
-}
-
-export type McpStatusDisabled = {
-  status: "disabled"
-  scope?: McpScope
-}
-
-export type McpStatusFailed = {
-  status: "failed"
-  error: string
-  scope?: McpScope
-}
-
-export type McpStatusNeedsAuth = {
-  status: "needs_auth"
-  scope?: McpScope
-}
-
-export type McpStatusNeedsClientRegistration = {
-  status: "needs_client_registration"
-  error: string
-  scope?: McpScope
-}
-
-export type McpStatus =
-  McpStatusConnected | McpStatusDisabled | McpStatusFailed | McpStatusNeedsAuth | McpStatusNeedsClientRegistration
-
-export type McpManagementLocalInput = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
-   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
-   */
-  timeout?: number
-  /**
-   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
-   */
-  deferred?: boolean
-}
-
-export type McpManagementRemoteInput = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "remote"
-  /**
-   * URL of the remote MCP server
-   */
-  url: string
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
-   * Headers to send with the request
-   */
-  headers?: {
-    [key: string]: string
-  }
-  /**
-   * Remote MCP OAuth. Set false to keep header auth only.
-   */
-  oauth?:
-    | false
-    | {
-        /**
-         * Pre-registered OAuth client id
-         */
-        clientId?: string
-        /**
-         * Pre-registered OAuth client secret
-         */
-        clientSecret?: string
-        /**
-         * OAuth scope
-         */
-        scope?: string
-      }
-  /**
-   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
-   */
-  timeout?: number
-  /**
-   * Set true to defer-load this server's tools via tool_search to reduce per-turn token cost. Defaults to false: tools stay registered eagerly.
-   */
-  deferred?: boolean
-  /**
-   * Explicit remote MCP transport protocol
-   */
-  transport?: "http" | "sse"
-}
-
-export type RuleUserEntry = {
-  index: number
-  text: string
-  bytes: number
-  truncated: boolean
-}
-
-export type RuleFileEntry = {
-  filepath: string
-  label: string
-  kind: "native" | "external" | "instruction"
-  scope: "global" | "project"
-  name: string
-  description: string
-  type?: "always" | "auto" | "agent-requested" | "manual"
-  alwaysApply?: boolean
-  globs: Array<string>
-  exclude: Array<string>
-  agents?: Array<string>
-  content: string
-  body: string
-  bytes: number
-  truncated: boolean
-  clipped: boolean
-  active: boolean
-  problem?: string
-  structured: boolean
-  editable: boolean
-  removable: boolean
-}
-
-export type RuleShadowed = {
-  directory: string
-  by: number
-}
-
-export type RuleTarget = {
-  id: string
-  kind: "native" | "external" | "instruction"
-  directory: string
-  label: string
-  shadowed: boolean
-  occupied?: string
-}
-
-export type RuleSnapshot = {
-  user: Array<RuleUserEntry>
-  files: Array<RuleFileEntry>
-  shadowed: Array<RuleShadowed>
-  targets: Array<RuleTarget>
-  disabled: {
-    rules: boolean
-    cursorRules: boolean
-  }
-}
-
-export type RuleManageError = {
-  code:
-    | "not_found"
-    | "already_exists"
-    | "invalid_path"
-    | "invalid_filename"
-    | "not_editable"
-    | "not_removable"
-    | "too_large"
-    | "write_failed"
-  message: string
-}
-
-export type RuleFields = {
-  name?: string
-  description?: string
-  alwaysApply: boolean
-  globs?: Array<string>
-  exclude?: Array<string>
-  agents?: Array<string>
-  body: string
-}
-
-export type Symbol = {
-  name: string
-  kind: number
-  location: {
-    uri: string
-    range: RangeOutput
-  }
-}
-
-export type FileNode = {
-  name: string
-  path: string
-  absolute: string
-  type: "file" | "directory"
-  ignored: boolean
-}
-
-export type FileContent = {
-  type: "text" | "binary"
-  content: string
-  diff?: string
-  patch?: {
-    oldFileName: string
-    newFileName: string
-    oldHeader?: string
-    newHeader?: string
-    hunks: Array<{
-      oldStart: number
-      oldLines: number
-      newStart: number
-      newLines: number
-      lines: Array<string>
-    }>
-    index?: string
-  }
-  encoding?: "base64"
-  mimeType?: string
-  checksum?: string
-}
-
-export type File = {
-  path: string
-  added: number
-  removed: number
-  status: "added" | "deleted" | "modified"
-}
-
-export type McpAuthStart = {
-  authorizationUrl: string
-  oauthState: string
-}
-
-export type McpAuthRemove = {
-  success: true
-}
-
-export type Path = {
-  home: string
-  data: string
-  config: string
-  worktree: string
-  directory: string
-  workspace?: {
-    primary: string
-    id?: string
-    folders: Array<{
-      name: string
-      path: string
-      worktree?: string
-    }>
-  }
+  patch?: string
+  status?: "added" | "deleted" | "modified"
+  truncated?: boolean
 }
 
 export type VcsInfo = {
-  branch: string
-  head: string | null
-  checkout: string | null
-  default_branch?: string
-  remote?: string
   ahead?: number
   behind?: number
+  branch: string
+  checkout: string | null
+  default_branch?: string
+  head: string | null
+  remote?: string
   staged: number
   unstaged: number
   untracked: number
 }
 
-export type VcsBranchOptions = {
-  directory: string
-  current: {
-    branch: string | null
-    head: string | null
-    checkout: string
-  } | null
-  defaultBranch?: string
-  branches: Array<{
-    name: string
-    worktree?: string
-  }>
-  blocked?: {
-    reason: "not_git" | "unborn" | "managed_worktree" | "dirty" | "busy" | "git_operation"
-    staged?: number
-    unstaged?: number
-    untracked?: number
-    operation?: string
-  }
-}
-
-export type VcsSwitchResult = {
-  branch: string
-  head: string
-  checkout: string
-  changed: boolean
-}
-
 export type VcsInvalidBranchError = {
-  name: "VcsInvalidBranchError"
   code?: string
   data: {
     branch: string
     message: string
   }
-}
-
-export type VcsSwitchFailedError = {
-  name: "VcsSwitchFailedError"
-  code?: string
-  data: {
-    message: string
-  }
+  name: "VcsInvalidBranchError"
 }
 
 export type VcsPushResult =
   | {
-      ok: true
       branch: string
+      ok: true
       remote: string
     }
   | {
-      ok: false
       error: string
+      ok: false
     }
 
 export type VcsRunResult = {
@@ -4504,319 +4410,499 @@ export type VcsRunResult = {
   output: string
 }
 
-export type SandboxStatus = {
-  status: "on" | "off" | "unsupported"
-  backend?: "windows-account" | "landlock" | "seatbelt"
-  reason?: string
-  degraded?: Array<string>
-  installable?: boolean
+export type VcsSwitchFailedError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "VcsSwitchFailedError"
 }
 
-export type VcsFileDiff = {
-  file: string
-  patch?: string
-  additions: number
-  deletions: number
-  status?: "added" | "deleted" | "modified"
-  truncated?: boolean
+export type VcsSwitchResult = {
+  branch: string
+  changed: boolean
+  checkout: string
+  head: string
 }
 
-export type VcsCommitResult =
+export type WellKnownAuth = {
+  key: string
+  token: string
+  type: "wellknown"
+}
+
+export type WorkflowRun = {
+  agentCount?: number
+  agents: Array<{
+    agent: string
+    completedAt?: number
+    error?: string
+    id: string
+    label: string
+    latestTool?: {
+      callID: string
+      completedAt?: number
+      startedAt?: number
+      status: "completed" | "error" | "pending" | "running"
+      summary?: string
+      title?: string
+      tool: string
+      updatedAt: number
+    }
+    model?: {
+      modelID: string
+      providerID: string
+    }
+    phase?: string
+    sessionId?: string
+    startedAt?: number
+    status: "cached" | "completed" | "failed" | "queued" | "running"
+    toolCount?: number
+  }>
+  cachedAgentCount?: number
+  completedAgentCount?: number
+  completedAt?: number
+  createdAt: number
+  description?: string
+  error?: string
+  failedAgentCount?: number
+  logs: Array<{
+    at: number
+    id: string
+    level: "log" | "narrate"
+    message: string
+    phase?: string
+  }>
+  maxConcurrentAgents?: number
+  maxTotalAgents?: number
+  messageID: string
+  phase?: string
+  phases: Array<{
+    detail?: string
+    model?: string
+    title: string
+  }>
+  queuedAgentCount?: number
+  result?: unknown
+  resumable: boolean
+  runId: string
+  runningAgentCount?: number
+  scriptPath?: string
+  sessionID: string
+  status: "aborted" | "completed" | "failed" | "running"
+  updatedAt: number
+  workUnits?: Array<{
+    agentId?: string
+    agentLabel?: string
+    agentType?: string
+    description?: string
+    files?: Array<string>
+    id: string
+    phase?: string
+    status: "cached" | "completed" | "failed" | "queued" | "running"
+    title: string
+  }>
+  workflowName: string
+}
+
+export type Worktree = {
+  branch: string
+  directory: string
+  name: string
+}
+
+export type WorktreeCreateInput = {
+  /**
+   * Branch or commit to start the worktree from; defaults to the current HEAD
+   */
+  base?: string
+  name?: string
+  /**
+   * Additional startup script to run after the project's start command
+   */
+  startCommand?: string
+}
+
+export type WorktreeMergeInput = {
+  directory: string
+  /**
+   * Commit message for uncommitted changes in the worktree and for the merge or squash commit
+   */
+  message?: string
+  /**
+   * Squash the worktree branch into a single commit
+   */
+  squash?: boolean
+}
+
+export type WorktreeMergeResult =
   | {
+      commit: string
       ok: true
-      hash: string
     }
   | {
+      files: Array<string>
       ok: false
-      error: string
+      reason: "conflict"
+    }
+  | {
+      message: string
+      ok: false
+      reason: "failed"
     }
 
-export type Command = {
-  name: string
-  description?: string
-  agent?: string
-  model?: string
-  source?: "command" | "mcp" | "skill"
-  handler?: "context"
-  template: string
-  subtask?: boolean
-  hints: Array<string>
+export type WorktreeRemoveInput = {
+  directory: string
 }
 
-export type Agent = {
-  id: string
-  name: string
-  description?: string
-  triggerHints?: Array<string>
-  mode: "subagent" | "primary" | "all"
-  native?: boolean
-  hidden?: boolean
-  topP?: number
-  temperature?: number
-  color?: string
-  permission: PermissionRulesetOutput
-  profile?: {
-    availableTools: Array<string>
-    restrictedRules: PermissionRulesetOutput
-    deferTools?: Array<string>
+export type WorktreeResetDirtyError = {
+  code?: string
+  data: {
+    dirty: string
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
   }
-  model?: {
-    modelID: string
-    providerID: string
+  name: "WorktreeResetDirtyError"
+}
+
+export type WorktreeResetDirtyErrorOutput = {
+  code?: string
+  data: {
+    dirty: string
+    message: string
+    messageKey?: string
+    params?: {
+      [key: string]: unknown
+    }
   }
-  variant?: string
-  prompt?: string
-  options: {
-    [key: string]: unknown
-  }
-  steps?: number
+  name: "WorktreeResetDirtyError"
 }
 
-export type LspStatus = {
-  id: string
-  name: string
-  root: string
-  status: "connected" | "error"
+export type WorktreeResetInput = {
+  directory: string
 }
 
-export type FormatterStatus = {
-  name: string
-  extensions: Array<string>
-  enabled: boolean
-}
-
-export type GlobalHealthData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/health"
-}
-
-export type GlobalHealthResponses = {
-  /**
-   * Health information
-   */
-  200: {
-    healthy: true
-    version: string
-  }
-}
-
-export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
-
-export type GlobalSessionSearchData = {
+export type AppAgentsData = {
   body?: never
   path?: never
   query?: {
-    search?: string
-    roots?: boolean
-    limit?: number
+    directory?: string
   }
-  url: "/global/session/search"
+  url: "/agent"
 }
 
-export type GlobalSessionSearchErrors = {
+export type AppAgentsErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
-export type GlobalSessionSearchError = GlobalSessionSearchErrors[keyof GlobalSessionSearchErrors]
+export type AppAgentsError = AppAgentsErrors[keyof AppAgentsErrors]
 
-export type GlobalSessionSearchResponses = {
+export type AppAgentsResponses = {
   /**
-   * Matching sessions sorted by most recently updated
+   * List of agents
    */
-  200: Array<SessionOutput>
+  200: Array<Agent>
 }
 
-export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
+export type AppAgentsResponse = AppAgentsResponses[keyof AppAgentsResponses]
 
-export type GlobalStatsData = {
+export type AgentConnectionProductsData = {
   body?: never
   path?: never
   query?: {
-    /**
-     * Only sessions updated in the last N days (0 = today)
-     */
-    days?: number
-    /**
-     * Only sessions of this project ID
-     */
-    project?: string
+    directory?: string
+    refresh?: "false" | "true"
   }
-  url: "/global/stats"
+  url: "/agent-connection/product"
 }
 
-export type GlobalStatsErrors = {
+export type AgentConnectionProductsErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
-export type GlobalStatsError = GlobalStatsErrors[keyof GlobalStatsErrors]
+export type AgentConnectionProductsError = AgentConnectionProductsErrors[keyof AgentConnectionProductsErrors]
 
-export type GlobalStatsResponses = {
+export type AgentConnectionProductsResponses = {
   /**
-   * Usage statistics
+   * Products
    */
-  200: SessionStats
+  200: Array<AgentConnectionProduct>
 }
 
-export type GlobalStatsResponse = GlobalStatsResponses[keyof GlobalStatsResponses]
+export type AgentConnectionProductsResponse = AgentConnectionProductsResponses[keyof AgentConnectionProductsResponses]
 
-export type GlobalEventData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/event"
-}
-
-export type GlobalEventResponses = {
-  /**
-   * Event stream
-   */
-  200: GlobalEvent
-}
-
-export type GlobalEventResponse = GlobalEventResponses[keyof GlobalEventResponses]
-
-export type GlobalConfigGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/config"
-}
-
-export type GlobalConfigGetResponses = {
-  /**
-   * Get global config info
-   */
-  200: ConfigOutput
-}
-
-export type GlobalConfigGetResponse = GlobalConfigGetResponses[keyof GlobalConfigGetResponses]
-
-export type GlobalConfigUpdateData = {
-  body?: Config
+export type AgentConnectionProductChangeData = {
+  body:
+    | {
+        enabled: boolean
+        id: string
+        type: "enabled"
+      }
+    | {
+        id: string
+        product: {
+          adapter?: "claude" | "codex" | "command" | "member" | "opencode"
+          args?: Array<string>
+          command?: string
+          model?: {
+            id: string
+            providerID?: string
+          }
+          resumeArgs?: Array<string>
+          sessionLine?: string
+          title?: string
+        }
+        type: "add"
+      }
+    | {
+        id: string
+        product: {
+          adapter?: "claude" | "codex" | "command" | "member" | "opencode"
+          args?: Array<string>
+          command?: string
+          model?: {
+            id: string
+            providerID?: string
+          }
+          resumeArgs?: Array<string>
+          sessionLine?: string
+          title?: string
+        }
+        type: "update"
+      }
+    | {
+        id: string
+        type: "remove"
+      }
   path?: never
   query?: {
-    skipDispose?: "true" | "1" | "false" | "0"
+    directory?: string
   }
-  url: "/global/config"
+  url: "/agent-connection/product"
 }
 
-export type GlobalConfigUpdateErrors = {
+export type AgentConnectionProductChangeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type AgentConnectionProductChangeError =
+  AgentConnectionProductChangeErrors[keyof AgentConnectionProductChangeErrors]
+
+export type AgentConnectionProductChangeResponses = {
+  /**
+   * Products
+   */
+  200: Array<AgentConnectionProduct>
+}
+
+export type AgentConnectionProductChangeResponse =
+  AgentConnectionProductChangeResponses[keyof AgentConnectionProductChangeResponses]
+
+export type AgentConnectionModelsData = {
+  body?: never
+  path: {
+    productID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/agent-connection/product/{productID}/model"
+}
+
+export type AgentConnectionModelsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type AgentConnectionModelsError = AgentConnectionModelsErrors[keyof AgentConnectionModelsErrors]
+
+export type AgentConnectionModelsResponses = {
+  /**
+   * Models
+   */
+  200: AgentConnectionModels
+}
+
+export type AgentConnectionModelsResponse = AgentConnectionModelsResponses[keyof AgentConnectionModelsResponses]
+
+export type AgentConnectionVerifyData = {
+  body: {
+    expectedRevision: number
+  }
+  path: {
+    productID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/agent-connection/product/{productID}/verify"
+}
+
+export type AgentConnectionVerifyErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type AgentConnectionVerifyError = AgentConnectionVerifyErrors[keyof AgentConnectionVerifyErrors]
+
+export type AgentConnectionVerifyResponses = {
+  /**
+   * Verification result
+   */
+  200: AgentConnectionVerification
+}
+
+export type AgentConnectionVerifyResponse = AgentConnectionVerifyResponses[keyof AgentConnectionVerifyResponses]
+
+export type AppAgentGenerateData = {
+  body: {
+    description: string
+    model?: {
+      modelID: string
+      providerID: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/agent/generate"
+}
+
+export type AppAgentGenerateErrors = {
   /**
    * Bad request
    */
   400: ErrorResponse
 }
 
-export type GlobalConfigUpdateError = GlobalConfigUpdateErrors[keyof GlobalConfigUpdateErrors]
+export type AppAgentGenerateError = AppAgentGenerateErrors[keyof AppAgentGenerateErrors]
 
-export type GlobalConfigUpdateResponses = {
+export type AppAgentGenerateResponses = {
   /**
-   * Successfully updated global config
+   * Generated agent
    */
-  200: ConfigOutput
-}
-
-export type GlobalConfigUpdateResponse = GlobalConfigUpdateResponses[keyof GlobalConfigUpdateResponses]
-
-export type GlobalConfigDeleteProviderData = {
-  body?: never
-  path: {
-    providerID: string
-  }
-  query?: {
-    clearReferences?: "true" | "1" | "false" | "0"
-  }
-  url: "/global/config/provider/{providerID}"
-}
-
-export type GlobalConfigDeleteProviderErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
+  200: {
+    identifier: string
+    systemPrompt: string
+    whenToUse: string
   }
 }
 
-export type GlobalConfigDeleteProviderError = GlobalConfigDeleteProviderErrors[keyof GlobalConfigDeleteProviderErrors]
+export type AppAgentGenerateResponse = AppAgentGenerateResponses[keyof AppAgentGenerateResponses]
 
-export type GlobalConfigDeleteProviderResponses = {
-  /**
-   * Provider removed
-   */
-  200: boolean
-}
-
-export type GlobalConfigDeleteProviderResponse =
-  GlobalConfigDeleteProviderResponses[keyof GlobalConfigDeleteProviderResponses]
-
-export type GlobalConfigDeleteProviderModelData = {
-  body?: never
-  path: {
-    providerID: string
-    modelID: string
-  }
-  query?: never
-  url: "/global/config/provider/{providerID}/model/{modelID}"
-}
-
-export type GlobalConfigDeleteProviderModelErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type GlobalConfigDeleteProviderModelError =
-  GlobalConfigDeleteProviderModelErrors[keyof GlobalConfigDeleteProviderModelErrors]
-
-export type GlobalConfigDeleteProviderModelResponses = {
-  /**
-   * Provider model removed
-   */
-  200: boolean
-}
-
-export type GlobalConfigDeleteProviderModelResponse =
-  GlobalConfigDeleteProviderModelResponses[keyof GlobalConfigDeleteProviderModelResponses]
-
-export type GlobalDisposeData = {
+export type AssistCommitMessageData = {
   body?: never
   path?: never
-  query?: never
-  url: "/global/dispose"
+  query?: {
+    directory?: string
+  }
+  url: "/assist/commit-message"
 }
 
-export type GlobalDisposeResponses = {
+export type AssistCommitMessageErrors = {
   /**
-   * Global disposed
+   * Validation Error
    */
-  200: boolean
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
 }
 
-export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
+export type AssistCommitMessageError = AssistCommitMessageErrors[keyof AssistCommitMessageErrors]
+
+export type AssistCommitMessageResponses = {
+  /**
+   * Generated commit message
+   */
+  200: {
+    error?: string
+    message: string
+  }
+}
+
+export type AssistCommitMessageResponse = AssistCommitMessageResponses[keyof AssistCommitMessageResponses]
+
+export type AssistInlineEditData = {
+  body: {
+    instruction: string
+    language?: string
+    modelID?: string
+    path?: string
+    providerID?: string
+    selectedText: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/assist/inline-edit"
+}
+
+export type AssistInlineEditErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type AssistInlineEditError = AssistInlineEditErrors[keyof AssistInlineEditErrors]
+
+export type AssistInlineEditResponses = {
+  /**
+   * Replacement text for the selection
+   */
+  200: {
+    error?: string
+    modelID?: string
+    providerID?: string
+    text: string
+  }
+}
+
+export type AssistInlineEditResponse = AssistInlineEditResponses[keyof AssistInlineEditResponses]
 
 export type AuthListData = {
   body?: never
@@ -4830,11 +4916,11 @@ export type AuthListResponses = {
    * Stored credentials
    */
   200: {
-    file: string
     credentials: Array<{
       providerID: string
-      type: "oauth" | "api" | "wellknown"
+      type: "api" | "oauth" | "wellknown"
     }>
+    file: string
   }
 }
 
@@ -4894,329 +4980,405 @@ export type AuthSetResponses = {
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
 
-export type ProjectListData = {
+export type BashJobStopData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/bash/jobs/{id}/stop"
+}
+
+export type BashJobStopErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type BashJobStopError = BashJobStopErrors[keyof BashJobStopErrors]
+
+export type BashJobStopResponses = {
+  /**
+   * Whether the job was found and stopped
+   */
+  200: boolean
+}
+
+export type BashJobStopResponse = BashJobStopResponses[keyof BashJobStopResponses]
+
+export type CollaborationListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/project"
+  url: "/collaboration"
 }
 
-export type ProjectListErrors = {
+export type CollaborationListErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type ProjectListError = ProjectListErrors[keyof ProjectListErrors]
-
-export type ProjectListResponses = {
-  /**
-   * List of projects
-   */
-  200: Array<Project>
-}
-
-export type ProjectListResponse = ProjectListResponses[keyof ProjectListResponses]
-
-export type ProjectCurrentData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/project/current"
-}
-
-export type ProjectCurrentErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
+    success: false
   }
 }
 
-export type ProjectCurrentError = ProjectCurrentErrors[keyof ProjectCurrentErrors]
+export type CollaborationListError = CollaborationListErrors[keyof CollaborationListErrors]
 
-export type ProjectCurrentResponses = {
+export type CollaborationListResponses = {
   /**
-   * Current project information
+   * Groups
    */
-  200: Project
+  200: Array<CollaborationGroupSummary>
 }
 
-export type ProjectCurrentResponse = ProjectCurrentResponses[keyof ProjectCurrentResponses]
+export type CollaborationListResponse = CollaborationListResponses[keyof CollaborationListResponses]
 
-export type ProjectUpdateData = {
-  body?: {
-    name?: string
-    icon?: {
-      url?: string
-      override?: string
-      color?: string
-    }
-    commands?: {
+export type CollaborationCreateData = {
+  body: {
+    leader: {
       /**
-       * Startup script to run when creating a new workspace (worktree)
+       * What the seat is for; it goes into the seat's prompt
        */
-      start?: string
+      duty?: string
+      name: string
+      /**
+       * Short title such as product manager
+       */
+      role?: string
     }
-  }
-  path: {
-    projectID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/project/{projectID}"
-}
-
-export type ProjectUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type ProjectUpdateError = ProjectUpdateErrors[keyof ProjectUpdateErrors]
-
-export type ProjectUpdateResponses = {
-  /**
-   * Updated project information
-   */
-  200: Project
-}
-
-export type ProjectUpdateResponse = ProjectUpdateResponses[keyof ProjectUpdateResponses]
-
-export type PtyListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/pty"
-}
-
-export type PtyListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type PtyListError = PtyListErrors[keyof PtyListErrors]
-
-export type PtyListResponses = {
-  /**
-   * List of sessions
-   */
-  200: Array<Pty>
-}
-
-export type PtyListResponse = PtyListResponses[keyof PtyListResponses]
-
-export type PtyCreateData = {
-  body?: {
-    command?: string
-    args?: Array<string>
-    cwd?: string
+    seats?: Array<{
+      /**
+       * What the seat is for; it goes into the seat's prompt
+       */
+      duty?: string
+      name: string
+      product: string
+      /**
+       * Short title such as product manager
+       */
+      role?: string
+    }>
     title?: string
-    env?: {
-      [key: string]: string
-    }
-    size?: {
-      cols: number
-      rows: number
-    }
   }
   path?: never
   query?: {
     directory?: string
   }
-  url: "/pty"
+  url: "/collaboration"
 }
 
-export type PtyCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type PtyCreateError = PtyCreateErrors[keyof PtyCreateErrors]
-
-export type PtyCreateResponses = {
-  /**
-   * Created session
-   */
-  200: Pty
-}
-
-export type PtyCreateResponse = PtyCreateResponses[keyof PtyCreateResponses]
-
-export type PtyRemoveData = {
-  body?: never
-  path: {
-    ptyID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/pty/{ptyID}"
-}
-
-export type PtyRemoveErrors = {
+export type CollaborationCreateErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
-  /**
-   * Not found
-   */
-  404: ErrorResponse
 }
 
-export type PtyRemoveError = PtyRemoveErrors[keyof PtyRemoveErrors]
+export type CollaborationCreateError = CollaborationCreateErrors[keyof CollaborationCreateErrors]
 
-export type PtyRemoveResponses = {
+export type CollaborationCreateResponses = {
   /**
-   * Session removed
+   * Created group
    */
-  200: boolean
+  200: {
+    group: CollaborationGroup
+    sessionID: string
+  }
 }
 
-export type PtyRemoveResponse = PtyRemoveResponses[keyof PtyRemoveResponses]
+export type CollaborationCreateResponse = CollaborationCreateResponses[keyof CollaborationCreateResponses]
 
-export type PtyGetData = {
+export type CollaborationRoleTemplatesData = {
   body?: never
-  path: {
-    ptyID: string
-  }
+  path?: never
   query?: {
     directory?: string
   }
-  url: "/pty/{ptyID}"
+  url: "/collaboration/role-template"
 }
 
-export type PtyGetErrors = {
+export type CollaborationRoleTemplatesErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
-  /**
-   * Not found
-   */
-  404: ErrorResponse
 }
 
-export type PtyGetError = PtyGetErrors[keyof PtyGetErrors]
+export type CollaborationRoleTemplatesError = CollaborationRoleTemplatesErrors[keyof CollaborationRoleTemplatesErrors]
 
-export type PtyGetResponses = {
+export type CollaborationRoleTemplatesResponses = {
   /**
-   * Session info
+   * Role templates
    */
-  200: Pty
+  200: Array<CollaborationRoleTemplate>
 }
 
-export type PtyGetResponse = PtyGetResponses[keyof PtyGetResponses]
+export type CollaborationRoleTemplatesResponse =
+  CollaborationRoleTemplatesResponses[keyof CollaborationRoleTemplatesResponses]
 
-export type PtyUpdateData = {
+export type CollaborationRoleTemplateChangeData = {
+  body:
+    | {
+        id: string
+        template: {
+          duty: string
+          name: string
+          role: string
+        }
+        type: "add"
+      }
+    | {
+        id: string
+        template: {
+          duty: string
+          name: string
+          role: string
+        }
+        type: "update"
+      }
+    | {
+        id: string
+        type: "remove"
+      }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/role-template"
+}
+
+export type CollaborationRoleTemplateChangeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type CollaborationRoleTemplateChangeError =
+  CollaborationRoleTemplateChangeErrors[keyof CollaborationRoleTemplateChangeErrors]
+
+export type CollaborationRoleTemplateChangeResponses = {
+  /**
+   * Role templates
+   */
+  200: Array<CollaborationRoleTemplate>
+}
+
+export type CollaborationRoleTemplateChangeResponse =
+  CollaborationRoleTemplateChangeResponses[keyof CollaborationRoleTemplateChangeResponses]
+
+export type CollaborationGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}"
+}
+
+export type CollaborationGetErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type CollaborationGetError = CollaborationGetErrors[keyof CollaborationGetErrors]
+
+export type CollaborationGetResponses = {
+  /**
+   * Group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationGetResponse = CollaborationGetResponses[keyof CollaborationGetResponses]
+
+export type CollaborationSeatAddData = {
+  body: {
+    /**
+     * What the seat is for; it goes into the seat's prompt
+     */
+    duty?: string
+    name: string
+    product: string
+    /**
+     * Short title such as product manager
+     */
+    role?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}/seat"
+}
+
+export type CollaborationSeatAddErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type CollaborationSeatAddError = CollaborationSeatAddErrors[keyof CollaborationSeatAddErrors]
+
+export type CollaborationSeatAddResponses = {
+  /**
+   * Updated group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationSeatAddResponse = CollaborationSeatAddResponses[keyof CollaborationSeatAddResponses]
+
+export type CollaborationSeatRemoveData = {
+  body?: never
+  path: {
+    sessionID: string
+    seatID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/collaboration/{sessionID}/seat/{seatID}"
+}
+
+export type CollaborationSeatRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type CollaborationSeatRemoveError = CollaborationSeatRemoveErrors[keyof CollaborationSeatRemoveErrors]
+
+export type CollaborationSeatRemoveResponses = {
+  /**
+   * Updated group
+   */
+  200: CollaborationGroup
+}
+
+export type CollaborationSeatRemoveResponse = CollaborationSeatRemoveResponses[keyof CollaborationSeatRemoveResponses]
+
+export type CollaborationSeatUpdateData = {
   body?: {
-    title?: string
-    size?: {
-      rows: number
-      cols: number
-    }
+    /**
+     * What the seat is for; it goes into the seat's prompt
+     */
+    duty?: string
+    name?: string
+    /**
+     * Short title such as product manager
+     */
+    role?: string
   }
   path: {
-    ptyID: string
+    sessionID: string
+    seatID: string
   }
   query?: {
     directory?: string
   }
-  url: "/pty/{ptyID}"
+  url: "/collaboration/{sessionID}/seat/{seatID}"
 }
 
-export type PtyUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type PtyUpdateError = PtyUpdateErrors[keyof PtyUpdateErrors]
-
-export type PtyUpdateResponses = {
-  /**
-   * Updated session
-   */
-  200: Pty
-}
-
-export type PtyUpdateResponse = PtyUpdateResponses[keyof PtyUpdateResponses]
-
-export type PtyConnectData = {
-  body?: never
-  path: {
-    ptyID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/pty/{ptyID}/connect"
-}
-
-export type PtyConnectErrors = {
+export type CollaborationSeatUpdateErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
-  /**
-   * Not found
-   */
-  404: ErrorResponse
 }
 
-export type PtyConnectError = PtyConnectErrors[keyof PtyConnectErrors]
+export type CollaborationSeatUpdateError = CollaborationSeatUpdateErrors[keyof CollaborationSeatUpdateErrors]
 
-export type PtyConnectResponses = {
+export type CollaborationSeatUpdateResponses = {
   /**
-   * Connected session
+   * Updated group
    */
-  200: boolean
+  200: CollaborationGroup
 }
 
-export type PtyConnectResponse = PtyConnectResponses[keyof PtyConnectResponses]
+export type CollaborationSeatUpdateResponse = CollaborationSeatUpdateResponses[keyof CollaborationSeatUpdateResponses]
+
+export type CommandListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/command"
+}
+
+export type CommandListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type CommandListError = CommandListErrors[keyof CommandListErrors]
+
+export type CommandListResponses = {
+  /**
+   * List of commands
+   */
+  200: Array<Command>
+}
+
+export type CommandListResponse = CommandListResponses[keyof CommandListResponses]
 
 export type ConfigGetData = {
   body?: never
@@ -5232,9 +5394,9 @@ export type ConfigGetErrors = {
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
@@ -5276,37 +5438,6 @@ export type ConfigUpdateResponses = {
 
 export type ConfigUpdateResponse = ConfigUpdateResponses[keyof ConfigUpdateResponses]
 
-export type ConfigWarningsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/config/warnings"
-}
-
-export type ConfigWarningsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ConfigWarningsError = ConfigWarningsErrors[keyof ConfigWarningsErrors]
-
-export type ConfigWarningsResponses = {
-  /**
-   * Config warnings
-   */
-  200: Array<ConfigWarning>
-}
-
-export type ConfigWarningsResponse = ConfigWarningsResponses[keyof ConfigWarningsResponses]
-
 export type ConfigProvidersData = {
   body?: never
   path?: never
@@ -5321,9 +5452,9 @@ export type ConfigProvidersErrors = {
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
@@ -5334,41 +5465,110 @@ export type ConfigProvidersResponses = {
    * List of providers
    */
   200: {
-    providers: Array<Provider>
     default: {
       [key: string]: string
     }
+    providers: Array<Provider>
   }
 }
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
 
-export type ToolIdsData = {
+export type ConfigWarningsData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/experimental/tool/ids"
+  url: "/config/warnings"
 }
 
-export type ToolIdsErrors = {
+export type ConfigWarningsErrors = {
   /**
-   * Bad request
+   * Validation Error
    */
-  400: ErrorResponse
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
 }
 
-export type ToolIdsError = ToolIdsErrors[keyof ToolIdsErrors]
+export type ConfigWarningsError = ConfigWarningsErrors[keyof ConfigWarningsErrors]
 
-export type ToolIdsResponses = {
+export type ConfigWarningsResponses = {
   /**
-   * Tool IDs
+   * Config warnings
    */
-  200: ToolIds
+  200: Array<ConfigWarning>
 }
 
-export type ToolIdsResponse = ToolIdsResponses[keyof ToolIdsResponses]
+export type ConfigWarningsResponse = ConfigWarningsResponses[keyof ConfigWarningsResponses]
+
+export type EventSubscribeData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/event"
+}
+
+export type EventSubscribeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type EventSubscribeError = EventSubscribeErrors[keyof EventSubscribeErrors]
+
+export type EventSubscribeResponses = {
+  /**
+   * Event stream
+   */
+  200: Event
+}
+
+export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscribeResponses]
+
+export type ExperimentalResourceListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/experimental/resource"
+}
+
+export type ExperimentalResourceListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ExperimentalResourceListError = ExperimentalResourceListErrors[keyof ExperimentalResourceListErrors]
+
+export type ExperimentalResourceListResponses = {
+  /**
+   * MCP resources
+   */
+  200: {
+    [key: string]: McpResource
+  }
+}
+
+export type ExperimentalResourceListResponse =
+  ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
 
 export type ToolListData = {
   body?: never
@@ -5398,6 +5598,33 @@ export type ToolListResponses = {
 }
 
 export type ToolListResponse = ToolListResponses[keyof ToolListResponses]
+
+export type ToolIdsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/experimental/tool/ids"
+}
+
+export type ToolIdsErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type ToolIdsError = ToolIdsErrors[keyof ToolIdsErrors]
+
+export type ToolIdsResponses = {
+  /**
+   * Tool IDs
+   */
+  200: ToolIds
+}
+
+export type ToolIdsResponse = ToolIdsResponses[keyof ToolIdsResponses]
 
 export type WorktreeRemoveData = {
   body: WorktreeRemoveInput
@@ -5444,9 +5671,9 @@ export type WorktreeListErrors = {
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
@@ -5488,37 +5715,6 @@ export type WorktreeCreateResponses = {
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
 
-export type WorktreeResetData = {
-  body: WorktreeResetInput
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/experimental/worktree/reset"
-}
-
-export type WorktreeResetErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type WorktreeResetError = WorktreeResetErrors[keyof WorktreeResetErrors]
-
-export type WorktreeResetResponses = {
-  /**
-   * Worktree reset
-   */
-  200: boolean
-}
-
-export type WorktreeResetResponse = WorktreeResetResponses[keyof WorktreeResetResponses]
-
 export type WorktreeMergeData = {
   body: WorktreeMergeInput
   path?: never
@@ -5550,39 +5746,2764 @@ export type WorktreeMergeResponses = {
 
 export type WorktreeMergeResponse = WorktreeMergeResponses[keyof WorktreeMergeResponses]
 
-export type ExperimentalResourceListData = {
+export type WorktreeResetData = {
+  body: WorktreeResetInput
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/experimental/worktree/reset"
+}
+
+export type WorktreeResetErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type WorktreeResetError = WorktreeResetErrors[keyof WorktreeResetErrors]
+
+export type WorktreeResetResponses = {
+  /**
+   * Worktree reset
+   */
+  200: boolean
+}
+
+export type WorktreeResetResponse = WorktreeResetResponses[keyof WorktreeResetResponses]
+
+export type FileDeleteData = {
+  body: {
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/file"
+}
+
+export type FileDeleteErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * The checkout is switching branches
+   */
+  409: CheckoutBlockedError
+}
+
+export type FileDeleteError = FileDeleteErrors[keyof FileDeleteErrors]
+
+export type FileDeleteResponses = {
+  /**
+   * Deleted successfully
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type FileDeleteResponse = FileDeleteResponses[keyof FileDeleteResponses]
+
+export type FileListData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    path: string
+  }
+  url: "/file"
+}
+
+export type FileListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FileListError = FileListErrors[keyof FileListErrors]
+
+export type FileListResponses = {
+  /**
+   * Files and directories
+   */
+  200: Array<FileNode>
+}
+
+export type FileListResponse = FileListResponses[keyof FileListResponses]
+
+export type FileReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    path: string
+  }
+  url: "/file/content"
+}
+
+export type FileReadErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FileReadError = FileReadErrors[keyof FileReadErrors]
+
+export type FileReadResponses = {
+  /**
+   * File content
+   */
+  200: FileContent
+}
+
+export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
+
+export type FileWriteData = {
+  body: {
+    checksum?: string
+    content: string
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/file/content"
+}
+
+export type FileWriteErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * The file changed or its checkout is switching branches
+   */
+  409:
+    | CheckoutBlockedError
+    | {
+        currentChecksum: string
+        error: string
+      }
+}
+
+export type FileWriteError = FileWriteErrors[keyof FileWriteErrors]
+
+export type FileWriteResponses = {
+  /**
+   * File written successfully
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
+
+export type FileStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/experimental/resource"
+  url: "/file/status"
 }
 
-export type ExperimentalResourceListErrors = {
+export type FileStatusErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
-export type ExperimentalResourceListError = ExperimentalResourceListErrors[keyof ExperimentalResourceListErrors]
+export type FileStatusError = FileStatusErrors[keyof FileStatusErrors]
 
-export type ExperimentalResourceListResponses = {
+export type FileStatusResponses = {
   /**
-   * MCP resources
+   * File status
+   */
+  200: Array<File>
+}
+
+export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
+
+export type FindTextData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    pattern: string
+  }
+  url: "/find"
+}
+
+export type FindTextErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FindTextError = FindTextErrors[keyof FindTextErrors]
+
+export type FindTextResponses = {
+  /**
+   * Matches
+   */
+  200: Array<{
+    absolute_offset: number
+    line_number: number
+    lines: {
+      text: string
+    }
+    path: {
+      text: string
+    }
+    submatches: Array<{
+      end: number
+      match: {
+        text: string
+      }
+      start: number
+    }>
+  }>
+}
+
+export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
+
+export type FindFilesData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    query: string
+    dirs?: "false" | "true"
+    type?: "directory" | "file"
+    limit?: number
+  }
+  url: "/find/file"
+}
+
+export type FindFilesErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FindFilesError = FindFilesErrors[keyof FindFilesErrors]
+
+export type FindFilesResponses = {
+  /**
+   * File paths
+   */
+  200: Array<string>
+}
+
+export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
+
+export type FindSymbolsData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    query: string
+  }
+  url: "/find/symbol"
+}
+
+export type FindSymbolsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FindSymbolsError = FindSymbolsErrors[keyof FindSymbolsErrors]
+
+export type FindSymbolsResponses = {
+  /**
+   * Symbols
+   */
+  200: Array<Symbol>
+}
+
+export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
+
+export type FormatterStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/formatter"
+}
+
+export type FormatterStatusErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type FormatterStatusError = FormatterStatusErrors[keyof FormatterStatusErrors]
+
+export type FormatterStatusResponses = {
+  /**
+   * Formatter status
+   */
+  200: Array<FormatterStatus>
+}
+
+export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type GlobalConfigGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/config"
+}
+
+export type GlobalConfigGetResponses = {
+  /**
+   * Get global config info
+   */
+  200: ConfigOutput
+}
+
+export type GlobalConfigGetResponse = GlobalConfigGetResponses[keyof GlobalConfigGetResponses]
+
+export type GlobalConfigUpdateData = {
+  body?: Config
+  path?: never
+  query?: {
+    skipDispose?: "0" | "1" | "false" | "true"
+  }
+  url: "/global/config"
+}
+
+export type GlobalConfigUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type GlobalConfigUpdateError = GlobalConfigUpdateErrors[keyof GlobalConfigUpdateErrors]
+
+export type GlobalConfigUpdateResponses = {
+  /**
+   * Successfully updated global config
+   */
+  200: ConfigOutput
+}
+
+export type GlobalConfigUpdateResponse = GlobalConfigUpdateResponses[keyof GlobalConfigUpdateResponses]
+
+export type GlobalConfigDeleteProviderData = {
+  body?: never
+  path: {
+    providerID: string
+  }
+  query?: {
+    clearReferences?: "0" | "1" | "false" | "true"
+  }
+  url: "/global/config/provider/{providerID}"
+}
+
+export type GlobalConfigDeleteProviderErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type GlobalConfigDeleteProviderError = GlobalConfigDeleteProviderErrors[keyof GlobalConfigDeleteProviderErrors]
+
+export type GlobalConfigDeleteProviderResponses = {
+  /**
+   * Provider removed
+   */
+  200: boolean
+}
+
+export type GlobalConfigDeleteProviderResponse =
+  GlobalConfigDeleteProviderResponses[keyof GlobalConfigDeleteProviderResponses]
+
+export type GlobalConfigDeleteProviderModelData = {
+  body?: never
+  path: {
+    providerID: string
+    modelID: string
+  }
+  query?: never
+  url: "/global/config/provider/{providerID}/model/{modelID}"
+}
+
+export type GlobalConfigDeleteProviderModelErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type GlobalConfigDeleteProviderModelError =
+  GlobalConfigDeleteProviderModelErrors[keyof GlobalConfigDeleteProviderModelErrors]
+
+export type GlobalConfigDeleteProviderModelResponses = {
+  /**
+   * Provider model removed
+   */
+  200: boolean
+}
+
+export type GlobalConfigDeleteProviderModelResponse =
+  GlobalConfigDeleteProviderModelResponses[keyof GlobalConfigDeleteProviderModelResponses]
+
+export type GlobalDisposeData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/dispose"
+}
+
+export type GlobalDisposeResponses = {
+  /**
+   * Global disposed
+   */
+  200: boolean
+}
+
+export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
+
+export type GlobalEventData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/event"
+}
+
+export type GlobalEventResponses = {
+  /**
+   * Event stream
+   */
+  200: GlobalEvent
+}
+
+export type GlobalEventResponse = GlobalEventResponses[keyof GlobalEventResponses]
+
+export type GlobalHealthData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/health"
+}
+
+export type GlobalHealthResponses = {
+  /**
+   * Health information
    */
   200: {
-    [key: string]: McpResource
+    healthy: true
+    version: string
   }
 }
 
-export type ExperimentalResourceListResponse =
-  ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
+export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
+
+export type GlobalSessionSearchData = {
+  body?: never
+  path?: never
+  query?: {
+    search?: string
+    roots?: boolean
+    limit?: number
+  }
+  url: "/global/session/search"
+}
+
+export type GlobalSessionSearchErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type GlobalSessionSearchError = GlobalSessionSearchErrors[keyof GlobalSessionSearchErrors]
+
+export type GlobalSessionSearchResponses = {
+  /**
+   * Matching sessions sorted by most recently updated
+   */
+  200: Array<SessionOutput>
+}
+
+export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
+
+export type GlobalStatsData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Only sessions updated in the last N days (0 = today)
+     */
+    days?: number
+    /**
+     * Only sessions of this project ID
+     */
+    project?: string
+  }
+  url: "/global/stats"
+}
+
+export type GlobalStatsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type GlobalStatsError = GlobalStatsErrors[keyof GlobalStatsErrors]
+
+export type GlobalStatsResponses = {
+  /**
+   * Usage statistics
+   */
+  200: SessionStats
+}
+
+export type GlobalStatsResponse = GlobalStatsResponses[keyof GlobalStatsResponses]
+
+export type InstanceDisposeData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/instance/dispose"
+}
+
+export type InstanceDisposeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type InstanceDisposeError = InstanceDisposeErrors[keyof InstanceDisposeErrors]
+
+export type InstanceDisposeResponses = {
+  /**
+   * Instance disposed
+   */
+  200: boolean
+}
+
+export type InstanceDisposeResponse = InstanceDisposeResponses[keyof InstanceDisposeResponses]
+
+export type AppLogData = {
+  body: {
+    /**
+     * Client component
+     */
+    component?: "desktop" | "web"
+    /**
+     * Additional metadata for the log entry
+     */
+    extra?: {
+      [key: string]: unknown
+    }
+    /**
+     * Log level
+     */
+    level: "debug" | "error" | "info" | "warn"
+    /**
+     * Log message
+     */
+    message: string
+    /**
+     * Client run identifier
+     */
+    run_id?: string
+    /**
+     * Client record sequence
+     */
+    sequence?: number
+    /**
+     * Service name for the log entry
+     */
+    service: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/log"
+}
+
+export type AppLogErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type AppLogError = AppLogErrors[keyof AppLogErrors]
+
+export type AppLogResponses = {
+  /**
+   * Log entry written successfully
+   */
+  200: boolean
+}
+
+export type AppLogResponse = AppLogResponses[keyof AppLogResponses]
+
+export type LspStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/lsp"
+}
+
+export type LspStatusErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type LspStatusError = LspStatusErrors[keyof LspStatusErrors]
+
+export type LspStatusResponses = {
+  /**
+   * LSP server status
+   */
+  200: Array<LspStatus>
+}
+
+export type LspStatusResponse = LspStatusResponses[keyof LspStatusResponses]
+
+export type McpStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp"
+}
+
+export type McpStatusErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type McpStatusError = McpStatusErrors[keyof McpStatusErrors]
+
+export type McpStatusResponses = {
+  /**
+   * MCP server status
+   */
+  200: {
+    [key: string]: McpStatus
+  }
+}
+
+export type McpStatusResponse = McpStatusResponses[keyof McpStatusResponses]
+
+export type McpAddData = {
+  body: {
+    config: McpLocalConfig | McpRemoteConfig
+    name: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp"
+}
+
+export type McpAddErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type McpAddError = McpAddErrors[keyof McpAddErrors]
+
+export type McpAddResponses = {
+  /**
+   * MCP server added successfully
+   */
+  200: {
+    [key: string]: McpStatus
+  }
+}
+
+export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
+
+export type McpManagementReadData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp-management"
+}
+
+export type McpManagementReadErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type McpManagementReadError = McpManagementReadErrors[keyof McpManagementReadErrors]
+
+export type McpManagementReadResponses = {
+  /**
+   * Complete MCP management snapshot
+   */
+  200: {
+    servers: Array<{
+      config: McpLocalConfig | McpRemoteConfig
+      enabled: boolean
+      name: string
+      scope: "global" | "project"
+      shadowed: Array<"global" | "project">
+      status: McpStatus
+      tools: {
+        count: number
+        tools: Array<string>
+      }
+    }>
+  }
+}
+
+export type McpManagementReadResponse = McpManagementReadResponses[keyof McpManagementReadResponses]
+
+export type McpManagementChangeData = {
+  body:
+    | {
+        config: McpManagementLocalInput | McpManagementRemoteInput
+        name: string
+        type: "add"
+      }
+    | {
+        config: McpManagementLocalInput | McpManagementRemoteInput
+        name: string
+        type: "replace"
+      }
+    | {
+        enabled: boolean
+        name: string
+        type: "set_enabled"
+      }
+    | {
+        name: string
+        newName: string
+        type: "rename"
+      }
+    | {
+        name: string
+        type: "remove"
+      }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp-management/change"
+}
+
+export type McpManagementChangeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type McpManagementChangeError = McpManagementChangeErrors[keyof McpManagementChangeErrors]
+
+export type McpManagementChangeResponses = {
+  /**
+   * MCP management result
+   */
+  200:
+    | {
+        error: {
+          code:
+            | "already_exists"
+            | "compensation_failed"
+            | "config_write_failed"
+            | "invalid_config"
+            | "not_found"
+            | "runtime_connect_failed"
+            | "runtime_disconnect_failed"
+            | "shadowed"
+          facts: Array<{
+            action: string
+            message?: string
+            ok: boolean
+            stage: "compensation" | "config" | "runtime"
+          }>
+          message: string
+        }
+        ok: false
+        snapshot?: {
+          servers: Array<{
+            config: McpLocalConfig | McpRemoteConfig
+            enabled: boolean
+            name: string
+            scope: "global" | "project"
+            shadowed: Array<"global" | "project">
+            status: McpStatus
+            tools: {
+              count: number
+              tools: Array<string>
+            }
+          }>
+        }
+      }
+    | {
+        ok: true
+        snapshot: {
+          servers: Array<{
+            config: McpLocalConfig | McpRemoteConfig
+            enabled: boolean
+            name: string
+            scope: "global" | "project"
+            shadowed: Array<"global" | "project">
+            status: McpStatus
+            tools: {
+              count: number
+              tools: Array<string>
+            }
+          }>
+        }
+      }
+}
+
+export type McpManagementChangeResponse = McpManagementChangeResponses[keyof McpManagementChangeResponses]
+
+export type McpRemoveData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    scope?: "global" | "project"
+  }
+  url: "/mcp/{name}"
+}
+
+export type McpRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type McpRemoveError = McpRemoveErrors[keyof McpRemoveErrors]
+
+export type McpRemoveResponses = {
+  /**
+   * MCP server removed
+   */
+  200: boolean
+}
+
+export type McpRemoveResponse = McpRemoveResponses[keyof McpRemoveResponses]
+
+export type McpAuthRemoveData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/auth"
+}
+
+export type McpAuthRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type McpAuthRemoveError = McpAuthRemoveErrors[keyof McpAuthRemoveErrors]
+
+export type McpAuthRemoveResponses = {
+  /**
+   * OAuth credentials removed
+   */
+  200: McpAuthRemove
+}
+
+export type McpAuthRemoveResponse = McpAuthRemoveResponses[keyof McpAuthRemoveResponses]
+
+export type McpAuthStartData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/auth"
+}
+
+export type McpAuthStartErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type McpAuthStartError = McpAuthStartErrors[keyof McpAuthStartErrors]
+
+export type McpAuthStartResponses = {
+  /**
+   * OAuth flow started
+   */
+  200: McpAuthStart
+}
+
+export type McpAuthStartResponse = McpAuthStartResponses[keyof McpAuthStartResponses]
+
+export type McpAuthCallbackData = {
+  body: {
+    code: string
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/auth/callback"
+}
+
+export type McpAuthCallbackErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type McpAuthCallbackError = McpAuthCallbackErrors[keyof McpAuthCallbackErrors]
+
+export type McpAuthCallbackResponses = {
+  /**
+   * OAuth authentication completed
+   */
+  200: McpStatus
+}
+
+export type McpAuthCallbackResponse = McpAuthCallbackResponses[keyof McpAuthCallbackResponses]
+
+export type McpAuthWaitData = {
+  body: {
+    state: string
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/auth/wait"
+}
+
+export type McpAuthWaitErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type McpAuthWaitError = McpAuthWaitErrors[keyof McpAuthWaitErrors]
+
+export type McpAuthWaitResponses = {
+  /**
+   * OAuth authentication completed
+   */
+  200: McpStatus
+}
+
+export type McpAuthWaitResponse = McpAuthWaitResponses[keyof McpAuthWaitResponses]
+
+export type McpConnectData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/connect"
+}
+
+export type McpConnectErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type McpConnectError = McpConnectErrors[keyof McpConnectErrors]
+
+export type McpConnectResponses = {
+  /**
+   * MCP server connected successfully
+   */
+  200: boolean
+}
+
+export type McpConnectResponse = McpConnectResponses[keyof McpConnectResponses]
+
+export type McpDisconnectData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/disconnect"
+}
+
+export type McpDisconnectErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type McpDisconnectError = McpDisconnectErrors[keyof McpDisconnectErrors]
+
+export type McpDisconnectResponses = {
+  /**
+   * MCP server disconnected successfully
+   */
+  200: boolean
+}
+
+export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type MemoryListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type MemoryListError = MemoryListErrors[keyof MemoryListErrors]
+
+export type MemoryListResponses = {
+  /**
+   * Memory snapshot
+   */
+  200: MemorySnapshot
+}
+
+export type MemoryListResponse = MemoryListResponses[keyof MemoryListResponses]
+
+export type MemoryRemoveData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    /**
+     * Absolute path of the memory file
+     */
+    path: string
+  }
+  url: "/memory/entry"
+}
+
+export type MemoryRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type MemoryRemoveError = MemoryRemoveErrors[keyof MemoryRemoveErrors]
+
+export type MemoryRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: {
+    path: string
+  }
+}
+
+export type MemoryRemoveResponse = MemoryRemoveResponses[keyof MemoryRemoveResponses]
+
+export type MemoryReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    /**
+     * Absolute path of the memory file
+     */
+    path: string
+  }
+  url: "/memory/entry"
+}
+
+export type MemoryReadErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type MemoryReadError = MemoryReadErrors[keyof MemoryReadErrors]
+
+export type MemoryReadResponses = {
+  /**
+   * Memory content
+   */
+  200: {
+    content: string
+    path: string
+  }
+}
+
+export type MemoryReadResponse = MemoryReadResponses[keyof MemoryReadResponses]
+
+export type PathGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/path"
+}
+
+export type PathGetErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PathGetError = PathGetErrors[keyof PathGetErrors]
+
+export type PathGetResponses = {
+  /**
+   * Path
+   */
+  200: Path
+}
+
+export type PathGetResponse = PathGetResponses[keyof PathGetResponses]
+
+export type PermissionListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission"
+}
+
+export type PermissionListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PermissionListError = PermissionListErrors[keyof PermissionListErrors]
+
+export type PermissionListResponses = {
+  /**
+   * List of pending permissions
+   */
+  200: Array<PermissionRequest>
+}
+
+export type PermissionListResponse = PermissionListResponses[keyof PermissionListResponses]
+
+export type PermissionGrantsData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    sessionID: string
+  }
+  url: "/permission/grant"
+}
+
+export type PermissionGrantsErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PermissionGrantsError = PermissionGrantsErrors[keyof PermissionGrantsErrors]
+
+export type PermissionGrantsResponses = {
+  /**
+   * Session grants
+   */
+  200: Array<PermissionRuleOutput>
+}
+
+export type PermissionGrantsResponse = PermissionGrantsResponses[keyof PermissionGrantsResponses]
+
+export type PermissionRevokeData = {
+  body: {
+    pattern: string
+    permission: string
+    sessionID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission/grant/revoke"
+}
+
+export type PermissionRevokeErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PermissionRevokeError = PermissionRevokeErrors[keyof PermissionRevokeErrors]
+
+export type PermissionRevokeResponses = {
+  /**
+   * Revoked
+   */
+  200: boolean
+}
+
+export type PermissionRevokeResponse = PermissionRevokeResponses[keyof PermissionRevokeResponses]
+
+export type PermissionRulesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission/rule"
+}
+
+export type PermissionRulesErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PermissionRulesError = PermissionRulesErrors[keyof PermissionRulesErrors]
+
+export type PermissionRulesResponses = {
+  /**
+   * Rules by config file
+   */
+  200: {
+    global: Array<PermissionRuleOutput>
+    project: Array<PermissionRuleOutput>
+  }
+}
+
+export type PermissionRulesResponse = PermissionRulesResponses[keyof PermissionRulesResponses]
+
+export type PermissionRuleData = {
+  body: {
+    action?: PermissionAction
+    pattern: string
+    permission: string
+    scope: "global" | "project"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission/rule"
+}
+
+export type PermissionRuleErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PermissionRuleError = PermissionRuleErrors[keyof PermissionRuleErrors]
+
+export type PermissionRuleResponses = {
+  /**
+   * Saved
+   */
+  200: boolean
+}
+
+export type PermissionRuleResponse = PermissionRuleResponses[keyof PermissionRuleResponses]
+
+export type PermissionReplyData = {
+  body: {
+    message?: string
+    reply: "always" | "once" | "reject" | "session"
+    scope?: "agent" | "directory" | "domain" | "file" | "prefix" | "tool"
+  }
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/permission/{requestID}/reply"
+}
+
+export type PermissionReplyErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type PermissionReplyError = PermissionReplyErrors[keyof PermissionReplyErrors]
+
+export type PermissionReplyResponses = {
+  /**
+   * Permission processed successfully
+   */
+  200: boolean
+}
+
+export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
+
+export type PluginRemoveData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    name: string
+    /**
+     * Which config file to change (default project)
+     */
+    scope?: "global" | "project"
+  }
+  url: "/plugin"
+}
+
+export type PluginRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PluginRemoveError = PluginRemoveErrors[keyof PluginRemoveErrors]
+
+export type PluginRemoveResponses = {
+  /**
+   * Whether the plugin was removed
+   */
+  200: boolean
+}
+
+export type PluginRemoveResponse = PluginRemoveResponses[keyof PluginRemoveResponses]
+
+export type PluginListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/plugin"
+}
+
+export type PluginListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PluginListError = PluginListErrors[keyof PluginListErrors]
+
+export type PluginListResponses = {
+  /**
+   * Plugin runtime status
+   */
+  200: Array<{
+    error?: string
+    id: string
+    source: "config" | "internal"
+    spec: string
+    status: "active" | "degraded" | "failed"
+    tools: Array<string>
+  }>
+}
+
+export type PluginListResponse = PluginListResponses[keyof PluginListResponses]
+
+export type PluginAddData = {
+  body: {
+    /**
+     * Which config file to change (default project)
+     */
+    scope?: "global" | "project"
+    specifier: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/plugin"
+}
+
+export type PluginAddErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PluginAddError = PluginAddErrors[keyof PluginAddErrors]
+
+export type PluginAddResponses = {
+  /**
+   * Plugin added
+   */
+  200: boolean
+}
+
+export type PluginAddResponse = PluginAddResponses[keyof PluginAddResponses]
+
+export type ProjectListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/project"
+}
+
+export type ProjectListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProjectListError = ProjectListErrors[keyof ProjectListErrors]
+
+export type ProjectListResponses = {
+  /**
+   * List of projects
+   */
+  200: Array<Project>
+}
+
+export type ProjectListResponse = ProjectListResponses[keyof ProjectListResponses]
+
+export type ProjectCurrentData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/project/current"
+}
+
+export type ProjectCurrentErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProjectCurrentError = ProjectCurrentErrors[keyof ProjectCurrentErrors]
+
+export type ProjectCurrentResponses = {
+  /**
+   * Current project information
+   */
+  200: Project
+}
+
+export type ProjectCurrentResponse = ProjectCurrentResponses[keyof ProjectCurrentResponses]
+
+export type ProjectUpdateData = {
+  body?: {
+    commands?: {
+      /**
+       * Startup script to run when creating a new workspace (worktree)
+       */
+      start?: string
+    }
+    icon?: {
+      color?: string
+      override?: string
+      url?: string
+    }
+    name?: string
+  }
+  path: {
+    projectID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/project/{projectID}"
+}
+
+export type ProjectUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type ProjectUpdateError = ProjectUpdateErrors[keyof ProjectUpdateErrors]
+
+export type ProjectUpdateResponses = {
+  /**
+   * Updated project information
+   */
+  200: Project
+}
+
+export type ProjectUpdateResponse = ProjectUpdateResponses[keyof ProjectUpdateResponses]
+
+export type ProviderListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider"
+}
+
+export type ProviderListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderListError = ProviderListErrors[keyof ProviderListErrors]
+
+export type ProviderListResponses = {
+  /**
+   * List of providers
+   */
+  200: {
+    all: Array<Provider>
+    connected: Array<string>
+    default: {
+      [key: string]: string
+    }
+  }
+}
+
+export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderAuthData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/auth"
+}
+
+export type ProviderAuthErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderAuthError2 = ProviderAuthErrors[keyof ProviderAuthErrors]
+
+export type ProviderAuthResponses = {
+  /**
+   * Provider auth methods
+   */
+  200: {
+    [key: string]: Array<ProviderAuthMethod>
+  }
+}
+
+export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
+
+export type ProviderCatalogRefreshData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/catalog/refresh"
+}
+
+export type ProviderCatalogRefreshErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderCatalogRefreshError = ProviderCatalogRefreshErrors[keyof ProviderCatalogRefreshErrors]
+
+export type ProviderCatalogRefreshResponses = {
+  /**
+   * Whether the catalog was refreshed
+   */
+  200: boolean
+}
+
+export type ProviderCatalogRefreshResponse = ProviderCatalogRefreshResponses[keyof ProviderCatalogRefreshResponses]
+
+export type ProviderRefreshData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/refresh"
+}
+
+export type ProviderRefreshErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderRefreshError = ProviderRefreshErrors[keyof ProviderRefreshErrors]
+
+export type ProviderRefreshResponses = {
+  /**
+   * Refresh completed
+   */
+  200: boolean
+}
+
+export type ProviderRefreshResponse = ProviderRefreshResponses[keyof ProviderRefreshResponses]
+
+export type ProviderRelayDiscoverData = {
+  body: {
+    baseURL: string
+    key: string
+    kind: "claude-code" | "codex" | "custom" | "standard"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/relay/discover"
+}
+
+export type ProviderRelayDiscoverErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderRelayDiscoverError = ProviderRelayDiscoverErrors[keyof ProviderRelayDiscoverErrors]
+
+export type ProviderRelayDiscoverResponses = {
+  /**
+   * Models the relay returned
+   */
+  200:
+    | {
+        error: string
+      }
+    | {
+        models: Array<{
+          canDisable?: boolean
+          context?: number
+          contextFrom?: "catalog" | "fallback" | "relay"
+          cost?: {
+            cacheRead?: number
+            cacheWrite?: number
+            currency: "CNY" | "USD"
+            input: number
+            output: number
+            thinking?: {
+              cacheRead?: number
+              cacheWrite?: number
+              input: number
+              output: number
+            }
+            tiers?: Array<{
+              above: number
+              cacheRead?: number
+              cacheWrite?: number
+              input: number
+              output: number
+              thinking?: {
+                cacheRead?: number
+                cacheWrite?: number
+                input: number
+                output: number
+              }
+            }>
+          }
+          defaultEffort?: string
+          efforts?: Array<string>
+          endpoint?: "anthropic" | "openai-chat" | "openai-responses"
+          id: string
+          input?: Array<"audio" | "image" | "pdf" | "text" | "video">
+          name: string
+          output?: number
+          outputFrom?: "catalog" | "fallback" | "relay"
+          outputModalities?: Array<"audio" | "image" | "pdf" | "text" | "video">
+          reasoning?: boolean
+          releaseDate?: string
+          status?: "active" | "alpha" | "beta" | "deprecated"
+          temperature?: boolean
+          toolcall?: boolean
+        }>
+      }
+}
+
+export type ProviderRelayDiscoverResponse = ProviderRelayDiscoverResponses[keyof ProviderRelayDiscoverResponses]
+
+export type ProviderOauthAuthorizeData = {
+  body: {
+    /**
+     * Answers to the method prompts (see provider.oauth.prompt)
+     */
+    inputs?: {
+      [key: string]: string
+    }
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/provider/{providerID}/oauth/authorize"
+}
+
+export type ProviderOauthAuthorizeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type ProviderOauthAuthorizeError = ProviderOauthAuthorizeErrors[keyof ProviderOauthAuthorizeErrors]
+
+export type ProviderOauthAuthorizeResponses = {
+  /**
+   * Authorization URL and method
+   */
+  200: ProviderAuthAuthorization
+}
+
+export type ProviderOauthAuthorizeResponse = ProviderOauthAuthorizeResponses[keyof ProviderOauthAuthorizeResponses]
+
+export type ProviderOauthCallbackData = {
+  body: {
+    /**
+     * OAuth authorization code
+     */
+    code?: string
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/provider/{providerID}/oauth/callback"
+}
+
+export type ProviderOauthCallbackErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type ProviderOauthCallbackError = ProviderOauthCallbackErrors[keyof ProviderOauthCallbackErrors]
+
+export type ProviderOauthCallbackResponses = {
+  /**
+   * OAuth callback processed successfully
+   */
+  200: boolean
+}
+
+export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type ProviderOauthPromptData = {
+  body: {
+    inputs: {
+      [key: string]: string
+    }
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/provider/{providerID}/oauth/prompt"
+}
+
+export type ProviderOauthPromptErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderOauthPromptError = ProviderOauthPromptErrors[keyof ProviderOauthPromptErrors]
+
+export type ProviderOauthPromptResponses = {
+  /**
+   * Next prompt
+   */
+  200: {
+    error?: string
+    prompt?: ProviderAuthPrompt
+  }
+}
+
+export type ProviderOauthPromptResponse = ProviderOauthPromptResponses[keyof ProviderOauthPromptResponses]
+
+export type ProviderVerifyData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/provider/{providerID}/verify"
+}
+
+export type ProviderVerifyErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type ProviderVerifyError = ProviderVerifyErrors[keyof ProviderVerifyErrors]
+
+export type ProviderVerifyResponses = {
+  /**
+   * Verification result
+   */
+  200:
+    | {
+        error: string
+        ok: false
+      }
+    | {
+        model: string
+        ok: true
+      }
+}
+
+export type ProviderVerifyResponse = ProviderVerifyResponses[keyof ProviderVerifyResponses]
+
+export type PtyListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/pty"
+}
+
+export type PtyListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PtyListError = PtyListErrors[keyof PtyListErrors]
+
+export type PtyListResponses = {
+  /**
+   * List of sessions
+   */
+  200: Array<Pty>
+}
+
+export type PtyListResponse = PtyListResponses[keyof PtyListResponses]
+
+export type PtyCreateData = {
+  body?: {
+    args?: Array<string>
+    command?: string
+    cwd?: string
+    env?: {
+      [key: string]: string
+    }
+    size?: {
+      cols: number
+      rows: number
+    }
+    title?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/pty"
+}
+
+export type PtyCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type PtyCreateError = PtyCreateErrors[keyof PtyCreateErrors]
+
+export type PtyCreateResponses = {
+  /**
+   * Created session
+   */
+  200: Pty
+}
+
+export type PtyCreateResponse = PtyCreateResponses[keyof PtyCreateResponses]
+
+export type PtyRemoveData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/pty/{ptyID}"
+}
+
+export type PtyRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type PtyRemoveError = PtyRemoveErrors[keyof PtyRemoveErrors]
+
+export type PtyRemoveResponses = {
+  /**
+   * Session removed
+   */
+  200: boolean
+}
+
+export type PtyRemoveResponse = PtyRemoveResponses[keyof PtyRemoveResponses]
+
+export type PtyGetData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/pty/{ptyID}"
+}
+
+export type PtyGetErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type PtyGetError = PtyGetErrors[keyof PtyGetErrors]
+
+export type PtyGetResponses = {
+  /**
+   * Session info
+   */
+  200: Pty
+}
+
+export type PtyGetResponse = PtyGetResponses[keyof PtyGetResponses]
+
+export type PtyUpdateData = {
+  body?: {
+    size?: {
+      cols: number
+      rows: number
+    }
+    title?: string
+  }
+  path: {
+    ptyID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/pty/{ptyID}"
+}
+
+export type PtyUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type PtyUpdateError = PtyUpdateErrors[keyof PtyUpdateErrors]
+
+export type PtyUpdateResponses = {
+  /**
+   * Updated session
+   */
+  200: Pty
+}
+
+export type PtyUpdateResponse = PtyUpdateResponses[keyof PtyUpdateResponses]
+
+export type PtyConnectData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/pty/{ptyID}/connect"
+}
+
+export type PtyConnectErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type PtyConnectError = PtyConnectErrors[keyof PtyConnectErrors]
+
+export type PtyConnectResponses = {
+  /**
+   * Connected session
+   */
+  200: boolean
+}
+
+export type PtyConnectResponse = PtyConnectResponses[keyof PtyConnectResponses]
+
+export type QuestionListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/question"
+}
+
+export type QuestionListErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type QuestionListError = QuestionListErrors[keyof QuestionListErrors]
+
+export type QuestionListResponses = {
+  /**
+   * List of pending questions
+   */
+  200: Array<QuestionRequest>
+}
+
+export type QuestionListResponse = QuestionListResponses[keyof QuestionListResponses]
+
+export type QuestionRejectData = {
+  body?: never
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/question/{requestID}/reject"
+}
+
+export type QuestionRejectErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type QuestionRejectError = QuestionRejectErrors[keyof QuestionRejectErrors]
+
+export type QuestionRejectResponses = {
+  /**
+   * Question rejected successfully
+   */
+  200: boolean
+}
+
+export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
+
+export type QuestionReplyData = {
+  body: {
+    /**
+     * User answers in order of questions (each answer is an array of selected labels)
+     */
+    answers: Array<QuestionAnswer>
+  }
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/question/{requestID}/reply"
+}
+
+export type QuestionReplyErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type QuestionReplyError = QuestionReplyErrors[keyof QuestionReplyErrors]
+
+export type QuestionReplyResponses = {
+  /**
+   * Question answered successfully
+   */
+  200: boolean
+}
+
+export type QuestionReplyResponse = QuestionReplyResponses[keyof QuestionReplyResponses]
+
+export type ReviewGetData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scope: ReviewScope
+    sessionID: string
+    messageID?: string
+  }
+  url: "/review"
+}
+
+export type ReviewGetErrors = {
+  /**
+   * The scope does not support this decision, or a required parameter is missing
+   */
+  400: ReviewInvalidError
+  /**
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
+   */
+  409: CheckoutBlockedError | CheckoutStaleError | ReviewStaleError
+}
+
+export type ReviewGetError = ReviewGetErrors[keyof ReviewGetErrors]
+
+export type ReviewGetResponses = {
+  /**
+   * Review
+   */
+  200: ReviewResult
+}
+
+export type ReviewGetResponse = ReviewGetResponses[keyof ReviewGetResponses]
+
+export type ReviewDecideData = {
+  body: {
+    decision: "accept" | "reject"
+    expectedCheckout: string | null
+    files: Array<{
+      file: string
+      hunks?: Array<string>
+      version: string
+    }>
+    messageID?: string
+    scope: ReviewScope
+    sessionID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/review"
+}
+
+export type ReviewDecideErrors = {
+  /**
+   * The scope does not support this decision, or a required parameter is missing
+   */
+  400: ReviewInvalidError
+  /**
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
+   */
+  409: CheckoutBlockedError | CheckoutStaleError | ReviewStaleError
+}
+
+export type ReviewDecideError = ReviewDecideErrors[keyof ReviewDecideErrors]
+
+export type ReviewDecideResponses = {
+  /**
+   * Updated review
+   */
+  200: ReviewResult
+}
+
+export type ReviewDecideResponse = ReviewDecideResponses[keyof ReviewDecideResponses]
+
+export type ReviewFileData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scope: ReviewScope
+    sessionID: string
+    messageID?: string
+    file: string
+    version?: string
+    expectedCheckout?: string | null
+  }
+  url: "/review/file"
+}
+
+export type ReviewFileErrors = {
+  /**
+   * The scope does not support this decision, or a required parameter is missing
+   */
+  400: ReviewInvalidError
+  /**
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
+   */
+  409: CheckoutBlockedError | CheckoutStaleError | ReviewStaleError
+}
+
+export type ReviewFileError = ReviewFileErrors[keyof ReviewFileErrors]
+
+export type ReviewFileResponses = {
+  /**
+   * File hunks
+   */
+  200: ReviewFileDetail
+}
+
+export type ReviewFileResponse = ReviewFileResponses[keyof ReviewFileResponses]
+
+export type ReviewUndoData = {
+  body: {
+    expectedCheckout: string | null
+    messageID?: string
+    scope: ReviewScope
+    sessionID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/review/undo"
+}
+
+export type ReviewUndoErrors = {
+  /**
+   * The scope does not support this decision, or a required parameter is missing
+   */
+  400: ReviewInvalidError
+  /**
+   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
+   */
+  409: CheckoutBlockedError | CheckoutStaleError | ReviewStaleError
+}
+
+export type ReviewUndoError = ReviewUndoErrors[keyof ReviewUndoErrors]
+
+export type ReviewUndoResponses = {
+  /**
+   * Updated review
+   */
+  200: ReviewResult
+}
+
+export type ReviewUndoResponse = ReviewUndoResponses[keyof ReviewUndoResponses]
+
+export type RuleManagementReadData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/rule"
+}
+
+export type RuleManagementReadErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type RuleManagementReadError = RuleManagementReadErrors[keyof RuleManagementReadErrors]
+
+export type RuleManagementReadResponses = {
+  /**
+   * Complete rule management snapshot
+   */
+  200: RuleSnapshot
+}
+
+export type RuleManagementReadResponse = RuleManagementReadResponses[keyof RuleManagementReadResponses]
+
+export type RuleManagementChangeData = {
+  body:
+    | {
+        content: string
+        filepath: string
+        type: "file_write"
+      }
+    | {
+        fields?: RuleFields
+        filename: string
+        targetId: string
+        type: "file_create"
+      }
+    | {
+        fields: RuleFields
+        filepath: string
+        type: "file_write_fields"
+      }
+    | {
+        filepath: string
+        type: "file_delete"
+      }
+    | {
+        index: number
+        text: string
+        type: "user_update"
+      }
+    | {
+        index: number
+        type: "user_remove"
+      }
+    | {
+        text: string
+        type: "user_add"
+      }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/rule/change"
+}
+
+export type RuleManagementChangeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type RuleManagementChangeError = RuleManagementChangeErrors[keyof RuleManagementChangeErrors]
+
+export type RuleManagementChangeResponses = {
+  /**
+   * Rule management result
+   */
+  200:
+    | {
+        error: RuleManageError
+        ok: false
+        snapshot?: RuleSnapshot
+      }
+    | {
+        ok: true
+        snapshot: RuleSnapshot
+      }
+}
+
+export type RuleManagementChangeResponse = RuleManagementChangeResponses[keyof RuleManagementChangeResponses]
+
+export type SandboxStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox"
+}
+
+export type SandboxStatusErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type SandboxStatusError = SandboxStatusErrors[keyof SandboxStatusErrors]
+
+export type SandboxStatusResponses = {
+  /**
+   * Sandbox status
+   */
+  200: SandboxStatus
+}
+
+export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
+
+export type SandboxInstallData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/install"
+}
+
+export type SandboxInstallErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type SandboxInstallError = SandboxInstallErrors[keyof SandboxInstallErrors]
+
+export type SandboxInstallResponses = {
+  /**
+   * Sandbox status after the install
+   */
+  200: SandboxStatus
+}
+
+export type SandboxInstallResponse = SandboxInstallResponses[keyof SandboxInstallResponses]
+
+export type SandboxResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/reset"
+}
+
+export type SandboxResetErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type SandboxResetError = SandboxResetErrors[keyof SandboxResetErrors]
+
+export type SandboxResetResponses = {
+  /**
+   * Sandbox status after the reset
+   */
+  200: SandboxStatus
+}
+
+export type SandboxResetResponse = SandboxResetResponses[keyof SandboxResetResponses]
 
 export type SessionListData = {
   body?: never
@@ -5617,9 +8538,9 @@ export type SessionListErrors = {
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
@@ -5636,20 +8557,20 @@ export type SessionListResponse = SessionListResponses[keyof SessionListResponse
 
 export type SessionCreateData = {
   body?: {
-    parentID?: string
-    title?: string
-    permission?: PermissionRuleset
     metadata?: {
       [key: string]: unknown
     }
+    parentID?: string
+    permission?: PermissionRuleset
     target?:
-      | {
-          kind: "merak"
-        }
       | {
           kind: "external"
           productID: string
         }
+      | {
+          kind: "merak"
+        }
+    title?: string
   }
   path?: never
   query?: {
@@ -5675,6 +8596,41 @@ export type SessionCreateResponses = {
 }
 
 export type SessionCreateResponse = SessionCreateResponses[keyof SessionCreateResponses]
+
+export type SessionImportFullData = {
+  body: {
+    info: Session
+    messages: Array<{
+      info: Message
+      parts: Array<Part>
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/session/import-full"
+}
+
+export type SessionImportFullErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type SessionImportFullError = SessionImportFullErrors[keyof SessionImportFullErrors]
+
+export type SessionImportFullResponses = {
+  /**
+   * Imported session
+   */
+  200: {
+    info: SessionOutput
+  }
+}
+
+export type SessionImportFullResponse = SessionImportFullResponses[keyof SessionImportFullResponses]
 
 export type SessionSearchData = {
   body?: never
@@ -5815,13 +8771,13 @@ export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses]
 
 export type SessionUpdateData = {
   body?: {
-    title?: string
-    time?: {
-      archived?: number
-    }
     metadata?: {
       [key: string]: unknown
     }
+    time?: {
+      archived?: number
+    }
+    title?: string
   }
   path: {
     sessionID: string
@@ -5853,189 +8809,6 @@ export type SessionUpdateResponses = {
 }
 
 export type SessionUpdateResponse = SessionUpdateResponses[keyof SessionUpdateResponses]
-
-export type SessionChildrenData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/children"
-}
-
-export type SessionChildrenErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type SessionChildrenError = SessionChildrenErrors[keyof SessionChildrenErrors]
-
-export type SessionChildrenResponses = {
-  /**
-   * List of children
-   */
-  200: Array<SessionOutput>
-}
-
-export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChildrenResponses]
-
-export type SessionTodoData = {
-  body?: never
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/todo"
-}
-
-export type SessionTodoErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type SessionTodoError = SessionTodoErrors[keyof SessionTodoErrors]
-
-export type SessionTodoResponses = {
-  /**
-   * Todo list
-   */
-  200: Array<Todo>
-}
-
-export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
-
-export type SessionSetPermissionModeData = {
-  body: {
-    permissionMode: PermissionMode
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/permission-mode"
-}
-
-export type SessionSetPermissionModeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type SessionSetPermissionModeError = SessionSetPermissionModeErrors[keyof SessionSetPermissionModeErrors]
-
-export type SessionSetPermissionModeResponses = {
-  /**
-   * Updated session
-   */
-  200: SessionOutput
-}
-
-export type SessionSetPermissionModeResponse =
-  SessionSetPermissionModeResponses[keyof SessionSetPermissionModeResponses]
-
-export type SessionInitData = {
-  body: {
-    modelID: string
-    providerID: string
-    messageID: string
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/init"
-}
-
-export type SessionInitErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type SessionInitError = SessionInitErrors[keyof SessionInitErrors]
-
-export type SessionInitResponses = {
-  /**
-   * 200
-   */
-  200: boolean
-}
-
-export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponses]
-
-export type SessionForkData = {
-  body?: {
-    messageID?: string
-  }
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/fork"
-}
-
-export type SessionForkErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type SessionForkError = SessionForkErrors[keyof SessionForkErrors]
-
-export type SessionForkResponses = {
-  /**
-   * 200
-   */
-  200: SessionOutput
-}
-
-export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
 
 export type SessionAbortData = {
   body?: never
@@ -6070,19 +8843,18 @@ export type SessionAbortResponses = {
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
 
-export type SessionToolAbortData = {
+export type SessionChildrenData = {
   body?: never
   path: {
     sessionID: string
-    callID: string
   }
   query?: {
     directory?: string
   }
-  url: "/session/{sessionID}/tool/{callID}/abort"
+  url: "/session/{sessionID}/children"
 }
 
-export type SessionToolAbortErrors = {
+export type SessionChildrenErrors = {
   /**
    * Bad request
    */
@@ -6093,16 +8865,79 @@ export type SessionToolAbortErrors = {
   404: ErrorResponse
 }
 
-export type SessionToolAbortError = SessionToolAbortErrors[keyof SessionToolAbortErrors]
+export type SessionChildrenError = SessionChildrenErrors[keyof SessionChildrenErrors]
 
-export type SessionToolAbortResponses = {
+export type SessionChildrenResponses = {
   /**
-   * Whether the tool call was found and aborted
+   * List of children
    */
-  200: boolean
+  200: Array<SessionOutput>
 }
 
-export type SessionToolAbortResponse = SessionToolAbortResponses[keyof SessionToolAbortResponses]
+export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChildrenResponses]
+
+export type SessionCommandData = {
+  body: {
+    agent?: string
+    arguments: string
+    command: string
+    kind?: PermissionMode
+    messageID?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+    model?: string
+    parts?: Array<{
+      filename?: string
+      id?: string
+      mime: string
+      source?: FilePartSource
+      type: "file"
+      url: string
+    }>
+    permissionMode?: PermissionMode
+    variant?: string
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/command"
+}
+
+export type SessionCommandErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionCommandError = SessionCommandErrors[keyof SessionCommandErrors]
+
+export type SessionCommandResponses = {
+  /**
+   * Created message
+   */
+  200: {
+    info: AssistantMessageOutput
+    parts: Array<PartOutput>
+  }
+}
+
+export type SessionCommandResponse = SessionCommandResponses[keyof SessionCommandResponses]
 
 export type SessionDiffData = {
   body?: never
@@ -6121,9 +8956,9 @@ export type SessionDiffErrors = {
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
@@ -6138,25 +8973,18 @@ export type SessionDiffResponses = {
 
 export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponses]
 
-export type SessionSummarizeData = {
-  body: {
-    providerID: string
-    modelID: string
-    auto?: boolean
-  }
+export type SessionExportFullData = {
+  body?: never
   path: {
-    /**
-     * Session ID
-     */
     sessionID: string
   }
   query?: {
     directory?: string
   }
-  url: "/session/{sessionID}/summarize"
+  url: "/session/{sessionID}/export-full"
 }
 
-export type SessionSummarizeErrors = {
+export type SessionExportFullErrors = {
   /**
    * Bad request
    */
@@ -6167,16 +8995,97 @@ export type SessionSummarizeErrors = {
   404: ErrorResponse
 }
 
-export type SessionSummarizeError = SessionSummarizeErrors[keyof SessionSummarizeErrors]
+export type SessionExportFullError = SessionExportFullErrors[keyof SessionExportFullErrors]
 
-export type SessionSummarizeResponses = {
+export type SessionExportFullResponses = {
   /**
-   * Summarized session
+   * Full session export
+   */
+  200: {
+    info: SessionOutput
+    messages: Array<{
+      info: MessageOutput
+      parts: Array<PartOutput>
+    }>
+  }
+}
+
+export type SessionExportFullResponse = SessionExportFullResponses[keyof SessionExportFullResponses]
+
+export type SessionForkData = {
+  body?: {
+    messageID?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/fork"
+}
+
+export type SessionForkErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type SessionForkError = SessionForkErrors[keyof SessionForkErrors]
+
+export type SessionForkResponses = {
+  /**
+   * 200
+   */
+  200: SessionOutput
+}
+
+export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionInitData = {
+  body: {
+    messageID: string
+    modelID: string
+    providerID: string
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/init"
+}
+
+export type SessionInitErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionInitError = SessionInitErrors[keyof SessionInitErrors]
+
+export type SessionInitResponses = {
+  /**
+   * 200
    */
   200: boolean
 }
 
-export type SessionSummarizeResponse = SessionSummarizeResponses[keyof SessionSummarizeResponses]
+export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponses]
 
 export type SessionMessagesData = {
   body?: never
@@ -6220,29 +9129,29 @@ export type SessionMessagesResponse = SessionMessagesResponses[keyof SessionMess
 
 export type SessionPromptData = {
   body: {
-    messageID?: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
     agent?: string
+    format?: OutputFormat
+    kind?: PermissionMode
+    maxTurns?: number
+    messageID?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+    model?: {
+      modelID: string
+      providerID: string
+    }
     noReply?: boolean
+    parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+    permissionMode?: PermissionMode
+    system?: string
     /**
      * @deprecated tools and permissions have been merged, you can set permissions on the session itself now
      */
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
-    system?: string
     variant?: string
-    permissionMode?: PermissionMode
-    metadata?: {
-      [key: string]: unknown
-    }
-    kind?: PermissionMode
-    maxTurns?: number
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
     /**
@@ -6456,31 +9365,70 @@ export type PartUpdateResponses = {
 
 export type PartUpdateResponse = PartUpdateResponses[keyof PartUpdateResponses]
 
+export type SessionSetPermissionModeData = {
+  body: {
+    permissionMode: PermissionMode
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/permission-mode"
+}
+
+export type SessionSetPermissionModeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionSetPermissionModeError = SessionSetPermissionModeErrors[keyof SessionSetPermissionModeErrors]
+
+export type SessionSetPermissionModeResponses = {
+  /**
+   * Updated session
+   */
+  200: SessionOutput
+}
+
+export type SessionSetPermissionModeResponse =
+  SessionSetPermissionModeResponses[keyof SessionSetPermissionModeResponses]
+
 export type SessionPromptAsyncData = {
   body: {
-    messageID?: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
     agent?: string
+    format?: OutputFormat
+    kind?: PermissionMode
+    maxTurns?: number
+    messageID?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+    model?: {
+      modelID: string
+      providerID: string
+    }
     noReply?: boolean
+    parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+    permissionMode?: PermissionMode
+    system?: string
     /**
      * @deprecated tools and permissions have been merged, you can set permissions on the session itself now
      */
     tools?: {
       [key: string]: boolean
     }
-    format?: OutputFormat
-    system?: string
     variant?: string
-    permissionMode?: PermissionMode
-    metadata?: {
-      [key: string]: unknown
-    }
-    kind?: PermissionMode
-    maxTurns?: number
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
     /**
@@ -6519,159 +9467,6 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
-
-export type SessionTakeoverData = {
-  body: {
-    decision: "accept" | "decline"
-    expectedTargetRevision: number
-    blockID: string
-  }
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/takeover"
-}
-
-export type SessionTakeoverErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type SessionTakeoverError = SessionTakeoverErrors[keyof SessionTakeoverErrors]
-
-export type SessionTakeoverResponses = {
-  /**
-   * Current conversation
-   */
-  200: SessionOutput
-}
-
-export type SessionTakeoverResponse = SessionTakeoverResponses[keyof SessionTakeoverResponses]
-
-export type SessionCommandData = {
-  body: {
-    messageID?: string
-    agent?: string
-    model?: string
-    permissionMode?: PermissionMode
-    kind?: PermissionMode
-    arguments: string
-    command: string
-    variant?: string
-    metadata?: {
-      [key: string]: unknown
-    }
-    parts?: Array<{
-      id?: string
-      type: "file"
-      mime: string
-      filename?: string
-      url: string
-      source?: FilePartSource
-    }>
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/command"
-}
-
-export type SessionCommandErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type SessionCommandError = SessionCommandErrors[keyof SessionCommandErrors]
-
-export type SessionCommandResponses = {
-  /**
-   * Created message
-   */
-  200: {
-    info: AssistantMessageOutput
-    parts: Array<PartOutput>
-  }
-}
-
-export type SessionCommandResponse = SessionCommandResponses[keyof SessionCommandResponses]
-
-export type SessionShellData = {
-  body: {
-    agent: string
-    permissionMode?: PermissionMode
-    kind?: PermissionMode
-    model?: {
-      providerID: string
-      modelID: string
-    }
-    command: string
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/shell"
-}
-
-export type SessionShellErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type SessionShellError = SessionShellErrors[keyof SessionShellErrors]
-
-export type SessionShellResponses = {
-  /**
-   * Created message
-   */
-  200: AssistantMessageOutput
-}
-
-export type SessionShellResponse = SessionShellResponses[keyof SessionShellResponses]
 
 export type SessionRevertData = {
   body: {
@@ -6713,6 +9508,206 @@ export type SessionRevertResponses = {
 
 export type SessionRevertResponse = SessionRevertResponses[keyof SessionRevertResponses]
 
+export type SessionShellData = {
+  body: {
+    agent: string
+    command: string
+    kind?: PermissionMode
+    model?: {
+      modelID: string
+      providerID: string
+    }
+    permissionMode?: PermissionMode
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/shell"
+}
+
+export type SessionShellErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionShellError = SessionShellErrors[keyof SessionShellErrors]
+
+export type SessionShellResponses = {
+  /**
+   * Created message
+   */
+  200: AssistantMessageOutput
+}
+
+export type SessionShellResponse = SessionShellResponses[keyof SessionShellResponses]
+
+export type SessionSummarizeData = {
+  body: {
+    auto?: boolean
+    modelID: string
+    providerID: string
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/summarize"
+}
+
+export type SessionSummarizeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionSummarizeError = SessionSummarizeErrors[keyof SessionSummarizeErrors]
+
+export type SessionSummarizeResponses = {
+  /**
+   * Summarized session
+   */
+  200: boolean
+}
+
+export type SessionSummarizeResponse = SessionSummarizeResponses[keyof SessionSummarizeResponses]
+
+export type SessionTakeoverData = {
+  body: {
+    blockID: string
+    decision: "accept" | "decline"
+    expectedTargetRevision: number
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/takeover"
+}
+
+export type SessionTakeoverErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionTakeoverError = SessionTakeoverErrors[keyof SessionTakeoverErrors]
+
+export type SessionTakeoverResponses = {
+  /**
+   * Current conversation
+   */
+  200: SessionOutput
+}
+
+export type SessionTakeoverResponse = SessionTakeoverResponses[keyof SessionTakeoverResponses]
+
+export type SessionTodoData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/todo"
+}
+
+export type SessionTodoErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionTodoError = SessionTodoErrors[keyof SessionTodoErrors]
+
+export type SessionTodoResponses = {
+  /**
+   * Todo list
+   */
+  200: Array<Todo>
+}
+
+export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
+
+export type SessionToolAbortData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/tool/{callID}/abort"
+}
+
+export type SessionToolAbortErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionToolAbortError = SessionToolAbortErrors[keyof SessionToolAbortErrors]
+
+export type SessionToolAbortResponses = {
+  /**
+   * Whether the tool call was found and aborted
+   */
+  200: boolean
+}
+
+export type SessionToolAbortResponse = SessionToolAbortResponses[keyof SessionToolAbortResponses]
+
 export type SessionUnrevertData = {
   body?: never
   path: {
@@ -6750,726 +9745,186 @@ export type SessionUnrevertResponses = {
 
 export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
 
-export type SessionExportFullData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/export-full"
-}
-
-export type SessionExportFullErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type SessionExportFullError = SessionExportFullErrors[keyof SessionExportFullErrors]
-
-export type SessionExportFullResponses = {
-  /**
-   * Full session export
-   */
-  200: {
-    info: SessionOutput
-    messages: Array<{
-      info: MessageOutput
-      parts: Array<PartOutput>
-    }>
-  }
-}
-
-export type SessionExportFullResponse = SessionExportFullResponses[keyof SessionExportFullResponses]
-
-export type SessionImportFullData = {
-  body: {
-    info: Session
-    messages: Array<{
-      info: Message
-      parts: Array<Part>
-    }>
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/session/import-full"
-}
-
-export type SessionImportFullErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type SessionImportFullError = SessionImportFullErrors[keyof SessionImportFullErrors]
-
-export type SessionImportFullResponses = {
-  /**
-   * Imported session
-   */
-  200: {
-    info: SessionOutput
-  }
-}
-
-export type SessionImportFullResponse = SessionImportFullResponses[keyof SessionImportFullResponses]
-
-export type CollaborationRoleTemplatesData = {
+export type AppSkillsData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/collaboration/role-template"
+  url: "/skill"
 }
 
-export type CollaborationRoleTemplatesErrors = {
+export type AppSkillsErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type CollaborationRoleTemplatesError = CollaborationRoleTemplatesErrors[keyof CollaborationRoleTemplatesErrors]
-
-export type CollaborationRoleTemplatesResponses = {
-  /**
-   * Role templates
-   */
-  200: Array<CollaborationRoleTemplate>
-}
-
-export type CollaborationRoleTemplatesResponse =
-  CollaborationRoleTemplatesResponses[keyof CollaborationRoleTemplatesResponses]
-
-export type CollaborationRoleTemplateChangeData = {
-  body:
-    | {
-        type: "add"
-        id: string
-        template: {
-          name: string
-          role: string
-          duty: string
-        }
-      }
-    | {
-        type: "update"
-        id: string
-        template: {
-          name: string
-          role: string
-          duty: string
-        }
-      }
-    | {
-        type: "remove"
-        id: string
-      }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration/role-template"
-}
-
-export type CollaborationRoleTemplateChangeErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationRoleTemplateChangeError =
-  CollaborationRoleTemplateChangeErrors[keyof CollaborationRoleTemplateChangeErrors]
-
-export type CollaborationRoleTemplateChangeResponses = {
-  /**
-   * Role templates
-   */
-  200: Array<CollaborationRoleTemplate>
-}
-
-export type CollaborationRoleTemplateChangeResponse =
-  CollaborationRoleTemplateChangeResponses[keyof CollaborationRoleTemplateChangeResponses]
-
-export type CollaborationListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration"
-}
-
-export type CollaborationListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
     success: false
-    error: Array<unknown>
-    data: unknown
   }
 }
 
-export type CollaborationListError = CollaborationListErrors[keyof CollaborationListErrors]
+export type AppSkillsError = AppSkillsErrors[keyof AppSkillsErrors]
 
-export type CollaborationListResponses = {
+export type AppSkillsResponses = {
   /**
-   * Groups
+   * List of skills
    */
-  200: Array<CollaborationGroupSummary>
-}
-
-export type CollaborationListResponse = CollaborationListResponses[keyof CollaborationListResponses]
-
-export type CollaborationCreateData = {
-  body: {
-    title?: string
-    leader: {
-      name: string
-      /**
-       * Short title such as product manager
-       */
-      role?: string
-      /**
-       * What the seat is for; it goes into the seat's prompt
-       */
-      duty?: string
-    }
-    seats?: Array<{
-      name: string
-      /**
-       * Short title such as product manager
-       */
-      role?: string
-      /**
-       * What the seat is for; it goes into the seat's prompt
-       */
-      duty?: string
-      product: string
-    }>
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration"
-}
-
-export type CollaborationCreateErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationCreateError = CollaborationCreateErrors[keyof CollaborationCreateErrors]
-
-export type CollaborationCreateResponses = {
-  /**
-   * Created group
-   */
-  200: {
-    sessionID: string
-    group: CollaborationGroup
-  }
-}
-
-export type CollaborationCreateResponse = CollaborationCreateResponses[keyof CollaborationCreateResponses]
-
-export type CollaborationGetData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration/{sessionID}"
-}
-
-export type CollaborationGetErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationGetError = CollaborationGetErrors[keyof CollaborationGetErrors]
-
-export type CollaborationGetResponses = {
-  /**
-   * Group
-   */
-  200: CollaborationGroup
-}
-
-export type CollaborationGetResponse = CollaborationGetResponses[keyof CollaborationGetResponses]
-
-export type CollaborationSeatAddData = {
-  body: {
-    name: string
-    /**
-     * Short title such as product manager
-     */
-    role?: string
-    /**
-     * What the seat is for; it goes into the seat's prompt
-     */
-    duty?: string
-    product: string
-  }
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration/{sessionID}/seat"
-}
-
-export type CollaborationSeatAddErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationSeatAddError = CollaborationSeatAddErrors[keyof CollaborationSeatAddErrors]
-
-export type CollaborationSeatAddResponses = {
-  /**
-   * Updated group
-   */
-  200: CollaborationGroup
-}
-
-export type CollaborationSeatAddResponse = CollaborationSeatAddResponses[keyof CollaborationSeatAddResponses]
-
-export type CollaborationSeatRemoveData = {
-  body?: never
-  path: {
-    sessionID: string
-    seatID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration/{sessionID}/seat/{seatID}"
-}
-
-export type CollaborationSeatRemoveErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationSeatRemoveError = CollaborationSeatRemoveErrors[keyof CollaborationSeatRemoveErrors]
-
-export type CollaborationSeatRemoveResponses = {
-  /**
-   * Updated group
-   */
-  200: CollaborationGroup
-}
-
-export type CollaborationSeatRemoveResponse = CollaborationSeatRemoveResponses[keyof CollaborationSeatRemoveResponses]
-
-export type CollaborationSeatUpdateData = {
-  body?: {
-    name?: string
-    /**
-     * Short title such as product manager
-     */
-    role?: string
-    /**
-     * What the seat is for; it goes into the seat's prompt
-     */
-    duty?: string
-  }
-  path: {
-    sessionID: string
-    seatID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/collaboration/{sessionID}/seat/{seatID}"
-}
-
-export type CollaborationSeatUpdateErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CollaborationSeatUpdateError = CollaborationSeatUpdateErrors[keyof CollaborationSeatUpdateErrors]
-
-export type CollaborationSeatUpdateResponses = {
-  /**
-   * Updated group
-   */
-  200: CollaborationGroup
-}
-
-export type CollaborationSeatUpdateResponse = CollaborationSeatUpdateResponses[keyof CollaborationSeatUpdateResponses]
-
-export type AgentConnectionProductsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    refresh?: "true" | "false"
-  }
-  url: "/agent-connection/product"
-}
-
-export type AgentConnectionProductsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AgentConnectionProductsError = AgentConnectionProductsErrors[keyof AgentConnectionProductsErrors]
-
-export type AgentConnectionProductsResponses = {
-  /**
-   * Products
-   */
-  200: Array<AgentConnectionProduct>
-}
-
-export type AgentConnectionProductsResponse = AgentConnectionProductsResponses[keyof AgentConnectionProductsResponses]
-
-export type AgentConnectionProductChangeData = {
-  body:
-    | {
-        type: "add"
-        id: string
-        product: {
-          command?: string
-          title?: string
-          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-          args?: Array<string>
-          resumeArgs?: Array<string>
-          sessionLine?: string
-          model?: {
-            id: string
-            providerID?: string
-          }
-        }
-      }
-    | {
-        type: "update"
-        id: string
-        product: {
-          command?: string
-          title?: string
-          adapter?: "claude" | "codex" | "opencode" | "command" | "member"
-          args?: Array<string>
-          resumeArgs?: Array<string>
-          sessionLine?: string
-          model?: {
-            id: string
-            providerID?: string
-          }
-        }
-      }
-    | {
-        type: "remove"
-        id: string
-      }
-    | {
-        type: "enabled"
-        id: string
-        enabled: boolean
-      }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/agent-connection/product"
-}
-
-export type AgentConnectionProductChangeErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AgentConnectionProductChangeError =
-  AgentConnectionProductChangeErrors[keyof AgentConnectionProductChangeErrors]
-
-export type AgentConnectionProductChangeResponses = {
-  /**
-   * Products
-   */
-  200: Array<AgentConnectionProduct>
-}
-
-export type AgentConnectionProductChangeResponse =
-  AgentConnectionProductChangeResponses[keyof AgentConnectionProductChangeResponses]
-
-export type AgentConnectionModelsData = {
-  body?: never
-  path: {
-    productID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/agent-connection/product/{productID}/model"
-}
-
-export type AgentConnectionModelsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AgentConnectionModelsError = AgentConnectionModelsErrors[keyof AgentConnectionModelsErrors]
-
-export type AgentConnectionModelsResponses = {
-  /**
-   * Models
-   */
-  200: AgentConnectionModels
-}
-
-export type AgentConnectionModelsResponse = AgentConnectionModelsResponses[keyof AgentConnectionModelsResponses]
-
-export type AgentConnectionVerifyData = {
-  body: {
-    expectedRevision: number
-  }
-  path: {
-    productID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/agent-connection/product/{productID}/verify"
-}
-
-export type AgentConnectionVerifyErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AgentConnectionVerifyError = AgentConnectionVerifyErrors[keyof AgentConnectionVerifyErrors]
-
-export type AgentConnectionVerifyResponses = {
-  /**
-   * Verification result
-   */
-  200: AgentConnectionVerification
-}
-
-export type AgentConnectionVerifyResponse = AgentConnectionVerifyResponses[keyof AgentConnectionVerifyResponses]
-
-export type MemoryListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/memory"
-}
-
-export type MemoryListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type MemoryListError = MemoryListErrors[keyof MemoryListErrors]
-
-export type MemoryListResponses = {
-  /**
-   * Memory snapshot
-   */
-  200: MemorySnapshot
-}
-
-export type MemoryListResponse = MemoryListResponses[keyof MemoryListResponses]
-
-export type MemoryRemoveData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    /**
-     * Absolute path of the memory file
-     */
-    path: string
-  }
-  url: "/memory/entry"
-}
-
-export type MemoryRemoveErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type MemoryRemoveError = MemoryRemoveErrors[keyof MemoryRemoveErrors]
-
-export type MemoryRemoveResponses = {
-  /**
-   * Deleted
-   */
-  200: {
-    path: string
-  }
-}
-
-export type MemoryRemoveResponse = MemoryRemoveResponses[keyof MemoryRemoveResponses]
-
-export type MemoryReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    /**
-     * Absolute path of the memory file
-     */
-    path: string
-  }
-  url: "/memory/entry"
-}
-
-export type MemoryReadErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type MemoryReadError = MemoryReadErrors[keyof MemoryReadErrors]
-
-export type MemoryReadResponses = {
-  /**
-   * Memory content
-   */
-  200: {
-    path: string
+  200: Array<{
     content: string
-  }
+    description: string
+    location: string
+    name: string
+    scope?: "builtin" | "global" | "project"
+  }>
 }
 
-export type MemoryReadResponse = MemoryReadResponses[keyof MemoryReadResponses]
+export type AppSkillsResponse = AppSkillsResponses[keyof AppSkillsResponses]
 
-export type BashJobStopData = {
-  body?: never
-  path: {
-    id: string
+export type SkillInstallInstallData = {
+  body: {
+    directory?: string
+    skills: Array<{
+      description: string
+      files: Array<string>
+      name: string
+      path?: string
+      repoPath: string
+    }>
+    source:
+      | {
+          branch?: string
+          owner: string
+          repo: string
+          type: "github"
+          url: string
+        }
+      | {
+          type: "url"
+          url: string
+        }
+    target: "global" | "project"
   }
+  path?: never
   query?: {
     directory?: string
   }
-  url: "/bash/jobs/{id}/stop"
+  url: "/skill-install/install"
 }
 
-export type BashJobStopErrors = {
+export type SkillInstallInstallErrors = {
   /**
-   * Validation Error
+   * Bad request
    */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
+  400: ErrorResponse
+}
+
+export type SkillInstallInstallError = SkillInstallInstallErrors[keyof SkillInstallInstallErrors]
+
+export type SkillInstallInstallResponses = {
+  /**
+   * Install result
+   */
+  200: {
+    failed: Array<{
+      error: string
+      name: string
+    }>
+    installed: Array<string>
   }
-  /**
-   * Not found
-   */
-  404: ErrorResponse
 }
 
-export type BashJobStopError = BashJobStopErrors[keyof BashJobStopErrors]
+export type SkillInstallInstallResponse = SkillInstallInstallResponses[keyof SkillInstallInstallResponses]
 
-export type BashJobStopResponses = {
-  /**
-   * Whether the job was found and stopped
-   */
-  200: boolean
+export type SkillInstallListData = {
+  body: {
+    source: string
+    token?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/skill-install/list"
 }
 
-export type BashJobStopResponse = BashJobStopResponses[keyof BashJobStopResponses]
+export type SkillInstallListErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type SkillInstallListError = SkillInstallListErrors[keyof SkillInstallListErrors]
+
+export type SkillInstallListResponses = {
+  /**
+   * Source and list of skills
+   */
+  200: {
+    skills: Array<{
+      description: string
+      files: Array<string>
+      name: string
+      path?: string
+      repoPath: string
+    }>
+    source:
+      | {
+          branch?: string
+          owner: string
+          repo: string
+          type: "github"
+          url: string
+        }
+      | {
+          type: "url"
+          url: string
+        }
+  }
+}
+
+export type SkillInstallListResponse = SkillInstallListResponses[keyof SkillInstallListResponses]
+
+export type SkillUninstallData = {
+  body: {
+    location: string
+    name: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/skill-uninstall"
+}
+
+export type SkillUninstallErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+}
+
+export type SkillUninstallError = SkillUninstallErrors[keyof SkillUninstallErrors]
+
+export type SkillUninstallResponses = {
+  /**
+   * Uninstall result
+   */
+  200: {
+    deleted: boolean
+    name: string
+  }
+}
+
+export type SkillUninstallResponse = SkillUninstallResponses[keyof SkillUninstallResponses]
 
 export type ToolRemoteRegisterData = {
   body: {
     tools: Array<{
-      id: string
       description: string
+      id: string
       parameters: {
         [key: string]: unknown
       }
@@ -7503,11 +9958,11 @@ export type ToolRemoteRegisterResponse = ToolRemoteRegisterResponses[keyof ToolR
 export type ToolRemoteResultData = {
   body:
     | {
-        output: string
-        title?: string
+        error: string
       }
     | {
-        error: string
+        output: string
+        title?: string
       }
   path: {
     callID: string
@@ -7536,1064 +9991,98 @@ export type ToolRemoteResultResponses = {
 
 export type ToolRemoteResultResponse = ToolRemoteResultResponses[keyof ToolRemoteResultResponses]
 
-export type PermissionReplyData = {
-  body: {
-    reply: "once" | "session" | "always" | "reject"
-    scope?: "file" | "directory" | "prefix" | "agent" | "tool" | "domain"
-    message?: string
-  }
-  path: {
-    requestID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/permission/{requestID}/reply"
-}
-
-export type PermissionReplyErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type PermissionReplyError = PermissionReplyErrors[keyof PermissionReplyErrors]
-
-export type PermissionReplyResponses = {
-  /**
-   * Permission processed successfully
-   */
-  200: boolean
-}
-
-export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
-
-export type PermissionListData = {
+export type VcsGetData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/permission"
+  url: "/vcs"
 }
 
-export type PermissionListErrors = {
+export type VcsGetErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type PermissionListError = PermissionListErrors[keyof PermissionListErrors]
-
-export type PermissionListResponses = {
-  /**
-   * List of pending permissions
-   */
-  200: Array<PermissionRequest>
-}
-
-export type PermissionListResponse = PermissionListResponses[keyof PermissionListResponses]
-
-export type PermissionGrantsData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    sessionID: string
-  }
-  url: "/permission/grant"
-}
-
-export type PermissionGrantsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
+    success: false
   }
 }
 
-export type PermissionGrantsError = PermissionGrantsErrors[keyof PermissionGrantsErrors]
+export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
 
-export type PermissionGrantsResponses = {
+export type VcsGetResponses = {
   /**
-   * Session grants
+   * VCS info
    */
-  200: Array<PermissionRuleOutput>
+  200: VcsInfo
 }
 
-export type PermissionGrantsResponse = PermissionGrantsResponses[keyof PermissionGrantsResponses]
+export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
 
-export type PermissionRulesData = {
+export type VcsBranchOptionsData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/permission/rule"
+  url: "/vcs/branch-options"
 }
 
-export type PermissionRulesErrors = {
+export type VcsBranchOptionsErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type PermissionRulesError = PermissionRulesErrors[keyof PermissionRulesErrors]
-
-export type PermissionRulesResponses = {
-  /**
-   * Rules by config file
-   */
-  200: {
-    project: Array<PermissionRuleOutput>
-    global: Array<PermissionRuleOutput>
-  }
-}
-
-export type PermissionRulesResponse = PermissionRulesResponses[keyof PermissionRulesResponses]
-
-export type PermissionRuleData = {
-  body: {
-    scope: "project" | "global"
-    permission: string
-    pattern: string
-    action?: PermissionAction
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/permission/rule"
-}
-
-export type PermissionRuleErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type PermissionRuleError = PermissionRuleErrors[keyof PermissionRuleErrors]
-
-export type PermissionRuleResponses = {
-  /**
-   * Saved
-   */
-  200: boolean
-}
-
-export type PermissionRuleResponse = PermissionRuleResponses[keyof PermissionRuleResponses]
-
-export type PermissionRevokeData = {
-  body: {
-    sessionID: string
-    permission: string
-    pattern: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/permission/grant/revoke"
-}
-
-export type PermissionRevokeErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
     success: false
-    error: Array<unknown>
-    data: unknown
   }
 }
 
-export type PermissionRevokeError = PermissionRevokeErrors[keyof PermissionRevokeErrors]
+export type VcsBranchOptionsError = VcsBranchOptionsErrors[keyof VcsBranchOptionsErrors]
 
-export type PermissionRevokeResponses = {
+export type VcsBranchOptionsResponses = {
   /**
-   * Revoked
+   * Branch options
    */
-  200: boolean
+  200: VcsBranchOptions
 }
 
-export type PermissionRevokeResponse = PermissionRevokeResponses[keyof PermissionRevokeResponses]
+export type VcsBranchOptionsResponse = VcsBranchOptionsResponses[keyof VcsBranchOptionsResponses]
 
-export type QuestionListData = {
+export type VcsBranchesData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/question"
+  url: "/vcs/branches"
 }
 
-export type QuestionListErrors = {
+export type VcsBranchesErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type QuestionListError = QuestionListErrors[keyof QuestionListErrors]
-
-export type QuestionListResponses = {
-  /**
-   * List of pending questions
-   */
-  200: Array<QuestionRequest>
-}
-
-export type QuestionListResponse = QuestionListResponses[keyof QuestionListResponses]
-
-export type QuestionReplyData = {
-  body: {
-    /**
-     * User answers in order of questions (each answer is an array of selected labels)
-     */
-    answers: Array<QuestionAnswer>
-  }
-  path: {
-    requestID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/question/{requestID}/reply"
-}
-
-export type QuestionReplyErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type QuestionReplyError = QuestionReplyErrors[keyof QuestionReplyErrors]
-
-export type QuestionReplyResponses = {
-  /**
-   * Question answered successfully
-   */
-  200: boolean
-}
-
-export type QuestionReplyResponse = QuestionReplyResponses[keyof QuestionReplyResponses]
-
-export type QuestionRejectData = {
-  body?: never
-  path: {
-    requestID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/question/{requestID}/reject"
-}
-
-export type QuestionRejectErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type QuestionRejectError = QuestionRejectErrors[keyof QuestionRejectErrors]
-
-export type QuestionRejectResponses = {
-  /**
-   * Question rejected successfully
-   */
-  200: boolean
-}
-
-export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
-
-export type ProviderListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/provider"
-}
-
-export type ProviderListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderListError = ProviderListErrors[keyof ProviderListErrors]
-
-export type ProviderListResponses = {
-  /**
-   * List of providers
-   */
-  200: {
-    all: Array<Provider>
-    default: {
-      [key: string]: string
-    }
-    connected: Array<string>
-  }
-}
-
-export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
-
-export type ProviderAuthData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/provider/auth"
-}
-
-export type ProviderAuthErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
     success: false
-    error: Array<unknown>
-    data: unknown
   }
 }
 
-export type ProviderAuthError2 = ProviderAuthErrors[keyof ProviderAuthErrors]
+export type VcsBranchesError = VcsBranchesErrors[keyof VcsBranchesErrors]
 
-export type ProviderAuthResponses = {
+export type VcsBranchesResponses = {
   /**
-   * Provider auth methods
+   * Branch names
    */
-  200: {
-    [key: string]: Array<ProviderAuthMethod>
-  }
+  200: Array<string>
 }
 
-export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
-
-export type ProviderCatalogRefreshData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/provider/catalog/refresh"
-}
-
-export type ProviderCatalogRefreshErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderCatalogRefreshError = ProviderCatalogRefreshErrors[keyof ProviderCatalogRefreshErrors]
-
-export type ProviderCatalogRefreshResponses = {
-  /**
-   * Whether the catalog was refreshed
-   */
-  200: boolean
-}
-
-export type ProviderCatalogRefreshResponse = ProviderCatalogRefreshResponses[keyof ProviderCatalogRefreshResponses]
-
-export type ProviderRefreshData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/provider/refresh"
-}
-
-export type ProviderRefreshErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderRefreshError = ProviderRefreshErrors[keyof ProviderRefreshErrors]
-
-export type ProviderRefreshResponses = {
-  /**
-   * Refresh completed
-   */
-  200: boolean
-}
-
-export type ProviderRefreshResponse = ProviderRefreshResponses[keyof ProviderRefreshResponses]
-
-export type ProviderRelayDiscoverData = {
-  body: {
-    baseURL: string
-    key: string
-    kind: "claude-code" | "codex" | "standard" | "custom"
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/provider/relay/discover"
-}
-
-export type ProviderRelayDiscoverErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderRelayDiscoverError = ProviderRelayDiscoverErrors[keyof ProviderRelayDiscoverErrors]
-
-export type ProviderRelayDiscoverResponses = {
-  /**
-   * Models the relay returned
-   */
-  200:
-    | {
-        models: Array<{
-          id: string
-          name: string
-          context?: number
-          output?: number
-          input?: Array<"text" | "audio" | "image" | "video" | "pdf">
-          outputModalities?: Array<"text" | "audio" | "image" | "video" | "pdf">
-          reasoning?: boolean
-          toolcall?: boolean
-          temperature?: boolean
-          status?: "active" | "deprecated" | "alpha" | "beta"
-          releaseDate?: string
-          cost?: {
-            input: number
-            output: number
-            cacheRead?: number
-            cacheWrite?: number
-            currency: "USD" | "CNY"
-            tiers?: Array<{
-              input: number
-              output: number
-              cacheRead?: number
-              cacheWrite?: number
-              above: number
-              thinking?: {
-                input: number
-                output: number
-                cacheRead?: number
-                cacheWrite?: number
-              }
-            }>
-            thinking?: {
-              input: number
-              output: number
-              cacheRead?: number
-              cacheWrite?: number
-            }
-          }
-          efforts?: Array<string>
-          canDisable?: boolean
-          defaultEffort?: string
-          contextFrom?: "relay" | "catalog" | "fallback"
-          outputFrom?: "relay" | "catalog" | "fallback"
-          endpoint?: "anthropic" | "openai-responses" | "openai-chat"
-        }>
-      }
-    | {
-        error: string
-      }
-}
-
-export type ProviderRelayDiscoverResponse = ProviderRelayDiscoverResponses[keyof ProviderRelayDiscoverResponses]
-
-export type ProviderVerifyData = {
-  body?: never
-  path: {
-    /**
-     * Provider ID
-     */
-    providerID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/provider/{providerID}/verify"
-}
-
-export type ProviderVerifyErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderVerifyError = ProviderVerifyErrors[keyof ProviderVerifyErrors]
-
-export type ProviderVerifyResponses = {
-  /**
-   * Verification result
-   */
-  200:
-    | {
-        ok: true
-        model: string
-      }
-    | {
-        ok: false
-        error: string
-      }
-}
-
-export type ProviderVerifyResponse = ProviderVerifyResponses[keyof ProviderVerifyResponses]
-
-export type ProviderOauthPromptData = {
-  body: {
-    /**
-     * Auth method index
-     */
-    method: number
-    inputs: {
-      [key: string]: string
-    }
-  }
-  path: {
-    /**
-     * Provider ID
-     */
-    providerID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/provider/{providerID}/oauth/prompt"
-}
-
-export type ProviderOauthPromptErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type ProviderOauthPromptError = ProviderOauthPromptErrors[keyof ProviderOauthPromptErrors]
-
-export type ProviderOauthPromptResponses = {
-  /**
-   * Next prompt
-   */
-  200: {
-    prompt?: ProviderAuthPrompt
-    error?: string
-  }
-}
-
-export type ProviderOauthPromptResponse = ProviderOauthPromptResponses[keyof ProviderOauthPromptResponses]
-
-export type ProviderOauthAuthorizeData = {
-  body: {
-    /**
-     * Auth method index
-     */
-    method: number
-    /**
-     * Answers to the method prompts (see provider.oauth.prompt)
-     */
-    inputs?: {
-      [key: string]: string
-    }
-  }
-  path: {
-    /**
-     * Provider ID
-     */
-    providerID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/provider/{providerID}/oauth/authorize"
-}
-
-export type ProviderOauthAuthorizeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type ProviderOauthAuthorizeError = ProviderOauthAuthorizeErrors[keyof ProviderOauthAuthorizeErrors]
-
-export type ProviderOauthAuthorizeResponses = {
-  /**
-   * Authorization URL and method
-   */
-  200: ProviderAuthAuthorization
-}
-
-export type ProviderOauthAuthorizeResponse = ProviderOauthAuthorizeResponses[keyof ProviderOauthAuthorizeResponses]
-
-export type ProviderOauthCallbackData = {
-  body: {
-    /**
-     * Auth method index
-     */
-    method: number
-    /**
-     * OAuth authorization code
-     */
-    code?: string
-  }
-  path: {
-    /**
-     * Provider ID
-     */
-    providerID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/provider/{providerID}/oauth/callback"
-}
-
-export type ProviderOauthCallbackErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type ProviderOauthCallbackError = ProviderOauthCallbackErrors[keyof ProviderOauthCallbackErrors]
-
-export type ProviderOauthCallbackResponses = {
-  /**
-   * OAuth callback processed successfully
-   */
-  200: boolean
-}
-
-export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
-
-export type PluginRemoveData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    name: string
-    /**
-     * Which config file to change (default project)
-     */
-    scope?: "project" | "global"
-  }
-  url: "/plugin"
-}
-
-export type PluginRemoveErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type PluginRemoveError = PluginRemoveErrors[keyof PluginRemoveErrors]
-
-export type PluginRemoveResponses = {
-  /**
-   * Whether the plugin was removed
-   */
-  200: boolean
-}
-
-export type PluginRemoveResponse = PluginRemoveResponses[keyof PluginRemoveResponses]
-
-export type PluginListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/plugin"
-}
-
-export type PluginListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type PluginListError = PluginListErrors[keyof PluginListErrors]
-
-export type PluginListResponses = {
-  /**
-   * Plugin runtime status
-   */
-  200: Array<{
-    id: string
-    spec: string
-    source: "internal" | "config"
-    status: "active" | "degraded" | "failed"
-    error?: string
-    tools: Array<string>
-  }>
-}
-
-export type PluginListResponse = PluginListResponses[keyof PluginListResponses]
-
-export type PluginAddData = {
-  body: {
-    specifier: string
-    /**
-     * Which config file to change (default project)
-     */
-    scope?: "project" | "global"
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/plugin"
-}
-
-export type PluginAddErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type PluginAddError = PluginAddErrors[keyof PluginAddErrors]
-
-export type PluginAddResponses = {
-  /**
-   * Plugin added
-   */
-  200: boolean
-}
-
-export type PluginAddResponse = PluginAddResponses[keyof PluginAddResponses]
-
-export type WorkflowListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    sessionID: string
-  }
-  url: "/workflow"
-}
-
-export type WorkflowListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type WorkflowListError = WorkflowListErrors[keyof WorkflowListErrors]
-
-export type WorkflowListResponses = {
-  /**
-   * Workflow runs
-   */
-  200: Array<WorkflowRun>
-}
-
-export type WorkflowListResponse = WorkflowListResponses[keyof WorkflowListResponses]
-
-export type WorkflowGetData = {
-  body?: never
-  path: {
-    sessionID: string
-    runId: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/workflow/{sessionID}/{runId}"
-}
-
-export type WorkflowGetErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type WorkflowGetError = WorkflowGetErrors[keyof WorkflowGetErrors]
-
-export type WorkflowGetResponses = {
-  /**
-   * Workflow run
-   */
-  200: WorkflowRun
-}
-
-export type WorkflowGetResponse = WorkflowGetResponses[keyof WorkflowGetResponses]
-
-export type WorkflowCancelData = {
-  body?: never
-  path: {
-    sessionID: string
-    runId: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/workflow/{sessionID}/{runId}/cancel"
-}
-
-export type WorkflowCancelErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type WorkflowCancelError = WorkflowCancelErrors[keyof WorkflowCancelErrors]
-
-export type WorkflowCancelResponses = {
-  /**
-   * Whether the workflow run was found and cancelled
-   */
-  200: boolean
-}
-
-export type WorkflowCancelResponse = WorkflowCancelResponses[keyof WorkflowCancelResponses]
-
-export type ReviewGetData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scope: ReviewScope
-    sessionID: string
-    messageID?: string
-  }
-  url: "/review"
-}
-
-export type ReviewGetErrors = {
-  /**
-   * The scope does not support this decision, or a required parameter is missing
-   */
-  400: ReviewInvalidError
-  /**
-   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
-   */
-  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
-}
-
-export type ReviewGetError = ReviewGetErrors[keyof ReviewGetErrors]
-
-export type ReviewGetResponses = {
-  /**
-   * Review
-   */
-  200: ReviewResult
-}
-
-export type ReviewGetResponse = ReviewGetResponses[keyof ReviewGetResponses]
-
-export type ReviewDecideData = {
-  body: {
-    scope: ReviewScope
-    sessionID: string
-    messageID?: string
-    expectedCheckout: string | null
-    decision: "accept" | "reject"
-    files: Array<{
-      file: string
-      version: string
-      hunks?: Array<string>
-    }>
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/review"
-}
-
-export type ReviewDecideErrors = {
-  /**
-   * The scope does not support this decision, or a required parameter is missing
-   */
-  400: ReviewInvalidError
-  /**
-   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
-   */
-  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
-}
-
-export type ReviewDecideError = ReviewDecideErrors[keyof ReviewDecideErrors]
-
-export type ReviewDecideResponses = {
-  /**
-   * Updated review
-   */
-  200: ReviewResult
-}
-
-export type ReviewDecideResponse = ReviewDecideResponses[keyof ReviewDecideResponses]
-
-export type ReviewFileData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scope: ReviewScope
-    sessionID: string
-    messageID?: string
-    file: string
-    version?: string
-    expectedCheckout?: string | null
-  }
-  url: "/review/file"
-}
-
-export type ReviewFileErrors = {
-  /**
-   * The scope does not support this decision, or a required parameter is missing
-   */
-  400: ReviewInvalidError
-  /**
-   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
-   */
-  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
-}
-
-export type ReviewFileError = ReviewFileErrors[keyof ReviewFileErrors]
-
-export type ReviewFileResponses = {
-  /**
-   * File hunks
-   */
-  200: ReviewFileDetail
-}
-
-export type ReviewFileResponse = ReviewFileResponses[keyof ReviewFileResponses]
-
-export type ReviewUndoData = {
-  body: {
-    scope: ReviewScope
-    sessionID: string
-    messageID?: string
-    expectedCheckout: string | null
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/review/undo"
-}
-
-export type ReviewUndoErrors = {
-  /**
-   * The scope does not support this decision, or a required parameter is missing
-   */
-  400: ReviewInvalidError
-  /**
-   * The checkout context, file or hunk is stale, or the checkout is switching; fetch the review again
-   */
-  409: ReviewStaleError | CheckoutStaleError | CheckoutBlockedError
-}
-
-export type ReviewUndoError = ReviewUndoErrors[keyof ReviewUndoErrors]
-
-export type ReviewUndoResponses = {
-  /**
-   * Updated review
-   */
-  200: ReviewResult
-}
-
-export type ReviewUndoResponse = ReviewUndoResponses[keyof ReviewUndoResponses]
+export type VcsBranchesResponse = VcsBranchesResponses[keyof VcsBranchesResponses]
 
 export type VcsChangesGetData = {
   body?: never
@@ -8700,1076 +10189,148 @@ export type VcsChangesUnstageResponses = {
 
 export type VcsChangesUnstageResponse = VcsChangesUnstageResponses[keyof VcsChangesUnstageResponses]
 
-export type McpManagementReadData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/mcp-management"
-}
-
-export type McpManagementReadErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type McpManagementReadError = McpManagementReadErrors[keyof McpManagementReadErrors]
-
-export type McpManagementReadResponses = {
-  /**
-   * Complete MCP management snapshot
-   */
-  200: {
-    servers: Array<{
-      name: string
-      scope: "project" | "global"
-      shadowed: Array<"project" | "global">
-      enabled: boolean
-      config: McpLocalConfig | McpRemoteConfig
-      status: McpStatus
-      tools: {
-        count: number
-        tools: Array<string>
-      }
-    }>
-  }
-}
-
-export type McpManagementReadResponse = McpManagementReadResponses[keyof McpManagementReadResponses]
-
-export type McpManagementChangeData = {
-  body:
-    | {
-        type: "add"
-        name: string
-        config: McpManagementLocalInput | McpManagementRemoteInput
-      }
-    | {
-        type: "replace"
-        name: string
-        config: McpManagementLocalInput | McpManagementRemoteInput
-      }
-    | {
-        type: "rename"
-        name: string
-        newName: string
-      }
-    | {
-        type: "remove"
-        name: string
-      }
-    | {
-        type: "set_enabled"
-        name: string
-        enabled: boolean
-      }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/mcp-management/change"
-}
-
-export type McpManagementChangeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type McpManagementChangeError = McpManagementChangeErrors[keyof McpManagementChangeErrors]
-
-export type McpManagementChangeResponses = {
-  /**
-   * MCP management result
-   */
-  200:
-    | {
-        ok: true
-        snapshot: {
-          servers: Array<{
-            name: string
-            scope: "project" | "global"
-            shadowed: Array<"project" | "global">
-            enabled: boolean
-            config: McpLocalConfig | McpRemoteConfig
-            status: McpStatus
-            tools: {
-              count: number
-              tools: Array<string>
-            }
-          }>
-        }
-      }
-    | {
-        ok: false
-        error: {
-          code:
-            | "already_exists"
-            | "not_found"
-            | "shadowed"
-            | "invalid_config"
-            | "runtime_connect_failed"
-            | "runtime_disconnect_failed"
-            | "config_write_failed"
-            | "compensation_failed"
-          message: string
-          facts: Array<{
-            stage: "runtime" | "config" | "compensation"
-            action: string
-            ok: boolean
-            message?: string
-          }>
-        }
-        snapshot?: {
-          servers: Array<{
-            name: string
-            scope: "project" | "global"
-            shadowed: Array<"project" | "global">
-            enabled: boolean
-            config: McpLocalConfig | McpRemoteConfig
-            status: McpStatus
-            tools: {
-              count: number
-              tools: Array<string>
-            }
-          }>
-        }
-      }
-}
-
-export type McpManagementChangeResponse = McpManagementChangeResponses[keyof McpManagementChangeResponses]
-
-export type RuleManagementReadData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/rule"
-}
-
-export type RuleManagementReadErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type RuleManagementReadError = RuleManagementReadErrors[keyof RuleManagementReadErrors]
-
-export type RuleManagementReadResponses = {
-  /**
-   * Complete rule management snapshot
-   */
-  200: RuleSnapshot
-}
-
-export type RuleManagementReadResponse = RuleManagementReadResponses[keyof RuleManagementReadResponses]
-
-export type RuleManagementChangeData = {
-  body:
-    | {
-        type: "user_add"
-        text: string
-      }
-    | {
-        type: "user_update"
-        index: number
-        text: string
-      }
-    | {
-        type: "user_remove"
-        index: number
-      }
-    | {
-        type: "file_create"
-        targetId: string
-        filename: string
-        fields?: RuleFields
-      }
-    | {
-        type: "file_write"
-        filepath: string
-        content: string
-      }
-    | {
-        type: "file_write_fields"
-        filepath: string
-        fields: RuleFields
-      }
-    | {
-        type: "file_delete"
-        filepath: string
-      }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/rule/change"
-}
-
-export type RuleManagementChangeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type RuleManagementChangeError = RuleManagementChangeErrors[keyof RuleManagementChangeErrors]
-
-export type RuleManagementChangeResponses = {
-  /**
-   * Rule management result
-   */
-  200:
-    | {
-        ok: true
-        snapshot: RuleSnapshot
-      }
-    | {
-        ok: false
-        error: RuleManageError
-        snapshot?: RuleSnapshot
-      }
-}
-
-export type RuleManagementChangeResponse = RuleManagementChangeResponses[keyof RuleManagementChangeResponses]
-
-export type FindTextData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    pattern: string
-  }
-  url: "/find"
-}
-
-export type FindTextErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FindTextError = FindTextErrors[keyof FindTextErrors]
-
-export type FindTextResponses = {
-  /**
-   * Matches
-   */
-  200: Array<{
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    absolute_offset: number
-    submatches: Array<{
-      match: {
-        text: string
-      }
-      start: number
-      end: number
-    }>
-  }>
-}
-
-export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
-
-export type FindFilesData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    query: string
-    dirs?: "true" | "false"
-    type?: "file" | "directory"
-    limit?: number
-  }
-  url: "/find/file"
-}
-
-export type FindFilesErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FindFilesError = FindFilesErrors[keyof FindFilesErrors]
-
-export type FindFilesResponses = {
-  /**
-   * File paths
-   */
-  200: Array<string>
-}
-
-export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
-
-export type FindSymbolsData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    query: string
-  }
-  url: "/find/symbol"
-}
-
-export type FindSymbolsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FindSymbolsError = FindSymbolsErrors[keyof FindSymbolsErrors]
-
-export type FindSymbolsResponses = {
-  /**
-   * Symbols
-   */
-  200: Array<Symbol>
-}
-
-export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
-
-export type FileDeleteData = {
+export type VcsCommitData = {
   body: {
-    path: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/file"
-}
-
-export type FileDeleteErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * The checkout is switching branches
-   */
-  409: CheckoutBlockedError
-}
-
-export type FileDeleteError = FileDeleteErrors[keyof FileDeleteErrors]
-
-export type FileDeleteResponses = {
-  /**
-   * Deleted successfully
-   */
-  200: {
-    ok: boolean
-  }
-}
-
-export type FileDeleteResponse = FileDeleteResponses[keyof FileDeleteResponses]
-
-export type FileListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-  }
-  url: "/file"
-}
-
-export type FileListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FileListError = FileListErrors[keyof FileListErrors]
-
-export type FileListResponses = {
-  /**
-   * Files and directories
-   */
-  200: Array<FileNode>
-}
-
-export type FileListResponse = FileListResponses[keyof FileListResponses]
-
-export type FileReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-  }
-  url: "/file/content"
-}
-
-export type FileReadErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FileReadError = FileReadErrors[keyof FileReadErrors]
-
-export type FileReadResponses = {
-  /**
-   * File content
-   */
-  200: FileContent
-}
-
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
-
-export type FileWriteData = {
-  body: {
-    path: string
-    content: string
-    checksum?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/file/content"
-}
-
-export type FileWriteErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * The file changed or its checkout is switching branches
-   */
-  409:
-    | CheckoutBlockedError
-    | {
-        error: string
-        currentChecksum: string
-      }
-}
-
-export type FileWriteError = FileWriteErrors[keyof FileWriteErrors]
-
-export type FileWriteResponses = {
-  /**
-   * File written successfully
-   */
-  200: {
-    ok: boolean
-  }
-}
-
-export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
-
-export type FileStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/file/status"
-}
-
-export type FileStatusErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FileStatusError = FileStatusErrors[keyof FileStatusErrors]
-
-export type FileStatusResponses = {
-  /**
-   * File status
-   */
-  200: Array<File>
-}
-
-export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
-
-export type McpStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/mcp"
-}
-
-export type McpStatusErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type McpStatusError = McpStatusErrors[keyof McpStatusErrors]
-
-export type McpStatusResponses = {
-  /**
-   * MCP server status
-   */
-  200: {
-    [key: string]: McpStatus
-  }
-}
-
-export type McpStatusResponse = McpStatusResponses[keyof McpStatusResponses]
-
-export type McpAddData = {
-  body: {
-    name: string
-    config: McpLocalConfig | McpRemoteConfig
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/mcp"
-}
-
-export type McpAddErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type McpAddError = McpAddErrors[keyof McpAddErrors]
-
-export type McpAddResponses = {
-  /**
-   * MCP server added successfully
-   */
-  200: {
-    [key: string]: McpStatus
-  }
-}
-
-export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
-
-export type McpConnectData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/connect"
-}
-
-export type McpConnectErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type McpConnectError = McpConnectErrors[keyof McpConnectErrors]
-
-export type McpConnectResponses = {
-  /**
-   * MCP server connected successfully
-   */
-  200: boolean
-}
-
-export type McpConnectResponse = McpConnectResponses[keyof McpConnectResponses]
-
-export type McpDisconnectData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/disconnect"
-}
-
-export type McpDisconnectErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type McpDisconnectError = McpDisconnectErrors[keyof McpDisconnectErrors]
-
-export type McpDisconnectResponses = {
-  /**
-   * MCP server disconnected successfully
-   */
-  200: boolean
-}
-
-export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
-
-export type McpAuthRemoveData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/auth"
-}
-
-export type McpAuthRemoveErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type McpAuthRemoveError = McpAuthRemoveErrors[keyof McpAuthRemoveErrors]
-
-export type McpAuthRemoveResponses = {
-  /**
-   * OAuth credentials removed
-   */
-  200: McpAuthRemove
-}
-
-export type McpAuthRemoveResponse = McpAuthRemoveResponses[keyof McpAuthRemoveResponses]
-
-export type McpAuthStartData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/auth"
-}
-
-export type McpAuthStartErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type McpAuthStartError = McpAuthStartErrors[keyof McpAuthStartErrors]
-
-export type McpAuthStartResponses = {
-  /**
-   * OAuth flow started
-   */
-  200: McpAuthStart
-}
-
-export type McpAuthStartResponse = McpAuthStartResponses[keyof McpAuthStartResponses]
-
-export type McpAuthCallbackData = {
-  body: {
-    code: string
-  }
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/auth/callback"
-}
-
-export type McpAuthCallbackErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type McpAuthCallbackError = McpAuthCallbackErrors[keyof McpAuthCallbackErrors]
-
-export type McpAuthCallbackResponses = {
-  /**
-   * OAuth authentication completed
-   */
-  200: McpStatus
-}
-
-export type McpAuthCallbackResponse = McpAuthCallbackResponses[keyof McpAuthCallbackResponses]
-
-export type McpAuthWaitData = {
-  body: {
-    state: string
-  }
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/auth/wait"
-}
-
-export type McpAuthWaitErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-  /**
-   * Not found
-   */
-  404: ErrorResponse
-}
-
-export type McpAuthWaitError = McpAuthWaitErrors[keyof McpAuthWaitErrors]
-
-export type McpAuthWaitResponses = {
-  /**
-   * OAuth authentication completed
-   */
-  200: McpStatus
-}
-
-export type McpAuthWaitResponse = McpAuthWaitResponses[keyof McpAuthWaitResponses]
-
-export type McpRemoveData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-    scope?: "project" | "global"
-  }
-  url: "/mcp/{name}"
-}
-
-export type McpRemoveErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type McpRemoveError = McpRemoveErrors[keyof McpRemoveErrors]
-
-export type McpRemoveResponses = {
-  /**
-   * MCP server removed
-   */
-  200: boolean
-}
-
-export type McpRemoveResponse = McpRemoveResponses[keyof McpRemoveResponses]
-
-export type AssistCommitMessageData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/assist/commit-message"
-}
-
-export type AssistCommitMessageErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AssistCommitMessageError = AssistCommitMessageErrors[keyof AssistCommitMessageErrors]
-
-export type AssistCommitMessageResponses = {
-  /**
-   * Generated commit message
-   */
-  200: {
+    all?: boolean
     message: string
-    error?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/commit"
+}
+
+export type VcsCommitErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type VcsCommitError = VcsCommitErrors[keyof VcsCommitErrors]
+
+export type VcsCommitResponses = {
+  /**
+   * Commit result
+   */
+  200: VcsCommitResult
+}
+
+export type VcsCommitResponse = VcsCommitResponses[keyof VcsCommitResponses]
+
+export type VcsDiffData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    mode?: "branch" | "git" | "last-turn"
+    context?: number
+  }
+  url: "/vcs/diff"
+}
+
+export type VcsDiffErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
-export type AssistCommitMessageResponse = AssistCommitMessageResponses[keyof AssistCommitMessageResponses]
+export type VcsDiffError = VcsDiffErrors[keyof VcsDiffErrors]
 
-export type AssistInlineEditData = {
+export type VcsDiffResponses = {
+  /**
+   * VCS diff
+   */
+  200: Array<VcsFileDiff>
+}
+
+export type VcsDiffResponse = VcsDiffResponses[keyof VcsDiffResponses]
+
+export type VcsPushData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/vcs/push"
+}
+
+export type VcsPushErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type VcsPushError = VcsPushErrors[keyof VcsPushErrors]
+
+export type VcsPushResponses = {
+  /**
+   * Push result
+   */
+  200: VcsPushResult
+}
+
+export type VcsPushResponse = VcsPushResponses[keyof VcsPushResponses]
+
+export type VcsRunData = {
   body: {
-    instruction: string
-    selectedText: string
-    language?: string
-    path?: string
-    providerID?: string
-    modelID?: string
+    args: Array<string>
   }
   path?: never
   query?: {
     directory?: string
   }
-  url: "/assist/inline-edit"
+  url: "/vcs/run"
 }
 
-export type AssistInlineEditErrors = {
+export type VcsRunErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type AssistInlineEditError = AssistInlineEditErrors[keyof AssistInlineEditErrors]
-
-export type AssistInlineEditResponses = {
-  /**
-   * Replacement text for the selection
-   */
-  200: {
-    text: string
-    providerID?: string
-    modelID?: string
-    error?: string
-  }
-}
-
-export type AssistInlineEditResponse = AssistInlineEditResponses[keyof AssistInlineEditResponses]
-
-export type InstanceDisposeData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/instance/dispose"
-}
-
-export type InstanceDisposeErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type InstanceDisposeError = InstanceDisposeErrors[keyof InstanceDisposeErrors]
-
-export type InstanceDisposeResponses = {
-  /**
-   * Instance disposed
-   */
-  200: boolean
-}
-
-export type InstanceDisposeResponse = InstanceDisposeResponses[keyof InstanceDisposeResponses]
-
-export type PathGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/path"
-}
-
-export type PathGetErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
     success: false
-    error: Array<unknown>
-    data: unknown
   }
-}
-
-export type PathGetError = PathGetErrors[keyof PathGetErrors]
-
-export type PathGetResponses = {
   /**
-   * Path
+   * Checkout is busy or the request conflicts with its current state
    */
-  200: Path
+  409: ErrorResponse
 }
 
-export type PathGetResponse = PathGetResponses[keyof PathGetResponses]
+export type VcsRunError = VcsRunErrors[keyof VcsRunErrors]
 
-export type VcsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/vcs"
-}
-
-export type VcsGetErrors = {
+export type VcsRunResponses = {
   /**
-   * Validation Error
+   * Command output
    */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
+  200: VcsRunResult
 }
 
-export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
-
-export type VcsGetResponses = {
-  /**
-   * VCS info
-   */
-  200: VcsInfo
-}
-
-export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
-
-export type VcsBranchesData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/vcs/branches"
-}
-
-export type VcsBranchesErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type VcsBranchesError = VcsBranchesErrors[keyof VcsBranchesErrors]
-
-export type VcsBranchesResponses = {
-  /**
-   * Branch names
-   */
-  200: Array<string>
-}
-
-export type VcsBranchesResponse = VcsBranchesResponses[keyof VcsBranchesResponses]
-
-export type VcsBranchOptionsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/vcs/branch-options"
-}
-
-export type VcsBranchOptionsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type VcsBranchOptionsError = VcsBranchOptionsErrors[keyof VcsBranchOptionsErrors]
-
-export type VcsBranchOptionsResponses = {
-  /**
-   * Branch options
-   */
-  200: VcsBranchOptions
-}
-
-export type VcsBranchOptionsResponse = VcsBranchOptionsResponses[keyof VcsBranchOptionsResponses]
+export type VcsRunResponse = VcsRunResponses[keyof VcsRunResponses]
 
 export type VcsSwitchBranchData = {
   body: {
@@ -9805,663 +10366,102 @@ export type VcsSwitchBranchResponses = {
 
 export type VcsSwitchBranchResponse = VcsSwitchBranchResponses[keyof VcsSwitchBranchResponses]
 
-export type VcsPushData = {
+export type WorkflowListData = {
   body?: never
   path?: never
-  query?: {
+  query: {
     directory?: string
+    sessionID: string
   }
-  url: "/vcs/push"
+  url: "/workflow"
 }
 
-export type VcsPushErrors = {
+export type WorkflowListErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type VcsPushError = VcsPushErrors[keyof VcsPushErrors]
-
-export type VcsPushResponses = {
-  /**
-   * Push result
-   */
-  200: VcsPushResult
-}
-
-export type VcsPushResponse = VcsPushResponses[keyof VcsPushResponses]
-
-export type VcsRunData = {
-  body: {
-    args: Array<string>
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/vcs/run"
-}
-
-export type VcsRunErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
+    success: false
   }
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
 }
 
-export type VcsRunError = VcsRunErrors[keyof VcsRunErrors]
+export type WorkflowListError = WorkflowListErrors[keyof WorkflowListErrors]
 
-export type VcsRunResponses = {
+export type WorkflowListResponses = {
   /**
-   * Command output
+   * Workflow runs
    */
-  200: VcsRunResult
+  200: Array<WorkflowRun>
 }
 
-export type VcsRunResponse = VcsRunResponses[keyof VcsRunResponses]
+export type WorkflowListResponse = WorkflowListResponses[keyof WorkflowListResponses]
 
-export type SandboxStatusData = {
+export type WorkflowGetData = {
   body?: never
-  path?: never
+  path: {
+    sessionID: string
+    runId: string
+  }
   query?: {
     directory?: string
   }
-  url: "/sandbox"
+  url: "/workflow/{sessionID}/{runId}"
 }
 
-export type SandboxStatusErrors = {
+export type WorkflowGetErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
+    error: Array<unknown>
+    success: false
   }
 }
 
-export type SandboxStatusError = SandboxStatusErrors[keyof SandboxStatusErrors]
+export type WorkflowGetError = WorkflowGetErrors[keyof WorkflowGetErrors]
 
-export type SandboxStatusResponses = {
+export type WorkflowGetResponses = {
   /**
-   * Sandbox status
+   * Workflow run
    */
-  200: SandboxStatus
+  200: WorkflowRun
 }
 
-export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
+export type WorkflowGetResponse = WorkflowGetResponses[keyof WorkflowGetResponses]
 
-export type SandboxInstallData = {
+export type WorkflowCancelData = {
   body?: never
-  path?: never
+  path: {
+    sessionID: string
+    runId: string
+  }
   query?: {
     directory?: string
   }
-  url: "/sandbox/install"
+  url: "/workflow/{sessionID}/{runId}/cancel"
 }
 
-export type SandboxInstallErrors = {
+export type WorkflowCancelErrors = {
   /**
    * Validation Error
    */
   400: {
-    success: false
-    error: Array<unknown>
     data: unknown
-  }
-}
-
-export type SandboxInstallError = SandboxInstallErrors[keyof SandboxInstallErrors]
-
-export type SandboxInstallResponses = {
-  /**
-   * Sandbox status after the install
-   */
-  200: SandboxStatus
-}
-
-export type SandboxInstallResponse = SandboxInstallResponses[keyof SandboxInstallResponses]
-
-export type SandboxResetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/sandbox/reset"
-}
-
-export type SandboxResetErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
     error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type SandboxResetError = SandboxResetErrors[keyof SandboxResetErrors]
-
-export type SandboxResetResponses = {
-  /**
-   * Sandbox status after the reset
-   */
-  200: SandboxStatus
-}
-
-export type SandboxResetResponse = SandboxResetResponses[keyof SandboxResetResponses]
-
-export type VcsDiffData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    mode?: "git" | "branch" | "last-turn"
-    context?: number
-  }
-  url: "/vcs/diff"
-}
-
-export type VcsDiffErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
     success: false
-    error: Array<unknown>
-    data: unknown
   }
 }
 
-export type VcsDiffError = VcsDiffErrors[keyof VcsDiffErrors]
+export type WorkflowCancelError = WorkflowCancelErrors[keyof WorkflowCancelErrors]
 
-export type VcsDiffResponses = {
+export type WorkflowCancelResponses = {
   /**
-   * VCS diff
-   */
-  200: Array<VcsFileDiff>
-}
-
-export type VcsDiffResponse = VcsDiffResponses[keyof VcsDiffResponses]
-
-export type VcsCommitData = {
-  body: {
-    message: string
-    all?: boolean
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/vcs/commit"
-}
-
-export type VcsCommitErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-  /**
-   * Checkout is busy or the request conflicts with its current state
-   */
-  409: ErrorResponse
-}
-
-export type VcsCommitError = VcsCommitErrors[keyof VcsCommitErrors]
-
-export type VcsCommitResponses = {
-  /**
-   * Commit result
-   */
-  200: VcsCommitResult
-}
-
-export type VcsCommitResponse = VcsCommitResponses[keyof VcsCommitResponses]
-
-export type CommandListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/command"
-}
-
-export type CommandListErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type CommandListError = CommandListErrors[keyof CommandListErrors]
-
-export type CommandListResponses = {
-  /**
-   * List of commands
-   */
-  200: Array<Command>
-}
-
-export type CommandListResponse = CommandListResponses[keyof CommandListResponses]
-
-export type AppLogData = {
-  body: {
-    /**
-     * Client component
-     */
-    component?: "web" | "desktop"
-    /**
-     * Service name for the log entry
-     */
-    service: string
-    /**
-     * Log level
-     */
-    level: "debug" | "info" | "error" | "warn"
-    /**
-     * Log message
-     */
-    message: string
-    /**
-     * Client run identifier
-     */
-    run_id?: string
-    /**
-     * Client record sequence
-     */
-    sequence?: number
-    /**
-     * Additional metadata for the log entry
-     */
-    extra?: {
-      [key: string]: unknown
-    }
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/log"
-}
-
-export type AppLogErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type AppLogError = AppLogErrors[keyof AppLogErrors]
-
-export type AppLogResponses = {
-  /**
-   * Log entry written successfully
+   * Whether the workflow run was found and cancelled
    */
   200: boolean
 }
 
-export type AppLogResponse = AppLogResponses[keyof AppLogResponses]
-
-export type AppAgentsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/agent"
-}
-
-export type AppAgentsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AppAgentsError = AppAgentsErrors[keyof AppAgentsErrors]
-
-export type AppAgentsResponses = {
-  /**
-   * List of agents
-   */
-  200: Array<Agent>
-}
-
-export type AppAgentsResponse = AppAgentsResponses[keyof AppAgentsResponses]
-
-export type AppAgentGenerateData = {
-  body: {
-    description: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/agent/generate"
-}
-
-export type AppAgentGenerateErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type AppAgentGenerateError = AppAgentGenerateErrors[keyof AppAgentGenerateErrors]
-
-export type AppAgentGenerateResponses = {
-  /**
-   * Generated agent
-   */
-  200: {
-    identifier: string
-    whenToUse: string
-    systemPrompt: string
-  }
-}
-
-export type AppAgentGenerateResponse = AppAgentGenerateResponses[keyof AppAgentGenerateResponses]
-
-export type AppSkillsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/skill"
-}
-
-export type AppSkillsErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type AppSkillsError = AppSkillsErrors[keyof AppSkillsErrors]
-
-export type AppSkillsResponses = {
-  /**
-   * List of skills
-   */
-  200: Array<{
-    name: string
-    description: string
-    location: string
-    content: string
-    scope?: "global" | "project" | "builtin"
-  }>
-}
-
-export type AppSkillsResponse = AppSkillsResponses[keyof AppSkillsResponses]
-
-export type SkillInstallListData = {
-  body: {
-    source: string
-    token?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/skill-install/list"
-}
-
-export type SkillInstallListErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type SkillInstallListError = SkillInstallListErrors[keyof SkillInstallListErrors]
-
-export type SkillInstallListResponses = {
-  /**
-   * Source and list of skills
-   */
-  200: {
-    source:
-      | {
-          type: "github"
-          url: string
-          owner: string
-          repo: string
-          branch?: string
-        }
-      | {
-          type: "url"
-          url: string
-        }
-    skills: Array<{
-      name: string
-      description: string
-      repoPath: string
-      path?: string
-      files: Array<string>
-    }>
-  }
-}
-
-export type SkillInstallListResponse = SkillInstallListResponses[keyof SkillInstallListResponses]
-
-export type SkillInstallInstallData = {
-  body: {
-    source:
-      | {
-          type: "github"
-          url: string
-          owner: string
-          repo: string
-          branch?: string
-        }
-      | {
-          type: "url"
-          url: string
-        }
-    skills: Array<{
-      name: string
-      description: string
-      repoPath: string
-      path?: string
-      files: Array<string>
-    }>
-    target: "project" | "global"
-    directory?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/skill-install/install"
-}
-
-export type SkillInstallInstallErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type SkillInstallInstallError = SkillInstallInstallErrors[keyof SkillInstallInstallErrors]
-
-export type SkillInstallInstallResponses = {
-  /**
-   * Install result
-   */
-  200: {
-    installed: Array<string>
-    failed: Array<{
-      name: string
-      error: string
-    }>
-  }
-}
-
-export type SkillInstallInstallResponse = SkillInstallInstallResponses[keyof SkillInstallInstallResponses]
-
-export type SkillUninstallData = {
-  body: {
-    name: string
-    location: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/skill-uninstall"
-}
-
-export type SkillUninstallErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorResponse
-}
-
-export type SkillUninstallError = SkillUninstallErrors[keyof SkillUninstallErrors]
-
-export type SkillUninstallResponses = {
-  /**
-   * Uninstall result
-   */
-  200: {
-    name: string
-    deleted: boolean
-  }
-}
-
-export type SkillUninstallResponse = SkillUninstallResponses[keyof SkillUninstallResponses]
-
-export type LspStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/lsp"
-}
-
-export type LspStatusErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type LspStatusError = LspStatusErrors[keyof LspStatusErrors]
-
-export type LspStatusResponses = {
-  /**
-   * LSP server status
-   */
-  200: Array<LspStatus>
-}
-
-export type LspStatusResponse = LspStatusResponses[keyof LspStatusResponses]
-
-export type FormatterStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/formatter"
-}
-
-export type FormatterStatusErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type FormatterStatusError = FormatterStatusErrors[keyof FormatterStatusErrors]
-
-export type FormatterStatusResponses = {
-  /**
-   * Formatter status
-   */
-  200: Array<FormatterStatus>
-}
-
-export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
-
-export type EventSubscribeData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/event"
-}
-
-export type EventSubscribeErrors = {
-  /**
-   * Validation Error
-   */
-  400: {
-    success: false
-    error: Array<unknown>
-    data: unknown
-  }
-}
-
-export type EventSubscribeError = EventSubscribeErrors[keyof EventSubscribeErrors]
-
-export type EventSubscribeResponses = {
-  /**
-   * Event stream
-   */
-  200: Event
-}
-
-export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscribeResponses]
+export type WorkflowCancelResponse = WorkflowCancelResponses[keyof WorkflowCancelResponses]

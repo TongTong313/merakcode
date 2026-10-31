@@ -346,15 +346,13 @@ test.describe("disabled group products", () => {
 })
 
 test.describe("the entry to a team", () => {
-  test("Ctrl+G, the sidebar and the palette all open the new-team dialog, which says what a team is", async ({
-    kit,
-  }) => {
+  test("the native shortcut, sidebar and palette open the new-team dialog, which explains teams", async ({ kit }) => {
     const { page } = kit
     const dialog = page.getByRole("dialog", { name: "新建协作群" })
     const entry = page.getByRole("button", { name: /^新建协作群/ })
-    await expect(entry).toContainText("Ctrl G")
+    await expect(entry).toContainText(process.platform === "darwin" ? "⌘ G" : "Ctrl G")
 
-    await page.keyboard.press("Control+G")
+    await page.keyboard.press("ControlOrMeta+G")
     await expect(dialog).toContainText("让 MerakCode 当群主，拉上 Claude Code、Codex 等一起干活")
     await page.keyboard.press("Escape")
     await expect(dialog).toHaveCount(0)
@@ -363,7 +361,7 @@ test.describe("the entry to a team", () => {
     await expect(dialog).toBeVisible()
     await page.keyboard.press("Escape")
 
-    await page.keyboard.press("Control+K")
+    await page.keyboard.press("ControlOrMeta+K")
     await page.keyboard.type("协作")
     await page.getByRole("option", { name: /新建协作群/ }).click()
     await expect(dialog).toBeVisible()

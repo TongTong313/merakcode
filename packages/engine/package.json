@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit && tsc --project tsconfig.sandbox.json",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "test:sandbox": "vitest run --config vitest.sandbox.config.ts"
+    "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
+    "test:sandbox:external": "vitest run --config vitest.sandbox-external.config.ts"
   },
   "exports": {
     "./host": "./src/app/host/index.ts",

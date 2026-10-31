@@ -65,7 +65,7 @@ test("the sidebar marks a conversation awaiting approval, and opening it allows 
 test("command palette opens with Ctrl+K and runs the typed command on Enter", async ({ kit }) => {
   await kit.send("快任务")
   await expect(kit.text("回复：快任务")).toBeVisible({ timeout: 60_000 })
-  await kit.page.keyboard.press("Control+K")
+  await kit.page.keyboard.press("ControlOrMeta+K")
   const palette = kit.page.getByRole("dialog", { name: "命令面板" })
   await expect(palette).toBeVisible()
   await palette.getByRole("combobox").fill("新对话")

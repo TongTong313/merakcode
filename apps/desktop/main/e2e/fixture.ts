@@ -244,6 +244,7 @@ export const test = base.extend<{
       executablePath: electron,
       args: [
         main,
+        ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
         `--user-data-dir=${path.join(root, "electron")}`,
         `merakcode://open-project?directory=${encodeURIComponent(project)}`,
       ],

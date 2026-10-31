@@ -50,6 +50,7 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 | `check:schema`          | `schema/config.json` 是最新的                                   |
 | `check:errors`          | `docs/errors.md` 是最新的                                       |
 | `check:adapter-library` | 单文件适配器开发库、它的类型声明和适配器示例是最新的            |
+| `check:sdk`             | 在临时目录重新生成，确认 OpenAPI 和 SDK 客户端与服务端一致      |
 | `typecheck`             | 各个包的类型                                                    |
 | `check:deps`            | 依赖边界，见[边界规则](#边界规则)                               |
 | `check:css`             | 桌面端的 CSS 里没有 `!important`                                |
@@ -59,9 +60,11 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 | `check:docs`            | 文档里写的 `merak` 命令都真的存在                               |
 | `check:unused`          | 没用到的文件、导出和依赖（knip）                                |
 
-`pnpm check` 不跑测试。CI 在它之后还会跑 `pnpm test:script`、每个包在三个系统上的测试、沙箱一致性测试、打包后的冒烟测试和端到端测试（见 `.github/workflows/ci.yml`）。
+`pnpm check` 不跑测试。CI 在 Windows、macOS、Linux 上分别运行 `pnpm test:script`、每个包的测试、沙箱一致性测试、CLI 与 SDK npm 包消费测试、桌面生产目录包冒烟和端到端测试（见 `.github/workflows/ci.yml`）。非桌面任务跳过 Electron 下载；系统沙箱一致性用例只在完成初始化的独立任务里运行一次。
 
-`pnpm check` 也不检查 SDK 客户端是不是最新的：改了服务端接口却忘了跑 `pnpm generate:sdk`，检查照样能过。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
+`pnpm check:sdk` 在临时目录生成 OpenAPI 和 SDK 客户端，比较文件内容及增删；忽略换行差异，生成前稳定 schema 顺序。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
+
+常规门禁使用本地假模型和本地 HTTP fixture。性能阈值与外部网络隔离只在 Actions 的 **Manual regression** 工作流中手动运行，三个系统各跑一遍，不阻塞 PR 或发布。选择 `external-network` 时，必须提供宿主机可达的外部 TCP 目标 `http://host:port`；目标不可达会失败，不会被记为隔离成功。本地入口是 `apps/cli` 的 `pnpm test:perf` 和 `packages/engine` 的 `pnpm test:sandbox:external`（设置 `MERAKCODE_SANDBOX_EXTERNAL_TARGET`，Windows 先初始化沙箱）。
 
 ## 代码是怎么组织的
 
@@ -251,27 +254,30 @@ All from the repo root:
 
 `pnpm check` runs these scripts in order; each can also run on its own (`pnpm <script>`):
 
-| Script                  | What it checks                                                                            |
-| ----------------------- | ----------------------------------------------------------------------------------------- |
-| `format:check`          | Prettier formatting                                                                       |
-| `check:brand`           | No old product names or unfilled placeholders                                             |
-| `check:comments`        | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions) |
-| `check:versions`        | Every package has the same version                                                        |
-| `check:schema`          | `schema/config.json` is up to date                                                        |
-| `check:errors`          | `docs/errors.md` is up to date                                                            |
-| `check:adapter-library` | The single-file adapter library, its types and the adapter examples are up to date        |
-| `typecheck`             | Types in every package                                                                    |
-| `check:deps`            | Dependency boundaries; see [Boundary rules](#boundary-rules)                              |
-| `check:css`             | No `!important` in the desktop CSS                                                        |
-| `check:api`             | The SDK API matches the snapshot in `packages/sdk/js/api.md`                              |
-| `check:sdk-reference`   | `docs/sdk/reference.md` is up to date                                                     |
-| `check:sdk-docs`        | The SDK guide mentions every public export and its code compiles                          |
-| `check:docs`            | Every `merak` command in the docs exists                                                  |
-| `check:unused`          | Unused files, exports and dependencies (knip)                                             |
+| Script                  | What it checks                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `format:check`          | Prettier formatting                                                                         |
+| `check:brand`           | No old product names or unfilled placeholders                                               |
+| `check:comments`        | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)   |
+| `check:versions`        | Every package has the same version                                                          |
+| `check:schema`          | `schema/config.json` is up to date                                                          |
+| `check:errors`          | `docs/errors.md` is up to date                                                              |
+| `check:adapter-library` | The single-file adapter library, its types and the adapter examples are up to date          |
+| `check:sdk`             | OpenAPI and the generated SDK client match the server, regenerated in a temporary directory |
+| `typecheck`             | Types in every package                                                                      |
+| `check:deps`            | Dependency boundaries; see [Boundary rules](#boundary-rules)                                |
+| `check:css`             | No `!important` in the desktop CSS                                                          |
+| `check:api`             | The SDK API matches the snapshot in `packages/sdk/js/api.md`                                |
+| `check:sdk-reference`   | `docs/sdk/reference.md` is up to date                                                       |
+| `check:sdk-docs`        | The SDK guide mentions every public export and its code compiles                            |
+| `check:docs`            | Every `merak` command in the docs exists                                                    |
+| `check:unused`          | Unused files, exports and dependencies (knip)                                               |
 
-`pnpm check` runs no tests. After it, CI also runs `pnpm test:script`, every package's tests on all three systems, the sandbox conformance tests, a smoke test of the packaged build and the end-to-end tests (see `.github/workflows/ci.yml`).
+`pnpm check` runs no tests. CI runs repository scripts, every package's tests, sandbox conformance, CLI and SDK npm consumer checks, production desktop directory smoke tests and end-to-end tests on Windows, macOS and Linux (see `.github/workflows/ci.yml`). Non-desktop jobs skip downloading Electron; OS conformance runs once in its initialized, dedicated job.
 
-`pnpm check` does not check that the SDK client is up to date either: if you change a server route and forget `pnpm generate:sdk`, it still passes. Don't edit generated files by hand; change the source and run the matching `generate` command.
+`pnpm check:sdk` regenerates OpenAPI and the SDK client in a temporary directory and compares content, added files and deleted files. It ignores line-ending differences and stabilizes schema order before generation. Don't edit generated files by hand; change the source and run the matching `generate` command.
+
+Regular gates use local fake models and HTTP fixtures. Timing thresholds and external network isolation run only through the manually dispatched **Manual regression** workflow, on all three systems, outside PR and release gates. For `external-network`, supply a reachable external TCP control endpoint as `http://host:port`; an unreachable endpoint fails rather than counting as successful isolation. Local entry points are `pnpm test:perf` in `apps/cli` and `pnpm test:sandbox:external` in `packages/engine` (set `MERAKCODE_SANDBOX_EXTERNAL_TARGET`; initialize the Windows sandbox first).
 
 ## How the code is organized
 

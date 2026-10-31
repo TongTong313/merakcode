@@ -72,7 +72,7 @@ test("unsaved editor contents survive closing the code panel and still block bra
   const editor = panel.getByRole("code")
   await expect(editor).toContainText("hello from e2e")
   await editor.click()
-  await kit.page.keyboard.press("Control+End")
+  await kit.page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End")
   await kit.page.keyboard.type("unsaved branch draft")
   const held: { release: () => void; done: Promise<void> }[] = []
   let capture = true

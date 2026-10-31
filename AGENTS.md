@@ -16,11 +16,11 @@ Monorepo for MerakCode, an AI coding tool: an Electron desktop app (the main pro
 
 When continuing the architecture refactor, read [docs/architecture-refactor.md](docs/architecture-refactor.md) for the approved decisions, batch status, and commit approval requirement.
 
-- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:schema`, `check:errors`, `check:adapter-library`, `typecheck`, `check:deps`, `check:css`, `check:api`, `check:sdk-reference`, `check:sdk-docs`, `check:docs` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). Run it before finishing a change. It runs no tests; CI also runs `pnpm test:script` and the tests of every package.
+- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:schema`, `check:errors`, `check:adapter-library`, `check:sdk`, `typecheck`, `check:deps`, `check:css`, `check:api`, `check:sdk-reference`, `check:sdk-docs`, `check:docs` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). Run it before finishing a change. It runs no tests; CI also runs `pnpm test:script` and the tests of every package on Windows, macOS and Linux.
 - Tests run per package: `cd <package> && pnpm test [file]`. `pnpm test` at the root only fails; the root `script/` folder is tested with `pnpm test:script`.
 - Tests need `rg` (ripgrep) on PATH; without it every test process downloads its own copy from GitHub.
 - End-to-end tests use real processes and a local fake model: `apps/cli` → `pnpm test:e2e` (the engine driven through the SDK); `apps/desktop/main` → `pnpm test:e2e` (launches the Electron app; build main and renderer first). Desktop development and these tests run the engine sources with the `node` on PATH, so it must be 26.12+ as well.
-- Never edit generated files; regenerate them. After changing a route: `pnpm generate:sdk`, then `pnpm generate:sdk-reference`, and `pnpm check:api --write` if the SDK API snapshot changed (`pnpm check` does not notice a stale SDK client). After config options: `pnpm generate:schema`. After error codes: `pnpm generate:errors`. After `@merakcode/sdk/adapter` or a built-in adapter: `pnpm generate:adapter-library`.
+- Never edit generated files; regenerate them. After changing a route: `pnpm generate:sdk`, then `pnpm generate:sdk-reference`, and `pnpm check:api --write` if the SDK API snapshot changed. `pnpm check:sdk` regenerates in a temporary directory and rejects stale OpenAPI or client files. After config options: `pnpm generate:schema`. After error codes: `pnpm generate:errors`. After `@merakcode/sdk/adapter` or a built-in adapter: `pnpm generate:adapter-library`.
 
 ## Conventions
 

@@ -5,6 +5,7 @@ export default config({
   include: ["src/**/*.test.ts", "test/**/*.test.ts", "test/**/*.test.tsx"],
   exclude: [
     "test/live/**",
+    "test/sandbox/external/**",
     "**/node_modules/**",
     "src/infra/sandbox/**/*.test.ts",
     "src/agent/permission/sandbox-policy.test.ts",
