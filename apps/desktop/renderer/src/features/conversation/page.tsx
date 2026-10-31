@@ -447,7 +447,7 @@ export function Conversation(props: { id: string; directory: string }) {
           )}
         </Show>
       </div>
-      <Show when={!isGroup() && takeoverOpen() && info()?.targetBlock?.blockID} keyed>
+      <Show when={!ui.settings && !isGroup() && takeoverOpen() && info()?.targetBlock?.blockID} keyed>
         {(_blockID) => (
           <TakeoverDialog
             open={takeoverOpen()}

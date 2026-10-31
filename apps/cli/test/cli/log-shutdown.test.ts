@@ -11,7 +11,10 @@ import { Process } from "@merakcode/util/process"
 test.each([false, true])(
   "CLI waits for product and SDK logs before exiting (command failure: %s)",
   async (failure) => {
-    await using tmp = await tmpdir({ dispose: (dir) => rm(dir, { recursive: true, force: true }) })
+    // Recursive removal retries at each directory level; keep persistent locks within the test deadline.
+    await using tmp = await tmpdir({
+      dispose: (dir) => rm(dir, { recursive: true, force: true, maxRetries: 1, retryDelay: 100 }),
+    })
     const root = path.join(tmp.path, "logs")
     const modules = path.join(tmp.path, "merakcode/node_modules")
     await mkdir(modules, { recursive: true })

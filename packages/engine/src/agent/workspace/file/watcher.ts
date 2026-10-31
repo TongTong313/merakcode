@@ -136,6 +136,6 @@ export namespace FileWatcher {
     if (Flag.MERAKCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {
       return
     }
-    state()
+    return state()
   }
 }

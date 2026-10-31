@@ -155,8 +155,10 @@ export namespace Archive {
   async function* tar(entries: Entry[], base: string) {
     for (const entry of entries) {
       const name = `${base}/${entry.name}`
-      if (Buffer.byteLength(name) > 99 || /[^\x20-\x7e]/.test(name)) yield* pax(name, entry.mtime)
-      yield header(name, entry.size, entry.mode, entry.mtime, "0")
+      const extended = Buffer.byteLength(name) > 99 || /[^\x20-\x7e]/.test(name)
+      if (extended) yield* pax(name, entry.mtime)
+      // PAX carries the full path; the fallback name must not contain a truncated UTF-8 character.
+      yield header(extended ? "PaxEntry" : name, entry.size, entry.mode, entry.mtime, "0")
       yield* createReadStream(entry.file)
       yield Buffer.alloc((512 - (entry.size % 512)) % 512)
     }

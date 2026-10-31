@@ -7,7 +7,7 @@ import { Auth } from "@merakcode/engine/agent/model/credentials"
 import { globalConfig, tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
-import { pathToFileURL } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
 import { Global } from "@merakcode/engine/infra/global/index"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -67,7 +67,12 @@ test("concurrent project loads keep configuration warnings in their own project"
 test("skips dependency install when zod is already available", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      await fs.mkdir(path.join(dir, "node_modules", "zod"), { recursive: true })
+      await fs.mkdir(path.join(dir, "node_modules"), { recursive: true })
+      await fs.symlink(
+        path.dirname(fileURLToPath(import.meta.resolve("zod"))),
+        path.join(dir, "node_modules", "zod"),
+        process.platform === "win32" ? "junction" : "dir",
+      )
     },
   })
 

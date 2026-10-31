@@ -18,6 +18,7 @@ import { Messages } from "./messages"
 import { Conversation } from "./page"
 import { refreshConnections } from "../../state/agent-connections"
 import { connectionDefaults } from "./product.fixture"
+import { setUi } from "../../state/ui"
 
 const transport = vi.hoisted(() => ({
   info: undefined as Session | undefined,
@@ -73,6 +74,7 @@ let cleanup = () => {}
 beforeEach(() => setLocale("zh"))
 afterEach(() => {
   cleanup()
+  setUi("settings", undefined)
   vi.restoreAllMocks()
   transport.decisions = []
   transport.revisions = []
@@ -85,6 +87,60 @@ afterEach(() => {
   transport.sessionResponses = 0
   window.history.replaceState({}, "", "/")
 })
+
+test.each(["before", "after"])(
+  "a takeover arriving %s settings close keeps the conversation locked",
+  async (arrival) => {
+    const info: Session = {
+      id: "locked",
+      slug: "locked",
+      projectID: "global",
+      directory: "/project",
+      title: "Locked",
+      version: "1",
+      time: { created: 1, updated: 1 },
+      target: { kind: "external", productID: "claude" },
+      targetRevision: 1,
+      targetBlock: { blockID: "settings-block", productID: "claude", disabledCycleID: "d1", decision: "pending" },
+    }
+    transport.info = structuredClone(info)
+    setState("sessions", "session", [arrival === "before" ? info : { ...info, targetBlock: undefined }])
+    setState("sessions", "message", info.id, [])
+    setState("loaded", info.id, true)
+    setUi("settings", "agentConnections")
+    const host = document.createElement("div")
+    document.body.appendChild(host)
+    const dispose = render(
+      () => (
+        <Router>
+          <Route path="/" component={() => <Conversation id={info.id} directory="/project" />} />
+        </Router>
+      ),
+      host,
+    )
+    cleanup = () => {
+      dispose()
+      host.remove()
+    }
+    await Promise.resolve()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    if (arrival === "before")
+      expect(host.querySelector<HTMLTextAreaElement>('textarea[aria-label="消息"]')?.disabled).toBe(true)
+    setUi("settings", undefined)
+    if (arrival === "after") setState("sessions", "session", [info])
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
+    expect(host.querySelector<HTMLTextAreaElement>('textarea[aria-label="消息"]')?.disabled).toBe(true)
+    const decline = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+      (button) => button.textContent === "暂不接管",
+    )!
+    decline.click()
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
+    setUi("settings", "agentConnections")
+    setUi("settings", undefined)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(transport.decisions).toEqual(["decline"])
+  },
+)
 
 test.each([
   ["refresh", "accept"],

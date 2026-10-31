@@ -41,7 +41,14 @@ try {
   $line = Get-Content (Join-Path $work "SHA256SUMS") | Where-Object { $_ -match "  $([regex]::Escape("$name.zip"))$" } | Select-Object -First 1
   if (-not $line) { throw "$name.zip is not listed in SHA256SUMS" }
   $expected = ($line -split "\s+")[0]
-  $actual = (Get-FileHash (Join-Path $work "$name.zip") -Algorithm SHA256).Hash.ToLower()
+  $sha = [Security.Cryptography.SHA256]::Create()
+  $archive = [IO.File]::OpenRead((Join-Path $work "$name.zip"))
+  try {
+    $actual = [BitConverter]::ToString($sha.ComputeHash($archive)).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $archive.Dispose()
+    $sha.Dispose()
+  }
   if ($actual -ne $expected) { throw "Checksum mismatch: the download is incomplete or has been tampered with" }
 
   # The tar.exe that ships with Windows 10+ is much faster than Expand-Archive

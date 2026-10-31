@@ -37,7 +37,7 @@ export async function InstanceBootstrap() {
   RuleWatch.initGlobal()
   RuleWatch.initInstance()
   MemoryWatch.initInstance()
-  FileWatcher.init()
+  await FileWatcher.init()
   File.init()
   Vcs.init()
   Scheduler.register({

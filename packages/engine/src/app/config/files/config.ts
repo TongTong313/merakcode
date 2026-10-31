@@ -17,6 +17,7 @@ import path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
 import z from "zod"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Process } from "@merakcode/util/process"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../../../infra/global"
 import { AppConfig } from "../schema"
@@ -27,6 +28,7 @@ import { Auth } from "@merakcode/engine/agent/model/credentials"
 import { Instance } from "../../../infra/project/instance"
 import { ProjectReload } from "../../project/reload"
 import { Npm } from "../../../infra/package"
+import { withDependencyLock } from "../../../infra/package/directory-lock"
 import { Installation } from "../../../infra/installation"
 import { ConfigMarkdown } from "../../../infra/config/markdown"
 import { constants, existsSync } from "fs"
@@ -70,6 +72,7 @@ export namespace Config {
   const DEPENDENCY_INSTALL_TIMEOUT_MS = 30_000
 
   const log = Log.create({ service: "config" })
+  const dependencyInstalls = new Map<string, Promise<void>>()
 
   export type Warning = z.output<typeof Warning>
 
@@ -388,12 +391,29 @@ export namespace Config {
   }
 
   export async function installDependencies(dir: string) {
+    const resolved = await fs.realpath(dir).catch((error) => {
+      log.error("dependency.install.failed", { dir, phase: "prepare", error })
+      return undefined
+    })
+    if (!resolved) return
+    const key = process.platform === "win32" ? resolved.toLowerCase() : resolved
+    const current = dependencyInstalls.get(key)
+    if (current) return current
+    const task = withDependencyLock(resolved, (track) => installDirectoryDependencies(resolved, track))
+      .catch((error) => log.error("dependency.install.failed", { dir: resolved, error }))
+      .finally(() => dependencyInstalls.delete(key))
+    dependencyInstalls.set(key, task)
+    return task
+  }
+
+  async function installDirectoryDependencies(dir: string, track: (pid: number) => Promise<void>) {
     try {
+      await recoverUserSdk(dir)
       // The shim is written locally: no network access, and no private package in package.json.
       await writePluginShim(dir)
 
       // Run an install only when zod cannot be resolved yet; zod is public, so the install can succeed.
-      const zodResolved = existsSync(path.join(dir, "node_modules", "zod"))
+      const zodResolved = await dependencyAvailable(dir)
       if (zodResolved) {
         log.info("dependency.install.skipped", { dir, reason: "zod_available" })
       } else {
@@ -438,30 +458,36 @@ export namespace Config {
           abort.abort()
         }, DEPENDENCY_INSTALL_TIMEOUT_MS)
 
-        await Npm.installDependencies(dir, abort.signal)
-          .then(() => {
-            if (timedOut) return
-            if (!existsSync(path.join(dir, "node_modules", "zod"))) {
-              throw new Error("dependency install completed without node_modules/zod")
-            }
-            log.info("dependency.install.completed", {
-              dir,
-              duration: Date.now() - started,
+        await preserveUserSdk(dir, () =>
+          // npm trusts a matching lockfile even when package files are missing; remove only the unusable package.
+          fs
+            .rm(path.join(dir, "node_modules", "zod"), { recursive: true, force: true, maxRetries: 5 })
+            .then(() => Npm.installDependencies(dir, abort.signal, track))
+            // npm may prune the shim before a lifecycle script fails; its process tree has exited before this runs.
+            .finally(() => writePluginShim(dir))
+            .then(async () => {
+              if (timedOut) return
+              if (!(await dependencyAvailable(dir))) {
+                throw new Error("dependency install completed without node_modules/zod")
+              }
+              log.info("dependency.install.completed", {
+                dir,
+                duration: Date.now() - started,
+              })
             })
-          })
-          .catch((e) => {
-            if (timedOut) return
-            log.error("dependency.install.failed", {
-              dir,
-              duration: Date.now() - started,
-              error: e instanceof Error ? e.message : String(e),
-            })
-          })
-          .finally(() => {
-            finished = true
-            clearTimeout(stalled)
-            clearTimeout(timeout)
-          })
+            .catch((e) => {
+              if (timedOut) return
+              log.error("dependency.install.failed", {
+                dir,
+                duration: Date.now() - started,
+                error: e instanceof Error ? e.message : String(e),
+              })
+            }),
+        ).finally(() => {
+          finished = true
+          clearTimeout(stalled)
+          clearTimeout(timeout)
+        })
       }
     } catch (e) {
       // Must never throw: this runs in an iife nobody awaits, so a throw would become an unhandled rejection.
@@ -471,6 +497,46 @@ export namespace Config {
         error: e instanceof Error ? e.message : String(e),
       })
     }
+  }
+
+  async function dependencyAvailable(dir: string) {
+    if (!existsSync(path.join(dir, "node_modules", "zod", "package.json"))) return false
+    // Match the plugin's ESM resolution, with a fresh module cache after npm repairs a partial installation.
+    const result = await Process.run(
+      [process.execPath, "--input-type=module", "--eval", 'import { z } from "zod"; z.string().parse("ready")'],
+      { cwd: path.join(dir, "node_modules", PLUGIN_SHIM_PKG), timeout: 5_000, nothrow: true },
+    )
+    return result.exitCode === 0
+  }
+
+  async function preserveUserSdk(dir: string, task: () => Promise<void>) {
+    if ((await installedSdk(dir))?.shim !== false) return task()
+    const original = path.join(dir, "node_modules", PLUGIN_SHIM_PKG)
+    const backup = path.join(dir, ".merakcode-sdk-preserved")
+    await fs.mkdir(backup, { recursive: true })
+    try {
+      await fs.cp(original, path.join(backup, "sdk"), { recursive: true, dereference: true })
+      await fs.writeFile(path.join(backup, "ready"), "ready")
+      await task()
+    } finally {
+      await recoverUserSdk(dir)
+    }
+  }
+
+  async function recoverUserSdk(dir: string) {
+    const backup = path.join(dir, ".merakcode-sdk-preserved")
+    if (existsSync(path.join(backup, "ready"))) {
+      const staging = path.join(backup, "restore")
+      const original = path.join(dir, "node_modules", PLUGIN_SHIM_PKG)
+      await fs.rm(staging, { recursive: true, force: true, maxRetries: 5 })
+      await fs.cp(path.join(backup, "sdk"), staging, { recursive: true })
+      await fs.rm(original, { recursive: true, force: true, maxRetries: 5 })
+      await fs.mkdir(path.dirname(original), { recursive: true })
+      await fs.rename(staging, original)
+      // Commit restoration before deleting any backup contents; a partial cleanup must never be replayed.
+      await fs.unlink(path.join(backup, "ready"))
+    }
+    await fs.rm(backup, { recursive: true, force: true, maxRetries: 5 })
   }
 
   async function isWritable(dir: string) {
@@ -492,13 +558,15 @@ export namespace Config {
         return false
       }
 
+      if (existsSync(path.join(dir, ".merakcode-sdk-preserved", "ready"))) return true
+
       // Install when the shim is missing or from another engine version (first run or after an upgrade).
       // A real SDK installed by the user needs no shim.
       const sdk = await installedSdk(dir)
       if (!sdk) return true
       if (sdk.shim && sdk.version !== pluginShimVersion()) return true
 
-      if (!existsSync(path.join(dir, "node_modules", "zod"))) return true
+      if (!(await dependencyAvailable(dir))) return true
 
       log.info("dependency.install.skipped", { dir, reason: "zod_available" })
       return false

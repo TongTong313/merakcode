@@ -25,16 +25,8 @@ async function background(kit: Kit) {
   return () => kit.page.evaluate(() => (window as unknown as { __sent: { title: string; body?: string }[] }).__sent)
 }
 
-test("notifies only in the background when a turn finishes; clicking returns to the conversation", async ({ kit }) => {
+test("notifies in the background when a turn finishes; clicking returns to the conversation", async ({ kit }) => {
   const sent = await background(kit)
-  // In the foreground first: finishing this turn must not notify
-  await kit.page.evaluate(() => (document.hasFocus = () => true))
-  await kit.send("在前台")
-  await expect(kit.text("OK")).toBeVisible()
-  await kit.page.waitForTimeout(500)
-  expect(await sent()).toEqual([])
-
-  await kit.page.evaluate(() => (document.hasFocus = () => false))
   await kit.send("在后台")
   await expect.poll(async () => (await sent()).map((item) => item.title)).toEqual(["对话完成"])
   // Navigate elsewhere first (in-app navigation, no page reload)

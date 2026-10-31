@@ -35,6 +35,13 @@ describe("pidFromTcpOwners", () => {
 })
 
 describe("parseLsof", () => {
+  test("ignores connections whose local or remote address is missing", () => {
+    expect(
+      parseLsof(
+        "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nnode 123 user 1u IPv4 0xabc 0t0 TCP :123->:456 (ESTABLISHED)\n",
+      ),
+    ).toEqual([])
+  })
   test("parses macOS ESTABLISHED rows even when state is the last column", () => {
     // Real darwin output of lsof -nP -iTCP -sTCP:ESTABLISHED: NAME is followed by (ESTABLISHED)
     const rows = parseLsof(`COMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME

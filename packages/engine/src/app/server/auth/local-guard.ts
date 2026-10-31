@@ -19,7 +19,7 @@ const RETRY_MS = 100
 function parseBasic(header: string | null): { username: string; password: string } | undefined {
   const match = header ? /^Basic\s+(\S+)/i.exec(header.trim()) : null
   if (!match) return
-  const decoded = Buffer.from(match[1], "base64").toString("utf8")
+  const decoded = Buffer.from(match[1]!, "base64").toString("utf8")
   const idx = decoded.indexOf(":")
   if (idx < 0) return
   return { username: decoded.slice(0, idx), password: decoded.slice(idx + 1) }

@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process"
 import { chmod } from "node:fs/promises"
 import path from "node:path"
+import { setTimeout as sleep } from "node:timers/promises"
 import { expect, test } from "vitest"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { createMerakCode } from "@merakcode/sdk"
 import { engine, sandbox } from "../fixture/engine"
 import { fakeModel } from "../fixture/model"
 
-test("recovery from another worktree protects the session's actual checkout", async () => {
+test("recovery from another worktree protects the session's actual checkout", async ({ signal }) => {
   let file = ""
   const model = await fakeModel((turn) => {
     if (!turn.results.length) return { tool: "read", args: { filePath: file } }
@@ -50,19 +51,39 @@ test("recovery from another worktree protects the session's actual checkout", as
     await Filesystem.write(hook, `#!/bin/sh\nnode "${forward(helper)}" "${forward(marker)}" "${forward(release)}"\n`)
     await chmod(hook, 0o755)
     const before = (await merak.client.vcs.branchOptions({}, { throwOnError: true })).data.current!
-    switching = merak.client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout })
-    await expect.poll(() => Filesystem.readText(marker).catch(() => ""), { timeout: 10_000 }).toBe("ready")
-    const recovered = await merak.client.session.revert({
-      directory: linked,
-      sessionID: session.id,
-      messageID: user.info.id,
-    })
+    let finished: string | undefined
+    switching = merak.client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout }, { signal })
+    void switching.then(
+      (result) => {
+        finished = JSON.stringify({ status: result.response?.status, error: result.error })
+      },
+      (error) => {
+        finished = String(error)
+      },
+    )
+    // The hook gates the checkout; this verifies overlap rather than imposing a checkout speed requirement.
+    for (;;) {
+      signal.throwIfAborted()
+      if ((await Filesystem.readText(marker).catch(() => "")) === "ready") break
+      if (finished !== undefined) throw new Error(`Checkout ended before its hook was ready: ${finished}`)
+      await sleep(25, undefined, { signal })
+    }
+    const recovered = await merak.client.session.revert(
+      { directory: linked, sessionID: session.id, messageID: user.info.id },
+      { signal },
+    )
     expect(recovered.response.status).toBe(409)
     expect(recovered.error).toMatchObject({ name: "CheckoutBlockedError" })
   } finally {
-    await Filesystem.write(release, "release")
-    await switching
-    await merak.close()
-    await model.close()
+    try {
+      await Filesystem.write(release, "release")
+      await switching
+    } finally {
+      try {
+        await merak.close()
+      } finally {
+        await model.close()
+      }
+    }
   }
 }, 120_000)
