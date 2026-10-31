@@ -9,57 +9,783 @@ Every method takes one object with the parameters below, plus an optional second
 `@merakcode/sdk/client`. Every method also accepts `directory`, which the client
 already fills in from `createMerakCodeClient({ directory })`, so it is left out of the tables.
 
-- [global](#global)
-- [global.session](#globalsession)
-- [global.config](#globalconfig)
+- [app](#app)
+- [agentConnection](#agentconnection)
+- [agentConnection.product](#agentconnectionproduct)
+- [assist.commit](#assistcommit)
+- [assist.inline](#assistinline)
 - [auth](#auth)
-- [project](#project)
-- [pty](#pty)
-- [config](#config)
-- [tool](#tool)
-- [worktree](#worktree)
-- [experimental.resource](#experimentalresource)
-- [session](#session)
-- [part](#part)
+- [bash](#bash)
 - [collaboration](#collaboration)
 - [collaboration.roleTemplate](#collaborationroletemplate)
 - [collaboration.seat](#collaborationseat)
-- [agentConnection](#agentconnection)
-- [agentConnection.product](#agentconnectionproduct)
+- [command](#command)
+- [config](#config)
+- [event](#event)
+- [experimental.resource](#experimentalresource)
+- [tool](#tool)
+- [worktree](#worktree)
+- [file](#file)
+- [find](#find)
+- [formatter](#formatter)
+- [global.config](#globalconfig)
+- [global](#global)
+- [global.session](#globalsession)
+- [instance](#instance)
+- [lsp](#lsp)
+- [mcp](#mcp)
+- [mcpManagement](#mcpmanagement)
+- [mcp.auth](#mcpauth)
 - [memory](#memory)
-- [bash](#bash)
-- [tool.remote](#toolremote)
+- [path](#path)
 - [permission](#permission)
-- [question](#question)
+- [plugin](#plugin)
+- [project](#project)
 - [provider](#provider)
 - [provider.catalog](#providercatalog)
 - [provider.relay](#providerrelay)
 - [provider.oauth](#provideroauth)
-- [plugin](#plugin)
-- [workflow](#workflow)
+- [pty](#pty)
+- [question](#question)
 - [review](#review)
-- [vcs.changes](#vcschanges)
-- [mcpManagement](#mcpmanagement)
 - [ruleManagement](#rulemanagement)
-- [find](#find)
-- [file](#file)
-- [mcp](#mcp)
-- [mcp.auth](#mcpauth)
-- [assist.commit](#assistcommit)
-- [assist.inline](#assistinline)
-- [instance](#instance)
-- [path](#path)
-- [vcs](#vcs)
 - [sandbox](#sandbox)
-- [command](#command)
-- [app](#app)
+- [session](#session)
+- [part](#part)
 - [skillInstall](#skillinstall)
 - [skill](#skill)
-- [lsp](#lsp)
-- [formatter](#formatter)
-- [event](#event)
+- [tool.remote](#toolremote)
+- [vcs](#vcs)
+- [vcs.changes](#vcschanges)
+- [workflow](#workflow)
+
+## app
+
+### client.app.agents
+
+`GET /agent` · operationId `app.agents`
+
+List agents.
+
+Get a list of all available AI agents in the MerakCode system.
+
+No parameters.
+
+Returns: `Agent[]`
+
+### client.app.agentGenerate
+
+`POST /agent/generate` · operationId `app.agentGenerate`
+
+Generate agent.
+
+Ask a model to draft an agent (identifier, when to use it, system prompt) from a description. Nothing is written; the client saves it.
+
+| Parameter     | Type                                      | Required | Description |
+| ------------- | ----------------------------------------- | -------- | ----------- |
+| `description` | `string`                                  | yes      |             |
+| `model`       | `{ modelID: string; providerID: string }` | no       |             |
+
+Returns: `{ identifier: string; systemPrompt: string; whenToUse: string }`
+
+### client.app.log
+
+`POST /log` · operationId `app.log`
+
+Write log.
+
+Write a log entry to the server logs with specified level and metadata.
+
+| Parameter   | Type                                     | Required | Description                           |
+| ----------- | ---------------------------------------- | -------- | ------------------------------------- |
+| `component` | `"desktop" \| "web"`                     | no       | Client component                      |
+| `extra`     | `Record<string, unknown>`                | no       | Additional metadata for the log entry |
+| `level`     | `"debug" \| "error" \| "info" \| "warn"` | yes      | Log level                             |
+| `message`   | `string`                                 | yes      | Log message                           |
+| `run_id`    | `string`                                 | no       | Client run identifier                 |
+| `sequence`  | `number`                                 | no       | Client record sequence                |
+| `service`   | `string`                                 | yes      | Service name for the log entry        |
+
+Returns: `boolean`
+
+### client.app.skills
+
+`GET /skill` · operationId `app.skills`
+
+List skills.
+
+Get a list of all available skills in the MerakCode system.
+
+No parameters.
+
+Returns: `({ content: string; description: string; location: string; name: string; scope?: "builtin" \| "global" \| "project" })[]`
+
+## agentConnection
+
+### client.agentConnection.products
+
+`GET /agent-connection/product` · operationId `agentConnection.products`
+
+List global agent connections.
+
+| Parameter | Type                | Required | Description |
+| --------- | ------------------- | -------- | ----------- |
+| `refresh` | `"false" \| "true"` | no       |             |
+
+Returns: `AgentConnectionProduct[]`
+
+### client.agentConnection.models
+
+`GET /agent-connection/product/{productID}/model` · operationId `agentConnection.models`
+
+Discover models for an agent connection.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `productID` | `string` | yes      |             |
+
+Returns: `AgentConnectionModels`
+
+### client.agentConnection.verify
+
+`POST /agent-connection/product/{productID}/verify` · operationId `agentConnection.verify`
+
+Verify a saved agent connection.
+
+| Parameter          | Type     | Required | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `productID`        | `string` | yes      |             |
+| `expectedRevision` | `number` | yes      |             |
+
+Returns: `AgentConnectionVerification`
+
+## agentConnection.product
+
+### client.agentConnection.product.change
+
+`POST /agent-connection/product` · operationId `agentConnection.product.change`
+
+Change a global agent connection.
+
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Required | Description |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ----------- |
+| `body`    | `{ enabled: boolean; id: string; type: "enabled" } \| { id: string; product: { adapter?: "claude" \| "codex" \| "command" \| "member" \| "opencode"; args?: string[]; command?: string; model?: object; resumeArgs?: string[]; sessionLine?: string; title?: string }; type: "add" } \| { id: string; product: { adapter?: "claude" \| "codex" \| "command" \| "member" \| "opencode"; args?: string[]; command?: string; model?: object; resumeArgs?: string[]; sessionLine?: string; title?: string }; type: "update" } \| { id: string; type: "remove" }` | yes      |             |
+
+Returns: `AgentConnectionProduct[]`
+
+## assist.commit
+
+### client.assist.commit.message
+
+`POST /assist/commit-message` · operationId `assist.commit.message`
+
+Generate git commit message.
+
+No parameters.
+
+Returns: `{ error?: string; message: string }`
+
+## assist.inline
+
+### client.assist.inline.edit
+
+`POST /assist/inline-edit` · operationId `assist.inline.edit`
+
+Inline edit selected code.
+
+| Parameter      | Type     | Required | Description |
+| -------------- | -------- | -------- | ----------- |
+| `instruction`  | `string` | yes      |             |
+| `language`     | `string` | no       |             |
+| `modelID`      | `string` | no       |             |
+| `path`         | `string` | no       |             |
+| `providerID`   | `string` | no       |             |
+| `selectedText` | `string` | yes      |             |
+
+Returns: `{ error?: string; modelID?: string; providerID?: string; text: string }`
+
+## auth
+
+### client.auth.list
+
+`GET /auth` · operationId `auth.list`
+
+List stored credentials.
+
+List the providers that have stored credentials and their credential type, plus the credentials file. Secrets are never returned.
+
+No parameters.
+
+Returns: `{ credentials: ({ providerID: string; type: "api" \| "oauth" \| "wellknown" })[]; file: string }`
+
+### client.auth.remove
+
+`DELETE /auth/{providerID}` · operationId `auth.remove`
+
+Remove auth credentials.
+
+Remove authentication credentials.
+
+| Parameter    | Type     | Required | Description |
+| ------------ | -------- | -------- | ----------- |
+| `providerID` | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.auth.set
+
+`PUT /auth/{providerID}` · operationId `auth.set`
+
+Set auth credentials.
+
+Set authentication credentials.
+
+| Parameter    | Type     | Required | Description |
+| ------------ | -------- | -------- | ----------- |
+| `providerID` | `string` | yes      |             |
+| `auth`       | `Auth`   | yes      |             |
+
+Returns: `boolean`
+
+## bash
+
+### client.bash.jobStop
+
+`POST /bash/jobs/{id}/stop` · operationId `bash.jobStop`
+
+Stop a background job.
+
+Send SIGTERM to a running background bash job.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `id`      | `string` | yes      |             |
+
+Returns: `boolean`
+
+## collaboration
+
+### client.collaboration.list
+
+`GET /collaboration` · operationId `collaboration.list`
+
+List collaboration groups.
+
+Groups of every project, most recently active first, with their members for copying into a new group. Private sessions are left out.
+
+No parameters.
+
+Returns: `CollaborationGroupSummary[]`
+
+### client.collaboration.create
+
+`POST /collaboration` · operationId `collaboration.create`
+
+Create a collaboration group.
+
+Creates a session whose leader is a Merak seat, together with the seats named up front.
+
+| Parameter | Type                                                                  | Required | Description |
+| --------- | --------------------------------------------------------------------- | -------- | ----------- |
+| `leader`  | `{ duty?: string; name: string; role?: string }`                      | yes      |             |
+| `seats`   | `({ duty?: string; name: string; product: string; role?: string })[]` | no       |             |
+| `title`   | `string`                                                              | no       |             |
+
+Returns: `{ group: CollaborationGroup; sessionID: string }`
+
+### client.collaboration.roleTemplates
+
+`GET /collaboration/role-template` · operationId `collaboration.roleTemplates`
+
+List collaboration role templates.
+
+No parameters.
+
+Returns: `CollaborationRoleTemplate[]`
+
+### client.collaboration.get
+
+`GET /collaboration/{sessionID}` · operationId `collaboration.get`
+
+Get a collaboration group.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `CollaborationGroup`
+
+## collaboration.roleTemplate
+
+### client.collaboration.roleTemplate.change
+
+`POST /collaboration/role-template` · operationId `collaboration.roleTemplate.change`
+
+Change a custom collaboration role template.
+
+| Parameter | Type                                                                                                                                                                                                              | Required | Description |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `body`    | `{ id: string; template: { duty: string; name: string; role: string }; type: "add" } \| { id: string; template: { duty: string; name: string; role: string }; type: "update" } \| { id: string; type: "remove" }` | yes      |             |
+
+Returns: `CollaborationRoleTemplate[]`
+
+## collaboration.seat
+
+### client.collaboration.seat.add
+
+`POST /collaboration/{sessionID}/seat` · operationId `collaboration.seat.add`
+
+Add a collaboration seat.
+
+| Parameter   | Type     | Required | Description                                          |
+| ----------- | -------- | -------- | ---------------------------------------------------- |
+| `sessionID` | `string` | yes      |                                                      |
+| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
+| `name`      | `string` | yes      |                                                      |
+| `product`   | `string` | yes      |                                                      |
+| `role`      | `string` | no       | Short title such as product manager                  |
+
+Returns: `CollaborationGroup`
+
+### client.collaboration.seat.remove
+
+`DELETE /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.remove`
+
+Remove a collaboration seat.
+
+The Merak leader cannot be removed.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `seatID`    | `string` | yes      |             |
+
+Returns: `CollaborationGroup`
+
+### client.collaboration.seat.update
+
+`PATCH /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.update`
+
+Change a collaboration seat's name, role or duty.
+
+| Parameter   | Type     | Required | Description                                          |
+| ----------- | -------- | -------- | ---------------------------------------------------- |
+| `sessionID` | `string` | yes      |                                                      |
+| `seatID`    | `string` | yes      |                                                      |
+| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
+| `name`      | `string` | no       |                                                      |
+| `role`      | `string` | no       | Short title such as product manager                  |
+
+Returns: `CollaborationGroup`
+
+## command
+
+### client.command.list
+
+`GET /command` · operationId `command.list`
+
+List commands.
+
+Get a list of all available commands in the MerakCode system.
+
+No parameters.
+
+Returns: `Command[]`
+
+## config
+
+### client.config.get
+
+`GET /config` · operationId `config.get`
+
+Get configuration.
+
+Retrieve the current MerakCode configuration settings and preferences.
+
+No parameters.
+
+Returns: `ConfigOutput`
+
+### client.config.update
+
+`PATCH /config` · operationId `config.update`
+
+Update configuration.
+
+Update MerakCode configuration settings and preferences.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `config`  | `Config` | no       |             |
+
+Returns: `ConfigOutput`
+
+### client.config.providers
+
+`GET /config/providers` · operationId `config.providers`
+
+List config providers.
+
+Get a list of all configured AI providers and their default models.
+
+No parameters.
+
+Returns: `{ default: Record<string, string>; providers: Provider[] }`
+
+### client.config.warnings
+
+`GET /config/warnings` · operationId `config.warnings`
+
+Get config load warnings.
+
+List runtime config degradation warnings. Invalid items were skipped in memory; files were not rewritten.
+
+No parameters.
+
+Returns: `ConfigWarning[]`
+
+## event
+
+### client.event.subscribe
+
+`GET /event` · operationId `event.subscribe`
+
+Subscribe to events.
+
+Get events.
+
+No parameters.
+
+Returns: `stream of Event`
+
+## experimental.resource
+
+### client.experimental.resource.list
+
+`GET /experimental/resource` · operationId `experimental.resource.list`
+
+Get MCP resources.
+
+Get all available MCP resources from connected servers. Optionally filter by name.
+
+No parameters.
+
+Returns: `Record<string, McpResource>`
+
+## tool
+
+### client.tool.list
+
+`GET /experimental/tool` · operationId `tool.list`
+
+List tools.
+
+Get a list of available tools with their JSON schema parameters for a specific provider and model combination.
+
+| Parameter  | Type     | Required | Description |
+| ---------- | -------- | -------- | ----------- |
+| `provider` | `string` | yes      |             |
+| `model`    | `string` | yes      |             |
+
+Returns: `ToolList`
+
+### client.tool.ids
+
+`GET /experimental/tool/ids` · operationId `tool.ids`
+
+List tool IDs.
+
+Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.
+
+No parameters.
+
+Returns: `ToolIDs`
+
+## worktree
+
+### client.worktree.remove
+
+`DELETE /experimental/worktree` · operationId `worktree.remove`
+
+Remove worktree.
+
+Remove a git worktree and delete its branch.
+
+| Parameter             | Type                  | Required | Description |
+| --------------------- | --------------------- | -------- | ----------- |
+| `worktreeRemoveInput` | `WorktreeRemoveInput` | yes      |             |
+
+Returns: `boolean`
+
+### client.worktree.list
+
+`GET /experimental/worktree` · operationId `worktree.list`
+
+List worktrees.
+
+List all sandbox worktrees for the current project.
+
+No parameters.
+
+Returns: `string[]`
+
+### client.worktree.create
+
+`POST /experimental/worktree` · operationId `worktree.create`
+
+Create worktree.
+
+Create a new git worktree for the current project and run any configured startup scripts.
+
+| Parameter             | Type                  | Required | Description |
+| --------------------- | --------------------- | -------- | ----------- |
+| `worktreeCreateInput` | `WorktreeCreateInput` | no       |             |
+
+Returns: `Worktree`
+
+### client.worktree.merge
+
+`POST /experimental/worktree/merge` · operationId `worktree.merge`
+
+Merge worktree.
+
+Commit pending changes in a worktree and merge (or squash) its branch into the primary workspace's current branch. On conflicts the merge is aborted and the conflicting files are returned.
+
+| Parameter            | Type                 | Required | Description |
+| -------------------- | -------------------- | -------- | ----------- |
+| `worktreeMergeInput` | `WorktreeMergeInput` | yes      |             |
+
+Returns: `WorktreeMergeResult`
+
+### client.worktree.reset
+
+`POST /experimental/worktree/reset` · operationId `worktree.reset`
+
+Reset worktree.
+
+Reset a worktree branch to the primary default branch.
+
+| Parameter            | Type                 | Required | Description |
+| -------------------- | -------------------- | -------- | ----------- |
+| `worktreeResetInput` | `WorktreeResetInput` | yes      |             |
+
+Returns: `boolean`
+
+## file
+
+### client.file.delete
+
+`DELETE /file` · operationId `file.delete`
+
+Delete file or directory.
+
+Delete a file or directory at the specified path.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `path`    | `string` | yes      |             |
+
+Returns: `{ ok: boolean }`
+
+### client.file.list
+
+`GET /file` · operationId `file.list`
+
+List files.
+
+List files and directories in a specified path.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `path`    | `string` | yes      |             |
+
+Returns: `FileNode[]`
+
+### client.file.read
+
+`GET /file/content` · operationId `file.read`
+
+Read file.
+
+Read the content of a specified file.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `path`    | `string` | yes      |             |
+
+Returns: `FileContent`
+
+### client.file.write
+
+`PUT /file/content` · operationId `file.write`
+
+Write file.
+
+Write content to a file. Supports optional checksum for optimistic locking.
+
+| Parameter  | Type     | Required | Description |
+| ---------- | -------- | -------- | ----------- |
+| `checksum` | `string` | no       |             |
+| `content`  | `string` | yes      |             |
+| `path`     | `string` | yes      |             |
+
+Returns: `{ ok: boolean }`
+
+### client.file.status
+
+`GET /file/status` · operationId `file.status`
+
+Get file status.
+
+Get the git status of all files in the project.
+
+No parameters.
+
+Returns: `File[]`
+
+## find
+
+### client.find.text
+
+`GET /find` · operationId `find.text`
+
+Find text.
+
+Search for text patterns across files in the project using ripgrep.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `pattern` | `string` | yes      |             |
+
+Returns: `({ absolute_offset: number; line_number: number; lines: { text: string }; path: { text: string }; submatches: ({ end: number; match: object; start: number })[] })[]`
+
+### client.find.files
+
+`GET /find/file` · operationId `find.files`
+
+Find files.
+
+Search for files or directories by name or pattern in the project directory.
+
+| Parameter | Type                    | Required | Description |
+| --------- | ----------------------- | -------- | ----------- |
+| `query`   | `string`                | yes      |             |
+| `dirs`    | `"false" \| "true"`     | no       |             |
+| `type`    | `"directory" \| "file"` | no       |             |
+| `limit`   | `number`                | no       |             |
+
+Returns: `string[]`
+
+### client.find.symbols
+
+`GET /find/symbol` · operationId `find.symbols`
+
+Find symbols.
+
+Search for workspace symbols like functions, classes, and variables using LSP.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `query`   | `string` | yes      |             |
+
+Returns: `Symbol[]`
+
+## formatter
+
+### client.formatter.status
+
+`GET /formatter` · operationId `formatter.status`
+
+Get formatter status.
+
+No parameters.
+
+Returns: `FormatterStatus[]`
+
+## global.config
+
+### client.global.config.get
+
+`GET /global/config` · operationId `global.config.get`
+
+Get global configuration.
+
+Retrieve the current global MerakCode configuration settings and preferences.
+
+No parameters.
+
+Returns: `ConfigOutput`
+
+### client.global.config.update
+
+`PATCH /global/config` · operationId `global.config.update`
+
+Update global configuration.
+
+Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the default model).
+
+| Parameter     | Type                              | Required | Description |
+| ------------- | --------------------------------- | -------- | ----------- |
+| `skipDispose` | `"0" \| "1" \| "false" \| "true"` | no       |             |
+| `config`      | `Config`                          | no       |             |
+
+Returns: `ConfigOutput`
+
+### client.global.config.deleteProvider
+
+`DELETE /global/config/provider/{providerID}` · operationId `global.config.deleteProvider`
+
+Delete provider from global config.
+
+Remove a provider entry from global merakcode.json and clear dangling model references.
+
+| Parameter         | Type                              | Required | Description |
+| ----------------- | --------------------------------- | -------- | ----------- |
+| `providerID`      | `string`                          | yes      |             |
+| `clearReferences` | `"0" \| "1" \| "false" \| "true"` | no       |             |
+
+Returns: `boolean`
+
+### client.global.config.deleteProviderModel
+
+`DELETE /global/config/provider/{providerID}/model/{modelID}` · operationId `global.config.deleteProviderModel`
+
+Delete model from global provider config.
+
+Remove a single model from a provider in global config and clear dangling references.
+
+| Parameter    | Type     | Required | Description |
+| ------------ | -------- | -------- | ----------- |
+| `providerID` | `string` | yes      |             |
+| `modelID`    | `string` | yes      |             |
+
+Returns: `boolean`
 
 ## global
+
+### client.global.dispose
+
+`POST /global/dispose` · operationId `global.dispose`
+
+Dispose instance.
+
+Clean up and dispose all MerakCode instances, releasing all resources.
+
+No parameters.
+
+Returns: `boolean`
+
+### client.global.event
+
+`GET /global/event` · operationId `global.event`
+
+Get global events.
+
+Subscribe to global events from the MerakCode system using server-sent events.
+
+No parameters.
+
+Returns: `stream of GlobalEvent`
 
 ### client.global.health
 
@@ -88,30 +814,6 @@ Aggregate sessions, messages, cost, token usage, tool and model usage across eve
 
 Returns: `SessionStats`
 
-### client.global.event
-
-`GET /global/event` · operationId `global.event`
-
-Get global events.
-
-Subscribe to global events from the MerakCode system using server-sent events.
-
-No parameters.
-
-Returns: `stream of GlobalEvent`
-
-### client.global.dispose
-
-`POST /global/dispose` · operationId `global.dispose`
-
-Dispose instance.
-
-Clean up and dispose all MerakCode instances, releasing all resources.
-
-No parameters.
-
-Returns: `boolean`
-
 ## global.session
 
 ### client.global.session.search
@@ -130,105 +832,375 @@ Search session titles and conversation text across every persisted MerakCode pro
 
 Returns: `SessionOutput[]`
 
-## global.config
+## instance
 
-### client.global.config.get
+### client.instance.dispose
 
-`GET /global/config` · operationId `global.config.get`
+`POST /instance/dispose` · operationId `instance.dispose`
 
-Get global configuration.
+Dispose instance.
 
-Retrieve the current global MerakCode configuration settings and preferences.
-
-No parameters.
-
-Returns: `ConfigOutput`
-
-### client.global.config.update
-
-`PATCH /global/config` · operationId `global.config.update`
-
-Update global configuration.
-
-Update global MerakCode configuration settings and preferences. With skipDispose=true only the config cache is refreshed (the Instance is not disposed and global.disposed is not broadcast), for small changes that take effect without restarting sessions (such as the default model).
-
-| Parameter     | Type                              | Required | Description |
-| ------------- | --------------------------------- | -------- | ----------- |
-| `skipDispose` | `"true" \| "1" \| "false" \| "0"` | no       |             |
-| `config`      | `Config`                          | no       |             |
-
-Returns: `ConfigOutput`
-
-### client.global.config.deleteProvider
-
-`DELETE /global/config/provider/{providerID}` · operationId `global.config.deleteProvider`
-
-Delete provider from global config.
-
-Remove a provider entry from global merakcode.json and clear dangling model references.
-
-| Parameter         | Type                              | Required | Description |
-| ----------------- | --------------------------------- | -------- | ----------- |
-| `providerID`      | `string`                          | yes      |             |
-| `clearReferences` | `"true" \| "1" \| "false" \| "0"` | no       |             |
-
-Returns: `boolean`
-
-### client.global.config.deleteProviderModel
-
-`DELETE /global/config/provider/{providerID}/model/{modelID}` · operationId `global.config.deleteProviderModel`
-
-Delete model from global provider config.
-
-Remove a single model from a provider in global config and clear dangling references.
-
-| Parameter    | Type     | Required | Description |
-| ------------ | -------- | -------- | ----------- |
-| `providerID` | `string` | yes      |             |
-| `modelID`    | `string` | yes      |             |
-
-Returns: `boolean`
-
-## auth
-
-### client.auth.list
-
-`GET /auth` · operationId `auth.list`
-
-List stored credentials.
-
-List the providers that have stored credentials and their credential type, plus the credentials file. Secrets are never returned.
+Clean up and dispose the current MerakCode instance, releasing all resources.
 
 No parameters.
 
-Returns: `{ file: string; credentials: ({ providerID: string; type: "oauth" \| "api" \| "wellknown" })[] }`
+Returns: `boolean`
 
-### client.auth.set
+## lsp
 
-`PUT /auth/{providerID}` · operationId `auth.set`
+### client.lsp.status
 
-Set auth credentials.
+`GET /lsp` · operationId `lsp.status`
 
-Set authentication credentials.
+Get LSP server status.
 
-| Parameter    | Type     | Required | Description |
-| ------------ | -------- | -------- | ----------- |
-| `providerID` | `string` | yes      |             |
-| `auth`       | `Auth`   | yes      |             |
+No parameters.
+
+Returns: `LSPStatus[]`
+
+## mcp
+
+### client.mcp.status
+
+`GET /mcp` · operationId `mcp.status`
+
+Get MCP status.
+
+Get the status of all Model Context Protocol (MCP) servers.
+
+No parameters.
+
+Returns: `Record<string, MCPStatus>`
+
+### client.mcp.add
+
+`POST /mcp` · operationId `mcp.add`
+
+Add MCP server.
+
+Dynamically add a new Model Context Protocol (MCP) server to the system.
+
+| Parameter | Type                                | Required | Description |
+| --------- | ----------------------------------- | -------- | ----------- |
+| `config`  | `McpLocalConfig \| McpRemoteConfig` | yes      |             |
+| `name`    | `string`                            | yes      |             |
+
+Returns: `Record<string, MCPStatus>`
+
+### client.mcp.remove
+
+`DELETE /mcp/{name}` · operationId `mcp.remove`
+
+Delete MCP server.
+
+Remove an MCP server from config and clean up its runtime connection.
+
+| Parameter | Type                    | Required | Description |
+| --------- | ----------------------- | -------- | ----------- |
+| `name`    | `string`                | yes      |             |
+| `scope`   | `"global" \| "project"` | no       |             |
 
 Returns: `boolean`
 
-### client.auth.remove
+### client.mcp.connect
 
-`DELETE /auth/{providerID}` · operationId `auth.remove`
+`POST /mcp/{name}/connect` · operationId `mcp.connect`
 
-Remove auth credentials.
+Connect an MCP server.
 
-Remove authentication credentials.
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.mcp.disconnect
+
+`POST /mcp/{name}/disconnect` · operationId `mcp.disconnect`
+
+Disconnect an MCP server.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+
+Returns: `boolean`
+
+## mcpManagement
+
+### client.mcpManagement.read
+
+`GET /mcp-management` · operationId `mcpManagement.read`
+
+Read managed MCP servers.
+
+Read configuration, runtime status, and tools as one consistent MCP snapshot.
+
+No parameters.
+
+Returns: `{ servers: ({ config: McpLocalConfig \| McpRemoteConfig; enabled: boolean; name: string; scope: "global" \| "project"; shadowed: ("global" \| "project")[]; status: MCPStatus; tools: object })[] }`
+
+### client.mcpManagement.change
+
+`POST /mcp-management/change` · operationId `mcpManagement.change`
+
+Change a managed MCP server.
+
+Atomically change MCP configuration and runtime state with typed compensation results.
+
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                               | Required | Description |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `body`    | `{ config: McpManagementLocalInput \| McpManagementRemoteInput; name: string; type: "add" } \| { config: McpManagementLocalInput \| McpManagementRemoteInput; name: string; type: "replace" } \| { enabled: boolean; name: string; type: "set_enabled" } \| { name: string; newName: string; type: "rename" } \| { name: string; type: "remove" }` | yes      |             |
+
+Returns: `{ error: { code: "already_exists" \| "compensation_failed" \| "config_write_failed" \| "invalid_config" \| "not_found" \| "runtime_connect_failed" \| "runtime_disconnect_failed" \| "shadowed"; facts: object[]; message: string }; ok: false; snapshot?: { servers: object[] } } \| { ok: true; snapshot: { servers: object[] } }`
+
+## mcp.auth
+
+### client.mcp.auth.remove
+
+`DELETE /mcp/{name}/auth` · operationId `mcp.auth.remove`
+
+Remove MCP OAuth.
+
+Remove stored OAuth credentials for an MCP server.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+
+Returns: `McpAuthRemove`
+
+### client.mcp.auth.start
+
+`POST /mcp/{name}/auth` · operationId `mcp.auth.start`
+
+Start MCP OAuth.
+
+Start OAuth authentication flow for a remote MCP server.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+
+Returns: `McpAuthStart`
+
+### client.mcp.auth.callback
+
+`POST /mcp/{name}/auth/callback` · operationId `mcp.auth.callback`
+
+Complete MCP OAuth.
+
+Complete OAuth for a remote MCP server using the authorization code.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+| `code`    | `string` | yes      |             |
+
+Returns: `MCPStatus`
+
+### client.mcp.auth.wait
+
+`POST /mcp/{name}/auth/wait` · operationId `mcp.auth.wait`
+
+Wait for MCP OAuth.
+
+Wait for the browser callback of an OAuth flow started with mcp.auth.start (up to 5 minutes), then exchange the code and connect. Lets the client show and open the authorization URL itself.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `name`    | `string` | yes      |             |
+| `state`   | `string` | yes      |             |
+
+Returns: `MCPStatus`
+
+## memory
+
+### client.memory.list
+
+`GET /memory` · operationId `memory.list`
+
+List memories.
+
+List the project's memory directory, the MEMORY.md index body, and all topic memory entries with their frontmatter.
+
+No parameters.
+
+Returns: `MemorySnapshot`
+
+### client.memory.remove
+
+`DELETE /memory/entry` · operationId `memory.remove`
+
+Delete a memory entry.
+
+Delete one memory file and prune the matching pointer line from MEMORY.md, so the index never points at a missing file.
+
+| Parameter | Type     | Required | Description                      |
+| --------- | -------- | -------- | -------------------------------- |
+| `path`    | `string` | yes      | Absolute path of the memory file |
+
+Returns: `{ path: string }`
+
+### client.memory.read
+
+`GET /memory/entry` · operationId `memory.read`
+
+Read a memory entry.
+
+Read one memory file's raw content. Paths outside the memory directory are rejected.
+
+| Parameter | Type     | Required | Description                      |
+| --------- | -------- | -------- | -------------------------------- |
+| `path`    | `string` | yes      | Absolute path of the memory file |
+
+Returns: `{ content: string; path: string }`
+
+## path
+
+### client.path.get
+
+`GET /path` · operationId `path.get`
+
+Get paths.
+
+Retrieve the current working directory and related path information for the MerakCode instance.
+
+No parameters.
+
+Returns: `Path`
+
+## permission
+
+### client.permission.list
+
+`GET /permission` · operationId `permission.list`
+
+List pending permissions.
+
+Get all pending permission requests across all sessions.
+
+No parameters.
+
+Returns: `PermissionRequest[]`
+
+### client.permission.grants
+
+`GET /permission/grant` · operationId `permission.grants`
+
+List session grants.
+
+Rules the user allowed for the rest of a session (shared with its subagents). Pass any session of the tree; the grants of its main session are returned.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `PermissionRuleOutput[]`
+
+### client.permission.revoke
+
+`POST /permission/grant/revoke` · operationId `permission.revoke`
+
+Revoke a session grant.
+
+Remove one rule the user allowed for the rest of a session; later calls ask again.
 
 | Parameter    | Type     | Required | Description |
 | ------------ | -------- | -------- | ----------- |
-| `providerID` | `string` | yes      |             |
+| `pattern`    | `string` | yes      |             |
+| `permission` | `string` | yes      |             |
+| `sessionID`  | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.permission.rules
+
+`GET /permission/rule` · operationId `permission.rules`
+
+List permission rules.
+
+Rules written in the project config (.merakcode/merakcode.json) and the global config, separately.
+
+No parameters.
+
+Returns: `{ global: PermissionRuleOutput[]; project: PermissionRuleOutput[] }`
+
+### client.permission.rule
+
+`POST /permission/rule` · operationId `permission.rule`
+
+Set a permission rule.
+
+Add, change or (without action) remove one rule in the project or global config: permission key, pattern (path, command prefix like `npm test *`, domain) and action.
+
+| Parameter    | Type                    | Required | Description |
+| ------------ | ----------------------- | -------- | ----------- |
+| `action`     | `PermissionAction`      | no       |             |
+| `pattern`    | `string`                | yes      |             |
+| `permission` | `string`                | yes      |             |
+| `scope`      | `"global" \| "project"` | yes      |             |
+
+Returns: `boolean`
+
+### client.permission.reply
+
+`POST /permission/{requestID}/reply` · operationId `permission.reply`
+
+Respond to permission request.
+
+Approve or deny a permission request from the AI assistant. `session` allows it for the rest of the session (shared with subagents), `always` also saves the rule to the project config; `scope` picks the grant (file, directory, command prefix, domain, ...).
+
+| Parameter   | Type                                                                 | Required | Description |
+| ----------- | -------------------------------------------------------------------- | -------- | ----------- |
+| `requestID` | `string`                                                             | yes      |             |
+| `message`   | `string`                                                             | no       |             |
+| `reply`     | `"always" \| "once" \| "reject" \| "session"`                        | yes      |             |
+| `scope`     | `"agent" \| "directory" \| "domain" \| "file" \| "prefix" \| "tool"` | no       |             |
+
+Returns: `boolean`
+
+## plugin
+
+### client.plugin.remove
+
+`DELETE /plugin` · operationId `plugin.remove`
+
+Remove plugin.
+
+Remove a plugin from the project (or global) config file by name or full specifier. Returns false when it is not configured there.
+
+| Parameter | Type                    | Required | Description                                   |
+| --------- | ----------------------- | -------- | --------------------------------------------- |
+| `name`    | `string`                | yes      |                                               |
+| `scope`   | `"global" \| "project"` | no       | Which config file to change (default project) |
+
+Returns: `boolean`
+
+### client.plugin.list
+
+`GET /plugin` · operationId `plugin.list`
+
+List plugins.
+
+List built-in and configured plugins with their runtime health and registered tools.
+
+No parameters.
+
+Returns: `({ error?: string; id: string; source: "config" \| "internal"; spec: string; status: "active" \| "degraded" \| "failed"; tools: string[] })[]`
+
+### client.plugin.add
+
+`POST /plugin` · operationId `plugin.add`
+
+Add plugin.
+
+Add a plugin specifier to the project (or global) config file. An existing plugin with the same name is replaced.
+
+| Parameter   | Type                    | Required | Description                                   |
+| ----------- | ----------------------- | -------- | --------------------------------------------- |
+| `scope`     | `"global" \| "project"` | no       | Which config file to change (default project) |
+| `specifier` | `string`                | yes      |                                               |
 
 Returns: `boolean`
 
@@ -269,1150 +1241,11 @@ Update project properties such as name, icon, and commands.
 | Parameter   | Type                                                  | Required | Description |
 | ----------- | ----------------------------------------------------- | -------- | ----------- |
 | `projectID` | `string`                                              | yes      |             |
-| `name`      | `string`                                              | no       |             |
-| `icon`      | `{ url?: string; override?: string; color?: string }` | no       |             |
 | `commands`  | `{ start?: string }`                                  | no       |             |
+| `icon`      | `{ color?: string; override?: string; url?: string }` | no       |             |
+| `name`      | `string`                                              | no       |             |
 
 Returns: `Project`
-
-## pty
-
-### client.pty.list
-
-`GET /pty` · operationId `pty.list`
-
-List PTY sessions.
-
-Get a list of all active pseudo-terminal (PTY) sessions managed by MerakCode.
-
-No parameters.
-
-Returns: `Pty[]`
-
-### client.pty.create
-
-`POST /pty` · operationId `pty.create`
-
-Create PTY session.
-
-Create a new pseudo-terminal (PTY) session for running shell commands and processes.
-
-| Parameter | Type                             | Required | Description |
-| --------- | -------------------------------- | -------- | ----------- |
-| `command` | `string`                         | no       |             |
-| `args`    | `string[]`                       | no       |             |
-| `cwd`     | `string`                         | no       |             |
-| `title`   | `string`                         | no       |             |
-| `env`     | `Record<string, string>`         | no       |             |
-| `size`    | `{ cols: number; rows: number }` | no       |             |
-
-Returns: `Pty`
-
-### client.pty.get
-
-`GET /pty/{ptyID}` · operationId `pty.get`
-
-Get PTY session.
-
-Retrieve detailed information about a specific pseudo-terminal (PTY) session.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `ptyID`   | `string` | yes      |             |
-
-Returns: `Pty`
-
-### client.pty.update
-
-`PUT /pty/{ptyID}` · operationId `pty.update`
-
-Update PTY session.
-
-Update properties of an existing pseudo-terminal (PTY) session.
-
-| Parameter | Type                             | Required | Description |
-| --------- | -------------------------------- | -------- | ----------- |
-| `ptyID`   | `string`                         | yes      |             |
-| `title`   | `string`                         | no       |             |
-| `size`    | `{ rows: number; cols: number }` | no       |             |
-
-Returns: `Pty`
-
-### client.pty.remove
-
-`DELETE /pty/{ptyID}` · operationId `pty.remove`
-
-Remove PTY session.
-
-Remove and terminate a specific pseudo-terminal (PTY) session.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `ptyID`   | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.pty.connect
-
-`GET /pty/{ptyID}/connect` · operationId `pty.connect`
-
-Connect to PTY session.
-
-Establish a WebSocket connection to interact with a pseudo-terminal (PTY) session in real-time.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `ptyID`   | `string` | yes      |             |
-
-Returns: `boolean`
-
-## config
-
-### client.config.get
-
-`GET /config` · operationId `config.get`
-
-Get configuration.
-
-Retrieve the current MerakCode configuration settings and preferences.
-
-No parameters.
-
-Returns: `ConfigOutput`
-
-### client.config.update
-
-`PATCH /config` · operationId `config.update`
-
-Update configuration.
-
-Update MerakCode configuration settings and preferences.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `config`  | `Config` | no       |             |
-
-Returns: `ConfigOutput`
-
-### client.config.warnings
-
-`GET /config/warnings` · operationId `config.warnings`
-
-Get config load warnings.
-
-List runtime config degradation warnings. Invalid items were skipped in memory; files were not rewritten.
-
-No parameters.
-
-Returns: `ConfigWarning[]`
-
-### client.config.providers
-
-`GET /config/providers` · operationId `config.providers`
-
-List config providers.
-
-Get a list of all configured AI providers and their default models.
-
-No parameters.
-
-Returns: `{ providers: Provider[]; default: Record<string, string> }`
-
-## tool
-
-### client.tool.ids
-
-`GET /experimental/tool/ids` · operationId `tool.ids`
-
-List tool IDs.
-
-Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.
-
-No parameters.
-
-Returns: `ToolIDs`
-
-### client.tool.list
-
-`GET /experimental/tool` · operationId `tool.list`
-
-List tools.
-
-Get a list of available tools with their JSON schema parameters for a specific provider and model combination.
-
-| Parameter  | Type     | Required | Description |
-| ---------- | -------- | -------- | ----------- |
-| `provider` | `string` | yes      |             |
-| `model`    | `string` | yes      |             |
-
-Returns: `ToolList`
-
-## worktree
-
-### client.worktree.create
-
-`POST /experimental/worktree` · operationId `worktree.create`
-
-Create worktree.
-
-Create a new git worktree for the current project and run any configured startup scripts.
-
-| Parameter             | Type                  | Required | Description |
-| --------------------- | --------------------- | -------- | ----------- |
-| `worktreeCreateInput` | `WorktreeCreateInput` | no       |             |
-
-Returns: `Worktree`
-
-### client.worktree.list
-
-`GET /experimental/worktree` · operationId `worktree.list`
-
-List worktrees.
-
-List all sandbox worktrees for the current project.
-
-No parameters.
-
-Returns: `string[]`
-
-### client.worktree.remove
-
-`DELETE /experimental/worktree` · operationId `worktree.remove`
-
-Remove worktree.
-
-Remove a git worktree and delete its branch.
-
-| Parameter             | Type                  | Required | Description |
-| --------------------- | --------------------- | -------- | ----------- |
-| `worktreeRemoveInput` | `WorktreeRemoveInput` | yes      |             |
-
-Returns: `boolean`
-
-### client.worktree.reset
-
-`POST /experimental/worktree/reset` · operationId `worktree.reset`
-
-Reset worktree.
-
-Reset a worktree branch to the primary default branch.
-
-| Parameter            | Type                 | Required | Description |
-| -------------------- | -------------------- | -------- | ----------- |
-| `worktreeResetInput` | `WorktreeResetInput` | yes      |             |
-
-Returns: `boolean`
-
-### client.worktree.merge
-
-`POST /experimental/worktree/merge` · operationId `worktree.merge`
-
-Merge worktree.
-
-Commit pending changes in a worktree and merge (or squash) its branch into the primary workspace's current branch. On conflicts the merge is aborted and the conflicting files are returned.
-
-| Parameter            | Type                 | Required | Description |
-| -------------------- | -------------------- | -------- | ----------- |
-| `worktreeMergeInput` | `WorktreeMergeInput` | yes      |             |
-
-Returns: `WorktreeMergeResult`
-
-## experimental.resource
-
-### client.experimental.resource.list
-
-`GET /experimental/resource` · operationId `experimental.resource.list`
-
-Get MCP resources.
-
-Get all available MCP resources from connected servers. Optionally filter by name.
-
-No parameters.
-
-Returns: `Record<string, McpResource>`
-
-## session
-
-### client.session.list
-
-`GET /session` · operationId `session.list`
-
-List sessions.
-
-Get a list of all MerakCode sessions, sorted by most recently updated.
-
-| Parameter | Type      | Required | Description                                                                   |
-| --------- | --------- | -------- | ----------------------------------------------------------------------------- |
-| `roots`   | `boolean` | no       | Only return root sessions (no parentID)                                       |
-| `start`   | `number`  | no       | Filter sessions updated on or after this timestamp (milliseconds since epoch) |
-| `search`  | `string`  | no       | Filter sessions by title (case-insensitive)                                   |
-| `limit`   | `number`  | no       | Maximum number of sessions to return                                          |
-
-Returns: `SessionOutput[]`
-
-### client.session.create
-
-`POST /session` · operationId `session.create`
-
-Create session.
-
-Create a new MerakCode session for interacting with AI assistants and managing conversations.
-
-| Parameter    | Type                                                           | Required | Description |
-| ------------ | -------------------------------------------------------------- | -------- | ----------- |
-| `parentID`   | `string`                                                       | no       |             |
-| `title`      | `string`                                                       | no       |             |
-| `permission` | `PermissionRuleset`                                            | no       |             |
-| `metadata`   | `Record<string, unknown>`                                      | no       |             |
-| `target`     | `{ kind: "merak" } \| { kind: "external"; productID: string }` | no       |             |
-
-Returns: `SessionOutput`
-
-### client.session.search
-
-`GET /session/search` · operationId `session.search`
-
-Search sessions.
-
-Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.
-
-| Parameter | Type      | Required | Description                             |
-| --------- | --------- | -------- | --------------------------------------- |
-| `search`  | `string`  | yes      | Text to look for (case-insensitive)     |
-| `roots`   | `boolean` | no       | Only return root sessions (no parentID) |
-| `limit`   | `number`  | no       | Maximum number of sessions to return    |
-
-Returns: `SessionSearchResult[]`
-
-### client.session.status
-
-`GET /session/status` · operationId `session.status`
-
-Get session status.
-
-Retrieve the current status of all sessions, including active, idle, and completed states.
-
-No parameters.
-
-Returns: `Record<string, SessionStatus>`
-
-### client.session.get
-
-`GET /session/{sessionID}` · operationId `session.get`
-
-Get session.
-
-Retrieve detailed information about a specific MerakCode session.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `SessionOutput`
-
-### client.session.delete
-
-`DELETE /session/{sessionID}` · operationId `session.delete`
-
-Delete session.
-
-Delete a session and permanently remove all associated data, including messages and history.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.session.update
-
-`PATCH /session/{sessionID}` · operationId `session.update`
-
-Update session.
-
-Update properties of an existing session, such as title or other metadata.
-
-| Parameter   | Type                      | Required | Description |
-| ----------- | ------------------------- | -------- | ----------- |
-| `sessionID` | `string`                  | yes      |             |
-| `title`     | `string`                  | no       |             |
-| `time`      | `{ archived?: number }`   | no       |             |
-| `metadata`  | `Record<string, unknown>` | no       |             |
-
-Returns: `SessionOutput`
-
-### client.session.children
-
-`GET /session/{sessionID}/children` · operationId `session.children`
-
-Get session children.
-
-Retrieve all child sessions that were forked from the specified parent session.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `SessionOutput[]`
-
-### client.session.todo
-
-`GET /session/{sessionID}/todo` · operationId `session.todo`
-
-Get session todos.
-
-Retrieve the todo list associated with a specific session, showing tasks and action items.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-
-Returns: `Todo[]`
-
-### client.session.setPermissionMode
-
-`POST /session/{sessionID}/permission-mode` · operationId `session.setPermissionMode`
-
-Set session permission mode.
-
-Switch the session's permission mode (read-only, ask, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.
-
-| Parameter        | Type             | Required | Description |
-| ---------------- | ---------------- | -------- | ----------- |
-| `sessionID`      | `string`         | yes      | Session ID  |
-| `permissionMode` | `PermissionMode` | yes      |             |
-
-Returns: `SessionOutput`
-
-### client.session.init
-
-`POST /session/{sessionID}/init` · operationId `session.init`
-
-Initialize session.
-
-Analyze the current application and create or improve AGENTS.md with project-specific agent instructions. An existing CLAUDE.md may be used as reference when consolidating into AGENTS.md.
-
-| Parameter    | Type     | Required | Description |
-| ------------ | -------- | -------- | ----------- |
-| `sessionID`  | `string` | yes      | Session ID  |
-| `modelID`    | `string` | yes      |             |
-| `providerID` | `string` | yes      |             |
-| `messageID`  | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.session.fork
-
-`POST /session/{sessionID}/fork` · operationId `session.fork`
-
-Fork session.
-
-Create a new session by forking an existing session at a specific message point.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-| `messageID` | `string` | no       |             |
-
-Returns: `SessionOutput`
-
-### client.session.abort
-
-`POST /session/{sessionID}/abort` · operationId `session.abort`
-
-Abort session.
-
-Abort an active session and stop any ongoing AI processing or command execution.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.session.toolAbort
-
-`POST /session/{sessionID}/tool/{callID}/abort` · operationId `session.toolAbort`
-
-Abort a single tool call.
-
-Abort a specific in-flight tool call without stopping the entire session.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-| `callID`    | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.session.diff
-
-`GET /session/{sessionID}/diff` · operationId `session.diff`
-
-Get message diff.
-
-Get the file changes (diff) that resulted from a specific user message in the session.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-| `messageID` | `string` | no       |             |
-
-Returns: `FileDiffOutput[]`
-
-### client.session.summarize
-
-`POST /session/{sessionID}/summarize` · operationId `session.summarize`
-
-Summarize session.
-
-Generate a concise summary of the session using AI compaction to preserve key information.
-
-| Parameter    | Type      | Required | Description |
-| ------------ | --------- | -------- | ----------- |
-| `sessionID`  | `string`  | yes      | Session ID  |
-| `providerID` | `string`  | yes      |             |
-| `modelID`    | `string`  | yes      |             |
-| `auto`       | `boolean` | no       |             |
-
-Returns: `boolean`
-
-### client.session.messages
-
-`GET /session/{sessionID}/message` · operationId `session.messages`
-
-Get session messages.
-
-Retrieve all messages in a session, including user prompts and AI responses.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-| `limit`     | `number` | no       |             |
-
-Returns: `({ info: MessageOutput; parts: PartOutput[] })[]`
-
-### client.session.prompt
-
-`POST /session/{sessionID}/message` · operationId `session.prompt`
-
-Send message.
-
-Create and send a new message to a session, streaming the AI response.
-
-| Parameter        | Type                                                                       | Required | Description                                                                                           |
-| ---------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
-| `messageID`      | `string`                                                                   | no       |                                                                                                       |
-| `model`          | `{ providerID: string; modelID: string }`                                  | no       |                                                                                                       |
-| `agent`          | `string`                                                                   | no       |                                                                                                       |
-| `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
-| `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
-| `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
-| `system`         | `string`                                                                   | no       |                                                                                                       |
-| `variant`        | `string`                                                                   | no       |                                                                                                       |
-| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
-| `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
-| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
-| `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
-| `parts`          | `(TextPartInput \| FilePartInput \| AgentPartInput \| SubtaskPartInput)[]` | yes      |                                                                                                       |
-
-Returns: `{ info: AssistantMessageOutput \| ExternalAssistantMessageOutput; parts: PartOutput[] }`
-
-### client.session.message
-
-`GET /session/{sessionID}/message/{messageID}` · operationId `session.message`
-
-Get message.
-
-Retrieve a specific message from a session by its message ID.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-| `messageID` | `string` | yes      | Message ID  |
-
-Returns: `{ info: MessageOutput; parts: PartOutput[] }`
-
-### client.session.deleteMessage
-
-`DELETE /session/{sessionID}/message/{messageID}` · operationId `session.deleteMessage`
-
-Delete message.
-
-Permanently delete a specific message and all of its parts from a session without reverting file changes.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-| `messageID` | `string` | yes      | Message ID  |
-
-Returns: `boolean`
-
-### client.session.promptAsync
-
-`POST /session/{sessionID}/prompt_async` · operationId `session.prompt_async`
-
-Send async message.
-
-Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.
-
-| Parameter        | Type                                                                       | Required | Description                                                                                           |
-| ---------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
-| `messageID`      | `string`                                                                   | no       |                                                                                                       |
-| `model`          | `{ providerID: string; modelID: string }`                                  | no       |                                                                                                       |
-| `agent`          | `string`                                                                   | no       |                                                                                                       |
-| `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
-| `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
-| `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
-| `system`         | `string`                                                                   | no       |                                                                                                       |
-| `variant`        | `string`                                                                   | no       |                                                                                                       |
-| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
-| `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
-| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
-| `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
-| `parts`          | `(TextPartInput \| FilePartInput \| AgentPartInput \| SubtaskPartInput)[]` | yes      |                                                                                                       |
-
-Returns: nothing
-
-### client.session.takeover
-
-`POST /session/{sessionID}/takeover` · operationId `session.takeover`
-
-Decide whether MerakCode takes over a disabled external conversation.
-
-| Parameter                | Type                    | Required | Description |
-| ------------------------ | ----------------------- | -------- | ----------- |
-| `sessionID`              | `string`                | yes      |             |
-| `decision`               | `"accept" \| "decline"` | yes      |             |
-| `expectedTargetRevision` | `number`                | yes      |             |
-| `blockID`                | `string`                | yes      |             |
-
-Returns: `SessionOutput`
-
-### client.session.command
-
-`POST /session/{sessionID}/command` · operationId `session.command`
-
-Send command.
-
-Send a new command to a session for execution by the AI assistant.
-
-| Parameter        | Type                                                                                                       | Required | Description |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `sessionID`      | `string`                                                                                                   | yes      | Session ID  |
-| `messageID`      | `string`                                                                                                   | no       |             |
-| `agent`          | `string`                                                                                                   | no       |             |
-| `model`          | `string`                                                                                                   | no       |             |
-| `permissionMode` | `PermissionMode`                                                                                           | no       |             |
-| `kind`           | `PermissionMode`                                                                                           | no       |             |
-| `arguments`      | `string`                                                                                                   | yes      |             |
-| `command`        | `string`                                                                                                   | yes      |             |
-| `variant`        | `string`                                                                                                   | no       |             |
-| `metadata`       | `Record<string, unknown>`                                                                                  | no       |             |
-| `parts`          | `({ id?: string; type: "file"; mime: string; filename?: string; url: string; source?: FilePartSource })[]` | no       |             |
-
-Returns: `{ info: AssistantMessageOutput; parts: PartOutput[] }`
-
-### client.session.shell
-
-`POST /session/{sessionID}/shell` · operationId `session.shell`
-
-Run shell command.
-
-Execute a shell command within the session context and return the AI's response.
-
-| Parameter        | Type                                      | Required | Description |
-| ---------------- | ----------------------------------------- | -------- | ----------- |
-| `sessionID`      | `string`                                  | yes      | Session ID  |
-| `agent`          | `string`                                  | yes      |             |
-| `permissionMode` | `PermissionMode`                          | no       |             |
-| `kind`           | `PermissionMode`                          | no       |             |
-| `model`          | `{ providerID: string; modelID: string }` | no       |             |
-| `command`        | `string`                                  | yes      |             |
-
-Returns: `AssistantMessageOutput`
-
-### client.session.revert
-
-`POST /session/{sessionID}/revert` · operationId `session.revert`
-
-Revert message.
-
-Revert a specific message in a session, undoing its effects and restoring the previous state.
-
-| Parameter     | Type      | Required | Description |
-| ------------- | --------- | -------- | ----------- |
-| `sessionID`   | `string`  | yes      |             |
-| `messageID`   | `string`  | yes      |             |
-| `revertFiles` | `boolean` | no       |             |
-
-Returns: `SessionOutput`
-
-### client.session.unrevert
-
-`POST /session/{sessionID}/unrevert` · operationId `session.unrevert`
-
-Restore reverted messages.
-
-Restore all previously reverted messages in a session.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `SessionOutput`
-
-### client.session.exportFull
-
-`GET /session/{sessionID}/export-full` · operationId `session.exportFull`
-
-Export full session data.
-
-Export the complete session (all metadata and message parts) as JSON, suitable for backup or migration. Unlike the transcript export, no data is omitted.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `{ info: SessionOutput; messages: ({ info: MessageOutput; parts: PartOutput[] })[] }`
-
-### client.session.importFull
-
-`POST /session/import-full` · operationId `session.importFull`
-
-Import full session data.
-
-Import a session previously produced by export-full (or the `merak export` CLI command), restoring its full metadata and messages. A brand-new session/message/part ID is generated on import so the operation never merges into or overwrites any existing session; directory/projectID are rewritten to the current project.
-
-| Parameter  | Type                                   | Required | Description |
-| ---------- | -------------------------------------- | -------- | ----------- |
-| `info`     | `Session`                              | yes      |             |
-| `messages` | `({ info: Message; parts: Part[] })[]` | yes      |             |
-
-Returns: `{ info: SessionOutput }`
-
-## part
-
-### client.part.delete
-
-`DELETE /session/{sessionID}/message/{messageID}/part/{partID}` · operationId `part.delete`
-
-Delete a part from a message.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-| `messageID` | `string` | yes      | Message ID  |
-| `partID`    | `string` | yes      | Part ID     |
-
-Returns: `boolean`
-
-### client.part.update
-
-`PATCH /session/{sessionID}/message/{messageID}/part/{partID}` · operationId `part.update`
-
-Update a part in a message.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      | Session ID  |
-| `messageID` | `string` | yes      | Message ID  |
-| `partID`    | `string` | yes      | Part ID     |
-| `part`      | `Part`   | yes      |             |
-
-Returns: `PartOutput`
-
-## collaboration
-
-### client.collaboration.roleTemplates
-
-`GET /collaboration/role-template` · operationId `collaboration.roleTemplates`
-
-List collaboration role templates.
-
-No parameters.
-
-Returns: `CollaborationRoleTemplate[]`
-
-### client.collaboration.list
-
-`GET /collaboration` · operationId `collaboration.list`
-
-List collaboration groups.
-
-Groups of every project, most recently active first, with their members for copying into a new group. Private sessions are left out.
-
-No parameters.
-
-Returns: `CollaborationGroupSummary[]`
-
-### client.collaboration.create
-
-`POST /collaboration` · operationId `collaboration.create`
-
-Create a collaboration group.
-
-Creates a session whose leader is a Merak seat, together with the seats named up front.
-
-| Parameter | Type                                                                  | Required | Description |
-| --------- | --------------------------------------------------------------------- | -------- | ----------- |
-| `title`   | `string`                                                              | no       |             |
-| `leader`  | `{ name: string; role?: string; duty?: string }`                      | yes      |             |
-| `seats`   | `({ name: string; role?: string; duty?: string; product: string })[]` | no       |             |
-
-Returns: `{ sessionID: string; group: CollaborationGroup }`
-
-### client.collaboration.get
-
-`GET /collaboration/{sessionID}` · operationId `collaboration.get`
-
-Get a collaboration group.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `CollaborationGroup`
-
-## collaboration.roleTemplate
-
-### client.collaboration.roleTemplate.change
-
-`POST /collaboration/role-template` · operationId `collaboration.roleTemplate.change`
-
-Change a custom collaboration role template.
-
-| Parameter | Type                                                                                                                                                                                                              | Required | Description |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `body`    | `{ type: "add"; id: string; template: { name: string; role: string; duty: string } } \| { type: "update"; id: string; template: { name: string; role: string; duty: string } } \| { type: "remove"; id: string }` | yes      |             |
-
-Returns: `CollaborationRoleTemplate[]`
-
-## collaboration.seat
-
-### client.collaboration.seat.add
-
-`POST /collaboration/{sessionID}/seat` · operationId `collaboration.seat.add`
-
-Add a collaboration seat.
-
-| Parameter   | Type     | Required | Description                                          |
-| ----------- | -------- | -------- | ---------------------------------------------------- |
-| `sessionID` | `string` | yes      |                                                      |
-| `name`      | `string` | yes      |                                                      |
-| `role`      | `string` | no       | Short title such as product manager                  |
-| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
-| `product`   | `string` | yes      |                                                      |
-
-Returns: `CollaborationGroup`
-
-### client.collaboration.seat.update
-
-`PATCH /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.update`
-
-Change a collaboration seat's name, role or duty.
-
-| Parameter   | Type     | Required | Description                                          |
-| ----------- | -------- | -------- | ---------------------------------------------------- |
-| `sessionID` | `string` | yes      |                                                      |
-| `seatID`    | `string` | yes      |                                                      |
-| `name`      | `string` | no       |                                                      |
-| `role`      | `string` | no       | Short title such as product manager                  |
-| `duty`      | `string` | no       | What the seat is for; it goes into the seat's prompt |
-
-Returns: `CollaborationGroup`
-
-### client.collaboration.seat.remove
-
-`DELETE /collaboration/{sessionID}/seat/{seatID}` · operationId `collaboration.seat.remove`
-
-Remove a collaboration seat.
-
-The Merak leader cannot be removed.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-| `seatID`    | `string` | yes      |             |
-
-Returns: `CollaborationGroup`
-
-## agentConnection
-
-### client.agentConnection.products
-
-`GET /agent-connection/product` · operationId `agentConnection.products`
-
-List global agent connections.
-
-| Parameter | Type                | Required | Description |
-| --------- | ------------------- | -------- | ----------- |
-| `refresh` | `"true" \| "false"` | no       |             |
-
-Returns: `AgentConnectionProduct[]`
-
-### client.agentConnection.models
-
-`GET /agent-connection/product/{productID}/model` · operationId `agentConnection.models`
-
-Discover models for an agent connection.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `productID` | `string` | yes      |             |
-
-Returns: `AgentConnectionModels`
-
-### client.agentConnection.verify
-
-`POST /agent-connection/product/{productID}/verify` · operationId `agentConnection.verify`
-
-Verify a saved agent connection.
-
-| Parameter          | Type     | Required | Description |
-| ------------------ | -------- | -------- | ----------- |
-| `productID`        | `string` | yes      |             |
-| `expectedRevision` | `number` | yes      |             |
-
-Returns: `AgentConnectionVerification`
-
-## agentConnection.product
-
-### client.agentConnection.product.change
-
-`POST /agent-connection/product` · operationId `agentConnection.product.change`
-
-Change a global agent connection.
-
-| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Required | Description |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ----------- |
-| `body`    | `{ type: "add"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string; model?: object } } \| { type: "update"; id: string; product: { command?: string; title?: string; adapter?: "claude" \| "codex" \| "opencode" \| "command" \| "member"; args?: string[]; resumeArgs?: string[]; sessionLine?: string; model?: object } } \| { type: "remove"; id: string } \| { type: "enabled"; id: string; enabled: boolean }` | yes      |             |
-
-Returns: `AgentConnectionProduct[]`
-
-## memory
-
-### client.memory.list
-
-`GET /memory` · operationId `memory.list`
-
-List memories.
-
-List the project's memory directory, the MEMORY.md index body, and all topic memory entries with their frontmatter.
-
-No parameters.
-
-Returns: `MemorySnapshot`
-
-### client.memory.read
-
-`GET /memory/entry` · operationId `memory.read`
-
-Read a memory entry.
-
-Read one memory file's raw content. Paths outside the memory directory are rejected.
-
-| Parameter | Type     | Required | Description                      |
-| --------- | -------- | -------- | -------------------------------- |
-| `path`    | `string` | yes      | Absolute path of the memory file |
-
-Returns: `{ path: string; content: string }`
-
-### client.memory.remove
-
-`DELETE /memory/entry` · operationId `memory.remove`
-
-Delete a memory entry.
-
-Delete one memory file and prune the matching pointer line from MEMORY.md, so the index never points at a missing file.
-
-| Parameter | Type     | Required | Description                      |
-| --------- | -------- | -------- | -------------------------------- |
-| `path`    | `string` | yes      | Absolute path of the memory file |
-
-Returns: `{ path: string }`
-
-## bash
-
-### client.bash.jobStop
-
-`POST /bash/jobs/{id}/stop` · operationId `bash.jobStop`
-
-Stop a background job.
-
-Send SIGTERM to a running background bash job.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `id`      | `string` | yes      |             |
-
-Returns: `boolean`
-
-## tool.remote
-
-### client.tool.remote.register
-
-`PUT /tool/remote` · operationId `tool.remote.register`
-
-Register remote tools.
-
-Replace the tools defined in the SDK host. The engine publishes tool.remote.call when the model calls one; the host answers with tool.remote.result.
-
-| Parameter | Type                                                                           | Required | Description |
-| --------- | ------------------------------------------------------------------------------ | -------- | ----------- |
-| `tools`   | `({ id: string; description: string; parameters: Record<string, unknown> })[]` | yes      |             |
-
-Returns: `boolean`
-
-### client.tool.remote.result
-
-`POST /tool/remote/{callID}` · operationId `tool.remote.result`
-
-Return a remote tool result.
-
-Hand the result (or error) of a remote tool call back to the engine.
-
-| Parameter | Type                                                      | Required | Description |
-| --------- | --------------------------------------------------------- | -------- | ----------- |
-| `callID`  | `string`                                                  | yes      |             |
-| `body`    | `{ output: string; title?: string } \| { error: string }` | yes      |             |
-
-Returns: `boolean`
-
-## permission
-
-### client.permission.reply
-
-`POST /permission/{requestID}/reply` · operationId `permission.reply`
-
-Respond to permission request.
-
-Approve or deny a permission request from the AI assistant. `session` allows it for the rest of the session (shared with subagents), `always` also saves the rule to the project config; `scope` picks the grant (file, directory, command prefix, domain, ...).
-
-| Parameter   | Type                                                                 | Required | Description |
-| ----------- | -------------------------------------------------------------------- | -------- | ----------- |
-| `requestID` | `string`                                                             | yes      |             |
-| `reply`     | `"once" \| "session" \| "always" \| "reject"`                        | yes      |             |
-| `scope`     | `"file" \| "directory" \| "prefix" \| "agent" \| "tool" \| "domain"` | no       |             |
-| `message`   | `string`                                                             | no       |             |
-
-Returns: `boolean`
-
-### client.permission.list
-
-`GET /permission` · operationId `permission.list`
-
-List pending permissions.
-
-Get all pending permission requests across all sessions.
-
-No parameters.
-
-Returns: `PermissionRequest[]`
-
-### client.permission.grants
-
-`GET /permission/grant` · operationId `permission.grants`
-
-List session grants.
-
-Rules the user allowed for the rest of a session (shared with its subagents). Pass any session of the tree; the grants of its main session are returned.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
-
-Returns: `PermissionRuleOutput[]`
-
-### client.permission.rules
-
-`GET /permission/rule` · operationId `permission.rules`
-
-List permission rules.
-
-Rules written in the project config (.merakcode/merakcode.json) and the global config, separately.
-
-No parameters.
-
-Returns: `{ project: PermissionRuleOutput[]; global: PermissionRuleOutput[] }`
-
-### client.permission.rule
-
-`POST /permission/rule` · operationId `permission.rule`
-
-Set a permission rule.
-
-Add, change or (without action) remove one rule in the project or global config: permission key, pattern (path, command prefix like `npm test *`, domain) and action.
-
-| Parameter    | Type                    | Required | Description |
-| ------------ | ----------------------- | -------- | ----------- |
-| `scope`      | `"project" \| "global"` | yes      |             |
-| `permission` | `string`                | yes      |             |
-| `pattern`    | `string`                | yes      |             |
-| `action`     | `PermissionAction`      | no       |             |
-
-Returns: `boolean`
-
-### client.permission.revoke
-
-`POST /permission/grant/revoke` · operationId `permission.revoke`
-
-Revoke a session grant.
-
-Remove one rule the user allowed for the rest of a session; later calls ask again.
-
-| Parameter    | Type     | Required | Description |
-| ------------ | -------- | -------- | ----------- |
-| `sessionID`  | `string` | yes      |             |
-| `permission` | `string` | yes      |             |
-| `pattern`    | `string` | yes      |             |
-
-Returns: `boolean`
-
-## question
-
-### client.question.list
-
-`GET /question` · operationId `question.list`
-
-List pending questions.
-
-Get all pending question requests across all sessions.
-
-No parameters.
-
-Returns: `QuestionRequest[]`
-
-### client.question.reply
-
-`POST /question/{requestID}/reply` · operationId `question.reply`
-
-Reply to question request.
-
-Provide answers to a question request from the AI assistant.
-
-| Parameter   | Type               | Required | Description                                                                     |
-| ----------- | ------------------ | -------- | ------------------------------------------------------------------------------- |
-| `requestID` | `string`           | yes      |                                                                                 |
-| `answers`   | `QuestionAnswer[]` | yes      | User answers in order of questions (each answer is an array of selected labels) |
-
-Returns: `boolean`
-
-### client.question.reject
-
-`POST /question/{requestID}/reject` · operationId `question.reject`
-
-Reject question request.
-
-Reject a question request from the AI assistant.
-
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `requestID` | `string` | yes      |             |
-
-Returns: `boolean`
 
 ## provider
 
@@ -1426,7 +1259,7 @@ Get a list of all available AI providers, including both available and connected
 
 No parameters.
 
-Returns: `{ all: Provider[]; default: Record<string, string>; connected: string[] }`
+Returns: `{ all: Provider[]; connected: string[]; default: Record<string, string> }`
 
 ### client.provider.auth
 
@@ -1464,7 +1297,7 @@ Send a minimal request with the provider's small model to check that the saved c
 | ------------ | -------- | -------- | ----------- |
 | `providerID` | `string` | yes      | Provider ID |
 
-Returns: `{ ok: true; model: string } \| { ok: false; error: string }`
+Returns: `{ error: string; ok: false } \| { model: string; ok: true }`
 
 ## provider.catalog
 
@@ -1494,27 +1327,11 @@ Ask a relay for the models a key can use, and fill in limits the relay did not r
 | --------- | ---------------------------------------------------- | -------- | ----------- |
 | `baseURL` | `string`                                             | yes      |             |
 | `key`     | `string`                                             | yes      |             |
-| `kind`    | `"claude-code" \| "codex" \| "standard" \| "custom"` | yes      |             |
+| `kind`    | `"claude-code" \| "codex" \| "custom" \| "standard"` | yes      |             |
 
-Returns: `{ models: ({ id: string; name: string; context?: number; output?: number; input?: ("text" \| "audio" \| "image" \| "video" \| "pdf")[]; outputModalities?: ("text" \| "audio" \| "image" \| "video" \| "pdf")[]; reasoning?: boolean; toolcall?: boolean; temperature?: boolean; status?: "active" \| "deprecated" \| "alpha" \| "beta"; releaseDate?: string; cost?: object; efforts?: string[]; canDisable?: boolean; defaultEffort?: string; contextFrom?: "relay" \| "catalog" \| "fallback"; outputFrom?: "relay" \| "catalog" \| "fallback"; endpoint?: "anthropic" \| "openai-responses" \| "openai-chat" })[] } \| { error: string }`
+Returns: `{ error: string } \| { models: ({ canDisable?: boolean; context?: number; contextFrom?: "catalog" \| "fallback" \| "relay"; cost?: object; defaultEffort?: string; efforts?: string[]; endpoint?: "anthropic" \| "openai-chat" \| "openai-responses"; id: string; input?: ("audio" \| "image" \| "pdf" \| "text" \| "video")[]; name: string; output?: number; outputFrom?: "catalog" \| "fallback" \| "relay"; outputModalities?: ("audio" \| "image" \| "pdf" \| "text" \| "video")[]; reasoning?: boolean; releaseDate?: string; status?: "active" \| "alpha" \| "beta" \| "deprecated"; temperature?: boolean; toolcall?: boolean })[] }`
 
 ## provider.oauth
-
-### client.provider.oauth.prompt
-
-`POST /provider/{providerID}/oauth/prompt` · operationId `provider.oauth.prompt`
-
-Next OAuth prompt.
-
-Given the answers collected so far, return the next question the auth method asks before authorizing (with the validation error when the last answer was rejected). No prompt means all answers are collected; pass them to provider.oauth.authorize.
-
-| Parameter    | Type                     | Required | Description       |
-| ------------ | ------------------------ | -------- | ----------------- |
-| `providerID` | `string`                 | yes      | Provider ID       |
-| `method`     | `number`                 | yes      | Auth method index |
-| `inputs`     | `Record<string, string>` | yes      |                   |
-
-Returns: `{ prompt?: ProviderAuthPrompt; error?: string }`
 
 ### client.provider.oauth.authorize
 
@@ -1527,8 +1344,8 @@ Initiate OAuth authorization for a specific AI provider to get an authorization 
 | Parameter    | Type                     | Required | Description                                               |
 | ------------ | ------------------------ | -------- | --------------------------------------------------------- |
 | `providerID` | `string`                 | yes      | Provider ID                                               |
-| `method`     | `number`                 | yes      | Auth method index                                         |
 | `inputs`     | `Record<string, string>` | no       | Answers to the method prompts (see provider.oauth.prompt) |
+| `method`     | `number`                 | yes      | Auth method index                                         |
 
 Returns: `ProviderAuthAuthorization`
 
@@ -1543,54 +1360,1026 @@ Handle the OAuth callback from a provider after user authorization.
 | Parameter    | Type     | Required | Description              |
 | ------------ | -------- | -------- | ------------------------ |
 | `providerID` | `string` | yes      | Provider ID              |
-| `method`     | `number` | yes      | Auth method index        |
 | `code`       | `string` | no       | OAuth authorization code |
+| `method`     | `number` | yes      | Auth method index        |
 
 Returns: `boolean`
 
-## plugin
+### client.provider.oauth.prompt
 
-### client.plugin.list
+`POST /provider/{providerID}/oauth/prompt` · operationId `provider.oauth.prompt`
 
-`GET /plugin` · operationId `plugin.list`
+Next OAuth prompt.
 
-List plugins.
+Given the answers collected so far, return the next question the auth method asks before authorizing (with the validation error when the last answer was rejected). No prompt means all answers are collected; pass them to provider.oauth.authorize.
 
-List built-in and configured plugins with their runtime health and registered tools.
+| Parameter    | Type                     | Required | Description       |
+| ------------ | ------------------------ | -------- | ----------------- |
+| `providerID` | `string`                 | yes      | Provider ID       |
+| `inputs`     | `Record<string, string>` | yes      |                   |
+| `method`     | `number`                 | yes      | Auth method index |
+
+Returns: `{ error?: string; prompt?: ProviderAuthPrompt }`
+
+## pty
+
+### client.pty.list
+
+`GET /pty` · operationId `pty.list`
+
+List PTY sessions.
+
+Get a list of all active pseudo-terminal (PTY) sessions managed by MerakCode.
 
 No parameters.
 
-Returns: `({ id: string; spec: string; source: "internal" \| "config"; status: "active" \| "degraded" \| "failed"; error?: string; tools: string[] })[]`
+Returns: `Pty[]`
 
-### client.plugin.add
+### client.pty.create
 
-`POST /plugin` · operationId `plugin.add`
+`POST /pty` · operationId `pty.create`
 
-Add plugin.
+Create PTY session.
 
-Add a plugin specifier to the project (or global) config file. An existing plugin with the same name is replaced.
+Create a new pseudo-terminal (PTY) session for running shell commands and processes.
 
-| Parameter   | Type                    | Required | Description                                   |
-| ----------- | ----------------------- | -------- | --------------------------------------------- |
-| `specifier` | `string`                | yes      |                                               |
-| `scope`     | `"project" \| "global"` | no       | Which config file to change (default project) |
+| Parameter | Type                             | Required | Description |
+| --------- | -------------------------------- | -------- | ----------- |
+| `args`    | `string[]`                       | no       |             |
+| `command` | `string`                         | no       |             |
+| `cwd`     | `string`                         | no       |             |
+| `env`     | `Record<string, string>`         | no       |             |
+| `size`    | `{ cols: number; rows: number }` | no       |             |
+| `title`   | `string`                         | no       |             |
+
+Returns: `Pty`
+
+### client.pty.remove
+
+`DELETE /pty/{ptyID}` · operationId `pty.remove`
+
+Remove PTY session.
+
+Remove and terminate a specific pseudo-terminal (PTY) session.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `ptyID`   | `string` | yes      |             |
 
 Returns: `boolean`
 
-### client.plugin.remove
+### client.pty.get
 
-`DELETE /plugin` · operationId `plugin.remove`
+`GET /pty/{ptyID}` · operationId `pty.get`
 
-Remove plugin.
+Get PTY session.
 
-Remove a plugin from the project (or global) config file by name or full specifier. Returns false when it is not configured there.
+Retrieve detailed information about a specific pseudo-terminal (PTY) session.
 
-| Parameter | Type                    | Required | Description                                   |
-| --------- | ----------------------- | -------- | --------------------------------------------- |
-| `name`    | `string`                | yes      |                                               |
-| `scope`   | `"project" \| "global"` | no       | Which config file to change (default project) |
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `ptyID`   | `string` | yes      |             |
+
+Returns: `Pty`
+
+### client.pty.update
+
+`PUT /pty/{ptyID}` · operationId `pty.update`
+
+Update PTY session.
+
+Update properties of an existing pseudo-terminal (PTY) session.
+
+| Parameter | Type                             | Required | Description |
+| --------- | -------------------------------- | -------- | ----------- |
+| `ptyID`   | `string`                         | yes      |             |
+| `size`    | `{ cols: number; rows: number }` | no       |             |
+| `title`   | `string`                         | no       |             |
+
+Returns: `Pty`
+
+### client.pty.connect
+
+`GET /pty/{ptyID}/connect` · operationId `pty.connect`
+
+Connect to PTY session.
+
+Establish a WebSocket connection to interact with a pseudo-terminal (PTY) session in real-time.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `ptyID`   | `string` | yes      |             |
 
 Returns: `boolean`
+
+## question
+
+### client.question.list
+
+`GET /question` · operationId `question.list`
+
+List pending questions.
+
+Get all pending question requests across all sessions.
+
+No parameters.
+
+Returns: `QuestionRequest[]`
+
+### client.question.reject
+
+`POST /question/{requestID}/reject` · operationId `question.reject`
+
+Reject question request.
+
+Reject a question request from the AI assistant.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `requestID` | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.question.reply
+
+`POST /question/{requestID}/reply` · operationId `question.reply`
+
+Reply to question request.
+
+Provide answers to a question request from the AI assistant.
+
+| Parameter   | Type               | Required | Description                                                                     |
+| ----------- | ------------------ | -------- | ------------------------------------------------------------------------------- |
+| `requestID` | `string`           | yes      |                                                                                 |
+| `answers`   | `QuestionAnswer[]` | yes      | User answers in order of questions (each answer is an array of selected labels) |
+
+Returns: `boolean`
+
+## review
+
+### client.review.get
+
+`GET /review` · operationId `review.get`
+
+Get review.
+
+List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.
+
+| Parameter   | Type          | Required | Description |
+| ----------- | ------------- | -------- | ----------- |
+| `scope`     | `ReviewScope` | yes      |             |
+| `sessionID` | `string`      | yes      |             |
+| `messageID` | `string`      | no       |             |
+
+Returns: `ReviewResult`
+
+### client.review.decide
+
+`POST /review` · operationId `review.decide`
+
+Decide review.
+
+Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.
+
+| Parameter          | Type                                                      | Required | Description |
+| ------------------ | --------------------------------------------------------- | -------- | ----------- |
+| `decision`         | `"accept" \| "reject"`                                    | yes      |             |
+| `expectedCheckout` | `string \| null`                                          | yes      |             |
+| `files`            | `({ file: string; hunks?: string[]; version: string })[]` | yes      |             |
+| `messageID`        | `string`                                                  | no       |             |
+| `scope`            | `ReviewScope`                                             | yes      |             |
+| `sessionID`        | `string`                                                  | yes      |             |
+
+Returns: `ReviewResult`
+
+### client.review.file
+
+`GET /review/file` · operationId `review.file`
+
+Get review file.
+
+Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.
+
+| Parameter          | Type             | Required | Description |
+| ------------------ | ---------------- | -------- | ----------- |
+| `scope`            | `ReviewScope`    | yes      |             |
+| `sessionID`        | `string`         | yes      |             |
+| `messageID`        | `string`         | no       |             |
+| `file`             | `string`         | yes      |             |
+| `version`          | `string`         | no       |             |
+| `expectedCheckout` | `string \| null` | no       |             |
+
+Returns: `ReviewFileDetail`
+
+### client.review.undo
+
+`POST /review/undo` · operationId `review.undo`
+
+Undo review decision.
+
+Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.
+
+| Parameter          | Type             | Required | Description |
+| ------------------ | ---------------- | -------- | ----------- |
+| `expectedCheckout` | `string \| null` | yes      |             |
+| `messageID`        | `string`         | no       |             |
+| `scope`            | `ReviewScope`    | yes      |             |
+| `sessionID`        | `string`         | yes      |             |
+
+Returns: `ReviewResult`
+
+## ruleManagement
+
+### client.ruleManagement.read
+
+`GET /rule` · operationId `ruleManagement.read`
+
+Read rules.
+
+Read user rules, project rule files (.mdc) and effective instruction files as one consistent snapshot.
+
+No parameters.
+
+Returns: `RuleSnapshot`
+
+### client.ruleManagement.change
+
+`POST /rule/change` · operationId `ruleManagement.change`
+
+Change rules.
+
+Create, edit or delete user rules, project rule files and instruction files.
+
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                        | Required | Description |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `body`    | `{ content: string; filepath: string; type: "file_write" } \| { fields?: RuleFields; filename: string; targetId: string; type: "file_create" } \| { fields: RuleFields; filepath: string; type: "file_write_fields" } \| { filepath: string; type: "file_delete" } \| { index: number; text: string; type: "user_update" } \| { index: number; type: "user_remove" } \| { text: string; type: "user_add" }` | yes      |             |
+
+Returns: `{ error: RuleManageError; ok: false; snapshot?: RuleSnapshot } \| { ok: true; snapshot: RuleSnapshot }`
+
+## sandbox
+
+### client.sandbox.status
+
+`GET /sandbox` · operationId `sandbox.status`
+
+Get sandbox status.
+
+Whether agent-run commands run inside the OS sandbox: on, off (disabled in config) or unsupported (missing dependencies or platform), with the reason.
+
+No parameters.
+
+Returns: `SandboxStatus`
+
+### client.sandbox.install
+
+`POST /sandbox/install` · operationId `sandbox.install`
+
+Set up the sandbox.
+
+Windows only: create the sandbox account and its firewall rule (one UAC prompt) and give it access to the right folders, then report the new status. A no-op elsewhere, where the sandbox needs no setup.
+
+No parameters.
+
+Returns: `SandboxStatus`
+
+### client.sandbox.reset
+
+`POST /sandbox/reset` · operationId `sandbox.reset`
+
+Reset the sandbox.
+
+Undo the sandbox setup: on Windows, take back every folder permission given to the sandbox account, then delete the account and its firewall rule (one UAC prompt). A no-op elsewhere.
+
+No parameters.
+
+Returns: `SandboxStatus`
+
+## session
+
+### client.session.list
+
+`GET /session` · operationId `session.list`
+
+List sessions.
+
+Get a list of all MerakCode sessions, sorted by most recently updated.
+
+| Parameter | Type      | Required | Description                                                                   |
+| --------- | --------- | -------- | ----------------------------------------------------------------------------- |
+| `roots`   | `boolean` | no       | Only return root sessions (no parentID)                                       |
+| `start`   | `number`  | no       | Filter sessions updated on or after this timestamp (milliseconds since epoch) |
+| `search`  | `string`  | no       | Filter sessions by title (case-insensitive)                                   |
+| `limit`   | `number`  | no       | Maximum number of sessions to return                                          |
+
+Returns: `SessionOutput[]`
+
+### client.session.create
+
+`POST /session` · operationId `session.create`
+
+Create session.
+
+Create a new MerakCode session for interacting with AI assistants and managing conversations.
+
+| Parameter    | Type                                                           | Required | Description |
+| ------------ | -------------------------------------------------------------- | -------- | ----------- |
+| `metadata`   | `Record<string, unknown>`                                      | no       |             |
+| `parentID`   | `string`                                                       | no       |             |
+| `permission` | `PermissionRuleset`                                            | no       |             |
+| `target`     | `{ kind: "external"; productID: string } \| { kind: "merak" }` | no       |             |
+| `title`      | `string`                                                       | no       |             |
+
+Returns: `SessionOutput`
+
+### client.session.importFull
+
+`POST /session/import-full` · operationId `session.importFull`
+
+Import full session data.
+
+Import a session previously produced by export-full (or the `merak export` CLI command), restoring its full metadata and messages. A brand-new session/message/part ID is generated on import so the operation never merges into or overwrites any existing session; directory/projectID are rewritten to the current project.
+
+| Parameter  | Type                                   | Required | Description |
+| ---------- | -------------------------------------- | -------- | ----------- |
+| `info`     | `Session`                              | yes      |             |
+| `messages` | `({ info: Message; parts: Part[] })[]` | yes      |             |
+
+Returns: `{ info: SessionOutput }`
+
+### client.session.search
+
+`GET /session/search` · operationId `session.search`
+
+Search sessions.
+
+Find this project's sessions whose title or conversation text contains the search, most recently updated first. A conversation match comes with a snippet of the latest text containing it.
+
+| Parameter | Type      | Required | Description                             |
+| --------- | --------- | -------- | --------------------------------------- |
+| `search`  | `string`  | yes      | Text to look for (case-insensitive)     |
+| `roots`   | `boolean` | no       | Only return root sessions (no parentID) |
+| `limit`   | `number`  | no       | Maximum number of sessions to return    |
+
+Returns: `SessionSearchResult[]`
+
+### client.session.status
+
+`GET /session/status` · operationId `session.status`
+
+Get session status.
+
+Retrieve the current status of all sessions, including active, idle, and completed states.
+
+No parameters.
+
+Returns: `Record<string, SessionStatus>`
+
+### client.session.delete
+
+`DELETE /session/{sessionID}` · operationId `session.delete`
+
+Delete session.
+
+Delete a session and permanently remove all associated data, including messages and history.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.session.get
+
+`GET /session/{sessionID}` · operationId `session.get`
+
+Get session.
+
+Retrieve detailed information about a specific MerakCode session.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionOutput`
+
+### client.session.update
+
+`PATCH /session/{sessionID}` · operationId `session.update`
+
+Update session.
+
+Update properties of an existing session, such as title or other metadata.
+
+| Parameter   | Type                      | Required | Description |
+| ----------- | ------------------------- | -------- | ----------- |
+| `sessionID` | `string`                  | yes      |             |
+| `metadata`  | `Record<string, unknown>` | no       |             |
+| `time`      | `{ archived?: number }`   | no       |             |
+| `title`     | `string`                  | no       |             |
+
+Returns: `SessionOutput`
+
+### client.session.abort
+
+`POST /session/{sessionID}/abort` · operationId `session.abort`
+
+Abort session.
+
+Abort an active session and stop any ongoing AI processing or command execution.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.session.children
+
+`GET /session/{sessionID}/children` · operationId `session.children`
+
+Get session children.
+
+Retrieve all child sessions that were forked from the specified parent session.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionOutput[]`
+
+### client.session.command
+
+`POST /session/{sessionID}/command` · operationId `session.command`
+
+Send command.
+
+Send a new command to a session for execution by the AI assistant.
+
+| Parameter        | Type                                                                                                       | Required | Description |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `sessionID`      | `string`                                                                                                   | yes      | Session ID  |
+| `agent`          | `string`                                                                                                   | no       |             |
+| `arguments`      | `string`                                                                                                   | yes      |             |
+| `command`        | `string`                                                                                                   | yes      |             |
+| `kind`           | `PermissionMode`                                                                                           | no       |             |
+| `messageID`      | `string`                                                                                                   | no       |             |
+| `metadata`       | `Record<string, unknown>`                                                                                  | no       |             |
+| `model`          | `string`                                                                                                   | no       |             |
+| `parts`          | `({ filename?: string; id?: string; mime: string; source?: FilePartSource; type: "file"; url: string })[]` | no       |             |
+| `permissionMode` | `PermissionMode`                                                                                           | no       |             |
+| `variant`        | `string`                                                                                                   | no       |             |
+
+Returns: `{ info: AssistantMessageOutput; parts: PartOutput[] }`
+
+### client.session.diff
+
+`GET /session/{sessionID}/diff` · operationId `session.diff`
+
+Get message diff.
+
+Get the file changes (diff) that resulted from a specific user message in the session.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `messageID` | `string` | no       |             |
+
+Returns: `FileDiffOutput[]`
+
+### client.session.exportFull
+
+`GET /session/{sessionID}/export-full` · operationId `session.exportFull`
+
+Export full session data.
+
+Export the complete session (all metadata and message parts) as JSON, suitable for backup or migration. Unlike the transcript export, no data is omitted.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `{ info: SessionOutput; messages: ({ info: MessageOutput; parts: PartOutput[] })[] }`
+
+### client.session.fork
+
+`POST /session/{sessionID}/fork` · operationId `session.fork`
+
+Fork session.
+
+Create a new session by forking an existing session at a specific message point.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `messageID` | `string` | no       |             |
+
+Returns: `SessionOutput`
+
+### client.session.init
+
+`POST /session/{sessionID}/init` · operationId `session.init`
+
+Initialize session.
+
+Analyze the current application and create or improve AGENTS.md with project-specific agent instructions. An existing CLAUDE.md may be used as reference when consolidating into AGENTS.md.
+
+| Parameter    | Type     | Required | Description |
+| ------------ | -------- | -------- | ----------- |
+| `sessionID`  | `string` | yes      | Session ID  |
+| `messageID`  | `string` | yes      |             |
+| `modelID`    | `string` | yes      |             |
+| `providerID` | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.session.messages
+
+`GET /session/{sessionID}/message` · operationId `session.messages`
+
+Get session messages.
+
+Retrieve all messages in a session, including user prompts and AI responses.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+| `limit`     | `number` | no       |             |
+
+Returns: `({ info: MessageOutput; parts: PartOutput[] })[]`
+
+### client.session.prompt
+
+`POST /session/{sessionID}/message` · operationId `session.prompt`
+
+Send message.
+
+Create and send a new message to a session, streaming the AI response.
+
+| Parameter        | Type                                                                       | Required | Description                                                                                           |
+| ---------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
+| `agent`          | `string`                                                                   | no       |                                                                                                       |
+| `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
+| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
+| `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
+| `messageID`      | `string`                                                                   | no       |                                                                                                       |
+| `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
+| `model`          | `{ modelID: string; providerID: string }`                                  | no       |                                                                                                       |
+| `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
+| `parts`          | `(AgentPartInput \| FilePartInput \| SubtaskPartInput \| TextPartInput)[]` | yes      |                                                                                                       |
+| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
+| `system`         | `string`                                                                   | no       |                                                                                                       |
+| `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
+| `variant`        | `string`                                                                   | no       |                                                                                                       |
+
+Returns: `{ info: AssistantMessageOutput \| ExternalAssistantMessageOutput; parts: PartOutput[] }`
+
+### client.session.deleteMessage
+
+`DELETE /session/{sessionID}/message/{messageID}` · operationId `session.deleteMessage`
+
+Delete message.
+
+Permanently delete a specific message and all of its parts from a session without reverting file changes.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+| `messageID` | `string` | yes      | Message ID  |
+
+Returns: `boolean`
+
+### client.session.message
+
+`GET /session/{sessionID}/message/{messageID}` · operationId `session.message`
+
+Get message.
+
+Retrieve a specific message from a session by its message ID.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+| `messageID` | `string` | yes      | Message ID  |
+
+Returns: `{ info: MessageOutput; parts: PartOutput[] }`
+
+### client.session.setPermissionMode
+
+`POST /session/{sessionID}/permission-mode` · operationId `session.setPermissionMode`
+
+Set session permission mode.
+
+Switch the session's permission mode (read-only, ask, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.
+
+| Parameter        | Type             | Required | Description |
+| ---------------- | ---------------- | -------- | ----------- |
+| `sessionID`      | `string`         | yes      | Session ID  |
+| `permissionMode` | `PermissionMode` | yes      |             |
+
+Returns: `SessionOutput`
+
+### client.session.promptAsync
+
+`POST /session/{sessionID}/prompt_async` · operationId `session.prompt_async`
+
+Send async message.
+
+Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.
+
+| Parameter        | Type                                                                       | Required | Description                                                                                           |
+| ---------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
+| `agent`          | `string`                                                                   | no       |                                                                                                       |
+| `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
+| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
+| `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
+| `messageID`      | `string`                                                                   | no       |                                                                                                       |
+| `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
+| `model`          | `{ modelID: string; providerID: string }`                                  | no       |                                                                                                       |
+| `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
+| `parts`          | `(AgentPartInput \| FilePartInput \| SubtaskPartInput \| TextPartInput)[]` | yes      |                                                                                                       |
+| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
+| `system`         | `string`                                                                   | no       |                                                                                                       |
+| `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
+| `variant`        | `string`                                                                   | no       |                                                                                                       |
+
+Returns: nothing
+
+### client.session.revert
+
+`POST /session/{sessionID}/revert` · operationId `session.revert`
+
+Revert message.
+
+Revert a specific message in a session, undoing its effects and restoring the previous state.
+
+| Parameter     | Type      | Required | Description |
+| ------------- | --------- | -------- | ----------- |
+| `sessionID`   | `string`  | yes      |             |
+| `messageID`   | `string`  | yes      |             |
+| `revertFiles` | `boolean` | no       |             |
+
+Returns: `SessionOutput`
+
+### client.session.shell
+
+`POST /session/{sessionID}/shell` · operationId `session.shell`
+
+Run shell command.
+
+Execute a shell command within the session context and return the AI's response.
+
+| Parameter        | Type                                      | Required | Description |
+| ---------------- | ----------------------------------------- | -------- | ----------- |
+| `sessionID`      | `string`                                  | yes      | Session ID  |
+| `agent`          | `string`                                  | yes      |             |
+| `command`        | `string`                                  | yes      |             |
+| `kind`           | `PermissionMode`                          | no       |             |
+| `model`          | `{ modelID: string; providerID: string }` | no       |             |
+| `permissionMode` | `PermissionMode`                          | no       |             |
+
+Returns: `AssistantMessageOutput`
+
+### client.session.summarize
+
+`POST /session/{sessionID}/summarize` · operationId `session.summarize`
+
+Summarize session.
+
+Generate a concise summary of the session using AI compaction to preserve key information.
+
+| Parameter    | Type      | Required | Description |
+| ------------ | --------- | -------- | ----------- |
+| `sessionID`  | `string`  | yes      | Session ID  |
+| `auto`       | `boolean` | no       |             |
+| `modelID`    | `string`  | yes      |             |
+| `providerID` | `string`  | yes      |             |
+
+Returns: `boolean`
+
+### client.session.takeover
+
+`POST /session/{sessionID}/takeover` · operationId `session.takeover`
+
+Decide whether MerakCode takes over a disabled external conversation.
+
+| Parameter                | Type                    | Required | Description |
+| ------------------------ | ----------------------- | -------- | ----------- |
+| `sessionID`              | `string`                | yes      |             |
+| `blockID`                | `string`                | yes      |             |
+| `decision`               | `"accept" \| "decline"` | yes      |             |
+| `expectedTargetRevision` | `number`                | yes      |             |
+
+Returns: `SessionOutput`
+
+### client.session.todo
+
+`GET /session/{sessionID}/todo` · operationId `session.todo`
+
+Get session todos.
+
+Retrieve the todo list associated with a specific session, showing tasks and action items.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+
+Returns: `Todo[]`
+
+### client.session.toolAbort
+
+`POST /session/{sessionID}/tool/{callID}/abort` · operationId `session.toolAbort`
+
+Abort a single tool call.
+
+Abort a specific in-flight tool call without stopping the entire session.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `callID`    | `string` | yes      |             |
+
+Returns: `boolean`
+
+### client.session.unrevert
+
+`POST /session/{sessionID}/unrevert` · operationId `session.unrevert`
+
+Restore reverted messages.
+
+Restore all previously reverted messages in a session.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionOutput`
+
+## part
+
+### client.part.delete
+
+`DELETE /session/{sessionID}/message/{messageID}/part/{partID}` · operationId `part.delete`
+
+Delete a part from a message.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+| `messageID` | `string` | yes      | Message ID  |
+| `partID`    | `string` | yes      | Part ID     |
+
+Returns: `boolean`
+
+### client.part.update
+
+`PATCH /session/{sessionID}/message/{messageID}/part/{partID}` · operationId `part.update`
+
+Update a part in a message.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      | Session ID  |
+| `messageID` | `string` | yes      | Message ID  |
+| `partID`    | `string` | yes      | Part ID     |
+| `part`      | `Part`   | yes      |             |
+
+Returns: `PartOutput`
+
+## skillInstall
+
+### client.skillInstall.install
+
+`POST /skill-install/install` · operationId `skillInstall.install`
+
+Install skills.
+
+Install selected skills to project or global directory.
+
+| Parameter | Type                                                                                                            | Required | Description |
+| --------- | --------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| `skills`  | `({ description: string; files: string[]; name: string; path?: string; repoPath: string })[]`                   | yes      |             |
+| `source`  | `{ branch?: string; owner: string; repo: string; type: "github"; url: string } \| { type: "url"; url: string }` | yes      |             |
+| `target`  | `"global" \| "project"`                                                                                         | yes      |             |
+
+Returns: `{ failed: ({ error: string; name: string })[]; installed: string[] }`
+
+### client.skillInstall.list
+
+`POST /skill-install/list` · operationId `skillInstall.list`
+
+List installable skills from source.
+
+List skills available to install from a GitHub repo or URL.
+
+| Parameter | Type     | Required | Description |
+| --------- | -------- | -------- | ----------- |
+| `source`  | `string` | yes      |             |
+| `token`   | `string` | no       |             |
+
+Returns: `{ skills: ({ description: string; files: string[]; name: string; path?: string; repoPath: string })[]; source: { branch?: string; owner: string; repo: string; type: "github"; url: string } \| { type: "url"; url: string } }`
+
+## skill
+
+### client.skill.uninstall
+
+`POST /skill-uninstall` · operationId `skill.uninstall`
+
+Uninstall skill.
+
+Remove a user-installed skill from project or global directory.
+
+| Parameter  | Type     | Required | Description |
+| ---------- | -------- | -------- | ----------- |
+| `location` | `string` | yes      |             |
+| `name`     | `string` | yes      |             |
+
+Returns: `{ deleted: boolean; name: string }`
+
+## tool.remote
+
+### client.tool.remote.register
+
+`PUT /tool/remote` · operationId `tool.remote.register`
+
+Register remote tools.
+
+Replace the tools defined in the SDK host. The engine publishes tool.remote.call when the model calls one; the host answers with tool.remote.result.
+
+| Parameter | Type                                                                           | Required | Description |
+| --------- | ------------------------------------------------------------------------------ | -------- | ----------- |
+| `tools`   | `({ description: string; id: string; parameters: Record<string, unknown> })[]` | yes      |             |
+
+Returns: `boolean`
+
+### client.tool.remote.result
+
+`POST /tool/remote/{callID}` · operationId `tool.remote.result`
+
+Return a remote tool result.
+
+Hand the result (or error) of a remote tool call back to the engine.
+
+| Parameter | Type                                                      | Required | Description |
+| --------- | --------------------------------------------------------- | -------- | ----------- |
+| `callID`  | `string`                                                  | yes      |             |
+| `body`    | `{ error: string } \| { output: string; title?: string }` | yes      |             |
+
+Returns: `boolean`
+
+## vcs
+
+### client.vcs.get
+
+`GET /vcs` · operationId `vcs.get`
+
+Get VCS info.
+
+Retrieve version control system (VCS) information for the current project, such as git branch.
+
+No parameters.
+
+Returns: `VcsInfo`
+
+### client.vcs.branchOptions
+
+`GET /vcs/branch-options` · operationId `vcs.branchOptions`
+
+Get branch options.
+
+Local branches, their worktree occupancy and the current checkout's switch restrictions.
+
+No parameters.
+
+Returns: `VcsBranchOptions`
+
+### client.vcs.branches
+
+`GET /vcs/branches` · operationId `vcs.branches`
+
+List branches.
+
+Local branch names, sorted.
+
+No parameters.
+
+Returns: `string[]`
+
+### client.vcs.commit
+
+`POST /vcs/commit` · operationId `vcs.commit`
+
+Commit changes.
+
+Commit staged changes (or all changes with all=true) using the user's git identity.
+
+| Parameter | Type      | Required | Description |
+| --------- | --------- | -------- | ----------- |
+| `all`     | `boolean` | no       |             |
+| `message` | `string`  | yes      |             |
+
+Returns: `VcsCommitResult`
+
+### client.vcs.diff
+
+`GET /vcs/diff` · operationId `vcs.diff`
+
+Get VCS diff.
+
+Get working-tree / branch diff as unified patches.
+
+| Parameter | Type                               | Required | Description |
+| --------- | ---------------------------------- | -------- | ----------- |
+| `mode`    | `"branch" \| "git" \| "last-turn"` | no       |             |
+| `context` | `number`                           | no       |             |
+
+Returns: `VcsFileDiff[]`
+
+### client.vcs.push
+
+`POST /vcs/push` · operationId `vcs.push`
+
+Push.
+
+Push the current branch to its upstream, or to the remote (origin or the only remote) and set it as upstream. Uses the user's own git credentials.
+
+No parameters.
+
+Returns: `VcsPushResult`
+
+### client.vcs.run
+
+`POST /vcs/run` · operationId `vcs.run`
+
+Run a git command.
+
+Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| `args`    | `string[]` | yes      |             |
+
+Returns: `VcsRunResult`
+
+### client.vcs.switchBranch
+
+`POST /vcs/switch` · operationId `vcs.switchBranch`
+
+Switch branch.
+
+Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
+
+| Parameter          | Type     | Required | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `branch`           | `string` | yes      |             |
+| `expectedCheckout` | `string` | yes      |             |
+
+Returns: `VcsSwitchResult`
+
+## vcs.changes
+
+### client.vcs.changes.get
+
+`GET /vcs/changes` · operationId `vcs.changes.get`
+
+Get Git changes.
+
+List staged and unstaged files from Git, independently of conversation review. A file may appear in both groups.
+
+No parameters.
+
+Returns: `GitChangesResult`
+
+### client.vcs.changes.stage
+
+`POST /vcs/changes/stage` · operationId `vcs.changes.stage`
+
+Stage files.
+
+Stage the explicit file versions displayed by vcs.changes.get. Does not change working files or conversation review. Stale versions or checkout contexts fail before writing.
+
+| Parameter          | Type                                    | Required | Description |
+| ------------------ | --------------------------------------- | -------- | ----------- |
+| `expectedCheckout` | `string \| null`                        | yes      |             |
+| `files`            | `({ file: string; version: string })[]` | yes      |             |
+
+Returns: `GitChangesResult`
+
+### client.vcs.changes.unstage
+
+`POST /vcs/changes/unstage` · operationId `vcs.changes.unstage`
+
+Unstage files.
+
+Remove the explicit displayed files from the next commit while preserving working files and review state. Also works before the first commit.
+
+| Parameter          | Type                                    | Required | Description |
+| ------------------ | --------------------------------------- | -------- | ----------- |
+| `expectedCheckout` | `string \| null`                        | yes      |             |
+| `files`            | `({ file: string; version: string })[]` | yes      |             |
+
+Returns: `GitChangesResult`
 
 ## workflow
 
@@ -1637,792 +2426,3 @@ Cancel a running dynamic workflow run.
 | `runId`     | `string` | yes      |             |
 
 Returns: `boolean`
-
-## review
-
-### client.review.get
-
-`GET /review` · operationId `review.get`
-
-Get review.
-
-List pending agent changes in a conversation or turn, with counts, file versions and the most recent undoable decision. Hunks come from review.file. Git state is managed separately by vcs.changes.
-
-| Parameter   | Type          | Required | Description |
-| ----------- | ------------- | -------- | ----------- |
-| `scope`     | `ReviewScope` | yes      |             |
-| `sessionID` | `string`      | yes      |             |
-| `messageID` | `string`      | no       |             |
-
-Returns: `ReviewResult`
-
-### client.review.decide
-
-`POST /review` · operationId `review.decide`
-
-Decide review.
-
-Accept or reject whole files or single hunks. Pass expectedCheckout from review.get; a changed checkout context fails with 409 before writing. Pass explicit files with their displayed versions. Accepting advances the review baseline; rejecting restores working files only. Neither operation changes the Git index or commit history. Returns the updated review.
-
-| Parameter          | Type                                                      | Required | Description |
-| ------------------ | --------------------------------------------------------- | -------- | ----------- |
-| `scope`            | `ReviewScope`                                             | yes      |             |
-| `sessionID`        | `string`                                                  | yes      |             |
-| `messageID`        | `string`                                                  | no       |             |
-| `expectedCheckout` | `string \| null`                                          | yes      |             |
-| `decision`         | `"accept" \| "reject"`                                    | yes      |             |
-| `files`            | `({ file: string; version: string; hunks?: string[] })[]` | yes      |             |
-
-Returns: `ReviewResult`
-
-### client.review.file
-
-`GET /review/file` · operationId `review.file`
-
-Get review file.
-
-Hunks of one file in a review scope, with the full base and current text when the file is small enough. Pass the version and expectedCheckout from review.get; a changed file or checkout context fails with 409.
-
-| Parameter          | Type             | Required | Description |
-| ------------------ | ---------------- | -------- | ----------- |
-| `scope`            | `ReviewScope`    | yes      |             |
-| `sessionID`        | `string`         | yes      |             |
-| `messageID`        | `string`         | no       |             |
-| `file`             | `string`         | yes      |             |
-| `version`          | `string`         | no       |             |
-| `expectedCheckout` | `string \| null` | no       |             |
-
-Returns: `ReviewFileDetail`
-
-### client.review.undo
-
-`POST /review/undo` · operationId `review.undo`
-
-Undo review decision.
-
-Undo the most recent decision in a review scope. Pass expectedCheckout from review.get. Fails with 409 when the checkout context changed, there is nothing to undo or the files changed after the decision.
-
-| Parameter          | Type             | Required | Description |
-| ------------------ | ---------------- | -------- | ----------- |
-| `scope`            | `ReviewScope`    | yes      |             |
-| `sessionID`        | `string`         | yes      |             |
-| `messageID`        | `string`         | no       |             |
-| `expectedCheckout` | `string \| null` | yes      |             |
-
-Returns: `ReviewResult`
-
-## vcs.changes
-
-### client.vcs.changes.get
-
-`GET /vcs/changes` · operationId `vcs.changes.get`
-
-Get Git changes.
-
-List staged and unstaged files from Git, independently of conversation review. A file may appear in both groups.
-
-No parameters.
-
-Returns: `GitChangesResult`
-
-### client.vcs.changes.stage
-
-`POST /vcs/changes/stage` · operationId `vcs.changes.stage`
-
-Stage files.
-
-Stage the explicit file versions displayed by vcs.changes.get. Does not change working files or conversation review. Stale versions or checkout contexts fail before writing.
-
-| Parameter          | Type                                    | Required | Description |
-| ------------------ | --------------------------------------- | -------- | ----------- |
-| `expectedCheckout` | `string \| null`                        | yes      |             |
-| `files`            | `({ file: string; version: string })[]` | yes      |             |
-
-Returns: `GitChangesResult`
-
-### client.vcs.changes.unstage
-
-`POST /vcs/changes/unstage` · operationId `vcs.changes.unstage`
-
-Unstage files.
-
-Remove the explicit displayed files from the next commit while preserving working files and review state. Also works before the first commit.
-
-| Parameter          | Type                                    | Required | Description |
-| ------------------ | --------------------------------------- | -------- | ----------- |
-| `expectedCheckout` | `string \| null`                        | yes      |             |
-| `files`            | `({ file: string; version: string })[]` | yes      |             |
-
-Returns: `GitChangesResult`
-
-## mcpManagement
-
-### client.mcpManagement.read
-
-`GET /mcp-management` · operationId `mcpManagement.read`
-
-Read managed MCP servers.
-
-Read configuration, runtime status, and tools as one consistent MCP snapshot.
-
-No parameters.
-
-Returns: `{ servers: ({ name: string; scope: "project" \| "global"; shadowed: ("project" \| "global")[]; enabled: boolean; config: McpLocalConfig \| McpRemoteConfig; status: MCPStatus; tools: object })[] }`
-
-### client.mcpManagement.change
-
-`POST /mcp-management/change` · operationId `mcpManagement.change`
-
-Change a managed MCP server.
-
-Atomically change MCP configuration and runtime state with typed compensation results.
-
-| Parameter | Type                                                                                                                                                                                                                                                                                                                                               | Required | Description |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `body`    | `{ type: "add"; name: string; config: McpManagementLocalInput \| McpManagementRemoteInput } \| { type: "replace"; name: string; config: McpManagementLocalInput \| McpManagementRemoteInput } \| { type: "rename"; name: string; newName: string } \| { type: "remove"; name: string } \| { type: "set_enabled"; name: string; enabled: boolean }` | yes      |             |
-
-Returns: `{ ok: true; snapshot: { servers: object[] } } \| { ok: false; error: { code: "already_exists" \| "not_found" \| "shadowed" \| "invalid_config" \| "runtime_connect_failed" \| "runtime_disconnect_failed" \| "config_write_failed" \| "compensation_failed"; message: string; facts: object[] }; snapshot?: { servers: object[] } }`
-
-## ruleManagement
-
-### client.ruleManagement.read
-
-`GET /rule` · operationId `ruleManagement.read`
-
-Read rules.
-
-Read user rules, project rule files (.mdc) and effective instruction files as one consistent snapshot.
-
-No parameters.
-
-Returns: `RuleSnapshot`
-
-### client.ruleManagement.change
-
-`POST /rule/change` · operationId `ruleManagement.change`
-
-Change rules.
-
-Create, edit or delete user rules, project rule files and instruction files.
-
-| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                        | Required | Description |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `body`    | `{ type: "user_add"; text: string } \| { type: "user_update"; index: number; text: string } \| { type: "user_remove"; index: number } \| { type: "file_create"; targetId: string; filename: string; fields?: RuleFields } \| { type: "file_write"; filepath: string; content: string } \| { type: "file_write_fields"; filepath: string; fields: RuleFields } \| { type: "file_delete"; filepath: string }` | yes      |             |
-
-Returns: `{ ok: true; snapshot: RuleSnapshot } \| { ok: false; error: RuleManageError; snapshot?: RuleSnapshot }`
-
-## find
-
-### client.find.text
-
-`GET /find` · operationId `find.text`
-
-Find text.
-
-Search for text patterns across files in the project using ripgrep.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `pattern` | `string` | yes      |             |
-
-Returns: `({ path: { text: string }; lines: { text: string }; line_number: number; absolute_offset: number; submatches: ({ match: object; start: number; end: number })[] })[]`
-
-### client.find.files
-
-`GET /find/file` · operationId `find.files`
-
-Find files.
-
-Search for files or directories by name or pattern in the project directory.
-
-| Parameter | Type                    | Required | Description |
-| --------- | ----------------------- | -------- | ----------- |
-| `query`   | `string`                | yes      |             |
-| `dirs`    | `"true" \| "false"`     | no       |             |
-| `type`    | `"file" \| "directory"` | no       |             |
-| `limit`   | `number`                | no       |             |
-
-Returns: `string[]`
-
-### client.find.symbols
-
-`GET /find/symbol` · operationId `find.symbols`
-
-Find symbols.
-
-Search for workspace symbols like functions, classes, and variables using LSP.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `query`   | `string` | yes      |             |
-
-Returns: `Symbol[]`
-
-## file
-
-### client.file.list
-
-`GET /file` · operationId `file.list`
-
-List files.
-
-List files and directories in a specified path.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `path`    | `string` | yes      |             |
-
-Returns: `FileNode[]`
-
-### client.file.delete
-
-`DELETE /file` · operationId `file.delete`
-
-Delete file or directory.
-
-Delete a file or directory at the specified path.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `path`    | `string` | yes      |             |
-
-Returns: `{ ok: boolean }`
-
-### client.file.read
-
-`GET /file/content` · operationId `file.read`
-
-Read file.
-
-Read the content of a specified file.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `path`    | `string` | yes      |             |
-
-Returns: `FileContent`
-
-### client.file.write
-
-`PUT /file/content` · operationId `file.write`
-
-Write file.
-
-Write content to a file. Supports optional checksum for optimistic locking.
-
-| Parameter  | Type     | Required | Description |
-| ---------- | -------- | -------- | ----------- |
-| `path`     | `string` | yes      |             |
-| `content`  | `string` | yes      |             |
-| `checksum` | `string` | no       |             |
-
-Returns: `{ ok: boolean }`
-
-### client.file.status
-
-`GET /file/status` · operationId `file.status`
-
-Get file status.
-
-Get the git status of all files in the project.
-
-No parameters.
-
-Returns: `File[]`
-
-## mcp
-
-### client.mcp.status
-
-`GET /mcp` · operationId `mcp.status`
-
-Get MCP status.
-
-Get the status of all Model Context Protocol (MCP) servers.
-
-No parameters.
-
-Returns: `Record<string, MCPStatus>`
-
-### client.mcp.add
-
-`POST /mcp` · operationId `mcp.add`
-
-Add MCP server.
-
-Dynamically add a new Model Context Protocol (MCP) server to the system.
-
-| Parameter | Type                                | Required | Description |
-| --------- | ----------------------------------- | -------- | ----------- |
-| `name`    | `string`                            | yes      |             |
-| `config`  | `McpLocalConfig \| McpRemoteConfig` | yes      |             |
-
-Returns: `Record<string, MCPStatus>`
-
-### client.mcp.connect
-
-`POST /mcp/{name}/connect` · operationId `mcp.connect`
-
-Connect an MCP server.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.mcp.disconnect
-
-`POST /mcp/{name}/disconnect` · operationId `mcp.disconnect`
-
-Disconnect an MCP server.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-
-Returns: `boolean`
-
-### client.mcp.remove
-
-`DELETE /mcp/{name}` · operationId `mcp.remove`
-
-Delete MCP server.
-
-Remove an MCP server from config and clean up its runtime connection.
-
-| Parameter | Type                    | Required | Description |
-| --------- | ----------------------- | -------- | ----------- |
-| `name`    | `string`                | yes      |             |
-| `scope`   | `"project" \| "global"` | no       |             |
-
-Returns: `boolean`
-
-## mcp.auth
-
-### client.mcp.auth.start
-
-`POST /mcp/{name}/auth` · operationId `mcp.auth.start`
-
-Start MCP OAuth.
-
-Start OAuth authentication flow for a remote MCP server.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-
-Returns: `McpAuthStart`
-
-### client.mcp.auth.remove
-
-`DELETE /mcp/{name}/auth` · operationId `mcp.auth.remove`
-
-Remove MCP OAuth.
-
-Remove stored OAuth credentials for an MCP server.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-
-Returns: `McpAuthRemove`
-
-### client.mcp.auth.callback
-
-`POST /mcp/{name}/auth/callback` · operationId `mcp.auth.callback`
-
-Complete MCP OAuth.
-
-Complete OAuth for a remote MCP server using the authorization code.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-| `code`    | `string` | yes      |             |
-
-Returns: `MCPStatus`
-
-### client.mcp.auth.wait
-
-`POST /mcp/{name}/auth/wait` · operationId `mcp.auth.wait`
-
-Wait for MCP OAuth.
-
-Wait for the browser callback of an OAuth flow started with mcp.auth.start (up to 5 minutes), then exchange the code and connect. Lets the client show and open the authorization URL itself.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `name`    | `string` | yes      |             |
-| `state`   | `string` | yes      |             |
-
-Returns: `MCPStatus`
-
-## assist.commit
-
-### client.assist.commit.message
-
-`POST /assist/commit-message` · operationId `assist.commit.message`
-
-Generate git commit message.
-
-No parameters.
-
-Returns: `{ message: string; error?: string }`
-
-## assist.inline
-
-### client.assist.inline.edit
-
-`POST /assist/inline-edit` · operationId `assist.inline.edit`
-
-Inline edit selected code.
-
-| Parameter      | Type     | Required | Description |
-| -------------- | -------- | -------- | ----------- |
-| `instruction`  | `string` | yes      |             |
-| `selectedText` | `string` | yes      |             |
-| `language`     | `string` | no       |             |
-| `path`         | `string` | no       |             |
-| `providerID`   | `string` | no       |             |
-| `modelID`      | `string` | no       |             |
-
-Returns: `{ text: string; providerID?: string; modelID?: string; error?: string }`
-
-## instance
-
-### client.instance.dispose
-
-`POST /instance/dispose` · operationId `instance.dispose`
-
-Dispose instance.
-
-Clean up and dispose the current MerakCode instance, releasing all resources.
-
-No parameters.
-
-Returns: `boolean`
-
-## path
-
-### client.path.get
-
-`GET /path` · operationId `path.get`
-
-Get paths.
-
-Retrieve the current working directory and related path information for the MerakCode instance.
-
-No parameters.
-
-Returns: `Path`
-
-## vcs
-
-### client.vcs.get
-
-`GET /vcs` · operationId `vcs.get`
-
-Get VCS info.
-
-Retrieve version control system (VCS) information for the current project, such as git branch.
-
-No parameters.
-
-Returns: `VcsInfo`
-
-### client.vcs.branches
-
-`GET /vcs/branches` · operationId `vcs.branches`
-
-List branches.
-
-Local branch names, sorted.
-
-No parameters.
-
-Returns: `string[]`
-
-### client.vcs.branchOptions
-
-`GET /vcs/branch-options` · operationId `vcs.branchOptions`
-
-Get branch options.
-
-Local branches, their worktree occupancy and the current checkout's switch restrictions.
-
-No parameters.
-
-Returns: `VcsBranchOptions`
-
-### client.vcs.switchBranch
-
-`POST /vcs/switch` · operationId `vcs.switchBranch`
-
-Switch branch.
-
-Switch a clean, idle checkout to an existing local branch using its expected checkout identity.
-
-| Parameter          | Type     | Required | Description |
-| ------------------ | -------- | -------- | ----------- |
-| `branch`           | `string` | yes      |             |
-| `expectedCheckout` | `string` | yes      |             |
-
-Returns: `VcsSwitchResult`
-
-### client.vcs.push
-
-`POST /vcs/push` · operationId `vcs.push`
-
-Push.
-
-Push the current branch to its upstream, or to the remote (origin or the only remote) and set it as upstream. Uses the user's own git credentials.
-
-No parameters.
-
-Returns: `VcsPushResult`
-
-### client.vcs.run
-
-`POST /vcs/run` · operationId `vcs.run`
-
-Run a git command.
-
-Run git with the given arguments in the worktree. The executable is git; arguments are not passed through a shell.
-
-| Parameter | Type       | Required | Description |
-| --------- | ---------- | -------- | ----------- |
-| `args`    | `string[]` | yes      |             |
-
-Returns: `VcsRunResult`
-
-### client.vcs.diff
-
-`GET /vcs/diff` · operationId `vcs.diff`
-
-Get VCS diff.
-
-Get working-tree / branch diff as unified patches.
-
-| Parameter | Type                               | Required | Description |
-| --------- | ---------------------------------- | -------- | ----------- |
-| `mode`    | `"git" \| "branch" \| "last-turn"` | no       |             |
-| `context` | `number`                           | no       |             |
-
-Returns: `VcsFileDiff[]`
-
-### client.vcs.commit
-
-`POST /vcs/commit` · operationId `vcs.commit`
-
-Commit changes.
-
-Commit staged changes (or all changes with all=true) using the user's git identity.
-
-| Parameter | Type      | Required | Description |
-| --------- | --------- | -------- | ----------- |
-| `message` | `string`  | yes      |             |
-| `all`     | `boolean` | no       |             |
-
-Returns: `VcsCommitResult`
-
-## sandbox
-
-### client.sandbox.status
-
-`GET /sandbox` · operationId `sandbox.status`
-
-Get sandbox status.
-
-Whether agent-run commands run inside the OS sandbox: on, off (disabled in config) or unsupported (missing dependencies or platform), with the reason.
-
-No parameters.
-
-Returns: `SandboxStatus`
-
-### client.sandbox.install
-
-`POST /sandbox/install` · operationId `sandbox.install`
-
-Set up the sandbox.
-
-Windows only: create the sandbox account and its firewall rule (one UAC prompt) and give it access to the right folders, then report the new status. A no-op elsewhere, where the sandbox needs no setup.
-
-No parameters.
-
-Returns: `SandboxStatus`
-
-### client.sandbox.reset
-
-`POST /sandbox/reset` · operationId `sandbox.reset`
-
-Reset the sandbox.
-
-Undo the sandbox setup: on Windows, take back every folder permission given to the sandbox account, then delete the account and its firewall rule (one UAC prompt). A no-op elsewhere.
-
-No parameters.
-
-Returns: `SandboxStatus`
-
-## command
-
-### client.command.list
-
-`GET /command` · operationId `command.list`
-
-List commands.
-
-Get a list of all available commands in the MerakCode system.
-
-No parameters.
-
-Returns: `Command[]`
-
-## app
-
-### client.app.log
-
-`POST /log` · operationId `app.log`
-
-Write log.
-
-Write a log entry to the server logs with specified level and metadata.
-
-| Parameter   | Type                                     | Required | Description                           |
-| ----------- | ---------------------------------------- | -------- | ------------------------------------- |
-| `component` | `"web" \| "desktop"`                     | no       | Client component                      |
-| `service`   | `string`                                 | yes      | Service name for the log entry        |
-| `level`     | `"debug" \| "info" \| "error" \| "warn"` | yes      | Log level                             |
-| `message`   | `string`                                 | yes      | Log message                           |
-| `run_id`    | `string`                                 | no       | Client run identifier                 |
-| `sequence`  | `number`                                 | no       | Client record sequence                |
-| `extra`     | `Record<string, unknown>`                | no       | Additional metadata for the log entry |
-
-Returns: `boolean`
-
-### client.app.agents
-
-`GET /agent` · operationId `app.agents`
-
-List agents.
-
-Get a list of all available AI agents in the MerakCode system.
-
-No parameters.
-
-Returns: `Agent[]`
-
-### client.app.agentGenerate
-
-`POST /agent/generate` · operationId `app.agentGenerate`
-
-Generate agent.
-
-Ask a model to draft an agent (identifier, when to use it, system prompt) from a description. Nothing is written; the client saves it.
-
-| Parameter     | Type                                      | Required | Description |
-| ------------- | ----------------------------------------- | -------- | ----------- |
-| `description` | `string`                                  | yes      |             |
-| `model`       | `{ providerID: string; modelID: string }` | no       |             |
-
-Returns: `{ identifier: string; whenToUse: string; systemPrompt: string }`
-
-### client.app.skills
-
-`GET /skill` · operationId `app.skills`
-
-List skills.
-
-Get a list of all available skills in the MerakCode system.
-
-No parameters.
-
-Returns: `({ name: string; description: string; location: string; content: string; scope?: "global" \| "project" \| "builtin" })[]`
-
-## skillInstall
-
-### client.skillInstall.list
-
-`POST /skill-install/list` · operationId `skillInstall.list`
-
-List installable skills from source.
-
-List skills available to install from a GitHub repo or URL.
-
-| Parameter | Type     | Required | Description |
-| --------- | -------- | -------- | ----------- |
-| `source`  | `string` | yes      |             |
-| `token`   | `string` | no       |             |
-
-Returns: `{ source: { type: "github"; url: string; owner: string; repo: string; branch?: string } \| { type: "url"; url: string }; skills: ({ name: string; description: string; repoPath: string; path?: string; files: string[] })[] }`
-
-### client.skillInstall.install
-
-`POST /skill-install/install` · operationId `skillInstall.install`
-
-Install skills.
-
-Install selected skills to project or global directory.
-
-| Parameter | Type                                                                                                            | Required | Description |
-| --------- | --------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `source`  | `{ type: "github"; url: string; owner: string; repo: string; branch?: string } \| { type: "url"; url: string }` | yes      |             |
-| `skills`  | `({ name: string; description: string; repoPath: string; path?: string; files: string[] })[]`                   | yes      |             |
-| `target`  | `"project" \| "global"`                                                                                         | yes      |             |
-
-Returns: `{ installed: string[]; failed: ({ name: string; error: string })[] }`
-
-## skill
-
-### client.skill.uninstall
-
-`POST /skill-uninstall` · operationId `skill.uninstall`
-
-Uninstall skill.
-
-Remove a user-installed skill from project or global directory.
-
-| Parameter  | Type     | Required | Description |
-| ---------- | -------- | -------- | ----------- |
-| `name`     | `string` | yes      |             |
-| `location` | `string` | yes      |             |
-
-Returns: `{ name: string; deleted: boolean }`
-
-## lsp
-
-### client.lsp.status
-
-`GET /lsp` · operationId `lsp.status`
-
-Get LSP server status.
-
-No parameters.
-
-Returns: `LSPStatus[]`
-
-## formatter
-
-### client.formatter.status
-
-`GET /formatter` · operationId `formatter.status`
-
-Get formatter status.
-
-No parameters.
-
-Returns: `FormatterStatus[]`
-
-## event
-
-### client.event.subscribe
-
-`GET /event` · operationId `event.subscribe`
-
-Subscribe to events.
-
-Get events.
-
-No parameters.
-
-Returns: `stream of Event`

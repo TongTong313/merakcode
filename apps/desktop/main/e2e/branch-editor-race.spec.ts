@@ -42,7 +42,7 @@ test("a delayed checkout reload does not target a closed editor after the same f
     const editor = panel.getByRole("code")
     await expect(editor).toContainText("feature branch content")
     await editor.click()
-    await kit.page.keyboard.press("Control+End")
+    await kit.page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End")
     await kit.page.keyboard.type("keep the reopened draft")
     release.resolve()
     await delivered.promise

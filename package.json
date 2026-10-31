@@ -13,6 +13,7 @@
     "dev": "pnpm --dir apps/cli dev",
     "typecheck": "turbo typecheck",
     "generate:sdk": "node --import ./script/node/register.mjs packages/sdk/js/script/generate.ts",
+    "check:sdk": "node --import ./script/node/register.mjs packages/sdk/js/script/generate.ts --check",
     "generate:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json",
     "check:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json --check",
     "sync:project": "node --import ./script/node/register.mjs script/sync-project.ts",
@@ -37,7 +38,7 @@
     "check:comments": "node --import ./script/node/register.mjs script/check-comments.ts",
     "release:version": "node --import ./script/node/register.mjs script/release/version.ts",
     "check:versions": "node --import ./script/node/register.mjs script/release/version.ts --check",
-    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm check:adapter-library && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
+    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm check:adapter-library && pnpm check:sdk && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
   },
   "devDependencies": {
     "@merakcode/util": "workspace:*",

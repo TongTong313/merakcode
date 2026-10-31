@@ -45,6 +45,16 @@ describe("npm release preparation", () => {
     file: `${name.replace("@", "").replace("/", "-")}-1.2.0.tgz`,
   })
 
+  test("single-platform packing selects only the current version and requested platform", async () => {
+    await using tmp = await tmpdir()
+    await platform(tmp.path, "merakcode-windows-x64", "1.1.0")
+    await platform(tmp.path, "merakcode-windows-x64", "1.2.0")
+    await platform(tmp.path, "merakcode-linux-x64", "1.2.0")
+    expect(Object.keys(platformPackages(tmp.path, "1.2.0", "windows-x64"))).toEqual(["merakcode-windows-x64"])
+    expect(platformPackages(tmp.path, "1.2.0", "darwin-arm64")).toEqual({})
+    expect(() => platformPackages(tmp.path, "1.2.0")).toThrow("does not match")
+  })
+
   test("the publish script publishes the packed files: platform packages first, then the SDK, then the main package", () => {
     const script = publishScript(
       [packed("merakcode-linux-x64"), packed("merakcode-darwin-arm64")],

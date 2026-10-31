@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import http from "node:http"
-import net, { type AddressInfo } from "node:net"
+import type { AddressInfo } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -161,23 +161,6 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
     const result = await run(node("d.js", fetchScript(`http://denied.test:${port}/`)))
     expect(result.stdout.toString()).toContain("403 blocked by MerakCode sandbox: denied.test")
     expect(result.report).toContain("denied.test")
-  })
-
-  test("7 cannot connect around the proxy to an outside address", async () => {
-    const reachable = await new Promise<boolean>((resolve) => {
-      const socket = net.connect(80, "example.com")
-      socket.setTimeout(5000, () => (socket.destroy(), resolve(false)))
-      socket.on("connect", () => (socket.destroy(), resolve(true)))
-      socket.on("error", () => resolve(false))
-    })
-    if (!reachable) return console.log("7 skipped: example.com:80 is not reachable from this machine")
-    const result = await run(
-      node(
-        "x.js",
-        `const s = require("net").connect(80, "example.com"); s.setTimeout(5000, () => { console.log("timeout"); s.destroy() }); s.on("connect", () => { console.log("connected"); s.destroy() }); s.on("error", (e) => console.log(e.code))`,
-      ),
-    )
-    expect(result.stdout.toString()).not.toContain("connected")
   })
 
   test("8 cannot use the engine's API", async () => {

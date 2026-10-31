@@ -17,7 +17,7 @@ import { merge } from "./update-manifest"
  * resources/app-dist) and the same release bundle as the CLI (the engine with its own Node → resources/engine).
  * The engine bundle is built into apps/cli/dist.
  *
- * Usage (in apps/desktop/main): pnpm package [--target windows-x64 ...]
+ * Usage (in apps/desktop/main): pnpm package [--target windows-x64 ...] [--dir]
  *   Without --target, builds for the host platform. Installers can only be built on their own OS (dmg needs macOS,
  *   AppImage and deb need Linux).
  * Environment: ELECTRON_MIRROR and ELECTRON_BUILDER_BINARIES_MIRROR change the download source.
@@ -128,7 +128,9 @@ for (const target of targets) {
   const engine = path.join(cli, "dist", `merakcode-${version}-${target.os}-${target.arch}`)
   await writeFile(path.join(stage, "build-info.json"), JSON.stringify({ signed: signed(target) }))
   const platform = { windows: Platform.WINDOWS, darwin: Platform.MAC, linux: Platform.LINUX }[target.os]
-  const kinds = { windows: ["nsis"], darwin: ["dmg", "zip"], linux: ["AppImage", "deb"] }[target.os]
+  const kinds = process.argv.includes("--dir")
+    ? ["dir"]
+    : { windows: ["nsis"], darwin: ["dmg", "zip"], linux: ["AppImage", "deb"] }[target.os]
   const artifact = "MerakCode-${version}-" + `${target.os}-${target.arch}` + ".${ext}"
   await build({
     projectDir: app,

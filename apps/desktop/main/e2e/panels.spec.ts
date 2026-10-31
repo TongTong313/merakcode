@@ -5,7 +5,7 @@ import { test, expect } from "./fixture"
 
 // Code and browser tabs in the side panel, and the bottom terminal
 
-test("code: opens a file from the tree and saves edits to disk with Ctrl+S", async ({ kit }) => {
+test("code: opens a file from the tree and saves edits to disk with the native save shortcut", async ({ kit }) => {
   const panel = kit.panel()
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   await panel.getByRole("tab", { name: "代码" }).click()
@@ -13,9 +13,9 @@ test("code: opens a file from the tree and saves edits to disk with Ctrl+S", asy
   const editor = panel.getByRole("code")
   await expect(editor).toContainText("hello from e2e")
   await editor.click()
-  await kit.page.keyboard.press("Control+End")
+  await kit.page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End")
   await kit.page.keyboard.type("edited")
-  await kit.page.keyboard.press("Control+S")
+  await kit.page.keyboard.press("ControlOrMeta+S")
   await expect.poll(() => readFile(path.join(kit.project, "notes.txt"), "utf8")).toBe("hello from e2e\nedited")
 })
 
@@ -41,7 +41,7 @@ test("browser: opens a local page and shows its title and console errors", async
 })
 
 test("terminal: opens with Ctrl+J and runs commands in the project directory", async ({ kit }) => {
-  await kit.page.keyboard.press("Control+J")
+  await kit.page.keyboard.press("ControlOrMeta+J")
   const terminal = kit.page.getByRole("region", { name: "终端" })
   await expect(terminal).toBeVisible()
   await terminal.click()
@@ -61,7 +61,7 @@ test("multiple terminals run independently, switching back works, and closing on
       .poll(() => readFile(path.join(kit.project, `${name}.txt`), "utf8").catch(() => ""), { timeout: 30_000 })
       .toBe(name)
   }
-  await kit.page.keyboard.press("Control+J")
+  await kit.page.keyboard.press("ControlOrMeta+J")
   const terminal = kit.page.getByRole("region", { name: "终端" })
   const tabs = terminal.getByRole("tab")
   await expect(tabs).toHaveCount(1)

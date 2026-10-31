@@ -1,0 +1,61 @@
+name: Manual regression
+
+# Timing on shared runners and external connectivity are deliberately outside the PR/release gates.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Regression suite to run on all three systems
+        type: choice
+        options: [performance, external-network]
+        default: performance
+      external-target:
+        description: External TCP control endpoint (http://host:port), required for external-network
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: ${{ inputs.suite }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Install ripgrep
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
+            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
+            Windows) choco install ripgrep -y --no-progress ;;
+          esac
+      - run: pnpm test:perf
+        if: inputs.suite == 'performance'
+        working-directory: apps/cli
+      - name: Set up the sandbox
+        if: inputs.suite == 'external-network'
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts setup
+      - run: pnpm test:sandbox:external
+        if: inputs.suite == 'external-network'
+        working-directory: packages/engine
+        env:
+          MERAKCODE_SANDBOX_EXTERNAL_TARGET: ${{ inputs.external-target }}
+      - name: Reset the Windows sandbox
+        if: always() && inputs.suite == 'external-network' && runner.os == 'Windows'
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts reset

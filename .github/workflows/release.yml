@@ -170,20 +170,8 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then export MERAKCODE_SMOKE_BIN="$BIN_DIR\\merak.cmd"; else export MERAKCODE_SMOKE_BIN="$BIN_DIR/merak"; fi
           node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
-      # The npm packages that get published: the main package's launcher must find and start this platform's package.
-      # On a first release the other platform packages are not on npm yet; npm skips them as optional dependencies.
-      - name: Install from the npm packages
-        shell: bash
-        env:
-          VERSION: ${{ needs.verify.outputs.version }}
-        run: |
-          mkdir npm-install && cd npm-install && echo "{}" > package.json
-          npm install --no-audit --no-fund ../npm/merakcode-${{ matrix.platform }}-[0-9]*.tgz ../npm/merakcode-[0-9]*.tgz
-          if [ "$RUNNER_OS" = "Windows" ]; then out=$(cmd //c "node_modules\\.bin\\merak.cmd" --version); else out=$(node_modules/.bin/merak --version); fi
-          if [ "$out" != "$VERSION" ]; then
-            echo "merak from npm printed '$out', expected $VERSION"
-            exit 1
-          fi
+      - name: Consume the published CLI and SDK packages
+        run: node --import ./script/node/register.mjs apps/cli/script/smoke-npm.ts npm
 
   desktop:
     name: Desktop (${{ matrix.name }})
@@ -208,6 +196,9 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install Linux desktop prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libasound2t64 libnss3 libgtk-3-0t64
       - run: pnpm --dir apps/desktop/main run package ${{ matrix.targets }}
         env:
           # Optional: with a Developer ID certificate the Mac app is signed (and notarized with APPLE_TEAM_ID),
@@ -218,6 +209,18 @@ jobs:
           APPLE_ID: ${{ matrix.name == 'darwin' && secrets.APPLE_ID || '' }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.name == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+      - name: Smoke test the release desktop (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
+      - name: Smoke test the release desktop
+        if: runner.os != 'Linux'
+        run: node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: smoke-results-${{ matrix.name }}
+          path: apps/desktop/main/release/smoke-results
+          retention-days: 7
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.name }}
