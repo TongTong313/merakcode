@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { gunzipSync } from "node:zlib"
 import { Archive } from "./archive"
 
 const dirs: string[] = []
@@ -30,6 +31,21 @@ const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "S
 const list = (file: string) => execFileSync(tar, ["-tvf", file], { encoding: "utf8" })
 
 describe("Archive.create", () => {
+  test("tar paths remain valid UTF-8 in both standard and extended headers", async () => {
+    const { dir, root } = await release()
+    await fs.writeFile(path.join(root, "lib", "界".repeat(40) + ".js"), "export {}\n")
+    const file = path.join(dir, "unicode.tar.gz")
+    await Archive.create(root, file)
+    const data = gunzipSync(await fs.readFile(file))
+    const decoder = new TextDecoder("utf-8", { fatal: true })
+    for (let at = 0; data[at];) {
+      const header = data.subarray(at, at + 512)
+      const name = header.subarray(0, 100)
+      expect(() => decoder.decode(name.subarray(0, name.indexOf(0) < 0 ? 100 : name.indexOf(0)))).not.toThrow()
+      const size = parseInt(header.toString("ascii", 124, 136), 8)
+      at += 512 + Math.ceil(size / 512) * 512
+    }
+  })
   test("tar.gz: the directory is the top level; scripts and binaries are executable, other files are not", async () => {
     const { dir, root } = await release()
     const file = path.join(dir, "out.tar.gz")
@@ -41,17 +57,15 @@ describe("Archive.create", () => {
     expect(mode("merakcode-1.0.0-linux-x64/lib/index.js")).toBe("-rw-r--r--")
   })
 
-  test("extracted content matches the original, keeping long paths and non-ASCII file names", async () => {
-    for (const ext of ["tar.gz", "zip"]) {
-      const { dir, root } = await release()
-      const file = path.join(dir, `out.${ext}`)
-      await Archive.create(root, file)
-      const target = path.join(dir, "extracted")
-      await Archive.extract(file, target)
-      const back = path.join(target, path.basename(root))
-      expect(await fs.readFile(path.join(back, "lib", "index.js"), "utf8")).toBe("console.log('入口')\n")
-      const deep = path.join("lib", "node_modules", "@scope", "a-package-with-a-long-name", "dist", "nested", "again")
-      expect(await fs.readdir(path.join(back, deep))).toEqual(["超过一百个字节的路径要用 pax 扩展头记下来.js"])
-    }
+  test.each(["tar.gz", "zip"])("%s extracted content keeps long paths and non-ASCII file names", async (ext) => {
+    const { dir, root } = await release()
+    const file = path.join(dir, `out.${ext}`)
+    await Archive.create(root, file)
+    const target = path.join(dir, "extracted")
+    await Archive.extract(file, target)
+    const back = path.join(target, path.basename(root))
+    expect(await fs.readFile(path.join(back, "lib", "index.js"), "utf8")).toBe("console.log('入口')\n")
+    const deep = path.join("lib", "node_modules", "@scope", "a-package-with-a-long-name", "dist", "nested", "again")
+    expect(await fs.readdir(path.join(back, deep))).toEqual(["超过一百个字节的路径要用 pax 扩展头记下来.js"])
   })
 })

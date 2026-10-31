@@ -150,6 +150,13 @@ test("a real @merakcode/sdk in the config directory is not overwritten by the sh
   await mkdir(path.join(tmp.path, "node_modules", "zod"), { recursive: true })
   const real = path.join(tmp.path, "node_modules", "@merakcode", "sdk", "package.json")
   await Filesystem.write(real, JSON.stringify({ name: "@merakcode/sdk", version: "9.9.9" }))
+  await Filesystem.write(
+    path.join(tmp.path, "package.json"),
+    JSON.stringify({
+      private: true,
+      dependencies: { zod: `file:${path.dirname(fileURLToPath(import.meta.resolve("zod"))).replaceAll("\\", "/")}` },
+    }),
+  )
 
   await Config.installDependencies(tmp.path)
 

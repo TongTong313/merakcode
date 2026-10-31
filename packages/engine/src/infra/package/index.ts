@@ -7,9 +7,11 @@ import semver from "semver"
 import { NamedError } from "@merakcode/util/error"
 import { Process } from "@merakcode/util/process"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { Text } from "@merakcode/util/text"
 import { Global } from "../global"
 import { Log } from "@merakcode/log/logger"
 import { Lock } from "@merakcode/engine/infra/concurrency/lock"
+import { containProcess } from "../process/tree"
 
 /**
  * Installs packages at runtime: plugins, provider SDKs, language servers and formatters.
@@ -76,8 +78,62 @@ export namespace Npm {
   }
 
   /** Installs the dependencies listed in package.json under cwd */
-  export async function installDependencies(cwd: string, signal?: AbortSignal) {
-    await Process.run([...command(), "install", "--no-audit", "--no-fund"], { cwd, signal })
+  export async function installDependencies(cwd: string, signal?: AbortSignal, track?: (pid: number) => Promise<void>) {
+    const commandLine = command()
+    const executable = commandLine[0]!
+    const cli = commandLine[1] ?? (await fs.realpath(Process.which(executable) ?? executable))
+    const script =
+      commandLine.length > 1
+        ? cli
+        : process.platform === "win32"
+          ? path.join(path.dirname(cli), "node_modules/npm/bin/npm-cli.js")
+          : cli
+    const args = ["install", "--no-audit", "--no-fund"]
+    // npm starts only after its own process has been durably registered by the directory owner.
+    const bootstrap = `
+      let permission = "";
+      for await (const chunk of process.stdin) permission += chunk;
+      if (permission !== "go\\n") process.exit(1);
+      process.env.MERAKCODE_DEPENDENCY_RUN = String(process.pid);
+      process.argv = ${JSON.stringify([process.execPath, script, ...args])};
+      await import(${JSON.stringify(pathToFileURL(script).href)});
+    `
+    const cmd = [process.execPath, "--input-type=module", "--eval", bootstrap]
+    const child = Process.spawn(cmd, { cwd, detached: true, stdin: "pipe", stdout: "pipe", stderr: "pipe" })
+    let dispose = async () => {
+      child.kill()
+      await child.exited
+    }
+    let stopping: Promise<void> | undefined
+    const stop = () => (stopping ??= dispose())
+    const abort = () => {
+      void stop().catch(() => {})
+    }
+    try {
+      dispose = await containProcess(
+        child,
+        { name: "MERAKCODE_DEPENDENCY_RUN", value: String(child.pid) },
+        async (text, params) => Text.format(text, "en", params),
+      )
+      if (child.pid) await track?.(child.pid)
+      signal?.addEventListener("abort", abort, { once: true })
+      if (signal?.aborted) {
+        await stop()
+        signal.throwIfAborted()
+      }
+      void child.exited.then(stop, stop).catch(() => {})
+      child.stdin!.end("go\n")
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).arrayBuffer(),
+        new Response(child.stderr).arrayBuffer(),
+      ])
+      if (code !== 0) throw new Process.RunError(cmd, code, Buffer.from(stdout), Buffer.from(stderr))
+    } finally {
+      signal?.removeEventListener("abort", abort)
+      await stop()
+      await child.exited
+    }
   }
 
   /** Reads a field (such as version) from the registry; returns null on failure */

@@ -161,13 +161,13 @@ jobs:
           MERAKCODE_SMOKE_BIN="$bin" node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "24.0.0"
       - name: Remember the minimum SDK runtime
         shell: bash
         run: echo "MERAKCODE_SMOKE_SDK_NODE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
-          node-version: "18"
+          node-version: "18.0.0"
       - name: Remember the minimum CLI launcher runtime
         shell: bash
         run: echo "MERAKCODE_SMOKE_CLI_NODE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
@@ -236,17 +236,24 @@ jobs:
           esac
       # A directory build uses the production asar, fuses, renderer and bundled engine, without installer tooling.
       - run: pnpm --dir apps/desktop/main run package --dir
+        id: desktop-package
       - name: Smoke test the production desktop (Linux)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
         run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
       - name: Smoke test the production desktop
-        if: runner.os != 'Linux'
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
         run: node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
       - run: xvfb-run -a pnpm test:e2e
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
         working-directory: apps/desktop/main
+      - name: Verify the production smoke rejects a failed main reply (Linux)
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
+        run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package-control.ts
+      - name: Verify the production smoke rejects a failed main reply
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
+        run: node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package-control.ts
       - run: pnpm test:e2e
-        if: runner.os != 'Linux'
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
         working-directory: apps/desktop/main
       - uses: actions/upload-artifact@v7
         if: failure()

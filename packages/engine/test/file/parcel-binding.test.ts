@@ -115,6 +115,10 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
       )
       // Control the quiet-period clock; a loaded filesystem cannot guarantee uninterrupted real-time writes.
       // Native subscriptions, file writes and notification delivery remain real.
+      if (folder === ".") {
+        await fs.writeFile(path.join(tmp.path, "initial.txt"), "initial")
+        await expect.poll(() => seen.includes("initial.txt"), { timeout: 10_000 }).toBe(true)
+      }
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
       try {
         await fs.writeFile(path.join(tmp.path, folder, "f.txt"), "initial")

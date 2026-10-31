@@ -23,9 +23,7 @@ test("switching branches in a git repo (HEAD change) publishes a file change eve
           if (path.basename(event.properties.file) === "HEAD") resolve(event.properties.event)
         })
       })
-      FileWatcher.init()
-      // The subscription is set up asynchronously; wait for it before changing HEAD
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await FileWatcher.init()
       await Filesystem.write(head, "ref: refs/heads/feature\n")
       const event = await Promise.race([seen, new Promise((resolve) => setTimeout(() => resolve("timeout"), 10_000))])
       expect(event).not.toBe("timeout")

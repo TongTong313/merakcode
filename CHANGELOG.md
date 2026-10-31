@@ -17,6 +17,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Coordinate configuration dependency installation across engine instances and processes, reinstall damaged packages even with an existing npm lockfile, and preserve the local plugin API even when npm lifecycle scripts fail.
+- Restore interrupted user SDK backups before skipping initialization, prevent partial backup cleanup from overwriting a restored SDK, and stop npm lifecycle descendants before releasing the installation directory.
+- Include the Windows operation and system error code when dependency process management fails.
+- Wait for project file watchers to finish subscribing before startup completes, so initial Git changes are observed.
+- Let Git changes finish loading while background refreshes arrive during slow requests.
+- Delay takeover dialogs until Settings closes, and verify Windows installer checksums without relying on PowerShell module discovery. Preserve long Unicode paths in release archive headers.
 - Preserve lifecycle ordering during the refactor: shutdown stops scheduled runs before draining memory work, persisted tasks resume after startup, and an explicit tool stop no longer runs the same user request again.
 - Preserve concurrent configuration edits during schema insertion and temporary Windows file sharing conflicts, using atomic replacement when supported.
 - Global events without a directory no longer interrupt Git panel updates, and a failed event listener no longer drops subsequent conversation events.
@@ -32,6 +38,12 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 协调多个引擎实例和进程的配置依赖安装，在已有 npm 锁文件时仍重新安装损坏的包，并在 npm 生命周期脚本失败后仍保留本地插件 API。
+- 在跳过初始化前恢复中断的用户 SDK 备份，避免备份清理部分失败后覆盖已恢复的 SDK，并在释放安装目录前停止 npm 生命周期的后代进程。
+- 依赖进程管理失败时保留 Windows 操作名称和系统错误码。
+- 项目启动等待文件监听订阅完成，避免漏掉最初的 Git 变更。
+- 后台刷新与较慢请求重叠时，Git 改动列表仍能完成加载。
+- 接管弹窗延迟到关闭设置后显示；Windows 安装器校验不再依赖 PowerShell 模块发现，并修复发布归档头对长 Unicode 路径的处理。
 - 完善重构中的生命周期顺序：退出时先停止定时任务触发，再排空记忆任务；持久任务在启动后恢复，工具明确结束回合后不再重复执行同一条用户请求。
 - 配置自动补写 schema 或遇到 Windows 文件临时占用时保留并发修改，并在系统支持时通过原子替换完成写入。
 - 不带目录的全局事件不再中断 Git 面板更新，单个事件监听器异常也不再丢失后续对话事件。

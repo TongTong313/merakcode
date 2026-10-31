@@ -11,6 +11,8 @@ import os from "node:os"
 import path from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Sandbox, type Status } from "../../../src/infra/sandbox/index"
+import { authorizeLocalRequest } from "../../../src/app/server/auth/local-guard"
+import { runWithPeer } from "../../../src/app/server/auth/peer-context"
 
 const backend = Sandbox.backend(SandboxPolicy.base(os.homedir()))
 const status: Status = await backend.status()
@@ -34,6 +36,8 @@ describe.skipIf(status.status !== "on")(`sandbox conformance (${status.backend})
   let port = 0
   let engine: http.Server
   let enginePort = 0
+  let engineProbes = 0
+  const authorization = `Basic ${Buffer.from("merakcode:conformance-secret").toString("base64")}`
   const sandbox = Sandbox.create(backend, { lookup: async (host) => (host.endsWith(".test") ? "127.0.0.1" : host) })
 
   beforeAll(async () => {
@@ -44,8 +48,23 @@ describe.skipIf(status.status !== "on")(`sandbox conformance (${status.backend})
     server = http.createServer((_req, res) => res.end("target-ok"))
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
     port = (server.address() as AddressInfo).port
-    engine = http.createServer((req, res) => {
-      res.statusCode = req.headers.authorization === "Basic right" ? 200 : 401
+    engine = http.createServer(async (req, res) => {
+      const decision = await runWithPeer({ address: req.socket.remoteAddress!, port: req.socket.remotePort! }, () =>
+        authorizeLocalRequest({
+          method: req.method!,
+          path: req.url!,
+          headers: new Headers({ authorization: req.headers.authorization ?? "" }),
+          secret: "conformance-secret",
+          username: "merakcode",
+          engine: process.pid,
+          listenPort: enginePort,
+        }),
+      )
+      if (decision !== "ok") {
+        res.writeHead(decision === "forbidden" ? 403 : 401).end(decision)
+        return
+      }
+      if (req.url === "/sandbox-probe") engineProbes++
       res.end("engine")
     })
     await new Promise<void>((resolve) => engine.listen(0, "127.0.0.1", resolve))
@@ -133,13 +152,15 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
   })
 
   test("3 cannot read a denied folder", async () => {
+    expect(readFileSync(path.join(secret, "key.txt"), "utf8")).toBe("SECRET-CONTENT\n")
     const result = await run(
       node(
         "r.js",
         `try { console.log(require("fs").readFileSync(${JSON.stringify(path.join(secret, "key.txt"))}, "utf8")) } catch (e) { console.log(e.code) }`,
       ),
     )
-    expect(result.stdout.toString()).not.toContain("SECRET-CONTENT")
+    expect(result.code, result.stderr.toString()).toBe(0)
+    expect(result.stdout.toString().trim()).toMatch(/^(EACCES|EPERM)$/)
   })
 
   test("4 reads an ordinary file outside the workspace", async () => {
@@ -163,14 +184,35 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
     expect(result.report).toContain("denied.test")
   })
 
-  test("8 cannot use the engine's API", async () => {
+  test("8 enforces direct engine-port isolation or reports its loopback limitation", async () => {
+    const control = await fetch(`http://127.0.0.1:${enginePort}/control`, { headers: { authorization } })
+    expect(control.status).toBe(200)
+    expect(await control.text()).toBe("engine")
+    const before = engineProbes
     const direct = await run(
       node(
         "e.js",
-        `require("http").get("http://127.0.0.1:${enginePort}/", (res) => console.log(res.statusCode)).on("error", (e) => console.log(e.code))`,
+        `const request = require("http").get("http://127.0.0.1:${enginePort}/sandbox-probe", { headers: { authorization: ${JSON.stringify(authorization)} } }, (res) => { res.resume(); res.on("end", () => console.log(res.statusCode)) }); request.setTimeout(3000, () => request.destroy(Object.assign(new Error("blocked"), { code: "ETIMEDOUT" }))); request.on("error", (e) => console.log(e.code))`,
       ),
     )
-    expect(direct.stdout.toString()).not.toMatch(/^200/m)
+    expect(direct.code, direct.stderr.toString()).toBe(0)
+    if (status.degraded?.includes("loopback-not-restricted")) {
+      expect(direct.stdout.toString().trim()).toBe("200")
+      expect(engineProbes).toBe(before + 1)
+      const guarded = await run(
+        node(
+          "guarded.js",
+          `require("http").get("http://127.0.0.1:${enginePort}/pty", { headers: { authorization: ${JSON.stringify(authorization)} } }, (res) => { res.resume(); res.on("end", () => console.log(res.statusCode)) })`,
+        ),
+      )
+      expect(guarded.code, guarded.stderr.toString()).toBe(0)
+      expect(guarded.stdout.toString().trim()).toBe("403")
+    } else {
+      expect(direct.stdout.toString().trim()).toMatch(
+        /^(EACCES|EPERM|ECONNREFUSED|ECONNRESET|ENETUNREACH|EHOSTUNREACH|ETIMEDOUT)$/,
+      )
+      expect(engineProbes).toBe(before)
+    }
     const proxied = await run(node("p.js", fetchScript(`http://127.0.0.1:${enginePort}/`)))
     expect(proxied.stdout.toString()).toMatch(/^403/m)
   })

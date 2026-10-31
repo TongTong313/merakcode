@@ -36,6 +36,8 @@ export type Script = (input: {
   toolResults: string[]
   system: string
   model: string
+  /** Settles when the engine closes this HTTP response, including cancellation before a reply. */
+  closed: Promise<void>
 }) => Reply | Promise<Reply>
 
 type ModelRequest = { model: string; system: string; prompt: string; tools: number }
@@ -115,6 +117,8 @@ function stream(reply: Reply) {
 async function model(script: Script) {
   const requests: ModelRequest[] = []
   const server: Server = createServer(async (request, response) => {
+    const closed = Promise.withResolvers<void>()
+    response.once("close", () => closed.resolve())
     if (request.method === "GET" && (request.url ?? "").includes("/models")) {
       response.writeHead(200, { "content-type": "application/json" })
       response.end(JSON.stringify({ data: [{ id: "e2e-relay", context_length: 32_000, max_output_tokens: 1_024 }] }))
@@ -138,7 +142,7 @@ async function model(script: Script) {
     })
     // Background requests without tools (titles, summaries) always get a short text
     const reply = (body as { tools?: unknown[] }).tools?.length
-      ? await script({ prompt, toolResults, system, model: body.model ?? "" })
+      ? await script({ prompt, toolResults, system, model: body.model ?? "", closed: closed.promise })
       : { text: "E2E" }
     response.writeHead(200, { "content-type": "text/event-stream" })
     response.end(stream(reply))

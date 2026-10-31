@@ -6,6 +6,7 @@ import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import os from "node:os"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { seedCatalog } from "../../../../script/node/seed-catalog"
 
 const release = path.resolve(import.meta.dirname, "../release")
@@ -25,21 +26,49 @@ const executable = path.join(
       : "merakcode-desktop",
 )
 const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-packaged-smoke-"))
-let requests = 0
+const mainPrompts = new Set<string>()
+let phase = "startup"
+const diagnostics: string[] = []
+const failMain = process.argv.includes("--fail-main")
 const model = createServer(async (request, response) => {
-  for await (const _chunk of request) {
-    /* Drain the local model request. */
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(chunk as Buffer)
+  const body = JSON.parse(Buffer.concat(chunks).toString()) as {
+    tools?: unknown[]
+    messages?: { role: string; content: unknown }[]
   }
-  requests++
+  const main = !!body.tools?.length
+  const user = body.messages?.findLast((message) => message.role === "user")?.content
+  const prompt =
+    typeof user === "string"
+      ? user
+      : Array.isArray(user)
+        ? user.map((part: { text?: string }) => part.text ?? "").join("")
+        : ""
+  if (main) mainPrompts.add(prompt)
+  if (failMain && main) {
+    response.writeHead(400, { "content-type": "application/json" })
+    response.end(JSON.stringify({ error: { message: "SMOKE_MAIN_FAILURE", type: "invalid_request_error" } }))
+    return
+  }
+  const content = main
+    ? prompt.includes("keyboard marker")
+      ? "PACKAGED_SMOKE_ENTER_OK"
+      : "PACKAGED_SMOKE_OK"
+    : failMain
+      ? "PACKAGED_SMOKE_OK"
+      : "PACKAGED_SMOKE_TITLE"
   response.writeHead(200, { "content-type": "text/event-stream" })
   response.end(
-    `data: ${JSON.stringify({ id: "smoke", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "PACKAGED_SMOKE_OK" }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "smoke", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    `data: ${JSON.stringify({ id: "smoke", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "smoke", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
   )
 })
 let child: ReturnType<typeof spawn> | undefined
 let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined
 try {
   await seedCatalog(root)
+  const require = createRequire(import.meta.url)
+  await cp(path.dirname(require.resolve("zod")), path.join(root, "node_modules/zod"), { recursive: true })
   const project = path.join(root, "project")
   await mkdir(project)
   await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve))
@@ -113,7 +142,21 @@ try {
   child.stderr!.resume()
   browser = await chromium.connectOverCDP(endpoint)
   const context = browser.contexts()[0]!
+  await context.tracing.start({ screenshots: true, snapshots: true })
   const page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 60_000 }))
+  page.on("pageerror", (error) => diagnostics.push(`pageerror: ${error.message}`))
+  page.on("requestfailed", (request) =>
+    diagnostics.push(`requestfailed: ${new URL(request.url()).pathname} ${request.failure()?.errorText}`),
+  )
+  await page.evaluate(() => {
+    const keys: { key: string; code: number; composing: boolean }[] = []
+    ;(window as unknown as { __smokeKeys: typeof keys }).__smokeKeys = keys
+    document.addEventListener(
+      "keydown",
+      (event) => keys.push({ key: event.key, code: event.keyCode, composing: event.isComposing }),
+      true,
+    )
+  })
   const input = page
     .getByRole("textbox", { name: /^(消息|Message)$/ })
     .filter({ visible: true })
@@ -121,12 +164,44 @@ try {
   const later = page.getByRole("button", { name: /^(跳过|Skip)$/ })
   await input.or(later).first().waitFor({ timeout: 120_000 })
   if (await later.isVisible()) await later.click()
-  await input.fill("Reply with the smoke marker")
-  await input.press("Enter")
-  await expect(page.getByText("PACKAGED_SMOKE_OK", { exact: true }).filter({ visible: true }).last()).toBeVisible({
-    timeout: 60_000,
-  })
-  if (!requests) throw new Error("The packaged engine made no request to the local model")
+  // Exercise cold-start Enter; the negative control isolates the title-versus-reply oracle through Send.
+  const methods = failMain ? (["button"] as const) : (["keyboard", "button"] as const)
+  for (const [index, method] of methods.entries()) {
+    if (index)
+      await page
+        .getByRole("navigation", { name: /^(对话|Conversations)$/ })
+        .getByRole("button", { name: /^(新对话|New conversation)$/ })
+        .click()
+    const initialURL = page.url()
+    phase = `${method}:submit`
+    const prompt = method === "button" ? "Reply with the smoke marker" : "Reply with the keyboard marker"
+    await page.bringToFront()
+    await input.click()
+    await input.fill(prompt)
+    await expect(input).toHaveValue(prompt)
+    if (method === "button") await page.getByRole("button", { name: /^(发送|Send)$/, exact: true }).click()
+    else await input.press("Enter")
+    phase = `${method}:session`
+    await expect(page).not.toHaveURL(initialURL, { timeout: 30_000 })
+    phase = `${method}:reply`
+    if (failMain)
+      await expect(page.getByRole("navigation").getByText("PACKAGED_SMOKE_OK", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
+    const log = page.getByRole("log", { name: /^(消息记录|Messages)$/ })
+    const reply = log
+      .getByText(method === "button" ? "PACKAGED_SMOKE_OK" : "PACKAGED_SMOKE_ENTER_OK", { exact: true })
+      .filter({ visible: true })
+      .last()
+    const error = log.getByRole("alert").filter({ visible: true }).first()
+    await reply.or(error).first().waitFor({ timeout: 60_000 })
+    if (await error.isVisible()) throw new Error(`Main reply failed during ${phase}`)
+    await expect(reply).toBeVisible()
+    await expect.poll(() => mainPrompts.has(prompt)).toBe(true)
+    await expect(page.getByRole("button", { name: /^(停止|Stop)$/, exact: true })).toHaveCount(0)
+  }
+  phase = "shutdown"
+  await context.tracing.stop()
   // Closing the last window does not quit on macOS. CDP Browser.close uses the app's normal quit lifecycle.
   await context
     .newCDPSession(page)
@@ -143,7 +218,7 @@ try {
   })
   process.stdout.write(`Packaged desktop passed: ${process.platform}-${process.arch}\n`)
 } catch (error) {
-  const output = path.join(release, "smoke-results")
+  const output = path.join(release, "smoke-results", failMain ? "negative-control" : "main")
   await mkdir(output, { recursive: true })
   await browser
     ?.contexts()[0]
@@ -151,7 +226,22 @@ try {
     ?.screenshot({ path: path.join(output, "failure.png") })
     .catch(() => undefined)
   await cp(path.join(root, "logs"), path.join(output, "logs"), { recursive: true }).catch(() => undefined)
-  await writeFile(path.join(output, "error.txt"), String(error))
+  const page = browser?.contexts()[0]?.pages()[0]
+  const state = await page
+    ?.evaluate(() => ({
+      focused: document.hasFocus(),
+      active: document.activeElement?.tagName,
+      keys: (window as unknown as { __smokeKeys?: unknown }).__smokeKeys,
+    }))
+    .catch(() => undefined)
+  await browser
+    ?.contexts()[0]
+    ?.tracing.stop({ path: path.join(output, "trace.zip") })
+    .catch(() => undefined)
+  await writeFile(
+    path.join(output, "error.txt"),
+    `${phase}\n${String(error)}\n${JSON.stringify({ diagnostics, state, mainRequests: mainPrompts.size })}`,
+  )
   throw error
 } finally {
   await browser?.close().catch(() => undefined)

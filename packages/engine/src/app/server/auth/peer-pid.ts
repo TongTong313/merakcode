@@ -363,9 +363,9 @@ export function parseNetstat(stdout: string): TcpOwner[] {
     const match = line.match(/^\s*TCP\s+(\S+):(\d+)\s+(\S+):(\d+)\s+ESTABLISHED\s+(\d+)\s*$/i)
     if (!match) continue
     rows.push({
-      localAddr: stripBrackets(match[1]),
+      localAddr: stripBrackets(match[1]!),
       localPort: Number(match[2]),
-      remoteAddr: stripBrackets(match[3]),
+      remoteAddr: stripBrackets(match[3]!),
       remotePort: Number(match[4]),
       pid: Number(match[5]),
     })
@@ -385,7 +385,7 @@ export function parseLsof(stdout: string): TcpOwner[] {
     const name = cols.find((col) => nameRe.test(col))
     if (!name) continue
     const match = name.match(nameRe)
-    if (!match) continue
+    if (!match?.[1] || !match[3]) continue
     rows.push({
       localAddr: match[1],
       localPort: Number(match[2]),
@@ -410,9 +410,9 @@ function ownersFromProcNet(file: string, ipv6: boolean): TcpOwner[] {
     const cols = line.trim().split(/\s+/)
     if (cols.length < 10) continue
     if (cols[3] !== "01") continue
-    const local = parseProcAddr(cols[1], ipv6)
-    const remote = parseProcAddr(cols[2], ipv6)
-    const inode = cols[9]
+    const local = parseProcAddr(cols[1]!, ipv6)
+    const remote = parseProcAddr(cols[2]!, ipv6)
+    const inode = cols[9]!
     const pid = inodePid.get(inode)
     if (!local || !remote || !pid) continue
     rows.push({
@@ -469,7 +469,7 @@ function inodeToPid(): Map<string, number> {
       try {
         const link = readlinkSync(`/proc/${pid}/fd/${fd}`)
         const match = link.match(/^socket:\[(\d+)\]$/)
-        if (match) map.set(match[1], Number(pid))
+        if (match) map.set(match[1]!, Number(pid))
       } catch {
         // skip
       }
