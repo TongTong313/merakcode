@@ -3,6 +3,7 @@ import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
 import { createEffect, For, onCleanup, onMount } from "solid-js"
 import { createStore, produce } from "solid-js/store"
+import { connectPty, type PtyConnection } from "@merakcode/sdk/client"
 import { t } from "../../i18n"
 import { log } from "../../lib/bridge"
 import { call, client } from "../../state/client"
@@ -43,7 +44,7 @@ const colors = () =>
 function Shell(props: { directory: string; tab: Tab; active: boolean }) {
   let host!: HTMLDivElement
   let term: Term | undefined
-  let socket: WebSocket | undefined
+  let socket: PtyConnection | undefined
   let fit: FitAddon | undefined
   let disposed = false
   /** Keys typed before the terminal is ready (typing right after opening it) */
@@ -92,26 +93,26 @@ function Shell(props: { directory: string; tab: Tab; active: boolean }) {
     fit.fit()
     fit.observeResize?.()
 
-    const url = new URL(`/pty/${id}/connect`, location.origin)
-    url.searchParams.set("directory", props.directory)
-    url.searchParams.set("cursor", "0")
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-    const ws = new WebSocket(url)
-    ws.binaryType = "arraybuffer"
-    socket = ws
-    ws.addEventListener("message", (event) => {
-      // Binary frames starting with 0x00 carry control data (the output position) and are not displayed
-      if (typeof event.data === "string") instance.write(event.data)
+    const connection = connectPty({
+      baseUrl: location.origin,
+      ptyID: id,
+      directory: props.directory,
+      cursor: 0,
+      onData(data) {
+        // Binary frames starting with 0x00 carry control data (the output position) and are not displayed
+        if (typeof data === "string") instance.write(data)
+      },
+      onError() {
+        log("warn", "terminal socket error")
+      },
+      onOpen() {
+        void c.pty.update({ ptyID: id, size: { cols: instance.cols, rows: instance.rows } })
+      },
     })
-    ws.addEventListener("error", () => log("warn", "terminal socket error"))
-    // Queue input typed before the socket opens and send it once connected
-    const queued = early.splice(0)
-    instance.onData((data) => (ws.readyState === WebSocket.OPEN ? ws.send(data) : queued.push(data)))
+    socket = connection
+    for (const data of early.splice(0)) connection.send(data)
+    instance.onData((data) => connection.send(data))
     instance.onResize(({ cols, rows }) => void c.pty.update({ ptyID: id, size: { cols, rows } }))
-    ws.addEventListener("open", () => {
-      void c.pty.update({ ptyID: id, size: { cols: instance.cols, rows: instance.rows } })
-      for (const data of queued.splice(0)) ws.send(data)
-    })
     term = instance
     if (props.active) instance.focus()
   })

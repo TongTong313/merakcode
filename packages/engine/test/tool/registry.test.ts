@@ -2,9 +2,9 @@ import { test, expect } from "vitest"
 import path from "path"
 import { mkdir, symlink } from "fs/promises"
 import { fileURLToPath } from "url"
-import { Config } from "@merakcode/engine/config/config"
-import { Instance } from "@merakcode/engine/project/instance"
-import { ToolRegistry } from "@merakcode/engine/tool/registry"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -150,6 +150,13 @@ test("a real @merakcode/sdk in the config directory is not overwritten by the sh
   await mkdir(path.join(tmp.path, "node_modules", "zod"), { recursive: true })
   const real = path.join(tmp.path, "node_modules", "@merakcode", "sdk", "package.json")
   await Filesystem.write(real, JSON.stringify({ name: "@merakcode/sdk", version: "9.9.9" }))
+  await Filesystem.write(
+    path.join(tmp.path, "package.json"),
+    JSON.stringify({
+      private: true,
+      dependencies: { zod: `file:${path.dirname(fileURLToPath(import.meta.resolve("zod"))).replaceAll("\\", "/")}` },
+    }),
+  )
 
   await Config.installDependencies(tmp.path)
 

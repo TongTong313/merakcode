@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "vitest"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Bus } from "@merakcode/engine/bus/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Question } from "@merakcode/engine/question/index"
-import { Session } from "@merakcode/engine/session/index"
-import { LLM } from "@merakcode/engine/session/llm"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionStatus } from "@merakcode/engine/session/status"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Question } from "@merakcode/engine/agent/session/question/index"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { LoopStatus } from "@merakcode/engine/agent/loop/status"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -38,7 +38,7 @@ afterEach(() => {
 })
 
 async function prompt(sessionID: string) {
-  return SessionRunner.prompt({
+  return Loop.prompt({
     sessionID,
     agent: "build",
     model: { providerID: "test-provider", modelID: "test-model" },
@@ -79,8 +79,8 @@ test("model stream error publishes only the original error, not an extra interru
         expect(errors[0]?.data).toMatchObject({ message: "Error: provider stream failed" })
         expect(await pending).toBeInstanceOf(Question.AbortedError)
         expect(await Question.list()).toEqual([])
-        expect(SessionStatus.get(session.id).type).toBe("idle")
-        expect(() => SessionRunner.assertNotBusy(session.id)).not.toThrow()
+        expect(LoopStatus.get(session.id).type).toBe("idle")
+        expect(() => Loop.assertNotBusy(session.id)).not.toThrow()
       } finally {
         unsubscribe()
       }
@@ -115,7 +115,7 @@ test("normal completion publishes no false interrupt", async () => {
         if (result.info.role !== "assistant") throw new Error("expected assistant message")
         expect(result.info.error).toBeUndefined()
         expect(errors).toEqual([])
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
       } finally {
         unsubscribe()
       }
@@ -161,7 +161,7 @@ test("explicit user Stop still interrupts and waits for the owner to settle", as
           (error: unknown) => error,
         )
         expect(await Question.list()).toHaveLength(1)
-        await SessionRunner.cancelAndSettle(session.id)
+        await Loop.cancelAndSettle(session.id)
         const result = await running
         if (result.info.role !== "assistant") throw new Error("expected assistant message")
         expect(result.info.error?.name).toBe("MessageAbortedError")
@@ -169,8 +169,8 @@ test("explicit user Stop still interrupts and waits for the owner to settle", as
         expect(errors.every((name) => name === "MessageAbortedError")).toBe(true)
         expect(await pending).toBeInstanceOf(Question.AbortedError)
         expect(await Question.list()).toEqual([])
-        expect(SessionStatus.get(session.id).type).toBe("idle")
-        expect(() => SessionRunner.assertNotBusy(session.id)).not.toThrow()
+        expect(LoopStatus.get(session.id).type).toBe("idle")
+        expect(() => Loop.assertNotBusy(session.id)).not.toThrow()
       } finally {
         unsubscribe()
       }

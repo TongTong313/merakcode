@@ -1,8 +1,8 @@
-import { Config } from "../config/config"
+import { Config } from "@merakcode/engine/agent/settings/index"
 import z from "zod"
-import { Provider } from "../provider/provider"
+import { Provider } from "./model/provider"
 import { generateText, Output } from "ai"
-import { Instance } from "../project/instance"
+import { Instance } from "../infra/project/instance"
 
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
@@ -11,11 +11,11 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_CODE_SIMPLIFIER from "./prompt/code-simplifier.txt"
 import PROMPT_WORKFLOW_SUBAGENT from "./prompt/workflow-subagent.txt"
-import { PermissionNext } from "../permission/next"
-import { PermissionPolicy } from "../permission/policy"
+import { PermissionNext } from "./permission/next"
+import { PermissionPolicy } from "./permission/policy"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
-import { Plugin } from "../plugin"
-import { MemoryAccess } from "../memory/access"
+import { Plugin } from "./plugin"
+import { MemoryAccess } from "./memory/access"
 
 /**
  * Default tool pool of the main session (matches the runner's filtering and the settings page metadata).

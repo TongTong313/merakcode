@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
-import { WriteTool } from "@merakcode/engine/tool/write"
-import { Instance } from "@merakcode/engine/project/instance"
-import { MemoryPath } from "@merakcode/engine/memory/path"
+import { WriteTool } from "@merakcode/engine/agent/tools/write"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { MemoryPath } from "@merakcode/engine/agent/memory/path"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {

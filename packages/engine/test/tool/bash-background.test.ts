@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { spawn } from "child_process"
-import { BashJobStore, looksLikePrompt } from "@merakcode/engine/tool/bash-background"
+import { BashJobStore, looksLikePrompt } from "@merakcode/engine/agent/tools/bash-background"
 
 function spawnSleep(seconds: number) {
   const cmd = process.platform === "win32" ? `ping -n ${seconds + 1} 127.0.0.1` : `sleep ${seconds}`

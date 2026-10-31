@@ -3,27 +3,27 @@
  * - preferred: while the sandbox is not ready, commands that change things ask first; read-only ones do not
  * - required: while the sandbox is not ready, commands are refused with MRK-5007
  * - off: commands run as usual
- * The backends here stand in for "not set up" and "on"; real enforcement is tested in packages/sandbox.
+ * The backends here stand in for "not set up" and "on"; real enforcement is tested by test/sandbox/os/conformance.test.ts.
  */
 import { afterAll, afterEach, beforeAll, expect, test } from "vitest"
 import path from "path"
-import { BashTool } from "@merakcode/engine/tool/bash"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Sandbox } from "@merakcode/engine/sandbox/index"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { PermissionPolicy } from "@merakcode/engine/permission/policy"
-import { Bus } from "@merakcode/engine/bus/index"
-import type { Tool } from "@merakcode/engine/tool/tool"
-import type { Backend } from "@merakcode/sandbox"
+import { BashTool } from "@merakcode/engine/agent/tools/bash"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
+import type { Backend } from "@merakcode/engine/infra/sandbox/index"
 import { ErrorCode } from "@merakcode/util/error-code"
 import { tmpdir } from "../fixture/fixture"
 
 const previous = process.env.MERAKCODE_SANDBOX_MODE
 afterAll(() => {
   process.env.MERAKCODE_SANDBOX_MODE = previous
-  Sandbox.useBackendForTest(undefined)
+  PermissionExecution.useBackendForTest(undefined)
 })
-afterEach(() => Sandbox.useBackendForTest(undefined))
+afterEach(() => PermissionExecution.useBackendForTest(undefined))
 
 const missing: Backend = {
   status: async () => ({ status: "unsupported", installable: true, reason: "needs a one-time setup" }),
@@ -89,7 +89,7 @@ function auto(sessionID: string) {
 
 async function run(mode: string, backend: Backend, command: string, sessionID: string) {
   process.env.MERAKCODE_SANDBOX_MODE = mode
-  Sandbox.useBackendForTest(backend)
+  PermissionExecution.useBackendForTest(backend)
   await using tmp = await tmpdir({ git: true })
   // await before returning: the temp folder is removed when this function exits
   return await Instance.provide({
@@ -122,8 +122,8 @@ test("preferred, sandbox not ready: a read-only command does not ask", async () 
 test("required, sandbox not ready: commands are refused with MRK-5007, pointing to the desktop settings first", async () => {
   const { error, requests } = await run("required", missing, "git status", "ses_mode_required")
   expect(requests).toHaveLength(0)
-  expect(Sandbox.SetupRequiredError.isInstance(error)).toBe(true)
-  const refused = error as InstanceType<typeof Sandbox.SetupRequiredError>
+  expect(PermissionExecution.SetupRequiredError.isInstance(error)).toBe(true)
+  const refused = error as InstanceType<typeof PermissionExecution.SetupRequiredError>
   expect(refused.toObject().code).toBe("MRK-5007")
   expect(refused.data.message).toContain("Settings → Permissions & security")
   expect(refused.data.message).toContain("merak sandbox setup")
@@ -160,8 +160,8 @@ test("waking prepares an already set up sandbox so the next command can run insi
     },
   }
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
-  Sandbox.useBackendForTest(backend)
-  await Sandbox.wake()
+  PermissionExecution.useBackendForTest(backend)
+  await PermissionExecution.wake()
   const { result, error, requests } = await run("preferred", backend, "echo hi > warmed.txt", "ses_wake_prepare")
   expect(requests).toHaveLength(0)
   expect(error).toBeUndefined()
@@ -170,26 +170,26 @@ test("waking prepares an already set up sandbox so the next command can run insi
 
 test("resetting while the sandbox is off still reports that setup can be done again", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "off"
-  Sandbox.useBackendForTest({
+  PermissionExecution.useBackendForTest({
     ...missing,
     reset: async () => ({ status: "unsupported", installable: true, reason: "needs a one-time setup" }),
   })
-  const status = await Sandbox.reset()
+  const status = await PermissionExecution.reset()
   expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
 })
 
 test("turning the sandbox off keeps whether a one-time setup is still needed", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "off"
-  Sandbox.useBackendForTest(missing)
-  const status = await Sandbox.current()
+  PermissionExecution.useBackendForTest(missing)
+  const status = await PermissionExecution.current()
   expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
 })
 
 test("waking an already set up sandbox leaves it on, and an auto-mode command runs inside it without asking", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
-  Sandbox.useBackendForTest(on)
+  PermissionExecution.useBackendForTest(on)
   wrapped.length = 0
-  const status = await Sandbox.wake()
+  const status = await PermissionExecution.wake()
   expect(status.status).toBe("on")
 
   const { result, error, requests } = await run("preferred", on, "echo hi > out.txt", "ses_wake_on")

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { CommandAnalysis } from "@merakcode/engine/permission/command"
+import { CommandAnalysis } from "@merakcode/engine/agent/permission/command"
 
 // Before running, a command is split into segments with tree-sitter, each classified as readonly, normal, delete or
 // risky, and tagged with the risks shown in the approval bar

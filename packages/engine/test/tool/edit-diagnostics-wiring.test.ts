@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest"
 import { readFileSync } from "fs"
 import { join } from "path"
 
-const toolDir = join(import.meta.dirname, "../../../../packages/engine/src/tool")
+const toolDir = join(import.meta.dirname, "../../../../packages/engine/src/agent/tools")
 
-const lspDir = join(import.meta.dirname, "../../../../packages/engine/src/lsp")
+const lspDir = join(import.meta.dirname, "../../../../packages/engine/src/agent/lsp")
 
 /** Edit tools must fetch diagnostics through diagnosticsAfterEdit, not await touchFile(true) plus diagnostics */
 describe("edit tool LSP diagnostics wiring (diagnosticsAfterEdit)", () => {

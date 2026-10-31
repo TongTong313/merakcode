@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { Config } from "../src/config/config"
+import { Config } from "../src/app/config/files/config"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 /**

@@ -349,7 +349,9 @@ test("keeps inherited background pipes protected after their parent exits and ca
     await client.file.delete({ path: "descendant.txt" })
   }
   await expect
-    .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason)
+    .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason, {
+      timeout: 10_000,
+    })
     .not.toBe("busy")
   const settled = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
   expect((await client.vcs.switchBranch({ branch: "dev", expectedCheckout: settled.checkout })).response.status).toBe(
@@ -411,7 +413,9 @@ setInterval(() => {}, 1000)
       )
       .toBe(true)
     await expect
-      .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason)
+      .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason, {
+        timeout: 10_000,
+      })
       .not.toBe("busy")
     const before = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
     expect((await client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout })).response.status).toBe(

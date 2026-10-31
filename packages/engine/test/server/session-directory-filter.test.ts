@@ -1,7 +1,8 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { Server } from "@merakcode/engine/server/server"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -25,7 +26,7 @@ describe("GET /session directory filter (cross-platform path normalization)", ()
       const list = (await res.json()) as Array<{ id: string }>
       expect(list.some((s) => s.id === created.id)).toBe(true)
     } finally {
-      await Instance.provide({ directory: dir, fn: () => Session.remove(created.id) })
+      await Instance.provide({ directory: dir, fn: () => SessionOperations.remove(created.id) })
     }
   })
 
@@ -41,7 +42,7 @@ describe("GET /session directory filter (cross-platform path normalization)", ()
       const list = (await res.json()) as Array<{ id: string }>
       expect(list.some((s) => s.id === created.id)).toBe(false)
     } finally {
-      await Instance.provide({ directory: dir, fn: () => Session.remove(created.id) })
+      await Instance.provide({ directory: dir, fn: () => SessionOperations.remove(created.id) })
     }
   })
 })

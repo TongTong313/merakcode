@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
-import type { Provider } from "@merakcode/engine/provider/provider"
-import { SessionContextLayer } from "@merakcode/engine/session/context-layer"
-import { Message } from "@merakcode/engine/session/message"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import { SessionContextLayer } from "@merakcode/engine/agent/context/context-layer"
+import { Message } from "@merakcode/engine/agent/session/message"
 
 const sessionID = "session"
 

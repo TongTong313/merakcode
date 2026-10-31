@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "vitest"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import * as Anthropic from "../../../src/provider/catalog/anthropic"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import * as Anthropic from "../../../src/agent/model/catalog/anthropic"
 import { tmpdir } from "../../fixture/fixture"
 import { load, parseItems, restoreCatalog, writeCatalog } from "./fixture"
 

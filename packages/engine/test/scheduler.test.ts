@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { Scheduler } from "@merakcode/engine/scheduler/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Scheduler } from "@merakcode/engine/infra/scheduler"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "./fixture/fixture"
 
 describe("Scheduler.register", () => {

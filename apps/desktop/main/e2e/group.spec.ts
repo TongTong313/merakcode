@@ -190,13 +190,25 @@ test.describe("a MerakCode member", () => {
 })
 
 test.describe("stopping a MerakCode member", () => {
+  let entered = Promise.withResolvers<void>()
+  let released = Promise.withResolvers<void>()
+  let connectionClosed = false
+  test.beforeEach(() => {
+    entered = Promise.withResolvers<void>()
+    released = Promise.withResolvers<void>()
+    connectionClosed = false
+  })
+  test.afterEach(() => released.resolve())
   test.use({
     script: {
-      reply: async ({ prompt, toolResults }) => {
+      reply: async ({ prompt, toolResults, closed }) => {
         if (prompt.startsWith("You are 小明 (MerakCode)")) {
           if (toolResults.length) return { text: "写完了" }
-          // A slow step: by the time it answers, the user has stopped the group
-          await new Promise((resolve) => setTimeout(resolve, 1_500))
+          entered.resolve()
+          void closed.then(() => {
+            connectionClosed = true
+          })
+          await released.promise
           return { tool: "write", args: { filePath: "late.md", content: "late\n" } }
         }
         return toolResults.length === 0 ? { tool: "delegate", args: { seat: "小明", task: "慢慢写" } } : { text: "好" }
@@ -208,6 +220,7 @@ test.describe("stopping a MerakCode member", () => {
     const { page } = kit
     await createGroup(page, { product: "MerakCode", name: "小明" })
     await kit.send("@小明 慢慢写")
+    await entered.promise
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText("已运行")
     await expect(page.getByRole("button", { name: /待办 0\/1/ })).toBeVisible()
@@ -216,7 +229,9 @@ test.describe("stopping a MerakCode member", () => {
     await expect(xiaoming).toContainText("已停止")
     await expect(xiaoming).toContainText("MerakCode")
     await expect(page.getByRole("button", { name: /待办/ })).toHaveCount(0)
-    await page.waitForTimeout(2_500)
+    await expect.poll(() => connectionClosed).toBe(true)
+    released.resolve()
+    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0)
     await expect(access(path.join(kit.project, "late.md"))).rejects.toThrow()
   })
 })
@@ -346,15 +361,13 @@ test.describe("disabled group products", () => {
 })
 
 test.describe("the entry to a team", () => {
-  test("Ctrl+G, the sidebar and the palette all open the new-team dialog, which says what a team is", async ({
-    kit,
-  }) => {
+  test("the native shortcut, sidebar and palette open the new-team dialog, which explains teams", async ({ kit }) => {
     const { page } = kit
     const dialog = page.getByRole("dialog", { name: "新建协作群" })
     const entry = page.getByRole("button", { name: /^新建协作群/ })
-    await expect(entry).toContainText("Ctrl G")
+    await expect(entry).toContainText(process.platform === "darwin" ? "⌘ G" : "Ctrl G")
 
-    await page.keyboard.press("Control+G")
+    await page.keyboard.press("ControlOrMeta+G")
     await expect(dialog).toContainText("让 MerakCode 当群主，拉上 Claude Code、Codex 等一起干活")
     await page.keyboard.press("Escape")
     await expect(dialog).toHaveCount(0)
@@ -363,7 +376,7 @@ test.describe("the entry to a team", () => {
     await expect(dialog).toBeVisible()
     await page.keyboard.press("Escape")
 
-    await page.keyboard.press("Control+K")
+    await page.keyboard.press("ControlOrMeta+K")
     await page.keyboard.type("协作")
     await page.getByRole("option", { name: /新建协作群/ }).click()
     await expect(dialog).toBeVisible()

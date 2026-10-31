@@ -1,12 +1,12 @@
 import { test, expect } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { CronCreateTool } from "@merakcode/engine/tool/loop"
-import { LoopScheduler } from "@merakcode/engine/scheduler/loop/index"
-import type { Tool } from "@merakcode/engine/tool/tool"
-import type { Message } from "@merakcode/engine/session/message"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { CronCreateTool } from "@merakcode/engine/app/task/tools/cron"
+import { CronScheduler } from "@merakcode/engine/app/task/cron/index"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
+import type { Message } from "@merakcode/engine/agent/session/message"
 import { setTimeout as delay } from "node:timers/promises"
 
 test("CronCreate: a loop task created in auto mode still passes permissionMode=auto when it runs", async () => {
@@ -15,9 +15,9 @@ test("CronCreate: a loop task created in auto mode still passes permissionMode=a
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      const calls: SessionRunner.PromptInput[] = []
-      const original = SessionRunner.prompt
-      ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = (async (input) => {
+      const calls: Loop.PromptInput[] = []
+      const original = Loop.prompt
+      ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = (async (input) => {
         calls.push(input)
         return {
           info: {
@@ -28,7 +28,7 @@ test("CronCreate: a loop task created in auto mode still passes permissionMode=a
           },
           parts: [],
         } as unknown as Message.FullMsg
-      }) as typeof SessionRunner.prompt
+      }) as typeof Loop.prompt
 
       try {
         const tool = await CronCreateTool.init()
@@ -48,13 +48,13 @@ test("CronCreate: a loop task created in auto mode still passes permissionMode=a
         } satisfies Tool.Context)
 
         const id = result.metadata.id
-        expect(LoopScheduler.list(session.id).find((task) => task.id === id)?.permissionMode).toBe("auto")
+        expect(CronScheduler.list(session.id).find((task) => task.id === id)?.permissionMode).toBe("auto")
 
         // Trigger a real run. The task above cannot be awaited: creation does not run it immediately (timer setup
         // and crash recovery share one arm path, and running immediately would replay old tasks after a restart),
         // and the tool enforces interval >= 60s. So create a short-interval task through the scheduler API, let
-        // setInterval fire once, and cover the tick → SessionRunner.prompt context pass-through.
-        const fastID = await LoopScheduler.create({
+        // setInterval fire once, and cover the tick → Loop.prompt context pass-through.
+        const fastID = await CronScheduler.create({
           interval: 50,
           prompt: "run scheduled task",
           sessionID: session.id,
@@ -71,10 +71,10 @@ test("CronCreate: a loop task created in auto mode still passes permissionMode=a
           expect(calls[0].permissionMode).toBe("auto")
           expect(calls[0].model).toEqual({ providerID: "openai", modelID: "gpt-4" })
         } finally {
-          await LoopScheduler.remove(fastID)
+          await CronScheduler.remove(fastID)
         }
       } finally {
-        ;(SessionRunner as unknown as { prompt: typeof SessionRunner.prompt }).prompt = original
+        ;(Loop as unknown as { prompt: typeof Loop.prompt }).prompt = original
       }
     },
   })

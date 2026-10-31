@@ -2,9 +2,9 @@ import { expect, test } from "vitest"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Worktree } from "@merakcode/engine/worktree/index"
-import { GlobalBus } from "@merakcode/engine/bus/global"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Worktree } from "@merakcode/engine/app/project/worktree/index"
+import { GlobalBus } from "@merakcode/engine/infra/bus/global"
 import { tmpdir } from "../fixture/fixture"
 
 // Worktree sessions: open a worktree from a given branch, let the agent edit there, then merge back into the main

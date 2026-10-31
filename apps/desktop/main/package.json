@@ -30,7 +30,8 @@
     "esbuild": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "repository": {
     "type": "git",

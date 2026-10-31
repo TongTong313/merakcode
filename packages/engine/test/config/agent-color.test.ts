@@ -1,8 +1,8 @@
 import { test, expect } from "vitest"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Config } from "@merakcode/engine/config/config"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Config } from "@merakcode/engine/app/config/files/config"
 import { Agent as AgentSvc } from "@merakcode/engine/agent/agent"
 import { Filesystem } from "@merakcode/util/filesystem"
 

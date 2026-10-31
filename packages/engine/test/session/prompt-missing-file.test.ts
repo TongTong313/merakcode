@@ -1,8 +1,9 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import path from "path"
 import { describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { tmpdir } from "../fixture/fixture"
 
 describe("session.prompt missing file", () => {
@@ -24,7 +25,7 @@ describe("session.prompt missing file", () => {
         const session = await Session.create({})
 
         const missing = path.join(tmp.path, "does-not-exist.ts")
-        const msg = await SessionRunner.prompt({
+        const msg = await Loop.prompt({
           sessionID: session.id,
           agent: "build",
           noReply: true,
@@ -46,7 +47,7 @@ describe("session.prompt missing file", () => {
         )
         expect(hasFailure).toBe(true)
 
-        await Session.remove(session.id)
+        await SessionOperations.remove(session.id)
       },
     })
   })

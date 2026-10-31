@@ -1,15 +1,16 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test, type Mock, vi } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
-import { Message } from "@merakcode/engine/session/message"
-import { Plugin } from "@merakcode/engine/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
 import { Agent } from "@merakcode/engine/agent/agent"
 import { Identifier } from "@merakcode/util/id"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 import { tmpdir } from "../fixture/fixture"
-import { Auth } from "@merakcode/engine/auth/index"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
 
 /**
  * Message.metadata write paths.
@@ -26,7 +27,7 @@ afterEach(() => {
 })
 
 describe("chat.message hook writes UserMessage.metadata", () => {
-  test("metadata written by a plugin in chat.message is persisted with SessionRunner.prompt", async () => {
+  test("metadata written by a plugin in chat.message is persisted with Loop.prompt", async () => {
     spy = vi.spyOn(Plugin, "trigger").mockImplementation((async (name: string, input: unknown, output: unknown) => {
       if (name === "chat.message") {
         ;(output as { message: Message.UserInfo }).message.metadata = { tenant: "acme" }
@@ -41,7 +42,7 @@ describe("chat.message hook writes UserMessage.metadata", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
-          const msg = await SessionRunner.prompt({
+          const msg = await Loop.prompt({
             sessionID: session.id,
             noReply: true,
             parts: [{ type: "text", text: "hello" }],
@@ -53,7 +54,7 @@ describe("chat.message hook writes UserMessage.metadata", () => {
           const stored = await Session.messages({ sessionID: session.id })
           const storedUser = stored.find((m) => m.info.id === msg.info.id)
           expect(storedUser?.info.metadata).toEqual({ tenant: "acme" })
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     } finally {
@@ -69,14 +70,14 @@ describe("chat.message hook writes UserMessage.metadata", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
-          const msg = await SessionRunner.prompt({
+          const msg = await Loop.prompt({
             sessionID: session.id,
             noReply: true,
             parts: [{ type: "text", text: "hello" }],
           })
           if (msg.info.role !== "user") throw new Error("expected user message")
           expect(msg.info.metadata).toBeUndefined()
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     } finally {

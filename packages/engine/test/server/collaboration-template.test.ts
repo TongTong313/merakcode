@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "vitest"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { globalConfigFile } from "@merakcode/util/paths"
-import { Config } from "../../src/config/config"
-import { Instance } from "../../src/project/instance"
-import { Server } from "../../src/server/server"
+import { Config } from "../../src/app/config/files/config"
+import { Instance } from "../../src/infra/project/instance"
+import { Server } from "../../src/app/server/server"
 import { tmpdir } from "../fixture/fixture"
 
 afterEach(async () => {

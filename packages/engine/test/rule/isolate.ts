@@ -1,7 +1,7 @@
 import path from "path"
-import { Config } from "@merakcode/engine/config/config"
-import { Flag } from "@merakcode/engine/flag/flag"
-import { Global } from "@merakcode/engine/global/index"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { Flag } from "@merakcode/engine/infra/flag/flag"
+import { Global } from "@merakcode/engine/infra/global/index"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

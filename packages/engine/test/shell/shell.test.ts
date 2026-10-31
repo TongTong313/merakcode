@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Shell } from "../../src/shell/shell"
+import { Shell } from "../../src/infra/process/shell/shell"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Shell.run", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Workspace } from "@merakcode/engine/project/workspace"
+import { Workspace } from "@merakcode/engine/infra/project/workspace"
 
 /**
  * Workspace identity, like the bucket key of VS Code workspaceStorage:

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
 import type { NamedError } from "@merakcode/util/error"
 import { APICallError } from "ai"
-import { SessionRetry } from "@merakcode/engine/session/retry"
-import { Message } from "@merakcode/engine/session/message"
+import { SessionRetry } from "@merakcode/engine/agent/loop/retry"
+import { Message } from "@merakcode/engine/agent/session/message"
 import { Http } from "@merakcode/util/http"
 
 function apiError(headers?: Record<string, string>): Message.APIError {

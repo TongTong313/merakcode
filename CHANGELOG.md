@@ -6,14 +6,46 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- Reorganize the engine into `agent`, `infra`, and `app`: agent capabilities, shared mechanisms, and engine service composition now have explicit dependency boundaries.
+- Consolidate execution in `agent/loop`, including dispatch, queues, cancellation, recovery, and turn completion. Persistent session and message records remain in `agent/session`; execution and context reports share tool preparation, and turn completion shares memory scheduling.
+- Separate permission decisions from OS isolation: `agent/permission` owns authorization and policy, while `infra/sandbox` enforces them through the existing platform backends and independent conformance tests.
+- Move configuration fields and defaults beside their owning modules, share configuration IO and validation in infrastructure, and keep project initialization and reload orchestration in the application layer. Host startup and shutdown call the server in one direction.
+- Make the SDK the entry point for desktop and CLI product capabilities, including terminal connections through `connectPty`. Terminal input keeps its send order across connection startup; existing HTTP, event, configuration, and persisted-data contracts remain compatible.
+- Remove obsolete sandbox and client-core package shells and utility forwarding modules while retaining their implementations with their actual consumers.
+
 ### Fixed
 
-- Configuration schema insertion no longer overwrites newer settings, and configuration writes replace the file atomically when supported.
+- Coordinate configuration dependency installation across engine instances and processes, reinstall damaged packages even with an existing npm lockfile, and preserve the local plugin API even when npm lifecycle scripts fail.
+- Restore interrupted user SDK backups before skipping initialization, prevent partial backup cleanup from overwriting a restored SDK, and stop npm lifecycle descendants before releasing the installation directory.
+- Include the Windows operation and system error code when dependency process management fails.
+- Wait for project file watchers to finish subscribing before startup completes, so initial Git changes are observed.
+- Let Git changes finish loading while background refreshes arrive during slow requests.
+- Delay takeover dialogs until Settings closes, and verify Windows installer checksums without relying on PowerShell module discovery. Preserve long Unicode paths in release archive headers.
+- Preserve lifecycle ordering during the refactor: shutdown stops scheduled runs before draining memory work, persisted tasks resume after startup, and an explicit tool stop no longer runs the same user request again.
+- Preserve concurrent configuration edits during schema insertion and temporary Windows file sharing conflicts, using atomic replacement when supported.
 - Global events without a directory no longer interrupt Git panel updates, and a failed event listener no longer drops subsequent conversation events.
+
+### 变更
+
+- 引擎统一为 `agent`、`infra`、`app` 三层，分别承载智能体能力、基础机制和引擎服务编排，并明确约束依赖方向。
+- 将请求分发、队列、取消、恢复和回合收尾统一到 `agent/loop`；会话与消息的持久数据留在 `agent/session`。执行与上下文报告共享工具准备结果，回合完成后统一安排记忆任务。
+- 分离权限决策与系统隔离：`agent/permission` 负责授权和策略，`infra/sandbox` 通过现有平台后端执行隔离，并保留独立的系统一致性测试。
+- 配置字段和默认规则归各自模块，基础层统一提供配置读写与校验，应用层负责项目初始化和重载编排；宿主单向调用服务端，统一管理启动与退出顺序。
+- 桌面和 CLI 的产品能力统一通过 SDK 使用引擎，终端连接也由 `connectPty` 承接，并在连接建立前后保持输入发送顺序；现有 HTTP、事件、配置和持久数据契约保持兼容。
+- 移除 sandbox、client-core 的多余包壳及工具函数转发模块，将实际实现保留在所属模块或真实使用方。
 
 ### 修复
 
-- 配置文件自动补写 schema 时不再覆盖较新的设置，配置写入在系统支持时通过原子替换完成。
+- 协调多个引擎实例和进程的配置依赖安装，在已有 npm 锁文件时仍重新安装损坏的包，并在 npm 生命周期脚本失败后仍保留本地插件 API。
+- 在跳过初始化前恢复中断的用户 SDK 备份，避免备份清理部分失败后覆盖已恢复的 SDK，并在释放安装目录前停止 npm 生命周期的后代进程。
+- 依赖进程管理失败时保留 Windows 操作名称和系统错误码。
+- 项目启动等待文件监听订阅完成，避免漏掉最初的 Git 变更。
+- 后台刷新与较慢请求重叠时，Git 改动列表仍能完成加载。
+- 接管弹窗延迟到关闭设置后显示；Windows 安装器校验不再依赖 PowerShell 模块发现，并修复发布归档头对长 Unicode 路径的处理。
+- 完善重构中的生命周期顺序：退出时先停止定时任务触发，再排空记忆任务；持久任务在启动后恢复，工具明确结束回合后不再重复执行同一条用户请求。
+- 配置自动补写 schema 或遇到 Windows 文件临时占用时保留并发修改，并在系统支持时通过原子替换完成写入。
 - 不带目录的全局事件不再中断 Git 面板更新，单个事件监听器异常也不再丢失后续对话事件。
 
 ## [0.2.0] - 2026-10-28

@@ -1,8 +1,9 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, expect, test } from "vitest"
 import { Identifier } from "@merakcode/util/id"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -81,7 +82,7 @@ test("search is literal, case-insensitive, per project, and forgets deleted sess
       await say(session.id, "Coverage went to 100% today")
       const gone = await Session.create({ title: "plain" })
       await say(gone.id, "coverage 100% again")
-      await Session.remove(gone.id)
+      await SessionOperations.remove(gone.id)
       return session
     },
   })

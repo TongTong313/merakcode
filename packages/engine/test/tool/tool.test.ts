@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import z from "zod"
-import { Tool } from "@merakcode/engine/tool/tool"
+import { Tool } from "@merakcode/engine/agent/tools/tool"
 
 /**
  * Regression: Tool.define with a static object literal must not stack wrappers.

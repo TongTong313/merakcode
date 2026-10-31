@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, expect, test } from "vitest"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { LLM } from "@merakcode/engine/session/llm"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionContextLayer } from "@merakcode/engine/session/context-layer"
-import { SessionStatus } from "@merakcode/engine/session/status"
-import { SessionRoutes } from "@merakcode/engine/server/routes/session"
-import { SessionDispatch } from "@merakcode/engine/session/dispatch"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { LLM } from "@merakcode/engine/agent/model/llm"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionContextLayer } from "@merakcode/engine/agent/context/context-layer"
+import { LoopStatus } from "@merakcode/engine/agent/loop/status"
+import { SessionRoutes } from "@merakcode/engine/app/server/routes/session"
+import { LoopRequest } from "@merakcode/engine/agent/loop/request"
 import { Log } from "@merakcode/log/logger"
-import { Plugin } from "@merakcode/engine/plugin/index"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
 import { tmpdir } from "../fixture/fixture"
 import fs from "fs/promises"
 import path from "path"
@@ -80,7 +80,7 @@ test("prompt sent while the session is running queues behind the current task wi
     fn: async () => {
       const session = await Session.create({ title: "Test Session" })
 
-      const p1Promise = SessionRunner.prompt({
+      const p1Promise = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -89,10 +89,17 @@ test("prompt sent while the session is running queues behind the current task wi
 
       await prompt1Started
       expect(buildCallCount).toBe(1)
-      expect(SessionStatus.get(session.id).type).toBe("busy")
+      expect(LoopStatus.get(session.id).type).toBe("busy")
+      expect(
+        await Loop.background({
+          sessionID: session.id,
+          parts: [{ type: "text", text: "background follow-up" }],
+        }),
+      ).toBe(false)
+      expect(buildCallCount).toBe(1)
 
       let p2Settled = false
-      const p2Promise = SessionRunner.prompt({
+      const p2Promise = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -119,7 +126,7 @@ test("prompt sent while the session is running queues behind the current task wi
       expect(r2Text?.text).toBe("回复 2")
       expect(buildCallCount).toBe(2)
       await delay(50)
-      expect(SessionStatus.get(session.id).type).toBe("idle")
+      expect(LoopStatus.get(session.id).type).toBe("idle")
 
       // Final order and parent links of the message stream.
       const streamMsgs = await Message.filterCompacted(Message.stream(session.id))
@@ -231,7 +238,7 @@ test("prompt queued during a multi-step run keeps message order and gets its own
 
       const session = await Session.create({ title: "Multi-Step Test Session" })
 
-      const p1Promise = SessionRunner.prompt({
+      const p1Promise = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -242,7 +249,7 @@ test("prompt queued during a multi-step run keeps message order and gets its own
       expect(stepCount).toBe(1)
 
       // Queue task 2 after task 1's tool step and before its second step.
-      const p2Promise = SessionRunner.prompt({
+      const p2Promise = Loop.prompt({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "test-provider", modelID: "test-model" },
@@ -287,7 +294,7 @@ test("prompt queued during a multi-step run keeps message order and gets its own
       expect((causalMsgs[4].info as any).parentID).toBe(causalMsgs[3].info.id)
 
       await delay(50)
-      expect(SessionStatus.get(session.id).type).toBe("idle")
+      expect(LoopStatus.get(session.id).type).toBe("idle")
     },
   })
 }, 25000)
@@ -342,7 +349,7 @@ test("request submitted while an interrupt settles waits for the old run to actu
     fn: async () => {
       const session = await Session.create({})
       const submit = (text: string) =>
-        SessionDispatch.prompt({
+        LoopRequest.prompt({
           sessionID: session.id,
           agent: "build",
           model: { providerID: "test-provider", modelID: "test-model" },
@@ -350,22 +357,22 @@ test("request submitted while an interrupt settles waits for the old run to actu
         })
       const first = submit("current").catch((error: unknown) => error)
       await started.promise
-      const stopped = SessionRunner.interruptAndSettle(session.id)
+      const stopped = Loop.interruptAndSettle(session.id)
       const next = submit("successor")
       try {
         await queued(session.id, 2)
         expect(calls).toBe(1)
-        expect(() => SessionRunner.assertNotBusy(session.id)).toThrow(Session.BusyError)
+        expect(() => Loop.assertNotBusy(session.id)).toThrow(Session.BusyError)
         cleanup.resolve()
         await stopped
         expect(await first).toMatchObject({ name: "AbortError" })
         expect((await next).parts.find((part) => part.type === "text")).toMatchObject({ text: "successor completed" })
         expect(calls).toBe(2)
         expect(maximum).toBe(1)
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
       } finally {
         cleanup.resolve()
-        await SessionRunner.cancelTree(session.id)
+        await Loop.cancelTree(session.id)
         await Promise.allSettled([first, next])
       }
     },
@@ -444,13 +451,13 @@ test.each(["direct", "http", "scoped-http"] as const)(
       fn: async () => {
         const session = await Session.create({})
         const interrupt = async () => {
-          if (entry === "direct") return SessionRunner.interruptAndSettle(session.id)
+          if (entry === "direct") return Loop.interruptAndSettle(session.id)
           const response = await SessionRoutes().request(`/${session.id}/abort`, { method: "POST" })
           expect(response.status).toBe(200)
           expect(await response.json()).toBe(true)
         }
         const submit = (index: number) =>
-          (entry === "scoped-http" ? SessionDispatch.prompt : SessionRunner.prompt)({
+          (entry === "scoped-http" ? LoopRequest.prompt : Loop.prompt)({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "test-provider", modelID: "test-model" },
@@ -471,7 +478,7 @@ test.each(["direct", "http", "scoped-http"] as const)(
           const fourth = submit(4)
           await queued(session.id, 4)
           expect(calls).toHaveLength(1)
-          expect(() => SessionRunner.assertNotBusy(session.id)).toThrow(Session.BusyError)
+          expect(() => Loop.assertNotBusy(session.id)).toThrow(Session.BusyError)
           cleanups[0].resolve()
           await stop
           await starts[1].promise
@@ -511,11 +518,11 @@ test.each(["direct", "http", "scoped-http"] as const)(
             expect(answers).toHaveLength(1)
           }
           await delay(30)
-          expect(SessionStatus.get(session.id).type).toBe("idle")
-          expect(() => SessionRunner.assertNotBusy(session.id)).not.toThrow()
+          expect(LoopStatus.get(session.id).type).toBe("idle")
+          expect(() => Loop.assertNotBusy(session.id)).not.toThrow()
         } finally {
           cleanups.forEach((cleanup) => cleanup.resolve())
-          await SessionRunner.cancelAndSettle(session.id)
+          await Loop.cancelAndSettle(session.id)
         }
       },
     })
@@ -549,7 +556,7 @@ test.each([false, true])(
       fn: async () => {
         const session = await Session.create({})
         const submit = (text: string) =>
-          SessionRunner.prompt({
+          Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "test-provider", modelID: "test-model" },
@@ -559,15 +566,15 @@ test.each([false, true])(
         await started.promise
         const second = submit("排队任务")
         await queued(session.id, 2)
-        const interrupted = handoff ? SessionRunner.interruptAndSettle(session.id) : undefined
-        const stopped = SessionRunner.cancelTree(session.id)
+        const interrupted = handoff ? Loop.interruptAndSettle(session.id) : undefined
+        const stopped = Loop.cancelTree(session.id)
         cleanup.resolve()
         await Promise.all([interrupted, stopped])
         expect(await first).toBeInstanceOf(Message.AbortedError)
         expect(await second).toBeInstanceOf(Message.AbortedError)
         expect(calls).toBe(1)
-        expect(SessionStatus.get(session.id).type).toBe("idle")
-        expect(() => SessionRunner.assertNotBusy(session.id)).not.toThrow()
+        expect(LoopStatus.get(session.id).type).toBe("idle")
+        expect(() => Loop.assertNotBusy(session.id)).not.toThrow()
       },
     })
   },
@@ -624,7 +631,7 @@ test.each(["direct", "dispatch"] as const)(
             parts: [{ type: "text" as const, text }],
           })
           const submit = (text: string) =>
-            (entry === "direct" ? SessionRunner.prompt(input(text)) : SessionDispatch.prompt(input(text))).catch(
+            (entry === "direct" ? Loop.prompt(input(text)) : LoopRequest.prompt(input(text))).catch(
               (error: unknown) => error,
             )
           const aborted = (error: unknown) =>
@@ -633,13 +640,13 @@ test.each(["direct", "dispatch"] as const)(
           await started.promise
           const second = submit("待入队任务")
           await held.promise
-          await SessionRunner.cancelTree(session.id)
+          await Loop.cancelTree(session.id)
           release.resolve()
           expect(aborted(await first)).toBe(true)
           expect(aborted(await second)).toBe(true)
           expect(calls).toBe(1)
-          expect(SessionStatus.get(session.id).type).toBe("idle")
-          expect(() => SessionRunner.assertNotBusy(session.id)).not.toThrow()
+          expect(LoopStatus.get(session.id).type).toBe("idle")
+          expect(() => Loop.assertNotBusy(session.id)).not.toThrow()
           // The written message must be closed as cancelled, or the next turn picks it up as an unanswered request.
           const messages = await Message.filterCompacted(Message.stream(session.id))
           const answered = new Set(
@@ -703,7 +710,7 @@ test("message written but not yet queued at an interrupt still runs afterwards",
       fn: async () => {
         const session = await Session.create({})
         const submit = (text: string) =>
-          SessionRunner.prompt({
+          Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "test-provider", modelID: "test-model" },
@@ -713,14 +720,14 @@ test("message written but not yet queued at an interrupt still runs afterwards",
         await started.promise
         const second = submit("待入队任务")
         await held.promise
-        const stopped = SessionRunner.interruptAndSettle(session.id)
+        const stopped = Loop.interruptAndSettle(session.id)
         release.resolve()
         await stopped
         expect(await first).toBeInstanceOf(Message.AbortedError)
         const next = (await second) as Message.FullMsg
         expect(next.parts.find((part) => part.type === "text")).toMatchObject({ text: "successor completed" })
         expect(calls).toBe(2)
-        expect(SessionStatus.get(session.id).type).toBe("idle")
+        expect(LoopStatus.get(session.id).type).toBe("idle")
       },
     })
   } finally {

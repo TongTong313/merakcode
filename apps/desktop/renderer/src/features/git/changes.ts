@@ -34,13 +34,15 @@ export function useGitChanges(directory: () => string) {
       setEntries(gitDirectory(dir), (previous) => ({ ...previous, data: result, loading: false, error: undefined }))
     } catch (error) {
       if (requests.get(target) === request) setEntries(target, { loading: false, error: error as Error })
+    } finally {
+      if (requests.get(target) === request) setEntries(target, "loading", false)
     }
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   let pending = false
   const backgroundRefresh = () => {
-    // Do not supersede the refresh awaited by an index action.
-    if (entry()?.working) {
+    // Let an in-flight refresh publish before replaying background invalidations.
+    if (entry()?.working || entry()?.loading) {
       pending = true
       return
     }
@@ -54,9 +56,9 @@ export function useGitChanges(directory: () => string) {
   createEffect(on([directory, () => checkoutOf(directory())], backgroundRefresh))
   createEffect(
     on(
-      () => entry()?.working,
-      (working) => {
-        if (!working && pending) backgroundRefresh()
+      () => entry()?.working || entry()?.loading,
+      (busy) => {
+        if (!busy && pending) backgroundRefresh()
       },
     ),
   )

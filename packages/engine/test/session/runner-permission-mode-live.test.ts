@@ -5,25 +5,25 @@
  */
 import { test, expect } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Question } from "@merakcode/engine/question/index"
-import { Bus } from "@merakcode/engine/bus/index"
-import type { Provider } from "@merakcode/engine/provider/provider"
-import type { PermissionMode } from "@merakcode/engine/permission/mode"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Question } from "@merakcode/engine/agent/session/question/index"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import type { PermissionMode } from "@merakcode/engine/agent/permission/mode"
 import type { Tool as AITool } from "ai"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Sandbox } from "@merakcode/engine/sandbox/index"
-import { Config } from "@merakcode/engine/config/config"
-import { PermissionFlush } from "@merakcode/engine/permission/flush"
-import type { Backend } from "@merakcode/sandbox"
+import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { PermissionFlush } from "@merakcode/engine/agent/permission/flush"
+import type { Backend } from "@merakcode/engine/infra/sandbox/index"
 
 const model = {
   id: "gpt-4",
@@ -84,7 +84,7 @@ async function withAutoTools(
       })
       const resolve = async (permissionMode?: PermissionMode.Value) => {
         const live = await Session.get(session.id)
-        const { tools } = await SessionRunner.resolveTools({
+        const { tools } = await Loop.resolveTools({
           agent: agent!,
           model,
           session: live,
@@ -232,14 +232,14 @@ test("child session follows the parent mode: asks with root and source under ask
         model,
         abort: new AbortController().signal,
       })
-      const { tools } = await SessionRunner.resolveTools({
+      const { tools } = await Loop.resolveTools({
         agent: agent!,
         model,
         session: child,
         processor,
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
-        permissionMode: await SessionRunner.modeOf(child),
+        permissionMode: await Loop.modeOf(child),
         child: true,
       })
       expect(tools.subagent).toBeUndefined()
@@ -282,26 +282,23 @@ test("a command waiting only because the sandbox is not ready runs once the sand
       env: input.env,
     }),
   }
-  Sandbox.useBackendForTest(backend)
+  PermissionExecution.useBackendForTest(backend)
   try {
-    await withAutoTools(async ({ tools }) => {
+    await withAutoTools(async ({ tools, tmp }) => {
       const asked = Promise.withResolvers<void>()
       const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => asked.resolve())
       const running = executeTool(tools.bash, { command: "echo hi > out.txt", description: "write" })
       await asked.promise
       unsub()
       expect(await PermissionNext.list()).toHaveLength(1)
-      await Sandbox.install()
-      const settled = await Promise.race([
-        running.then(() => "ran" as const),
-        new Promise<"waiting">((resolve) => setTimeout(() => resolve("waiting"), 1000)),
-      ])
-      expect(settled).toBe("ran")
+      await PermissionExecution.install()
       expect(await PermissionNext.list()).toEqual([])
+      await running
+      expect((await Filesystem.readText(path.join(tmp, "out.txt"))).trim()).toBe("hi")
     })
   } finally {
     process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 
@@ -314,31 +311,33 @@ test("a command waiting only because the sandbox is not ready runs once the sand
       throw new Error("sandbox is off")
     },
   }
-  Sandbox.useBackendForTest(backend)
+  PermissionExecution.useBackendForTest(backend)
   try {
-    await withAutoTools(async ({ tools }) => {
+    await withAutoTools(async ({ tools, tmp, session }) => {
       PermissionFlush.init()
       const asked = Promise.withResolvers<void>()
       const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => asked.resolve())
       const running = executeTool(tools.bash, { command: "echo hi > turned-off.txt", description: "write" })
       await asked.promise
       unsub()
-      await Config.updateProjectMerakCode({ sandbox: { mode: "off" } }, { skipDispose: true })
-      await new Promise<void>((resolve) => setTimeout(resolve, 0))
-      const settled = await Promise.race([
-        running.then(
-          () => "ran" as const,
-          () => "failed" as const,
-        ),
-        new Promise<"waiting">((resolve) => setTimeout(() => resolve("waiting"), 1000)),
-      ])
-      expect(settled).toBe("ran")
-      expect(await PermissionNext.list()).toEqual([])
+      const released = Promise.withResolvers<void>()
+      const stop = Bus.subscribe(PermissionNext.Event.Replied, (event) => {
+        if (event.properties.sessionID === session.id) released.resolve()
+      })
+      try {
+        await Config.updateProjectMerakCode({ sandbox: { mode: "off" } }, { skipDispose: true })
+        await released.promise
+        expect(await PermissionNext.list()).toEqual([])
+        await running
+        expect((await Filesystem.readText(path.join(tmp, "turned-off.txt"))).trim()).toBe("hi")
+      } finally {
+        stop()
+      }
     })
   } finally {
     if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
     else process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 
@@ -346,7 +345,7 @@ test("setting up the sandbox does not release a file-changing command after the 
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   let ready = false
-  Sandbox.useBackendForTest({
+  PermissionExecution.useBackendForTest({
     status: async () =>
       ready
         ? { status: "on", backend: "windows-account" }
@@ -372,7 +371,7 @@ test("setting up the sandbox does not release a file-changing command after the 
       await asked.promise
       unsub()
       await Session.setPermissionMode({ sessionID: session.id, permissionMode: "readonly" })
-      await Sandbox.install()
+      await PermissionExecution.install()
       const settled = await Promise.race([
         running.then(
           () => "ran" as const,
@@ -389,7 +388,7 @@ test("setting up the sandbox does not release a file-changing command after the 
   } finally {
     if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
     else process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 
@@ -397,7 +396,7 @@ test("setting up the sandbox does not release a command the user denied running 
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   let ready = false
-  Sandbox.useBackendForTest({
+  PermissionExecution.useBackendForTest({
     status: async () =>
       ready
         ? { status: "on", backend: "windows-account" }
@@ -421,7 +420,7 @@ test("setting up the sandbox does not release a command the user denied running 
       await Config.updateProjectMerakCode({ permission: { bash_unsandboxed: "deny" } }, { skipDispose: true })
       Agent.invalidate()
       await new Promise<void>((resolve) => setTimeout(resolve, 0))
-      await Sandbox.install()
+      await PermissionExecution.install()
       const settled = await Promise.race([
         running.then(
           () => "ran" as const,
@@ -438,7 +437,7 @@ test("setting up the sandbox does not release a command the user denied running 
   } finally {
     if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
     else process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 
@@ -446,7 +445,7 @@ test("setting up the sandbox does not release a risky command that is still wait
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   let ready = false
-  Sandbox.useBackendForTest({
+  PermissionExecution.useBackendForTest({
     status: async () =>
       ready
         ? { status: "on", backend: "windows-account" }
@@ -466,7 +465,7 @@ test("setting up the sandbox does not release a risky command that is still wait
       const running = executeTool(tools.bash, { command: "git push", description: "publish" })
       await asked.promise
       unsub()
-      await Sandbox.install()
+      await PermissionExecution.install()
       const settled = await Promise.race([
         running.then(
           () => "ran" as const,
@@ -483,14 +482,14 @@ test("setting up the sandbox does not release a risky command that is still wait
   } finally {
     if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
     else process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 
 test("switching to auto leaves a command waiting when the sandbox is still not ready", async () => {
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
-  Sandbox.useBackendForTest({
+  PermissionExecution.useBackendForTest({
     status: async () => ({ status: "unsupported", installable: true, reason: "needs a one-time setup" }),
     wrap: async () => {
       throw new Error("not set up")
@@ -521,7 +520,7 @@ test("switching to auto leaves a command waiting when the sandbox is still not r
   } finally {
     if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
     else process.env.MERAKCODE_SANDBOX_MODE = previous
-    Sandbox.useBackendForTest(undefined)
+    PermissionExecution.useBackendForTest(undefined)
   }
 })
 

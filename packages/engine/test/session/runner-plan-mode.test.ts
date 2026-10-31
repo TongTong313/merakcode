@@ -5,19 +5,19 @@
  */
 import { test, expect } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { PermissionNext } from "@merakcode/engine/permission/next"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 import { Identifier } from "@merakcode/util/id"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
-import { Message } from "@merakcode/engine/session/message"
-import { WriteTool } from "@merakcode/engine/tool/write"
-import type { Tool } from "@merakcode/engine/tool/tool"
-import type { Provider } from "@merakcode/engine/provider/provider"
-import type { PermissionMode } from "@merakcode/engine/permission/mode"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { WriteTool } from "@merakcode/engine/agent/tools/write"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
+import type { PermissionMode } from "@merakcode/engine/agent/permission/mode"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 const model = {
@@ -32,7 +32,7 @@ test("plan mode blocks file edits and non-read-only commands but allows reads an
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const ruleset = SessionRunner.buildToolExecutionRuleset({
+      const ruleset = Loop.buildToolExecutionRuleset({
         agent: (await Agent.get("build"))!,
         session: await Session.create({}),
         permissionMode: "readonly",
@@ -81,7 +81,7 @@ test("resolveTools offers plan_enter or plan_exit by mode, and neither in auto m
           model,
           abort: new AbortController().signal,
         })
-        const result = await SessionRunner.resolveTools({
+        const result = await Loop.resolveTools({
           agent: build,
           model,
           session,
@@ -110,7 +110,7 @@ test("in plan mode WriteTool points project file writes to plan_exit, but writes
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      const ruleset = SessionRunner.buildToolExecutionRuleset({
+      const ruleset = Loop.buildToolExecutionRuleset({
         agent: (await Agent.get("build"))!,
         session,
         permissionMode: "readonly",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import fs from "fs/promises"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Ripgrep } from "@merakcode/engine/file/ripgrep"
+import { Ripgrep } from "@merakcode/engine/infra/file/ripgrep"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 describe("file.ripgrep", () => {

@@ -1,8 +1,8 @@
 import { expect, test } from "vitest"
 import { tmpdir } from "../fixture/fixture"
-import { Auth } from "@merakcode/engine/auth/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Provider } from "@merakcode/engine/provider/provider"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
 import { ErrorCode } from "@merakcode/util/error-code"
 
 test("the default model comes from the highest-ranked connected provider", async () => {

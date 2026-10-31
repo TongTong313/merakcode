@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import { Identifier } from "@merakcode/util/id"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import type { Message } from "@merakcode/engine/session/message"
-import { AutoDream } from "@merakcode/engine/memory/dream/dream"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import type { Message } from "@merakcode/engine/agent/session/message"
+import { AutoDream } from "@merakcode/engine/agent/memory/dream/dream"
 import { tmpdir } from "../fixture/fixture"
 
 test("memory consolidation works in a background child, which does not count as the conversation running", async () => {

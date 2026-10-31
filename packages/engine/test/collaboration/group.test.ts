@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
-import { create, join, leave, load, remember, update } from "../../src/collaboration/store"
-import { GroupError } from "../../src/collaboration/board"
+import { create, join, leave, load, remember, update } from "../../src/app/task/collaboration/store"
+import { GroupError } from "../../src/app/task/collaboration/board"
 
 test("a group starts with its Merak leader and the seats named up front, announced in one line", async () => {
   const sessionID = `group-${crypto.randomUUID()}`

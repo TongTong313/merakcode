@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { Server } from "@merakcode/engine/server/server"
+import { Server } from "@merakcode/engine/app/server/server"
 
 test("the OpenAPI spec is self-contained and model names are plain strings so custom provider models fit", async () => {
   const spec = await Server.openapi()

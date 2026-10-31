@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "vitest"
 import { createMerakCodeClient } from "@merakcode/sdk/client"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Server } from "@merakcode/engine/server/server"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { ToolPathGuard } from "@merakcode/engine/tool/path-guard"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Server } from "@merakcode/engine/app/server/server"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { ToolPathGuard } from "@merakcode/engine/agent/tools/path-guard"
 import { tmpdir } from "../fixture/fixture"
 
 const originalTrigger = Plugin.trigger
@@ -25,7 +25,7 @@ test("direct, HTTP and SDK prompts strip forged synthetic/ignored flags so the p
         { type: "text" as const, text: "并输出内容", ignored: true },
       ]
       const direct = await Session.create({})
-      const directMessage = await SessionRunner.prompt({
+      const directMessage = await Loop.prompt({
         sessionID: direct.id,
         agent: "build",
         model,
@@ -109,7 +109,7 @@ test("internally generated synthetic flags are kept", async () => {
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      const message = await SessionRunner.promptGenerated({
+      const message = await Loop.promptGenerated({
         sessionID: session.id,
         agent: "build",
         model,

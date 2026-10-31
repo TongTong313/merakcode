@@ -1,9 +1,10 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { RuleSession } from "@merakcode/engine/rule/session-state"
-import { RulesPrompt } from "@merakcode/engine/rule/prompt"
-import { RuleTool } from "@merakcode/engine/tool/rule"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { RuleSession } from "@merakcode/engine/agent/prompt/rules/session-state"
+import { RulesPrompt } from "@merakcode/engine/agent/prompt/rules/prompt"
+import { RuleTool } from "@merakcode/engine/agent/tools/rule"
 import { tmpdir } from "../fixture/fixture"
 import { isolate, nativeRule } from "./isolate"
 
@@ -41,7 +42,7 @@ describe("rule tool fetch", () => {
           const active = await RulesPrompt.active({ sessionID: session.id, agent: "build", messages: [] })
           expect(active.pinned.map((r) => r.name)).toEqual(["rpc"])
           expect(active.blocks.join("\n")).toContain("RPC-BODY")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })
@@ -72,7 +73,7 @@ describe("rule tool fetch", () => {
           expect(gated.output).toContain("is not available")
           const ok = await tool.execute({ name: "planrpc" }, toolCtx(session.id, "plan"))
           expect(ok.output).toContain("is now active for this session")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     })

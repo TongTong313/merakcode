@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest"
 import { Http } from "@merakcode/util/http"
 import { pathToFileURL } from "url"
 import path from "path"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Config } from "../../src/config/config"
+import { Config } from "../../src/app/config/files/config"
 
 /**
  * Wiring of the provider extension hooks in provider.ts.

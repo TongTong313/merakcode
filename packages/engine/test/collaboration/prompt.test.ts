@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { artifactLines } from "../../src/collaboration/prompt"
+import { artifactLines } from "../../src/app/task/collaboration/prompt"
 
 test("past forty changed files the rest are counted by directory", () => {
   const files = Array.from({ length: 42 }, (_, index) => ({ status: "M", path: `src/pay/file-${index}.ts` }))

@@ -30,7 +30,28 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: pnpm check
+
+  scripts:
+    name: Repository scripts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm test:script
 
   test:
@@ -42,8 +63,6 @@ jobs:
         package:
           - packages/util
           - packages/log
-          - packages/sandbox
-          - packages/client-core
           - packages/sdk/js
           - packages/engine
           - apps/cli
@@ -61,6 +80,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       # File search needs rg; without it on PATH every test process would download its own copy from GitHub
       - name: Install ripgrep
         if: contains(fromJSON('["packages/engine", "apps/cli", "packages/sdk/js"]'), matrix.package)
@@ -72,6 +93,11 @@ jobs:
             Windows) choco install ripgrep -y --no-progress ;;
           esac
       - run: pnpm test
+        if: matrix.package != 'packages/engine'
+        working-directory: ${{ matrix.package }}
+      # The dedicated sandbox job initializes and verifies real OS enforcement on every system.
+      - run: pnpm test --exclude test/sandbox/os/conformance.test.ts
+        if: matrix.package == 'packages/engine'
         working-directory: ${{ matrix.package }}
 
   sandbox:
@@ -92,16 +118,18 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: Set up the sandbox (Windows needs a one-time setup; the runner is already an administrator)
-        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts setup
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts setup
       - name: Conformance must run, not skip
-        run: pnpm test test/conformance.test.ts
-        working-directory: packages/sandbox
+        run: pnpm test:sandbox test/sandbox/os/conformance.test.ts
+        working-directory: packages/engine
         env:
           MERAKCODE_SANDBOX_REQUIRED: "1"
       - name: Reset leaves nothing behind
-        if: runner.os == 'Windows'
-        run: node --import ./script/node/register.mjs packages/sandbox/script/ci.ts reset
+        if: always() && runner.os == 'Windows'
+        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts reset
 
   build:
     name: Build and smoke test (${{ matrix.os }})
@@ -123,6 +151,7 @@ jobs:
       # Building and running the package needs no dependency install scripts (they would download Electron)
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --dir apps/cli run build --single
+      - run: pnpm --dir apps/cli run pack:npm --single
       - name: Smoke test
         shell: bash
         run: |
@@ -130,10 +159,31 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then bin=$(cygpath -w "$PWD/merak.cmd"); else bin="$PWD/merak"; fi
           cd "$GITHUB_WORKSPACE"
           MERAKCODE_SMOKE_BIN="$bin" node --import ./script/node/register.mjs apps/cli/script/smoke-cli.ts
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.0.0"
+      - name: Remember the minimum SDK runtime
+        shell: bash
+        run: echo "MERAKCODE_SMOKE_SDK_NODE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "18.0.0"
+      - name: Remember the minimum CLI launcher runtime
+        shell: bash
+        run: echo "MERAKCODE_SMOKE_CLI_NODE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Consume the npm artifacts on current and minimum runtimes
+        run: node --import ./script/node/register.mjs apps/cli/script/smoke-npm.ts
 
   e2e-cli:
-    name: End-to-end (engine through the SDK)
-    runs-on: ubuntu-24.04
+    name: End-to-end (engine through the SDK, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -145,14 +195,26 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Install ripgrep
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
+            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
+            Windows) choco install ripgrep -y --no-progress ;;
+          esac
       - run: pnpm test:e2e
         working-directory: apps/cli
 
   e2e-desktop:
-    name: End-to-end (desktop)
-    # Electron on Linux runners needs a virtual display and a way around Ubuntu 24.04's sandbox restriction
-    runs-on: windows-latest
+    name: End-to-end (desktop, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -164,17 +226,43 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: choco install ripgrep -y --no-progress
-      - run: pnpm --dir apps/desktop/renderer run build
-      - run: pnpm --dir apps/desktop/main run build
+      - name: Install desktop test prerequisites
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep xvfb libasound2t64 libnss3 libgtk-3-0t64 ;;
+            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
+            Windows) choco install ripgrep -y --no-progress ;;
+          esac
+      # A directory build uses the production asar, fuses, renderer and bundled engine, without installer tooling.
+      - run: pnpm --dir apps/desktop/main run package --dir
+        id: desktop-package
+      - name: Smoke test the production desktop (Linux)
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
+        run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
+      - name: Smoke test the production desktop
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
+        run: node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
+      - run: xvfb-run -a pnpm test:e2e
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
+        working-directory: apps/desktop/main
+      - name: Verify the production smoke rejects a failed main reply (Linux)
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os == 'Linux' }}
+        run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package-control.ts
+      - name: Verify the production smoke rejects a failed main reply
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
+        run: node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package-control.ts
       - run: pnpm test:e2e
+        if: ${{ !cancelled() && steps.desktop-package.outcome == 'success' && runner.os != 'Linux' }}
         working-directory: apps/desktop/main
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           # Not desktop-*: the release takes every desktop-* artifact of its run as installers to upload
-          name: e2e-desktop-results
-          path: apps/desktop/main/e2e/.results
+          name: e2e-desktop-results-${{ matrix.os }}
+          path: |
+            apps/desktop/main/e2e/.results
+            apps/desktop/main/release/smoke-results
           include-hidden-files: true
           retention-days: 7
 
@@ -182,7 +270,7 @@ jobs:
   # cancelled or skipped job fails it; always() makes it report even then instead of being skipped itself.
   passed:
     name: CI passed
-    needs: [check, test, sandbox, build, e2e-cli, e2e-desktop]
+    needs: [check, scripts, test, sandbox, build, e2e-cli, e2e-desktop]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

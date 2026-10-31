@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
-import { configDirScope } from "@merakcode/engine/skill/scope"
-import { Global } from "@merakcode/engine/global/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { configDirScope } from "@merakcode/engine/agent/skill/scope"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { globalConfig, tmpdir } from "../fixture/fixture"
 
 describe("configDirScope", () => {

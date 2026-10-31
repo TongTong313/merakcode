@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
 import fs from "fs/promises"
-import { Skill } from "@merakcode/engine/skill/index"
-import { SkillWatch } from "@merakcode/engine/skill/skill-watch"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Skill } from "@merakcode/engine/agent/skill/index"
+import { SkillWatch } from "@merakcode/engine/agent/skill/skill-watch"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 

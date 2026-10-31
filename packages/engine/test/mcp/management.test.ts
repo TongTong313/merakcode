@@ -48,11 +48,11 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
   },
 }))
 
-const { McpManagement } = await import("@merakcode/engine/mcp/management")
-const { Config } = await import("@merakcode/engine/config/config")
-const { Global } = await import("@merakcode/engine/global/index")
-const { MCP } = await import("@merakcode/engine/mcp/index")
-const { Instance } = await import("@merakcode/engine/project/instance")
+const { McpManagement } = await import("@merakcode/engine/agent/mcp/management")
+const { Config } = await import("@merakcode/engine/app/config/files/config")
+const { Global } = await import("@merakcode/engine/infra/global/index")
+const { MCP } = await import("@merakcode/engine/agent/mcp/index")
+const { Instance } = await import("@merakcode/engine/infra/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
 // Config layering, rollback and concurrency.

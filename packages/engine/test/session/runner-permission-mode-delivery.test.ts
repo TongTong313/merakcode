@@ -4,17 +4,17 @@
  */
 import { test, expect } from "vitest"
 import path from "path"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "@merakcode/engine/session/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { SessionProcessor } from "@merakcode/engine/session/processor"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionProcessor } from "@merakcode/engine/agent/loop/processor"
 import { Identifier } from "@merakcode/util/id"
-import { Message } from "@merakcode/engine/session/message"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Bus } from "@merakcode/engine/bus/index"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 import type { Tool as AITool } from "ai"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -71,7 +71,7 @@ async function resolveTools(
   processor: SessionProcessor.Info,
 ) {
   const live = await Session.get(sessionID)
-  const { tools } = await SessionRunner.resolveTools({
+  const { tools } = await Loop.resolveTools({
     agent,
     model,
     session: live,
@@ -150,7 +150,7 @@ test("prompt with ask overrides a leftover auto session mode, and write then run
       expect((await Session.get(session.id)).permissionMode).toBe("auto")
 
       // Like an Agent submit: the prompt carries the mode before the client's setPermissionMode has run.
-      await SessionRunner.prompt({
+      await Loop.prompt({
         sessionID: session.id,
         agent: "build",
         permissionMode: "ask",
@@ -177,7 +177,7 @@ test("prompt without permissionMode writes back the default ask, replacing a lef
     directory: tmp.path,
     fn: async () => {
       const { session } = await autoSession()
-      await SessionRunner.prompt({
+      await Loop.prompt({
         sessionID: session.id,
         agent: "build",
         noReply: true,
@@ -196,7 +196,7 @@ test("shell with ask writes ask back to the session, and previously resolved too
     fn: async () => {
       const { session, user, agent, processor } = await autoSession()
       const tools = await resolveTools(session.id, agent, user, processor)
-      await SessionRunner.shell({
+      await Loop.shell({
         sessionID: session.id,
         agent: "build",
         permissionMode: "ask",

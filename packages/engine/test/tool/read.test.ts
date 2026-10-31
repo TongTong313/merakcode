@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest"
 import path from "path"
-import { ReadTool } from "@merakcode/engine/tool/read"
-import { Instance } from "@merakcode/engine/project/instance"
+import { ReadTool } from "@merakcode/engine/agent/tools/read"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { PermissionPolicy } from "@merakcode/engine/permission/policy"
-import type { Tool } from "@merakcode/engine/tool/tool"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
+import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures")

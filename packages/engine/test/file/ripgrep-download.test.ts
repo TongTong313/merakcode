@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { afterAll, beforeAll, expect, test } from "vitest"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Ripgrep } from "@merakcode/engine/file/ripgrep"
+import { Ripgrep } from "@merakcode/engine/infra/file/ripgrep"
 import { tmpdir } from "../fixture/fixture"
 
 // No rg on PATH or on disk, and a download that never answers, as when GitHub cannot be reached

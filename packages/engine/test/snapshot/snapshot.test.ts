@@ -1,10 +1,12 @@
+import { cleanupSnapshots } from "@merakcode/engine/app/project/snapshots"
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { test, expect } from "vitest"
 import * as fs from "fs/promises"
 import path from "path"
-import { Snapshot } from "@merakcode/engine/snapshot/index"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Global } from "@merakcode/engine/global/index"
-import { SessionStore } from "@merakcode/engine/session/store"
+import { Snapshot } from "@merakcode/engine/infra/project/snapshot/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Global } from "@merakcode/engine/infra/global/index"
+import { SessionStore } from "@merakcode/engine/agent/session/store"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
@@ -391,12 +393,12 @@ test("cleanup skips active session backups", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { Session } = await import("@merakcode/engine/session/index")
+      const { Session } = await import("@merakcode/engine/agent/session/index")
       const session = await Session.create({})
       const backupID = await Snapshot.track(session.id)
       await Snapshot.trackFile(path.join(tmp.path, "a.txt"), session.id)
 
-      await Snapshot.cleanup()
+      await cleanupSnapshots()
 
       const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(
@@ -406,7 +408,7 @@ test("cleanup skips active session backups", async () => {
           .catch(() => false),
       ).toBe(true)
 
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 })
@@ -416,7 +418,7 @@ test("cleanup removes expired session backups", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { Session } = await import("@merakcode/engine/session/index")
+      const { Session } = await import("@merakcode/engine/agent/session/index")
       const session = await Session.create({})
       const backupID = await Snapshot.track(session.id)
       await Snapshot.trackFile(path.join(tmp.path, "a.txt"), session.id)
@@ -430,12 +432,12 @@ test("cleanup removes expired session backups", async () => {
         { touch: false },
       )
 
-      await Snapshot.cleanup()
+      await cleanupSnapshots()
 
       const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(await fs.stat(backupDir).catch(() => null)).toBeNull()
 
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 })
@@ -445,7 +447,7 @@ test("cleanup discards undoRedo before removing expired backups", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { Session } = await import("@merakcode/engine/session/index")
+      const { Session } = await import("@merakcode/engine/agent/session/index")
       const session = await Session.create({})
       const backupID = await Snapshot.track(session.id)
 
@@ -476,7 +478,7 @@ test("cleanup discards undoRedo before removing expired backups", async () => {
         { touch: false },
       )
 
-      await Snapshot.cleanup()
+      await cleanupSnapshots()
 
       const sessionBackupDir = path.join(Global.Path.data, "backup", session.id)
       expect(await fs.stat(sessionBackupDir).catch(() => null)).toBeNull()
@@ -484,7 +486,7 @@ test("cleanup discards undoRedo before removing expired backups", async () => {
       const after = await Session.get(session.id)
       expect(after.undoRedo?.stack?.length ?? 0).toBe(0)
 
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 })
@@ -499,7 +501,7 @@ test("cleanup removes orphaned backup directories", async () => {
       await fs.mkdir(path.join(orphanDir, "backup-1"), { recursive: true })
       await Filesystem.write(path.join(orphanDir, "backup-1", "file.txt"), "orphan")
 
-      await Snapshot.cleanup()
+      await cleanupSnapshots()
 
       expect(await fs.stat(orphanDir).catch(() => null)).toBeNull()
     },
@@ -511,12 +513,12 @@ test("cleanup skips when already running", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { Session } = await import("@merakcode/engine/session/index")
+      const { Session } = await import("@merakcode/engine/agent/session/index")
       const session = await Session.create({})
       const backupID = await Snapshot.track(session.id)
 
       // The in-memory lock makes the second concurrent call skip.
-      await Promise.all([Snapshot.cleanup(), Snapshot.cleanup()])
+      await Promise.all([cleanupSnapshots(), cleanupSnapshots()])
 
       // The session is active, so its backup must survive.
       const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
@@ -527,7 +529,7 @@ test("cleanup skips when already running", async () => {
           .catch(() => false),
       ).toBe(true)
 
-      await Session.remove(session.id)
+      await SessionOperations.remove(session.id)
     },
   })
 })
@@ -537,7 +539,7 @@ test("cleanup does not delete backup when session belongs to another project", a
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { Session } = await import("@merakcode/engine/session/index")
+      const { Session } = await import("@merakcode/engine/agent/session/index")
       const session = await Session.create({})
       const backupID = await Snapshot.track(session.id)
       await Snapshot.trackFile(path.join(tmp.path, "a.txt"), session.id)
@@ -546,7 +548,7 @@ test("cleanup does not delete backup when session belongs to another project", a
       SessionStore.put({ ...session, projectID: "other-project-cleanup-test" })
 
       // The backup must survive because the session is still found in the other project.
-      await Snapshot.cleanup()
+      await cleanupSnapshots()
 
       const backupDir = path.join(Global.Path.data, "backup", session.id, backupID)
       expect(

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { Token } from "@merakcode/engine/util/token"
+import { Token } from "@merakcode/engine/agent/context/token"
 
 describe("util.token", () => {
   // Binary attachments such as images and PDFs are embedded in messages as base64 data URLs (the standard local-file

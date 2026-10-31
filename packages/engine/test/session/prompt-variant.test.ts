@@ -1,11 +1,12 @@
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionRunner } from "@merakcode/engine/session/runner"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Loop } from "@merakcode/engine/agent/loop/index"
 import { tmpdir } from "../fixture/fixture"
-import { Auth } from "@merakcode/engine/auth/index"
-import { parseItems } from "../../src/provider/catalog/model"
-import * as OpenRouter from "../../src/provider/catalog/openrouter"
+import { Auth } from "@merakcode/engine/agent/model/credentials"
+import { parseItems } from "../../src/agent/model/catalog/model"
+import * as OpenRouter from "../../src/agent/model/catalog/openrouter"
 import { load, restoreCatalog, writeCatalog } from "../provider/catalog/fixture"
 
 // OpenAI's list has no levels; they come from the public catalog, as in production.
@@ -36,7 +37,7 @@ describe("session.prompt agent variant", () => {
         fn: async () => {
           const session = await Session.create({})
 
-          const other = await SessionRunner.prompt({
+          const other = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "test-provider", modelID: "test-model" },
@@ -46,7 +47,7 @@ describe("session.prompt agent variant", () => {
           if (other.info.role !== "user") throw new Error("expected user message")
           expect(other.info.variant).toBeUndefined()
 
-          const match = await SessionRunner.prompt({
+          const match = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -56,7 +57,7 @@ describe("session.prompt agent variant", () => {
           expect(match.info.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
           expect(match.info.variant).toBe("xhigh")
 
-          const override = await SessionRunner.prompt({
+          const override = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -66,7 +67,7 @@ describe("session.prompt agent variant", () => {
           if (override.info.role !== "user") throw new Error("expected user message")
           expect(override.info.variant).toBe("high")
 
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     } finally {
@@ -85,7 +86,7 @@ describe("session.prompt agent variant", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
-          const message = await SessionRunner.prompt({
+          const message = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -94,7 +95,7 @@ describe("session.prompt agent variant", () => {
           if (message.info.role !== "user") throw new Error("expected user message")
           expect(message.info.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
           expect(message.info.variant).toBe("medium")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     } finally {
@@ -113,7 +114,7 @@ describe("session.prompt agent variant", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
-          const other = await SessionRunner.prompt({
+          const other = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
@@ -122,7 +123,7 @@ describe("session.prompt agent variant", () => {
           })
           if (other.info.role !== "user") throw new Error("expected user message")
           expect(other.info.variant).not.toBe("xhigh")
-          const match = await SessionRunner.prompt({
+          const match = await Loop.prompt({
             sessionID: session.id,
             agent: "build",
             noReply: true,
@@ -130,7 +131,7 @@ describe("session.prompt agent variant", () => {
           })
           if (match.info.role !== "user") throw new Error("expected user message")
           expect(match.info.variant).toBe("xhigh")
-          await Session.remove(session.id)
+          await SessionOperations.remove(session.id)
         },
       })
     } finally {

@@ -4,22 +4,23 @@ Monorepo for MerakCode, an AI coding tool: an Electron desktop app (the main pro
 
 ## Layout
 
-- `packages/engine` — sessions, models, tools, permissions, the HTTP and event stream server. Most logic lives here.
-- `packages/sandbox` — the OS sandbox, one backend per system; the engine runs commands through it.
+- `packages/engine` — `src/agent` owns execution and persistent agent facts, `src/infra` owns mechanisms, and `src/app` composes services and lifecycle adapters. Agent code does not import app; persistent session code does not import loop.
+- `packages/engine/src/agent/permission` owns authorization and sandbox policy; `src/infra/sandbox` enforces it with one backend per system. OS conformance runs without the engine test preload; `tsconfig.sandbox.json` preserves its stricter checks.
 - `packages/sdk/js` — the TypeScript SDK (`@merakcode/sdk`): engine launcher, high-level API, event store, plugin and adapter types, errors, transcript export. It is hand-written and editable, except `src/client/gen/` and `packages/sdk/openapi.json`, which are generated from the server's OpenAPI spec; never edit those by hand.
 - `packages/util`, `packages/log` — shared helpers, the error code catalog, logging.
-- `packages/client-core` — approval options for the desktop UI.
 - `apps/cli` — the `merak` command. `merak serve` hosts the engine (the desktop installer ships this build). Only `serve`, `generate` and `debug` load the engine; every other command talks to it through `@merakcode/sdk`.
 - `apps/desktop/main` — Electron main process; starts the bundled engine.
 - `apps/desktop/renderer` — desktop UI (SolidJS + Vite, plain CSS with design tokens; no `!important`).
 
 ## Commands
 
-- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:schema`, `check:errors`, `check:adapter-library`, `typecheck`, `check:deps`, `check:css`, `check:api`, `check:sdk-reference`, `check:sdk-docs`, `check:docs` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). Run it before finishing a change. It runs no tests; CI also runs `pnpm test:script` and the tests of every package.
+When continuing the architecture refactor, read [docs/architecture-refactor.md](docs/architecture-refactor.md) for the approved decisions, batch status, and commit approval requirement.
+
+- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:schema`, `check:errors`, `check:adapter-library`, `check:sdk`, `typecheck`, `check:deps`, `check:css`, `check:api`, `check:sdk-reference`, `check:sdk-docs`, `check:docs` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). Run it before finishing a change. It runs no tests; CI also runs `pnpm test:script` and the tests of every package on Windows, macOS and Linux.
 - Tests run per package: `cd <package> && pnpm test [file]`. `pnpm test` at the root only fails; the root `script/` folder is tested with `pnpm test:script`.
 - Tests need `rg` (ripgrep) on PATH; without it every test process downloads its own copy from GitHub.
 - End-to-end tests use real processes and a local fake model: `apps/cli` → `pnpm test:e2e` (the engine driven through the SDK); `apps/desktop/main` → `pnpm test:e2e` (launches the Electron app; build main and renderer first). Desktop development and these tests run the engine sources with the `node` on PATH, so it must be 26.12+ as well.
-- Never edit generated files; regenerate them. After changing a route: `pnpm generate:sdk`, then `pnpm generate:sdk-reference`, and `pnpm check:api --write` if the SDK API snapshot changed (`pnpm check` does not notice a stale SDK client). After config options: `pnpm generate:schema`. After error codes: `pnpm generate:errors`. After `@merakcode/sdk/adapter` or a built-in adapter: `pnpm generate:adapter-library`.
+- Never edit generated files; regenerate them. After changing a route: `pnpm generate:sdk`, then `pnpm generate:sdk-reference`, and `pnpm check:api --write` if the SDK API snapshot changed. `pnpm check:sdk` regenerates in a temporary directory and rejects stale OpenAPI or client files. After config options: `pnpm generate:schema`. After error codes: `pnpm generate:errors`. After `@merakcode/sdk/adapter` or a built-in adapter: `pnpm generate:adapter-library`.
 
 ## Conventions
 

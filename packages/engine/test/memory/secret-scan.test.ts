@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest"
-import { MemorySecretScan } from "@merakcode/engine/memory/secret-scan"
-import { MemoryAccess } from "@merakcode/engine/memory/access"
-import { Instance } from "@merakcode/engine/project/instance"
-import { MemoryPath } from "@merakcode/engine/memory/path"
+import { MemorySecretScan } from "@merakcode/engine/agent/memory/secret-scan"
+import { MemoryAccess } from "@merakcode/engine/agent/memory/access"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { MemoryPath } from "@merakcode/engine/agent/memory/path"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 

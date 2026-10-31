@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest"
-import { SessionCompaction } from "@merakcode/engine/session/compaction"
-import { Session } from "@merakcode/engine/session/index"
-import { Message } from "@merakcode/engine/session/message"
-import { Bus } from "@merakcode/engine/bus/index"
+import { SessionCompaction } from "@merakcode/engine/agent/context/compaction"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Bus } from "@merakcode/engine/infra/bus/index"
 import { Log } from "@merakcode/log/logger"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
 import { tmpdir } from "../fixture/fixture"
-import type { Provider } from "@merakcode/engine/provider/provider"
+import type { Provider } from "@merakcode/engine/agent/model/provider"
 
 Log.init({ print: false })
 

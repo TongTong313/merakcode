@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "vitest"
 import path from "path"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Provider } from "@merakcode/engine/provider/provider"
-import { Message } from "@merakcode/engine/session/message"
-import { SessionRunner } from "@merakcode/engine/session/runner"
-import { Session } from "@merakcode/engine/session/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Provider } from "@merakcode/engine/agent/model/provider"
+import { Message } from "@merakcode/engine/agent/session/message"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { tmpdir } from "../fixture/fixture"
 
 const realGetModel = Provider.getModel
@@ -38,7 +38,7 @@ afterEach(() => {
 })
 
 /** Stops once the user message is assembled, before the model runs. */
-async function capturePrompt(input: Parameters<typeof SessionRunner.prompt>[0]): Promise<Message.FullMsg> {
+async function capturePrompt(input: Parameters<typeof Loop.prompt>[0]): Promise<Message.FullMsg> {
   const stop = new Error("captured prompt before the model")
   const original = Plugin.trigger
   let captured: Message.FullMsg | undefined
@@ -51,7 +51,7 @@ async function capturePrompt(input: Parameters<typeof SessionRunner.prompt>[0]):
     return output
   }) as typeof Plugin.trigger
   try {
-    await expect(SessionRunner.prompt(input)).rejects.toBe(stop)
+    await expect(Loop.prompt(input)).rejects.toBe(stop)
   } finally {
     Plugin.trigger = original
   }
@@ -168,7 +168,7 @@ CLAUDE-SKILL-BODY
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { template, system } = await SessionRunner.resolveCommandInjection({
+        const { template, system } = await Loop.resolveCommandInjection({
           command: "tdd",
           arguments: "帮我写测试",
         })
@@ -265,7 +265,7 @@ CLAUDE-SKILL-BODY
         }) as typeof Plugin.trigger
         try {
           await expect(
-            SessionRunner.command({
+            Loop.command({
               sessionID: session.id,
               command: "tdd",
               arguments: "帮我写测试",

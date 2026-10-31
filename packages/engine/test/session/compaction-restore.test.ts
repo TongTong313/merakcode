@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test } from "vitest"
 import path from "path"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
-import { LLM } from "@merakcode/engine/session/llm"
+import { LLM } from "@merakcode/engine/agent/model/llm"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 Log.init({ print: false })
@@ -38,11 +38,11 @@ afterEach(() => {
 
 test("auto-compaction continuation restores todos, plan, files and skills, with the instruction last", async () => {
   const { Identifier } = await import("@merakcode/util/id")
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { SessionCompaction } = await import("@merakcode/engine/session/compaction")
-  const { Todo } = await import("@merakcode/engine/session/todo")
-  const { FileTime } = await import("@merakcode/engine/file/time")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { SessionCompaction } = await import("@merakcode/engine/agent/context/compaction")
+  const { Todo } = await import("@merakcode/engine/agent/session/todo")
+  const { FileTime } = await import("@merakcode/engine/infra/file/time")
   const { ulid } = await import("ulid")
 
   await using tmp = await tmpdir({
@@ -185,9 +185,9 @@ test("auto-compaction continuation restores todos, plan, files and skills, with 
 
 test("continuation holds only the instruction when there is nothing to restore", async () => {
   const { Identifier } = await import("@merakcode/util/id")
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { SessionCompaction } = await import("@merakcode/engine/session/compaction")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { SessionCompaction } = await import("@merakcode/engine/agent/context/compaction")
 
   await using tmp = await tmpdir({
     git: true,
@@ -289,8 +289,8 @@ async function runCompaction(input: {
   beforeCompact?: (ctx: { originalID: string }) => Promise<void>
 }): Promise<{ joined: string; textParts: { id: string; text: string }[] }> {
   const { Identifier } = await import("@merakcode/util/id")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { SessionCompaction } = await import("@merakcode/engine/session/compaction")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { SessionCompaction } = await import("@merakcode/engine/agent/context/compaction")
 
   const original = await Session.updateInfo({
     id: Identifier.ascending("message"),
@@ -340,9 +340,9 @@ async function runCompaction(input: {
 }
 
 test("recent file restore skips instruction files such as CLAUDE.md", async () => {
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { FileTime } = await import("@merakcode/engine/file/time")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { FileTime } = await import("@merakcode/engine/infra/file/time")
   const { tmpdir } = await import("../fixture/fixture")
 
   await using tmp = await tmpdir({ config: TEST_CONFIG })
@@ -369,9 +369,9 @@ test("recent file restore skips instruction files such as CLAUDE.md", async () =
 })
 
 test("file over the token budget is truncated with FILE_TRUNCATION_MARKER", async () => {
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { FileTime } = await import("@merakcode/engine/file/time")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { FileTime } = await import("@merakcode/engine/infra/file/time")
   const { tmpdir } = await import("../fixture/fixture")
 
   await using tmp = await tmpdir({ config: TEST_CONFIG })
@@ -398,8 +398,8 @@ test("file over the token budget is truncated with FILE_TRUNCATION_MARKER", asyn
 })
 
 test("skill called several times is restored only once", async () => {
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
   const { Identifier } = await import("@merakcode/util/id")
   const { ulid } = await import("ulid")
   const { tmpdir } = await import("../fixture/fixture")
@@ -444,9 +444,9 @@ test("skill called several times is restored only once", async () => {
 })
 
 test("todo restore keeps only unfinished items, dropping completed and cancelled", async () => {
-  const { Instance } = await import("@merakcode/engine/project/instance")
-  const { Session } = await import("@merakcode/engine/session/index")
-  const { Todo } = await import("@merakcode/engine/session/todo")
+  const { Instance } = await import("@merakcode/engine/infra/project/instance")
+  const { Session } = await import("@merakcode/engine/agent/session/index")
+  const { Todo } = await import("@merakcode/engine/agent/session/todo")
   const { tmpdir } = await import("../fixture/fixture")
 
   await using tmp = await tmpdir({ config: TEST_CONFIG })

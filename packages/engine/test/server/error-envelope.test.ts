@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { Hono } from "hono"
 import z from "zod"
-import { Server } from "@merakcode/engine/server/server"
-import { validator } from "@merakcode/engine/server/validator"
-import { Storage } from "@merakcode/engine/storage/storage"
-import { setLocalSecretForTest } from "@merakcode/engine/auth/local-secret"
+import { Server } from "@merakcode/engine/app/server/server"
+import { validator } from "@merakcode/engine/app/server/validator"
+import { Storage } from "@merakcode/engine/infra/storage/storage"
+import { setLocalSecretForTest } from "@merakcode/engine/app/server/auth/local-secret"
 
 const app = () =>
   Server.compose(new Hono(), (base) =>

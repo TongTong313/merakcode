@@ -1,7 +1,11 @@
+import { Process } from "@merakcode/util/process"
+import { Project } from "@merakcode/engine/infra/project/project"
+import { discoverProject } from "@merakcode/engine/app/project/discover"
+import { SessionOperations } from "@merakcode/engine/app/session"
 import { afterEach, describe, expect, test } from "vitest"
-import { Instance } from "@merakcode/engine/project/instance"
-import { Session } from "@merakcode/engine/session/index"
-import { SessionStore } from "@merakcode/engine/session/store"
+import { Instance } from "@merakcode/engine/infra/project/instance"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { SessionStore } from "@merakcode/engine/agent/session/store"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
 
@@ -21,6 +25,7 @@ describe("Workspace container and migrateFromGlobal", () => {
     await using b = await tmpdir({ git: true })
 
     const globalSession = await Instance.provide({
+      resolveProject: discoverProject,
       directory: a.path,
       fn: () => Session.create({ title: "stay-in-global" }),
     })
@@ -29,6 +34,7 @@ describe("Workspace container and migrateFromGlobal", () => {
 
     const folders = [{ path: a.path }, { path: b.path }]
     const wsIDs = await Instance.provide({
+      resolveProject: discoverProject,
       directory: a.path,
       workspace: { folders },
       fn: async () => {
@@ -43,8 +49,54 @@ describe("Workspace container and migrateFromGlobal", () => {
     expect(SessionStore.get("global", globalSession.id)?.id).toBe(globalSession.id)
 
     await Instance.provide({
+      resolveProject: discoverProject,
       directory: a.path,
-      fn: () => Session.remove(globalSession.id),
+      fn: () => SessionOperations.remove(globalSession.id),
     }).catch(() => undefined)
   })
 })
+
+for (const discovery of ["resource", "application"] as const) {
+  test(discovery + " project discovery keeps history migration at the application seam", async () => {
+    await using tmp = await tmpdir()
+    const session = await Instance.provide({ directory: tmp.path, fn: () => Session.create({ title: "Before Git" }) })
+    expect(session.projectID).toBe("global")
+    await Instance.disposeAll()
+    await Process.run(["git", "init", "--quiet", tmp.path])
+    await Process.run(
+      [
+        "git",
+        "-c",
+        "user.name=Migration Test",
+        "-c",
+        "user.email=migration@example.test",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "initial",
+      ],
+      { cwd: tmp.path },
+    )
+    if (discovery === "resource") {
+      const { project } = await Project.fromDirectory(tmp.path)
+      expect(project.id).not.toBe("global")
+      expect(SessionStore.find(session.id)?.projectID).toBe("global")
+      await Instance.provide({
+        directory: tmp.path,
+        resolveProject: discoverProject,
+        fn: () => {
+          expect(SessionStore.find(session.id)?.projectID).toBe(Instance.project.id)
+        },
+      })
+    } else {
+      await Instance.provide({
+        directory: tmp.path,
+        resolveProject: discoverProject,
+        fn: () => {
+          expect(Instance.project.id).not.toBe("global")
+          expect(SessionStore.find(session.id)?.projectID).toBe(Instance.project.id)
+        },
+      })
+    }
+  })
+}

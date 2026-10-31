@@ -1,8 +1,8 @@
 import { afterEach, expect, test, type Mock, vi } from "vitest"
-import { Bus } from "@merakcode/engine/bus/index"
-import { PermissionNext } from "@merakcode/engine/permission/next"
-import { Plugin } from "@merakcode/engine/plugin/index"
-import { Instance } from "@merakcode/engine/project/instance"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Plugin } from "@merakcode/engine/agent/plugin/index"
+import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
 /**

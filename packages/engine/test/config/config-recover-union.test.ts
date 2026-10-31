@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
-import { Config } from "@merakcode/engine/config/config"
-import { recoverConfig } from "@merakcode/engine/config/config-recover"
+import { Config } from "@merakcode/engine/app/config/files/config"
+import { recoverConfig } from "@merakcode/engine/infra/config/recover"
 
 /**
  * An extra field in the config must not make a whole MCP server disappear.

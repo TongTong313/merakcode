@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import fs from "fs/promises"
 import path from "path"
 import { setTimeout as sleep } from "timers/promises"
@@ -9,7 +9,7 @@ import { Process } from "@merakcode/util/process"
 
 // Loaded in a real Node process: Vitest injects require into the test process, which would hide ESM-only problems
 test("file watcher native module loads under Node", async () => {
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const result = await Process.run(
     evaluate(
       `const { parcelWatcher } = await import(${JSON.stringify(source)}); console.log(typeof parcelWatcher()?.subscribe)`,
@@ -24,7 +24,7 @@ test("file watcher native module loads under Node", async () => {
 // config directory while the write itself produces events. Runs in a child process so a crash shows up as the exit code.
 test("repeatedly unsubscribing and resubscribing while the directory changes does not crash", async () => {
   await using tmp = await tmpdir()
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const code = `
     import fs from "node:fs/promises"
     import path from "node:path"
@@ -63,7 +63,7 @@ test("repeatedly unsubscribing and resubscribing while the directory changes doe
 // are already in flight, not only for queued ones. The crash is intermittent, so several processes run.
 test("exiting right after closing watchers on busy directories does not crash", async () => {
   await using tmp = await tmpdir()
-  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/file/parcel-binding.ts")).href
+  const source = pathToFileURL(path.resolve(import.meta.dirname, "../../src/infra/file/parcel-binding.ts")).href
   const code = `
     import fs from "node:fs/promises"
     import path from "node:path"
@@ -106,32 +106,38 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
     async (_, folder) => {
       await using tmp = await tmpdir()
       await fs.mkdir(path.join(tmp.path, "ignored"))
-      const { parcelWatcher, pendingParcelCancels } = await import("@merakcode/engine/file/parcel-binding")
+      const { parcelWatcher, pendingParcelCancels } = await import("@merakcode/engine/infra/file/parcel-binding")
       const seen: string[] = []
       const subscription = await parcelWatcher()!.subscribe(
         tmp.path,
         (_, events) => seen.push(...events.map((event) => path.relative(tmp.path, event.path))),
         { ignore: ["ignored"] },
       )
-      let writing = true
-      const writer = (async () => {
-        for (let i = 0; writing; i++) {
-          await fs.writeFile(path.join(tmp.path, folder, `f${i % 20}.txt`), String(i))
-          await sleep(5)
-        }
-      })()
+      // Control the quiet-period clock; a loaded filesystem cannot guarantee uninterrupted real-time writes.
+      // Native subscriptions, file writes and notification delivery remain real.
+      if (folder === ".") {
+        await fs.writeFile(path.join(tmp.path, "initial.txt"), "initial")
+        await expect.poll(() => seen.includes("initial.txt"), { timeout: 10_000 }).toBe(true)
+      }
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
       try {
+        await fs.writeFile(path.join(tmp.path, folder, "f.txt"), "initial")
         await sleep(1_000)
         await subscription.unsubscribe()
-        await sleep(2_000)
-        expect(pendingParcelCancels()).toBe(1)
+        for (let i = 0; i < 4; i++) {
+          await vi.advanceTimersByTimeAsync(500)
+          await fs.writeFile(path.join(tmp.path, folder, "f.txt"), String(i))
+          // timers/promises is real: let the native backend deliver this batch before moving the clock again.
+          await sleep(1_000)
+          expect(pendingParcelCancels()).toBe(1)
+        }
+        await vi.advanceTimersByTimeAsync(1_000)
+        await expect.poll(() => pendingParcelCancels()).toBe(0)
       } finally {
-        writing = false
-        await writer
+        await subscription.unsubscribe()
+        await vi.advanceTimersByTimeAsync(2_000)
+        vi.useRealTimers()
       }
-      const deadline = Date.now() + 10_000
-      while (pendingParcelCancels() > 0 && Date.now() < deadline) await sleep(50)
-      expect(pendingParcelCancels()).toBe(0)
       // macOS also reports the watched directory itself ("") when files inside it change
       if (folder === "ignored") expect(seen.filter((file) => file.split(path.sep)[0] === "ignored")).toEqual([])
       else expect(seen.filter((file) => file.startsWith("f")).length).toBeGreaterThan(0)
@@ -145,7 +151,7 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
 test("tracks every file watcher subscription so all can be closed before exit", async () => {
   await using tmp = await tmpdir()
   const { parcelWatcher, closeParcelWatchers, activeParcelWatchers } =
-    await import("@merakcode/engine/file/parcel-binding")
+    await import("@merakcode/engine/infra/file/parcel-binding")
   const watcher = parcelWatcher()!
   const events: string[] = []
   const first = await watcher.subscribe(tmp.path, (_, list) => events.push(...list.map((e) => e.path)))

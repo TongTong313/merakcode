@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { WorkflowScriptParser } from "@merakcode/engine/workflow/script"
+import { WorkflowScriptParser } from "@merakcode/engine/app/task/workflow/script"
 
 describe("WorkflowScriptParser", () => {
   test("parses literal meta and body", () => {
