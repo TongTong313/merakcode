@@ -6,9 +6,17 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- Fold a finished conversation turn's reasoning and tool steps under a completed-time line, keeping the final answer and changed files. Copy takes the final answer while folded and the whole turn once expanded.
+
 ### Fixed
 
 - Image attachments in the composer and sent messages show thumbnails; clicking an image attachment opens the full image.
+
+### 变更
+
+- 对话的一轮结束后，思考和工具步骤折叠为一行用时，保留最终回复和本轮改动。折叠时复制只取最终回复，展开后复制整轮。
 
 ### 修复
 

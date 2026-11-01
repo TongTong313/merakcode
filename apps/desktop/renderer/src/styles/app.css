@@ -526,6 +526,9 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 480px;
 }
+.turn.folded {
+  contain-intrinsic-size: auto 220px;
+}
 /* User message: edit and revert appear on the left on hover */
 .user-turn {
   display: flex;
@@ -746,6 +749,14 @@
 }
 .step-head[aria-expanded="true"] .chevron {
   transform: rotate(90deg);
+}
+.step-head.turn-summary {
+  width: 100%;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.step-head.turn-summary:hover {
+  color: var(--text);
 }
 .step-head:disabled .chevron {
   visibility: hidden;

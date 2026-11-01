@@ -1,12 +1,13 @@
 import { describe, expect, test } from "vitest"
 import type { Message, Part } from "@merakcode/sdk/client"
-import { blocks, changes, eventsByTurn, explored, segments, turns, working } from "./turns"
+import { answerBlocks, blocks, changes, eventsByTurn, explored, segments, turns, working } from "./turns"
 
 const user = (id: string) => ({ id, role: "user", sessionID: "s", time: { created: 1 } }) as Message
 const reply = (id: string, parentID: string) => ({ id, role: "assistant", parentID, sessionID: "s" }) as Message
 const tool = (id: string, name: string, input: Record<string, unknown> = {}) =>
   ({ id, type: "tool", tool: name, state: { status: "completed", input } }) as Part
 const text = (id: string, value: string, synthetic = false) => ({ id, type: "text", text: value, synthetic }) as Part
+const file = (id: string) => ({ id, type: "file", mime: "text/plain", url: "file:///a.txt" }) as Part
 
 describe("turns", () => {
   test("groups replies by parentID, falls back to the previous turn, and keeps leading replies as orphans", () => {
@@ -44,6 +45,21 @@ describe("blocks", () => {
     ).toEqual([["1", "2", "3"], "4", "7", ["8"]])
     const first = result[0]!
     expect(first.kind === "explore" && explored(first.parts)).toEqual({ reads: 1, searches: 1 })
+  })
+})
+
+describe("answerBlocks", () => {
+  test("keeps the answer's words and files and drops thoughts and tools", () => {
+    const result = answerBlocks([
+      { id: "r", type: "reasoning", text: "想", time: { start: 0, end: 1 } } as Part,
+      text("t", "答案"),
+      tool("b", "bash"),
+      file("f"),
+    ])
+    expect(result.map((block) => (block.kind === "part" ? `${block.part.type}:${block.part.id}` : "explore"))).toEqual([
+      "text:t",
+      "file:f",
+    ])
   })
 })
 

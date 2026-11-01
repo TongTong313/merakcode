@@ -69,6 +69,8 @@ type State = {
   >
   /** Session id → messages loaded */
   loaded: Record<string, boolean>
+  /** Directory → status snapshot applied; a session without a status entry is then idle */
+  statusLoaded: Record<string, boolean>
   /** Default permission mode for new conversations */
   mode: PermissionMode
   /** Invalid config entries the engine skipped */
@@ -84,6 +86,7 @@ export const [state, setState] = createStore<State>({
   defaultBranch: {},
   remote: {},
   loaded: {},
+  statusLoaded: {},
   mode: "ask",
   warnings: [],
 })
@@ -224,6 +227,7 @@ async function resync() {
   messageLoads.clear()
   setState("loaded", reconcile({}))
   setState("sessions", "session_status", reconcile({}))
+  setState("statusLoaded", reconcile({}))
   await Promise.all(state.folders.map((folder) => refresh(folder.directory).catch(() => {})))
   await Promise.all(opened.map((id) => messages(id).catch(() => {})))
 }
@@ -379,7 +383,7 @@ async function refresh(directory: string, limit = PAGE) {
       const snapshot = { events: [] as Event[] }
       pendingSnapshots.set(dir, snapshot)
       const [status, permissions, questions, vcs] = await Promise.all([
-        call(c.session.status()).catch(() => ({})),
+        call(c.session.status()).catch(() => undefined),
         call(c.permission.list()).catch(() => undefined),
         call(c.question.list()).catch(() => undefined),
         project.vcs === "git" ? call(c.vcs.get()).catch(() => undefined) : undefined,
@@ -387,6 +391,7 @@ async function refresh(directory: string, limit = PAGE) {
       return { dir, status, permissions, questions, vcs, checkout, snapshot }
     }),
   )
+  const loaded: string[] = []
   batch(() => {
     setState(
       "sessions",
@@ -394,7 +399,7 @@ async function refresh(directory: string, limit = PAGE) {
         for (const info of list) reduce(draft, { type: "session.updated", properties: { info } } as Event)
         for (const item of instances) {
           if (pendingSnapshots.get(item.dir) !== item.snapshot) continue
-          Object.assign(draft.session_status, item.status)
+          if (item.status) Object.assign(draft.session_status, item.status)
           const owned = (request: { sessionID: string; root?: string }) => {
             const owner =
               draft.session.find((info) => info.id === request.sessionID) ??
@@ -415,9 +420,11 @@ async function refresh(directory: string, limit = PAGE) {
             reduce(draft, { type: "question.asked", properties: request } as Event)
           for (const event of item.snapshot.events) reduce(draft, event)
           pendingSnapshots.delete(item.dir)
+          if (item.status !== undefined) loaded.push(item.dir)
         }
       }),
     )
+    for (const loadedDirectory of loaded) setState("statusLoaded", loadedDirectory, true)
     for (const item of instances) {
       if (checkoutOf(item.dir) !== item.checkout) continue
       setState("branch", item.dir, item.vcs?.branch)
@@ -519,6 +526,10 @@ export async function reload(id: string) {
 export const partsOf = (id: string): Part[] => state.sessions.part[id] ?? []
 export const statusOf = (id: string) => activity(state.sessions, id)
 export const busy = (id: string) => (state.sessions.session_status[id]?.type ?? "idle") !== "idle"
+
+/** Whether a directory's status snapshot has been applied; a missing session status then means idle */
+export const statusKnown = (directory: string) =>
+  Object.keys(state.statusLoaded).some((key) => state.statusLoaded[key] && sameDir(key, directory))
 
 /** Pending permissions and questions in this conversation, including its child sessions */
 export function pending(id: string) {

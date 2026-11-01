@@ -97,6 +97,7 @@ export const zh = {
   "conversation.thinking": "思考",
   "conversation.thought": "思考了 {seconds} 秒",
   "conversation.working": "正在处理…",
+  "conversation.worked": "智能体工作完成，用时 {time}",
   "conversation.retry": "第 {attempt} 次重试：{message}",
   "conversation.changes": "本轮改动",
   "conversation.changesSummary": "{files} 个文件",
