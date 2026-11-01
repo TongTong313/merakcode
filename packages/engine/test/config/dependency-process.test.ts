@@ -120,8 +120,10 @@ test.for(["abort", "npm exit"])("%s stops real npm lifecycle writers before retu
     }
     expect(await running()).toBe(true)
     if (stop === "abort") abort.abort()
-    else process.kill(npm)
+    // Kill only npm: SIGTERM can wait for lifecycle scripts on Unix, so it does not establish parent exit.
+    else process.kill(npm, "SIGKILL")
     await expect.poll(() => settled, { timeout: 10_000 }).toBe(true)
+    if (stop === "npm exit") expect(failure).toMatchObject({ exitCode: process.platform === "win32" ? 1 : 137 })
     expect(await runningAtReturn).toBe(false)
     await fs.writeFile(gate, "go")
     await expect(fs.stat(late)).rejects.toMatchObject({ code: "ENOENT" })

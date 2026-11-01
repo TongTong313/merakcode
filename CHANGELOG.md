@@ -17,6 +17,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Extract release archives with Unicode paths independently of the Windows system code page.
 - Coordinate configuration dependency installation across engine instances and processes, reinstall damaged packages even with an existing npm lockfile, and preserve the local plugin API even when npm lifecycle scripts fail.
 - Restore interrupted user SDK backups before skipping initialization, prevent partial backup cleanup from overwriting a restored SDK, and stop npm lifecycle descendants before releasing the installation directory.
 - Include the Windows operation and system error code when dependency process management fails.
@@ -38,6 +39,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 发布归档解压不再受 Windows 系统代码页限制，保留完整的 Unicode 路径。
 - 协调多个引擎实例和进程的配置依赖安装，在已有 npm 锁文件时仍重新安装损坏的包，并在 npm 生命周期脚本失败后仍保留本地插件 API。
 - 在跳过初始化前恢复中断的用户 SDK 备份，避免备份清理部分失败后覆盖已恢复的 SDK，并在释放安装目录前停止 npm 生命周期的后代进程。
 - 依赖进程管理失败时保留 Windows 操作名称和系统错误码。
