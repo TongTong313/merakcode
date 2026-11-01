@@ -4,6 +4,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { gunzipSync } from "node:zlib"
+import { list } from "tar"
 import { Archive } from "./archive"
 
 const dirs: string[] = []
@@ -23,12 +24,12 @@ async function release() {
   // Native binaries (ELF) and shebang scripts must stay executable even when packed on Windows
   await fs.writeFile(path.join(root, "lib", "helper"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]))
   await fs.writeFile(path.join(deep, "超过一百个字节的路径要用 pax 扩展头记下来.js"), "export {}\n")
+  await fs.writeFile(path.join(deep, "emoji-😀.txt"), "Unicode payload: 中文 😀\n")
   return { dir, root }
 }
 
-// The system bsdtar reads both tar.gz and zip (System32\tar.exe since Windows 10, tar on macOS)
+// Keep an independent system-reader check for the launcher's Unix executable bits.
 const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "System32", "tar.exe") : "tar"
-const list = (file: string) => execFileSync(tar, ["-tvf", file], { encoding: "utf8" })
 
 describe("Archive.create", () => {
   test("tar paths remain valid UTF-8 in both standard and extended headers", async () => {
@@ -50,11 +51,33 @@ describe("Archive.create", () => {
     const { dir, root } = await release()
     const file = path.join(dir, "out.tar.gz")
     await Archive.create(root, file)
-    const lines = list(file).split(/\r?\n/)
-    const mode = (name: string) => lines.find((line) => line.endsWith(name))?.split(/\s+/)[0]
-    expect(mode("merakcode-1.0.0-linux-x64/bin/merak")).toBe("-rwxr-xr-x")
-    expect(mode("merakcode-1.0.0-linux-x64/lib/helper")).toBe("-rwxr-xr-x")
-    expect(mode("merakcode-1.0.0-linux-x64/lib/index.js")).toBe("-rw-r--r--")
+    const modes = new Map<string, number | undefined>()
+    await list({
+      file,
+      strict: true,
+      onReadEntry: (entry) => {
+        modes.set(entry.path, entry.mode)
+      },
+    })
+    expect(modes.get("merakcode-1.0.0-linux-x64/bin/merak")).toBe(0o755)
+    expect(modes.get("merakcode-1.0.0-linux-x64/lib/helper")).toBe(0o755)
+    expect(modes.get("merakcode-1.0.0-linux-x64/lib/index.js")).toBe(0o644)
+  })
+
+  test("system tar reads and extracts release launchers with executable permissions", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "archive-test-"))
+    dirs.push(dir)
+    const root = path.join(dir, "release")
+    await fs.mkdir(path.join(root, "bin"), { recursive: true })
+    await fs.writeFile(path.join(root, "bin", "merak"), "#!/bin/sh\necho hi\n")
+    const file = path.join(dir, "out.tar.gz")
+    await Archive.create(root, file)
+    const listing = execFileSync(tar, ["-tvf", file], { encoding: "utf8" })
+    expect(listing.trim()).toMatch(/^-rwxr-xr-x\s+.*release\/bin\/merak$/)
+    const target = path.join(dir, "extracted")
+    await fs.mkdir(target)
+    execFileSync(tar, ["-xf", file, "-C", target])
+    expect(await fs.readFile(path.join(target, "release", "bin", "merak"), "utf8")).toBe("#!/bin/sh\necho hi\n")
   })
 
   test.each(["tar.gz", "zip"])("%s extracted content keeps long paths and non-ASCII file names", async (ext) => {
@@ -66,6 +89,13 @@ describe("Archive.create", () => {
     const back = path.join(target, path.basename(root))
     expect(await fs.readFile(path.join(back, "lib", "index.js"), "utf8")).toBe("console.log('入口')\n")
     const deep = path.join("lib", "node_modules", "@scope", "a-package-with-a-long-name", "dist", "nested", "again")
-    expect(await fs.readdir(path.join(back, deep))).toEqual(["超过一百个字节的路径要用 pax 扩展头记下来.js"])
+    expect(await fs.readdir(path.join(back, deep))).toEqual([
+      "emoji-😀.txt",
+      "超过一百个字节的路径要用 pax 扩展头记下来.js",
+    ])
+    expect(await fs.readFile(path.join(back, deep, "emoji-😀.txt"), "utf8")).toBe("Unicode payload: 中文 😀\n")
+    expect(await fs.readFile(path.join(back, deep, "超过一百个字节的路径要用 pax 扩展头记下来.js"), "utf8")).toBe(
+      "export {}\n",
+    )
   })
 })

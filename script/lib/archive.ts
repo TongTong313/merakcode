@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process"
 import { createReadStream, createWriteStream } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import zlib from "node:zlib"
+import { extract as untar } from "tar"
 
 /**
  * Packing and unpacking release archives: .tar.gz on Linux / macOS and .zip on Windows (the native format for each).
@@ -26,16 +26,13 @@ export namespace Archive {
 
   /**
    * Extracts into dest, creating it if needed. zip is read here (Ubuntu's unzip guesses the name encoding from the
-   * locale and garbles UTF-8 names); tar.gz uses the system tar (bsdtar on Windows 10+ and macOS, GNU tar on Linux).
+   * locale and garbles UTF-8 names). Read tar.gz with Node as well: Windows bsdtar can reject Unicode paths that
+   * cannot be represented in the system code page, even when the archive has valid UTF-8 PAX headers.
    */
   export async function extract(file: string, dest: string) {
     await fs.mkdir(dest, { recursive: true })
     if (file.endsWith(".zip")) return unzip(file, dest)
-    // Under the C locale (common in CI and containers) GNU tar mangles UTF-8 file names
-    const env = process.platform === "linux" ? { ...process.env, LC_ALL: "C.UTF-8" } : process.env
-    // On Windows the tar on PATH may be Git's GNU tar, so use the system one
-    const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "System32", "tar.exe") : "tar"
-    execFileSync(tar, ["-xf", file, "-C", dest], { env })
+    await untar({ file, cwd: dest, strict: true, preserveOwner: false })
   }
 
   /** UTF-8 name from the Info-ZIP Unicode Path extra field (0x7075): version byte, CRC of the old name, then the name */
