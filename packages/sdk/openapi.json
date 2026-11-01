@@ -6755,7 +6755,7 @@
       }
     }
   },
-  "info": { "description": "merakcode api", "title": "merakcode", "version": "0.2.0" },
+  "info": { "description": "merakcode api", "title": "merakcode", "version": "0.3.0" },
   "openapi": "3.1.1",
   "paths": {
     "/agent": {
