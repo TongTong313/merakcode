@@ -148,22 +148,39 @@ try {
   page.on("requestfailed", (request) =>
     diagnostics.push(`requestfailed: ${new URL(request.url()).pathname} ${request.failure()?.errorText}`),
   )
-  await page.evaluate(() => {
-    const keys: { key: string; code: number; composing: boolean }[] = []
-    ;(window as unknown as { __smokeKeys: typeof keys }).__smokeKeys = keys
-    document.addEventListener(
-      "keydown",
-      (event) => keys.push({ key: event.key, code: event.keyCode, composing: event.isComposing }),
-      true,
-    )
-  })
+  // The packaged app still navigates after CDP connects (deep-link project open). Wait for the UI, then
+  // install the key probe with retries so a mid-flight navigation does not abort the smoke.
   const input = page
     .getByRole("textbox", { name: /^(消息|Message)$/ })
     .filter({ visible: true })
     .first()
   const later = page.getByRole("button", { name: /^(跳过|Skip)$/ })
   await input.or(later).first().waitFor({ timeout: 120_000 })
-  if (await later.isVisible()) await later.click()
+  const installKeyProbe = async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await page.evaluate(() => {
+          const keys: { key: string; code: number; composing: boolean }[] = []
+          ;(window as unknown as { __smokeKeys: typeof keys }).__smokeKeys = keys
+          document.addEventListener(
+            "keydown",
+            (event) => keys.push({ key: event.key, code: event.keyCode, composing: event.isComposing }),
+            true,
+          )
+        })
+        return
+      } catch (error) {
+        if (attempt >= 20 || !String(error).includes("Execution context was destroyed")) throw error
+        await page.waitForLoadState("domcontentloaded").catch(() => undefined)
+      }
+    }
+  }
+  await installKeyProbe()
+  if (await later.isVisible()) {
+    await later.click()
+    await input.waitFor({ timeout: 120_000 })
+    await installKeyProbe()
+  }
   // Exercise cold-start Enter; the negative control isolates the title-versus-reply oracle through Send.
   const methods = failMain ? (["button"] as const) : (["keyboard", "button"] as const)
   for (const [index, method] of methods.entries()) {
