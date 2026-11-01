@@ -417,6 +417,45 @@
   background: var(--surface-muted);
   font-size: var(--text-sm);
 }
+.attachment-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.attachment-thumb {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex: none;
+}
+.dialog.image-viewer {
+  width: min(1100px, 100%);
+}
+.image-viewer-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 18px;
+}
+.image-viewer-body img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 180px);
+  object-fit: contain;
+}
 .model-picker {
   width: 320px;
   max-width: 320px;

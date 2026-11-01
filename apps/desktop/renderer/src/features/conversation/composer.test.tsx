@@ -7,12 +7,39 @@ import { send } from "./send"
 import { setState } from "../../state/store"
 import { Toasts } from "../../ui/toast"
 
+const png =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
+
 let cleanup = () => {}
 beforeEach(() => setLocale("zh"))
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
+
+function renderImageDraft(directory: string) {
+  const host = document.createElement("div")
+  document.body.appendChild(host)
+  const dispose = render(
+    () => (
+      <Composer
+        directory={directory}
+        busy={false}
+        draft={{
+          text: "",
+          files: [{ type: "file", mime: "image/png", filename: "shot.png", url: png }],
+        }}
+        onSubmit={() => {}}
+      />
+    ),
+    host,
+  )
+  cleanup = () => {
+    dispose()
+    host.remove()
+  }
+  return host
+}
 
 test("a disabled composer keeps its draft and prevents typing or sending", () => {
   const host = document.createElement("div")
@@ -93,6 +120,30 @@ test("an external text composer does not require a native model or offer attachm
   }
   expect(host.textContent).not.toContain("还没有连接模型")
   expect(host.querySelector('[aria-label="附件"]')).toBeNull()
+})
+
+test("an image draft shows a thumbnail in the composer", () => {
+  const host = renderImageDraft("/composer-image-test")
+  expect(host.querySelector(".composer-files img")?.getAttribute("src")).toBe(png)
+  expect(host.querySelector(".composer-files")?.textContent).toContain("shot.png")
+  expect(host.querySelector('[aria-label="查看图片 shot.png"]')).not.toBeNull()
+})
+
+test("clicking an image attachment's name opens the full image", async () => {
+  const host = renderImageDraft("/composer-image-name-test")
+  const name = [...host.querySelectorAll(".composer-files .ellipsis")].find((node) => node.textContent === "shot.png")
+  if (!name) throw new Error("attachment name did not render")
+  name.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+  await vi.waitFor(() => expect(document.querySelector("[role=dialog] img")?.getAttribute("src")).toBe(png))
+  document.querySelector<HTMLButtonElement>("[role=dialog] .dialog-foot button")!.click()
+  await vi.waitFor(() => expect(document.querySelector("[role=dialog]")).toBeNull())
+})
+
+test("removing an image attachment does not open its preview", () => {
+  const host = renderImageDraft("/composer-image-remove-test")
+  host.querySelector<HTMLButtonElement>('[aria-label="移除 shot.png"]')!.click()
+  expect(host.querySelector(".composer-files .attachment")).toBeNull()
+  expect(document.querySelector("[role=dialog]")).toBeNull()
 })
 
 test.each([

@@ -6,6 +6,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- Image attachments in the composer and sent messages show thumbnails; clicking an image attachment opens the full image.
+
+### 修复
+
+- 输入框和已发送消息里的图片附件显示缩略图，点击整个图片附件可以查看大图。
+
 ## [0.3.0] - 2026-11-01
 
 ### Changed
