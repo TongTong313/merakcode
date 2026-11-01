@@ -32,7 +32,7 @@ import {
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
 import { relative } from "../../lib/route"
-import { busy, messagesOf, partsOf, state, state as store } from "../../state/store"
+import { busy, messagesOf, partsOf, state, state as store, statusKnown } from "../../state/store"
 import { Markdown } from "../../ui/markdown"
 import { copyDetails, toast } from "../../ui/toast"
 import { summary } from "../../state/error"
@@ -42,6 +42,7 @@ import { historyLocked, retry, revertTo, submissionOf } from "./send"
 import { Avatar, seatMeta, type Product, type Seat } from "./members"
 import { Tool, Explore } from "./tools"
 import {
+  answerBlocks,
   blocks,
   changes,
   eventsByTurn,
@@ -119,7 +120,7 @@ function UserBubble(props: { message: UserMessage; sessionID: string; directory:
     parts()
       .filter((part) => part.type === "text" && !part.synthetic)
       .map((part) => (part.type === "text" ? part.text : ""))
-      .join("\n")
+      .join("")
   const files = () => parts().filter((part): part is FilePart => part.type === "file")
   const revert = () => revertTo(props.sessionID, props.directory, props.message.id).catch(failed)
   const edit = async () => {
@@ -164,21 +165,22 @@ function UserBubble(props: { message: UserMessage; sessionID: string; directory:
 }
 
 /** Actions after a turn's replies: copy the answer, and retry on the last turn */
-function TurnActions(props: { turn: Turn; last: boolean; sessionID: string; directory: string }) {
-  const text = () =>
-    props.turn.replies
-      .flatMap((message) => partsOf(message.id))
-      .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text.trim()] : []))
-      .filter(Boolean)
-      .join("\n\n")
+function TurnActions(props: {
+  turn: Turn
+  last: boolean
+  sessionID: string
+  directory: string
+  /** The text the copy button takes: the final answer while folded, the whole turn once expanded */
+  text: () => string
+}) {
   return (
     <div class="turn-actions">
-      <Show when={text()}>
+      <Show when={props.text()}>
         <button
           class="icon-button sm"
           aria-label={t("common.copy")}
           title={t("common.copy")}
-          onClick={() => void copy(text())}
+          onClick={() => void copy(props.text())}
         >
           <Copy class="icon icon-xs" />
         </button>
@@ -276,10 +278,12 @@ function Reply(props: {
   sessionID: string
   directory: string
   onReviewFile: (file: string) => void
+  /** Shows only the answer's words and files; used for a finished turn whose work is folded */
+  answerOnly?: boolean
 }) {
   const parts = () => partsOf(props.message.id)
-  const list = createMemo(() => blocks(parts()))
-  const done = (index: number) => !props.last || !busy(props.sessionID) || index < list().length - 1
+  const list = createMemo(() => (props.answerOnly ? answerBlocks(parts()) : blocks(parts())))
+  const done = (index: number) => props.answerOnly || !props.last || !busy(props.sessionID) || index < list().length - 1
   const [open, setOpen] = createSignal(false)
   // Summary written during context compaction, collapsed by default
   const summary = () =>
@@ -686,6 +690,7 @@ export function Messages(props: {
   let scroller!: HTMLDivElement
   let content!: HTMLDivElement
   const grouped = createMemo(() => turns(messagesOf(props.sessionID)))
+  const lastWorked = createMemo(() => grouped().turns.findLastIndex((turn) => turn.replies.length > 0))
   const events = createMemo(() =>
     eventsByTurn(
       props.group?.events ?? [],
@@ -739,43 +744,108 @@ export function Messages(props: {
         <Index each={grouped().turns}>
           {(turn, index) => {
             const last = () => index === grouped().turns.length - 1
+            // Latches once this turn is no longer the one the session is working on
+            const done = createMemo(
+              (previous) =>
+                previous ||
+                (turn().replies.length > 0 && (status() !== undefined || statusKnown(props.directory)) && !running()) ||
+                index < lastWorked(),
+              false,
+            )
+            const [open, setOpen] = createSignal(false)
+            const answer = () => turn().replies.findLast((message) => !isSummary(message))
+            const answerParts = () => partsOf(answer()?.id ?? "")
+            const answerVisible = () => answerBlocks(answerParts())
+            const foldable = () =>
+              answer() !== undefined &&
+              answerVisible().length > 0 &&
+              (turn().replies.length > 1 || answerVisible().length < blocks(answerParts()).length)
+            const folded = () => !props.group && done() && foldable()
+            const elapsed = () => {
+              const reply = turn().replies.at(-1)
+              const end = reply?.time.completed ?? reply?.time.created
+              return end === undefined ? 0 : Math.max(0, end - turn().user.time.created)
+            }
+            const toggle = () => {
+              if (!open()) setPinned(false)
+              setOpen(!open())
+            }
+            const copyText = () => {
+              const foldedAnswer = folded() && !open() ? answer() : undefined
+              const replies = foldedAnswer ? [foldedAnswer] : turn().replies
+              return replies
+                .flatMap((message) => partsOf(message.id))
+                .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text.trim()] : []))
+                .filter(Boolean)
+                .join("\n\n")
+            }
             return (
-              <section class="turn" classList={{ settled: !last() }}>
+              <section class="turn" classList={{ settled: !last(), folded: folded() && !open() }}>
                 <SystemLines events={events()[index] ?? []} />
                 <UserBubble message={turn().user} sessionID={props.sessionID} directory={props.directory} />
+                <Show when={folded()}>
+                  <button class="step-head turn-summary" aria-expanded={open()} onClick={toggle}>
+                    <span class="step-title">{t("conversation.worked", { time: duration(elapsed()) })}</span>
+                    <ChevronRight class="icon icon-sm chevron" />
+                  </button>
+                </Show>
                 <Show
-                  when={props.group}
+                  when={!folded() || open()}
                   fallback={
-                    <For each={turn().replies}>
-                      {(message, i) => (
+                    <Show when={answer()}>
+                      {(message) => (
                         <Reply
-                          message={message}
-                          last={last() && i() === turn().replies.length - 1}
+                          message={message()}
+                          last={false}
+                          answerOnly
                           sessionID={props.sessionID}
                           directory={props.directory}
                           onReviewFile={props.onReviewFile}
                         />
                       )}
-                    </For>
+                    </Show>
                   }
                 >
-                  {(group) => (
-                    <GroupReplies
-                      replies={turn().replies}
-                      last={last()}
-                      sessionID={props.sessionID}
-                      directory={props.directory}
-                      group={group()}
-                      onReviewFile={props.onReviewFile}
-                    />
-                  )}
+                  <Show
+                    when={props.group}
+                    fallback={
+                      <For each={turn().replies}>
+                        {(message, i) => (
+                          <Reply
+                            message={message}
+                            last={last() && i() === turn().replies.length - 1}
+                            sessionID={props.sessionID}
+                            directory={props.directory}
+                            onReviewFile={props.onReviewFile}
+                          />
+                        )}
+                      </For>
+                    }
+                  >
+                    {(group) => (
+                      <GroupReplies
+                        replies={turn().replies}
+                        last={last()}
+                        sessionID={props.sessionID}
+                        directory={props.directory}
+                        group={group()}
+                        onReviewFile={props.onReviewFile}
+                      />
+                    )}
+                  </Show>
                 </Show>
                 {/* Review stays available once edits exist. The turn can still be marked running after the reply is on
                     screen, and hiding the card then leaves no Review button. */}
                 <Changes turn={turn()} directory={props.directory} onReview={props.onReviewTurn} />
                 <Show when={!last() || !running()}>
                   <Show when={turn().replies.length && !turn().replies.some(isSummary)}>
-                    <TurnActions turn={turn()} last={last()} sessionID={props.sessionID} directory={props.directory} />
+                    <TurnActions
+                      turn={turn()}
+                      last={last()}
+                      sessionID={props.sessionID}
+                      directory={props.directory}
+                      text={copyText}
+                    />
                   </Show>
                 </Show>
               </section>

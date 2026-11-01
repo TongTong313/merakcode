@@ -52,6 +52,13 @@ export function blocks(parts: readonly Part[]): Block[] {
   return result
 }
 
+/** Parts still shown after a finished turn folds its work: the answer's words and files */
+export function answerBlocks(parts: readonly Part[]): Block[] {
+  return blocks(parts).filter(
+    (block) => block.kind === "part" && (block.part.type === "text" || block.part.type === "file"),
+  )
+}
+
 /** A stretch of a group chat turn: the leader's own blocks, or one member's delegate call */
 export type Segment = { kind: "leader"; blocks: Block[] } | { kind: "seat"; part: ToolPart }
 

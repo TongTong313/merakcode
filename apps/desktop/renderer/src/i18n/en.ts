@@ -101,6 +101,7 @@ export const en: Record<keyof typeof zh, string> = {
   "conversation.thinking": "Thinking",
   "conversation.thought": "Thought for {seconds}s",
   "conversation.working": "Working…",
+  "conversation.worked": "Agent finished in {time}",
   "conversation.retry": "Retry {attempt}: {message}",
   "conversation.changes": "Changes this turn",
   "conversation.changesSummary": "{files} files",
