@@ -6,6 +6,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-01
+
 ### Changed
 
 - Reorganize the engine into `agent`, `infra`, and `app`: agent capabilities, shared mechanisms, and engine service composition now have explicit dependency boundaries.
