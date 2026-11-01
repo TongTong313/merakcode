@@ -63,6 +63,8 @@ export const en: Record<keyof typeof zh, string> = {
   "prompt.attach": "Attach",
   "prompt.noModel": "No model connected yet",
   "prompt.removeAttachment": "Remove {name}",
+  "prompt.viewImage": "View image {name}",
+  "prompt.image": "Image",
   "prompt.mention": "Reference files",
   "prompt.command": "Commands",
   "prompt.compact": "Compact the context",

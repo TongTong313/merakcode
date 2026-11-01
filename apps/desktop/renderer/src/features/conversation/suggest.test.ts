@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { apply, fileUrl, trigger } from "./suggest"
+import { apply, filePath, fileUrl, trigger } from "./suggest"
 
 describe("composer suggestions", () => {
   test("suggests files after a standalone @ and commands for a / at the start or after a space", () => {
@@ -22,5 +22,15 @@ describe("composer suggestions", () => {
   test("converts a local path to a file URL, keeping drive letters and encoding spaces, non-ASCII and #", () => {
     expect(fileUrl("C:/项目 a/x#1.ts")).toBe("file:///C:/%E9%A1%B9%E7%9B%AE%20a/x%231.ts")
     expect(fileUrl("/home/u/a.ts")).toBe("file:///home/u/a.ts")
+  })
+
+  test("turns a file URL back into its local path and rejects other URLs", () => {
+    expect(filePath(fileUrl("C:/项目 a/x#1.ts"))).toBe("C:/项目 a/x#1.ts")
+    expect(filePath(fileUrl("/home/u/a.ts"))).toBe("/home/u/a.ts")
+    expect(filePath("https://example.com/a.png")).toBeUndefined()
+    expect(filePath("file:relative.png")).toBeUndefined()
+    expect(filePath("file:///C:/tmp/..%5Csecret.png")).toBeUndefined()
+    expect(filePath("file:///tmp/%ZZ.png")).toBeUndefined()
+    expect(filePath("file:///tmp/a%00.png")).toBeUndefined()
   })
 })

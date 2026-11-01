@@ -10,7 +10,6 @@ import Brain from "lucide-solid/icons/brain"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import CircleAlert from "lucide-solid/icons/circle-alert"
 import FileDiff from "lucide-solid/icons/file-diff"
-import Paperclip from "lucide-solid/icons/paperclip"
 import Copy from "lucide-solid/icons/copy"
 import Pencil from "lucide-solid/icons/pencil"
 import RotateCcw from "lucide-solid/icons/rotate-ccw"
@@ -37,6 +36,7 @@ import { busy, messagesOf, partsOf, state, state as store } from "../../state/st
 import { Markdown } from "../../ui/markdown"
 import { copyDetails, toast } from "../../ui/toast"
 import { summary } from "../../state/error"
+import { AttachmentPreview } from "./attachment"
 import { fill } from "./composer"
 import { historyLocked, retry, revertTo, submissionOf } from "./send"
 import { Avatar, seatMeta, type Product, type Seat } from "./members"
@@ -91,11 +91,10 @@ function Reasoning(props: { part: ReasoningPart; done: boolean }) {
   )
 }
 
-function Attachment(props: { part: FilePart }) {
+function Attachment(props: { part: FilePart; directory: string }) {
   return (
     <span class="attachment" title={props.part.filename ?? props.part.url}>
-      <Paperclip class="icon icon-xs" />
-      <span class="ellipsis">{props.part.filename ?? props.part.url.split("/").pop()}</span>
+      <AttachmentPreview part={props.part} directory={props.directory} />
     </span>
   )
 }
@@ -154,7 +153,7 @@ function UserBubble(props: { message: UserMessage; sessionID: string; directory:
         <div class="user-message selectable">
           <Show when={files().length}>
             <div class="attachments">
-              <For each={files()}>{(part) => <Attachment part={part} />}</For>
+              <For each={files()}>{(part) => <Attachment part={part} directory={props.directory} />}</For>
             </div>
           </Show>
           <div class="user-text">{text()}</div>
@@ -377,7 +376,9 @@ function PartView(props: { part: Part; done: boolean; directory: string; onRevie
       <Match when={props.part.type === "tool" && props.part}>
         {(part) => <Tool part={part()} directory={props.directory} onReview={props.onReviewFile} />}
       </Match>
-      <Match when={props.part.type === "file" && props.part}>{(part) => <Attachment part={part()} />}</Match>
+      <Match when={props.part.type === "file" && props.part}>
+        {(part) => <Attachment part={part()} directory={props.directory} />}
+      </Match>
     </Switch>
   )
 }

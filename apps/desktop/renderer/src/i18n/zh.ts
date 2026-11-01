@@ -61,6 +61,8 @@ export const zh = {
   "prompt.attach": "附件",
   "prompt.noModel": "还没有连接模型",
   "prompt.removeAttachment": "移除 {name}",
+  "prompt.viewImage": "查看图片 {name}",
+  "prompt.image": "图片",
   "prompt.mention": "引用文件",
   "prompt.command": "命令",
   "prompt.compact": "压缩上下文",

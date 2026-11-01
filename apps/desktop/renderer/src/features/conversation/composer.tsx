@@ -21,6 +21,7 @@ import { setUi } from "../../state/ui"
 import { Select } from "../../ui/select"
 import { Tip } from "../../ui/tooltip"
 import { toast } from "../../ui/toast"
+import { AttachmentPreview } from "./attachment"
 import { ModelPicker } from "./model-picker"
 import { SandboxField } from "./sandbox-control"
 import { COMPACT, loadCommands } from "./send"
@@ -408,8 +409,7 @@ export function Composer(props: {
           <For each={files()}>
             {(file, index) => (
               <span class="attachment">
-                <Paperclip class="icon icon-xs" />
-                <span class="ellipsis">{file.filename}</span>
+                <AttachmentPreview part={file} directory={dir()} />
                 <button
                   class="icon-button sm"
                   aria-label={t("prompt.removeAttachment", { name: file.filename ?? "" })}

@@ -36,3 +36,21 @@ export function fileUrl(path: string) {
     .map((segment) => (/^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment)))
     .join("/")}`
 }
+
+/** Local path from a file:// URL; undefined for other schemes or a malformed URL */
+export function filePath(url: string) {
+  if (!url.toLowerCase().startsWith("file://")) return
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== "file:") return
+    let path = decodeURIComponent(parsed.pathname)
+    if (!path || path.includes("\0")) return
+    if (parsed.hostname) path = `//${parsed.hostname}${path}`
+    if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1)
+    if (path.split(/[\\/]/).includes("..")) return
+    if (!path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path)) return
+    return path
+  } catch {
+    return
+  }
+}
