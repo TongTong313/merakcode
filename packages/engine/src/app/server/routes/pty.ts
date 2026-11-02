@@ -11,6 +11,25 @@ import { lazy } from "@merakcode/util/lazy"
 
 export const PtyRoutes = lazy(() =>
   new Hono()
+    .post(
+      "/close-owned",
+      describeRoute({
+        summary: "Close a terminal tab",
+        description: "Stop the tab's managed terminal processes and reject delayed creation for the closed owner.",
+        operationId: "pty.closeOwned",
+        responses: {
+          200: {
+            description: "Terminal owner closed",
+            content: { "application/json": { schema: resolver(z.boolean()) } },
+          },
+        },
+      }),
+      validator("json", z.object({ owner: Pty.Owner })),
+      async (c) => {
+        await Pty.closeOwned(c.req.valid("json").owner)
+        return c.json(true)
+      },
+    )
     .get(
       "/",
       describeRoute({

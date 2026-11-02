@@ -23,6 +23,65 @@ export namespace ErrorCode {
   }
 
   export const CATALOG = {
+    FILE_PANEL_LOAD_FAILED: {
+      code: "MRK-7014",
+      domain: "workspace",
+      status: 500,
+      retryable: true,
+      title: { zh: "无法打开文件", en: "Could not open file" },
+      hint: {
+        zh: "检查文件及草稿是否可读后重试。",
+        en: "Check access to the file and its recovery draft, then retry.",
+      },
+    },
+    BROWSER_CLOSE_BLOCKED: {
+      code: "MRK-7013",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: { zh: "浏览器页面尚未关闭", en: "Browser page is still open" },
+      hint: { zh: "处理页面中未保存的输入后重试关闭。", en: "Handle the page's unsaved input, then retry closing it." },
+    },
+    TERMINAL_CLOSED: {
+      code: "MRK-5026",
+      domain: "tool",
+      status: 409,
+      retryable: false,
+      errors: ["TerminalClosedError"],
+      title: { zh: "终端标签已关闭", en: "Terminal tab is closed" },
+      hint: { zh: "需要继续操作时，请新建终端。", en: "Open a new terminal to continue." },
+    },
+    TERMINAL_STOP_FAILED: {
+      code: "MRK-5025",
+      domain: "tool",
+      status: 500,
+      retryable: true,
+      errors: ["TerminalStopError"],
+      title: { zh: "终端尚未确认停止", en: "Terminal stop is not confirmed" },
+      hint: {
+        zh: "保留终端标签并重试停止，查看日志确认进程状态。",
+        en: "Keep the terminal tab and retry stopping it; inspect the logs for process status.",
+      },
+    },
+    EDITOR_STATE_PERSIST_FAILED: {
+      code: "MRK-4018",
+      domain: "session",
+      status: 500,
+      retryable: true,
+      title: { zh: "无法保留编辑区状态", en: "Could not preserve editor state" },
+      hint: {
+        zh: "保持窗口打开，检查可用磁盘空间后重试。",
+        en: "Keep the window open, check available disk space, then retry.",
+      },
+    },
+    BROWSER_RESOURCE_LIMIT: {
+      code: "MRK-7012",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: { zh: "浏览器页面数量已达上限", en: "Browser page limit reached" },
+      hint: { zh: "关闭一个现有浏览器标签后重试。", en: "Close an existing browser tab and retry." },
+    },
     ENGINE_NOT_FOUND: {
       code: "MRK-1001",
       domain: "engine",

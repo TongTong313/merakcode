@@ -11,7 +11,7 @@ test("Git branch management has its own panel outside review scopes", async ({ k
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
   await expect(panel.getByRole("toolbar", { name: "审阅工具栏" }).getByRole("radio")).toHaveCount(0)
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await expect(panel.getByRole("button", { name: /^比对分支/ })).toHaveCount(0)
   const working = panel.getByRole("button", { name: /^当前分支/ })
   await expect(working).toContainText(current)
@@ -30,7 +30,7 @@ test("home switches the actual branch in two steps and review shows that checkou
   await expect(working).toBeFocused()
   expect(kit.git("branch", "--show-current").trim()).toBe("feature")
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
-  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await expect(kit.panel().getByRole("button", { name: /^当前分支/ })).toContainText("feature")
 })
 
@@ -97,7 +97,7 @@ test("a worktree starting branch is only used when sending and never checks out 
   await expect(readFile(path.join(directory, "local.txt"))).rejects.toThrow()
   expect(kit.git("branch", "--show-current").trim()).toBe(main)
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
-  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await kit
     .panel()
     .getByRole("button", { name: /^当前分支/ })
@@ -137,7 +137,17 @@ test("a prepared worktree and its task draft survive opening full-screen review"
   await draft.fill("Keep this task draft")
   await kit.page.getByRole("button", { name: "新工作树", exact: true }).click()
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
+  await kit.openPanel("review")
   await kit.panel().getByRole("button", { name: "铺满" }).click()
+  const full = kit.page.getByRole("main", { name: "审阅", exact: true })
+  await expect(full).toBeVisible()
+  await expect
+    .poll(async () => {
+      const frame = await kit.page.locator("main.main").boundingBox()
+      const review = await full.boundingBox()
+      return frame && review ? Math.abs(frame.width - review.width) : Infinity
+    })
+    .toBeLessThanOrEqual(1)
   await kit.page.getByRole("button", { name: "返回对话" }).click()
   await expect(draft).toHaveValue("Keep this task draft")
   await expect(kit.page.getByRole("button", { name: /^起点分支/ })).toBeVisible()

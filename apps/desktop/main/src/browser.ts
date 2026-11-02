@@ -1,8 +1,8 @@
-import { BrowserWindow, shell, WebContentsView } from "electron"
+import { BrowserWindow, dialog, shell, WebContentsView } from "electron"
 import type { BrowserBounds, BrowserConsole, BrowserState } from "../../renderer/src/desktop/bridge-contract"
 
 /**
- * Browser in the right-hand panel: one WebContentsView per window, placed over the browser tab in the UI.
+ * Browser in the right-hand panel: one WebContentsView per live browser tab, placed over its UI content.
  *
  * - Separate session partition (logins stay apart from the app UI), no preload and sandboxed, so pages cannot reach
  *   the bridge or the local backend token.
@@ -10,13 +10,32 @@ import type { BrowserBounds, BrowserConsole, BrowserState } from "../../renderer
  * - UI coordinates are CSS pixels and are converted to DIPs when the window is zoomed.
  */
 export class BrowserPanel {
-  private views = new Map<BrowserWindow, WebContentsView>()
+  private snapshots = new WeakMap<WebContentsView, () => void>()
+  private views = new Map<BrowserWindow, Map<string, WebContentsView>>()
+  private navigating = new WeakMap<BrowserWindow, Promise<void>>()
 
-  constructor(private send: (win: BrowserWindow, name: string, ...args: unknown[]) => void) {}
+  constructor(
+    private send: (win: BrowserWindow, name: string, ...args: unknown[]) => void,
+    private locale: () => "en" | "zh" = () => "en",
+  ) {}
 
-  private view(win: BrowserWindow) {
-    const existing = this.views.get(win)
-    if (existing) return existing
+  private view(win: BrowserWindow, id: string) {
+    let pages = this.views.get(win)
+    if (!pages) {
+      pages = new Map()
+      this.views.set(win, pages)
+      const owned = pages
+      win.once("closed", () => {
+        for (const view of owned.values()) if (!view.webContents.isDestroyed()) view.webContents.close()
+        this.views.delete(win)
+      })
+    }
+    const existing = pages.get(id)
+    if (existing) {
+      pages.delete(id)
+      pages.set(id, existing)
+      return existing
+    }
     const view = new WebContentsView({
       webPreferences: {
         partition: "persist:merakcode-browser",
@@ -27,11 +46,12 @@ export class BrowserPanel {
     })
     view.setVisible(false)
     win.contentView.addChildView(view)
-    this.views.set(win, view)
+    pages.set(id, view)
     const contents = view.webContents
     const state = () => {
       const history = contents.navigationHistory
       this.send(win, "browserState", {
+        id,
         url: contents.getURL(),
         title: contents.getTitle(),
         loading: contents.isLoading(),
@@ -39,6 +59,7 @@ export class BrowserPanel {
         canGoForward: history.canGoForward(),
       } satisfies BrowserState)
     }
+    this.snapshots.set(view, state)
     for (const name of [
       "did-navigate",
       "did-navigate-in-page",
@@ -51,6 +72,7 @@ export class BrowserPanel {
       const detail = event as unknown as { level: string; message: string; lineNumber: number; sourceId: string }
       const level = detail.level === "warning" ? "warn" : detail.level
       this.send(win, "browserConsole", {
+        id,
         level: (["debug", "info", "warn", "error"].includes(level) ? level : "info") as BrowserConsole["level"],
         message: String(detail.message).slice(0, 4000),
         source: detail.sourceId ?? "",
@@ -65,15 +87,13 @@ export class BrowserPanel {
     contents.on("will-navigate", (event, url) => {
       if (!web(url)) event.preventDefault()
     })
-    win.once("closed", () => {
-      this.views.delete(win)
-      if (!contents.isDestroyed()) contents.close()
-    })
     return view
   }
 
-  show(win: BrowserWindow, bounds: BrowserBounds) {
-    const view = this.view(win)
+  show(win: BrowserWindow, id: string, bounds: BrowserBounds) {
+    this.hide(win)
+    const view = this.views.get(win)?.get(id)
+    if (!view) return
     const zoom = win.webContents.getZoomFactor()
     view.setBounds({
       x: Math.round(bounds.x * zoom),
@@ -82,34 +102,108 @@ export class BrowserPanel {
       height: Math.round(bounds.height * zoom),
     })
     view.setVisible(true)
+    this.snapshots.get(view)?.()
   }
 
-  hide(win: BrowserWindow) {
-    this.views.get(win)?.setVisible(false)
+  hide(win: BrowserWindow, id?: string) {
+    for (const [key, view] of this.views.get(win) ?? []) if (!id || id === key) view.setVisible(false)
   }
 
-  async navigate(win: BrowserWindow, url: string) {
+  async close(win: BrowserWindow, id: string, ask = true): Promise<boolean> {
+    const pages = this.views.get(win)
+    const view = pages?.get(id)
+    if (!view || view.webContents.isDestroyed()) {
+      pages?.delete(id)
+      return true
+    }
+    const contents = view.webContents
+    return new Promise((resolve) => {
+      const prevented = (event: Electron.Event) => {
+        const zh = this.locale() === "zh"
+        if (
+          ask &&
+          dialog.showMessageBoxSync(win, {
+            type: "question",
+            message: zh ? "离开此页面？" : "Leave this page?",
+            detail: zh ? "页面可能包含尚未保存的输入。" : "The page may contain unsaved input.",
+            buttons: zh ? ["留在页面", "离开页面"] : ["Stay", "Leave"],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+          }) === 1
+        ) {
+          event.preventDefault()
+          return
+        }
+        contents.removeListener("destroyed", destroyed)
+        resolve(false)
+      }
+      const destroyed = () => {
+        contents.removeListener("will-prevent-unload", prevented)
+        pages?.delete(id)
+        if (!win.isDestroyed()) win.contentView.removeChildView(view)
+        resolve(true)
+      }
+      contents.once("will-prevent-unload", prevented)
+      contents.once("destroyed", destroyed)
+      contents.close({ waitForBeforeUnload: true })
+    })
+  }
+
+  async closeAll(win: BrowserWindow) {
+    await this.navigating.get(win)
+    for (const id of [...(this.views.get(win)?.keys() ?? [])]) if (!(await this.close(win, id))) return false
+    return true
+  }
+
+  navigate(win: BrowserWindow, id: string, url: string) {
+    const result = (this.navigating.get(win) ?? Promise.resolve()).then(() => this.navigatePage(win, id, url))
+    this.navigating.set(
+      win,
+      result.then(
+        () => {},
+        () => {},
+      ),
+    )
+    return result.then(async (view) => {
+      if (!view || view.webContents.isDestroyed()) return false
+      if (view.webContents.getURL() !== url) await view.webContents.loadURL(url).catch(() => {})
+      return true
+    })
+  }
+
+  private async navigatePage(win: BrowserWindow, id: string, url: string) {
+    if (win.isDestroyed()) return
     if (!web(url)) throw new Error("only http and https pages can be opened")
-    // Load failures (unreachable, interrupted by a newer navigation) show Chromium's error page, so do not throw
-    await this.view(win)
-      .webContents.loadURL(url)
-      .catch(() => {})
+    const pages = this.views.get(win)
+    if (!pages?.has(id) && (pages?.size ?? 0) >= 6) {
+      let released = false
+      for (const [key, view] of pages ?? []) {
+        if (!view.getVisible() && (await this.close(win, key, false))) {
+          released = true
+          break
+        }
+      }
+      if (!released) return
+    }
+    if (win.isDestroyed()) return
+    return this.view(win, id)
   }
 
-  back(win: BrowserWindow) {
-    this.views.get(win)?.webContents.navigationHistory.goBack()
+  back(win: BrowserWindow, id: string) {
+    this.views.get(win)?.get(id)?.webContents.navigationHistory.goBack()
   }
 
-  forward(win: BrowserWindow) {
-    this.views.get(win)?.webContents.navigationHistory.goForward()
+  forward(win: BrowserWindow, id: string) {
+    this.views.get(win)?.get(id)?.webContents.navigationHistory.goForward()
   }
 
-  reload(win: BrowserWindow) {
-    this.views.get(win)?.webContents.reload()
+  reload(win: BrowserWindow, id: string) {
+    this.views.get(win)?.get(id)?.webContents.reload()
   }
 
-  devtools(win: BrowserWindow) {
-    this.views.get(win)?.webContents.openDevTools({ mode: "detach" })
+  devtools(win: BrowserWindow, id: string) {
+    this.views.get(win)?.get(id)?.webContents.openDevTools({ mode: "detach" })
   }
 }
 

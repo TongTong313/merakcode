@@ -17,7 +17,7 @@ import {
   type TestInfo,
 } from "@playwright/test"
 import { createServer, type Server } from "node:http"
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
@@ -67,6 +67,7 @@ export type Kit = {
   settings: (section?: RegExp) => Promise<void>
   /** Right-hand side panel */
   panel: () => Locator
+  openPanel: (kind: "file" | "review" | "git" | "browser" | "terminal", fresh?: boolean) => Promise<void>
   /** Runs git in the project directory */
   git: (...args: string[]) => string
 }
@@ -195,6 +196,13 @@ export const test = base.extend<{
   kit: async ({ script, config, git }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
     await seedCatalog(root)
+    // Reuse the installed dependency, as the SDK fixtures do; UI tests must not wait for a registry install.
+    await mkdir(path.join(root, "node_modules"), { recursive: true })
+    await symlink(
+      path.dirname(createRequire(path.join(main, "package.json")).resolve("zod")),
+      path.join(root, "node_modules/zod"),
+      process.platform === "win32" ? "junction" : "dir",
+    )
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
     await writeFile(path.join(project, "notes.txt"), "hello from e2e\n")
@@ -315,6 +323,19 @@ export const test = base.extend<{
       if (section) await page.getByText(section).filter({ visible: true }).first().click()
     }
     const panel = () => page.getByRole("complementary", { name: /^(右侧面板|Side panel)$/ })
+    const openPanel: Kit["openPanel"] = async (kind, fresh = false) => {
+      if (!(await panel().isVisible())) await page.getByRole("button", { name: "右侧面板", exact: true }).click()
+      const names = { file: "打开文件", review: "审阅", git: "Git 管理", browser: "浏览器", terminal: "终端" }
+      const known = panel()
+        .getByRole("tab", { name: kind === "file" ? /^notes\.txt/ : new RegExp(`^${names[kind]}`) })
+        .last()
+      if (!fresh && (await known.isVisible())) {
+        await known.click()
+        return
+      }
+      await panel().getByRole("button", { name: "新标签页", exact: true }).click()
+      await panel().getByRole("button", { name: names[kind], exact: true }).click()
+    }
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
     const tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
@@ -333,6 +354,7 @@ export const test = base.extend<{
       approval,
       settings,
       panel,
+      openPanel,
       git: run,
     })
     if (info.status !== info.expectedStatus) {
@@ -340,7 +362,19 @@ export const test = base.extend<{
       await tracing.stop({ path: trace })
       await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
     } else await tracing.stop()
-    await app.close().catch(() => undefined)
+    const closing = app.close().catch(() => undefined)
+    const closeDialog = page.getByRole("dialog", { name: /^(关闭窗口？|Close window\?)$/ })
+    if (
+      await closeDialog.waitFor({ timeout: 3000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      await closeDialog
+        .getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ })
+        .click()
+        .catch(() => {})
+    await closing
     fake.close()
     if (info.status !== info.expectedStatus) console.log("KEPT", root)
     else await rm(root, { recursive: true, force: true }).catch(() => undefined)

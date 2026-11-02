@@ -9,10 +9,10 @@ type Pick = (text: Text.Pair, params?: Record<string, unknown>) => Promise<strin
 
 /** Contains descendants before the child is allowed to start work. */
 export async function containProcess(
-  child: Process.Child,
+  child: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
   marker: { name: string; value: string },
   pick: Pick,
-): Promise<() => Promise<void>> {
+): Promise<(options?: { retry?: boolean }) => Promise<void>> {
   if (process.platform !== "win32")
     return async () => {
       await Shell.killTree(child)
@@ -85,7 +85,9 @@ export async function containProcess(
     } finally {
       lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
     }
-    return async () => {
+    let closed = false
+    return async (options) => {
+      if (closed) return
       const processes: (bigint | number)[] = []
       try {
         const width = process.arch === "ia32" ? 4 : 8
@@ -144,12 +146,19 @@ export async function containProcess(
             Number(lib.call("kernel32.dll", "WaitForSingleObject", ["ptr", "u32"], "u32", [handle, 0])),
           )
           if (exited.includes(0xffffffff)) throw await failure("WaitForSingleObject")
-          if (accounting.readUInt32LE(40) === 0 && exited.every((state) => state === 0)) return
+          if (accounting.readUInt32LE(40) === 0 && exited.every((state) => state === 0)) {
+            lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
+            closed = true
+            return
+          }
           await delay(10)
         }
       } finally {
         for (const handle of processes) lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
-        lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
+        if (!closed && !options?.retry) {
+          lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
+          closed = true
+        }
       }
     }
   } catch (error) {

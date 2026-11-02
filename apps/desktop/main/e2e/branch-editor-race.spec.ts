@@ -14,7 +14,7 @@ test("a delayed checkout reload does not target a closed editor after the same f
   await kit.page.reload()
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "代码", exact: true }).click()
+  await kit.openPanel("file")
   await panel.getByRole("treeitem", { name: "notes.txt" }).click()
   await expect(panel.getByRole("code")).toContainText("hello from e2e")
   const errors: string[] = []
@@ -38,6 +38,7 @@ test("a delayed checkout reload does not target a closed editor after the same f
     kit.git("switch", "--quiet", "feature")
     await entered.promise
     await panel.getByRole("button", { name: "关闭 notes.txt", exact: true }).click()
+    await kit.openPanel("file")
     await panel.getByRole("treeitem", { name: "notes.txt" }).click()
     const editor = panel.getByRole("code")
     await expect(editor).toContainText("feature branch content")
@@ -47,7 +48,7 @@ test("a delayed checkout reload does not target a closed editor after the same f
     release.resolve()
     await delivered.promise
 
-    await panel.getByRole("tab", { name: "Git 管理" }).click()
+    await kit.openPanel("git")
     await panel.getByRole("button", { name: /^当前分支/ }).click()
     await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
     await expect(kit.page.getByRole("option", { name: new RegExp(`^${main}(?:\\s|$)`) })).toHaveAttribute(
@@ -55,7 +56,7 @@ test("a delayed checkout reload does not target a closed editor after the same f
       "true",
     )
     await kit.page.keyboard.press("Escape")
-    await panel.getByRole("tab", { name: "代码", exact: true }).click()
+    await kit.openPanel("file")
     await expect(editor).toContainText("keep the reopened draft")
     expect(kit.git("status", "--porcelain").trim()).toBe("")
     expect(errors).toEqual([])

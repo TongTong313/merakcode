@@ -8,6 +8,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- Replace fixed side-panel tabs with a conversation-owned editor for files, reviews, Git, independent terminals and browser pages. Restore independent layouts and drafts, keep tabs adjacent, open files directly for editing, and preview images safely. Preserve concurrent file changes and late-edited drafts. Closing waits for every window's decision, durable drafts and confirmed terminal process exit.
 - Fold a finished conversation turn's reasoning and tool steps under a completed-time line, keeping the final answer and changed files. Copy takes the final answer while folded and the whole turn once expanded.
 
 ### Fixed
@@ -16,6 +17,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 右侧固定面板改为按单聊／群聊独立保存的统一编辑区，文件、审阅、Git、终端和浏览器共用紧邻的标签栏；恢复独立布局和草稿，文件直接编辑，图片安全预览，保护并发文件修改和后来编辑的草稿。退出前先收集各窗口决定、确认草稿持久化，再等待终端进程实际退出。
 - 对话的一轮结束后，思考和工具步骤折叠为一行用时，保留最终回复和本轮改动。折叠时复制只取最终回复，展开后复制整轮。
 
 ### 修复

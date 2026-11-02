@@ -90,6 +90,7 @@ function main() {
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "backend", message, extra),
   })
   const windows = new Windows({
+    prepareWindow: (win) => browser.closeAll(win),
     preload: path.join(here, "preload.cjs"),
     settings,
     endpoint: () => backend.endpoint,
@@ -184,7 +185,10 @@ function main() {
     },
   }
 
-  const browser = new BrowserPanel((win, name, ...args) => windows.send(win, name, ...args))
+  const browser = new BrowserPanel(
+    (win, name, ...args) => windows.send(win, name, ...args),
+    () => settings.locale,
+  )
 
   Auth.install(session.defaultSession, () => backend.endpoint)
   // Grant only notifications, clipboard writes and fullscreen; deny everything else (camera, location, ...)
@@ -249,12 +253,21 @@ function main() {
     })
   let quitting = false
   app.on("before-quit", (event) => {
-    if (quitting) return
+    if (quitting) {
+      event.preventDefault()
+      return
+    }
     quitting = true
     event.preventDefault()
-    tray.destroy()
-    void Promise.allSettled([backend.stop()])
-      .then(() => Log.close())
-      .finally(() => app.exit(0))
+    void windows.prepareClose().then(async (accepted) => {
+      if (!accepted) {
+        quitting = false
+        return
+      }
+      tray.destroy()
+      await Promise.allSettled([backend.stop()])
+      await Log.close()
+      app.exit(0)
+    })
   })
 }

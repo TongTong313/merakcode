@@ -14,6 +14,7 @@ import { SessionCrash } from "../agent/loop/crash-reconcile"
 import { ExternalSession } from "../agent/loop/external"
 import { CronScheduler } from "./task/cron"
 import { Command } from "../agent/prompt/command"
+import { Pty } from "./terminal"
 
 export namespace SessionOperations {
   export async function takeover(sessionID: string, input: z.infer<typeof SessionTarget.Decision>) {
@@ -72,8 +73,10 @@ export namespace SessionOperations {
   })
 
   export const remove = fn(Identifier.schema("session"), async (id) => {
+    using _ = await Lock.write(`terminal-owner:${id}`)
     await Loop.cancelTree(id)
     await CronScheduler.removeBySession(id)
+    await Pty.removeBySession(id)
     await Session.removeRecords(id)
   })
 

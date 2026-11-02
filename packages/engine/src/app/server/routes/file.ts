@@ -14,6 +14,7 @@ import { errors } from "../error"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Checkout } from "../../../infra/project/checkout"
 import { defer } from "@merakcode/util/defer"
+import { Lock } from "../../../infra/concurrency/lock"
 
 /**
  * Multi-root write/create/delete/rename: the input may be an absolute UI path, `folderName/rel`, or relative to the
@@ -231,7 +232,7 @@ export const FileRoutes = lazy(() =>
         responses: {
           200: {
             description: "File written successfully",
-            content: { "application/json": { schema: resolver(z.object({ ok: z.boolean() })) } },
+            content: { "application/json": { schema: resolver(z.object({ ok: z.boolean(), checksum: z.string() })) } },
           },
           ...errors(400),
           409: {
@@ -260,6 +261,7 @@ export const FileRoutes = lazy(() =>
         if (!abs) {
           return c.json({ error: "path outside project" }, 400)
         }
+        using _file = await Lock.write(`file-write:${process.platform === "win32" ? abs.toLowerCase() : abs}`)
         const folder = Workspace.resolveFolder(Instance.workspace, abs)
         using _ = defer(
           Checkout.hold(folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree),
@@ -272,7 +274,7 @@ export const FileRoutes = lazy(() =>
           }
         }
         await Filesystem.write(abs, content)
-        return c.json({ ok: true })
+        return c.json({ ok: true, checksum: createHash("sha1").update(content).digest("hex") })
       },
     )
     .delete(

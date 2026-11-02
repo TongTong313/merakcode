@@ -538,6 +538,12 @@ Each method takes one object as its first argument, with path parameters, query 
 
 `connectPty` handles the terminal's live connection. Create a PTY with `client.pty.create()` first, then connect from a same-origin page. `PtyConnectionOptions` supplies the engine URL, PTY ID, directory, replay cursor and callbacks; the returned `PtyConnection` sends input and closes the connection. Input sent before the socket opens is queued, and `onData` receives text or binary output. Browser WebSockets cannot add HTTP authentication headers; a password-protected desktop host must attach authorization during the upgrade.
 
+A terminal can bind to a conversation and tab using `owner: { sessionID, tabID }`; deleting that conversation stops its terminals. Owned terminals must renew their lease at least every 90 seconds through `client.pty.update({ ptyID })`; the desktop renews every 20 seconds. The engine reclaims disconnected owners. `client.pty.remove({ ptyID })` waits for the managed local processes to exit before reporting success. Closing a `PtyConnection` only disconnects it. File reads through `client.file.read()` return committed text in `baselines.head`, staged text in `baselines.index`, disk text in `content`, and `missing` when the file no longer exists.
+
+`client.pty.closeOwned({ owner: { tabID, sessionID } })` closes a stable tab owner and rejects delayed creation for that tab; `sessionID` can be omitted before a new conversation exists.
+
+Successful `client.file.write()` calls return the written content's `checksum` for optimistic locking on the next save. Image reads use `encoding: "base64"` and include a version checksum; text editors should treat encoded content as a read-only preview. Missing files are marked with `missing`.
+
 ```ts
 import { connectPty, createMerakCodeClient, type PtyConnection, type PtyConnectionOptions } from "@merakcode/sdk/client"
 

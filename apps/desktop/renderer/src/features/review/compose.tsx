@@ -1,13 +1,29 @@
 import { createEffect, on, Show, For } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
+import z from "zod"
 import { t } from "../../i18n"
 import { sameDir } from "../../lib/route"
 import { gitDirectory, identityOf, onCheckoutChange, registerDirty } from "../../state/git"
 import { addComment, commentDirectory, commentsOf, commentInView, review, setReview } from "./state"
-import { commentLocation, type CommentTarget } from "./selection"
+import { commentLocation, commentTargetSchema, type CommentTarget } from "./selection"
 
 type Draft = { target: CommentTarget; text: string; stale?: boolean }
 const [drafts, setDrafts] = createStore<Record<string, Draft>>({})
+export function draftSnapshot() {
+  return JSON.parse(JSON.stringify(drafts)) as Record<string, Draft>
+}
+export function restoreDraftSnapshot(value: unknown) {
+  const result = z
+    .record(z.string(), z.object({ target: commentTargetSchema, text: z.string(), stale: z.boolean().optional() }))
+    .safeParse(value)
+  setDrafts(reconcile(result.success ? result.data : {}))
+}
+
+export function releaseReviewDrafts(directory: string, sessionID: string) {
+  for (const [key, draft] of Object.entries(drafts))
+    if (draft.target.sessionID === sessionID) setDrafts(key, undefined!)
+  registerDirty(directory, `draft:${sessionID}`, 0)
+}
 const sync = (target: CommentTarget) =>
   registerDirty(
     target.directory,
