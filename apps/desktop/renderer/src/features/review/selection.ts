@@ -1,5 +1,32 @@
 import type { ReviewFileDetail, ReviewLine, ReviewScope } from "@merakcode/sdk/client"
 import { t } from "../../i18n"
+import z from "zod"
+
+export const commentTargetSchema = z.object({
+  key: z.string(),
+  directory: z.string(),
+  sessionID: z.string(),
+  scope: z.enum(["turn", "session"]),
+  messageID: z.string().optional(),
+  branch: z.string().nullable().optional(),
+  file: z.string(),
+  version: z.string(),
+  side: z.enum(["old", "new", "unified"]),
+  rows: z.array(
+    z.object({
+      kind: z.enum(["add", "context", "del"]),
+      text: z.string(),
+      old: z.number().optional(),
+      new: z.number().optional(),
+      noNewline: z.literal(true).optional(),
+      hunk: z.string(),
+      index: z.number(),
+    }),
+  ),
+  editing: z.number().optional(),
+  relocating: z.string().optional(),
+  stale: z.boolean().optional(),
+})
 
 export type SelectedLine = ReviewLine & { hunk: string; index: number }
 export type CommentTarget = {

@@ -197,6 +197,8 @@ import type {
   ProviderRelayDiscoverResponses,
   ProviderVerifyErrors,
   ProviderVerifyResponses,
+  PtyCloseOwnedErrors,
+  PtyCloseOwnedResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyCreateErrors,
@@ -205,6 +207,7 @@ import type {
   PtyGetResponses,
   PtyListErrors,
   PtyListResponses,
+  PtyOwner,
   PtyRemoveErrors,
   PtyRemoveResponses,
   PtyUpdateErrors,
@@ -3454,6 +3457,7 @@ export class Pty extends HeyApiClient {
       env?: {
         [key: string]: string
       }
+      owner?: PtyOwner
       size?: {
         cols: number
         rows: number
@@ -3472,6 +3476,7 @@ export class Pty extends HeyApiClient {
             { in: "body", key: "command" },
             { in: "body", key: "cwd" },
             { in: "body", key: "env" },
+            { in: "body", key: "owner" },
             { in: "body", key: "size" },
             { in: "body", key: "title" },
           ],
@@ -3480,6 +3485,41 @@ export class Pty extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PtyCreateResponses, PtyCreateErrors, ThrowOnError>({
       url: "/pty",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Close a terminal tab
+   *
+   * Stop the tab's managed terminal processes and reject delayed creation for the closed owner.
+   */
+  public closeOwned<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      owner: PtyOwner
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<PtyCloseOwnedResponses, PtyCloseOwnedErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "owner" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PtyCloseOwnedResponses, PtyCloseOwnedErrors, ThrowOnError>({
+      url: "/pty/close-owned",
       ...options,
       ...params,
       headers: {
@@ -3559,6 +3599,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      owner?: PtyOwner
       size?: {
         cols: number
         rows: number
@@ -3574,6 +3615,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "body", key: "owner" },
             { in: "body", key: "size" },
             { in: "body", key: "title" },
           ],

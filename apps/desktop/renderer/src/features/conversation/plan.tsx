@@ -3,7 +3,8 @@ import type { SessionPlan } from "@merakcode/sdk/client"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { listen } from "../../state/store"
-import { openPlanInCode, showTab } from "../../state/ui"
+import { openPlanInCode } from "../../state/ui"
+import { openPanel } from "../panel/workspace"
 import { Markdown } from "../../ui/markdown"
 import { toast } from "../../ui/toast"
 import { buffersFor } from "../code/state"
@@ -56,7 +57,7 @@ export function PlanCard(props: { sessionID: string; directory: string; plan?: S
     }
   }
   const view = () => {
-    showTab("plan")
+    void openPanel({ kind: "plan" }, true)
     void call(client(props.directory).session.planView({ sessionID: props.sessionID })).catch((error) =>
       toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error }),
     )

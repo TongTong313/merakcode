@@ -8,6 +8,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- Replace fixed side-panel tabs with a conversation-owned editor for files, reviews, Git, independent terminals and browser pages. Restore independent layouts and drafts, keep tabs adjacent, open files directly for editing, and preview images safely. Preserve concurrent file changes and late-edited drafts. Closing waits for every window's decision, durable drafts and confirmed terminal process exit.
+
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
 
 - Replace conversation modes with Ask every time (`ask`, the default), Ask only for risky actions (`autoApprove`) and Full takeover (`fullTakeover`). The first two levels require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
@@ -57,6 +59,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
 
 ### 变更
+
+- 右侧固定面板改为按单聊／群聊独立保存的统一编辑区，文件、审阅、Git、终端和浏览器共用紧邻的标签栏；恢复独立布局和草稿，文件直接编辑，图片安全预览，保护并发文件修改和后来编辑的草稿。退出前先收集各窗口决定、确认草稿持久化，再等待终端进程实际退出。
 
 - 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
 

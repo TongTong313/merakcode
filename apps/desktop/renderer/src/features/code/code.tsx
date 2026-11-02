@@ -1,19 +1,17 @@
+import { diffLines } from "diff"
 import type { FileNode } from "@merakcode/sdk/client"
 import type * as Monaco from "monaco-editor"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import FileText from "lucide-solid/icons/file-text"
 import Folder from "lucide-solid/icons/folder"
-import X from "lucide-solid/icons/x"
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import { untrack, createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { listen } from "../../state/store"
-import { ui } from "../../state/ui"
-import { Confirm } from "../../ui/dialog"
+import { toast } from "../../ui/toast"
+import { openPanel, panels } from "../panel/workspace"
 import { buffersFor, loadMonaco } from "./state"
-
-const marks: Record<string, string> = { added: "A", modified: "M", deleted: "D" }
 
 /** One level of the file tree; a directory is read when expanded */
 function Level(props: {
@@ -53,9 +51,19 @@ function Node(props: {
   active?: string
   onOpen: (path: string) => void
 }) {
-  const [open, setOpen] = createSignal(false)
+  const [local, setLocal] = createSignal(false)
+  const open = () => panels()?.state.expanded.includes(props.node.path) ?? local()
+  const setOpen = (value: boolean) => {
+    const state = panels()
+    if (!state) return void setLocal(value)
+    void state.update({
+      expanded: value
+        ? [...state.state.expanded, props.node.path]
+        : state.state.expanded.filter((path) => path !== props.node.path),
+    })
+  }
   const dir = () => props.node.type === "directory"
-  const mark = () => props.status[props.node.path]
+  const mark = () => props.status[props.node.path.replaceAll("\\", "/")]
   return (
     <>
       <div
@@ -96,43 +104,42 @@ function Node(props: {
 }
 
 /**
- * Code tab: file tree with git changes marked on the left, Monaco editor on the right. Ctrl+S saves and reports a
+ * File panel: Monaco editor with an optional workspace tree on the right. Ctrl+S saves and reports a
  * conflict if the file changed elsewhere.
  */
-export function CodeView(props: { directory: string }) {
+export function CodeView(props: {
+  tabID: string
+  directory: string
+  path?: string
+  planSessionID?: string
+  status: Record<string, string>
+}) {
   let host!: HTMLDivElement
-  const buffer = () => buffersFor(props.directory)
-  const tabs = () => buffer().tabs
-  const active = () => buffer().active()
-  const setActive = (path: string | undefined) => buffer().setActive(path)
-  const [closing, setClosing] = createSignal<string>()
-  const [status, setStatus] = createSignal<Record<string, string>>({})
+  const owner = panels()
+  const id = props.tabID
+  const buffer = buffersFor(props.directory)
+  if (props.path && id) buffer.retain(props.path, id)
+  const tabs = () => buffer.tabs
+  const active = () => props.path
   const [monaco, setMonaco] = createSignal<typeof Monaco>()
   let editor: Monaco.editor.IStandaloneCodeEditor | undefined
+  const settings = () => owner?.view(id ?? "") ?? {}
   // The editor loads lazily; opening a file waits for it if it is not ready yet
   const loading = loadMonaco()
   let disposed = false
+  let stopRemember = () => {}
 
-  const loadStatus = () => {
-    const directory = props.directory
-    return call(client(directory).file.status())
-      .then((list) => {
-        if (directory === props.directory)
-          setStatus(Object.fromEntries(list.map((item) => [item.path, marks[item.status] ?? "M"])))
-      })
-      .catch(() => {})
-  }
-  createEffect(
-    on(
-      () => props.directory,
-      () => void loadStatus(),
-    ),
-  )
   onCleanup(
     listen(
-      (directory, event) => directory === props.directory && event.type === "file.watcher.updated" && void loadStatus(),
+      (directory, event) =>
+        directory === props.directory &&
+        ["file.edited", "file.watcher.updated", "vcs.changes.updated", "vcs.head.updated"].includes(event.type) &&
+        void buffer.reload().catch(() => {}),
     ),
   )
+  const focus = () => void buffer.reload().catch(() => {})
+  window.addEventListener("focus", focus)
+  onCleanup(() => window.removeEventListener("focus", focus))
 
   onMount(async () => {
     const { monaco: loaded } = await loading
@@ -150,81 +157,120 @@ export function CodeView(props: { directory: string }) {
       occurrencesHighlight: "off",
       tabSize: 2,
     })
-    editor.addCommand(loaded.KeyMod.CtrlCmd | loaded.KeyCode.KeyS, () => void buffer().save())
+    editor.addCommand(loaded.KeyMod.CtrlCmd | loaded.KeyCode.KeyS, () => void buffer.save(false, props.path))
+    let viewTimer: ReturnType<typeof setTimeout> | undefined
+    const remember = () => {
+      clearTimeout(viewTimer)
+      if (id && editor)
+        void owner?.patchView(id, {
+          editor: editor.saveViewState(),
+          dirty: buffer.tabs.find((tab) => tab.path === props.path)?.dirty ?? false,
+        })
+    }
+    const schedule = () => {
+      clearTimeout(viewTimer)
+      viewTimer = setTimeout(remember, 100)
+    }
+    const cursor = editor.onDidChangeCursorPosition(schedule)
+    const scroll = editor.onDidScrollChange(schedule)
+    window.addEventListener("merakcode:flush-editor", remember)
+    window.addEventListener("pagehide", remember)
+    stopRemember = () => {
+      clearTimeout(viewTimer)
+      cursor.dispose()
+      scroll.dispose()
+      window.removeEventListener("merakcode:flush-editor", remember)
+      window.removeEventListener("pagehide", remember)
+    }
     setMonaco(loaded)
   })
   onCleanup(() => {
     disposed = true
+    stopRemember()
+    if (id && editor) void owner?.patchView(id, { editor: editor.saveViewState() })
     editor?.dispose()
+    if (props.path && id)
+      void buffer.suspend(props.path, id).catch(() => toast({ kind: "error", title: t("panel.persistError") }))
   })
 
-  const open = (path: string) => buffer().open(path)
+  createEffect(() => {
+    const tab = tabs().find((item) => item.path === props.path)
+    if (id && tab) untrack(() => void owner?.patchView(id, { dirty: tab.dirty }))
+  })
+  const open = (path: string) => buffer.open(path, props.planSessionID)
 
-  // File requested from the review or a file-edit card
   createEffect(
     on(
-      () => ui.openFile?.at,
-      () => {
-        const request = ui.openFile
-        if (request) void buffer().open(request.path, request.planSessionID)
+      () => props.path,
+      (path) => {
+        if (path) void open(path)
       },
     ),
   )
 
-  createEffect(
-    on([active, monaco], ([path]) => {
-      const tab = tabs().find((item) => item.path === path)
-      editor?.setModel(tab?.model ?? null)
-      if (tab?.model) editor?.focus()
-    }),
-  )
-
-  const close = (path: string) => {
-    if (tabs().find((item) => item.path === path)?.dirty) return void setClosing(path)
-    buffer().close(path)
-  }
+  createEffect(() => {
+    const loaded = monaco()
+    const tab = tabs().find((item) => item.path === active())
+    if (!loaded || !editor) return
+    if (!tab?.model) {
+      editor.setModel(null)
+      return
+    }
+    const changed = editor.getModel() !== tab.model
+    editor.setModel(tab.model)
+    editor.updateOptions({ readOnly: !!tab.missing })
+    const saved = untrack(settings).editor
+    if (saved && changed) editor.restoreViewState(saved as Monaco.editor.ICodeEditorViewState)
+    const decorations = editor.createDecorationsCollection()
+    const mark = () => {
+      let line = 1
+      const result: Monaco.editor.IModelDeltaDecoration[] = []
+      for (const part of diffLines(tab.original ?? tab.saved, tab.model!.getValue())) {
+        const count = part.count ?? 0
+        if (part.added || part.removed)
+          result.push({
+            range: new loaded.Range(Math.max(1, line), 1, Math.max(1, line + (part.added ? count - 1 : 0)), 1),
+            options: { isWholeLine: true, linesDecorationsClassName: part.added ? "file-added" : "file-deleted" },
+          })
+        if (!part.removed) line += count
+      }
+      decorations.set(result)
+    }
+    mark()
+    const listener = tab.model.onDidChangeContent(mark)
+    onCleanup(() => {
+      listener.dispose()
+      decorations.clear()
+    })
+    if (changed) editor.focus()
+  })
 
   return (
     <div class="code-pane">
-      <div class="tree scroll" role="tree" aria-label={t("code.files")}>
-        <Level
-          directory={props.directory}
-          path=""
-          depth={0}
-          status={status()}
-          active={active()}
-          onOpen={(path) => void open(path)}
-        />
-      </div>
       <div class="editor">
-        <div class="editor-tabs" role="tablist">
-          <For each={tabs()}>
-            {(tab) => (
-              <div
-                class="editor-tab"
-                classList={{ on: tab.path === active() }}
-                role="tab"
-                aria-selected={tab.path === active()}
-                onClick={() => setActive(tab.path)}
-              >
-                <span class="ellipsis" title={tab.path}>
-                  {tab.path.split(/[\\/]/).pop()}
-                </span>
-                <Show when={tab.dirty}>
-                  <span class="dirty" title={t("code.unsaved")} />
-                </Show>
-                <button
-                  class="icon-button sm"
-                  aria-label={t("code.closeTab", { name: tab.path })}
-                  onClick={(event) => (event.stopPropagation(), close(tab.path))}
-                >
-                  <X class="icon icon-xs" />
-                </button>
-              </div>
-            )}
-          </For>
+        <div class="file-toolbar row">
+          <span class="mono ellipsis" title={props.path}>
+            {props.path?.replace(/\//g, " › ")}
+          </span>
         </div>
-        <Show when={tabs().find((tab) => tab.path === active())?.binary}>
+        <Show when={props.path && buffer.errors[props.path]}>
+          <p role="alert">
+            {t("panel.fileLoadError")} {props.path && buffer.errors[props.path]}
+          </p>
+          <button class="button secondary" onClick={() => props.path && void open(props.path)}>
+            {t("panel.retry")}
+          </button>
+        </Show>
+        <Show when={tabs().find((tab) => tab.path === active())?.preview}>
+          {(src) => <img class="file-preview" src={src()} alt={props.path?.split("/").pop()} />}
+        </Show>
+        <Show
+          when={
+            tabs().find((tab) => tab.path === active())?.binary &&
+            !tabs().find((tab) => tab.path === active())?.preview &&
+            !tabs().find((tab) => tab.path === active())?.missing
+          }
+        >
           <div class="empty-state subtle">{t("code.binary")}</div>
         </Show>
         <Show when={tabs().find((tab) => tab.path === active())?.conflict}>
@@ -232,7 +278,12 @@ export function CodeView(props: { directory: string }) {
             {t("code.branchConflict")}
           </p>
         </Show>
-        <Show when={tabs().find((tab) => tab.path === active())?.planSessionID}>
+        <Show when={tabs().find((tab) => tab.path === active())?.missing}>
+          <p class="branch-notice" role="status">
+            {t("code.missing")}
+          </p>
+        </Show>
+        <Show when={props.planSessionID}>
           <p class="branch-notice" role="status">
             {t("plan.editHint")}
           </p>
@@ -246,17 +297,23 @@ export function CodeView(props: { directory: string }) {
           classList={{ hidden: !active() || !!tabs().find((tab) => tab.path === active())?.binary }}
         />
       </div>
-      <Confirm
-        open={!!closing()}
-        title={t("code.closeDirtyTitle")}
-        description={t("code.closeDirtyDetail", { path: closing() ?? "" })}
-        confirm={t("code.discard")}
-        cancel={t("code.keepEditing")}
-        danger
-        onResult={(discard) => {
-          if (discard && closing()) buffer().close(closing()!)
-          setClosing(undefined)
-        }}
+      <Show when={panels()?.state.tree}>
+        <FileTree directory={props.directory} active={props.path} status={props.status} />
+      </Show>
+    </div>
+  )
+}
+
+export function FileTree(props: { directory: string; active?: string; status?: Record<string, string> }) {
+  return (
+    <div class="tree scroll" role="tree" aria-label={t("code.files")}>
+      <Level
+        directory={props.directory}
+        path=""
+        depth={0}
+        status={props.status ?? {}}
+        active={props.active}
+        onOpen={(path) => void openPanel({ kind: "file", fileDirectory: props.directory, path })}
       />
     </div>
   )

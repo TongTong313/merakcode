@@ -3307,11 +3307,18 @@
       "FileContent": {
         "additionalProperties": false,
         "properties": {
+          "baselines": {
+            "additionalProperties": false,
+            "properties": { "head": { "type": "string" }, "index": { "type": "string" } },
+            "required": ["head", "index"],
+            "type": "object"
+          },
           "checksum": { "type": "string" },
           "content": { "type": "string" },
           "diff": { "type": "string" },
           "encoding": { "const": "base64", "type": "string" },
           "mimeType": { "type": "string" },
+          "missing": { "type": "boolean" },
           "patch": {
             "additionalProperties": false,
             "properties": {
@@ -5022,11 +5029,29 @@
           "command": { "type": "string" },
           "cwd": { "type": "string" },
           "id": { "format": "starts_with", "pattern": "^pty.*", "type": "string" },
+          "owner": { "$ref": "#/components/schemas/PtyOwnerOutput" },
           "pid": { "type": "number" },
           "status": { "enum": ["exited", "running"], "type": "string" },
           "title": { "type": "string" }
         },
         "required": ["args", "command", "cwd", "id", "pid", "status", "title"],
+        "type": "object"
+      },
+      "PtyOwner": {
+        "properties": {
+          "sessionID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
+          "tabID": { "minLength": 1, "type": "string" }
+        },
+        "required": ["tabID"],
+        "type": "object"
+      },
+      "PtyOwnerOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "sessionID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
+          "tabID": { "minLength": 1, "type": "string" }
+        },
+        "required": ["tabID"],
         "type": "object"
       },
       "QuestionAnswer": { "items": { "type": "string" }, "type": "array" },
@@ -8670,8 +8695,8 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": false,
-                  "properties": { "ok": { "type": "boolean" } },
-                  "required": ["ok"],
+                  "properties": { "checksum": { "type": "string" }, "ok": { "type": "boolean" } },
+                  "required": ["checksum", "ok"],
                   "type": "object"
                 }
               }
@@ -11395,6 +11420,7 @@
                     "propertyNames": { "type": "string" },
                     "type": "object"
                   },
+                  "owner": { "$ref": "#/components/schemas/PtyOwner" },
                   "size": {
                     "properties": {
                       "cols": { "exclusiveMinimum": 0, "maximum": 9007199254740991, "type": "integer" },
@@ -11425,6 +11451,54 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.pty.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/pty/close-owned": {
+      "post": {
+        "description": "Stop the tab's managed terminal processes and reject delayed creation for the closed owner.",
+        "operationId": "pty.closeOwned",
+        "parameters": [{ "in": "query", "name": "directory", "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": { "owner": { "$ref": "#/components/schemas/PtyOwner" } },
+                "required": ["owner"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "boolean" } } },
+            "description": "Terminal owner closed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close a terminal tab",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.pty.closeOwned({\n  ...\n})"
           }
         ]
       }
@@ -11524,6 +11598,7 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "owner": { "$ref": "#/components/schemas/PtyOwner" },
                   "size": {
                     "properties": { "cols": { "type": "number" }, "rows": { "type": "number" } },
                     "required": ["cols", "rows"],

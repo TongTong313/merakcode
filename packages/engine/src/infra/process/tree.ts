@@ -12,7 +12,7 @@ export async function containProcess(
   child: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
   marker: { name: string; value: string },
   pick: Pick,
-): Promise<() => Promise<void>> {
+): Promise<(options?: { retry?: boolean }) => Promise<void>> {
   if (process.platform !== "win32")
     return async () => {
       await Shell.killTree(child)
@@ -85,9 +85,10 @@ export async function containProcess(
     } finally {
       lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
     }
+    let closed = false
     return async () => {
+      if (closed) return
       const processes: (bigint | number)[] = []
-      let confirmed = false
       try {
         const width = process.arch === "ia32" ? 4 : 8
         let ids = Buffer.alloc(8 + 64 * width)
@@ -146,15 +147,15 @@ export async function containProcess(
           )
           if (exited.includes(0xffffffff)) throw await failure("WaitForSingleObject")
           if (accounting.readUInt32LE(40) === 0 && exited.every((state) => state === 0)) {
-            confirmed = true
+            lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
+            closed = true
             return
           }
           await delay(10)
         }
       } finally {
         for (const handle of processes) lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
-        // Keep the job queryable after a failed stop, so a later receipt can confirm the complete tree.
-        if (confirmed) lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
+        // Keep the job queryable after a failed stop until a later receipt confirms the complete tree.
       }
     }
   } catch (error) {

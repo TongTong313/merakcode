@@ -25,17 +25,19 @@ import {
 } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { t } from "../../i18n"
-import { storage } from "../../lib/bridge"
 import { sameDir } from "../../lib/route"
 import { tokenize } from "../../lib/tokens"
 import { call, client } from "../../state/client"
 import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, refreshBranches, identityOf } from "../../state/git"
 import { busy, listen, messagesOf, refreshVcs } from "../../state/store"
-import { showTab } from "../../state/ui"
+import { setUi } from "../../state/ui"
+import { openPanel } from "../panel/workspace"
 import { toast } from "../../ui/toast"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
 
 import { commentLocation, excerptOf, refreshTarget, type CommentTarget, type SelectedLine } from "./selection"
+import { commentTargetSchema } from "./selection"
+import z from "zod"
 
 export type Comment = CommentTarget & { id: number; text: string }
 
@@ -52,9 +54,18 @@ type Review = {
   selecting?: CommentTarget
   comments: Record<string, Comment[]>
   style: "unified" | "split"
+  files: Record<string, { open?: boolean; all?: boolean }>
+  seen: Record<string, true>
+  active?: { file: string; id?: string }
 }
 
-export const [review, setReview] = createStore<Review>({ scope: "turn", comments: {}, style: "split" })
+export const [review, setReview] = createStore<Review>({
+  scope: "turn",
+  comments: {},
+  style: "split",
+  files: {},
+  seen: {},
+})
 
 export function selectScope(scope: ReviewScope) {
   setReview({ scope, messageID: undefined })
@@ -62,14 +73,57 @@ export function selectScope(scope: ReviewScope) {
 
 let next = 1
 
+export function restoreReview(value: unknown) {
+  const schema = z.object({
+    directory: z.string().optional(),
+    scope: z.enum(["turn", "session"]).default("turn"),
+    messageID: z.string().optional(),
+    focus: z.string().optional(),
+    reveal: z.object({ hunk: z.string(), index: z.number(), side: z.enum(["old", "new", "unified"]) }).optional(),
+    commenting: commentTargetSchema.optional(),
+    selecting: commentTargetSchema.optional(),
+    comments: z
+      .record(z.string(), z.array(commentTargetSchema.extend({ id: z.number(), text: z.string() })))
+      .default({}),
+    style: z.enum(["unified", "split"]).default("split"),
+    files: z.record(z.string(), z.object({ open: z.boolean().optional(), all: z.boolean().optional() })).default({}),
+    seen: z.record(z.string(), z.literal(true)).default({}),
+    active: z.object({ file: z.string(), id: z.string().optional() }).optional(),
+  })
+  const restored = schema.safeParse(value)
+  const result = restored.success
+    ? restored.data
+    : { scope: "turn" as const, comments: {}, style: "split" as const, files: {}, seen: {} }
+  result.files = Object.fromEntries(
+    Object.entries(result.files).map(([key, value]) => {
+      const parts = key.split("\u0000")
+      if (parts.length >= 6) parts[4] = ""
+      return [parts.join("\u0000"), value]
+    }),
+  )
+  setReview(reconcile(result))
+  next = Math.max(
+    next,
+    ...Object.values(result.comments)
+      .flat()
+      .map((comment) => comment.id + 1),
+  )
+}
+
 /** Opens the review, optionally at a scope, a turn, or a file */
 export function openReview(view: { scope?: ReviewScope; messageID?: string; file?: string } = {}) {
-  setReview({
-    ...(view.scope ? { scope: view.scope } : {}),
-    messageID: view.messageID,
-    focus: view.file,
-  })
-  showTab("review")
+  setUi({ panel: true, maximized: false })
+  void openPanel(
+    {
+      kind: "review",
+      view: {
+        scope: view.scope ?? "turn",
+        ...(view.messageID ? { messageID: view.messageID } : {}),
+        ...(view.file ? { focus: view.file } : {}),
+      },
+    },
+    true,
+  )
 }
 
 /** User message for the turn scope: the chosen one, or the last one */
@@ -139,6 +193,10 @@ function show(input: ReviewKey, result: ReviewResult) {
     setLists(key, { loading: false, error: undefined })
   })
   prune(key, result.files)
+  for (const oldest of Object.keys(lists)) {
+    if (Object.keys(lists).length <= 32) break
+    if (oldest !== key) dropList(oldest)
+  }
   if (input.sessionID) {
     const files = new Set(result.files.map((file) => file.file))
     setReview("comments", input.sessionID, (comments = []) =>
@@ -321,8 +379,26 @@ function prefetch(input: ReviewKey, files: ReviewFile[]) {
 
 // Open state of each file, by list and path, so it survives refreshes and scope switches
 
-const [opened, setOpened] = createStore<Record<string, { open?: boolean; all?: boolean }>>({})
 const openKey = (list: string, file: string) => `${list}\u0000${file}`
+
+function dropList(key: string) {
+  controllers.get(key)?.abort()
+  controllers.delete(key)
+  setLists(key, undefined!)
+  for (const detail of details.keys()) if (detail.startsWith(`${key}\u0000`)) details.delete(detail)
+}
+
+/** Durable tab snapshots survive runtime eviction; deleted conversations also relinquish dirty ownership. */
+export function releaseReview(directory: string, sessionID?: string, deleted = false) {
+  for (const [key, list] of Object.entries(lists))
+    if (sameDir(list.input.directory, directory) && list.input.sessionID === sessionID) dropList(key)
+  prefetching++
+  if (!sessionID) return
+  if (!deleted) return
+  commentDirectories.delete(sessionID)
+  setReview("comments", sessionID, undefined!)
+  registerDirty(directory, `comments:${sessionID}`, 0)
+}
 
 /** Waits this long after a list goes stale before refreshing it, so a burst of changes is one refresh */
 const REFRESH = 1000
@@ -406,9 +482,14 @@ export function useReview(
 ) {
   const { input, key, list, refetch } = useReviewList(sessionID, directory, visible, () => review.scope)
   const [working, setWorking] = createSignal(false)
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
   createEffect(
     on([directory, visible], ([value, shown]) => {
       if (shown) setReview("directory", value)
+      if (shown && sessionID()) commentDirectory(sessionID()!, value)
     }),
   )
   const versions = createMemo(() =>
@@ -425,6 +506,7 @@ export function useReview(
   )
 
   const failed = (error: Error & { status?: number }) => {
+    if (disposed) return
     if (error.status === 409) {
       toast({ kind: "info", title: t("review.stale") })
       void load(input())
@@ -453,7 +535,7 @@ export function useReview(
           })),
         }),
       ).catch(failed)
-      if (!result || !currentContext(target) || keyOf(target) !== key()) return
+      if (disposed || !result || !currentContext(target) || keyOf(target) !== key()) return
       if (result.checkout !== (target.checkout ?? null)) {
         await refreshVcs(target.directory)
         return
@@ -474,7 +556,7 @@ export function useReview(
       const result = await call(
         client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
       ).catch(failed)
-      if (!result || !currentContext(target) || keyOf(target) !== key()) return
+      if (disposed || !result || !currentContext(target) || keyOf(target) !== key()) return
       if (result.checkout !== (target.checkout ?? null)) {
         await refreshVcs(target.directory)
         return
@@ -487,11 +569,13 @@ export function useReview(
   }
 
   const auto = createMemo(() => autoExpand(list()?.result?.files ?? []))
-  const fileState = (file: ReviewFile) => opened[openKey(key(), file.file)]
+  const presentationKey = () => keyOf({ ...input(), checkout: null })
+  const fileState = (file: ReviewFile) => review.files[openKey(presentationKey(), file.file)]
   const setFile = (file: ReviewFile, change: { open?: boolean; all?: boolean }) =>
-    setOpened(openKey(key(), file.file), (current) => ({ ...current, ...change }))
+    setReview("files", openKey(presentationKey(), file.file), (current) => ({ ...current, ...change }))
 
   return {
+    context: key,
     data: () => list()?.result,
     error: () => list()?.error,
     /** Nothing to show yet: the first fetch of this list is running */
@@ -658,47 +742,40 @@ export function commentMessage(comments: Comment[]) {
   return `${t("review.commentPrompt")}\n\n${body}`
 }
 
-export function clearComments(sessionID: string, submitted?: Comment[], directory?: string) {
-  setReview("comments", sessionID, (comments = []) =>
-    comments.filter((comment) => {
-      if (directory && !sameDir(gitDirectory(comment.directory), gitDirectory(directory))) return true
-      return submitted
-        ? !submitted.some(
-            (sent) =>
-              sent.id === comment.id &&
-              sent.version === comment.version &&
-              sent.scope === comment.scope &&
-              sent.messageID === comment.messageID &&
-              sent.branch === comment.branch &&
-              sent.side === comment.side &&
-              commentMessage([sent]) === commentMessage([comment]),
-          )
-        : false
-    }),
-  )
-  syncComments(sessionID)
+export function remainingComments(comments: Comment[], submitted?: Comment[], directory?: string) {
+  return comments.filter((comment) => {
+    if (directory && !sameDir(gitDirectory(comment.directory), gitDirectory(directory))) return true
+    return submitted
+      ? !submitted.some(
+          (sent) =>
+            sent.id === comment.id &&
+            sent.version === comment.version &&
+            sent.scope === comment.scope &&
+            sent.messageID === comment.messageID &&
+            sent.branch === comment.branch &&
+            sent.side === comment.side &&
+            commentMessage([sent]) === commentMessage([comment]),
+        )
+      : false
+  })
 }
 
-/** Number of pending hunks in this review. */
-export function progress(data: ReviewResult | undefined) {
-  const files = data?.files ?? []
-  return {
-    total: files.reduce((sum, file) => sum + file.hunks, 0),
-  }
+export function clearComments(sessionID: string, submitted?: Comment[], directory?: string) {
+  setReview("comments", sessionID, (comments = []) => remainingComments(comments, submitted, directory))
+  syncComments(sessionID)
 }
 
 /** A file is marked viewed for one version of its contents; once they change, it is no longer viewed */
 const fingerprint = (file: ReviewFile) => `${file.file}:${file.version}`
 
-const SEEN = "review.seen"
-const [seen, setSeen] = createStore<Record<string, true>>({})
-void storage.get<Record<string, true>>(SEEN, {}).then((saved) => setSeen(saved))
-
-export const isSeen = (file: ReviewFile) => !!seen[fingerprint(file)]
+export const isSeen = (file: ReviewFile) => !!review.seen[fingerprint(file)]
 
 export function toggleSeen(file: ReviewFile) {
   const key = fingerprint(file)
-  setSeen(produce((draft) => (draft[key] ? delete draft[key] : (draft[key] = true))))
+  setReview(
+    "seen",
+    produce((draft) => (draft[key] ? delete draft[key] : (draft[key] = true))),
+  )
   // Keep only the most recent entries so the record does not grow forever
-  void storage.set(SEEN, Object.fromEntries(Object.entries(seen).slice(-500)))
+  setReview("seen", reconcile(Object.fromEntries(Object.entries(review.seen).slice(-500))))
 }

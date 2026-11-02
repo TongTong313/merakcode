@@ -33,7 +33,7 @@ function startsSessionPlan(text: string): boolean
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1122 exports generated from openapi.json
++ 1129 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
@@ -46,7 +46,7 @@ interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; c
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 function startsSessionPlan(text: string): boolean
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1122 exports generated from openapi.json
++ 1129 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 

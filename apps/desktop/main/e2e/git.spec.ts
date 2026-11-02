@@ -24,6 +24,38 @@ test.beforeEach(({ kit }) => {
   current = kit
 })
 
+test("a delayed generated message cannot replace a draft edited after switching Git tabs", async ({ kit }) => {
+  await writeFile(path.join(kit.project, "manual.txt"), "staged\n")
+  kit.git("add", "manual.txt")
+  await kit.openPanel("git", true)
+  const first = kit.panel().getByRole("tab", { name: "Git 管理", exact: true })
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const delivered = Promise.withResolvers<void>()
+  await kit.page.route("**/assist/commit-message", async (route) => {
+    entered.resolve()
+    await release.promise
+    await route.fulfill({ json: { message: "stale generated message" } })
+    delivered.resolve()
+  })
+  try {
+    await kit.panel().getByRole("button", { name: "AI 写", exact: true }).click()
+    await entered.promise
+    await kit.openPanel("git", true)
+    const second = kit.panel().getByRole("tab", { name: "Git 管理 · 2", exact: true })
+    await first.click()
+    await kit.panel().getByRole("textbox", { name: "提交信息" }).fill("latest handwritten message")
+    release.resolve()
+    await delivered.promise
+    await expect(kit.panel().getByRole("button", { name: "AI 写", exact: true })).toBeEnabled()
+    await second.click()
+    await first.click()
+    await expect(kit.panel().getByRole("textbox", { name: "提交信息" })).toHaveValue("latest handwritten message")
+  } finally {
+    release.resolve()
+  }
+})
+
 test("stages a file written by the agent, commits it and pushes to the remote", async ({ kit }) => {
   const remote = path.join(kit.root, "remote.git")
   execFileSync("git", ["init", "--bare", "--quiet", remote])
@@ -33,7 +65,7 @@ test("stages a file written by the agent, commits it and pushes to the remote", 
 
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await writeFile(path.join(kit.project, "manual.txt"), "keep unstaged\n")
   const pending = panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "new.txt" })
   await pending.getByRole("button", { name: "暂存 new.txt", exact: true }).click()
@@ -75,7 +107,7 @@ test("rejecting after an unreviewed push preserves history and undo restores Git
   await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await panel.getByRole("button", { name: "暂存 new.txt", exact: true }).click()
   await panel.getByRole("textbox", { name: "提交信息" }).fill("commit without review")
   await panel.getByRole("button", { name: "提交 Commit" }).click()
@@ -96,19 +128,19 @@ test("rejecting after an unreviewed push preserves history and undo restores Git
     })
     .toBe(head)
   await expect(panel.getByRole("button", { name: /^推送/ })).toBeDisabled()
-  await panel.getByRole("tab", { name: /^审阅/ }).click()
+  await kit.openPanel("review")
   await panel.getByRole("region", { name: "new.txt" }).getByRole("button", { name: "拒绝文件" }).click()
   await expect.poll(() => readFile(path.join(kit.project, "new.txt"), "utf8").catch(() => "missing")).toBe("missing")
   expect(kit.git("rev-parse", "HEAD").trim()).toBe(head)
   expect(kit.git("show", ":new.txt")).toBe("new\n")
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await expect(panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "new.txt" })).toBeVisible()
   await expect(panel.getByRole("button", { name: "查看待审改动 new.txt" })).toHaveCount(0)
-  await panel.getByRole("tab", { name: /^审阅/ }).click()
+  await kit.openPanel("review")
   await panel.getByRole("button", { name: "撤销" }).click()
   await expect(panel.getByRole("region", { name: "new.txt" })).toBeVisible()
   expect(await readFile(path.join(kit.project, "new.txt"), "utf8")).toBe("new\n")
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await expect(panel.locator(".git-file")).toHaveCount(0)
   // A later working edit creates a Git row where the restored pending review can be opened.
   await writeFile(path.join(kit.project, "new.txt"), "new again\n")
@@ -132,7 +164,7 @@ test("Git selection and all-file index actions preserve working files and pendin
   await writeFile(path.join(kit.project, "manual-b.txt"), "manual B\n")
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   const staged = panel.locator('[data-group="staged"]')
   const unstaged = panel.locator('[data-group="unstaged"]')
   await unstaged.getByRole("checkbox", { name: "选择 manual-a.txt" }).check()

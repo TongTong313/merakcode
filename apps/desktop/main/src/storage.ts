@@ -28,6 +28,7 @@ export class Storage {
         return {}
       }
     })()
+    if (this.cache.size >= 24) this.cache.delete(this.cache.keys().next().value!)
     this.cache.set(bucket, data)
     return data
   }

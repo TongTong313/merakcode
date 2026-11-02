@@ -20129,6 +20129,77 @@ function date4(params) {
 var ErrorCode
 ;((ErrorCode2) => {
   ErrorCode2.CATALOG = {
+    FILE_PANEL_LOAD_FAILED: {
+      code: "MRK-7014",
+      domain: "workspace",
+      status: 500,
+      retryable: true,
+      title: { zh: "\u65E0\u6CD5\u6253\u5F00\u6587\u4EF6", en: "Could not open file" },
+      hint: {
+        zh: "\u68C0\u67E5\u6587\u4EF6\u53CA\u8349\u7A3F\u662F\u5426\u53EF\u8BFB\u540E\u91CD\u8BD5\u3002",
+        en: "Check access to the file and its recovery draft, then retry.",
+      },
+    },
+    BROWSER_CLOSE_BLOCKED: {
+      code: "MRK-7013",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: { zh: "\u6D4F\u89C8\u5668\u9875\u9762\u5C1A\u672A\u5173\u95ED", en: "Browser page is still open" },
+      hint: {
+        zh: "\u5904\u7406\u9875\u9762\u4E2D\u672A\u4FDD\u5B58\u7684\u8F93\u5165\u540E\u91CD\u8BD5\u5173\u95ED\u3002",
+        en: "Handle the page's unsaved input, then retry closing it.",
+      },
+    },
+    TERMINAL_CLOSED: {
+      code: "MRK-5026",
+      domain: "tool",
+      status: 409,
+      retryable: false,
+      errors: ["TerminalClosedError"],
+      title: { zh: "\u7EC8\u7AEF\u6807\u7B7E\u5DF2\u5173\u95ED", en: "Terminal tab is closed" },
+      hint: {
+        zh: "\u9700\u8981\u7EE7\u7EED\u64CD\u4F5C\u65F6\uFF0C\u8BF7\u65B0\u5EFA\u7EC8\u7AEF\u3002",
+        en: "Open a new terminal to continue.",
+      },
+    },
+    TERMINAL_STOP_FAILED: {
+      code: "MRK-5025",
+      domain: "tool",
+      status: 500,
+      retryable: true,
+      errors: ["TerminalStopError"],
+      title: { zh: "\u7EC8\u7AEF\u5C1A\u672A\u786E\u8BA4\u505C\u6B62", en: "Terminal stop is not confirmed" },
+      hint: {
+        zh: "\u4FDD\u7559\u7EC8\u7AEF\u6807\u7B7E\u5E76\u91CD\u8BD5\u505C\u6B62\uFF0C\u67E5\u770B\u65E5\u5FD7\u786E\u8BA4\u8FDB\u7A0B\u72B6\u6001\u3002",
+        en: "Keep the terminal tab and retry stopping it; inspect the logs for process status.",
+      },
+    },
+    EDITOR_STATE_PERSIST_FAILED: {
+      code: "MRK-4018",
+      domain: "session",
+      status: 500,
+      retryable: true,
+      title: { zh: "\u65E0\u6CD5\u4FDD\u7559\u7F16\u8F91\u533A\u72B6\u6001", en: "Could not preserve editor state" },
+      hint: {
+        zh: "\u4FDD\u6301\u7A97\u53E3\u6253\u5F00\uFF0C\u68C0\u67E5\u53EF\u7528\u78C1\u76D8\u7A7A\u95F4\u540E\u91CD\u8BD5\u3002",
+        en: "Keep the window open, check available disk space, then retry.",
+      },
+    },
+    BROWSER_RESOURCE_LIMIT: {
+      code: "MRK-7012",
+      domain: "workspace",
+      status: 409,
+      retryable: true,
+      title: {
+        zh: "\u6D4F\u89C8\u5668\u9875\u9762\u6570\u91CF\u5DF2\u8FBE\u4E0A\u9650",
+        en: "Browser page limit reached",
+      },
+      hint: {
+        zh: "\u5173\u95ED\u4E00\u4E2A\u73B0\u6709\u6D4F\u89C8\u5668\u6807\u7B7E\u540E\u91CD\u8BD5\u3002",
+        en: "Close an existing browser tab and retry.",
+      },
+    },
     ENGINE_NOT_FOUND: {
       code: "MRK-1001",
       domain: "engine",

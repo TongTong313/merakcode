@@ -2233,11 +2233,16 @@ export type File = {
 }
 
 export type FileContent = {
+  baselines?: {
+    head: string
+    index: string
+  }
   checksum?: string
   content: string
   diff?: string
   encoding?: "base64"
   mimeType?: string
+  missing?: boolean
   patch?: {
     hunks: Array<{
       lines: Array<string>
@@ -3436,9 +3441,20 @@ export type Pty = {
   command: string
   cwd: string
   id: string
+  owner?: PtyOwnerOutput
   pid: number
   status: "exited" | "running"
   title: string
+}
+
+export type PtyOwner = {
+  sessionID?: string
+  tabID: string
+}
+
+export type PtyOwnerOutput = {
+  sessionID?: string
+  tabID: string
 }
 
 export type QuestionAnswer = Array<string>
@@ -6087,6 +6103,7 @@ export type FileWriteResponses = {
    * File written successfully
    */
   200: {
+    checksum: string
     ok: boolean
   }
 }
@@ -8060,6 +8077,7 @@ export type PtyCreateData = {
     env?: {
       [key: string]: string
     }
+    owner?: PtyOwner
     size?: {
       cols: number
       rows: number
@@ -8090,6 +8108,39 @@ export type PtyCreateResponses = {
 }
 
 export type PtyCreateResponse = PtyCreateResponses[keyof PtyCreateResponses]
+
+export type PtyCloseOwnedData = {
+  body: {
+    owner: PtyOwner
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/pty/close-owned"
+}
+
+export type PtyCloseOwnedErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PtyCloseOwnedError = PtyCloseOwnedErrors[keyof PtyCloseOwnedErrors]
+
+export type PtyCloseOwnedResponses = {
+  /**
+   * Terminal owner closed
+   */
+  200: boolean
+}
+
+export type PtyCloseOwnedResponse = PtyCloseOwnedResponses[keyof PtyCloseOwnedResponses]
 
 export type PtyRemoveData = {
   body?: never
@@ -8167,6 +8218,7 @@ export type PtyGetResponse = PtyGetResponses[keyof PtyGetResponses]
 
 export type PtyUpdateData = {
   body?: {
+    owner?: PtyOwner
     size?: {
       cols: number
       rows: number

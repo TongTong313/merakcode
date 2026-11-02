@@ -46,7 +46,7 @@ test("saving a plan keeps its response revision paired with the submitted conten
   try {
     await buffer.open("/plan.md", "ses_race")
     buffer.tabs[0]!.model!.setValue("Human A")
-    await buffer.save()
+    await buffer.save(false, "/plan.md")
     expect(buffer.tabs[0]!.saved).toBe("Human A")
     expect(buffer.tabs[0]!.checksum).toBe("1")
     expect(buffer.tabs[0]!.dirty).toBe(false)

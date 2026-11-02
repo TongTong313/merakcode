@@ -629,7 +629,7 @@ Write content to a file. Supports optional checksum for optimistic locking.
 | `content`  | `string` | yes      |             |
 | `path`     | `string` | yes      |             |
 
-Returns: `{ ok: boolean }`
+Returns: `{ checksum: string; ok: boolean }`
 
 ### client.file.status
 
@@ -1410,10 +1410,25 @@ Create a new pseudo-terminal (PTY) session for running shell commands and proces
 | `command` | `string`                         | no       |             |
 | `cwd`     | `string`                         | no       |             |
 | `env`     | `Record<string, string>`         | no       |             |
+| `owner`   | `PtyOwner`                       | no       |             |
 | `size`    | `{ cols: number; rows: number }` | no       |             |
 | `title`   | `string`                         | no       |             |
 
 Returns: `Pty`
+
+### client.pty.closeOwned
+
+`POST /pty/close-owned` · operationId `pty.closeOwned`
+
+Close a terminal tab.
+
+Stop the tab's managed terminal processes and reject delayed creation for the closed owner.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| `owner`   | `PtyOwner` | yes      |             |
+
+Returns: `boolean`
 
 ### client.pty.remove
 
@@ -1454,6 +1469,7 @@ Update properties of an existing pseudo-terminal (PTY) session.
 | Parameter | Type                             | Required | Description |
 | --------- | -------------------------------- | -------- | ----------- |
 | `ptyID`   | `string`                         | yes      |             |
+| `owner`   | `PtyOwner`                       | no       |             |
 | `size`    | `{ cols: number; rows: number }` | no       |             |
 | `title`   | `string`                         | no       |             |
 

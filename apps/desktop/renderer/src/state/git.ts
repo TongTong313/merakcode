@@ -56,7 +56,9 @@ export const identityOf = (directory: string) => identities[gitDirectory(directo
 
 /** Editor buffers and comment drafts outlive their views, and register their own unsaved work. */
 export function registerDirty(directory: string, owner: string, count: number) {
-  setDirty(gitDirectory(directory), (previous) => ({ ...previous, [owner]: count }))
+  const key = gitDirectory(directory)
+  if (count > 0) return void setDirty(key, (previous) => ({ ...previous, [owner]: count }))
+  if (dirty[key]) setDirty(key, owner, undefined!)
 }
 
 export function unsavedReason(directory: string) {

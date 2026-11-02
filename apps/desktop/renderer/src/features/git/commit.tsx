@@ -1,12 +1,12 @@
 import ArrowUpFromLine from "lucide-solid/icons/arrow-up-from-line"
 import GitCommitHorizontal from "lucide-solid/icons/git-commit-horizontal"
 import Sparkles from "lucide-solid/icons/sparkles"
-import { createSignal, type JSX } from "solid-js"
+import { createSignal, onCleanup, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { branchOf, refreshVcs, state } from "../../state/store"
-import { switching, gitDirectory } from "../../state/git"
-import { createStore } from "solid-js/store"
+import { switching } from "../../state/git"
+import { panels } from "../panel/workspace"
 import { toast } from "../../ui/toast"
 
 const fail = (message: string) => toast({ kind: "error", title: message })
@@ -19,18 +19,30 @@ function Guard(props: { reason?: string; children: JSX.Element }) {
   )
 }
 
-const [messages, setMessages] = createStore<Record<string, string>>({})
-
-/** Commits only the Git index; the draft belongs to the repository. */
+/** Commits only the Git index; each Git tab owns its draft. */
 export function Commit(props: {
   directory: string
+  instanceID?: string
   pending?: boolean
   working?: boolean
   onWorkingChange?: (working: boolean) => void
   onDone: () => void | Promise<void>
 }) {
-  const message = () => messages[gitDirectory(props.directory)] ?? ""
-  const setMessage = (value: string) => setMessages(gitDirectory(props.directory), value)
+  const owner = panels()
+  const stored = owner?.view(props.instanceID ?? "").commit
+  const [message, updateMessage] = createSignal(typeof stored === "string" ? stored : "")
+  let disposed = false
+  let localRevision = 0
+  onCleanup(() => {
+    disposed = true
+  })
+  const revision = () => (props.instanceID ? (owner?.view(props.instanceID).commitRevision ?? 0) : localRevision)
+  const setMessage = (value: string) => {
+    const next = Number(revision()) + 1
+    localRevision = next
+    updateMessage(value)
+    if (props.instanceID) void owner?.patchView(props.instanceID, { commit: value, commitRevision: next })
+  }
   const [working, setWorking] = createSignal(false)
   const setBusy = (value: boolean) => {
     setWorking(value)
@@ -68,18 +80,21 @@ export function Commit(props: {
 
   const generate = async () => {
     if (busy() || !hasChanges()) return
+    const version = revision()
     setBusy(true)
     const result = await call(client(props.directory).assist.commit.message()).catch((error: Error) => ({
       message: "",
       error: error.message,
     }))
     setBusy(false)
+    if (disposed || revision() !== version) return
     if (result.message) setMessage(result.message)
     if (result.error) fail(result.error)
   }
 
   const commit = async () => {
     if (busy() || !message().trim() || !hasChanges()) return
+    const version = revision()
     setBusy(true)
     const result = await call(client(props.directory).vcs.commit({ message: message(), all: false })).catch(
       (error: Error) => ({ ok: false as const, error: error.message }),
@@ -88,7 +103,7 @@ export function Commit(props: {
       setBusy(false)
       return fail(result.error)
     }
-    setMessage("")
+    if (revision() === version) setMessage("")
     await refreshVcs(props.directory)
     await props.onDone()
     setBusy(false)

@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { test, expect, type Kit } from "./fixture"
+import type { DesktopBridge } from "../../renderer/src/desktop/bridge-contract"
 
 test.beforeEach(async ({ kit }) => {
   await kit.mode(/全面接管|Full takeover/)
@@ -69,6 +70,155 @@ const hunk = (kit: Kit, n: number) =>
 let lastFeedback = ""
 let current: Kit
 test.use({ git: true, script: agent(() => current) })
+
+for (const changeScope of [false, true]) {
+  test(`a late file reveal cannot change the selection after ${changeScope ? "switching scope" : "switching tabs"}`, async ({
+    kit,
+  }) => {
+    current = kit
+    await prepare(kit)
+    await kit.send("edit math")
+    await expect(kit.text("改好了")).toBeVisible()
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    await kit.page.route(
+      (url) => url.pathname === "/review/file" && url.searchParams.get("file") === "src/math.js",
+      async (route) => {
+        entered.resolve()
+        await release.promise
+        await route.continue()
+      },
+    )
+    try {
+      await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+      await entered.promise
+      await kit.panel().getByRole("button", { name: "铺满" }).click()
+      let full = kit.page.getByRole("main", { name: "审阅", exact: true })
+      await full.locator(".rt-file").filter({ hasText: "src/math.js" }).click()
+      if (changeScope) await full.getByRole("radio", { name: "整个对话", exact: true }).click()
+      else {
+        await full.getByRole("button", { name: "返回对话" }).click()
+        await kit.openPanel("review", true)
+        await kit.panel().getByRole("button", { name: "铺满" }).click()
+      }
+      full = kit.page.getByRole("main", { name: "审阅", exact: true })
+      const selected = full.locator(".rt-file").filter({ hasText: "src/new.js" })
+      if (!changeScope) {
+        await selected.click()
+        await expect(selected).toHaveClass(/on/)
+      }
+      release.resolve()
+      await expect(
+        full.getByRole("region", { name: "src/math.js", exact: true }).getByRole("group").first(),
+      ).toBeVisible()
+      if (changeScope) await expect(full.locator(".rt-file.on")).toHaveCount(0)
+      else await expect(selected).toHaveClass(/on/)
+      await full.getByRole("button", { name: "返回对话" }).click()
+    } finally {
+      release.resolve()
+    }
+  })
+}
+
+test("manual review folding survives restarting the local service", async ({ kit }) => {
+  current = kit
+  await prepare(kit)
+  await kit.send("edit math")
+  await expect(kit.text("改好了")).toBeVisible()
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  const math = kit.panel().getByRole("region", { name: "src/math.js", exact: true })
+  await math.getByRole("button", { name: "收起", exact: true }).click()
+  await expect(math.getByRole("group")).toHaveCount(0)
+  await kit.page
+    .evaluate(() =>
+      (window as unknown as { __MERAKCODE_DESKTOP__: DesktopBridge }).__MERAKCODE_DESKTOP__.restartBackend(),
+    )
+    .catch(() => {})
+  await kit.page.reload()
+  await expect(math).toBeVisible()
+  await expect(math.getByRole("button", { name: "展开", exact: true })).toBeVisible()
+  await expect(math.getByRole("group")).toHaveCount(0)
+})
+
+for (const hiding of [false, true]) {
+  test(`feedback accepted after ${hiding ? "hiding the panel" : "switching tabs"} is cleared from the submitting tab`, async ({
+    kit,
+  }) => {
+    current = kit
+    await prepare(kit)
+    await kit.send("edit math")
+    await expect(kit.text("改好了")).toBeVisible()
+    await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+    const first = kit.panel().getByRole("tab", { name: "审阅", exact: true })
+    await hunk(kit, 1).locator(".line.add .line-comment-add").click()
+    await kit.panel().getByRole("textbox", { name: "评论" }).fill("这里改成 2")
+    await kit.panel().getByRole("button", { name: "添加", exact: true }).click()
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    await kit.page.route("**/prompt_async", async (route) => {
+      entered.resolve()
+      await release.promise
+      await route.continue()
+    })
+    try {
+      await kit.panel().getByRole("button", { name: "发给智能体" }).click()
+      await entered.promise
+      if (hiding) await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
+      else await kit.openPanel("review", true)
+      release.resolve()
+      await expect(kit.text("收到评论：带文件")).toBeVisible()
+      if (hiding) await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
+      await first.click()
+      await expect(kit.panel().getByText(/1 条评论待发送/)).toHaveCount(0)
+    } finally {
+      release.resolve()
+    }
+  })
+}
+
+test("side review places the file list beside a full-height review column", async ({ kit }) => {
+  current = kit
+  await prepare(kit)
+  await kit.send("edit math")
+  await expect(kit.text("改好了")).toBeVisible()
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  await expect(hunk(kit, 1)).toBeVisible()
+  const geometry = async () => {
+    const diff = (await kit.panel().locator(".diff").boundingBox())!
+    const tree = (await kit.panel().getByRole("complementary", { name: "文件", exact: true }).boundingBox())!
+    const toolbar = (await kit.panel().locator(".review-sub").boundingBox())!
+    expect(toolbar.height).toBeLessThan(80)
+    expect(tree.x).toBeGreaterThanOrEqual(diff.x + diff.width - 2)
+    expect(Math.abs(tree.y - toolbar.y)).toBeLessThan(3)
+    expect(tree.height).toBeGreaterThan(diff.height / 2)
+  }
+  await geometry()
+  await kit.panel().getByRole("button", { name: "铺满" }).click()
+  await kit.page.getByRole("main", { name: "审阅", exact: true }).getByRole("button", { name: "返回对话" }).click()
+  await geometry()
+  await kit.page.screenshot({ path: test.info().outputPath("review-layout.png") })
+})
+
+test("two review tabs restore their own viewed and expanded state", async ({ kit }) => {
+  current = kit
+  await prepare(kit)
+  await kit.send("edit math")
+  await expect(kit.text("改好了")).toBeVisible()
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  const first = kit.panel().getByRole("tab", { name: "审阅", exact: true })
+  const math = kit.panel().getByRole("region", { name: "src/math.js", exact: true })
+  await math.getByRole("checkbox", { name: "已看", exact: true }).check()
+  await kit.openPanel("review", true)
+  const second = kit.panel().getByRole("tab", { name: "审阅 · 2", exact: true })
+  await expect(math.getByRole("checkbox", { name: "已看", exact: true })).not.toBeChecked()
+  await first.click()
+  await expect(math.getByRole("checkbox", { name: "已看", exact: true })).toBeChecked()
+  await kit.page.reload()
+  await expect(math.getByRole("checkbox", { name: "已看", exact: true })).toBeChecked()
+  await second.click()
+  await expect(math.getByRole("checkbox", { name: "已看", exact: true })).not.toBeChecked()
+  await expect(math.getByRole("group")).not.toHaveCount(0)
+})
 
 test("rejects and accepts hunks with undo, then reviews in full window and returns", async ({ kit }) => {
   current = kit
@@ -155,16 +305,16 @@ test("Git staging preserves pending review and accepting removes only review nav
   await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   const unstaged = panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "src/new.js" })
   await expect(unstaged.getByRole("button", { name: "查看待审改动 src/new.js" })).toBeVisible()
   await unstaged.getByRole("button", { name: "暂存 src/new.js", exact: true }).click()
   await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
   const staged = panel.locator('[data-group="staged"] .git-file').filter({ hasText: "src/new.js" })
   await staged.getByRole("button", { name: "查看待审改动 src/new.js" }).click()
-  await expect(panel.getByRole("tab", { name: /^审阅/ })).toHaveAttribute("aria-selected", "true")
+  await expect(panel.getByRole("tab", { name: /^审阅/, selected: true })).toBeVisible()
   await panel.getByRole("region", { name: "src/new.js" }).getByRole("button", { name: "接受文件" }).click()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   await expect(staged).toBeVisible()
   await expect(staged.getByRole("button", { name: /查看待审改动/ })).toHaveCount(0)
   await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
@@ -403,6 +553,8 @@ test("a selected turn cannot leak into another conversation", async ({ kit }) =>
   await kit.mode(/全面接管|Full takeover/)
   await kit.send("other conversation")
   await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
+  await expect(kit.panel()).toBeHidden()
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   await expect(kit.panel().getByRole("region", { name: "other.txt" })).toBeVisible({ timeout: 10000 })
   await expect(kit.panel().getByRole("region", { name: "src/math.js" })).toHaveCount(0)
 })
@@ -448,8 +600,8 @@ test("relocating a stale draft preserves feedback already drafted on the target 
   await hunk(kit, 1).locator(".line.add .line-comment-add").click()
   await panel.getByRole("textbox", { name: "评论", exact: true }).fill("Feedback A to relocate")
   await writeFile(path.join(kit.project, "src/math.js"), changed.replace("two\n", "replacement\n"))
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await panel.getByRole("tab", { name: /^审阅/ }).click()
+  await kit.openPanel("git")
+  await kit.openPanel("review")
   await expect(panel.getByText("代码或工作分支已变化；草稿已保留，请重新选择评论位置。")).toBeVisible()
   await added.locator(".line.add .line-comment-add").click()
   await expect(panel.getByRole("textbox", { name: "评论", exact: true })).toHaveValue("Feedback A to relocate")

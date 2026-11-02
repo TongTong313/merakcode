@@ -16,6 +16,7 @@ import { CronScheduler } from "./task/cron"
 import { Command } from "../agent/prompt/command"
 import { PermissionFlush } from "../agent/permission/flush"
 import { ModeOperations } from "../agent/permission/operations"
+import { Pty } from "./terminal"
 
 export namespace SessionOperations {
   export const setPermissionLevel = fn(Session.setPermissionLevel.schema, async (input) => {
@@ -102,8 +103,10 @@ export namespace SessionOperations {
   })
 
   export const remove = fn(Identifier.schema("session"), async (id) => {
+    using _ = await Lock.write(`terminal-owner:${id}`)
     await Loop.cancelTree(id)
     await CronScheduler.removeBySession(id)
+    await Pty.removeBySession(id)
     await Session.removeRecords(id)
   })
 

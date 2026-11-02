@@ -1,4 +1,3 @@
-import type { BrowserConsole, BrowserState } from "../../desktop/bridge-contract"
 import ArrowLeft from "lucide-solid/icons/arrow-left"
 import ArrowRight from "lucide-solid/icons/arrow-right"
 import Bug from "lucide-solid/icons/bug"
@@ -7,24 +6,14 @@ import ExternalLink from "lucide-solid/icons/external-link"
 import RotateCw from "lucide-solid/icons/rotate-cw"
 import TriangleAlert from "lucide-solid/icons/triangle-alert"
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
 import { overlays } from "../../ui/overlay"
 import { toast } from "../../ui/toast"
+import { panels } from "../panel/workspace"
+import type { PanelTab } from "../panel/state"
+import { browserState } from "./state"
 import { send } from "../conversation/send"
-
-/** Browser state survives switching panel tabs away and back (the page itself stays in the main process too) */
-const [page, setPage] = createStore<BrowserState>({
-  url: "",
-  title: "",
-  loading: false,
-  canGoBack: false,
-  canGoForward: false,
-})
-const [logs, setLogs] = createStore<BrowserConsole[]>([])
-bridge?.onBrowserState((state) => setPage(state))
-bridge?.onBrowserConsole((entry) => setLogs((list) => [...list.slice(-199), entry]))
 
 /** Completes the typed address to a URL: local hosts without a scheme get http, everything else https */
 function normalize(input: string) {
@@ -39,17 +28,26 @@ function normalize(input: string) {
  * Browser tab: the page is a native view in the main process laid over the viewport element. It moves when the panel
  * resizes and hides when the tab is switched away or an overlay opens.
  */
-export function Browser(props: { sessionID?: string; directory: string }) {
+export function Browser(props: { sessionID?: string; directory: string; tab: PanelTab }) {
+  const owner = panels()
+  const { page, logs, setLogs } = browserState(props.tab)
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  createEffect(() => {
+    void owner?.patch(props.tab.id, { url: page.url, title: page.title })
+  })
   let viewport!: HTMLDivElement
   const [address, setAddress] = createSignal(page.url)
   createEffect(() => setAddress(page.url))
 
   const place = () => {
-    if (!bridge) return
-    if (overlays() > 0 || !page.url) return void bridge.browserHide()
+    if (!bridge || disposed) return
+    if (overlays() > 0 || !page.url) return void bridge.browserHide(props.tab.id)
     const rect = viewport.getBoundingClientRect()
-    if (rect.width < 2 || rect.height < 2) return void bridge.browserHide()
-    void bridge.browserShow({
+    if (rect.width < 2 || rect.height < 2) return void bridge.browserHide(props.tab.id)
+    void bridge.browserShow(props.tab.id, {
       x: Math.round(rect.left),
       y: Math.round(rect.top),
       width: Math.round(rect.width),
@@ -58,13 +56,14 @@ export function Browser(props: { sessionID?: string; directory: string }) {
   }
 
   onMount(() => {
+    if (props.tab.url) void bridge?.browserNavigate(props.tab.id, props.tab.url).then(place)
     const observer = new ResizeObserver(place)
     observer.observe(viewport)
     window.addEventListener("resize", place)
     onCleanup(() => {
       observer.disconnect()
       window.removeEventListener("resize", place)
-      void bridge?.browserHide()
+      void bridge?.browserHide(props.tab.id)
     })
   })
   createEffect(() => {
@@ -77,7 +76,9 @@ export function Browser(props: { sessionID?: string; directory: string }) {
     const url = normalize(address())
     if (!url) return
     if (!bridge) return void toast({ kind: "error", title: t("boot.desktopOnly") })
-    void bridge.browserNavigate(url).then(place)
+    void bridge
+      .browserNavigate(props.tab.id, url)
+      .then((opened) => (opened ? place() : toast({ kind: "error", title: t("browser.limit") })))
   }
 
   const errors = () => logs.filter((entry) => entry.level === "error").length
@@ -100,7 +101,7 @@ export function Browser(props: { sessionID?: string; directory: string }) {
           class="icon-button"
           aria-label={t("browser.back")}
           disabled={!page.canGoBack}
-          onClick={() => void bridge?.browserBack()}
+          onClick={() => void bridge?.browserBack(props.tab.id)}
         >
           <ArrowLeft class="icon icon-sm" />
         </button>
@@ -108,7 +109,7 @@ export function Browser(props: { sessionID?: string; directory: string }) {
           class="icon-button"
           aria-label={t("browser.forward")}
           disabled={!page.canGoForward}
-          onClick={() => void bridge?.browserForward()}
+          onClick={() => void bridge?.browserForward(props.tab.id)}
         >
           <ArrowRight class="icon icon-sm" />
         </button>
@@ -116,7 +117,7 @@ export function Browser(props: { sessionID?: string; directory: string }) {
           class="icon-button"
           aria-label={t("browser.reload")}
           disabled={!page.url}
-          onClick={() => void bridge?.browserReload()}
+          onClick={() => void bridge?.browserReload(props.tab.id)}
         >
           <RotateCw class="icon icon-sm" classList={{ spinner: page.loading }} />
         </button>
@@ -134,7 +135,7 @@ export function Browser(props: { sessionID?: string; directory: string }) {
           class="icon-button"
           aria-label={t("browser.devtools")}
           disabled={!page.url}
-          onClick={() => void bridge?.browserDevtools()}
+          onClick={() => void bridge?.browserDevtools(props.tab.id)}
         >
           <Bug class="icon icon-sm" />
         </button>
