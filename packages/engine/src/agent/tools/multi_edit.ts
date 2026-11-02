@@ -10,7 +10,7 @@ import { FileWatcher } from "../workspace/file/watcher"
 import { Bus } from "../../infra/bus"
 import { FileTime } from "../../infra/file/time"
 import { RuleSession } from "../prompt/rules/session-state"
-import { Atomic } from "../../infra/file/atomic"
+import { commitToolFile } from "./file-commit"
 import { Snapshot } from "../../infra/project/snapshot"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Instance } from "../../infra/project/instance"
@@ -59,7 +59,7 @@ export const MultiEditTool = Tool.define("multi_edit", {
     await assertPlanModeAllowsWrite(ctx, filePath)
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      permissionMode: ctx.permissionMode,
+      sessionMode: ctx.sessionMode,
       filePath,
       sessionID: ctx.sessionID,
       access: "write",
@@ -118,7 +118,7 @@ export const MultiEditTool = Tool.define("multi_edit", {
 
       if (!bypass) await Snapshot.trackFile(filePath, ctx.sessionID)
       if (MemoryAccess.isWritablePath(filePath)) MemoryAccess.assertNoSecrets(contentNew)
-      await Atomic.write(filePath, contentNew)
+      await commitToolFile(ctx, filePath, contentNew)
       if (!bypass) {
         await Bus.publish(File.Event.Edited, { file: filePath })
         await Bus.publish(FileWatcher.Event.Updated, {

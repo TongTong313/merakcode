@@ -57,9 +57,9 @@ export type Kit = {
   send: (text: string) => Promise<void>
   /** Last visible occurrence of the text on the page (the message list may hold hidden copies) */
   text: (value: string | RegExp) => Locator
-  /** Switches the permission mode with the dropdown next to the input */
+  /** Switches the session mode with the dropdown next to the input */
   mode: (name: RegExp) => Promise<void>
-  /** Permission mode button next to the input, showing the current mode */
+  /** Session mode button next to the input, showing the current mode */
   modeButton: () => Locator
   /** Approval bar */
   approval: () => Locator
@@ -298,7 +298,7 @@ export const test = base.extend<{
     }
     const modeButton = () =>
       page
-        .getByRole("button", { name: /^(配置权限模式|Configure permission mode)/ })
+        .getByRole("button", { name: /^(配置会话模式|Configure session mode)/ })
         .filter({ visible: true })
         .first()
     const approval = () =>

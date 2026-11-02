@@ -45,6 +45,7 @@ type RunArgs = {
   variant?: string
   thinking?: boolean
   auto?: boolean
+  mode?: "plan" | "execute" | "auto"
   "--"?: string[]
 }
 
@@ -668,7 +669,7 @@ export async function run(args: RunArgs) {
         command: args.command,
         arguments: message,
         variant: args.variant,
-        permissionMode: args.auto ? "auto" : undefined,
+        sessionMode: args.mode ?? (args.auto ? "auto" : undefined),
       })
     } else {
       const model = args.model ? parseModel(args.model) : undefined
@@ -678,7 +679,7 @@ export async function run(args: RunArgs) {
         model,
         variant: args.variant,
         parts: [...files, { type: "text", text: message }],
-        permissionMode: args.auto ? "auto" : undefined,
+        sessionMode: args.mode ?? (args.auto ? "auto" : undefined),
       })
     }
   }

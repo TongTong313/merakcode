@@ -128,7 +128,7 @@ try {
 - **消息和 Part**：每条消息（`role` 是 `user` 或 `assistant`）由若干 Part 组成。常见的 Part：`text`（正文）、`reasoning`（思考过程）、`tool`（一次工具调用，含参数、状态和输出）、`file`（附件）、`step-start` / `step-finish`（一步的开始和结束，带用量）、`patch`（这一步改了哪些文件）、`subtask`、`agent`、`retry`、`compaction`。
 - **智能体**（agent）：决定用什么提示词、能用哪些工具。默认是 `build`；子智能体有 `general`、`explore`；`simplifier` 两种都能当。可以在配置里自己加。
 - **模型**：写成 `服务商/模型`，比如 `anthropic/claude-sonnet-4-5`、`alibaba-cn/qwen-plus`。`merak models` 能列出可用的。
-- **权限模式**：`readonly`（只读）、`ask`（询问，默认）、`auto`（自动）。会改东西的操作是直接做、先问，还是不做，由它和你的权限规则决定。
+- **权限模式**：`plan`（只读）、`execute`（执行，默认）、`auto`（自动）。会改东西的操作是直接做、先问，还是不做，由它和你的权限规则决定。
 - **事件**：引擎把所有变化（新消息、Part 更新、审批请求、会话状态……）通过事件流推出来。高层 API 帮你只挑出当前会话的事件。
 
 ## 5. 高层 API
@@ -202,7 +202,7 @@ await merak.close()
 | -------------- | ----------------------------------------------------------- |
 | `model`        | 这一轮用的模型，写成 `服务商/模型`                          |
 | `agent`        | 这一轮用的智能体                                            |
-| `mode`         | 权限模式：`"readonly"`、`"ask"`、`"auto"`                   |
+| `mode`         | 权限模式：`"plan"`、`"execute"`、`"auto"`                   |
 | `onPermission` | 需要审批时调用，见第 6 节。不给的话，需要审批的请求一律拒绝 |
 | `onQuestion`   | 模型提问时调用，见第 6 节。不给的话跳过提问                 |
 | `signal`       | 中止这一轮                                                  |
@@ -223,7 +223,7 @@ import { createMerakCode } from "@merakcode/sdk"
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session({ title: "改 README" })
 let answer = ""
-for await (const event of session.run("README 里有错别字吗？只列出来，不要改。", { mode: "readonly" })) {
+for await (const event of session.run("README 里有错别字吗？只列出来，不要改。", { mode: "plan" })) {
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("工具：", event.part.tool, event.part.state.status)
@@ -242,7 +242,7 @@ await merak.close()
 
 智能体要改文件、跑命令、联网时，如果按权限模式和规则需要问人，引擎会发一个审批请求（`PermissionRequest`），SDK 调用你的 `onPermission`。子智能体和工作流的审批也会转到这里。
 
-不是每个操作都会问：默认的 `ask` 模式下，工作区里普通文件的修改直接执行；`auto` 模式下大多数命令和宿主工具也直接执行（规则见 [README 的权限和沙箱](../../README.md#权限和沙箱)）。想让每次改文件都经过你，在 `config` 里写 `permission: { edit: "ask" }`，或者用 `readonly` 模式。
+不是每个操作都会问：默认的 `execute` 模式下，工作区里普通文件的修改直接执行；`auto` 模式下所有安全审批与沙箱执行限制均绕过，且不允许发起新提问（规则见 [README 的权限和沙箱](../../README.md#权限和沙箱)）。想让每次改文件都经过你，在 `config` 里写 `permission: { edit: "ask" }`；`plan` 模式则只允许研究和编写当前计划。
 
 `PermissionRequest` 里常用的字段：
 
@@ -329,7 +329,7 @@ await merak.close()
 
 ### 等后台任务
 
-你明确让智能体用工作流时（提示词里写了"工作流"或 "workflow"），它会在后台启动工作流，这一轮先结束；工作流做完后，引擎给这个会话发一条通知（正文里有 `<workflow-notification>`），模型再回复一轮。启动工作流（`workflow_run`）在 `ask` 模式下要审批。
+你明确让智能体用工作流时（提示词里写了"工作流"或 "workflow"），它会在后台启动工作流，这一轮先结束；工作流做完后，引擎给这个会话发一条通知（正文里有 `<workflow-notification>`），模型再回复一轮。启动工作流（`workflow_run`）在 `execute` 模式下要审批。
 
 - 先用 `events()` 订阅，再调用 `run()`，否则可能错过工作流结束后的那一轮。
 - 工作流做得快时，两轮会连在一起，只产出一个 `done`，所以不要靠数 `done`，要等看到通知之后的那个 `done`。
@@ -381,7 +381,7 @@ await merak.close()
 
 `context`（类型 `ToolRunContext`）里有 `sessionID`、`messageID`、`callID`。
 
-宿主工具和插件注册的工具一样审批：只读和询问模式先问，自动模式直接执行，审批名就是工具名。
+宿主工具和插件注册的工具一样审批：计划模式仅提供研究工具，执行模式按安全规则审批，自动模式绕过安全审批，审批名就是工具名。
 
 宿主工具注册在整个引擎进程上：之后任何一次注册都会整体替换它，`close()` 也不会注销。几个程序用 `url` 连同一个引擎时，会互相覆盖对方的宿主工具。
 
@@ -801,7 +801,7 @@ MerakCode  ⇄  适配器库 merakcode-adapter.mjs  ⇄  你写的 adapter.mts  
 - MerakCode 每派一个任务，就启动一次适配器，任务做完适配器就退出。
 - 和 MerakCode 通信的部分由适配器库处理，你不用管协议细节。
 - 你只写右边那一半：怎么启动你的 CLI、怎么读它的输出、它要审批或提问时怎么转给 MerakCode、怎么把结果交回来。
-- 适配器自己不做任何决定。CLI 想改文件、跑命令、联网、问用户问题时，都交给 MerakCode。MerakCode 按群里的权限模式（只读、询问、自动）和用户的规则判断，需要时弹出审批栏或提问框，所以成员和 MerakCode 自己的工具守同一套规矩。
+- 适配器自己不做任何决定。CLI 想改文件、跑命令、联网、问用户问题时，都交给 MerakCode。MerakCode 按群里的权限模式（计划、执行、自动）和用户的规则判断，需要时弹出审批栏或提问框，所以成员和 MerakCode 自己的工具守同一套规矩。
 - 内置的 Claude Code、Codex、OpenCode 适配器也是这样写的，只用了这个库和 Node 自带的模块。技能 `adapter-generator` 就是拿它们当示例的。
 
 ### 15.2 一个任务从头到尾怎么走
@@ -901,7 +901,7 @@ adapter({
   async run(task, host) {
     // 1. 按权限模式拼出 mycli 的参数：让它遇到拿不准的事都来问，由 MerakCode 决定
     const args = ["run", "--json", "--approvals", "ask"]
-    if (task.mode === "readonly") args.push("--read-only") // 只读模式：不让它改文件
+    if (task.mode === "plan") args.push("--read-only") // 只读模式：不让它改文件
     if (task.resume) args.push("--session", task.resume) // 接着上次的会话
 
     // 2. 启动 mycli。用库里的 spawn：在 Windows 上，npm 装的 CLI 是 .cmd 文件，Node 自带的 spawn 启动不了
@@ -994,7 +994,7 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.prompt`  | 交给成员的完整任务，包括它的职责和群里的情况                                                                                           |
 | `task.cwd`     | 项目目录，CLI 要在这里干活                                                                                                             |
-| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"readonly"`、`"ask"` 或 `"auto"`                                                                       |
+| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"plan"`、`"execute"` 或 `"auto"`                                                                       |
 | `task.resume`  | 上次任务返回的 `sessionId`，第一次是空的                                                                                               |
 | `task.product` | 这个产品的 id 和名称（类型 `Product`）。接入方式是 `member` 时只有 `id`、`title`：配置里的命令和参数用来启动适配器本身，不会传给适配器 |
 | `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                                                                                                     |
@@ -1042,7 +1042,7 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 - 写 `hello.txt` 作为 `write` 请求到达；
 - 结果正常返回。
 
-只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试模式固定用 `ask` 模式，工作目录是当前目录，产品是 `{ id: "test", title: "test" }`，测不到只读模式下的参数。SDK 里同样的入口是 `cli(argv)`。
+只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试模式固定用 `execute` 模式，工作目录是当前目录，产品是 `{ id: "test", title: "test" }`，测不到只读模式下的参数。SDK 里同样的入口是 `cli(argv)`。
 
 ### 15.8 注册到 MerakCode
 
@@ -1099,3 +1099,17 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 - `version(command)`：跑 `<CLI> --version`，返回第一行；没装、出错或 5 秒内没回应时，返回原因。
 - `connect`：你的 CLI 也说 JSON-RPC 的话，可以用它来连，写法见 `example-codex.mts`。对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。
 - `PROTOCOL`：成员协议的版本号。协议本身是标准输入输出上的 JSON-RPC 2.0，一行一条消息，由库处理。
+
+### 会话模式与适配器控制
+
+子会话的计划 API 与根会话共用文档，返回的 `sessionID` 是计划所有者。客户端应按该 ID 关联编辑器和更新事件。
+普通消息可以省略 `sessionMode`，由服务端使用当前模式；桌面仅在明确指定初始模式时随消息提交此字段。
+计划执行开始后的读取和内置搜索使用批准快照，人工编辑仍可保存到当前文档。
+
+模式为 `plan`、`execute`、`auto`。外部产品继续使用自己的原生工具；MerakCode 只审批上报的操作，未上报行为及产品自身沙箱不受宿主控制。auto 在后端直接允许权限请求并禁止新增问答，切换前已提出的问题继续等待用户回答。适配器库收到模式通知后更新 `task.mode`；可选 `modeChanged` 仅用于产品确实支持的原生策略更新。通过 `capabilities.control` 如实报告覆盖范围、取消粒度和已知限制，未知能力不得标记为已支持。
+
+宿主拒绝新问题时，适配器必须通过原生协议拒绝或取消该问题，使原生任务结束等待。切换前已提出的问题仍须转发
+真实人工回答。内置 OpenCode 适配器使用原生问题拒绝接口，生成适配器遵守相同契约。
+
+客户端导出的 startsSessionPlan(text) 用于识别明确的开始执行计划消息。桌面在发送前据此保存已打开的计划缓冲区，
+引擎继续根据最新策略决定任务准入。

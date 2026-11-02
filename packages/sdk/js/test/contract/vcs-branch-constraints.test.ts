@@ -94,7 +94,7 @@ test("allows switching one checkout while another checkout in the same project i
     running = client.session.prompt({
       directory: created.directory,
       sessionID: session.id,
-      permissionMode: "auto",
+      sessionMode: "auto",
       parts: [{ type: "text", text: "Wait while the primary checkout switches branches" }],
     })
     await expect.poll(() => entered, { timeout: 30_000 }).toBe(true)

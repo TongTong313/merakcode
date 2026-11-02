@@ -40,7 +40,7 @@ import {
 function opencodeConfig(mode: Mode) {
   return {
     permission: {
-      edit: mode === "readonly" ? "deny" : "ask",
+      edit: mode === "plan" ? "deny" : "ask",
       bash: "ask",
       webfetch: "ask",
       websearch: "ask",
@@ -201,7 +201,7 @@ async function opencodeModels(product: Product, signal: AbortSignal): Promise<Mo
       env: {
         ...process.env,
         OPENCODE_SERVER_PASSWORD: password,
-        OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig("readonly")),
+        OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig("plan")),
       },
     },
   )
@@ -304,7 +304,10 @@ async function follow(
       const asked = properties as AskedQuestion
       void host
         .question(questionsOf(asked))
-        .then((answers) => call("POST", `/question/${asked.id}/reply`, { answers }))
+        .then(
+          (answers) => call("POST", `/question/${asked.id}/reply`, { answers }),
+          () => call("POST", `/question/${asked.id}/reject`),
+        )
         .catch(() => {})
     }
     if (event.type === "message.part.updated") {

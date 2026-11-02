@@ -414,8 +414,8 @@ export namespace ErrorCode {
       domain: "tool",
       status: 403,
       retryable: false,
-      title: { zh: "只读模式下不能这样做", en: "Not allowed in read-only mode" },
-      hint: { zh: "按 Shift+Tab 切换权限模式。", en: "Press Shift+Tab to switch the permission mode." },
+      title: { zh: "计划模式下不能这样做", en: "Not allowed in plan mode" },
+      hint: { zh: "按 Shift+Tab 切换会话模式。", en: "Press Shift+Tab to switch the session mode." },
     },
     SANDBOX_UNAVAILABLE: {
       code: "MRK-5003",
@@ -457,6 +457,42 @@ export namespace ErrorCode {
         zh: "命令想读放密钥的目录（比如 ~/.ssh）。这是故意拦的，这些目录不能在配置里放开；确实需要时，同意智能体在沙箱外运行这条命令。",
         en: "The command tried to read a key folder such as ~/.ssh. This is on purpose, and these folders cannot be opened up in the config; if it really needs to, approve running the command outside the sandbox.",
       },
+    },
+    MODE_OPERATION_PENDING: {
+      code: "MRK-5012",
+      domain: "tool",
+      status: 409,
+      retryable: false,
+      title: { zh: "操作尚未确认停止", en: "Operation cancellation is not confirmed" },
+      hint: {
+        zh: "新模式已生效，请查看仍在运行的任务及其取消限制。",
+        en: "The new policy is active. Check the running operation and its cancellation limits.",
+      },
+      errors: ["ModeOperationPendingError"],
+    },
+    PLAN_CONFLICT: {
+      code: "MRK-5009",
+      domain: "tool",
+      status: 409,
+      retryable: false,
+      title: { zh: "计划已发生修改", en: "The plan has changed" },
+      hint: {
+        zh: "保留人工修改，重新读取计划后再操作。",
+        en: "Keep human edits and reread the plan before continuing.",
+      },
+      errors: ["PlanConflictError"],
+    },
+    INTERACTION_DISABLED: {
+      code: "MRK-5008",
+      domain: "tool",
+      status: 409,
+      retryable: false,
+      title: { zh: "自动模式不发起新询问", en: "New interactions are disabled in auto mode" },
+      hint: {
+        zh: "智能体应自主继续；已有问题仍可回答。",
+        en: "Continue autonomously; existing questions can still be answered.",
+      },
+      errors: ["InteractionDisabledError"],
     },
     SANDBOX_SETUP_REQUIRED: {
       code: "MRK-5007",

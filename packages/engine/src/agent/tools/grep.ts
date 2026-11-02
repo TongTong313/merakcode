@@ -13,6 +13,8 @@ import { ToolResultDelta } from "./result-delta"
 import { createToolOutputSink } from "./output-sink"
 import { ContextAttach } from "../context/context-attach"
 import { PermissionPolicy } from "../permission/policy"
+import { SessionPlan } from "../session/plan"
+import { SessionStore } from "../session/store"
 
 const MAX_LINE_LENGTH = 2000
 const DEFAULT_LIMIT = 100
@@ -102,6 +104,28 @@ export const GrepTool = Tool.define("grep", {
       args.push("--glob", params.include)
     }
 
+    const plan = SessionStore.find(ctx.sessionID) ? await SessionPlan.get(ctx.sessionID) : undefined
+    const execution = plan?.status === "executing" ? plan.execution : undefined
+    const fixedPaths = new Set<string>()
+    if (execution) {
+      for (const root of roots) {
+        const stat = await fs.stat(root).catch(() => undefined)
+        if (stat?.isFile()) {
+          if (await SessionPlan.isFile(ctx.sessionID, root)) fixedPaths.add(path.resolve(root))
+          continue
+        }
+        if (!stat?.isDirectory()) continue
+        for await (const relative of Ripgrep.files({
+          cwd: root,
+          glob: params.include ? [params.include] : undefined,
+          signal: ctx.abort,
+        })) {
+          const file = path.resolve(root, relative)
+          if (await SessionPlan.isFile(ctx.sessionID, file)) fixedPaths.add(file)
+        }
+      }
+    }
+
     const rawOutput = await createToolOutputSink()
     const rawOutputPath = rawOutput.path
     const cleanupRawOutput = async () => {
@@ -128,11 +152,12 @@ export const GrepTool = Tool.define("grep", {
       return stats
     }
 
-    const pushMatch = async (line: string) => {
+    const pushMatch = async (line: string, fixed = false) => {
       if (!line) return
 
       const [filePath, lineNumStr, ...lineTextParts] = line.split("|")
       if (!filePath || !lineNumStr || lineTextParts.length === 0) return
+      if (!fixed && fixedPaths.has(path.resolve(filePath))) return
 
       if (!(await ToolPathGuard.filterAllowedPaths(ctx, [filePath], "grep")).length) return
 
@@ -217,6 +242,23 @@ export const GrepTool = Tool.define("grep", {
       if (exitCode === 2) hasErrors = true
     }
 
+    // Use rg itself for the snapshot so regex and line-number semantics match ordinary files.
+    if (execution) {
+      for (const file of fixedPaths) {
+        try {
+          const result = await Process.run([rgPath, ...args, "--no-filename", "-"], {
+            stdin: execution.content,
+            signal: ctx.abort,
+            nothrow: true,
+          })
+          if (result.exitCode > 1) throw new Error(`ripgrep failed: ${result.stderr}`)
+          for (const line of result.stdout.toString().split(/\r?\n/)) if (line) await pushMatch(`${file}|${line}`, true)
+        } catch (error) {
+          await cleanupRawOutput()
+          throw error
+        }
+      }
+    }
     // rawOutput is shared by all roots and can only be closed once, after the last search
     try {
       await rawOutput.close()

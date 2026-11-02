@@ -164,9 +164,9 @@ test("usage, the model and the permission mode use the same hint above the contr
     const modelButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("Claude"))
     expect(modelButton?.getAttribute("aria-label")).toBe("配置模型，Claude")
     expect(await hint(modelButton)).toBe("配置模型")
-    const modeButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("询问"))
-    expect(modeButton?.getAttribute("aria-label")).toBe("配置权限模式，询问")
-    expect(await hint(modeButton)).toBe("配置权限模式")
+    const modeButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("执行"))
+    expect(modeButton?.getAttribute("aria-label")).toBe("配置会话模式，执行")
+    expect(await hint(modeButton)).toBe("配置会话模式")
   } finally {
     vi.useRealTimers()
     setState({ providers: undefined })

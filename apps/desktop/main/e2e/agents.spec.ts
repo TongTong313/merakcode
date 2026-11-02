@@ -37,6 +37,7 @@ test("clicking a subagent opens its conversation, with a way back to the main on
   await kit.mode(/自动/)
   await kit.send("派子智能体去查")
   await expect(kit.text("主对话完成")).toBeVisible({ timeout: 90_000 })
+  await kit.page.getByRole("button", { name: /智能体工作完成/ }).click()
   await kit.page.getByRole("button", { name: /查资料/ }).click()
   await expect(kit.text("子任务完成")).toBeVisible({ timeout: 30_000 })
   await kit.page.getByRole("button", { name: "返回主对话" }).click()
@@ -46,6 +47,8 @@ test("clicking a subagent opens its conversation, with a way back to the main on
 test("the workflow card shows task progress and is marked canceled after canceling", async ({ kit }) => {
   await kit.mode(/自动/)
   await kit.send("跑工作流")
+  await expect(kit.text("工作流已启动")).toBeVisible({ timeout: 60000 })
+  await kit.page.getByRole("button", { name: /智能体工作完成/ }).click()
   const card = kit.page.getByRole("group", { name: /^工作流 e2e-demo/ })
   await expect(card).toBeVisible({ timeout: 90_000 })
   await expect(card.getByText("慢任务")).toBeVisible({ timeout: 60_000 })

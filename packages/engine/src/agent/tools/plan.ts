@@ -8,12 +8,13 @@ import { Provider } from "../model/provider"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
 import { Filesystem } from "@merakcode/util/filesystem"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
+import { SessionPlan } from "../session/plan"
 import { Text } from "../prompt/text"
 
 /**
- * Timeout of the plan_enter / plan_exit confirmation; on timeout the current mode is kept.
- * Plan mode is the read-only mode: plan_enter switches to read-only, plan_exit returns to the mode used before it.
+ * Timeout of the plan_enter suggestion; on timeout the current mode is kept.
+ * Completed plans wait for human review without a timeout.
  */
 const PLAN_SWITCH_CONFIRM_TIMEOUT_MS = 15_000
 
@@ -21,21 +22,6 @@ const PLAN_SWITCH_CONFIRM_TIMEOUT_MS = 15_000
 const TEXT = {
   yes: { zh: "同意", en: "Yes" },
   skip: { zh: "跳过", en: "Skip" },
-  exit: {
-    question: {
-      zh: "{plan} 的方案已完成，要切换到「{name}」模式开始实施吗？（15 秒无响应将留在计划模式）",
-      en: "Plan at {plan} is complete. Switch to {name} mode and start implementing? (stays in plan mode if no response within 15s)",
-    },
-    header: { zh: "切换到{name}模式", en: "Switch to {name} mode" },
-    yesDescription: {
-      zh: "切换到「{name}」模式，按方案开始实施",
-      en: "Switch to {name} mode and start implementing the plan",
-    },
-    skipDescription: {
-      zh: "什么都不做，留在计划模式继续完善",
-      en: "Do nothing; remain in plan mode and keep refining",
-    },
-  },
   // Used when a plan file already exists; the first entry uses `enter`, which is about researching and writing
   revise: {
     question: {
@@ -60,13 +46,6 @@ const TEXT = {
   },
 } satisfies Record<string, Text.Pair | Record<string, Text.Pair>>
 
-/** Mode names shown in the dialog */
-const MODE_NAMES: Record<PermissionMode.Value, Text.Pair> = {
-  readonly: { zh: "只读", en: "read-only" },
-  ask: { zh: "询问", en: "ask" },
-  auto: { zh: "自动", en: "auto" },
-}
-
 function dialog(
   texts: Record<"question" | "header" | "yesDescription" | "skipDescription", Text.Pair>,
   lang: Text.Lang,
@@ -87,18 +66,6 @@ async function getLastModel(sessionID: string) {
   return Provider.defaultModel()
 }
 
-/**
- * Message.stream yields the newest messages first, so the first user message not in read-only mode gives the mode
- * used right before plan mode was entered. Falls back to ask mode when there is none.
- */
-export async function findReturnMode(sessionID: string): Promise<PermissionMode.Value> {
-  for await (const item of Message.stream(sessionID)) {
-    if (item.info.role !== "user" || !item.info.permissionMode) continue
-    if (item.info.permissionMode !== "readonly") return item.info.permissionMode
-  }
-  return PermissionMode.DEFAULT
-}
-
 /** Explicit yes, explicit skip, or no answer in time; kept apart so each direction can choose its timeout default */
 type ConfirmResult = "accept" | "skip" | "timeout"
 
@@ -106,7 +73,7 @@ type ConfirmResult = "accept" | "skip" | "timeout"
  * Shows the plan mode switch dialog and returns the user's choice; unexpected errors must not count as a skip.
  * - "Yes" → "accept"
  * - the explicit "Skip" option → "skip"
- * - no answer within timeoutMs → "timeout" (enter and exit both pass 15 s)
+ * - no answer within timeoutMs → "timeout" (plan_enter passes 15 s)
  * - session aborted → "skip" (the turn is aborted, so the result is discarded)
  */
 async function confirmSwitch(input: {
@@ -153,8 +120,9 @@ async function confirmSwitch(input: {
  * Switches the session's permission mode and writes a synthetic user message in that mode so the turn continues
  * under the new mode (the runner does not end the turn while there is a new user message). The agent stays the same.
  */
-async function switchMode(ctx: Tool.Context, mode: PermissionMode.Value, text: string) {
-  await Session.setPermissionMode({ sessionID: ctx.sessionID, permissionMode: mode })
+async function switchMode(ctx: Tool.Context, mode: SessionMode.Value, text: string, expectedRevision: number) {
+  const selected = await Session.setMode({ sessionID: ctx.sessionID, sessionMode: mode, expectedRevision })
+  if (selected.sessionMode !== mode) return false
   const userInfo: Message.UserInfo = {
     id: Identifier.ascending("message"),
     sessionID: ctx.sessionID,
@@ -164,7 +132,7 @@ async function switchMode(ctx: Tool.Context, mode: PermissionMode.Value, text: s
     },
     agent: ctx.agent,
     model: await getLastModel(ctx.sessionID),
-    permissionMode: mode,
+    sessionMode: mode,
   }
   await Session.updateInfo(userInfo)
   await Session.updatePart({
@@ -175,56 +143,88 @@ async function switchMode(ctx: Tool.Context, mode: PermissionMode.Value, text: s
     text,
     synthetic: true,
   } satisfies Message.TextPart)
+  return true
 }
+
+export const PlanWriteTool = Tool.define("plan_write", {
+  description:
+    "Write the current session plan. Human edits take priority. Read the latest plan after a conflict; never retry stale generated content.",
+  parameters: z.object({ content: z.string(), expectedRevision: z.number().int().nonnegative().optional() }),
+  async execute(params, ctx) {
+    const session = await Session.get(ctx.sessionID)
+    if (session.parentID || !["plan", "auto"].includes(ctx.sessionMode ?? "execute"))
+      throw new SessionPlan.ConflictError({
+        message: await Text.pick({
+          zh: "请先进入计划模式再编辑计划。",
+          en: "Enter plan mode before editing the session plan.",
+        }),
+      })
+    const current = await SessionPlan.get(ctx.sessionID)
+    const userMessageID = ctx.messages.findLast(
+      (message) => message.info.role === "user" && Message.userSourceTexts(message).some((text) => text.trim()),
+    )?.info.id
+    const plan = await SessionPlan.save({
+      sessionID: ctx.sessionID,
+      content: params.content,
+      source: "agent",
+      abort: ctx.abort,
+      userMessageID,
+      expectedRevision: ctx.extra?.planRevision ?? params.expectedRevision ?? current.revision,
+    })
+    return {
+      title: "Plan saved",
+      output: `Plan saved at ${plan.path}. Revision: ${plan.revision}. Call plan_exit when ready for review.`,
+      metadata: { planPath: plan.path },
+    }
+  },
+})
+
+export const PlanEditTool = Tool.define("plan_edit", {
+  description: "Edit the current session plan by replacing one exact passage. Human edits take priority.",
+  parameters: z.object({
+    oldString: z.string().min(1),
+    newString: z.string(),
+    expectedRevision: z.number().int().nonnegative().optional(),
+  }),
+  async execute(params, ctx) {
+    const current = await SessionPlan.get(ctx.sessionID)
+    if (current.content.split(params.oldString).length !== 2)
+      throw new SessionPlan.ConflictError({
+        message: await Text.pick({
+          zh: "计划存在编辑冲突：原文必须唯一匹配，请重新读取计划。",
+          en: "Plan conflict: the passage must match exactly once. Reread the current plan.",
+        }),
+      })
+    const tool = await PlanWriteTool.init()
+    return tool.execute(
+      {
+        content: current.content.replace(params.oldString, () => params.newString),
+        expectedRevision: params.expectedRevision,
+      },
+      ctx,
+    )
+  },
+})
 
 export const PlanExitTool = Tool.define("plan_exit", {
   description: EXIT_DESCRIPTION,
   parameters: z.object({}),
   async execute(_params, ctx) {
-    const session = await Session.get(ctx.sessionID)
-    const plan = Session.plan(session)
-    if ((ctx.permissionMode ?? ctx.kind) !== "readonly")
-      return {
-        title: "Not in plan mode",
-        output: "Plan mode is not active, so there is nothing to exit. Continue with the task.",
-        metadata: {
-          planPath: plan,
-          planRelPath: plan,
-          switched: false,
-          mode: undefined as PermissionMode.Value | undefined,
-        },
-      }
-    const mode = await findReturnMode(ctx.sessionID)
-    const lang = await Text.lang()
-    const texts = dialog(TEXT.exit, lang, { plan, name: Text.format(MODE_NAMES[mode], lang) })
-
-    // Lets the confirmation dialog preview or open the plan file
-    await ctx.metadata({ title: texts.header, metadata: { planPath: plan, planRelPath: plan } })
-
-    // Approving the plan is the point of plan mode: always ask, and stay in plan mode without an answer in 15 s
-    const result = await confirmSwitch({ ctx, lang, ...texts, timeoutMs: PLAN_SWITCH_CONFIRM_TIMEOUT_MS })
-    if (result !== "accept") {
-      return {
-        title: "Staying in plan mode",
-        output:
-          "User skipped leaving plan mode (chose Skip / timed out / session aborted). " +
-          "This tool did NOT terminate the turn. " +
-          "Stay in plan mode and continue refining; do not call plan_exit again unless the user explicitly asks.",
-        // switched=false tells clients nothing changed, so a completed status is not mistaken for approval
-        metadata: {
-          planPath: plan,
-          planRelPath: plan,
-          switched: false,
-          mode: undefined as PermissionMode.Value | undefined,
-        },
-      }
-    }
-
-    await switchMode(ctx, mode, `The plan at ${plan} has been approved, you can now edit files. Execute the plan`)
+    const current = await SessionPlan.get(ctx.sessionID)
+    if (!current.content.trim())
+      throw new SessionPlan.ConflictError({
+        message: await Text.pick({
+          zh: "请先编写计划，再提交审核。",
+          en: "Write the plan before submitting it for review.",
+        }),
+      })
+    await SessionPlan.setStatus(ctx.sessionID, "review", ctx.abort)
     return {
-      title: `Switching to ${mode} mode`,
-      output: `User approved leaving plan mode. Switched to ${mode} mode. Wait for further instructions.`,
-      metadata: { planPath: plan, planRelPath: plan, switched: true, mode: mode as PermissionMode.Value | undefined },
+      title: "Plan ready for review",
+      output:
+        "The plan is ready. Wait for the user to start execution, edit the plan, or send revision instructions. Do not start implementing.",
+      metadata: { planPath: current.path, switched: false, mode: undefined as SessionMode.Value | undefined },
+      stop: true,
     }
   },
 })
@@ -235,7 +235,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
   async execute(_params, ctx) {
     const session = await Session.get(ctx.sessionID)
     const plan = Session.plan(session)
-    if ((ctx.permissionMode ?? ctx.kind) === "readonly")
+    if ((ctx.sessionMode ?? ctx.kind) === "plan")
       return {
         title: "Already in plan mode",
         output: `Plan mode is already active. Keep planning in ${plan}.`,
@@ -243,7 +243,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
           planPath: plan,
           planRelPath: plan,
           switched: false,
-          mode: undefined as PermissionMode.Value | undefined,
+          mode: undefined as SessionMode.Value | undefined,
         },
       }
     const lang = await Text.lang()
@@ -266,12 +266,40 @@ export const PlanEnterTool = Tool.define("plan_enter", {
           planPath: plan,
           planRelPath: plan,
           switched: false,
-          mode: undefined as PermissionMode.Value | undefined,
+          mode: undefined as SessionMode.Value | undefined,
         },
       }
     }
 
-    await switchMode(ctx, "readonly", "User has requested to enter plan mode. Switch to plan mode and begin planning.")
+    const latest = await Session.get(ctx.sessionID)
+    if ((latest.modeRevision ?? 0) !== (session.modeRevision ?? 0))
+      return {
+        title: "Mode already changed",
+        output: "Keep the current mode selected by the user.",
+        metadata: {
+          planPath: plan,
+          planRelPath: plan,
+          switched: false,
+          mode: undefined as SessionMode.Value | undefined,
+        },
+      }
+    const switched = await switchMode(
+      ctx,
+      "plan",
+      "User has requested to enter plan mode. Switch to plan mode and begin planning.",
+      session.modeRevision ?? 0,
+    )
+    if (!switched)
+      return {
+        title: "Mode already changed",
+        output: "Keep the current mode selected by the user.",
+        metadata: {
+          planPath: plan,
+          planRelPath: plan,
+          switched: false,
+          mode: undefined as SessionMode.Value | undefined,
+        },
+      }
     return {
       title: "Switching to plan mode",
       output: `User confirmed to switch to plan mode. The plan file will be at ${plan}. Begin planning.`,
@@ -279,7 +307,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
         planPath: plan,
         planRelPath: plan,
         switched: true,
-        mode: "readonly" as PermissionMode.Value | undefined,
+        mode: "plan" as SessionMode.Value | undefined,
       },
     }
   },

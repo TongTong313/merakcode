@@ -13,7 +13,7 @@ const node =
 test.describe("command approval", () => {
   test.use({ script: { reply: node("console.log(40+2)") } })
 
-  test("ask mode asks before running a command; allowing it for the conversation stops asking", async ({ kit }) => {
+  test("execute mode asks before running a command; allowing it for the conversation stops asking", async ({ kit }) => {
     await kit.send("跑一下 #1")
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
@@ -46,7 +46,7 @@ test.describe("auto mode", () => {
   })
 })
 
-test.describe("read-only mode", () => {
+test.describe("plan mode", () => {
   test.use({
     script: {
       reply: ({ toolResults }) =>
@@ -56,8 +56,8 @@ test.describe("read-only mode", () => {
     },
   })
 
-  test("file writes are denied in read-only mode and no file is created", async ({ kit }) => {
-    await kit.mode(/只读|Read-only/)
+  test("file writes are denied in plan mode and no file is created", async ({ kit }) => {
+    await kit.mode(/计划|Plan/)
     await kit.send("写一个文件")
     await expect(kit.text(/READONLY/)).toBeVisible({ timeout: 60_000 })
     await expect(access(path.join(kit.project, "blocked.txt"))).rejects.toThrow()

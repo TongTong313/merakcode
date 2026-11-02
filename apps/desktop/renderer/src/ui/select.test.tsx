@@ -70,6 +70,27 @@ test("the open model menu shows each model's provider logo and name", () => {
   view.cleanup()
 })
 
+test("a danger option is marked and shows its warning badge", () => {
+  const view = mount(() => (
+    <Select
+      label="Session mode"
+      options={[{ value: "auto", label: "自动", description: "全部放行", tone: "danger" as const, badge: "危险" }]}
+      value="auto"
+      onChange={() => {}}
+    />
+  ))
+  try {
+    view.host
+      .querySelector("button")
+      ?.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+    const option = document.querySelector<HTMLElement>('[role="option"]')!
+    expect(option.dataset.tone).toBe("danger")
+    expect(option.querySelector(".badge.danger")?.textContent).toBe("危险")
+  } finally {
+    view.cleanup()
+  }
+})
+
 test("an empty model select shows the placeholder and no logo", () => {
   const view = mount(() => (
     <Select

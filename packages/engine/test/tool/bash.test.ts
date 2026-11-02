@@ -19,7 +19,7 @@ const ctx = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "ask" as const,
+  kind: "execute" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -36,7 +36,7 @@ type AskRequest = Parameters<Tool.Context["ask"]>[0]
 function permissionCtx(input: { ruleset?: PermissionNext.Ruleset; sessionID?: string } = {}) {
   const requests: PermissionNext.Request[] = []
   const sessionID = input.sessionID ?? ctx.sessionID
-  const ruleset = input.ruleset ?? PermissionPolicy.ruleset("ask")
+  const ruleset = input.ruleset ?? PermissionPolicy.ruleset("execute")
   const ask = async (req: AskRequest) => {
     const asked = Promise.withResolvers<PermissionNext.Request>()
     const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
@@ -125,12 +125,12 @@ describe("tool.bash", () => {
     }
   })
 
-  test("reading credentials asks even in auto mode; reading workspace files does not", async () => {
+  test("execute asks before reading credentials while workspace reads do not ask", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
         const bash = await BashTool.init()
-        const auto = permissionCtx({ ruleset: PermissionPolicy.ruleset("auto"), sessionID: "ses_bash_sensitive" })
+        const auto = permissionCtx({ ruleset: PermissionPolicy.ruleset("execute"), sessionID: "ses_bash_sensitive" })
         await bash.execute({ command: "cat package.json", description: "Read a workspace file" }, auto.ctx)
         expect(auto.requests).toHaveLength(0)
         await bash
@@ -162,7 +162,7 @@ describe("tool.bash", () => {
       directory: projectRoot,
       fn: async () => {
         const bash = await BashTool.init()
-        for (const mode of ["ask", "auto"] as const) {
+        for (const mode of ["execute", "plan"] as const) {
           const asked = permissionCtx({
             ruleset: PermissionPolicy.ruleset(mode),
             sessionID: `ses_bash_forbidden_${mode}`,
@@ -211,7 +211,7 @@ describe("tool.bash", () => {
           const bash = await BashTool.init()
           const result = await bash.execute(
             {
-              command: 'for i in $(seq 1 80); do echo "ERROR 2026-01-01T00:00:00 failed request id $i"; done',
+              command: `node -e "for(let i=1;i<=80;i++) console.log('ERROR 2026-01-01T00:00:00 failed request id '+i)"`,
               description: "Emit repeated error logs",
             },
             ctx,
@@ -268,7 +268,7 @@ describe("tool.bash", () => {
           const bash = await BashTool.init()
           const result = await bash.execute(
             {
-              command: 'for i in $(seq 1 80); do echo "ERROR 2026-01-01T00:00:00 failed request id $i"; done',
+              command: `node -e "for(let i=1;i<=80;i++) console.log('ERROR 2026-01-01T00:00:00 failed request id '+i)"`,
               description: "Emit repeated error logs",
             },
             ctx,
@@ -356,7 +356,7 @@ describe("tool.bash permissions", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("readonly") })
+        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("plan") })
         await prepareBashCommand({ command: "ls -la && git log -1", description: "x" }, testCtx)
         await expect(
           prepareBashCommand({ command: "ls && npm test", description: "x" }, testCtx),
@@ -366,7 +366,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("auto mode asks only for high-risk commands like push, publish and sudo, not for deletes", async () => {
+  test("auto permits risky commands without approval", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -375,9 +375,7 @@ describe("tool.bash permissions", () => {
         await prepareBashCommand({ command: "npm test && rm -rf dist", description: "x" }, testCtx)
         expect(requests).toEqual([])
         await prepareBashCommand({ command: "npm test && git push origin main", description: "x" }, testCtx)
-        expect(requests).toHaveLength(1)
-        expect(requests[0]!.patterns).toEqual(["git push origin main"])
-        expect(requests[0]!.metadata.tags).toEqual(expect.arrayContaining(["network", "publish"]))
+        expect(requests).toEqual([])
       },
     })
   })
@@ -406,7 +404,7 @@ describe("tool.bash permissions", () => {
       directory: tmp.path,
       fn: async () => {
         const user = PermissionNext.fromConfig({ bash: { "node *": "allow", "curl *": "deny" } })
-        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("ask", user) })
+        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("execute", user) })
         await prepareBashCommand({ command: "node -e 1", description: "x" }, testCtx)
         expect(requests).toEqual([])
         await expect(

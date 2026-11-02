@@ -8,23 +8,36 @@ import { tmpdir } from "../fixture/fixture"
 
 // Branch overview: staged, unstaged and untracked file counts, plus commits ahead of and behind upstream.
 
-const git = (cwd: string, ...args: string[]) => Process.run(["git", ...args], { cwd }).then((r) => r.text().trim())
+const git = (cwd: string, ...args: string[]) =>
+  Process.run(
+    [
+      "git",
+      "-c",
+      "user.name=MerakCode Test",
+      "-c",
+      "user.email=merakcode-test@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd },
+  ).then((result) => result.text().trim())
 
 test("status counts staged, unstaged and untracked files, and how far the branch is from upstream", async () => {
-  await using tmp = await tmpdir({ git: true })
+  await using tmp = await tmpdir()
+  const branch = "status-fixture"
+  await git(tmp.path, "init", "--initial-branch", branch)
   await git(tmp.path, "config", "core.autocrlf", "false")
   await Filesystem.write(path.join(tmp.path, "a.txt"), "a\n")
   await git(tmp.path, "add", ".")
-  await git(tmp.path, "commit", "-m", "init")
-  await using remote = await tmpdir()
-  await git(remote.path, "init", "--bare", "--quiet")
-  await git(tmp.path, "remote", "add", "origin", remote.path)
-  const branch = await git(tmp.path, "rev-parse", "--abbrev-ref", "HEAD")
-  await git(tmp.path, "push", "-u", "origin", "HEAD")
+  await git(tmp.path, "commit", "-m", `init ${tmp.path}`)
+  await git(tmp.path, "remote", "add", "origin", tmp.path)
   await Filesystem.write(path.join(tmp.path, "ahead.txt"), "ahead\n")
   await git(tmp.path, "add", ".")
   await git(tmp.path, "commit", "-m", "ahead")
-  await git(tmp.path, "push")
+  // Status reads local tracking refs; transport itself is covered by the push integration and desktop tests.
+  await git(tmp.path, "update-ref", `refs/remotes/origin/${branch}`, "HEAD")
+  await git(tmp.path, "branch", `--set-upstream-to=origin/${branch}`, branch)
   await git(tmp.path, "reset", "--hard", "HEAD~1")
 
   await Filesystem.write(path.join(tmp.path, "a.txt"), "changed\n")

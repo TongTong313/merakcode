@@ -20,6 +20,85 @@ beforeEach(async () => {
 
 afterEach(() => Instance.disposeAll())
 
+test.each([
+  ["execute", "plan"],
+  ["auto", "execute"],
+  ["plan", "auto"],
+] as const)(
+  "queued external tasks use live %s to %s mode at startup",
+  async (original, latest) => {
+    await using tmp = await tmpdir()
+    await configureConnections({
+      "mode-fixture": {
+        command: process.execPath,
+        adapter: "member",
+        args: [...Runtime.execArgv(), path.join(import.meta.dirname, "fixture/external-adapter.ts"), "mode-at-start"],
+      },
+    })
+    const app = Server.App()
+    const request = (url: string, body?: unknown) =>
+      app.request(
+        `${url}?directory=${encodeURIComponent(tmp.path)}`,
+        body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {},
+      )
+    const created = await (
+      await request("/session", { title: "Queued mode", target: { kind: "external", productID: "mode-fixture" } })
+    ).json()
+    const gate = path.join(tmp.path, "release-first")
+    const messages = async () => (await (await request(`/session/${created.id}/message`)).json()) as Message.FullMsg[]
+    try {
+      expect(
+        (
+          await request(`/session/${created.id}/prompt_async`, {
+            sessionMode: original,
+            parts: [{ type: "text", text: `gate:${gate}` }],
+          })
+        ).status,
+      ).toBe(204)
+      await expect
+        .poll(
+          () =>
+            fs.access(`${gate}.started`).then(
+              () => true,
+              () => false,
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true)
+      expect(
+        (
+          await request(`/session/${created.id}/prompt_async`, {
+            sessionMode: original,
+            parts: [{ type: "text", text: "Second task" }],
+          })
+        ).status,
+      ).toBe(204)
+      await expect.poll(async () => (await messages()).filter((message) => message.info.role === "user").length).toBe(2)
+      expect((await request(`/session/${created.id}/mode`, { sessionMode: latest })).status).toBe(200)
+      await fs.writeFile(gate, "release")
+      await expect
+        .poll(
+          async () => {
+            const last = (await messages()).at(-1)?.info
+            return last?.role === "assistant" && Message.isExternal(last) ? last.terminal : undefined
+          },
+          { timeout: 15_000 },
+        )
+        .toBe("completed")
+      expect(
+        (await messages())
+          .at(-1)
+          ?.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))
+          .join(""),
+      ).toBe(`started:${latest}`)
+    } finally {
+      await fs.writeFile(gate, "release")
+      await request(`/session/${created.id}/abort`, {})
+    }
+  },
+  30_000,
+)
+
 test("updates external conversation activity only after a message is admitted", async () => {
   await using tmp = await tmpdir()
   await Config.edit("global", (text) =>
@@ -43,7 +122,7 @@ test("updates external conversation activity only after a message is admitted", 
     await expect.poll(() => Date.now()).toBeGreaterThan(previous)
     const response = await request(`/session/${created.id}/message`, {
       parts: [{ type: "text", text }],
-      permissionMode: "ask",
+      sessionMode: "execute",
     })
     const reply = await response.json()
     expect(response.status, JSON.stringify(reply)).toBe(200)
@@ -906,10 +985,10 @@ test("applies a readonly turn mode over a previously stored auto mode", async ()
       const { id } = (await (
         await request("/session", { target: { kind: "external", productID: "permission-fixture" } })
       ).json()) as { id: string }
-      expect((await request(`/session/${id}/permission-mode`, { permissionMode: "auto" })).status).toBe(200)
+      expect((await request(`/session/${id}/mode`, { sessionMode: "auto" })).status).toBe(200)
       const reply = (await (
         await request(`/session/${id}/message`, {
-          permissionMode: "readonly",
+          sessionMode: "plan",
           parts: [{ type: "text", text: "ask to write" }],
         })
       ).json()) as { parts: { text?: string }[] }
@@ -982,7 +1061,7 @@ test("a direct external prompt recovers an unfinished old turn without a prior a
         sessionID: session.id,
         role: "user",
         time: { created: Date.now() },
-        permissionMode: "ask",
+        sessionMode: "execute",
         execution,
       })
       const stuck = await Session.updateInfo({

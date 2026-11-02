@@ -150,7 +150,7 @@ export const AgentConnectionRoutes = lazy(() =>
                 task: {
                   prompt: "Reply with a short synthetic greeting. Do not use any tools or access files.",
                   cwd: directory,
-                  mode: "readonly",
+                  mode: "plan",
                   model: product.model,
                 },
                 abort: controller.signal,

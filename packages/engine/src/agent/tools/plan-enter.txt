@@ -6,7 +6,7 @@ If they ask to switch to plan mode, or to revise/modify the official session pla
 ALWAYS call this tool first — before any write/edit to that official plan file.
 Do NOT call this tool merely because a path contains a folder named "plans"; user-authored
 markdown under project plans/ or other folders is ordinary file editing, not plan mode.
-If a prior tool error says you cannot modify plan files outside plan mode / must call plan_enter, call this tool immediately, then retry the edit after approval.
+If a prior tool error says you cannot modify plan files outside plan mode / must call plan_enter, call this tool immediately, then use plan_write or plan_edit after approval.
 
 This tool will ask the user if they want to switch to plan mode.
 

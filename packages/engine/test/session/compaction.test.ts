@@ -99,7 +99,7 @@ function createModel(opts: {
   } as Provider.Model
 }
 
-test("compaction create stores the permissionMode that the auto-continuation inherits", async () => {
+test("compaction create stores the sessionMode that the auto-continuation inherits", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
@@ -110,7 +110,7 @@ test("compaction create stores the permissionMode that the auto-continuation inh
         sessionID: session.id,
         agent: "build",
         model: { providerID: "openai", modelID: "gpt-4" },
-        permissionMode: "auto",
+        sessionMode: "auto",
         auto: true,
       })
 
@@ -119,8 +119,8 @@ test("compaction create stores the permissionMode that the auto-continuation inh
       if (user?.info.role !== "user") throw new Error("expected compaction user message")
       const part = user.parts.find((p): p is Message.CompactionPart => p.type === "compaction")
 
-      expect(user.info.permissionMode).toBeUndefined()
-      expect(part?.permissionMode).toBe("auto")
+      expect(user.info.sessionMode).toBeUndefined()
+      expect(part?.sessionMode).toBe("auto")
     },
   })
 })

@@ -9,7 +9,7 @@ import { File } from "../workspace/file"
 import { FileWatcher } from "../workspace/file/watcher"
 import { FileTime } from "../../infra/file/time"
 import { RuleSession } from "../prompt/rules/session-state"
-import { Atomic } from "../../infra/file/atomic"
+import { commitToolFile } from "./file-commit"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Instance } from "../../infra/project/instance"
 import { Workspace } from "../../infra/project/workspace"
@@ -42,7 +42,7 @@ export const WriteTool = Tool.define("write", {
     await assertPlanModeAllowsWrite(ctx, filepath)
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      permissionMode: ctx.permissionMode,
+      sessionMode: ctx.sessionMode,
       filePath: filepath,
       sessionID: ctx.sessionID,
       access: "write",
@@ -74,7 +74,7 @@ export const WriteTool = Tool.define("write", {
       // Checks the memory directory itself rather than bypass (which plan files also set), and scans for credentials
       // so real secrets do not end up in memory files that are recalled again and again
       if (MemoryAccess.isWritablePath(filepath)) MemoryAccess.assertNoSecrets(params.content)
-      await Atomic.write(filepath, params.content)
+      await commitToolFile(ctx, filepath, params.content)
       if (!bypass) {
         await Bus.publish(File.Event.Edited, {
           file: filepath,

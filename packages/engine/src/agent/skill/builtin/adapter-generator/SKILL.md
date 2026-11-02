@@ -24,14 +24,14 @@ below, so you can copy it with `cp`.
 
 - `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable?, capabilities? }`. Report
   capabilities accurately: modelSelection, modelDiscovery, textStreaming, resume, permission (`"merak"` or `"external"`),
-  and questions. It runs before each task
+  and questions, plus optional control coverage and limitations. It runs before each task
   (`unavailable` fails the task) and when settings shows the product, so it must be quick and never start work or rely
   on the working directory: `version(command)` from the library runs `<cli> --version` and gives `{ version }` or
   `{ unavailable }`.
 - `models(product, signal)` optionally returns `{ models: [{ id, providerID?, title }], allowCustomID }` without running
   a model task. Discovery lists models; it does not prove account access.
 - `run(task, host)` does one task and returns `{ text, sessionId?, actualModel?, final? }`; an empty `text` fails the task. `task` has
-  `prompt`, `cwd`, `mode` (`"readonly" | "ask" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to
+  `prompt`, `cwd`, `mode` (`"plan" | "execute" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to
   continue its session; a missing session must fail without creating a replacement), optional `model: { id, providerID? }`,
   `product` and `signal`. Pass an explicit model on every new or resumed task; omit the argument when no model is set.
   Report actualModel only when the CLI reports it. For a member
@@ -111,8 +111,20 @@ Rules for `adapter.mts`:
 - Import what is only a type with `type` (`import { adapter, type Host } from "./merakcode-adapter.mjs"`), and write
   relative imports with their full extension.
 - Start the CLI with `spawn` from the library, and stop it with `stop`.
-- Map the modes to the CLI's options so that it **asks about everything it is unsure of** and MerakCode decides:
-  read-only must not edit files; ask and auto hand the decisions to MerakCode. Never pass options that skip approvals.
+- Keep the CLI's own tools and runtime. Forward the operations it reports to MerakCode; the host applies plan,
+  execute or auto using the current root conversation mode. Auto permissions return allow without user approval.
+  Keep the reporting channel available so later mode switches can take effect. A host allow does not remove the
+  CLI's own sandbox limits. Report unobservable operations and native restrictions as limitations.
+- Treat each reported operation as one approval unit. A mode change can reject a pending request even when only
+  one of its checks originally needed approval. Wait for the host's final result before executing the native
+  operation, and honor rejection without replaying a previously allowed command.
+- Declare control coverage accurately, including cancellation granularity and whether native policies support live
+  updates. Unknown coverage stays unknown. The library updates task.mode in place; implement modeChanged only when
+  the CLI actually supports changing native policy during a task. Stopping an operation must not restart the task.
+- New questions in auto are rejected by the host. Existing questions still wait for the human after a switch to auto;
+  forward their actual answers. Handle disabled interactions by continuing autonomously, without inventing answers.
+  Settle the native question with its rejection or cancellation protocol when the host rejects it. Never swallow
+  that rejection while leaving the native CLI waiting. Test rejection and an existing human answer across a mode switch.
 - Map every permission request of the CLI to one of the five kinds. Prefer the most specific kind; use `tool` only for
   what is none of the others, or when the CLI's request has no path or command, with what it has as `detail`. Never
   send empty `paths` or an empty `command`. Map its questions to `host.question`, and catch its error.
@@ -138,7 +150,9 @@ install Node 24 or later for the test; do not register an untested adapter.
    ```
 
    Test mode prints every step, permission request and question, allows each request and picks the first option of
-   each question, then prints the result. It always uses ask mode, so check the read-only mapping by reading the code.
+   each question, then prints the result. It uses execute mode by default. Check the plan restrictions and auto
+   behavior against the mode contract above; this smoke test alone does not verify every mode, live switching or
+   control coverage.
 
 3. Fix the adapter until the command and the file write each arrive as one request of the right kind and the result
    comes back. Run step 2 again after each fix.

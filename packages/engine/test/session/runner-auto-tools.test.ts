@@ -23,7 +23,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         role: "user",
         sessionID,
         agent: "build",
-        permissionMode: "auto",
+        sessionMode: "auto",
         model: { providerID: "openai", modelID: "gpt-4" },
         time: { created: Date.now() },
       })
@@ -66,7 +66,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         processor,
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
-        permissionMode: "auto",
+        sessionMode: "auto",
       })
       // Auto mode never interrupts the user: no question and no plan_enter (plan mode needs human approval); outside
       // plan mode there is no plan_exit either.
@@ -86,7 +86,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         processor,
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
-        permissionMode: "auto",
+        sessionMode: "auto",
         child: true,
       })
       expect(toolsSub.subagent).toBeUndefined()

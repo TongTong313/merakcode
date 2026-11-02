@@ -15,6 +15,8 @@ export function Segmented<T extends string>(props: {
     icon?: (props: { class?: string }) => JSX.Element
     disabled?: boolean
     hint?: string
+    /** Emphasizes an unsafe choice; danger options are shown in the danger color. */
+    tone?: "danger"
   }[]
   value: T
   onChange: (value: T) => void
@@ -50,6 +52,7 @@ export function Segmented<T extends string>(props: {
               aria-disabled={option.disabled || undefined}
               aria-description={option.hint}
               tabIndex={option.value === stop() ? 0 : -1}
+              data-tone={option.tone}
               onClick={() => !option.disabled && props.onChange(option.value)}
               onKeyDown={(event) => move(event, index())}
             >

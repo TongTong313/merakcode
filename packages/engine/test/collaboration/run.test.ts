@@ -18,7 +18,7 @@ function oneShot(
   return runMember({
     launch: builtinLaunch("command"),
     product: { id: "custom", title: "Custom", ...product },
-    task: { prompt: input.prompt, cwd, mode: "ask", resume: input.resume },
+    task: { prompt: input.prompt, cwd, mode: "execute", resume: input.resume },
     abort: input.abort ?? new AbortController().signal,
     host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
   })
@@ -156,7 +156,7 @@ test("a product run with node gets MerakCode's own Node, so it runs on a machine
     expect(driven?.launch[0]).toBe(process.execPath)
     const result = await runMember({
       ...driven!,
-      task: { prompt: "在吗", cwd: empty.path, mode: "ask" },
+      task: { prompt: "在吗", cwd: empty.path, mode: "execute" },
       abort: new AbortController().signal,
       host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
     })

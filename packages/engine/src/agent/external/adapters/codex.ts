@@ -37,9 +37,9 @@ function codexThread(input: { mode: Mode; cwd: string }) {
   return {
     cwd: input.cwd,
     approvalPolicy: "untrusted",
-    sandbox: input.mode === "readonly" ? "read-only" : "workspace-write",
+    sandbox: input.mode === "plan" ? "read-only" : "workspace-write",
     // Commands that need the network ask first: the approval request comes to MerakCode
-    config: input.mode === "readonly" ? undefined : { sandbox_workspace_write: { network_access: true } },
+    config: input.mode === "plan" ? undefined : { sandbox_workspace_write: { network_access: true } },
   }
 }
 

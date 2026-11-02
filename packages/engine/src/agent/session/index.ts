@@ -14,6 +14,7 @@ import { Storage } from "../../infra/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { Message } from "./message"
 import { SessionStore } from "./store"
+import { SessionPlan } from "./plan"
 import { Transcript } from "./transcript"
 import { ReviewBaseline } from "./review/baseline"
 import { SessionMemoryPath } from "../memory/session-memory/path"
@@ -24,7 +25,7 @@ import { Snapshot } from "../../infra/project/snapshot"
 
 import type { Provider } from "../model/provider"
 import { PermissionNext } from "../permission/next"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 import { Global } from "../../infra/global"
 import { failure } from "@merakcode/log"
 import { SessionTitle } from "@merakcode/util/session-title"
@@ -89,10 +90,11 @@ export namespace Session {
         archived: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
-      // Session permission mode (read-only, ask, auto); this is the source of truth. It is written back with each user
-      // message and can change mid-run via setPermissionMode. The runner recomputes the ruleset before each tool call,
+      // Session mode (plan, execute, auto); this is the source of truth. It is written back with each user
+      // message and can change mid-run via setMode. The runner recomputes the ruleset before each tool call,
       // so a switch takes effect immediately. Child sessions follow the root session (Loop.modeOf).
-      permissionMode: PermissionMode.Schema.optional(),
+      sessionMode: SessionMode.Schema.optional(),
+      modeRevision: z.number().int().nonnegative().optional(),
       undoRedo: z
         .object({
           stack: z.array(
@@ -401,8 +403,8 @@ export namespace Session {
     return result
   }
 
-  export function plan(input: { slug: string; time: { created: number } }) {
-    return path.join(Global.Path.data, "plans", [input.time.created, input.slug].join("-") + ".md")
+  export function plan(input: { id: string }) {
+    return path.join(Global.Path.data, "plans", encodeURIComponent(input.id) + ".md")
   }
 
   /**
@@ -412,7 +414,22 @@ export namespace Session {
   function readCanonicalSession(projectID: string, id: string, tolerant = false): Info | undefined {
     try {
       const session = SessionStore.get(projectID, id)
-      return session && (migrateRevertToUndoRedo(session) as Info)
+      if (!session) return undefined
+      // Ancestry callers only need this record's parent, so avoid traversing the same chain at every level.
+      if (tolerant) return migrateRevertToUndoRedo(session) as Info
+      let owner = session
+      const visited = new Set<string>()
+      while (owner.parentID && !visited.has(owner.id)) {
+        visited.add(owner.id)
+        const parent = SessionStore.find(owner.parentID)
+        if (!parent) break
+        owner = parent
+      }
+      return migrateRevertToUndoRedo({
+        ...session,
+        sessionMode: owner.sessionMode,
+        modeRevision: owner.modeRevision,
+      }) as Info
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error
       log[tolerant ? "warn" : "error"]("session read failed", {
@@ -566,49 +583,61 @@ export namespace Session {
   }
 
   /**
-   * Switches the session permission mode (read-only, ask, auto) while it may be running.
-   * - Writes the session permissionMode (source of truth); the runner's liveExecution reads it before every tool call,
+   * Switches the session mode (plan, execute, auto) while it may be running.
+   * - Writes the session sessionMode (source of truth); the runner's liveExecution reads it before every tool call,
    *   so it applies immediately, and child sessions follow the root session.
    * - Re-evaluates pending approvals under the new mode and releases those that are now allowed, without waiting for
    *   the next prompt.
    */
-  export const setPermissionMode = fn(
+  export const setMode = fn(
     z.object({
       sessionID: Identifier.schema("session"),
-      permissionMode: PermissionMode.Schema,
+      sessionMode: SessionMode.Schema,
+      expectedRevision: z.number().int().nonnegative().optional(),
     }),
     async (input) => {
       const started = Date.now()
+      const selectedID = input.sessionID
+      input = { ...input, sessionID: await rootID(selectedID) }
       const current = await get(input.sessionID).catch(() => undefined)
+      let applied = false
       const result = await update(
         input.sessionID,
         (draft) => {
-          draft.permissionMode = input.permissionMode
+          if (input.expectedRevision !== undefined && (draft.modeRevision ?? 0) !== input.expectedRevision) return
+          if (draft.sessionMode === input.sessionMode) return
+          draft.sessionMode = input.sessionMode
+          draft.modeRevision = (draft.modeRevision ?? 0) + 1
+          applied = true
         },
         { touch: false },
       ).then(
         (session) => session,
         (error) => {
-          log.error("setPermissionMode failed", {
+          log.error("setMode failed", {
             sessionID: input.sessionID,
-            from: current?.permissionMode,
-            to: input.permissionMode,
+            from: current?.sessionMode,
+            to: input.sessionMode,
             duration: Date.now() - started,
             ...failure(error),
           })
           throw error
         },
       )
+      if (!applied) return selectedID === result.id ? result : get(selectedID)
       // Re-evaluate pending approvals (including subagents') under the new mode.
       // Dynamic import breaks the cycle flush -> runner -> session.
       await import("../permission/flush").then((m) => m.PermissionFlush.run())
-      log.info("setPermissionMode completed", {
+      await import("../permission/operations").then((m) =>
+        m.ModeOperations.reconcile(result.id, input.sessionMode, result.modeRevision ?? 0),
+      )
+      log.info("setMode completed", {
         sessionID: input.sessionID,
-        from: current?.permissionMode,
-        to: input.permissionMode,
+        from: current?.sessionMode,
+        to: input.sessionMode,
         duration: Date.now() - started,
       })
-      return result
+      return selectedID === result.id ? result : get(selectedID)
     },
   )
 
@@ -715,6 +744,7 @@ export namespace Session {
     for (const key of [
       ["session_diff", sessionID],
       ["todo", sessionID],
+      ["session_plan", sessionID],
       ["memory_extract", sessionID],
       ["external_session", sessionID],
     ]) {
@@ -723,7 +753,6 @@ export namespace Session {
 
     ReviewBaseline.drop(sessionID)
     await Snapshot.drop(sessionID)
-    await fs.rm(plan(session), { force: true })
     const { RuleSession } = await import("../prompt/rules/session-state")
     RuleSession.invalidate(sessionID)
   }
@@ -731,6 +760,7 @@ export namespace Session {
   export const removeRecords = fn(Identifier.schema("session"), async (sessionID) => {
     const session = readCanonicalSession(Instance.project.id, sessionID)
     if (!session) {
+      await SessionPlan.removeFiles([ghostInfo(sessionID)])
       await clearSession(ghostInfo(sessionID))
       await fs.rm(SessionMemoryPath.directory(sessionID), { recursive: true, force: true })
       SessionStore.remove(sessionID)
@@ -739,6 +769,8 @@ export namespace Session {
       return
     }
     const tree = [...collectTree(session.id), session]
+
+    await SessionPlan.removeFiles(tree)
 
     // Keep every primary record until the entire tree's related data has been cleared.
     for (const item of tree) {
@@ -764,6 +796,7 @@ export namespace Session {
       const tree = [...collectTree(session.id), session]
       const latest = Math.max(...tree.map((item) => Math.max(item.time.updated, Transcript.written(item.id))))
       if (latest >= cutoff) continue
+      await SessionPlan.removeFiles(tree)
       for (const item of tree) await clearSession(item)
       for (const item of tree) SessionStore.remove(item.id)
       count += tree.length

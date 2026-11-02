@@ -46,7 +46,7 @@ function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[]; mode
     // Everything Claude Code is unsure about goes to MerakCode, which applies the group's mode
     "--permission-mode",
     "manual",
-    ...(input.mode === "readonly" ? ["--disallowedTools", ...EDIT_TOOLS] : []),
+    ...(input.mode === "plan" ? ["--disallowedTools", ...EDIT_TOOLS] : []),
     ...(input.resume ? ["--resume", input.resume] : []),
     ...(input.model ? ["--model", input.model.id] : []),
     ...(input.extra ?? []),

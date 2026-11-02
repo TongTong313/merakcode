@@ -14,7 +14,7 @@ import { Agent } from "../agent"
 import { Plugin } from "../plugin"
 import { Config } from "@merakcode/engine/agent/settings/index"
 import { ProviderTransform } from "../model/transform"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 import { SessionContextLayer } from "./context-layer"
 import { SessionContextBudget } from "./context-budget"
 import { SessionToolResult } from "../session/tool-result"
@@ -215,7 +215,7 @@ export namespace SessionCompaction {
   async function restoreAfterCompaction(
     input: { sessionID: string; messages: Message.FullMsg[]; auto: boolean },
     userInfo: Message.UserInfo,
-    continuationPermissionMode: PermissionMode.Value | undefined,
+    continuationSessionMode: SessionMode.Value | undefined,
     model: Provider.Model,
   ) {
     if (!input.auto) return
@@ -225,7 +225,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       time: { created: Date.now() },
       agent: userInfo.agent,
-      permissionMode: continuationPermissionMode,
+      sessionMode: continuationSessionMode,
       model: userInfo.model,
     })
     // Write the restored attachment parts first so their smaller ids sort before the continuation instruction in
@@ -310,7 +310,7 @@ export namespace SessionCompaction {
     if (!parent || parent.info.role !== "user") throw new Error("Compaction parent user message not found")
     const userInfo = parent.info as Message.UserInfo
     const part = parent.parts.find((p): p is Message.CompactionPart => p.type === "compaction")
-    const continuationPermissionMode = part?.permissionMode ?? userInfo.permissionMode
+    const continuationSessionMode = part?.sessionMode ?? userInfo.sessionMode
 
     // Persist the activated deferred tools on the compaction part. After compaction, filterCompacted drops earlier
     // messages (including tool_search calls), so scanActivatedTools reads them back from the boundary; otherwise
@@ -363,7 +363,7 @@ export namespace SessionCompaction {
       })
       assistantInfo.finish = "stop"
       await Session.updateInfo(assistantInfo)
-      await restoreAfterCompaction(input, userInfo, continuationPermissionMode, model)
+      await restoreAfterCompaction(input, userInfo, continuationSessionMode, model)
       await finalizeCompaction(input.sessionID, assistantInfo)
       return "continue"
     }
@@ -470,7 +470,7 @@ When constructing the summary, try to stick to this template:
     })
 
     if (result === "continue" && input.auto) {
-      await restoreAfterCompaction(input, userInfo, continuationPermissionMode, model)
+      await restoreAfterCompaction(input, userInfo, continuationSessionMode, model)
     }
     if (processor.message.error) {
       // Only auto compaction failures count toward the breaker; a failed manual /compact does not.
@@ -519,7 +519,7 @@ When constructing the summary, try to stick to this template:
         providerID: z.string(),
         modelID: z.string(),
       }),
-      permissionMode: PermissionMode.Schema.optional(),
+      sessionMode: SessionMode.Schema.optional(),
       auto: z.boolean(),
     }),
     async (input) => {
@@ -539,7 +539,7 @@ When constructing the summary, try to stick to this template:
         sessionID: userInfo.sessionID,
         type: "compaction",
         auto: input.auto,
-        permissionMode: input.permissionMode,
+        sessionMode: input.sessionMode,
       })
     },
   )

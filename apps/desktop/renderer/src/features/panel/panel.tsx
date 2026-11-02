@@ -12,6 +12,7 @@ import { CodeView } from "../code/code"
 import { ReviewPanel } from "../review/review"
 import { progress, useReview } from "../review/state"
 import { SourceControl } from "../git/source-control"
+import { PlanCard } from "../conversation/plan"
 
 /** Side panel with review, code and browser tabs; drag the left edge to resize */
 export function Panel(props: { sessionID?: string; directory: string; folder: string }) {
@@ -24,6 +25,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   const count = () => progress(data.data()).total
   const tabs: { id: Tab; label: () => string; icon: typeof Code }[] = [
     { id: "review", label: () => t("panel.review"), icon: FileDiff },
+    { id: "plan", label: () => t("panel.plan"), icon: FileDiff },
     { id: "git", label: () => t("panel.git"), icon: GitBranch },
     { id: "code", label: () => t("panel.code"), icon: Code },
     { id: "browser", label: () => t("panel.browser"), icon: Globe },
@@ -89,6 +91,9 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
       </div>
       <div class="panel-body" role="tabpanel" id={`panel-${ui.tab}`} aria-labelledby={`panel-tab-${ui.tab}`}>
         <Switch>
+          <Match when={ui.tab === "plan"}>
+            <Show when={props.sessionID}>{(id) => <PlanCard sessionID={id()} directory={props.directory} />}</Show>
+          </Match>
           <Match when={ui.tab === "review"}>
             <ReviewPanel sessionID={props.sessionID} directory={props.directory} data={data} />
           </Match>

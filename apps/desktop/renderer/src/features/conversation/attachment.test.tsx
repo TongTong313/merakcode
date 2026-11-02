@@ -56,10 +56,11 @@ test("clicking a thumbnail opens the full image and closes it", async () => {
 test("a local image is read through the engine and shown", async () => {
   const content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
   const requests: string[] = []
+  const served = Promise.withResolvers<void>()
   const server = createServer((request, response) => {
     requests.push(request.url ?? "")
     response.writeHead(200, { "content-type": "application/json" })
-    response.end(JSON.stringify({ type: "text", content, encoding: "base64", mimeType: "image/png" }))
+    response.end(JSON.stringify({ type: "text", content, encoding: "base64", mimeType: "image/png" }), served.resolve)
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   const address = server.address()
@@ -82,6 +83,8 @@ test("a local image is read through the engine and shown", async () => {
     server.closeAllConnections()
     server.close()
   }
+  // The SDK loads its Node transport lazily. Observe the real HTTP boundary before checking the DOM transition.
+  await served.promise
   await vi.waitFor(() =>
     expect(host.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${content}`),
   )
@@ -90,10 +93,11 @@ test("a local image is read through the engine and shown", async () => {
 
 test("an image that cannot be read keeps the paperclip", async () => {
   const requests: string[] = []
+  const served = Promise.withResolvers<void>()
   const server = createServer((request, response) => {
     requests.push(request.url ?? "")
     response.writeHead(500, { "content-type": "application/json" })
-    response.end(JSON.stringify({ data: { message: "not found" } }))
+    response.end(JSON.stringify({ data: { message: "not found" } }), served.resolve)
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   const address = server.address()
@@ -116,7 +120,8 @@ test("an image that cannot be read keeps the paperclip", async () => {
     server.closeAllConnections()
     server.close()
   }
-  await vi.waitFor(() => expect(requests).toHaveLength(1))
+  await served.promise
+  expect(requests).toHaveLength(1)
   expect(host.querySelector("img")).toBeNull()
   expect(host.querySelector("svg")).not.toBeNull()
   expect(host.textContent).toContain("missing.png")

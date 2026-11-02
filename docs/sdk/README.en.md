@@ -128,7 +128,7 @@ The repo has three runnable examples in [`packages/sdk/js/examples`](../../packa
 - **Messages and parts**: each message (`role` is `user` or `assistant`) is made of parts. Common parts: `text` (the reply), `reasoning` (the model's thinking), `tool` (one tool call with its input, state and output), `file` (an attachment), `step-start` / `step-finish` (the start and end of a step, with usage), `patch` (files changed in that step), `subtask`, `agent`, `retry`, `compaction`.
 - **Agent**: decides the prompt and which tools are available. The default is `build`; the subagents are `general` and `explore`; `simplifier` works as either. You can add your own in the config.
 - **Model**: written as `provider/model`, such as `anthropic/claude-sonnet-4-5` or `alibaba-cn/qwen-plus`. `merak models` lists what you can use.
-- **Permission mode**: `readonly`, `ask` (default) or `auto`. Together with your permission rules it decides whether an action that changes things runs, asks first, or is refused.
+- **Permission mode**: `plan`, `execute` (default) or `auto`. Together with your permission rules it decides whether an action that changes things runs, asks first, or is refused.
 - **Events**: the engine pushes every change (new messages, part updates, approval requests, session status...) over an event stream. The high-level API picks out the events of the current session for you.
 
 ## 5. High-level API
@@ -202,7 +202,7 @@ Options of `run` (`RunOptions`, which includes every field of `Handlers`):
 | -------------- | -------------------------------------------------------------------------------------------- |
 | `model`        | Model for this turn, as `provider/model`                                                     |
 | `agent`        | Agent for this turn                                                                          |
-| `mode`         | Permission mode: `"readonly"`, `"ask"` or `"auto"`                                           |
+| `mode`         | Permission mode: `"plan"`, `"execute"` or `"auto"`                                           |
 | `onPermission` | Called for approvals, see section 6. Without it, every request that needs approval is denied |
 | `onQuestion`   | Called when the model asks a question, see section 6. Without it questions are skipped       |
 | `signal`       | Stops this turn                                                                              |
@@ -223,7 +223,7 @@ import { createMerakCode } from "@merakcode/sdk"
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session({ title: "README check" })
 let answer = ""
-for await (const event of session.run("Any typos in the README? List them, don't fix them.", { mode: "readonly" })) {
+for await (const event of session.run("Any typos in the README? List them, don't fix them.", { mode: "plan" })) {
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("tool:", event.part.tool, event.part.state.status)
@@ -242,7 +242,7 @@ Run one `run()` at a time per session: messages sent together queue, both iterat
 
 When the agent wants to edit files, run commands or go online and the permission mode and rules say to ask, the engine sends an approval request (`PermissionRequest`) and the SDK calls your `onPermission`. Approvals from subagents and workflows come here too.
 
-Not every action asks: in the default `ask` mode, edits to ordinary files inside the workspace go through without asking, and in `auto` mode most commands and host tools run without asking too (the rules are in [Permissions and the sandbox in the README](../../README.en.md#permissions-and-the-sandbox)). To approve every file edit yourself, set `permission: { edit: "ask" }` in `config`, or use `readonly` mode.
+Not every action asks: in the default `execute` mode, edits to ordinary files inside the workspace go through without asking, and in `auto` mode all safety approvals and command sandbox enforcement are bypassed, and new questions are disabled (the rules are in [Permissions and the sandbox in the README](../../README.en.md#permissions-and-the-sandbox)). To approve every file edit yourself, set `permission: { edit: "ask" }` in `config`. Use `plan` mode for research and the current session plan only.
 
 Useful fields of `PermissionRequest`:
 
@@ -329,7 +329,7 @@ await merak.close()
 
 ### Waiting for background work
 
-When you ask the agent for a workflow by name (the prompt says "workflow"), it starts one in the background and ends the turn first; when the workflow finishes, the engine posts a notification to the session (its text contains `<workflow-notification>`) and the model replies in another turn. Starting a workflow (`workflow_run`) needs approval in `ask` mode.
+When you ask the agent for a workflow by name (the prompt says "workflow"), it starts one in the background and ends the turn first; when the workflow finishes, the engine posts a notification to the session (its text contains `<workflow-notification>`) and the model replies in another turn. Starting a workflow (`workflow_run`) needs approval in `execute` mode.
 
 - Subscribe with `events()` before calling `run()`, or you may miss the turn after the workflow finishes.
 - When the workflow is quick, the two turns run together and produce a single `done`, so don't count `done`s: wait for the `done` after the notification.
@@ -381,7 +381,7 @@ Define them with `tool()` (type `HostTool`) and pass them as `tools` to `createM
 
 `context` (type `ToolRunContext`) has `sessionID`, `messageID` and `callID`.
 
-Host tools are approved like plugin tools: they ask in read-only and ask mode and run without asking in auto mode; the permission name is the tool name.
+Host tools are approved like plugin tools: plan exposes research tools only, execute applies safety rules, and auto bypasses authorization; the permission name is the tool name.
 
 Host tools are registered on the whole engine process: any later registration replaces them all, and `close()` does not unregister them. Programs sharing one engine through `url` replace each other's host tools.
 
@@ -833,7 +833,7 @@ When the CLI wants to run `npm test`, one approval goes like this:
 ```text
 CLI → adapter: "I want to run npm test"
 adapter → await host.permission({ kind: "command", command: "npm test" })   ← waits here
-          MerakCode decides under the permission mode: it allows, refuses outright (an edit in read-only mode, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
+          MerakCode decides under the permission mode: it allows, refuses outright (a project edit in plan mode, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
           The user clicks "Allow"
 host.permission resolves to { allow: true }
 adapter → CLI: "go ahead"
@@ -901,7 +901,7 @@ adapter({
   async run(task, host) {
     // 1. mycli's arguments for the permission mode: it asks about everything it is unsure of, and MerakCode decides
     const args = ["run", "--json", "--approvals", "ask"]
-    if (task.mode === "readonly") args.push("--read-only") // read-only: it must not edit files
+    if (task.mode === "plan") args.push("--read-only") // read-only: it must not edit files
     if (task.resume) args.push("--session", task.resume) // continue the last session
 
     // 2. Start mycli. spawn from the library also starts a CLI npm installed on Windows (a .cmd file), unlike Node's
@@ -995,7 +995,7 @@ The object `adapter()` takes (type `Definition`) is those two functions:
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.prompt`  | The member's whole task, with its duty and what goes on in the group                                                                                                               |
 | `task.cwd`     | The project directory, where the CLI works                                                                                                                                         |
-| `task.mode`    | The group's permission mode (type `Mode`): `"readonly"`, `"ask"` or `"auto"`                                                                                                       |
+| `task.mode`    | The group's permission mode (type `Mode`): `"plan"`, `"execute"` or `"auto"`                                                                                                       |
 | `task.resume`  | The `sessionId` the last task returned; empty the first time                                                                                                                       |
 | `task.product` | The product's id and title (type `Product`). With adapter `member` it has only `id` and `title`: the config's command and arguments start the adapter itself and are not passed on |
 | `task.signal`  | Fires when the user stops the group; stop the CLI then                                                                                                                             |
@@ -1046,7 +1046,7 @@ Test mode prints every step, permission request and question, allows each reques
 - writing `hello.txt` arrives as a `write` request;
 - the result comes back.
 
-A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test mode always uses `ask` mode, the current directory, and the product `{ id: "test", title: "test" }`, so it cannot check the arguments for read-only mode. In the SDK the same entry is `cli(argv)`.
+A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test mode always uses `execute` mode, the current directory, and the product `{ id: "test", title: "test" }`, so it cannot check the arguments for plan mode. In the SDK the same entry is `cli(argv)`.
 
 ### 15.8 Register it with MerakCode
 
@@ -1104,3 +1104,19 @@ The Node MerakCode ships with runs a `.mts` file by removing its types, so:
 - `version(command)`: runs `<cli> --version` and gives the first line, or why there is none (not installed, failing, or no answer within 5 seconds).
 - `connect`: when your CLI speaks JSON-RPC too, it connects to it; see `example-codex.mts`. Requests still waiting when the other side goes away fail with `ConnectionClosed`.
 - `PROTOCOL`: the member protocol's version. The protocol is JSON-RPC 2.0 on stdin and stdout, one message per line, which the library takes care of.
+
+### Conversation modes and adapter control
+
+Child plan APIs share the root conversation's document and return its owner as `sessionID`. Use that ID to associate
+editor buffers and plan update events. Omit `sessionMode` from ordinary prompts to inherit current server policy;
+the desktop submits it with a prompt only when explicitly selecting an initial mode. During execution, reads and
+built-in searches use the approved snapshot while human edits remain saveable in the current document.
+
+Modes are `plan`, `execute`, and `auto`. Keep each external product's native tools. MerakCode governs only reported operations; unreported actions and the product's own sandbox remain outside host control. Auto approves reported permissions without showing approval UI and rejects new questions, while questions already pending still require the human response. The adapter library updates `task.mode` in place on mode notifications. Optional `modeChanged` adapts native policy when supported; report actual coverage, cancellation granularity and limitations in `capabilities.control`. Unknown capabilities must remain unknown.
+
+Rejected host questions must settle the native CLI question through its rejection or cancellation protocol.
+An already pending question must forward the actual human answer after a mode switch. Do not leave a native CLI
+waiting when auto rejects a new interaction. The builtin OpenCode adapter uses the native question rejection endpoint.
+
+The client export startsSessionPlan(text) recognizes explicit plan-start messages. Desktop clients use it to save
+an open plan buffer before sending the message. The engine independently admits the start under the current policy.

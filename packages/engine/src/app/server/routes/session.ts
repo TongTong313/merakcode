@@ -1,3 +1,4 @@
+import { SessionMode } from "../../../agent/permission/mode"
 import { SessionOperations } from "@merakcode/engine/app/session"
 import { failure } from "@merakcode/log"
 import { Hono } from "hono"
@@ -6,6 +7,7 @@ import { describeRoute, resolver } from "hono-openapi"
 import { reject, validator } from "../validator"
 import z from "zod"
 import { Session } from "../../../agent/session"
+import { SessionPlan } from "../../../agent/session/plan"
 import { Message } from "../../../agent/session/message"
 import { SessionStore } from "../../../agent/session/store"
 import { Transcript } from "../../../agent/session/transcript"
@@ -33,6 +35,111 @@ const log = Log.create({ service: "server" })
 
 export const SessionRoutes = lazy(() =>
   new Hono()
+    .post(
+      "/:sessionID/permission-mode",
+      describeRoute({
+        summary: "Translate a legacy session mode",
+        operationId: "session.setLegacyMode",
+        deprecated: true,
+        responses: {
+          200: { description: "Updated session", content: { "application/json": { schema: resolver(Session.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("json", z.object({ permissionMode: z.enum(["readonly", "ask"]) })),
+      async (c) => {
+        const mode = c.req.valid("json").permissionMode
+        return c.json(
+          await Session.setMode({
+            sessionID: c.req.param("sessionID"),
+            sessionMode: mode === "readonly" ? "plan" : "execute",
+          }),
+        )
+      },
+    )
+    .get(
+      "/:sessionID/plan",
+      describeRoute({
+        summary: "Read the session plan",
+        operationId: "session.planGet",
+        responses: {
+          200: {
+            description: "Current editable plan",
+            content: { "application/json": { schema: resolver(SessionPlan.Info) } },
+          },
+          ...errors(404),
+        },
+      }),
+      async (c) => c.json(await SessionPlan.get(c.req.param("sessionID"))),
+    )
+    .put(
+      "/:sessionID/plan",
+      describeRoute({
+        summary: "Save human edits to the session plan",
+        operationId: "session.planSave",
+        responses: {
+          200: { description: "Saved plan", content: { "application/json": { schema: resolver(SessionPlan.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("json", SessionPlan.Save),
+      async (c) =>
+        c.json(
+          await SessionPlan.save({ ...c.req.valid("json"), sessionID: c.req.param("sessionID"), source: "human" }),
+        ),
+    )
+    .post(
+      "/:sessionID/plan/revise",
+      describeRoute({
+        summary: "Continue editing the session plan",
+        operationId: "session.planRevise",
+        responses: {
+          200: { description: "Plan draft", content: { "application/json": { schema: resolver(SessionPlan.Info) } } },
+          ...errors(404),
+        },
+      }),
+      async (c) => c.json(await SessionPlan.setStatus(c.req.param("sessionID"), "draft")),
+    )
+    .post(
+      "/:sessionID/plan/start",
+      describeRoute({
+        summary: "Execute the latest saved plan",
+        operationId: "session.planStart",
+        responses: {
+          200: {
+            description: "Execution plan",
+            content: { "application/json": { schema: resolver(SessionPlan.Info) } },
+          },
+          ...errors(404, 409),
+        },
+      }),
+      async (c) => {
+        const sessionID = await Session.rootID(c.req.param("sessionID"))
+        const previous = await SessionPlan.get(sessionID)
+        if (previous.status === "executing") return c.json(previous)
+        if (!previous.content.trim())
+          throw new SessionPlan.ConflictError({
+            message: await Text.pick({
+              zh: "请先保存计划，再开始执行。",
+              en: "Save a plan before starting execution.",
+            }),
+          })
+        const session = await Session.get(sessionID)
+        void Loop.prompt({
+          sessionID,
+          sessionMode: session.sessionMode ?? "execute",
+          parts: [{ type: "text", text: "Execute the latest saved session plan." }],
+        }).catch((error) => {
+          if (error?.name === "AbortError") return
+          log.error("plan execution failed", { sessionID, error })
+          void Bus.publish(Session.Event.Error, {
+            sessionID,
+            error: new NamedError.Unknown({ message: String(error?.message ?? error) }, { cause: error }).toObject(),
+          })
+        })
+        return c.json(await SessionPlan.get(sessionID))
+      },
+    )
     .get(
       "/",
       describeRoute({
@@ -363,12 +470,12 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
-      "/:sessionID/permission-mode",
+      "/:sessionID/mode",
       describeRoute({
-        summary: "Set session permission mode",
+        summary: "Set session mode",
         description:
-          "Switch the session's permission mode (read-only, ask, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
-        operationId: "session.setPermissionMode",
+          "Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
+        operationId: "session.setMode",
         responses: {
           200: {
             description: "Updated session",
@@ -378,7 +485,7 @@ export const SessionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
@@ -387,11 +494,11 @@ export const SessionRoutes = lazy(() =>
           sessionID: z.string().meta({ description: "Session ID" }),
         }),
       ),
-      validator("json", Session.setPermissionMode.schema.omit({ sessionID: true })),
+      validator("json", Session.setMode.schema.omit({ sessionID: true })),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        const session = await Session.setPermissionMode({ ...body, sessionID })
+        const session = await Session.setMode({ ...body, sessionID })
         return c.json(session)
       },
     )
@@ -1155,18 +1262,30 @@ export const SessionRoutes = lazy(() =>
 // Must be lazy: this module and session/index import each other, and some entry points (such as the sandbox worker)
 // load this module before Session is initialized.
 const ImportFullBody = lazy(() =>
-  z.object({
-    info: Session.Info,
-    messages: Message.FullMsg.array(),
-  }),
+  z.preprocess(
+    legacyExport,
+    z.object({
+      info: Session.Info,
+      messages: Message.FullMsg.array(),
+    }),
+  ),
 )
 
 function legacyExport(data: unknown) {
-  const body = data as { messages?: { info?: Message.Info }[] } | undefined
+  const body = data as { info?: Session.Info; messages?: { info?: Message.Info; parts?: Message.Part[] }[] } | undefined
   if (!Array.isArray(body?.messages)) return data
   return {
     ...body,
-    messages: body.messages.map((item) => (item?.info ? { ...item, info: Message.legacy(item.info) } : item)),
+    info: body.info ? SessionMode.migrate(body.info) : body.info,
+    messages: body.messages.map((item) =>
+      item?.info
+        ? {
+            ...item,
+            info: Message.legacy(item.info),
+            parts: Array.isArray(item.parts) ? item.parts.map((part) => SessionMode.migrate(part)) : item.parts,
+          }
+        : item,
+    ),
   }
 }
 
@@ -1178,6 +1297,7 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
   const info: Session.Info = {
     ...body.info,
     id: newSessionID,
+    slug: newSessionID,
     directory: Instance.directory,
     projectID: Instance.project.id,
     // The parent is most likely not in the target project. Keeping parentID would make isChildToolSession treat the

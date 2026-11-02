@@ -2,7 +2,7 @@ import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { setLocale } from "../../i18n"
-import { Composer } from "./composer"
+import { Composer, modeOptions } from "./composer"
 import { send } from "./send"
 import { setState } from "../../state/store"
 import { Toasts } from "../../ui/toast"
@@ -40,6 +40,25 @@ function renderImageDraft(directory: string) {
   }
   return host
 }
+
+test("session mode follows the attachment button and defaults to Execute", () => {
+  const host = renderImageDraft("/session-mode-layout")
+  const buttons = [...host.querySelector(".composer-bar")!.querySelectorAll("button")]
+  expect(buttons[0]?.getAttribute("aria-label")).toBe("附件")
+  expect(buttons[1]?.getAttribute("aria-label")).toContain("执行")
+})
+
+test("auto mode warns that everything is allowed without a sandbox", () => {
+  const modes = modeOptions()
+  expect(modes.map((option) => option.value)).toEqual(["plan", "execute", "auto"])
+  const auto = modes.find((option) => option.value === "auto")!
+  expect(auto.tone).toBe("danger")
+  expect(auto.badge).toBe("危险")
+  expect(auto.description).toContain("危险")
+  expect(auto.description).toContain("沙箱")
+  expect(modes.find((option) => option.value === "plan")!.description).toContain("不改动项目")
+  expect(modes.find((option) => option.value === "execute")!.description).toContain("直接进行")
+})
 
 test("a disabled composer keeps its draft and prevents typing or sending", () => {
   const host = document.createElement("div")

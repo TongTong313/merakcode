@@ -23,6 +23,14 @@ const Capabilities = z.object({
   resume: z.boolean(),
   permission: z.enum(["merak", "external"]),
   questions: z.boolean(),
+  control: z
+    .object({
+      reportedOperations: z.string().array(),
+      cancellation: z.enum(["operation", "task", "none"]),
+      liveMode: z.boolean(),
+      limitations: z.string().array(),
+    })
+    .optional(),
 })
 
 export const Product = Config.AgentConnectionProduct.extend({

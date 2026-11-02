@@ -8,7 +8,7 @@ import { buildDeferredPlan, buildToolSearchTool } from "./tool-search"
 import { ToolDiscovery } from "./tool-discovery"
 import { ToolDiscoveryRerank } from "./tool-discovery-rerank"
 import { SkillSearch } from "../skill/search"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 
 export async function prepareTools(input: {
   agent: Agent.Info
@@ -16,13 +16,13 @@ export async function prepareTools(input: {
   session: Pick<Session.Info, "id" | "parentID" | "metadata">
   messages: Message.FullMsg[]
   tools?: Record<string, boolean>
-  permissionMode?: PermissionMode.Value
+  sessionMode?: SessionMode.Value
   child?: boolean
   step?: number
   discover?: boolean
 }) {
   const childSession = Boolean(input.session.parentID) || input.child === true
-  const effectivePermissionMode = input.permissionMode ?? PermissionMode.DEFAULT
+  const effectiveSessionMode = input.sessionMode ?? SessionMode.DEFAULT
   const pool = new Set(input.agent.profile?.availableTools ?? STANDARD_TOOL_POOL)
   const allowMcp = pool.has("mcp")
 
@@ -46,7 +46,7 @@ export async function prepareTools(input: {
     mcp: mcpTools,
     deferredStandardIds: computeDeferred(input.agent),
     messages: input.messages,
-    disabled: (id) => input.tools?.[id] === false,
+    disabled: (id) => input.tools?.[id] === false || !SessionMode.allowsTool(effectiveSessionMode, id),
   })
 
   // Tools removed outright: child sessions cannot nest workflows. Computed here because auto-activation must skip
@@ -114,20 +114,19 @@ export async function prepareTools(input: {
   const dynamic = await ToolRegistry.dynamicIds()
   const mcpIds = new Set(Object.keys(mcpTools))
   function visible(id: string) {
+    if (!SessionMode.allowsTool(effectiveSessionMode, id)) return false
     if (id === "invalid") return true
     if (input.tools?.[id] === false) return false
     if (mcpIds.has(id)) return allowMcp
     if (!pool.has(id) && !(pool.has("plugin") && dynamic.has(id))) return false
     if (id === "delegate" && input.session.metadata?.group !== true) return false
-    if (effectivePermissionMode === "auto" && (id === "question" || id === "plan_enter")) return false
-    if (id === "plan_enter" && effectivePermissionMode === "readonly") return false
-    if (id === "plan_exit" && effectivePermissionMode !== "readonly") return false
     if (childSession && ["subagent", "workflow_run", "plan_enter", "plan_exit"].includes(id)) return false
     return true
   }
   function search(loaded: Set<string>) {
     const candidates = deferred.summaries.filter(
-      (item) => !physicallyHidden.has(item.id) && (!deferred.activated.has(item.id) || loaded.has(item.id)),
+      (item) =>
+        visible(item.id) && !physicallyHidden.has(item.id) && (!deferred.activated.has(item.id) || loaded.has(item.id)),
     )
     if (!candidates.some((item) => !deferred.activated.has(item.id))) return undefined
     return buildToolSearchTool({ deferred: candidates, activated: deferred.activated, loaded })

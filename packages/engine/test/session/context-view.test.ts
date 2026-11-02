@@ -10,7 +10,9 @@ import { SessionContextView } from "@merakcode/engine/agent/context/context-view
 import { Token } from "@merakcode/engine/agent/context/token"
 import { tmpdir } from "../fixture/fixture"
 
-const sessionID = "session"
+import { Session } from "@merakcode/engine/agent/session/index"
+
+let sessionID = ""
 
 function createModel(): Provider.Model {
   return {
@@ -115,6 +117,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const messages: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "initial request")] },
           { info: assistantInfo("msg_002", "msg_001"), parts: [text("msg_002", "part_002", "working")] },
@@ -163,6 +166,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const messages: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "current request")] },
         ]
@@ -210,6 +214,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const output = "x".repeat(4_000)
         const assistant = {
           ...assistantInfo("msg_002", "msg_001"),
@@ -272,6 +277,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const oldOutput = `old-output-${"a".repeat(200_000)}`
         const messages: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "initial request")] },
@@ -343,6 +349,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const oldOutput = `old-output-${"a".repeat(200_000)}`
         const messages: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "old request")] },
@@ -391,6 +398,7 @@ describe("SessionContextView.build", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const messages: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "real request")] },
           {
@@ -457,6 +465,7 @@ test("git status comes after the history, so editing a file leaves everything be
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
+      sessionID = (await Session.create({})).id
       const messages: Message.FullMsg[] = [
         { info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "改一下 a.ts")] },
       ]
@@ -484,6 +493,7 @@ test("the /context breakdown counts the context after the history as user contex
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
+      sessionID = (await Session.create({})).id
       await writeFile(join(tmp.path, "a.ts"), "export const a = 1\n")
       const messages: Message.FullMsg[] = [{ info: userInfo("msg_001"), parts: [text("msg_001", "part_001", "hi")] }]
       const view = await buildWithGitStatus({
@@ -522,6 +532,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         await writeFile(join(tmp.path, "a.ts"), "1")
         const view = await build([{ info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] }], 1)
         const last = view.messages.at(-1)!
@@ -540,6 +551,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         const first: Message.FullMsg[] = [
           { info: userInfo("msg_001"), parts: [text("msg_001", "p1", "改一下 a.ts")] },
           { info: assistantInfo("msg_002", "msg_001"), parts: [tool("msg_002", "p2", "call_1", "read a.ts")] },
@@ -561,6 +573,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         await writeFile(join(tmp.path, "a.ts"), "1")
         const view = await build(
           [
@@ -582,6 +595,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         await writeFile(join(tmp.path, "a.ts"), "1")
         const read = tool("msg_002", "p2", "call_1", "an image")
         if (read.state.status === "completed")
@@ -616,6 +630,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         await writeFile(join(tmp.path, "a.ts"), "1")
         const failed = tool("msg_002", "p2", "call_1", "")
         failed.state = { status: "error", input: {}, error: "permission denied", time: { start: 0, end: 0 } }
@@ -640,6 +655,7 @@ describe("context that changes from step to step", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        sessionID = (await Session.create({})).id
         await writeFile(join(tmp.path, "a.ts"), "1")
         const view = await build(
           [

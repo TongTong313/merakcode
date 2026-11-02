@@ -12,7 +12,7 @@ const log = Log.create({ service: "permission.flush" })
 
 /**
  * Re-evaluates pending requests after the rules change: a config update (Config.UpdatedEvent) or a permission mode
- * switch (Session.setPermissionMode).
+ * switch (Session.setMode).
  *
  * Typical case: several parallel tool calls wait for approval, then the user allows one kind in config or switches
  * to auto mode; requests whose checks are all allowed now are released, the rest stay.
@@ -81,7 +81,7 @@ export namespace PermissionFlush {
     return Loop.buildToolExecutionRuleset({
       agent,
       session,
-      permissionMode: await Loop.modeOf(session),
+      sessionMode: await Loop.modeOf(session),
       grants: await Loop.grantsOf(session),
     })
   }

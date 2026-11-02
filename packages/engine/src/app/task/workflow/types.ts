@@ -1,5 +1,5 @@
 import z from "zod"
-import type { PermissionMode } from "../../../agent/permission/mode"
+import type { SessionMode } from "../../../agent/permission/mode"
 
 // Run records are sent to clients (workflow.list / workflow.get), so they are schemas to give the SDK types
 export const WorkflowPhaseMeta = z.object({
@@ -145,7 +145,7 @@ export type WorkflowAgentOptions = {
   tools?: string[]
   schema?: Record<string, unknown>
   /** @deprecated Workflow child permissions inherit from the caller; this option is ignored. */
-  kind?: PermissionMode.Value
+  kind?: SessionMode.Value
   /** @deprecated Currently ignored by the workflow runtime. */
   isolation?: "worktree"
   workUnitId?: string

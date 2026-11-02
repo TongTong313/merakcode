@@ -264,7 +264,7 @@ test("shares external directory holds with a multi-root workspace using the same
       native = Promise.resolve(
         request(
           `/session/${nativeID}/message`,
-          { parts: [{ type: "text", text: "write a file" }], permissionMode: "auto" },
+          { parts: [{ type: "text", text: "write a file" }], sessionMode: "auto" },
           true,
         ),
       )

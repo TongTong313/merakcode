@@ -128,7 +128,7 @@ async function withTools(fn: (ctx: { dir: string; tools: Record<string, AITool> 
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
         // Auto mode so plugin tools don't wait on approval; only the gate hooks are under test
-        permissionMode: "auto",
+        sessionMode: "auto",
       })
       await fn({ dir: tmp.path, tools })
     },

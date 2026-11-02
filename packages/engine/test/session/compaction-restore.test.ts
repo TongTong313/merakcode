@@ -135,7 +135,7 @@ test("auto-compaction continuation restores todos, plan, files and skills, with 
         sessionID: session.id,
         agent: "build",
         model,
-        permissionMode: "ask",
+        sessionMode: "execute",
         auto: true,
       })
       const before = await Session.messages({ sessionID: session.id })
@@ -169,7 +169,7 @@ test("auto-compaction continuation restores todos, plan, files and skills, with 
       expect(joined).toContain("Unfinished todos restored after compaction")
       expect(joined).toContain("实现压缩续接")
       expect(joined).toContain("写测试")
-      expect(joined).toContain("Current plan file")
+      expect(joined).toContain("Current editable plan")
       expect(joined).toContain("步骤一")
       expect(joined).toContain("Called the Read tool")
       expect(joined).toContain("export const x = 1")
@@ -232,7 +232,7 @@ test("continuation holds only the instruction when there is nothing to restore",
         sessionID: session.id,
         agent: "build",
         model,
-        permissionMode: "ask",
+        sessionMode: "execute",
         auto: true,
       })
       const before = await Session.messages({ sessionID: session.id })
@@ -313,7 +313,7 @@ async function runCompaction(input: {
     sessionID: input.sessionID,
     agent: "build",
     model: input.model,
-    permissionMode: "ask",
+    sessionMode: "execute",
     auto: true,
   })
   const before = await Session.messages({ sessionID: input.sessionID })

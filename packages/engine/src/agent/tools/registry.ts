@@ -31,7 +31,7 @@ import { Flag } from "../../infra/flag/flag"
 import { Log } from "@merakcode/log/logger"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
-import { PlanExitTool, PlanEnterTool } from "./plan"
+import { PlanExitTool, PlanEnterTool, PlanWriteTool, PlanEditTool } from "./plan"
 import { BashBackgroundTool } from "./bash-background"
 import { MultiEditTool } from "./multi_edit"
 import { RemoteTool } from "./remote"
@@ -223,7 +223,7 @@ export namespace ToolRegistry {
       ...installed("CronList"),
       ...installed("CronDelete"),
       ...(Flag.MERAKCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...(Flag.MERAKCODE_PLAN_MODE && interactive() ? [PlanExitTool, PlanEnterTool] : []),
+      ...(Flag.MERAKCODE_PLAN_MODE && interactive() ? [PlanExitTool, PlanEnterTool, PlanWriteTool, PlanEditTool] : []),
       ...installed("workflow_run"),
       BashBackgroundTool,
     ]

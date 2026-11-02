@@ -28,9 +28,9 @@ export declare function version(command: string): Promise<{
   unavailable?: string
 }>
 /** Version of the member protocol */
-export declare const PROTOCOL = 1
+export declare const PROTOCOL = 2
 /** The user's permission mode in the group */
-export type Mode = "readonly" | "ask" | "auto"
+export type Mode = "plan" | "execute" | "auto"
 export type ProductModel = {
   id: string
   providerID?: string
@@ -48,6 +48,13 @@ export type Capabilities = {
   resume: boolean
   permission: "merak" | "external"
   questions: boolean
+  /** Only reported operations are governed; unreported native actions remain outside host control. */
+  control?: {
+    reportedOperations: string[]
+    cancellation: "operation" | "task" | "none"
+    liveMode: boolean
+    limitations: string[]
+  }
 }
 /**
  * The product as configured in MerakCode. command and args are the CLI and extra arguments the user set; an adapter
@@ -165,6 +172,8 @@ export type Host = {
   question(questions: Question[]): Promise<Answer[]>
 }
 export type Definition = {
+  /** Optional native policy update. The task object also receives the current mode in place. */
+  modeChanged?(mode: Mode): void | Promise<void>
   inspect(product: Product): Info | Promise<Info>
   models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>
   /** Does the task; signal aborts when the user stops the group */

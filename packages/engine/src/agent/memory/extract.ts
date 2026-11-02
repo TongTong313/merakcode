@@ -281,7 +281,7 @@ export namespace MemoryExtract {
       sessionID: child.id,
       agent: EXTRACTOR_AGENT,
       model: await pickMemoryModel(input.model),
-      permissionMode: "ask",
+      sessionMode: "execute",
       maxTurns: 5,
       parts: [
         {

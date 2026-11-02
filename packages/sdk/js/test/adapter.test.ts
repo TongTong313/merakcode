@@ -220,3 +220,26 @@ adapter({
   )
   expect(await typecheck(space.dir, "wrong.mts")).toContain("Type 'number' is not assignable to type 'string'")
 }, 60_000)
+
+test("mode notifications received before task startup replace the stale launch mode", async () => {
+  const { spawn, connect, stop } = await import("../src/adapter")
+  const readline = await import("node:readline")
+  await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
+    adapter({inspect: () => ({name: "Mode fixture"}), run: async task => ({text: task.mode})})`)
+  const child = spawn(process.execPath, ["adapter.mts"], { cwd: space.dir, stdio: ["pipe", "pipe", "inherit"] })
+  const rpc = connect({
+    lines: readline.createInterface({ input: child.stdout! }),
+    send: (line) => child.stdin!.write(line + "\n"),
+    handlers: {},
+  })
+  try {
+    await rpc.request("initialize", { product: { id: "mode", title: "Mode" } })
+    await rpc.request("task/mode", { mode: "execute", revision: 2 })
+    await rpc.request("task/mode", { mode: "auto", revision: 1 })
+    const result = await rpc.request<{ text: string }>("task/run", { mode: "auto", prompt: "Probe", cwd: space.dir })
+    expect(result.text).toBe("execute")
+  } finally {
+    await stop(child)
+    await rpc.closed
+  }
+}, 30000)

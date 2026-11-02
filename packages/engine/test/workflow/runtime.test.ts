@@ -342,7 +342,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        permissionMode: input.kind,
+        sessionMode: input.kind,
       })
       captured.kind = input.kind
       captured.permission = child.permission
@@ -374,7 +374,7 @@ describe("WorkflowRuntime", () => {
           }),
       })
 
-      expect(captured.kind).toBe("ask")
+      expect(captured.kind).toBe("execute")
       expect(captured.permission).toEqual(callerRuleset)
       expect(captured.edit).toBe("allow")
       expect(captured.externalDirectory).toBe("allow")
@@ -399,7 +399,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        permissionMode: input.kind,
+        sessionMode: input.kind,
       })
       captured.kind = input.kind
       captured.edit = PermissionNext.evaluate("edit", "src/file.ts", rules).action
@@ -429,7 +429,7 @@ describe("WorkflowRuntime", () => {
           }),
       })
 
-      expect(captured.kind).toBe("ask")
+      expect(captured.kind).toBe("execute")
       expect(captured.edit).toBe("deny")
       expect(captured.write).toBe("deny")
     } finally {
@@ -527,7 +527,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        permissionMode: input.kind,
+        sessionMode: input.kind,
       })
       captured.tools = input.tools
       captured.permission = child.permission
@@ -599,7 +599,7 @@ describe("WorkflowRuntime", () => {
             id: "workflow-custom",
             name: "workflow-custom",
             profile: {
-              ...(base!.profile ?? { kind: "ask" as const, availableTools: [], restrictedRules: [] }),
+              ...(base!.profile ?? { kind: "execute" as const, availableTools: [], restrictedRules: [] }),
               availableTools: [...(base!.profile?.availableTools ?? []), "custom_lookup"],
             },
           }
@@ -613,7 +613,7 @@ describe("WorkflowRuntime", () => {
             const rules = Loop.buildToolExecutionRuleset({
               agent: agent!,
               session: child,
-              permissionMode: input.kind,
+              sessionMode: input.kind,
             })
             captured.tools = input.tools
             captured.custom = PermissionNext.evaluate("custom_lookup", "*", rules).action

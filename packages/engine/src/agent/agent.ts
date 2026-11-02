@@ -47,6 +47,8 @@ export const STANDARD_TOOL_POOL = [
   "CronList",
   "CronDelete",
   "question",
+  "plan_write",
+  "plan_edit",
   "plan_enter",
   "plan_exit",
   "lsp",

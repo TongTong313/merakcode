@@ -106,7 +106,7 @@ for (const scenario of ["normal", "unknown", "tool-stop", "error", "cancel", "re
           })
           const running = Loop.prompt({
             sessionID: session.id,
-            permissionMode: "auto",
+            sessionMode: "auto",
             parts: [{ type: "text", text: "completion-case" }],
           }).then(
             (value) => ({ value, error: undefined }),

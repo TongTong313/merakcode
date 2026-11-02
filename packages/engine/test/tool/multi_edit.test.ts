@@ -1,3 +1,4 @@
+import { Session } from "@merakcode/engine/agent/session/index"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import * as fs from "fs/promises"
@@ -13,14 +14,14 @@ import { Filesystem } from "@merakcode/util/filesystem"
 
 const makeCtx = (
   sessionID = "test",
-  overrides?: { agent?: string; permissionMode?: "readonly" | "ask"; ask?: () => Promise<void> },
+  overrides?: { agent?: string; sessionMode?: "plan" | "execute"; ask?: () => Promise<void> },
 ) => ({
   sessionID,
   messageID: "",
   callID: "",
   agent: overrides?.agent ?? "build",
-  permissionMode: overrides?.permissionMode ?? ("ask" as const),
-  kind: overrides?.permissionMode ?? ("ask" as const),
+  sessionMode: overrides?.sessionMode ?? ("execute" as const),
+  kind: overrides?.sessionMode ?? ("execute" as const),
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -245,14 +246,16 @@ describe("multi_edit: plan bypass", () => {
     // ask throws, so passing proves the bypass took effect.
     const planDir = path.join(Global.Path.data, "plans")
     await fs.mkdir(planDir, { recursive: true })
-    const planFile = path.join(planDir, `${Date.now()}-bypass-${Math.random().toString(36).slice(2)}.md`)
+    let planFile = ""
     await using tmp = await tmpdir({ git: true })
     try {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const ctx = makeCtx("test", {
-            permissionMode: "readonly",
+          const session = await Session.create({})
+          planFile = Session.plan(session)
+          const ctx = makeCtx(session.id, {
+            sessionMode: "plan",
             ask: async () => {
               throw new Error("ask should NOT be called on plan-bypass path")
             },

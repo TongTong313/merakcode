@@ -4,7 +4,8 @@ import { Instance } from "../../../infra/project/instance"
 import { Storage } from "../../../infra/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { Loop } from "../../../agent/loop/index"
-import type { PermissionMode } from "../../../agent/permission/mode"
+import { Session } from "../../../agent/session"
+import type { SessionMode } from "../../../agent/permission/mode"
 import type { Workspace } from "../../../infra/project/workspace"
 
 /**
@@ -49,7 +50,7 @@ export namespace CronScheduler {
     interval: number
     prompt: string
     agent?: string
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     model?: {
       providerID: string
       modelID: string
@@ -158,8 +159,7 @@ export namespace CronScheduler {
         parts: [{ type: "text", text: task.prompt }],
         noReply: false,
         ...(task.agent ? { agent: task.agent } : {}),
-        // Restore the permission mode from creation, so a task created in auto mode does not fall back to asking
-        ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}),
+        sessionMode: await Loop.modeOf(await Session.get(task.sessionID)),
         ...(task.model ? { model: task.model } : {}),
       })
       if (!ran) {
@@ -187,7 +187,7 @@ export namespace CronScheduler {
     prompt: string
     sessionID: string
     agent?: string
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     model?: {
       providerID: string
       modelID: string
@@ -203,7 +203,7 @@ export namespace CronScheduler {
       interval: params.interval,
       prompt: params.prompt,
       agent: params.agent,
-      permissionMode: params.permissionMode,
+      sessionMode: params.sessionMode,
       model: params.model,
       createdAt: Date.now(),
       nextRun: Date.now() + params.interval,
@@ -222,7 +222,7 @@ export namespace CronScheduler {
       id,
       interval: params.interval,
       agent: params.agent,
-      permissionMode: params.permissionMode,
+      sessionMode: params.sessionMode,
       providerID: params.model?.providerID,
       modelID: params.model?.modelID,
     })

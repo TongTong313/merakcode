@@ -4,7 +4,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Agent } from "@merakcode/engine/agent/agent"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
-import type { PermissionMode } from "@merakcode/engine/agent/permission/mode"
+import type { SessionMode } from "@merakcode/engine/agent/permission/mode"
 import { Loop } from "@merakcode/engine/agent/loop/index"
 import type { Session } from "@merakcode/engine/agent/session/index"
 
@@ -13,15 +13,12 @@ function evalPerm(
   agent: Agent.Info | undefined,
   permission: string,
   pattern = "*",
-  permissionMode: PermissionMode.Value = "ask",
+  sessionMode: SessionMode.Value = "execute",
 ): PermissionNext.Action | undefined {
   if (!agent) return undefined
   const session = { id: "ses_agent_test", permission: [] } as unknown as Session.Info
-  return PermissionNext.evaluate(
-    permission,
-    pattern,
-    Loop.buildToolExecutionRuleset({ agent, session, permissionMode }),
-  ).action
+  return PermissionNext.evaluate(permission, pattern, Loop.buildToolExecutionRuleset({ agent, session, sessionMode }))
+    .action
 }
 
 test("returns default native agents when no config", async () => {
@@ -559,7 +556,7 @@ test("defaultAgent throws when default_agent points to non-existent agent", asyn
   })
 })
 
-test("auto mode: build edits files, dotfiles and runs commands without asking; risky commands and external writes still ask", async () => {
+test("auto mode: build edits files, dotfiles and runs commands without asking; risky commands and external writes bypass approval", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
@@ -568,13 +565,13 @@ test("auto mode: build edits files, dotfiles and runs commands without asking; r
       expect(build).toBeDefined()
       for (const key of ["edit", "protected_write", "bash", "bash_delete", "read", "todowrite"])
         expect(evalPerm(build, key, "*", "auto"), key).toBe("allow")
-      expect(evalPerm(build, "bash_risky", "git push", "auto")).toBe("ask")
-      expect(evalPerm(build, "external_write", "/etc/hosts", "auto")).toBe("ask")
+      expect(evalPerm(build, "bash_risky", "git push", "auto")).toBe("allow")
+      expect(evalPerm(build, "external_write", "/etc/hosts", "auto")).toBe("allow")
     },
   })
 })
 
-test("auto mode: simplifier edits without asking and question stays denied", async () => {
+test("auto mode bypasses agent safety rules while tool availability stays separate", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
@@ -582,8 +579,8 @@ test("auto mode: simplifier edits without asking and question stays denied", asy
       const simplifier = await Agent.get("simplifier")
       expect(simplifier).toBeDefined()
       expect(evalPerm(simplifier, "edit", "*", "auto")).toBe("allow")
-      // restrictedRules force-deny question, which auto mode cannot override; the runner drops the tool instead.
-      expect(evalPerm(simplifier, "question", "*", "auto")).toBe("deny")
+      // Availability removes new interactions independently of safety authorization.
+      expect(evalPerm(simplifier, "question", "*", "auto")).toBe("allow")
     },
   })
 })
@@ -623,7 +620,7 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
   })
 })
 
-test("auto mode still applies user deny rules", async () => {
+test("auto mode bypasses user deny rules while execute retains them", async () => {
   await using tmp = await tmpdir({
     config: {
       permission: {
@@ -637,9 +634,11 @@ test("auto mode still applies user deny rules", async () => {
     fn: async () => {
       const build = await Agent.get("build")
       expect(build).toBeDefined()
-      expect(evalPerm(build, "edit", "/work/pnpm.lock", "auto")).toBe("deny")
+      expect(evalPerm(build, "edit", "/work/pnpm.lock", "auto")).toBe("allow")
+      expect(evalPerm(build, "edit", "/work/pnpm.lock", "execute")).toBe("deny")
       expect(evalPerm(build, "edit", "/work/a.ts", "auto")).toBe("allow")
-      expect(evalPerm(build, "bash", "docker run x", "auto")).toBe("deny")
+      expect(evalPerm(build, "bash", "docker run x", "auto")).toBe("allow")
+      expect(evalPerm(build, "bash", "docker run x", "execute")).toBe("deny")
       expect(evalPerm(build, "bash", "npm test", "auto")).toBe("allow")
     },
   })

@@ -1,3 +1,4 @@
+import { ModeOperations } from "../permission/operations"
 import z from "zod"
 import type { ChildProcess } from "child_process"
 import { Tool } from "./tool"
@@ -291,9 +292,9 @@ async function notifyAgent(job: BashJob) {
     // Child-process exit callbacks retain the spawning request's async context.
     // This completion notification is a new turn, independent of that request.
     await LoopExecution.run(undefined, () =>
-      Loop.prompt({
+      Loop.promptGenerated({
         sessionID,
-        parts: [{ type: "text", text }],
+        parts: [{ type: "text", text, synthetic: true }],
       }),
     )
   } catch (e) {
@@ -362,6 +363,19 @@ export const BashBackgroundTool = Tool.define(
           messageID: ctx.messageID,
           callID: ctx.callID,
         })
+
+        const jobController = new AbortController()
+        const jobCallID = `background:${job.id}`
+        const unregister = ModeOperations.register(ctx.sessionID, jobCallID, "bash_background", jobController)
+        ModeOperations.inherit(ctx.sessionID, ctx.callID, jobCallID)
+        jobController.signal.addEventListener(
+          "abort",
+          () => {
+            void BashJobStore.stop(job.id)
+          },
+          { once: true },
+        )
+        proc.once("close", unregister)
 
         log.info("starting background job", { id: job.id, command: params.command })
 

@@ -128,7 +128,7 @@ export namespace SessionMemory {
       sessionID: child.id,
       agent: AGENT_NAME,
       model: await pickMemoryModel(input.model),
-      permissionMode: "ask",
+      sessionMode: "execute",
       maxTurns: 5,
       parts: [
         {

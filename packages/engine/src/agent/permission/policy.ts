@@ -4,7 +4,7 @@ import { SandboxPolicy } from "./sandbox-policy"
 import { Global } from "../../infra/global/index"
 import { Instance } from "../../infra/project/instance"
 import { PermissionNext } from "./next"
-import type { PermissionMode } from "./mode"
+import type { SessionMode } from "./mode"
 
 /**
  * Permission policy: classifies a tool call as an operation (permission key + pattern), then gives the default
@@ -12,11 +12,10 @@ import type { PermissionMode } from "./mode"
  *
  * Rule chain order (evaluate takes the last matching rule):
  *   mode defaults -> user rules (config, "always allow", session grants) -> mode enforcement (read-only denies)
- * So in ask and auto mode the user's allows and denies override the defaults, while read-only mode blocks edits and
- * commands regardless of user rules.
+ * Execute applies user rules; plan additionally forbids project mutations. Auto bypasses the safety rule chain.
  */
 export namespace PermissionPolicy {
-  export type Mode = PermissionMode.Value
+  export type Mode = SessionMode.Value
   type Action = PermissionNext.Action
 
   export type Grant = PermissionNext.Grant
@@ -24,15 +23,15 @@ export namespace PermissionPolicy {
   /** One operation to evaluate */
   export type Ask = PermissionNext.Check
 
-  type Table = Record<string, Record<Mode, Action>>
+  type Table = Record<string, Record<Exclude<Mode, "auto">, Action>>
 
-  const allow = { readonly: "allow", ask: "allow", auto: "allow" } as const
-  const ask = { readonly: "ask", ask: "ask", auto: "ask" } as const
+  const allow = { plan: "allow", execute: "allow" } as const
+  const ask = { plan: "ask", execute: "ask" } as const
 
   /** Default decision for each operation in the three modes */
   const DEFAULTS: Table = {
     // Unregistered tools (plugins, etc.)
-    "*": { readonly: "ask", ask: "ask", auto: "allow" },
+    "*": { plan: "ask", execute: "ask" },
     // Read-only tools and internal protocols
     read: allow,
     glob: allow,
@@ -46,29 +45,29 @@ export namespace PermissionPolicy {
     plan_enter: allow,
     plan_exit: allow,
     doom_loop: allow,
-    external_read: { readonly: "ask", ask: "ask", auto: "allow" },
+    external_read: { plan: "ask", execute: "ask" },
     sensitive_read: ask,
     // File edits
-    edit: { readonly: "deny", ask: "allow", auto: "allow" },
-    protected_write: { readonly: "deny", ask: "ask", auto: "allow" },
-    // MerakCode's own config: it holds the permission rules, so even auto mode asks before changing it
-    config_write: { readonly: "deny", ask: "ask", auto: "ask" },
-    external_write: { readonly: "deny", ask: "ask", auto: "ask" },
+    edit: { plan: "deny", execute: "allow" },
+    protected_write: { plan: "deny", execute: "ask" },
+    // MerakCode's own config holds the permission rules; execute asks before changing it
+    config_write: { plan: "deny", execute: "ask" },
+    external_write: { plan: "deny", execute: "ask" },
     // Commands
     bash_readonly: allow,
-    bash: { readonly: "deny", ask: "ask", auto: "allow" },
-    bash_delete: { readonly: "deny", ask: "ask", auto: "allow" },
-    bash_risky: { readonly: "deny", ask: "ask", auto: "ask" },
+    bash: { plan: "deny", execute: "ask" },
+    bash_delete: { plan: "deny", execute: "ask" },
+    bash_risky: { plan: "deny", execute: "ask" },
     // Wiping the system or the home folder, formatting, raw disk writes: only an explicit allow in the config runs them
-    bash_forbidden: { readonly: "deny", ask: "deny", auto: "deny" },
+    bash_forbidden: { plan: "deny", execute: "deny" },
     // A command that may change things while the sandbox is not ready (sandbox.mode "preferred")
-    bash_unsandboxed: { readonly: "deny", ask: "ask", auto: "ask" },
-    sandbox: { readonly: "deny", ask: "ask", auto: "ask" },
+    bash_unsandboxed: { plan: "deny", execute: "ask" },
+    sandbox: { plan: "deny", execute: "ask" },
     // Subagents, workflows, scheduled tasks, MCP
-    subagent: { readonly: "ask", ask: "ask", auto: "allow" },
-    workflow_run: { readonly: "ask", ask: "ask", auto: "allow" },
-    cron: { readonly: "ask", ask: "ask", auto: "allow" },
-    mcp: { readonly: "ask", ask: "ask", auto: "allow" },
+    subagent: { plan: "ask", execute: "ask" },
+    workflow_run: { plan: "ask", execute: "ask" },
+    cron: { plan: "ask", execute: "ask" },
+    mcp: { plan: "ask", execute: "ask" },
     // Network: always ask outside the allowlist
     network: ask,
   }
@@ -142,17 +141,18 @@ export namespace PermissionPolicy {
 
   /** Full rule chain: mode defaults + user rules + mode enforcement */
   export function ruleset(mode: Mode, user: PermissionNext.Ruleset = []): PermissionNext.Ruleset {
+    if (mode === "auto") return [{ permission: "*", pattern: "*", action: "allow" }]
     const defaults: PermissionNext.Ruleset = Object.entries(DEFAULTS).map(([permission, actions]) => ({
       permission,
       pattern: "*",
       action: actions[mode],
     }))
     const network = NETWORK_ALLOW.map((pattern) => ({ permission: "network", pattern, action: "allow" as const }))
-    return [...defaults, ...network, ...user, ...(mode === "readonly" ? readonly() : [])]
+    return [...defaults, ...network, ...user, ...(mode === "plan" ? readonly() : [])]
   }
 
-  /** Permission keys unavailable in read-only mode; the UI shows a read-only hint for them */
-  export function forbiddenInReadonly(permission: string) {
+  /** Permission keys unavailable in plan mode */
+  export function forbiddenInPlan(permission: string) {
     return READONLY_DENY.includes(permission)
   }
 

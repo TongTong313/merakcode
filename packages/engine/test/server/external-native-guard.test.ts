@@ -42,7 +42,7 @@ test("refuses a native subagent task that reuses an external conversation", asyn
     const nativeID = (await (await request("/session", {})).json()).id
     const response = await request(`/session/${nativeID}/message`, {
       parts: [{ type: "text", text: "try external reuse" }],
-      permissionMode: "auto",
+      sessionMode: "auto",
     })
     expect(response.status).toBe(200)
     await response.text()

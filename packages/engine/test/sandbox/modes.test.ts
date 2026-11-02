@@ -78,6 +78,7 @@ function auto(sessionID: string) {
     messageID: "",
     callID: "",
     agent: "build",
+    sessionMode: "auto" as const,
     abort: AbortSignal.any([]),
     messages: [],
     ruleset,
@@ -96,6 +97,7 @@ async function run(mode: string, backend: Backend, command: string, sessionID: s
     directory: tmp.path,
     fn: async () => {
       const { ctx, requests } = auto(sessionID)
+      if (mode === "required") Object.assign(ctx, { sessionMode: "execute" })
       const bash = await BashTool.init()
       const outcome = await bash.execute({ command, description: "test" }, ctx).then(
         (result) => ({ result, error: undefined }),
@@ -106,10 +108,9 @@ async function run(mode: string, backend: Backend, command: string, sessionID: s
   })
 }
 
-test("preferred, sandbox not ready: a command that changes things asks first, even in auto mode", async () => {
+test("auto bypasses approval when the configured sandbox is not ready", async () => {
   const { result, error, requests } = await run("preferred", missing, "echo hi > out.txt", "ses_mode_pref_write")
-  expect(requests).toHaveLength(1)
-  expect(requests[0]!.metadata.tags).toContain("no-sandbox")
+  expect(requests).toHaveLength(0)
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
 })
@@ -185,7 +186,7 @@ test("turning the sandbox off keeps whether a one-time setup is still needed", a
   expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
 })
 
-test("waking an already set up sandbox leaves it on, and an auto-mode command runs inside it without asking", async () => {
+test("waking leaves sandbox configuration on while auto bypasses it", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   PermissionExecution.useBackendForTest(on)
   wrapped.length = 0
@@ -194,16 +195,16 @@ test("waking an already set up sandbox leaves it on, and an auto-mode command ru
 
   const { result, error, requests } = await run("preferred", on, "echo hi > out.txt", "ses_wake_on")
   expect(requests).toHaveLength(0)
-  expect(wrapped).toEqual(["echo hi > out.txt"])
+  expect(wrapped).toEqual([])
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
 })
 
-test("preferred, sandbox on: commands go through the sandbox without an extra question", async () => {
+test("auto bypasses an available sandbox without changing configuration", async () => {
   wrapped.length = 0
   const { result, error, requests, dir } = await run("preferred", on, "echo hi > out.txt", "ses_mode_on")
   expect(requests).toHaveLength(0)
-  expect(wrapped).toEqual(["echo hi > out.txt"])
+  expect(wrapped).toEqual([])
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
   expect(path.isAbsolute(dir)).toBe(true)

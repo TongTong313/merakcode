@@ -18,6 +18,7 @@ import { Question } from "../session/question"
 import { runAdmitted } from "../../infra/process/admission"
 import { Text } from "../prompt/text"
 import { Lock } from "@merakcode/engine/infra/concurrency/lock"
+import { sessionModeNow } from "../permission/session-mode"
 
 export namespace ExternalSession {
   const log = Log.create({ service: "session.external" })
@@ -67,8 +68,8 @@ export namespace ExternalSession {
   export async function prompt(input: Loop.PromptInput): Promise<Message.FullMsg> {
     await reconcile(input.sessionID)
     const session = await SessionTarget.assertCanSend(input.sessionID, input)
-    if (input.permissionMode)
-      await Session.setPermissionMode({ sessionID: session.id, permissionMode: input.permissionMode })
+    if (input.sessionMode && !session.parentID)
+      await Session.setMode({ sessionID: session.id, sessionMode: input.sessionMode })
     if (session.target?.kind !== "external")
       throw new Error(await Text.pick({ zh: "此对话没有外部产品目标", en: "The conversation has no external target" }))
     const productID = session.target.productID
@@ -91,7 +92,7 @@ export namespace ExternalSession {
       sessionID: session.id,
       role: "user",
       time: { created: Date.now() },
-      permissionMode: input.permissionMode ?? session.permissionMode ?? "ask",
+      sessionMode: input.sessionMode ?? session.sessionMode ?? "execute",
       execution,
       metadata:
         input.metadata || input.messageID ? { ...input.metadata, externalClientMessageID: input.messageID } : undefined,
@@ -227,7 +228,7 @@ export namespace ExternalSession {
                   ? `Conversation history (background only; do not repeat previous actions):\n${history}\n\nCurrent user task:\n${currentText}`
                   : currentText,
                 cwd: Instance.directory,
-                mode: user.permissionMode,
+                mode: sessionModeNow(session.id),
                 model: selected.model,
                 resume: binding?.productID === selected.id ? binding.resumeID : undefined,
               },
@@ -248,7 +249,7 @@ export namespace ExternalSession {
                 },
                 permission: (request) =>
                   decideExternal(
-                    { sessionID: session.id, executionID: runID, cwd: Instance.directory, mode: user.permissionMode },
+                    { sessionID: session.id, executionID: runID, cwd: Instance.directory, mode: user.sessionMode },
                     request,
                   ),
                 question: async (questions) =>

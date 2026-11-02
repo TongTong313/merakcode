@@ -166,7 +166,7 @@ export function CodeView(props: { directory: string }) {
       () => ui.openFile?.at,
       () => {
         const request = ui.openFile
-        if (request) void open(request.path)
+        if (request) void buffer().open(request.path, request.planSessionID)
       },
     ),
   )
@@ -230,6 +230,11 @@ export function CodeView(props: { directory: string }) {
         <Show when={tabs().find((tab) => tab.path === active())?.conflict}>
           <p class="branch-notice" role="status">
             {t("code.branchConflict")}
+          </p>
+        </Show>
+        <Show when={tabs().find((tab) => tab.path === active())?.planSessionID}>
+          <p class="branch-notice" role="status">
+            {t("plan.editHint")}
           </p>
         </Show>
         <Show when={!active()}>

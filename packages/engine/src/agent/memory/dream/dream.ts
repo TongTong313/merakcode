@@ -207,7 +207,7 @@ export namespace AutoDream {
         sessionID: child.id,
         agent: DREAMER_AGENT,
         model: await pickMemoryModel(input.model),
-        permissionMode: "ask",
+        sessionMode: "execute",
         maxTurns: 15, // more than extraction (5): consolidation reads many files and edits in parallel
         parts: [
           {

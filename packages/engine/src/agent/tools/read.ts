@@ -1,4 +1,5 @@
 import z from "zod"
+import { SessionPlan } from "../session/plan"
 import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "./tool"
@@ -61,7 +62,7 @@ export const ReadTool = Tool.define("read", {
     // but should not prompt like arbitrary external files.
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      permissionMode: ctx.permissionMode,
+      sessionMode: ctx.sessionMode,
       filePath: filepath,
       sessionID: ctx.sessionID,
       access: "read",
@@ -332,9 +333,15 @@ export const ReadTool = Tool.define("read", {
 
     ctx.abort.throwIfAborted()
 
+    const executionContent = await SessionPlan.contentForTool(ctx.sessionID, filepath)
     let { output, preview, truncated } =
-      fileSize < STREAM_THRESHOLD_BYTES
-        ? formatTextContent(filepath, await Filesystem.readText(filepath), params.offset, params.limit)
+      executionContent !== undefined || fileSize < STREAM_THRESHOLD_BYTES
+        ? formatTextContent(
+            filepath,
+            executionContent ?? (await Filesystem.readText(filepath)),
+            params.offset,
+            params.limit,
+          )
         : await readTextRangeStreaming(filepath, params.offset, params.limit, ctx.abort)
 
     // just warms the lsp client

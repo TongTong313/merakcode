@@ -43,14 +43,14 @@ async function collect(iterable: AsyncIterable<{ type: string; delta?: string }>
   return text
 }
 
-test("a custom agent uses its prompt, and tools it disables are denied even in auto mode", async () => {
+test("a custom agent uses its prompt and its permission denials apply in execute mode", async () => {
   const file = path.join(env.project, "reviewer.txt")
   script = (turn) =>
     turn.results.length === 0
       ? { tool: "write", args: { filePath: file, content: "x" } }
       : { text: `评审完毕：${turn.results[0]}` }
   const session = await merak.session()
-  const text = await collect(session.run("看看这段代码", { agent: "reviewer", mode: "auto" }))
+  const text = await collect(session.run("看看这段代码", { agent: "reviewer", mode: "execute" }))
   expect(model.turns.at(-1)!.system).toContain("REVIEWER_PROMPT")
   expect(text).toMatch(/评审完毕：.*(denied|reject|not allowed|prevents)/i)
   expect(existsSync(file)).toBe(false)

@@ -2,9 +2,24 @@ import { describe, expect, test } from "vitest"
 import path from "path"
 import { assertCanWritePlanDoc, assertPlanModeAllowsWrite, isUnderPlansDataDir } from "./plan-doc"
 
-// Plan mode is the read-only mode; a context without a session counts as the main session
-const build = { agent: "build", permissionMode: "ask" as const }
-const planning = { agent: "build", permissionMode: "readonly" as const }
+// Only the current root session plan may be written in plan mode.
+const build = { agent: "build", sessionMode: "execute" as const }
+import { Instance } from "../../infra/project/instance"
+import { Session } from "../session"
+import { tmpdir } from "../../../test/fixture/fixture"
+
+async function withPlan(
+  fn: (author: { agent: string; sessionMode: "plan"; sessionID: string }, target: string) => Promise<void>,
+) {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      await fn({ agent: "build", sessionMode: "plan", sessionID: session.id }, Session.plan(session))
+    },
+  })
+}
 
 const PLANS = path.join("/tmp", "mc-data", "plans")
 
@@ -46,9 +61,10 @@ describe("assertCanWritePlanDoc", () => {
   })
 
   test("allows writing a plan in plan mode", async () => {
-    const { Global } = await import("../../infra/global")
-    const target = path.join(Global.Path.data, "plans", "1780000000000-test-plan.md")
-    await assertCanWritePlanDoc(planning, target)
+    await withPlan(async (author, target) => {
+      await assertCanWritePlanDoc(author, target)
+      await expect(assertCanWritePlanDoc(author, path.join(path.dirname(target), "another.md"))).rejects.toThrow()
+    })
   })
 })
 
@@ -58,20 +74,12 @@ describe("assertPlanModeAllowsWrite", () => {
   })
 
   test("rejects writing project files in plan mode and points to plan_exit", async () => {
-    let err: Error | undefined
-    try {
-      await assertPlanModeAllowsWrite(planning, path.join("/tmp", "src", "a.ts"))
-    } catch (e) {
-      err = e instanceof Error ? e : new Error(String(e))
-    }
-    expect(err).toBeDefined()
-    expect(err!.message).toMatch(/plan_exit/)
-    expect(err!.message).toMatch(/plan mode/i)
+    await withPlan(async (author) => {
+      await expect(assertPlanModeAllowsWrite(author, path.join("/tmp", "src", "a.ts"))).rejects.toThrow(/plan_exit/)
+    })
   })
 
   test("allows writing a plan in plan mode", async () => {
-    const { Global } = await import("../../infra/global")
-    const target = path.join(Global.Path.data, "plans", "1780000000000-test-plan.md")
-    await assertPlanModeAllowsWrite(planning, target)
+    await withPlan(async (author, target) => assertPlanModeAllowsWrite(author, target))
   })
 })

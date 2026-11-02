@@ -1,6 +1,7 @@
 import { prepareTools } from "../tools/prepare"
-import { sessionPermissionMode } from "../permission/session-mode"
+import { sessionModeOf } from "../permission/session-mode"
 import { Session } from "../session"
+import { SessionPlan } from "../session/plan"
 import type { ModelMessage } from "ai"
 import { clone } from "remeda"
 import type { Agent } from "../agent"
@@ -193,6 +194,22 @@ export namespace SessionContextView {
       ...orderedInstructions(instructionFiles, alwaysRules, catalogRules.text),
       ...SystemPrompt.secureCoding(input.agent),
     ]
+    const currentSession = await Session.get(input.sessionID)
+    const currentMode = await sessionModeOf(currentSession)
+    const plan = await SessionPlan.get(await Session.rootID(input.sessionID))
+    const modeContext =
+      `Current session mode: ${currentMode}. ` +
+      (currentMode === "auto"
+        ? "Act autonomously. Never ask the user questions or request approval. All MerakCode safety approvals and sandbox enforcement are bypassed."
+        : currentMode === "plan"
+          ? "Research only. Do not edit project files or run mutating commands. Use plan_write or plan_edit to update the single session plan, then plan_exit to submit it for review. Human edits take priority."
+          : "Execute the user's task under the configured safety policy. If the user requests a plan before implementation, suggest plan_enter and wait for their choice. Declining that suggestion does not authorize edits.")
+    const planContext =
+      plan?.execution && plan.status === "executing"
+        ? `Execution plan (fixed when execution began; later edits do not alter it):\n${plan.execution.content}`
+        : plan?.content
+          ? `Current session plan at ${plan.path}, revision ${plan.revision}:\n${plan.content}`
+          : "No session plan has been saved yet."
     const system = await LLM.prepareSystem({
       sessionID: input.sessionID,
       user: input.user,
@@ -203,6 +220,8 @@ export namespace SessionContextView {
         ...instructions,
         ...(input.extraSystem ?? []),
         ...SystemPrompt.replyLanguage(input.messages),
+        modeContext,
+        planContext,
       ],
     })
     const userContextMessages = toUserContextMessages(userContext)
@@ -452,7 +471,7 @@ export namespace SessionContextView {
         session,
         messages: input.messages,
         tools: input.user.tools,
-        permissionMode: await sessionPermissionMode(session),
+        sessionMode: await sessionModeOf(session),
         child: input.child,
         step: input.step,
         discover: false,

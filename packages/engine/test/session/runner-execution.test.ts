@@ -174,7 +174,7 @@ test("command writes the mode it carries back to the session", async () => {
     fn: async () => {
       const session = await Session.create({ title: "Command mode" })
       await Session.update(session.id, (draft) => {
-        draft.permissionMode = "auto"
+        draft.sessionMode = "auto"
       })
       await Loop.command({
         sessionID: session.id,
@@ -182,9 +182,9 @@ test("command writes the mode it carries back to the session", async () => {
         arguments: "",
         agent: "build",
         model: "test/test-model",
-        permissionMode: "ask",
+        sessionMode: "execute",
       })
-      expect((await Session.get(session.id)).permissionMode).toBe("ask")
+      expect((await Session.get(session.id)).sessionMode).toBe("execute")
       await SessionOperations.remove(session.id)
     },
   })

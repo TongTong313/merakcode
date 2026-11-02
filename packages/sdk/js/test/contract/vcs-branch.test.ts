@@ -91,7 +91,7 @@ test("refuses to switch while a direct session shell is running", async () => {
   const running = client.session.shell({
     sessionID: session.id,
     agent: "build",
-    permissionMode: "auto",
+    sessionMode: "auto",
     command: 'node -e "setTimeout(() => {}, 30000)"',
   })
   try {
@@ -265,7 +265,7 @@ test("keeps cancelled command preparation protected until the actual command set
     sessionID: session.id,
     command: "late",
     arguments: "",
-    permissionMode: "auto",
+    sessionMode: "auto",
   })
   try {
     await expect.poll(() => Filesystem.readText(marker).catch(() => ""), { timeout: 10_000 }).toBe("ready")

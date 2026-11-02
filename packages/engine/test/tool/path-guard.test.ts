@@ -73,7 +73,7 @@ const ctx = (text: string) => ({
   messageID: "msg-assistant",
   callID: "call-test",
   agent: "build",
-  permissionMode: "ask" as const,
+  sessionMode: "execute" as const,
   abort: AbortSignal.any([]),
   messages: [user(text)],
   ruleset: [],

@@ -22,8 +22,18 @@ adapter({
     }
   },
   async run(task, host) {
+    const initialMode = task.mode
     const sessionId = task.resume ?? randomUUID()
     await host.sessionStarted({ sessionId })
+    if (process.argv[2] === "mode-at-start") {
+      const gate = task.prompt.startsWith("gate:") ? task.prompt.slice(5) : undefined
+      if (gate) fs.writeFileSync(`${gate}.started`, "ready")
+      while (gate && !fs.existsSync(gate)) {
+        task.signal.throwIfAborted()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      return { text: `started:${initialMode}`, sessionId }
+    }
     if (process.argv[2] === "pending-permission") {
       const verdict = await host.permission({ kind: "write", paths: [`${process.argv[3]}/file.ts`] })
       return { text: `Permission ${verdict.allow ? "allowed" : "denied"}`, sessionId }

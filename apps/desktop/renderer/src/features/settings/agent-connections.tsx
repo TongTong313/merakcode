@@ -52,6 +52,19 @@ function status(product: Product) {
     ...runs,
     permission,
     product.connected && !product.capabilities.textStreaming ? t("conversation.outputOnCompletion") : undefined,
+    t("settings.agentConnections.controlWarning"),
+    product.capabilities.control &&
+      t("settings.agentConnections.coverage", {
+        operations: product.capabilities.control.reportedOperations.join(", ") || "—",
+      }),
+    product.capabilities.control && t(`settings.agentConnections.cancel.${product.capabilities.control.cancellation}`),
+    product.capabilities.control &&
+      t(
+        product.capabilities.control.liveMode
+          ? "settings.agentConnections.liveMode"
+          : "settings.agentConnections.staticMode",
+      ),
+    product.capabilities.control?.limitations.join(" · "),
   ]
     .filter(Boolean)
     .join(" · ")
