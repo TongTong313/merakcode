@@ -123,10 +123,13 @@ export function applyEvent(state: SessionsState, event: Event): Change {
   switch (event.type) {
     case "session.created":
     case "session.updated": {
-      const info = event.properties.info as Session
+      let info = event.properties.info as Session
       const current = search(state.session, info.id, id)
       if (current.found && (info.targetRevision ?? 0) < (state.session[current.index]!.targetRevision ?? 0))
         return "none"
+      const previous = current.found ? state.session[current.index] : undefined
+      if (previous && (info.modeRevision ?? 0) < (previous.modeRevision ?? 0))
+        info = { ...info, sessionMode: previous.sessionMode, modeRevision: previous.modeRevision }
       if (info.time.archived) {
         const change = remove(state.session, info.id)
         forgetSession(state, info.id)

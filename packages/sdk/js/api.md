@@ -28,11 +28,12 @@ interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 type RunEvent = { type: "text"; partID: string; delta: string; } | { type: "reasoning"; partID: string; delta: string; } | { type: "part"; part: PartOutput; } | { type: "done"; message: Extract<MessageOutput, { role: "assistant"; }>; } | { type: "error"; error: MerakCodeError; }
-type RunOptions = Handlers & { agent?: string; model?: string; mode?: PermissionMode; }
+type RunOptions = Handlers & { agent?: string; model?: string; mode?: SessionMode; }
+function startsSessionPlan(text: string): boolean
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1059 exports generated from openapi.json
++ 1086 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
@@ -43,8 +44,9 @@ type PtyConnectionOptions = { baseUrl: string | URL; ptyID: string; directory?: 
 interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer?: RequestDeadlineTimer; }
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
+function startsSessionPlan(text: string): boolean
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1059 exports generated from openapi.json
++ 1086 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 
@@ -99,19 +101,19 @@ type ToolResult = string | { title?: string; output: string; metadata?: { [key: 
 
 function adapter(definition: Definition): void
 type Answer = string[]
-type Capabilities = { modelSelection: boolean; modelDiscovery: boolean; textStreaming: boolean; resume: boolean; permission: "merak" | "external"; questions: boolean; }
+type Capabilities = { modelSelection: boolean; modelDiscovery: boolean; textStreaming: boolean; resume: boolean; permission: "merak" | "external"; questions: boolean; control?: { reportedOperations: string[]; cancellation: "operation" | "task" | "none"; liveMode: boolean; limitations: string[]; }; }
 function cli(argv: string[]): Promise<void>
 function connect(options: { lines: AsyncIterable<string>; send: (line: string) => void; handlers: Record<string, (params: any) => unknown>; noise?: (line: string) => void; }): { request<T>(method: string, params?: unknown): Promise<T>; notify(method: string, params?: unknown): void; closed: Promise<void>; }
 class ConnectionClosed extends Error { constructor(); }
-type Definition = { inspect(product: Product): Info | Promise<Info>; models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>; run(task: Task & { product: Product; signal: AbortSignal; }, host: Host): Promise<Result>; }
+type Definition = { modeChanged?(mode: Mode): void | Promise<void>; inspect(product: Product): Info | Promise<Info>; models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>; run(task: Task & { product: Product; signal: AbortSignal; }, host: Host): Promise<Result>; }
 type Host = { sessionStarted(input: { sessionId: string; }): Promise<void>; textDelta(input: TextDelta): void; step(step: Step): void; permission(request: Permission): Promise<Verdict>; question(questions: Question[]): Promise<Answer[]>; }
 type Info = { name: string; capabilities?: Capabilities; version?: string; path?: string; recommended?: string; upgrade?: string; unavailable?: string; }
-type Mode = "readonly" | "ask" | "auto"
+type Mode = "plan" | "execute" | "auto"
 type ModelList = { models: (ProductModel & { title: string; })[]; allowCustomID: boolean; }
 type Permission = { kind: "write"; paths: string[]; } | { kind: "command"; command: string; } | { kind: "network"; host: string; url?: string; } | { kind: "read"; paths: string[]; } | { kind: "tool"; name: string; detail?: string; }
 type Product = { id: string; title: string; command?: string; args?: string[]; resumeArgs?: string[]; sessionLine?: string; }
 type ProductModel = { id: string; providerID?: string; }
-const PROTOCOL: 1
+const PROTOCOL: 2
 type Question = { question: string; header: string; options: { label: string; description: string; }[]; multiple?: boolean; custom?: boolean; }
 type Result = { text: string; sessionId?: string; actualModel?: ProductModel; final?: { messageID: string; parts: { partID: string; text: string; }[]; }; }
 const spawn: { (command: string, options?: SpawnOptionsWithoutStdio | undefined): ChildProcessWithoutNullStreams; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>): ChildProcessByStdio<Writable, Readable, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>): ChildProcessByStdio<Writable, Readable, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>): ChildProcessByStdio<Writable, null, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>): ChildProcessByStdio<null, Readable, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>): ChildProcessByStdio<Writable, null, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>): ChildProcessByStdio<null, Readable, null>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>): ChildProcessByStdio<null, null, Readable>; (command: string, options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>): ChildProcessByStdio<null, null, null>; (command: string, options: SpawnOptions): ChildProcess; (command: string, args?: readonly string[] | undefined, options?: SpawnOptionsWithoutStdio | undefined): ChildProcessWithoutNullStreams; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>): ChildProcessByStdio<Writable, Readable, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>): ChildProcessByStdio<Writable, Readable, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>): ChildProcessByStdio<Writable, null, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>): ChildProcessByStdio<null, Readable, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>): ChildProcessByStdio<Writable, null, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>): ChildProcessByStdio<null, Readable, null>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>): ChildProcessByStdio<null, null, Readable>; (command: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>): ChildProcessByStdio<null, null, null>; (command: string, args: readonly string[], options: SpawnOptions): ChildProcess; }

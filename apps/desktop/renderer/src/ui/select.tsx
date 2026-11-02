@@ -15,6 +15,10 @@ export type Option<T extends string = string> = {
   providerID?: string
   group?: string
   disabled?: boolean
+  /** Emphasizes an unsafe or destructive choice; danger items are shown in the danger color. */
+  tone?: "danger"
+  /** Short warning shown after the label, e.g. "Danger". The accessible name stays the plain label. */
+  badge?: string
 }
 
 /**
@@ -61,7 +65,7 @@ export function Select<T extends string>(props: {
       gutter={4}
       placement="bottom-start"
       itemComponent={(item) => (
-        <Kobalte.Item item={item.item} class="menu-item">
+        <Kobalte.Item item={item.item} class="menu-item" data-tone={item.item.rawValue.tone}>
           <Show when={item.item.rawValue.providerID}>
             {(id) => <ProviderLogo id={id()} name={item.item.rawValue.description ?? ""} />}
           </Show>
@@ -69,7 +73,10 @@ export function Select<T extends string>(props: {
             {(icon) => <Dynamic component={icon()} class="icon icon-sm muted" />}
           </Show>
           <div class="menu-item-copy">
-            <Kobalte.ItemLabel class="ellipsis">{item.item.rawValue.label}</Kobalte.ItemLabel>
+            <div class="menu-item-title">
+              <Kobalte.ItemLabel class="ellipsis">{item.item.rawValue.label}</Kobalte.ItemLabel>
+              <Show when={item.item.rawValue.badge}>{(badge) => <span class="badge danger">{badge()}</span>}</Show>
+            </div>
             <Show when={item.item.rawValue.description}>
               <Kobalte.ItemDescription class="desc">{item.item.rawValue.description}</Kobalte.ItemDescription>
             </Show>

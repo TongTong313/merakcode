@@ -10,7 +10,7 @@ const ctx = {
   messageID: "message",
   callID: "",
   agent: "build",
-  kind: "ask" as const,
+  kind: "execute" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],

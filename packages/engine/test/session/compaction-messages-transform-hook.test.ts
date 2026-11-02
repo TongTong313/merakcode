@@ -120,7 +120,7 @@ async function runCompaction(directory: string, toolOutput: string, filePath = "
     sessionID: session.id,
     agent: "build",
     model,
-    permissionMode: "ask",
+    sessionMode: "execute",
     auto: false,
   })
   const before = await Session.messages({ sessionID: session.id })

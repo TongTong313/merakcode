@@ -51,7 +51,7 @@ test("buildToolExecutionRuleset forces subagent deny in child sessions over an a
   })
 })
 
-test("buildToolExecutionRuleset allows everything in auto mode but still blocks nesting in child sessions", async () => {
+test("buildToolExecutionRuleset bypasses authorization in auto mode including child session rules", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -63,7 +63,7 @@ test("buildToolExecutionRuleset allows everything in auto mode but still blocks 
       const ruleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
-        permissionMode: "auto",
+        sessionMode: "auto",
       })
 
       // Auto mode allows the wildcard, including tools like plan/question that the runtime removes separately.
@@ -75,12 +75,12 @@ test("buildToolExecutionRuleset allows everything in auto mode but still blocks 
       const childRuleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
-        permissionMode: "auto",
+        sessionMode: "auto",
         child: true,
       })
       expect(PermissionNext.evaluate("read", "*", childRuleset).action).toBe("allow")
       expect(PermissionNext.evaluate("question", "*", childRuleset).action).toBe("allow")
-      expect(PermissionNext.evaluate("subagent", "*", childRuleset).action).toBe("deny")
+      expect(PermissionNext.evaluate("subagent", "*", childRuleset).action).toBe("allow")
     },
   })
 })

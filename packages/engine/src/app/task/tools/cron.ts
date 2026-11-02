@@ -25,7 +25,7 @@ export const CronCreateTool = Tool.define("CronCreate", {
       prompt: params.prompt,
       sessionID: ctx.sessionID,
       agent: ctx.agent,
-      permissionMode: ctx.permissionMode ?? ctx.kind,
+      sessionMode: ctx.sessionMode ?? ctx.kind,
       model: currentModel(ctx.extra?.model),
     })
 

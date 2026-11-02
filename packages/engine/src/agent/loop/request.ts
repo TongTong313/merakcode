@@ -29,6 +29,12 @@ export namespace LoopRequest {
   }
 
   export function prompt(input: Loop.PromptInput) {
+    input = {
+      ...input,
+      sessionMode:
+        input.sessionMode ??
+        (input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined),
+    }
     return local("prompt", input.sessionID, async () => {
       const session = await SessionTarget.assertCanSend(input.sessionID, input)
       return session.target?.kind === "external" ? ExternalSession.prompt(input) : Loop.prompt(input)

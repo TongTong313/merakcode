@@ -8,14 +8,14 @@ export async function drive(
   sessionID: string,
   input: string,
   permissions: string[] = [],
-  permissionMode?: "ask" | "auto",
+  sessionMode?: "execute" | "auto",
   agent = "build",
 ) {
   let settled = false
   const request = kit
     .api(`/session/${sessionID}/message`, "POST", {
       agent,
-      ...(permissionMode ? { permissionMode } : {}),
+      ...(sessionMode ? { sessionMode } : {}),
       model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: input }],
     })

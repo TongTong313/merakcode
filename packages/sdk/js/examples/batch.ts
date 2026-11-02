@@ -18,7 +18,7 @@ try {
       let text = ""
       const run = session.run(`Read ${file} and sum it up in one sentence. Reply with that sentence only.`, {
         model: process.env.MERAKCODE_MODEL,
-        mode: "readonly",
+        mode: "plan",
       })
       for await (const event of run) {
         if (event.type === "text") text += event.delta

@@ -148,7 +148,7 @@ test("lists the same globally configured products in different projects", async 
   const read = (directory: string) =>
     app.request(`/agent-connection/product?directory=${encodeURIComponent(directory)}`)
   const response = await read(first.path)
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   const firstList = await response.json()
   const secondList = await (await read(second.path)).json()
   expect(firstList).toEqual(secondList)
@@ -174,7 +174,7 @@ test("adds a product through the global connection route", async () => {
       }),
     },
   )
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   expect(await response.json()).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: "added", model: { id: "selected" }, source: "global", enabled: true }),
@@ -190,7 +190,7 @@ test("updates a product model without changing its enabled state", async () => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ type: "update", id: "claude", product: { title: "Renamed", model: { id: "next-model" } } }),
   })
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   expect(await response.json()).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: "claude", title: "Renamed", enabled: false, model: { id: "next-model" } }),
@@ -228,7 +228,7 @@ test("removes a custom product from the global catalog", async () => {
     app.request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
   await change({ type: "add", id: "removed", product: { command: "missing-removed-cli" } })
   const response = await change({ type: "remove", id: "removed" })
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   expect((await response.json()).some((item: { id: string }) => item.id === "removed")).toBe(false)
 })
 
@@ -325,7 +325,7 @@ test.each([
   const app = Server.App()
   const query = `directory=${encodeURIComponent(project.path)}`
   const response = await app.request(`/agent-connection/product?${query}`)
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   const products = await response.json()
   const product = products.find((product: { id: string }) => product.id === "claude")
   expect(product).toMatchObject({
@@ -416,7 +416,7 @@ test("discovers model choices without claiming account access", async () => {
   const response = await Server.App().request(
     `/agent-connection/product/claude/model?directory=${encodeURIComponent(project.path)}`,
   )
-  expect(response.status).toBe(200)
+  expect(response.status, await response.clone().text()).toBe(200)
   const catalog = await response.json()
   expect(catalog.allowCustomID).toBe(true)
   expect(catalog.models).toEqual(expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]))
@@ -452,7 +452,7 @@ test("verifies the saved Claude model through a text-only adapter run", async ()
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedRevision: product.revision }),
     })
-    expect(response.status).toBe(200)
+    expect(response.status, await response.clone().text()).toBe(200)
     expect(await response.json()).toMatchObject({
       status: "passed",
       requestedModel: { id: "fixture-explicit" },
@@ -493,7 +493,7 @@ test.each([
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedRevision: product.revision }),
     })
-    expect(response.status).toBe(200)
+    expect(response.status, await response.clone().text()).toBe(200)
     expect(await response.json()).toMatchObject({
       status: "failed",
       error: { code: "MRK-4009", message },

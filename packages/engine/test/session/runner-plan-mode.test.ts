@@ -17,8 +17,50 @@ import { Message } from "@merakcode/engine/agent/session/message"
 import { WriteTool } from "@merakcode/engine/agent/tools/write"
 import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import type { Provider } from "@merakcode/engine/agent/model/provider"
-import type { PermissionMode } from "@merakcode/engine/agent/permission/mode"
+import type { SessionMode } from "@merakcode/engine/agent/permission/mode"
 import { Filesystem } from "@merakcode/util/filesystem"
+import { BashTool } from "@merakcode/engine/agent/tools/bash"
+
+test.each(["> note.txt", "cd . > note.txt", "sort -osorted.txt data.txt", "sort -uo./sorted.txt data.txt"])(
+  "plan rejects file-writing shell syntax %s before touching project files",
+  async (command) => {
+    await using tmp = await tmpdir({ git: true })
+    await Filesystem.write(path.join(tmp.path, "note.txt"), "KEEP")
+    await Filesystem.write(path.join(tmp.path, "data.txt"), "B\nA\n")
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMode({ sessionID: session.id, sessionMode: "plan" })
+        const ruleset = Loop.buildToolExecutionRuleset({
+          agent: (await Agent.get("build"))!,
+          session,
+          sessionMode: "plan",
+        })
+        const tool = await BashTool.init()
+        const ctx = {
+          sessionID: session.id,
+          messageID: "",
+          callID: "",
+          agent: "build",
+          sessionMode: "plan",
+          abort: new AbortController().signal,
+          messages: [],
+          ruleset,
+          metadata: async () => {},
+          ask: (req: Parameters<Tool.Context["ask"]>[0]) =>
+            PermissionNext.ask({ ...req, sessionID: session.id, ruleset }),
+        } as Tool.Context
+        await expect(tool.execute({ command, description: "Attempt a project write" }, ctx)).rejects.toThrow()
+        expect(await Filesystem.readText(path.join(tmp.path, "note.txt"))).toBe("KEEP")
+        expect(await Filesystem.isFile(path.join(tmp.path, "sorted.txt"))).toBe(false)
+        expect(await PermissionNext.list()).toEqual([])
+        const read = await tool.execute({ command: "cat note.txt", description: "Read a project file" }, ctx)
+        expect(read.output).toContain("KEEP")
+      },
+    })
+  },
+)
 
 const model = {
   id: "gpt-4",
@@ -35,7 +77,7 @@ test("plan mode blocks file edits and non-read-only commands but allows reads an
       const ruleset = Loop.buildToolExecutionRuleset({
         agent: (await Agent.get("build"))!,
         session: await Session.create({}),
-        permissionMode: "readonly",
+        sessionMode: "plan",
       })
       for (const key of ["edit", "protected_write", "external_write", "bash", "bash_delete", "bash_risky"])
         expect(PermissionNext.evaluate(key, path.join(tmp.path, "src/foo.ts"), ruleset).action, key).toBe("deny")
@@ -51,13 +93,13 @@ test("resolveTools offers plan_enter or plan_exit by mode, and neither in auto m
     directory: tmp.path,
     fn: async () => {
       const build = (await Agent.get("build"))!
-      const tools = async (session: Session.Info, permissionMode: PermissionMode.Value) => {
+      const tools = async (session: Session.Info, sessionMode: SessionMode.Value) => {
         const user = await Session.updateInfo({
           id: Identifier.ascending("message"),
           role: "user",
           sessionID: session.id,
           agent: "build",
-          permissionMode,
+          sessionMode,
           model: { providerID: "openai", modelID: "gpt-4" },
           time: { created: Date.now() },
         })
@@ -88,18 +130,18 @@ test("resolveTools offers plan_enter or plan_exit by mode, and neither in auto m
           processor,
           bypassAgentCheck: false,
           messages: [{ info: user, parts: [] }],
-          permissionMode,
+          sessionMode,
         })
         return Object.keys(result.tools).filter(
           (key) => key === "plan_enter" || key === "plan_exit" || key === "question",
         )
       }
       const main = await Session.create({})
-      expect((await tools(main, "readonly")).sort()).toEqual(["plan_exit", "question"])
-      expect((await tools(main, "ask")).sort()).toEqual(["plan_enter", "question"])
+      expect((await tools(main, "plan")).sort()).toEqual(["plan_exit", "question"])
+      expect((await tools(main, "execute")).sort()).toEqual(["plan_enter", "question"])
       expect(await tools(main, "auto")).toEqual([])
       const child = await Session.create({ parentID: main.id })
-      expect(await tools(child, "readonly")).not.toContain("plan_exit")
+      expect(await tools(child, "plan")).not.toContain("plan_exit")
     },
   })
 })
@@ -113,15 +155,15 @@ test("in plan mode WriteTool points project file writes to plan_exit, but writes
       const ruleset = Loop.buildToolExecutionRuleset({
         agent: (await Agent.get("build"))!,
         session,
-        permissionMode: "readonly",
+        sessionMode: "plan",
       })
       const ctx = {
         sessionID: session.id,
         messageID: "",
         callID: "",
         agent: "build",
-        permissionMode: "readonly" as const,
-        kind: "readonly" as const,
+        sessionMode: "plan" as const,
+        kind: "plan" as const,
         abort: AbortSignal.any([]),
         messages: [],
         ruleset,

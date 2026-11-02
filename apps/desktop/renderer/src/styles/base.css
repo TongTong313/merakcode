@@ -383,6 +383,14 @@ pre,
 .segmented button[aria-disabled="true"]:hover {
   color: var(--text-muted);
 }
+.segmented button[data-tone="danger"] {
+  color: var(--danger-text);
+}
+.segmented button[data-tone="danger"]:hover,
+.segmented button[data-tone="danger"][aria-checked="true"] {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
 .segmented .chevron {
   width: 12px;
   height: 12px;
@@ -627,6 +635,12 @@ kbd {
 .menu-item[data-disabled] {
   opacity: 0.5;
 }
+.menu-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .menu-item .desc {
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -635,6 +649,19 @@ kbd {
 .menu-item .check {
   margin-left: auto;
   color: var(--accent-text);
+}
+.menu-item[data-tone="danger"] {
+  color: var(--danger-text);
+}
+.menu-item[data-tone="danger"] .icon,
+.menu-item[data-tone="danger"] .check {
+  color: var(--danger-text);
+}
+.menu-item[data-tone="danger"] .desc {
+  color: color-mix(in srgb, var(--danger-text) 70%, var(--text-muted));
+}
+.menu-item[data-tone="danger"][data-highlighted] {
+  background: var(--danger-soft);
 }
 .menu-group-label {
   padding: 6px 8px 2px;

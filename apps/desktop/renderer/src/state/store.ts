@@ -17,7 +17,7 @@ import type {
   GlobalEvent,
   Message,
   Part,
-  PermissionMode,
+  SessionMode,
   Project,
   ProviderListResponses,
   Session,
@@ -72,7 +72,7 @@ type State = {
   /** Directory → status snapshot applied; a session without a status entry is then idle */
   statusLoaded: Record<string, boolean>
   /** Default permission mode for new conversations */
-  mode: PermissionMode
+  mode: SessionMode
   /** Invalid config entries the engine skipped */
   warnings: ConfigWarning[]
 }
@@ -87,7 +87,7 @@ export const [state, setState] = createStore<State>({
   remote: {},
   loaded: {},
   statusLoaded: {},
-  mode: "ask",
+  mode: "execute",
   warnings: [],
 })
 
@@ -477,6 +477,39 @@ export async function ensureSession(id: string, directory: string) {
     produce((draft) => reduce(draft, { type: "session.updated", properties: { info } } as Event)),
   )
   return info
+}
+
+const modeChanges = new Map<string, Promise<void>>()
+
+export function waitForSessionMode(id: string) {
+  return modeChanges.get(rootOf(state.sessions, id))
+}
+
+/** Mode selections share the root queue, and successful responses apply without waiting for SSE. */
+export function setSessionMode(id: string, directory: string, mode: SessionMode) {
+  const owner = rootOf(state.sessions, id)
+  const pending = (modeChanges.get(owner) ?? Promise.resolve())
+    .catch(() => {})
+    .then(async () => {
+      const info = await call(client(directory).session.setMode({ sessionID: id, sessionMode: mode }))
+      setState(
+        "sessions",
+        produce((draft) => {
+          reduce(draft, { type: "session.updated", properties: { info } } as Event)
+          const root = draft.session.find((session) => session.id === owner)
+          if (root && (info.modeRevision ?? 0) >= (root.modeRevision ?? 0)) {
+            root.sessionMode = info.sessionMode
+            root.modeRevision = info.modeRevision
+          }
+        }),
+      )
+    })
+  modeChanges.set(owner, pending)
+  const clear = () => {
+    if (modeChanges.get(owner) === pending) modeChanges.delete(owner)
+  }
+  void pending.then(clear, clear)
+  return pending
 }
 
 export async function messages(id: string) {

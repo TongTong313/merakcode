@@ -6,9 +6,11 @@ import { sameDir } from "../../lib/route"
 import { call, client } from "../../state/client"
 import { checkoutOf, gitDirectory, onCheckoutChange, refreshBranches, registerDirty, switching } from "../../state/git"
 import { toast } from "../../ui/toast"
+import { listen } from "../../state/store"
 
 type Tab = {
   path: string
+  planSessionID?: string
   checksum?: string
   saved: string
   dirty: boolean
@@ -49,7 +51,13 @@ function createBuffers(directory: string) {
   const pending = new Map<string, Promise<void>>()
   const sync = () => registerDirty(directory, `editor:${directory}`, tabs.filter((tab) => tab.dirty).length)
 
-  const open = async (path: string) => {
+  const read = async (path: string, planSessionID?: string) => {
+    if (!planSessionID) return call(client(directory).file.read({ path }))
+    const plan = await call(client(directory).session.planGet({ sessionID: planSessionID }))
+    return { type: "text" as const, content: plan.content, checksum: String(plan.revision) }
+  }
+
+  const open = async (path: string, planSessionID?: string) => {
     if (closed) return
     if (tabs.some((tab) => tab.path === path)) return void setActive(path)
     const known = pending.get(path)
@@ -58,7 +66,7 @@ function createBuffers(directory: string) {
     const request = (async () => {
       if (checkoutOf(directory) === undefined) await refreshBranches(directory)
       const token = checkoutOf(directory)
-      const content = await call(client(directory).file.read({ path })).catch((error: Error) => {
+      const content = await read(path, planSessionID).catch((error: Error) => {
         toast({ kind: "error", title: t("error.request", { message: error.message }), error })
         return undefined
       })
@@ -86,7 +94,7 @@ function createBuffers(directory: string) {
       })
       setTabs((list) => [
         ...list,
-        { path, checksum: content.checksum, saved: content.content, dirty: false, binary, model },
+        { path, planSessionID, checksum: content.checksum, saved: content.content, dirty: false, binary, model },
       ])
       setActive(path)
     })()
@@ -96,14 +104,14 @@ function createBuffers(directory: string) {
     } finally {
       pending.delete(path)
     }
-    if (retry && !closed) await open(path)
+    if (retry && !closed) await open(path, planSessionID)
   }
 
   const reload = async (branchChanged = false) => {
     const token = checkoutOf(directory)
     await Promise.all(
       tabs.map(async (tab) => {
-        const fresh = await call(client(directory).file.read({ path: tab.path })).catch(() => undefined)
+        const fresh = await read(tab.path, tab.planSessionID).catch(() => undefined)
         if (closed || token !== checkoutOf(directory) || !tabs.some((item) => item.path === tab.path)) return
         if (branchChanged && tab.dirty) {
           const conflict = tab.conflict
@@ -132,28 +140,37 @@ function createBuffers(directory: string) {
     )
   }
 
-  const save = async (force = false) => {
+  const save = async (force = false, target = active()) => {
     if (closed || switching(directory)) return
-    const tab = tabs.find((item) => item.path === active())
+    const tab = tabs.find((item) => item.path === target)
     if (!tab?.model) return
     const token = checkoutOf(directory)
     const content = tab.model.getValue()
-    const result = await client(directory).file.write({
-      path: tab.path,
-      content,
-      ...(force || !tab.checksum ? {} : { checksum: tab.checksum }),
-    })
+    const result = tab.planSessionID
+      ? await client(directory).session.planSave({
+          sessionID: tab.planSessionID,
+          content,
+          expectedRevision: Number(tab.checksum ?? 0),
+        })
+      : await client(directory).file.write({
+          path: tab.path,
+          content,
+          ...(force || !tab.checksum ? {} : { checksum: tab.checksum }),
+        })
     if (result.response?.status === 409) {
       toast({
         kind: "error",
         title: t("code.conflict"),
-        action: { label: t("code.overwrite"), run: () => void save(true) },
+        action: tab.planSessionID ? undefined : { label: t("code.overwrite"), run: () => void save(true) },
       })
       return
     }
     if (result.error) return toast({ kind: "error", title: t("error.request", { message: String(result.error) }) })
     if (token !== checkoutOf(directory)) return
-    const fresh = await call(client(directory).file.read({ path: tab.path })).catch(() => undefined)
+    const fresh =
+      tab.planSessionID && result.data && "revision" in result.data
+        ? { checksum: String(result.data.revision) }
+        : await read(tab.path, tab.planSessionID).catch(() => undefined)
     if (token !== checkoutOf(directory)) return
     setTabs((item) => item.path === tab.path, {
       saved: content,
@@ -176,10 +193,23 @@ function createBuffers(directory: string) {
     for (const tab of tabs) tab.model?.dispose()
     registerDirty(directory, `editor:${directory}`, 0)
   }
-  return { tabs, active, setActive, open, save, close, reload, release }
+  const savePlan = async (sessionID: string) => {
+    const plan = await call(client(directory).session.planGet({ sessionID }))
+    const tab = tabs.find((item) => item.planSessionID === plan.sessionID)
+    if (!tab?.dirty) return true
+    await save(false, tab.path)
+    return !tab.dirty
+  }
+  return { tabs, active, setActive, open, save, savePlan, close, reload, release }
 }
 
 onCheckoutChange((directory, change) => {
   for (const [key, buffer] of buffers)
     if (sameDir(gitDirectory(key), directory)) void buffer.reload(change.branchChanged)
+})
+
+listen((_directory, event) => {
+  if (event.type !== "session.plan.updated") return
+  for (const buffer of buffers.values())
+    if (buffer.tabs.some((tab) => tab.planSessionID === event.properties.sessionID)) void buffer.reload()
 })

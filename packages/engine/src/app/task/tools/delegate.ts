@@ -264,7 +264,7 @@ async function runAdapter(
       task: {
         prompt,
         cwd: Instance.directory,
-        mode: ctx.permissionMode ?? ctx.kind ?? "ask",
+        mode: ctx.sessionMode ?? ctx.kind ?? "execute",
         resume: seat.privateSessionID,
         model: product.model,
       },
@@ -281,7 +281,7 @@ async function runAdapter(
               sessionID: ctx.sessionID,
               executionID: runID,
               cwd: Instance.directory,
-              mode: ctx.permissionMode ?? ctx.kind,
+              mode: ctx.sessionMode ?? ctx.kind,
               tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
             },
             request,

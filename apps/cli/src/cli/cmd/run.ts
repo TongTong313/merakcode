@@ -91,11 +91,15 @@ export const RunCommand = cmd({
           describe: I18n.t("cli.run.thinking"),
           default: false,
         })
-        // Passed through as the permissionMode of session.prompt / session.command.
+        // Passed through as the sessionMode of session.prompt / session.command.
         .option("auto", {
           type: "boolean",
           describe: I18n.t("cli.run.option.auto"),
           default: false,
+        })
+        .option("mode", {
+          choices: ["plan", "execute", "auto"] as const,
+          describe: I18n.t("cli.run.option.mode"),
         })
     )
   },

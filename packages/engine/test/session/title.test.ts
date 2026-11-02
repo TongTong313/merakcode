@@ -47,7 +47,7 @@ async function send(request: Request, sessionID: string, text: string) {
   return (
     await request(`/session/${sessionID}/message`, {
       parts: [{ type: "text", text }],
-      permissionMode: "auto",
+      sessionMode: "auto",
     })
   ).json()
 }

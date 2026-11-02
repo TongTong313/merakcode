@@ -57,11 +57,11 @@ describe("file operation classification", () => {
     )
   })
 
-  test("config_write asks in auto mode too, and is denied in read-only mode", () => {
+  test("config writes retain execute approval and are allowed in auto", () => {
     const config = PermissionPolicy.file({ ...ctx, op: "write", path: at(".merakcode", "merakcode.json") })
-    expect(decide("readonly", config)).toBe("deny")
-    expect(decide("ask", config)).toBe("ask")
-    expect(decide("auto", config)).toBe("ask")
+    expect(decide("plan", config)).toBe("deny")
+    expect(decide("execute", config)).toBe("ask")
+    expect(decide("auto", config)).toBe("allow")
     expect(
       decide("auto", PermissionPolicy.file({ ...ctx, op: "write", path: at(".git", "hooks", "pre-commit") })),
     ).toBe("allow")
@@ -97,7 +97,7 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "readonly",
+      "plan",
       [
         [read, "allow"],
         [external, "ask"],
@@ -108,7 +108,7 @@ describe("default decisions in the three modes", () => {
       ],
     ],
     [
-      "ask",
+      "execute",
       [
         [read, "allow"],
         [external, "ask"],
@@ -123,10 +123,10 @@ describe("default decisions in the three modes", () => {
       [
         [read, "allow"],
         [external, "allow"],
-        [sensitive, "ask"],
+        [sensitive, "allow"],
         [edit, "allow"],
         [dotfile, "allow"],
-        [outside, "ask"],
+        [outside, "allow"],
       ],
     ],
   ] as const)("%s: files", (mode, cases) => {
@@ -135,7 +135,7 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "readonly",
+      "plan",
       [
         [ls, "allow"],
         [npmTest, "deny"],
@@ -144,7 +144,7 @@ describe("default decisions in the three modes", () => {
       ],
     ],
     [
-      "ask",
+      "execute",
       [
         [ls, "allow"],
         [npmTest, "ask"],
@@ -158,7 +158,7 @@ describe("default decisions in the three modes", () => {
         [ls, "allow"],
         [npmTest, "allow"],
         [remove, "allow"],
-        [push, "ask"],
+        [push, "allow"],
       ],
     ],
   ] as const)("%s: commands", (mode, cases) => {
@@ -167,7 +167,7 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "readonly",
+      "plan",
       [
         [agent, "ask"],
         [mcp, "ask"],
@@ -176,7 +176,7 @@ describe("default decisions in the three modes", () => {
       ],
     ],
     [
-      "ask",
+      "execute",
       [
         [agent, "ask"],
         [mcp, "ask"],
@@ -189,7 +189,7 @@ describe("default decisions in the three modes", () => {
       [
         [agent, "allow"],
         [mcp, "allow"],
-        [network, "ask"],
+        [network, "allow"],
         [npm, "allow"],
       ],
     ],
@@ -199,8 +199,8 @@ describe("default decisions in the three modes", () => {
 
   test("unregistered (plugin) tools ask in readonly and ask modes and are allowed in auto mode", () => {
     const plugin = { permission: "my_plugin_tool", pattern: "*", grants: [] }
-    expect(decide("readonly", plugin)).toBe("ask")
-    expect(decide("ask", plugin)).toBe("ask")
+    expect(decide("plan", plugin)).toBe("ask")
+    expect(decide("execute", plugin)).toBe("ask")
     expect(decide("auto", plugin)).toBe("allow")
   })
 })
@@ -209,20 +209,20 @@ describe("precedence of user rules and modes", () => {
   test("ask mode: user always-allow overrides the default ask and user deny overrides the default allow", () => {
     const npmTest = PermissionPolicy.command({ command: "npm test", level: "normal", prefix: "npm test" })
     const user = PermissionNext.fromConfig({ bash: { "npm test*": "allow" }, edit: { "*.lock": "deny" } })
-    expect(decide("ask", npmTest, user)).toBe("allow")
-    expect(decide("ask", PermissionPolicy.file({ ...ctx, op: "write", path: at("pnpm.lock") }), user)).toBe("deny")
+    expect(decide("execute", npmTest, user)).toBe("allow")
+    expect(decide("execute", PermissionPolicy.file({ ...ctx, op: "write", path: at("pnpm.lock") }), user)).toBe("deny")
   })
 
   test("readonly mode still denies commands and file writes the user allowed", () => {
     const npmTest = PermissionPolicy.command({ command: "npm test", level: "normal", prefix: "npm test" })
     const user = PermissionNext.fromConfig({ bash: { "npm test*": "allow" }, edit: "allow" })
-    expect(decide("readonly", npmTest, user)).toBe("deny")
-    expect(decide("readonly", PermissionPolicy.file({ ...ctx, op: "write", path: at("a.ts") }), user)).toBe("deny")
+    expect(decide("plan", npmTest, user)).toBe("deny")
+    expect(decide("plan", PermissionPolicy.file({ ...ctx, op: "write", path: at("a.ts") }), user)).toBe("deny")
   })
 
-  test("auto mode still asks for sensitive files and risky commands unless the user explicitly allowed them", () => {
+  test("auto mode allows risky operations without grants", () => {
     const push = PermissionPolicy.command({ command: "git push origin main", level: "risky", prefix: "git push" })
-    expect(decide("auto", push)).toBe("ask")
+    expect(decide("auto", push)).toBe("allow")
     expect(decide("auto", push, PermissionNext.fromConfig({ bash_risky: { "git push*": "allow" } }))).toBe("allow")
   })
 })

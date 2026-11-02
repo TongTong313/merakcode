@@ -6,6 +6,8 @@ import { Message } from "@merakcode/engine/agent/session/message"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
+import { tmpdir } from "../fixture/fixture"
+import fs from "node:fs/promises"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -87,6 +89,68 @@ async function postImportFull(app: ReturnType<typeof Server.App>, payload: Retur
 }
 
 describe("session.importFull", () => {
+  test("exported sessions import into independent plans and imported path fragments create no project directories", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const app = Server.App()
+        const original = await Session.create({})
+        const request = (method: string, url: string, value?: unknown) =>
+          app.request(`${url}?directory=${encodeURIComponent(tmp.path)}`, {
+            method,
+            headers: { "content-type": "application/json" },
+            body: value ? JSON.stringify(value) : undefined,
+          })
+        expect(
+          (await request("PUT", `/session/${original.id}/plan`, { content: "ORIGINAL", expectedRevision: 0 })).status,
+        ).toBe(200)
+        const exported = await (await request("GET", `/session/${original.id}/export-full`)).json()
+        const copies = []
+        for (let index = 0; index < 2; index++) {
+          const imported = await request("POST", "/session/import-full", exported)
+          expect(imported.status).toBe(200)
+          const id = (await imported.json()).info.id as string
+          const plan = await (await request("GET", `/session/${id}/plan`)).json()
+          expect(plan.content).toBe("")
+          await request("PUT", `/session/${id}/plan`, { content: `COPY_${index}`, expectedRevision: plan.revision })
+          copies.push(id)
+        }
+        expect((await (await request("GET", `/session/${original.id}/plan`)).json()).content).toBe("ORIGINAL")
+        expect((await (await request("GET", `/session/${copies[0]}/plan`)).json()).content).toBe("COPY_0")
+        const target = path.join(tmp.path, "unexpected", "nested")
+        const { Global } = await import("../../src/infra/global")
+        const anchor = path.join(Global.Path.data, "plans", `${original.time.created}-anchor`)
+        exported.info.slug = `anchor/${path.relative(anchor, path.join(target, "plan"))}`
+        const imported = await request("POST", "/session/import-full", exported)
+        const id = (await imported.json()).info.id
+        await request("PUT", `/session/${id}/plan`, { content: "SAFE", expectedRevision: 0 })
+        expect(
+          await fs.stat(target).then(
+            () => true,
+            () => false,
+          ),
+        ).toBe(false)
+      },
+    })
+  })
+  test.each([{ parts: {} }, { parts: [null] }, { parts: [false] }, { parts: 42 }, { parts: null }])(
+    "rejects malformed message parts $parts with structured input errors",
+    async ({ parts }) => {
+      await Instance.provide({
+        directory: projectRoot,
+        fn: async () => {
+          const payload = buildExportPayload()
+          Object.assign(payload.messages[0]!, { parts })
+          const { res, body } = await postImportFull(Server.App(), payload)
+          expect(res.status).toBe(400)
+          expect(body).toMatchObject({ code: "MRK-1009" })
+          const error = body as unknown as { data: { issues: { path: (string | number)[] }[] } }
+          expect(error.data.issues.some((issue) => issue.path.includes("parts"))).toBe(true)
+        },
+      })
+    },
+  )
   test("rebuilds imported command provenance from all model-visible text", async () => {
     await Instance.provide({
       directory: projectRoot,
@@ -358,5 +422,63 @@ describe("session.importFull", () => {
         expect(body.data.issues.some((issue) => issue.path[0] === "info" && issue.path[1] === "id")).toBe(true)
       },
     })
+  })
+})
+
+for (const [legacy, expected] of [
+  ["readonly", "plan"],
+  ["ask", "execute"],
+  ["auto", "execute"],
+])
+  test(`legacy ${legacy} imports as ${expected} without widening authorization`, async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const payload = buildExportPayload()
+        Object.assign(payload.info, { permissionMode: legacy })
+        Object.assign(payload.messages[0]!.info, { permissionMode: legacy })
+        const { res, body } = await postImportFull(Server.App(), payload)
+        expect(res.status).toBe(200)
+        expect(body.info.sessionMode).toBe(expected)
+        const messages = await Session.messages({ sessionID: body.info.id })
+        expect(messages.find((message) => message.info.role === "user")?.info).toMatchObject({ sessionMode: expected })
+        await SessionOperations.remove(body.info.id)
+      },
+    })
+  })
+
+test("legacy external user messages keep their conservative mode when imported", async () => {
+  await Instance.provide({
+    directory: projectRoot,
+    fn: async () => {
+      const payload = buildExportPayload()
+      const original = payload.messages[0]!.info
+      payload.messages = [
+        {
+          ...payload.messages[0]!,
+          info: {
+            id: original.id,
+            sessionID: original.sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            permissionMode: "readonly",
+            execution: {
+              kind: "external",
+              productID: "fixture",
+              productTitle: "Fixture",
+              runID: "old-run",
+              targetRevision: 0,
+            },
+          } as unknown as Message.Info,
+        },
+      ]
+      Object.assign(payload.info, { permissionMode: "readonly" })
+      const { res, body } = await postImportFull(Server.App(), payload)
+      expect(res.status).toBe(200)
+      expect(body.info.sessionMode).toBe("plan")
+      const messages = await Session.messages({ sessionID: body.info.id })
+      expect(messages[0]!.info).toMatchObject({ sessionMode: "plan", execution: { kind: "external" } })
+      await SessionOperations.remove(body.info.id)
+    },
   })
 })

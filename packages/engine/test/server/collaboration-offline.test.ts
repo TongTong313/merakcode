@@ -469,7 +469,7 @@ test.each(["permission", "question"] as const)(
       const id: string = created.sessionID
       const completed = request(`/session/${id}/message`, {
         parts: [{ type: "text", text: "Ask both members in parallel" }],
-        permissionMode: "ask",
+        sessionMode: "execute",
       }).then((response) => response.json())
       completed.catch(() => undefined)
       try {

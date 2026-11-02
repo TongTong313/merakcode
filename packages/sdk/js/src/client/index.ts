@@ -1,4 +1,10 @@
 export * from "./gen/types.gen.js"
+import { startsSessionPlan as matchesSessionPlan } from "@merakcode/util/session-plan"
+
+/** Whether a message explicitly starts the saved session plan. */
+export function startsSessionPlan(text: string) {
+  return matchesSessionPlan(text)
+}
 
 import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"

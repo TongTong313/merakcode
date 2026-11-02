@@ -14,7 +14,7 @@
 
 智能体会在你的电脑上读文件、改文件、跑命令。我们靠两道关来管住它：
 
-1. **权限审批**：每个操作先按权限模式（只读、询问、自动）和你的规则判断，是直接做、先问你，还是不做。能从命令文本认出来的删系统、格式化磁盘的命令（比如 `rm -rf /`、`mkfs`），默认在任何模式下都不执行，只有你在配置里明确放行才会跑。
+1. **权限审批**：每个操作先按权限模式（计划、执行、自动）和你的规则判断，是直接做、先问你，还是不做。能从命令文本认出来的删系统、格式化磁盘的命令（比如 `rm -rf /`、`mkfs`），在计划与执行模式下默认拒绝；自动模式绕过所有安全审批、拒绝规则和命令沙箱，也禁止新增提问。
 2. **系统沙箱**：智能体通过 `bash` 工具跑的命令，放进操作系统层面的沙箱里执行。就算你批准了一条有问题的命令，它能做的事也有限。
 
 命令的权限审批是按命令文本判断的。`env`、`sudo`、`nice`、`timeout`、`xargs` 这类包装命令按里面那条命令判断，`sh -c "…"`、`eval` 里的命令也会拆开看，`git -C 目录 push` 这类写法也认得出；但脚本文件里的命令、变量拼出来的命令看不到。所以审批不是安全边界，真正限制破坏范围的是沙箱。
@@ -46,7 +46,7 @@
 
 ### 沙箱不管什么
 
-- **只有智能体通过 `bash` 工具跑的命令进沙箱**。智能体改文件走的是权限审批，不经过沙箱：自动模式下，它用改文件工具直接改工作区里的 `.git/hooks` 这类以 `.` 开头的路径也不会问你，只有 MerakCode 的配置文件会先问。MCP 服务、插件、LSP、格式化工具和项目里的自定义工具都在沙箱外面运行，权限和你本人一样，只装你信任的。
+- **只有智能体通过 `bash` 工具跑的命令进沙箱**。智能体改文件走的是权限审批，不经过沙箱：自动模式下，它用改文件工具直接改工作区里的 `.git/hooks` 这类以 `.` 开头的路径也不会问你，自动模式中 MerakCode 配置文件也不审批。MCP 服务、插件、LSP、格式化工具和项目里的自定义工具都在沙箱外面运行，权限和你本人一样，只装你信任的。
 - **项目自带的配置**：打开一个项目时，MerakCode 直接读取它的 `merakcode.json(c)` 和 `.merakcode/` 目录，不会先问你。里面可以放宽权限规则、关掉沙箱、加 MCP 服务（会启动本地命令）、加插件和自定义工具（代码在引擎里运行），MerakCode 还会在 `.merakcode/` 里运行 `npm install`。这些都在沙箱外。打开来路不明的仓库之前，先检查这些文件。
 - **协作群成员**（Claude Code、Codex、OpenCode 和成员适配器接入的产品）跑的命令不进 MerakCode 的沙箱，Codex 的命令在 Codex 自己的沙箱里。成员要做的操作都按权限审批判断，但 MerakCode 只管得到成员主动来问的操作；一次性命令接入的自定义产品和你自己写的适配器，权限和你本人一样，只接入你信任的。
 - **你自己在终端里输入的命令**不进沙箱。
@@ -57,7 +57,7 @@
 
 配置项 `sandbox.mode`（也可以用环境变量 `MERAKCODE_SANDBOX_MODE` 临时覆盖）：
 
-- `preferred`（默认）：沙箱能用就用。用不了的时候（比如 Windows 还没初始化），命令照常执行，但会改东西的命令即使在自动模式下也会先问你。
+- `preferred`（默认）：沙箱能用就用。用不了的时候（比如 Windows 还没初始化），命令照常执行，但会改东西的命令在执行模式下仍需审批，自动模式则绕过检查。
 - `required`：沙箱用不了就不执行命令，提示你先初始化（你在审批里同意某条命令在沙箱外运行的除外）。
 - `off`：关掉沙箱，只靠权限审批。
 
@@ -87,7 +87,7 @@ Only the latest release gets security fixes.
 
 The agent reads files, edits files and runs commands on your computer. Two layers keep it in check:
 
-1. **Permission checks**: every action goes through the permission mode (read-only, ask, auto) and your rules, which decide whether it runs, asks you first, or is refused. Commands recognised as wiping the system or formatting a disk (such as `rm -rf /` or `mkfs`) never run in any mode, unless your config explicitly allows them.
+1. **Permission checks**: every action goes through the permission mode (plan, execute, auto) and your rules, which decide whether it runs, asks you first, or is refused. Commands recognised as wiping the system or formatting a disk (such as `rm -rf /` or `mkfs`) are refused by default in plan and execute; auto bypasses all safety approvals, deny rules and command sandbox enforcement, and disables new questions.
 2. **The OS sandbox**: commands the agent runs through the `bash` tool run inside an operating-system sandbox. Even if you approve a bad command, what it can do is limited.
 
 Permission checks on commands read the command text. Wrappers such as `env`, `sudo`, `nice`, `timeout` and `xargs` are judged by the command they run, commands inside `sh -c "…"` and `eval` are looked at too, and forms such as `git -C dir push` are recognised; but commands in a script file or built from variables are not seen. So the permission checks are not a security boundary; the sandbox is what limits the damage.
@@ -119,7 +119,7 @@ Known limits (some of them are also listed by `merak sandbox status`):
 
 ### What the sandbox does not cover
 
-- **Only commands the agent runs through the `bash` tool go into the sandbox.** File edits by the agent go through the permission checks, not the sandbox: in auto mode, the agent's edit tool changes dot paths in the workspace such as `.git/hooks` without asking; only MerakCode's config files ask first. MCP servers, plugins, LSP servers, formatters and custom project tools run outside the sandbox with your own rights. Only install ones you trust.
+- **Only commands the agent runs through the `bash` tool go into the sandbox.** File edits by the agent go through the permission checks, not the sandbox: in auto mode, the agent's edit tool changes dot paths in the workspace such as `.git/hooks` without asking; auto also skips approval for MerakCode's config files. MCP servers, plugins, LSP servers, formatters and custom project tools run outside the sandbox with your own rights. Only install ones you trust.
 - **A project's own config**: when you open a project, MerakCode loads its `merakcode.json(c)` and `.merakcode/` folder without asking. They can loosen permission rules, turn the sandbox off, add MCP servers (local commands are started) and plugins or custom tools (code that runs inside the engine), and MerakCode runs `npm install` in `.merakcode/`. None of this is sandboxed. Check these files before opening a repository you don't trust.
 - **Collaboration members** (Claude Code, Codex, OpenCode and products with a member adapter) run their commands outside MerakCode's sandbox; Codex runs them in its own. What a member wants to do goes through the permission checks, but MerakCode only governs what a member asks about: a custom product added as a one-shot command, or an adapter you wrote yourself, runs with your own rights. Only add ones you trust.
 - **Commands you type in your own terminal** are not sandboxed.
@@ -130,7 +130,7 @@ Known limits (some of them are also listed by `merak sandbox status`):
 
 The `sandbox.mode` config option (override it for one run with the `MERAKCODE_SANDBOX_MODE` environment variable):
 
-- `preferred` (default): use the sandbox when it works. When it doesn't (for example before setup on Windows), commands still run, but those that may change things ask first, even in auto mode.
+- `preferred` (default): use the sandbox when it works. When it doesn't (for example before setup on Windows), commands still run, but those that may change things ask in execute; auto bypasses this check.
 - `required`: if the sandbox doesn't work, refuse to run commands and ask you to set it up (except a command you approve to run outside the sandbox).
 - `off`: no sandbox; rely on permission checks only.
 

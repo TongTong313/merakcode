@@ -61,7 +61,7 @@ for (const example of EXAMPLES)
       const result = await runMember({
         launch,
         product,
-        task: { prompt: "做登录", cwd: tmp.path, mode: "ask" },
+        task: { prompt: "做登录", cwd: tmp.path, mode: "execute" },
         abort: new AbortController().signal,
         host: {
           step: () => {},
@@ -100,7 +100,7 @@ adapter({
   const result = await runMember({
     launch: [process.execPath, path.join(tmp.path, "adapter.mjs")],
     product: { id: "plain", title: "Plain" },
-    task: { prompt: "做登录", cwd: tmp.path, mode: "ask" },
+    task: { prompt: "做登录", cwd: tmp.path, mode: "execute" },
     abort: new AbortController().signal,
     host: {
       step: () => {},
@@ -135,7 +135,7 @@ test("loading the skill lists each of its files on disk too, for the model to co
     messageID: "",
     callID: "",
     agent: "build",
-    kind: "ask" as const,
+    kind: "execute" as const,
     abort: new AbortController().signal,
     messages: [],
     ruleset: [],

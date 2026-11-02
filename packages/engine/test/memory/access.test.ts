@@ -21,7 +21,7 @@ function ctx(): Tool.Context {
     messageID: "message",
     callID: "call",
     agent: "build",
-    kind: "ask",
+    kind: "execute",
     abort: AbortSignal.any([]),
     messages: [],
     ruleset: [],

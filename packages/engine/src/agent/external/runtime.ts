@@ -29,6 +29,8 @@ import { Instance } from "../../infra/project/instance"
 import { Text } from "../prompt/text"
 import { containAdapter } from "./process-tree"
 import { randomUUID } from "node:crypto"
+import { Bus } from "../../infra/bus"
+import { SessionStore } from "../session/store"
 
 const log = Log.create({ service: "agent.connection" })
 const Model = z.object({ id: z.string().min(1), providerID: z.string().min(1).optional() })
@@ -39,6 +41,14 @@ const Capabilities = z.object({
   resume: z.boolean(),
   permission: z.enum(["merak", "external"]),
   questions: z.boolean(),
+  control: z
+    .object({
+      reportedOperations: z.string().array(),
+      cancellation: z.enum(["operation", "task", "none"]),
+      liveMode: z.boolean(),
+      limitations: z.string().array(),
+    })
+    .optional(),
 })
 const InfoSchema = z.object({
   name: z.string().min(1),
@@ -110,6 +120,7 @@ export async function runExternal(
     return await runMember({ ...input, abort: controller.signal })
   } finally {
     input.abort.removeEventListener("abort", cancelled)
+    controller.abort(new Error("The external task has ended"))
     try {
       await cancelPending()
     } finally {
@@ -201,6 +212,29 @@ export async function runMember(input: {
   })
   // Stopping tells the adapter first, so it can stop its CLI cleanly; one that is still there after the grace period
   // is ended with everything it started
+  const { Session } = await import("../session")
+  const executionContext = [...running.values()].find((run) => run.controller.signal === input.abort)
+  let rootID: string | undefined
+  if (executionContext && Instance.has()) {
+    try {
+      rootID = await Session.rootID(executionContext.sessionID)
+    } catch {
+      // Connection verification has a synthetic run id rather than a persisted session.
+    }
+  }
+  const unsubscribeMode =
+    rootID && Instance.has()
+      ? Bus.subscribe(Session.Event.Updated, (event) => {
+          if (event.properties.sessionID !== rootID) return
+          rpc.notify("task/mode", {
+            mode: event.properties.info.sessionMode ?? "execute",
+            revision: event.properties.info.modeRevision ?? 0,
+          })
+        })
+      : () => {}
+  // Subscribe before taking the snapshot so queued work and initialization gaps cannot lose the current policy.
+  const owner = rootID ? SessionStore.find(rootID) : undefined
+  if (owner) rpc.notify("task/mode", { mode: owner.sessionMode ?? "execute", revision: owner.modeRevision ?? 0 })
   const stopped = Promise.withResolvers<never>()
   stopped.promise.catch(() => {})
   const cancel = () => {
@@ -238,6 +272,7 @@ export async function runMember(input: {
       throw new Error(await Text.pick({ zh: "适配器返回的结果格式无效", en: "The adapter returned an invalid result" }))
     return parsed.data
   } finally {
+    unsubscribeMode()
     accepting = false
     input.abort.removeEventListener("abort", cancel)
     child.stdin?.end()
@@ -412,31 +447,46 @@ export async function decideExternal(
   },
   request: Permission,
 ): Promise<Verdict> {
+  const abort = running.get(context.executionID)?.controller.signal
+  abort?.throwIfAborted()
   const missing = nothingToCheck(request)
   if (missing) return { allow: false, message: missing }
   const { Session } = await import("../session")
   const root = await Session.rootID(context.sessionID)
-  const [session, config, grants] = await Promise.all([Session.get(root), Config.get(), PermissionNext.grants(root)])
-  const current = root === context.sessionID ? session : await Session.get(context.sessionID)
-  const user = PermissionNext.merge(
-    PermissionNext.fromUserConfig(config.permission ?? {}),
-    session.permission ?? [],
-    current.permission ?? [],
-  )
-  const mode = session.permissionMode ?? context.mode ?? "ask"
-  const rules = PermissionPolicy.ruleset(mode, user)
   const input = await checksOf(request, context.cwd)
-  if (input.checks.some((check) => PermissionNext.evaluate(check.permission, check.pattern, rules).action === "deny"))
-    return { allow: false, message: "The current permission policy denies this operation" }
   try {
-    await PermissionNext.ask({
-      ...input,
-      sessionID: context.sessionID,
-      root,
-      executionID: context.executionID,
-      tool: context.tool,
-      ruleset: PermissionPolicy.ruleset(mode, PermissionNext.merge(user, grants)),
-    })
+    await PermissionNext.askCurrent(
+      {
+        ...input,
+        sessionID: context.sessionID,
+        root,
+        executionID: context.executionID,
+        tool: context.tool,
+      },
+      async () => {
+        const [session, config, grants, current] = await Promise.all([
+          Session.get(root),
+          Config.get(),
+          PermissionNext.grants(root),
+          Session.get(context.sessionID),
+        ])
+        const mode = session.sessionMode ?? context.mode ?? "execute"
+        const user = PermissionNext.merge(
+          PermissionNext.fromUserConfig(config.permission ?? {}),
+          session.permission ?? [],
+          current.permission ?? [],
+        )
+        const rules = PermissionPolicy.ruleset(mode, user)
+        if (
+          input.checks.some(
+            (check) => PermissionNext.evaluate(check.permission, check.pattern, rules).action === "deny",
+          )
+        )
+          return rules
+        return PermissionPolicy.ruleset(mode, PermissionNext.merge(user, grants))
+      },
+      abort,
+    )
     return { allow: true }
   } catch (error) {
     if (

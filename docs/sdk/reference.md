@@ -1815,19 +1815,20 @@ Send command.
 
 Send a new command to a session for execution by the AI assistant.
 
-| Parameter        | Type                                                                                                       | Required | Description |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| `sessionID`      | `string`                                                                                                   | yes      | Session ID  |
-| `agent`          | `string`                                                                                                   | no       |             |
-| `arguments`      | `string`                                                                                                   | yes      |             |
-| `command`        | `string`                                                                                                   | yes      |             |
-| `kind`           | `PermissionMode`                                                                                           | no       |             |
-| `messageID`      | `string`                                                                                                   | no       |             |
-| `metadata`       | `Record<string, unknown>`                                                                                  | no       |             |
-| `model`          | `string`                                                                                                   | no       |             |
-| `parts`          | `({ filename?: string; id?: string; mime: string; source?: FilePartSource; type: "file"; url: string })[]` | no       |             |
-| `permissionMode` | `PermissionMode`                                                                                           | no       |             |
-| `variant`        | `string`                                                                                                   | no       |             |
+| Parameter        | Type                                                                                                       | Required | Description                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `sessionID`      | `string`                                                                                                   | yes      | Session ID                                                                              |
+| `agent`          | `string`                                                                                                   | no       |                                                                                         |
+| `arguments`      | `string`                                                                                                   | yes      |                                                                                         |
+| `command`        | `string`                                                                                                   | yes      |                                                                                         |
+| `kind`           | `SessionMode`                                                                                              | no       |                                                                                         |
+| `messageID`      | `string`                                                                                                   | no       |                                                                                         |
+| `metadata`       | `Record<string, unknown>`                                                                                  | no       |                                                                                         |
+| `model`          | `string`                                                                                                   | no       |                                                                                         |
+| `parts`          | `({ filename?: string; id?: string; mime: string; source?: FilePartSource; type: "file"; url: string })[]` | no       |                                                                                         |
+| `permissionMode` | `"ask" \| "readonly"`                                                                                      | no       | Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode. |
+| `sessionMode`    | `SessionMode`                                                                                              | no       |                                                                                         |
+| `variant`        | `string`                                                                                                   | no       |                                                                                         |
 
 Returns: `{ info: AssistantMessageOutput; parts: PartOutput[] }`
 
@@ -1920,14 +1921,15 @@ Create and send a new message to a session, streaming the AI response.
 | `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
 | `agent`          | `string`                                                                   | no       |                                                                                                       |
 | `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
-| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
+| `kind`           | `SessionMode`                                                              | no       |                                                                                                       |
 | `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
 | `messageID`      | `string`                                                                   | no       |                                                                                                       |
 | `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
 | `model`          | `{ modelID: string; providerID: string }`                                  | no       |                                                                                                       |
 | `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
 | `parts`          | `(AgentPartInput \| FilePartInput \| SubtaskPartInput \| TextPartInput)[]` | yes      |                                                                                                       |
-| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
+| `permissionMode` | `"ask" \| "readonly"`                                                      | no       | Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.               |
+| `sessionMode`    | `SessionMode`                                                              | no       |                                                                                                       |
 | `system`         | `string`                                                                   | no       |                                                                                                       |
 | `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
 | `variant`        | `string`                                                                   | no       |                                                                                                       |
@@ -1964,20 +1966,84 @@ Retrieve a specific message from a session by its message ID.
 
 Returns: `{ info: MessageOutput; parts: PartOutput[] }`
 
-### client.session.setPermissionMode
+### client.session.setMode
 
-`POST /session/{sessionID}/permission-mode` · operationId `session.setPermissionMode`
+`POST /session/{sessionID}/mode` · operationId `session.setMode`
 
-Set session permission mode.
+Set session mode.
 
-Switch the session's permission mode (read-only, ask, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.
+Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.
 
-| Parameter        | Type             | Required | Description |
-| ---------------- | ---------------- | -------- | ----------- |
-| `sessionID`      | `string`         | yes      | Session ID  |
-| `permissionMode` | `PermissionMode` | yes      |             |
+| Parameter          | Type          | Required | Description |
+| ------------------ | ------------- | -------- | ----------- |
+| `sessionID`        | `string`      | yes      | Session ID  |
+| `expectedRevision` | `number`      | no       |             |
+| `sessionMode`      | `SessionMode` | yes      |             |
 
 Returns: `SessionOutput`
+
+### client.session.setLegacyMode
+
+`POST /session/{sessionID}/permission-mode` · operationId `session.setLegacyMode`
+
+Translate a legacy session mode.
+
+| Parameter        | Type                  | Required | Description |
+| ---------------- | --------------------- | -------- | ----------- |
+| `sessionID`      | `string`              | yes      |             |
+| `permissionMode` | `"ask" \| "readonly"` | yes      |             |
+
+Returns: `SessionOutput`
+
+### client.session.planGet
+
+`GET /session/{sessionID}/plan` · operationId `session.planGet`
+
+Read the session plan.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionPlan`
+
+### client.session.planSave
+
+`PUT /session/{sessionID}/plan` · operationId `session.planSave`
+
+Save human edits to the session plan.
+
+| Parameter          | Type     | Required | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `sessionID`        | `string` | yes      |             |
+| `content`          | `string` | yes      |             |
+| `expectedRevision` | `number` | yes      |             |
+
+Returns: `SessionPlan`
+
+### client.session.planRevise
+
+`POST /session/{sessionID}/plan/revise` · operationId `session.planRevise`
+
+Continue editing the session plan.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionPlan`
+
+### client.session.planStart
+
+`POST /session/{sessionID}/plan/start` · operationId `session.planStart`
+
+Execute the latest saved plan.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionPlan`
 
 ### client.session.promptAsync
 
@@ -1992,14 +2058,15 @@ Create and send a new message to a session asynchronously, starting the session 
 | `sessionID`      | `string`                                                                   | yes      | Session ID                                                                                            |
 | `agent`          | `string`                                                                   | no       |                                                                                                       |
 | `format`         | `OutputFormat`                                                             | no       |                                                                                                       |
-| `kind`           | `PermissionMode`                                                           | no       |                                                                                                       |
+| `kind`           | `SessionMode`                                                              | no       |                                                                                                       |
 | `maxTurns`       | `number`                                                                   | no       |                                                                                                       |
 | `messageID`      | `string`                                                                   | no       |                                                                                                       |
 | `metadata`       | `Record<string, unknown>`                                                  | no       |                                                                                                       |
 | `model`          | `{ modelID: string; providerID: string }`                                  | no       |                                                                                                       |
 | `noReply`        | `boolean`                                                                  | no       |                                                                                                       |
 | `parts`          | `(AgentPartInput \| FilePartInput \| SubtaskPartInput \| TextPartInput)[]` | yes      |                                                                                                       |
-| `permissionMode` | `PermissionMode`                                                           | no       |                                                                                                       |
+| `permissionMode` | `"ask" \| "readonly"`                                                      | no       | Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.               |
+| `sessionMode`    | `SessionMode`                                                              | no       |                                                                                                       |
 | `system`         | `string`                                                                   | no       |                                                                                                       |
 | `tools`          | `Record<string, boolean>`                                                  | no       | @deprecated tools and permissions have been merged, you can set permissions on the session itself now |
 | `variant`        | `string`                                                                   | no       |                                                                                                       |
@@ -2030,14 +2097,15 @@ Run shell command.
 
 Execute a shell command within the session context and return the AI's response.
 
-| Parameter        | Type                                      | Required | Description |
-| ---------------- | ----------------------------------------- | -------- | ----------- |
-| `sessionID`      | `string`                                  | yes      | Session ID  |
-| `agent`          | `string`                                  | yes      |             |
-| `command`        | `string`                                  | yes      |             |
-| `kind`           | `PermissionMode`                          | no       |             |
-| `model`          | `{ modelID: string; providerID: string }` | no       |             |
-| `permissionMode` | `PermissionMode`                          | no       |             |
+| Parameter        | Type                                      | Required | Description                                                                             |
+| ---------------- | ----------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `sessionID`      | `string`                                  | yes      | Session ID                                                                              |
+| `agent`          | `string`                                  | yes      |                                                                                         |
+| `command`        | `string`                                  | yes      |                                                                                         |
+| `kind`           | `SessionMode`                             | no       |                                                                                         |
+| `model`          | `{ modelID: string; providerID: string }` | no       |                                                                                         |
+| `permissionMode` | `"ask" \| "readonly"`                     | no       | Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode. |
+| `sessionMode`    | `SessionMode`                             | no       |                                                                                         |
 
 Returns: `AssistantMessageOutput`
 

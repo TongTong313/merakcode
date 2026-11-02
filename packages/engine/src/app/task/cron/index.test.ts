@@ -1,3 +1,4 @@
+import { Session } from "../../../agent/session"
 import { describe, expect, test, vi } from "vitest"
 import fs from "fs/promises"
 import os from "os"
@@ -24,7 +25,7 @@ describe("CronScheduler", () => {
     "background runs leave the %s request scope they were created in",
     async (ending) => {
       await withInstance(async () => {
-        const sessionID = "ses_loop_scope"
+        const sessionID = (await Session.create({ title: "Scope boundary fixture" })).id
         const scope = LoopExecution.create({ id: `loop-scope-${ending}`, sessionID })
         let first!: (scope: LoopExecution.Scope | undefined) => void
         let next!: (scope: LoopExecution.Scope | undefined) => void

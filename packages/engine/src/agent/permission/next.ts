@@ -8,6 +8,7 @@ import { Log } from "@merakcode/log/logger"
 import { Wildcard } from "../../infra/match/wildcard"
 import os from "os"
 import z from "zod"
+import { SessionStore } from "../session/store"
 
 /**
  * Permission center: evaluates rules (allow / ask / deny), suspends until the user replies, and records grants.
@@ -201,6 +202,8 @@ export namespace PermissionNext {
     info: Request
     root: string
     checks: Check[]
+    asked: Check[]
+    replying?: boolean
     resolve: () => void
     reject: (e: any) => void
   }
@@ -270,7 +273,7 @@ export namespace PermissionNext {
     // The reply can arrive before the caller holds this promise (rejected while the hook runs). Attach an observer so
     // the runtime does not report an unhandled rejection; the caller still gets the real result from the return below.
     settled.promise.catch(() => {})
-    s.pending[id] = { info, root, checks: asked, resolve: settled.resolve, reject: settled.reject }
+    s.pending[id] = { info, root, checks, asked, resolve: settled.resolve, reject: settled.reject }
 
     /**
      * Plugin hook `permission.ask` (same name and shape as opencode 1.16.2) lets plugins change the decision before
@@ -300,6 +303,24 @@ export namespace PermissionNext {
   }
 
   export const ask = fn(Ask, (input) => request(input))
+
+  /** Resolve policy and admit the request in the same mode revision, before any asynchronous plugin hook. */
+  export async function askCurrent(
+    input: Omit<AskInput, "ruleset">,
+    rulesetOf: () => Promise<Ruleset>,
+    abort?: AbortSignal,
+  ) {
+    const root = input.root ?? input.sessionID
+    for (;;) {
+      abort?.throwIfAborted()
+      const before = SessionStore.find(root)
+      const ruleset = await rulesetOf()
+      abort?.throwIfAborted()
+      const current = SessionStore.find(root)
+      if (before?.modeRevision !== current?.modeRevision || before?.sessionMode !== current?.sessionMode) continue
+      return ask({ ...input, ruleset })
+    }
+  }
 
   /**
    * Pattern written into the granted rule: the chosen scope, else the check's first scope, else the check's own
@@ -334,8 +355,27 @@ export namespace PermissionNext {
   })
   export type ReplyInput = z.infer<typeof ReplyInput>
 
+  async function recheckCurrent(root: string) {
+    const { PermissionFlush } = await import("./flush")
+    for (;;) {
+      const before = SessionStore.find(root)
+      await PermissionFlush.run()
+      const current = SessionStore.find(root)
+      if (before?.modeRevision === current?.modeRevision && before?.sessionMode === current?.sessionMode) return current
+    }
+  }
+
   export const reply = fn(ReplyInput, async (input) => {
     const s = state()
+    // A reply may reach us before the mode-switch flush finishes. Recheck the whole operation first.
+    const pending = s.pending[input.requestID]
+    if (pending && input.reply !== "reject") {
+      for (;;) {
+        const confirmed = await recheckCurrent(pending.root)
+        const current = SessionStore.find(pending.root)
+        if (confirmed?.modeRevision === current?.modeRevision && confirmed?.sessionMode === current?.sessionMode) break
+      }
+    }
     const existing = s.pending[input.requestID]
     if (!existing) {
       log.warn("reply: request not found in pending, likely already resolved", {
@@ -343,22 +383,28 @@ export namespace PermissionNext {
       })
       return
     }
-    delete s.pending[input.requestID]
-    Bus.publish(Event.Replied, {
-      sessionID: existing.info.sessionID,
-      requestID: existing.info.id,
-      reply: input.reply,
-    })
+    if (existing.replying) return
+    const finish = () => {
+      delete s.pending[input.requestID]
+      Bus.publish(Event.Replied, {
+        sessionID: existing.info.sessionID,
+        requestID: existing.info.id,
+        reply: input.reply,
+      })
+    }
     if (input.reply === "reject") {
+      finish()
       existing.reject(input.message ? new CorrectedError(input.message) : new RejectedError())
       return
     }
     if (input.reply === "once") {
+      finish()
       existing.resolve()
       return
     }
 
-    const rules = existing.checks.map((check) => ({
+    existing.replying = true
+    const rules = existing.asked.map((check) => ({
       permission: check.permission,
       pattern: grantPattern(check, input.scope),
       action: "allow" as const,
@@ -369,12 +415,20 @@ export namespace PermissionNext {
       await persist(rules).catch((error) => log.error("failed to persist always-allow rules", { error }))
     }
     log.info("granted", { root: existing.root, reply: input.reply, count: rules.length })
+    // Keep the operation pending throughout grant persistence, so a concurrent tightening can still reject it.
+    for (;;) {
+      const confirmed = await recheckCurrent(existing.root)
+      const current = SessionStore.find(existing.root)
+      if (confirmed?.modeRevision === current?.modeRevision && confirmed?.sessionMode === current?.sessionMode) break
+    }
+    if (!s.pending[input.requestID]) return
+    finish()
     existing.resolve()
 
     // Also release pending requests in the same root session that this grant fully covers
     for (const other of Object.values(s.pending)) {
       if (other.root !== existing.root) continue
-      if (!other.checks.every((check) => granted(rules, check))) continue
+      if (!other.asked.every((check) => granted(rules, check))) continue
       delete s.pending[other.info.id]
       Bus.publish(Event.Replied, { sessionID: other.info.sessionID, requestID: other.info.id, reply: input.reply })
       other.resolve()
@@ -389,11 +443,24 @@ export namespace PermissionNext {
   export async function recheck(rulesetOf: (request: Request, checks: Check[]) => Promise<Ruleset | undefined>) {
     const s = state()
     for (const item of Object.values(s.pending)) {
+      const before = SessionStore.find(item.root)
       const ruleset = await rulesetOf(item.info, item.checks).catch(() => undefined)
+      const current = SessionStore.find(item.root)
+      // Do not apply an old decision after a newer mode switch has already rechecked this request.
+      if (before?.modeRevision !== current?.modeRevision || before?.sessionMode !== current?.sessionMode) continue
       if (!ruleset) continue
       const allowed = item.checks.every(
         (check) => evaluate(check.permission, check.pattern, ruleset).action === "allow" || granted([], check),
       )
+      if (
+        item.checks.some((check) => evaluate(check.permission, check.pattern, ruleset).action === "deny") &&
+        s.pending[item.info.id]
+      ) {
+        delete s.pending[item.info.id]
+        Bus.publish(Event.Replied, { sessionID: item.info.sessionID, requestID: item.info.id, reply: "reject" })
+        item.reject(new DeniedError(ruleset))
+        continue
+      }
       if (!allowed || !s.pending[item.info.id]) continue
       delete s.pending[item.info.id]
       log.info("released by recheck", { requestID: item.info.id })
@@ -465,6 +532,10 @@ export namespace PermissionNext {
 
   export async function abortExecution(executionID: string) {
     return abortMatching((item) => item.info.executionID === executionID)
+  }
+
+  export async function abortTool(sessionID: string, callID: string) {
+    return abortMatching((item) => item.info.sessionID === sessionID && item.info.tool?.callID === callID)
   }
 
   async function abortMatching(matches: (item: Pending) => boolean) {

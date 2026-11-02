@@ -47,6 +47,8 @@ process.env["MERAKCODE_HOME"] = root
 process.env["MERAKCODE_DISABLE_CATALOG_FETCH"] = "1"
 // Tests behave the same on every system; the sandbox modes have their own tests (test/sandbox)
 process.env["MERAKCODE_SANDBOX_MODE"] = "off"
+// Use the platform fallback instead of inheriting an interactive host's custom shell.
+if (process.platform === "win32") delete process.env.SHELL
 
 // Reuse the workspace's installed zod package in the isolated global config.
 // Config still writes and validates its plugin shim without repeating `npm install zod` in every test process.

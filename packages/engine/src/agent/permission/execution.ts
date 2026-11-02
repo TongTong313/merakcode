@@ -171,6 +171,7 @@ export namespace PermissionExecution {
     workspace: string[]
     writable?: string[]
   }): Promise<Prepared | undefined> {
+    if (input.ctx.sessionMode === "auto") return
     if ((await mode()) === "off") return
     if ((await current()).status !== "on") return
     const config = (await Config.get()).sandbox

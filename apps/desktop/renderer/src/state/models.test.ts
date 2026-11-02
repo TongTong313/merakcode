@@ -1,10 +1,24 @@
 import { afterEach, expect, test } from "vitest"
 import { createComputed, createRoot } from "solid-js"
-import type { AssistantMessage, Config, ProviderListResponses, UserMessage } from "@merakcode/sdk/client"
+import type { AssistantMessage, Config, ProviderListResponses, UserMessage, Session } from "@merakcode/sdk/client"
 import { setState } from "./store"
 import { choice, choose, modelKey, shownDefaultModel, shownSmallModel, usage } from "./models"
 
 type Providers = ProviderListResponses[200]
+
+test("child mode controls follow root policy updates already delivered by the SDK", () => {
+  setState("sessions", "session", [
+    { id: "ses_child_mode", parentID: "ses_root_mode", sessionMode: "auto" } as Session,
+    { id: "ses_root_mode", sessionMode: "plan" } as Session,
+  ])
+  try {
+    expect(choice("ses_child_mode", "/work").mode).toBe("plan")
+    setState("sessions", "session", 1, "sessionMode", "execute")
+    expect(choice("ses_child_mode", "/work").mode).toBe("execute")
+  } finally {
+    setState("sessions", "session", [])
+  }
+})
 
 afterEach(() => {
   setState({ config: undefined, providers: undefined })

@@ -1835,3 +1835,15 @@
     background: hsl(var(--hue) 40% 30%);
   }
 }
+
+.session-mode-auto {
+  color: var(--danger-text);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.plan-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}

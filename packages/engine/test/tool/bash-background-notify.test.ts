@@ -13,6 +13,9 @@ import { Shell } from "@merakcode/engine/infra/process/shell/shell"
 import { tmpdir } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { setTimeout as delay } from "node:timers/promises"
+import { Loop } from "@merakcode/engine/agent/loop/index"
+import { SessionPlan } from "@merakcode/engine/agent/session/plan"
+import { fakeModel } from "../../../sdk/js/test/fixture/model"
 
 const originalTrigger = Plugin.trigger
 const originalModel = Provider.getModel
@@ -21,6 +24,99 @@ afterEach(() => {
   Plugin.trigger = originalTrigger
   Provider.getModel = originalModel
 })
+
+test("background notifications preserve human plan edits until a new human instruction", async () => {
+  const model = await fakeModel(async (turn) => {
+    if (turn.prompt.includes("[Background bash job"))
+      return turn.results.length === 0
+        ? { tool: "plan_write", args: { content: "AUTOMATIC_OVERWRITE" } }
+        : { text: "Notification handled" }
+    if (turn.prompt === "Revise the plan now")
+      return turn.results.length === 0
+        ? { tool: "plan_write", args: { content: "REQUESTED_REVISION" } }
+        : { text: "Revision handled" }
+    return { text: "Initial request handled" }
+  })
+  try {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "alibaba-cn/qwen-plus",
+        small_model: "alibaba-cn/qwen-plus",
+        enabled_providers: ["alibaba-cn"],
+        provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+        memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+        lsp: false,
+      },
+    })
+    await Filesystem.write(
+      path.join(tmp.path, "background.mjs"),
+      `import fs from "node:fs"
+while (!fs.existsSync("release-job")) await new Promise(resolve => setTimeout(resolve, 10))
+console.log("background-result")`,
+    )
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "Human plan precedence" })
+        const initial = await Loop.prompt({
+          sessionID: session.id,
+          sessionMode: "auto",
+          parts: [{ type: "text", text: "Prepare a plan" }],
+        })
+        const plan = await SessionPlan.save({
+          sessionID: session.id,
+          source: "agent",
+          content: "Original",
+          expectedRevision: 0,
+        })
+        const tool = await BashBackgroundTool.init()
+        await tool.execute(
+          {
+            command: `"${process.execPath.replaceAll("\\", "/")}" background.mjs`,
+            description: "Controlled notification",
+            timeout: 15_000,
+          },
+          {
+            sessionID: session.id,
+            messageID: initial.info.id,
+            callID: "human-plan-notification",
+            agent: "build",
+            sessionMode: "auto",
+            abort: new AbortController().signal,
+            messages: [],
+            ruleset: [],
+            metadata() {},
+            async ask() {},
+          },
+        )
+        await SessionPlan.save({
+          sessionID: session.id,
+          source: "human",
+          content: "HUMAN_APPROVED",
+          expectedRevision: plan.revision,
+        })
+        await Filesystem.write(path.join(tmp.path, "release-job"), "release")
+        await expect
+          .poll(
+            async () =>
+              (await Session.messages({ sessionID: session.id }))
+                .flatMap((message) => message.parts)
+                .some((part) => part.type === "text" && part.text === "Notification handled"),
+            { timeout: 15_000 },
+          )
+          .toBe(true)
+        expect((await SessionPlan.get(session.id)).content).toBe("HUMAN_APPROVED")
+        await Loop.prompt({ sessionID: session.id, parts: [{ type: "text", text: "Revise the plan now" }] })
+        expect((await SessionPlan.get(session.id)).content).toBe("REQUESTED_REVISION")
+      },
+    })
+  } finally {
+    await BashJobStore.stopAll()
+    await Instance.disposeAll()
+    await model.close()
+  }
+}, 30_000)
 
 async function waitFor(check: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 5_000
@@ -77,7 +173,7 @@ console.log("background-result")
               messageID: Identifier.ascending("message"),
               callID: "background-call",
               agent: "build",
-              permissionMode: "auto",
+              sessionMode: "auto",
               abort: scope.controller.signal,
               messages: [],
               ruleset: [],

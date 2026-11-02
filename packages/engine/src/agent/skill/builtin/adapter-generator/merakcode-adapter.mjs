@@ -617,7 +617,7 @@ async function version(command) {
   if (code !== 0) return { unavailable: first(stderr || stdout) || `exit code ${code}` }
   return { version: first(stdout) }
 }
-var PROTOCOL = 1
+var PROTOCOL = 2
 var GONE_GRACE = 5e3
 var ConnectionClosed = class extends Error {
   constructor() {
@@ -693,6 +693,9 @@ function adapter(definition) {
   console.log = console.info = (...items) => console.error(...items)
   const stop2 = new AbortController()
   let product = { id: "", title: "" }
+  let currentTask
+  let currentMode
+  let modeRevision = -1
   const rpc = connect({
     lines: readline.createInterface({ input: process.stdin, crlfDelay: Infinity }),
     send: (line) => process.stdout.write(line + "\n"),
@@ -705,7 +708,18 @@ function adapter(definition) {
         if (!definition.models) throw new Error("This adapter does not support model discovery")
         return definition.models(product, stop2.signal)
       },
-      "task/run": (task) => definition.run({ ...task, product, signal: stop2.signal }, host),
+      "task/run": (task) => {
+        const active = { ...task, mode: currentMode ?? task.mode, product, signal: stop2.signal }
+        currentTask = active
+        return definition.run(active, host)
+      },
+      "task/mode": async (input) => {
+        if (input.revision <= modeRevision) return
+        modeRevision = input.revision
+        currentMode = input.mode
+        if (currentTask) currentTask.mode = input.mode
+        await definition.modeChanged?.(input.mode)
+      },
       "task/cancel": () => stop2.abort(),
     },
   })
@@ -760,7 +774,7 @@ async function tryAdapter(input) {
     const result = await rpc.request("task/run", {
       prompt: input.prompt,
       cwd: process.cwd(),
-      mode: input.mode ?? "ask",
+      mode: input.mode ?? "execute",
     })
     print(`result ${result.text}`)
     if (result.sessionId) print(`session ${result.sessionId}`)

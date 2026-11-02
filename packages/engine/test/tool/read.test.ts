@@ -15,7 +15,7 @@ const ctx = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "ask" as const,
+  kind: "execute" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -24,7 +24,7 @@ const ctx = {
 }
 
 /** Evaluate each read permission check against the mode's ruleset: record asks, throw on denials */
-function recorder(mode: PermissionPolicy.Mode = "ask") {
+function recorder(mode: PermissionPolicy.Mode = "execute") {
   const asked: string[] = []
   const testCtx = {
     ...ctx,
@@ -74,7 +74,7 @@ describe("tool.read inside and outside the workspace", () => {
       directory: tmp.path,
       fn: async () => {
         const read = await ReadTool.init()
-        const ask = recorder("ask")
+        const ask = recorder("execute")
         expect((await read.execute({ filePath: path.join(outer.path, "notes.txt") }, ask.ctx)).output).toContain(
           "outside data",
         )
@@ -127,7 +127,7 @@ describe("tool.read sensitive files", () => {
     ["environment.ts", false],
   ]
 
-  describe.each(["ask", "auto"] as const)("mode=%s", (mode) => {
+  describe.each(["execute", "auto"] as const)("mode=%s", (mode) => {
     test.each(cases)("%s asks=%s", async (filename, shouldAsk) => {
       await using tmp = await tmpdir({
         git: true,
@@ -139,7 +139,7 @@ describe("tool.read sensitive files", () => {
           const probe = recorder(mode)
           const read = await ReadTool.init()
           await read.execute({ filePath: path.join(tmp.path, filename) }, probe.ctx)
-          expect(probe.asked.includes("sensitive_read")).toBe(shouldAsk)
+          expect(probe.asked.includes("sensitive_read")).toBe(mode === "auto" ? false : shouldAsk)
         },
       })
     })

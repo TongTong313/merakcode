@@ -1,4 +1,4 @@
-import type { FilePartInput, PermissionMode } from "@merakcode/sdk/client"
+import type { FilePartInput, SessionMode } from "@merakcode/sdk/client"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import Brain from "lucide-solid/icons/brain"
 import Eye from "lucide-solid/icons/eye"
@@ -28,11 +28,18 @@ import { COMPACT, loadCommands } from "./send"
 import { apply, fileUrl, trigger, type Trigger } from "./suggest"
 import { mentionChoices, type Product } from "./members"
 
-const MODES: PermissionMode[] = ["readonly", "ask", "auto"]
+const MODES: SessionMode[] = ["plan", "execute", "auto"]
 export const modeOptions = () => [
-  { value: "readonly" as const, label: t("mode.plan"), description: t("mode.plan.desc"), icon: Eye },
-  { value: "ask" as const, label: t("mode.default"), description: t("mode.default.desc"), icon: Hand },
-  { value: "auto" as const, label: t("mode.auto"), description: t("mode.auto.desc"), icon: Zap },
+  { value: "plan" as const, label: t("mode.plan"), description: t("mode.plan.desc"), icon: Eye },
+  { value: "execute" as const, label: t("mode.execute"), description: t("mode.execute.desc"), icon: Hand },
+  {
+    value: "auto" as const,
+    label: t("mode.auto"),
+    description: t("mode.auto.desc"),
+    icon: Zap,
+    tone: "danger" as const,
+    badge: t("mode.auto.badge"),
+  },
 ]
 
 export type Submission = { text: string; files: FilePartInput[] }
@@ -110,7 +117,7 @@ export function Composer(props: {
   products?: readonly Product[]
   onSubmit: (submission: Submission) => Promise<unknown> | void
   onStop?: () => void
-  onMode?: (mode: PermissionMode) => void
+  onMode?: (mode: SessionMode) => void | Promise<void>
 }) {
   let input!: HTMLTextAreaElement
   const [text, setText] = createSignal(props.draft?.text ?? "")
@@ -265,10 +272,10 @@ export function Composer(props: {
     }
   }
 
-  const setMode = (mode: PermissionMode) => {
+  const setMode = (mode: SessionMode) => {
     if (props.disabled) return
+    if (props.onMode) return props.onMode(mode)
     choose(props.sessionID, props.directory, { mode })
-    props.onMode?.(mode)
   }
 
   const keydown = (event: KeyboardEvent) => {
@@ -459,6 +466,18 @@ export function Composer(props: {
             <Paperclip class="icon" />
           </button>
         </Show>
+        <Tip label={t("mode.hint")} placement="top">
+          <Select
+            class={current().mode === "auto" ? "chip session-mode-auto" : "chip"}
+            label={t("mode.named", {
+              mode: modeOptions().find((option) => option.value === current().mode)?.label ?? "",
+            })}
+            options={modeOptions()}
+            value={current().mode}
+            disabled={props.disabled}
+            onChange={setMode}
+          />
+        </Tip>
         <Show when={!props.external && !connected()}>
           <button class="chip accent" onClick={() => setUi("settings", "models")}>
             {t("prompt.noModel")}
@@ -493,17 +512,6 @@ export function Composer(props: {
         <Show when={!props.external}>
           <SandboxField directory={dir()} disabled={props.disabled} />
         </Show>
-        <Tip label={t("mode.hint")} placement="top">
-          <Select
-            label={t("mode.named", {
-              mode: modeOptions().find((option) => option.value === current().mode)?.label ?? "",
-            })}
-            options={modeOptions()}
-            value={current().mode}
-            disabled={props.disabled}
-            onChange={setMode}
-          />
-        </Tip>
         <Show
           when={props.busy && !text().trim()}
           fallback={

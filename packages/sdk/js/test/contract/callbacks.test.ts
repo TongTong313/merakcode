@@ -38,7 +38,7 @@ test("when the permission callback allows, the file is written and the callback 
   const session = await merak.session()
   const asked: string[] = []
   for await (const _ of session.run("写个文件", {
-    mode: "ask",
+    mode: "execute",
     onPermission: async (request) => {
       asked.push(request.permission)
       return "allow-once"
@@ -54,7 +54,7 @@ test("when the permission callback denies, no file is written and the model gets
   script = writeThenReport(file)
   const session = await merak.session()
   let text = ""
-  for await (const event of session.run("写个文件", { mode: "ask", onPermission: async () => "deny" })) {
+  for await (const event of session.run("写个文件", { mode: "execute", onPermission: async () => "deny" })) {
     if (event.type === "text") text += event.delta
   }
   expect(existsSync(file)).toBe(false)

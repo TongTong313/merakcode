@@ -15,7 +15,7 @@ const command = (text: string, level: PermissionPolicy.CommandLevel, prefix: str
   PermissionPolicy.command({ command: text, level, prefix })
 
 /** Same as the runner: mode defaults plus the main session's grants (in the user rule layer) */
-const chain = async (root: string, mode: PermissionPolicy.Mode = "ask") =>
+const chain = async (root: string, mode: PermissionPolicy.Mode = "execute") =>
   PermissionPolicy.ruleset(mode, await PermissionNext.grants(root))
 
 const ask = async (input: {
@@ -81,7 +81,7 @@ test("denies the whole command without an approval when any segment is denied", 
         id: "permission_denied",
         sessionID: main.id,
         checks: [command("ls", "readonly", "ls"), command("npm test", "normal", "npm test")],
-        mode: "readonly",
+        mode: "plan",
       }),
     ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
     expect(await PermissionNext.list()).toEqual([])
@@ -157,7 +157,7 @@ test("grants cannot override deny: a granted command is still denied in readonly
         id: "permission_readonly",
         sessionID: main.id,
         checks: [command("npm test", "normal", "npm test")],
-        mode: "readonly",
+        mode: "plan",
       }),
     ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
   }))
@@ -245,7 +245,7 @@ test("subagent approvals do not offer always allow", () =>
       patterns: [check.pattern],
       checks: [check],
       metadata: {},
-      ruleset: PermissionPolicy.ruleset("ask"),
+      ruleset: PermissionPolicy.ruleset("execute"),
     })
     const [request] = await pending()
     expect(request!.always).toBe(false)

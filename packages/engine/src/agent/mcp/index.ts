@@ -160,7 +160,7 @@ export namespace MCP {
     return dynamicTool({
       description: mcpTool.description ?? "",
       inputSchema: jsonSchema(schema),
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, options) => {
         return client.callTool(
           {
             name: mcpTool.name,
@@ -170,6 +170,7 @@ export namespace MCP {
           {
             resetTimeoutOnProgress: true,
             timeout,
+            signal: options.abortSignal,
           },
         )
       },

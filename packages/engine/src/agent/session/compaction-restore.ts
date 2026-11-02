@@ -1,3 +1,4 @@
+import { SessionPlan } from "./plan"
 import path from "path"
 import { Message } from "./message"
 import { Identifier } from "@merakcode/util/id"
@@ -10,11 +11,10 @@ import { Skill } from "../skill/skill"
 import { Token } from "../context/token"
 import { Flag } from "../../infra/flag/flag"
 import { Log } from "@merakcode/log/logger"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 import type { Provider } from "../model/provider"
 import type { Tool } from "../tools/tool"
 import { truncateSections } from "../memory/session-memory/template"
-import { Filesystem } from "@merakcode/util/filesystem"
 
 /**
  * Post-compaction attachment restore: appends synthetic TextParts to the continuation user message created by
@@ -123,16 +123,14 @@ export namespace SessionCompactionRestore {
   /** Restores the plan file, only when plan mode is enabled and the file exists */
   async function restorePlan(sessionID: string): Promise<string | undefined> {
     if (!Flag.MERAKCODE_PLAN_MODE) return undefined
-    const session = await Session.get(sessionID)
-    if (!session) return undefined
-    const plan = Session.plan(session)
-    const exists = await Filesystem.isFile(plan)
-    if (!exists) return undefined
-    const content = await Filesystem.readText(plan).catch(() => "")
+    const plan = await SessionPlan.get(await Session.rootID(sessionID))
+    const content = plan.status === "executing" ? (plan.execution?.content ?? "") : plan.content
     if (!content.trim()) return undefined
     return [
       "<system-reminder>",
-      `Current plan file (${plan}), restored after compaction — continue executing it:`,
+      plan.status === "executing"
+        ? "Continue the fixed execution plan:"
+        : "Current editable plan; await user authorization before execution:",
       content,
       "</system-reminder>",
     ].join("\n")
@@ -161,6 +159,7 @@ export namespace SessionCompactionRestore {
 
     for (const [filepath] of entries) {
       if (systemInstructions.has(path.resolve(filepath))) continue
+      if (await SessionPlan.isFile(sessionID, filepath)) continue
 
       const args = { filePath: filepath }
       // Same as the pre-read branch of runner.createUserMessage: bypassCwdCheck skips directory and permission
@@ -169,8 +168,8 @@ export namespace SessionCompactionRestore {
         sessionID,
         abort: new AbortController().signal,
         agent,
-        permissionMode: PermissionMode.DEFAULT,
-        kind: PermissionMode.DEFAULT,
+        sessionMode: SessionMode.DEFAULT,
+        kind: SessionMode.DEFAULT,
         messageID: "",
         extra: { bypassCwdCheck: true, model },
         messages: [],

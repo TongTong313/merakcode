@@ -1,6 +1,8 @@
+import fs from "node:fs/promises"
+import { fileURLToPath } from "node:url"
 /**
  * prompt and shell write their permission mode back to the session, which is the source of truth.
- * Live asks after setPermissionMode during a run are covered in runner-permission-mode-live.test.ts.
+ * Live asks after setMode during a run are covered in runner-permission-mode-live.test.ts.
  */
 import { test, expect } from "vitest"
 import path from "path"
@@ -26,16 +28,16 @@ const model = {
 } as unknown as Provider.Model
 
 async function autoSession() {
-  const session = await Session.setPermissionMode({
+  const session = await Session.setMode({
     sessionID: (await Session.create({})).id,
-    permissionMode: "auto",
+    sessionMode: "auto",
   })
   const user = await Session.updateInfo({
     id: Identifier.ascending("message"),
     role: "user",
     sessionID: session.id,
     agent: "build",
-    permissionMode: "auto",
+    sessionMode: "auto",
     model: { providerID: "openai", modelID: "gpt-4" },
     time: { created: Date.now() },
   })
@@ -78,7 +80,7 @@ async function resolveTools(
     processor,
     bypassAgentCheck: false,
     messages: [{ info: user, parts: [] }],
-    permissionMode: live.permissionMode,
+    sessionMode: live.sessionMode,
   })
   return tools
 }
@@ -125,7 +127,7 @@ test("control: while the session stays auto, the resolved write tool does not as
     fn: async () => {
       const { session, user, agent, processor } = await autoSession()
       const tools = await resolveTools(session.id, agent, user, processor)
-      expect((await Session.get(session.id)).permissionMode).toBe("auto")
+      expect((await Session.get(session.id)).sessionMode).toBe("auto")
 
       let asked = false
       const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => {
@@ -147,19 +149,19 @@ test("prompt with ask overrides a leftover auto session mode, and write then run
     fn: async () => {
       const { session, user, agent, processor } = await autoSession()
       const tools = await resolveTools(session.id, agent, user, processor)
-      expect((await Session.get(session.id)).permissionMode).toBe("auto")
+      expect((await Session.get(session.id)).sessionMode).toBe("auto")
 
-      // Like an Agent submit: the prompt carries the mode before the client's setPermissionMode has run.
+      // Like an Agent submit: the prompt carries the mode before the client's setMode has run.
       await Loop.prompt({
         sessionID: session.id,
         agent: "build",
-        permissionMode: "ask",
+        sessionMode: "execute",
         noReply: true,
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "delivery probe" }],
       })
 
-      expect((await Session.get(session.id)).permissionMode).toBe("ask")
+      expect((await Session.get(session.id)).sessionMode).toBe("execute")
 
       // The previously resolved tools re-read the session on execute and see the written-back ask mode. Nothing
       // requests an ask for write, so it runs without a permission card.
@@ -171,7 +173,7 @@ test("prompt with ask overrides a leftover auto session mode, and write then run
   })
 })
 
-test("prompt without permissionMode writes back the default ask, replacing a leftover auto", async () => {
+test("prompt without a mode preserves the current explicitly selected mode", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -184,7 +186,7 @@ test("prompt without permissionMode writes back the default ask, replacing a lef
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "no mode" }],
       })
-      expect((await Session.get(session.id)).permissionMode).toBe("ask")
+      expect((await Session.get(session.id)).sessionMode).toBe("auto")
     },
   })
 })
@@ -199,7 +201,7 @@ test("shell with ask writes ask back to the session, and previously resolved too
       await Loop.shell({
         sessionID: session.id,
         agent: "build",
-        permissionMode: "ask",
+        sessionMode: "execute",
         model: { providerID: "openai", modelID: "gpt-4" },
         command: "echo delivery-shell",
       })
@@ -207,14 +209,60 @@ test("shell with ask writes ask back to the session, and previously resolved too
       const messages = await Session.messages({ sessionID: session.id })
       const lastUser = [...messages].reverse().find((msg) => msg.info.role === "user")
       if (lastUser?.info.role !== "user") throw new Error("expected user message")
-      expect(lastUser.info.permissionMode).toBe("ask")
-      expect(live.permissionMode).toBe("ask")
+      expect(lastUser.info.sessionMode).toBe("execute")
+      expect(live.sessionMode).toBe("execute")
 
       // With no default ask, write runs without a permission card.
       const filePath = path.join(tmp.path, "after-shell.txt")
       const { outcome } = await raceWriteAsk(tools, session.id, filePath)
       expect(outcome).toBe("ran")
       expect(await Filesystem.readText(filePath)).toBe("x")
+    },
+  })
+})
+
+test("a manual switch while a real message hook waits survives prompt preparation", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (directory) => {
+      await fs.mkdir(path.join(directory, ".merakcode/node_modules"), { recursive: true })
+      await fs.symlink(
+        path.dirname(fileURLToPath(import.meta.resolve("zod"))),
+        path.join(directory, ".merakcode/node_modules/zod"),
+        process.platform === "win32" ? "junction" : "dir",
+      )
+      await Filesystem.write(
+        path.join(directory, ".merakcode/plugin/mode-gate.ts"),
+        `import fs from "node:fs/promises"
+      import path from "node:path"
+      export const gate = async ({directory}) => ({"chat.message": async () => {
+        await fs.writeFile(path.join(directory, "mode-hook-ready"), "ready")
+        while (!await fs.access(path.join(directory, "mode-hook-release")).then(() => true, () => false)) await new Promise(resolve => setTimeout(resolve, 10))
+      }})`,
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Prompt mode race" })
+      const pending = Loop.prompt({
+        sessionID: session.id,
+        sessionMode: "auto",
+        noReply: true,
+        model: { providerID: "openai", modelID: "gpt-4" },
+        parts: [{ type: "text", text: "Prepare message" }],
+      })
+      try {
+        await expect
+          .poll(() => Filesystem.isFile(path.join(tmp.path, "mode-hook-ready")), { timeout: 10000 })
+          .toBe(true)
+        await Session.setMode({ sessionID: session.id, sessionMode: "plan" })
+      } finally {
+        await Filesystem.write(path.join(tmp.path, "mode-hook-release"), "release")
+      }
+      await pending
+      expect((await Session.get(session.id)).sessionMode).toBe("plan")
     },
   })
 })

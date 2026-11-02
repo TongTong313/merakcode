@@ -163,8 +163,8 @@ test("resolveTools leaves workflow_run out of the child session tool_search list
 })
 
 for (const scenario of [
-  { name: "root", child: false, mode: "ask" as const },
-  { name: "readonly child", child: true, mode: "readonly" as const },
+  { name: "root", child: false, mode: "execute" as const },
+  { name: "readonly child", child: true, mode: "plan" as const },
   { name: "automatic root", child: false, mode: "auto" as const },
 ]) {
   test("context tool names match the prepared model tools for a " + scenario.name, async () => {
@@ -178,7 +178,7 @@ for (const scenario of [
         processor,
         bypassAgentCheck: false,
         messages,
-        permissionMode: scenario.mode,
+        sessionMode: scenario.mode,
         child: scenario.child,
         step: 2,
       })

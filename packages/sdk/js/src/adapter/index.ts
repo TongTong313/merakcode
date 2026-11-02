@@ -108,13 +108,13 @@ export async function version(command: string): Promise<{ version?: string; unav
 }
 
 /** Version of the member protocol */
-export const PROTOCOL = 1
+export const PROTOCOL = 2
 
 /** How long an adapter may take to stop its CLI once MerakCode is gone */
 const GONE_GRACE = 5_000
 
 /** The user's permission mode in the group */
-export type Mode = "readonly" | "ask" | "auto"
+export type Mode = "plan" | "execute" | "auto"
 
 export type ProductModel = { id: string; providerID?: string }
 export type ModelList = { models: (ProductModel & { title: string })[]; allowCustomID: boolean }
@@ -125,6 +125,13 @@ export type Capabilities = {
   resume: boolean
   permission: "merak" | "external"
   questions: boolean
+  /** Only reported operations are governed; unreported native actions remain outside host control. */
+  control?: {
+    reportedOperations: string[]
+    cancellation: "operation" | "task" | "none"
+    liveMode: boolean
+    limitations: string[]
+  }
 }
 
 /**
@@ -214,6 +221,8 @@ export type Host = {
 }
 
 export type Definition = {
+  /** Optional native policy update. The task object also receives the current mode in place. */
+  modeChanged?(mode: Mode): void | Promise<void>
   inspect(product: Product): Info | Promise<Info>
   models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>
   /** Does the task; signal aborts when the user stops the group */
@@ -320,6 +329,9 @@ export function adapter(definition: Definition) {
   console.log = console.info = (...items: unknown[]) => console.error(...items)
   const stop = new AbortController()
   let product: Product = { id: "", title: "" }
+  let currentTask: Task | undefined
+  let currentMode: Mode | undefined
+  let modeRevision = -1
   const rpc = connect({
     lines: readline.createInterface({ input: process.stdin, crlfDelay: Infinity }),
     send: (line) => process.stdout.write(line + "\n"),
@@ -332,7 +344,18 @@ export function adapter(definition: Definition) {
         if (!definition.models) throw new Error("This adapter does not support model discovery")
         return definition.models(product, stop.signal)
       },
-      "task/run": (task: Task) => definition.run({ ...task, product, signal: stop.signal }, host),
+      "task/run": (task: Task) => {
+        const active = { ...task, mode: currentMode ?? task.mode, product, signal: stop.signal }
+        currentTask = active
+        return definition.run(active, host)
+      },
+      "task/mode": async (input: { mode: Mode; revision: number }) => {
+        if (input.revision <= modeRevision) return
+        modeRevision = input.revision
+        currentMode = input.mode
+        if (currentTask) currentTask.mode = input.mode
+        await definition.modeChanged?.(input.mode)
+      },
       "task/cancel": () => stop.abort(),
     },
   })
@@ -396,7 +419,7 @@ async function tryAdapter(input: { launch: string[]; prompt?: string; mode?: Mod
     const result = await rpc.request<Result>("task/run", {
       prompt: input.prompt,
       cwd: process.cwd(),
-      mode: input.mode ?? "ask",
+      mode: input.mode ?? "execute",
     })
     print(`result ${result.text}`)
     if (result.sessionId) print(`session ${result.sessionId}`)

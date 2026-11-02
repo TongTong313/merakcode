@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { storage } from "../lib/bridge"
 
-export type Tab = "review" | "git" | "code" | "browser"
+export type Tab = "review" | "plan" | "git" | "code" | "browser"
 export type SettingsSection =
   | "general"
   | "models"
@@ -33,7 +33,7 @@ type UI = {
   /** Onboarding was skipped during this launch */
   skipped: boolean
   /** File to open in the code tab (relative to the conversation directory); at lets the same file open again */
-  openFile?: { path: string; at: number }
+  openFile?: { path: string; at: number; planSessionID?: string }
 }
 
 export const [ui, setUi] = createStore<UI>({
@@ -81,5 +81,16 @@ export function showTab(tab: Tab) {
 export function togglePanel() {
   setUi("panel", (open) => !open)
   if (!ui.panel) setUi("maximized", false)
+  saveLayout()
+}
+
+/** Opens the one editable session plan in the existing code editor. */
+export function openPlanInCode(sessionID: string) {
+  setUi({
+    panel: true,
+    tab: "code",
+    maximized: false,
+    openFile: { path: `Plan-${sessionID}.md`, planSessionID: sessionID, at: Date.now() },
+  })
   saveLayout()
 }

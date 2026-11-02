@@ -11,7 +11,7 @@ import { fn } from "@merakcode/util/fn"
 import { Storage } from "../../infra/storage/storage"
 import { ProviderError } from "../model/error"
 import type { Provider } from "../model/provider"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 import { SessionToolResult } from "./tool-result"
 import { Transcript } from "./transcript"
 import { ExternalAdapterError } from "./external-error"
@@ -280,7 +280,7 @@ export namespace Message {
     type: z.literal("compaction"),
     auto: z.boolean(),
     // Continuing after auto-compaction must keep the permission mode from before compaction.
-    permissionMode: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
     // Deferred tools activated before compaction. After compaction, scanActivatedTools restores them from the compact
     // boundary so they do not fall back to deferred once their history is compacted. Only names are stored; older
     // parts without this field are skipped.
@@ -469,7 +469,7 @@ export namespace Message {
       })
       .optional(),
     agent: z.string(),
-    permissionMode: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
     model: z.object({
       providerID: z.string(),
       modelID: z.string(),
@@ -590,7 +590,7 @@ export namespace Message {
   export const ExternalUserInfo = Base.extend({
     role: z.literal("user"),
     time: z.object({ created: z.number() }),
-    permissionMode: PermissionMode.Schema,
+    sessionMode: SessionMode.Schema,
     execution: ExternalExecution,
   }).meta({ ref: "ExternalUserMessage" })
   export type ExternalUserInfo = z.infer<typeof ExternalUserInfo>
@@ -1051,6 +1051,7 @@ export namespace Message {
    * Transcript replay output and before import-full validation; only the returned value changes, nothing is written.
    */
   export function legacy(info: Message.Info): Message.Info {
+    info = SessionMode.migrate(info)
     if (isExternal(info)) return info
     if (info.role === "user") {
       const diffs = info.summary?.diffs

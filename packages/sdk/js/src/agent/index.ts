@@ -13,7 +13,7 @@ import type {
   Event,
   MessageOutput,
   PartOutput,
-  PermissionMode,
+  SessionMode,
   PermissionRequest,
   QuestionRequest,
   SessionOutput,
@@ -73,8 +73,8 @@ export type RunOptions = Handlers & {
   agent?: string
   /** Model, written as "provider/model" */
   model?: string
-  /** Permission mode: read-only / ask every time / automatic */
-  mode?: PermissionMode
+  /** Session mode: plan / execute (default) / auto. Omission preserves the current session mode. */
+  mode?: SessionMode
 }
 
 const replies = {
@@ -254,7 +254,7 @@ export async function createMerakCode(options: MerakCodeOptions = {}): Promise<M
           sessionID: info.id,
           agent: input.agent,
           model: modelOf(input.model),
-          permissionMode: input.mode,
+          sessionMode: input.mode,
           parts: [{ type: "text", text: prompt }],
         })
         if (sent.error) {

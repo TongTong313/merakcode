@@ -243,6 +243,17 @@
           "capabilities": {
             "additionalProperties": false,
             "properties": {
+              "control": {
+                "additionalProperties": false,
+                "properties": {
+                  "cancellation": { "enum": ["none", "operation", "task"], "type": "string" },
+                  "limitations": { "items": { "type": "string" }, "type": "array" },
+                  "liveMode": { "type": "boolean" },
+                  "reportedOperations": { "items": { "type": "string" }, "type": "array" }
+                },
+                "required": ["cancellation", "limitations", "liveMode", "reportedOperations"],
+                "type": "object"
+              },
               "modelDiscovery": { "type": "boolean" },
               "modelSelection": { "type": "boolean" },
               "permission": { "enum": ["external", "merak"], "type": "string" },
@@ -909,9 +920,9 @@
           "auto": { "type": "boolean" },
           "id": { "type": "string" },
           "messageID": { "type": "string" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "preCompactActivatedTools": { "items": { "type": "string" }, "type": "array" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "type": { "const": "compaction", "type": "string" }
         },
         "required": ["auto", "id", "messageID", "sessionID", "type"],
@@ -923,9 +934,9 @@
           "auto": { "type": "boolean" },
           "id": { "type": "string" },
           "messageID": { "type": "string" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "preCompactActivatedTools": { "items": { "type": "string" }, "type": "array" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "type": { "const": "compaction", "type": "string" }
         },
         "required": ["auto", "id", "messageID", "sessionID", "type"],
@@ -2236,6 +2247,7 @@
           { "$ref": "#/components/schemas/Event.session.error" },
           { "$ref": "#/components/schemas/Event.session.idle" },
           { "$ref": "#/components/schemas/Event.session.notification.created" },
+          { "$ref": "#/components/schemas/Event.session.plan.updated" },
           { "$ref": "#/components/schemas/Event.session.status" },
           { "$ref": "#/components/schemas/Event.session.updated" },
           { "$ref": "#/components/schemas/Event.skill.updated" },
@@ -2789,6 +2801,15 @@
         "required": ["properties", "type"],
         "type": "object"
       },
+      "Event.session.plan.updated": {
+        "additionalProperties": false,
+        "properties": {
+          "properties": { "$ref": "#/components/schemas/SessionPlan" },
+          "type": { "const": "session.plan.updated", "type": "string" }
+        },
+        "required": ["properties", "type"],
+        "type": "object"
+      },
       "Event.session.status": {
         "additionalProperties": false,
         "properties": {
@@ -3191,12 +3212,12 @@
           },
           "id": { "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "time": { "properties": { "created": { "type": "number" } }, "required": ["created"], "type": "object" }
         },
-        "required": ["execution", "id", "permissionMode", "role", "sessionID", "time"],
+        "required": ["execution", "id", "role", "sessionID", "sessionMode", "time"],
         "type": "object"
       },
       "ExternalUserMessageOutput": {
@@ -3228,9 +3249,9 @@
           },
           "id": { "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "time": {
             "additionalProperties": false,
             "properties": { "created": { "type": "number" } },
@@ -3238,7 +3259,7 @@
             "type": "object"
           }
         },
-        "required": ["execution", "id", "permissionMode", "role", "sessionID", "time"],
+        "required": ["execution", "id", "role", "sessionID", "sessionMode", "time"],
         "type": "object"
       },
       "File": {
@@ -4253,7 +4274,6 @@
         "required": ["pattern", "scope"],
         "type": "object"
       },
-      "PermissionMode": { "enum": ["ask", "auto", "readonly"], "type": "string" },
       "PermissionObjectConfig": {
         "additionalProperties": { "$ref": "#/components/schemas/PermissionActionConfig" },
         "propertyNames": { "type": "string" },
@@ -5281,9 +5301,9 @@
           "directory": { "type": "string" },
           "id": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
+          "modeRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "parentID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "permission": { "$ref": "#/components/schemas/PermissionRuleset" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "projectID": { "type": "string" },
           "readOnlyReason": { "const": "imported-external-history", "type": "string" },
           "revert": {
@@ -5321,6 +5341,7 @@
             },
             "type": "object"
           },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "slug": { "type": "string" },
           "summary": {
             "properties": {
@@ -5412,15 +5433,16 @@
         "required": ["directory", "id", "projectID", "slug", "time", "title", "version"],
         "type": "object"
       },
+      "SessionMode": { "enum": ["auto", "execute", "plan"], "type": "string" },
       "SessionOutput": {
         "additionalProperties": false,
         "properties": {
           "directory": { "type": "string" },
           "id": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
+          "modeRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "parentID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "permission": { "$ref": "#/components/schemas/PermissionRulesetOutput" },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "projectID": { "type": "string" },
           "readOnlyReason": { "const": "imported-external-history", "type": "string" },
           "revert": {
@@ -5462,6 +5484,7 @@
             },
             "type": "object"
           },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "slug": { "type": "string" },
           "summary": {
             "additionalProperties": false,
@@ -5560,6 +5583,32 @@
           }
         },
         "required": ["directory", "id", "projectID", "slug", "time", "title", "version"],
+        "type": "object"
+      },
+      "SessionPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "activeUserID": { "type": "string" },
+          "blockedUserID": { "type": "string" },
+          "content": { "type": "string" },
+          "execution": {
+            "additionalProperties": false,
+            "properties": {
+              "content": { "type": "string" },
+              "id": { "type": "string" },
+              "startedAt": { "type": "number" }
+            },
+            "required": ["content", "id", "startedAt"],
+            "type": "object"
+          },
+          "humanRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
+          "path": { "type": "string" },
+          "revision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
+          "sessionID": { "type": "string" },
+          "source": { "enum": ["agent", "human"], "type": "string" },
+          "status": { "enum": ["completed", "draft", "executing", "review"], "type": "string" }
+        },
+        "required": ["content", "humanRevision", "path", "revision", "sessionID", "source", "status"],
         "type": "object"
       },
       "SessionSearchResult": {
@@ -6258,9 +6307,9 @@
             "required": ["modelID", "providerID"],
             "type": "object"
           },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "summary": {
             "properties": {
               "body": { "type": "string" },
@@ -6307,9 +6356,9 @@
             "required": ["modelID", "providerID"],
             "type": "object"
           },
-          "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
+          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "summary": {
             "additionalProperties": false,
             "properties": {
@@ -12422,7 +12471,7 @@
                   "agent": { "type": "string" },
                   "arguments": { "type": "string" },
                   "command": { "type": "string" },
-                  "kind": { "$ref": "#/components/schemas/PermissionMode" },
+                  "kind": { "$ref": "#/components/schemas/SessionMode" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
                   "model": { "type": "string" },
@@ -12445,7 +12494,12 @@
                     },
                     "type": "array"
                   },
-                  "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
+                  "permissionMode": {
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "enum": ["ask", "readonly"],
+                    "type": "string"
+                  },
+                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "variant": { "type": "string" }
                 },
                 "required": ["arguments", "command"],
@@ -12782,7 +12836,7 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "format": { "$ref": "#/components/schemas/OutputFormat" },
-                  "kind": { "$ref": "#/components/schemas/PermissionMode" },
+                  "kind": { "$ref": "#/components/schemas/SessionMode" },
                   "maxTurns": { "type": "number" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
@@ -12803,7 +12857,12 @@
                     },
                     "type": "array"
                   },
-                  "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
+                  "permissionMode": {
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "enum": ["ask", "readonly"],
+                    "type": "string"
+                  },
+                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "system": { "type": "string" },
                   "tools": {
                     "additionalProperties": { "type": "boolean" },
@@ -13052,10 +13111,10 @@
         ]
       }
     },
-    "/session/{sessionID}/permission-mode": {
+    "/session/{sessionID}/mode": {
       "post": {
-        "description": "Switch the session's permission mode (read-only, ask, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
-        "operationId": "session.setPermissionMode",
+        "description": "Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
+        "operationId": "session.setMode",
         "parameters": [
           { "in": "query", "name": "directory", "schema": { "type": "string" } },
           {
@@ -13070,7 +13129,57 @@
           "content": {
             "application/json": {
               "schema": {
-                "properties": { "permissionMode": { "$ref": "#/components/schemas/PermissionMode" } },
+                "properties": {
+                  "expectedRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
+                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" }
+                },
+                "required": ["sessionMode"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionOutput" } } },
+            "description": "Updated session"
+          },
+          "400": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Set session mode",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/permission-mode": {
+      "post": {
+        "deprecated": true,
+        "operationId": "session.setLegacyMode",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": { "permissionMode": { "enum": ["ask", "readonly"], "type": "string" } },
                 "required": ["permissionMode"],
                 "type": "object"
               }
@@ -13090,13 +13199,194 @@
           "404": {
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
             "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
           }
         },
-        "summary": "Set session permission mode",
+        "summary": "Translate a legacy session mode",
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setPermissionMode({\n  ...\n})"
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setLegacyMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/plan": {
+      "get": {
+        "operationId": "session.planGet",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Current editable plan"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Read the session plan",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planGet({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "session.planSave",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "content": { "type": "string" },
+                  "expectedRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" }
+                },
+                "required": ["content", "expectedRevision"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Saved plan"
+          },
+          "400": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Save human edits to the session plan",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planSave({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/plan/revise": {
+      "post": {
+        "operationId": "session.planRevise",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Plan draft"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Continue editing the session plan",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planRevise({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/plan/start": {
+      "post": {
+        "operationId": "session.planStart",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Execution plan"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Execute the latest saved plan",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planStart({\n  ...\n})"
           }
         ]
       }
@@ -13122,7 +13412,7 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "format": { "$ref": "#/components/schemas/OutputFormat" },
-                  "kind": { "$ref": "#/components/schemas/PermissionMode" },
+                  "kind": { "$ref": "#/components/schemas/SessionMode" },
                   "maxTurns": { "type": "number" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
@@ -13143,7 +13433,12 @@
                     },
                     "type": "array"
                   },
-                  "permissionMode": { "$ref": "#/components/schemas/PermissionMode" },
+                  "permissionMode": {
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "enum": ["ask", "readonly"],
+                    "type": "string"
+                  },
+                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "system": { "type": "string" },
                   "tools": {
                     "additionalProperties": { "type": "boolean" },
@@ -13255,13 +13550,18 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "command": { "type": "string" },
-                  "kind": { "$ref": "#/components/schemas/PermissionMode" },
+                  "kind": { "$ref": "#/components/schemas/SessionMode" },
                   "model": {
                     "properties": { "modelID": { "type": "string" }, "providerID": { "type": "string" } },
                     "required": ["modelID", "providerID"],
                     "type": "object"
                   },
-                  "permissionMode": { "$ref": "#/components/schemas/PermissionMode" }
+                  "permissionMode": {
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "enum": ["ask", "readonly"],
+                    "type": "string"
+                  },
+                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" }
                 },
                 "required": ["agent", "command"],
                 "type": "object"

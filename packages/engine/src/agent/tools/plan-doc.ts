@@ -2,7 +2,7 @@ import path from "path"
 import { Global } from "../../infra/global"
 import { Flag } from "../../infra/flag/flag"
 import { Filesystem } from "@merakcode/util/filesystem"
-import type { PermissionMode } from "../permission/mode"
+import type { SessionMode } from "../permission/mode"
 
 /**
  * Decides whether a path is a plan file the agent may write silently, without approval.
@@ -17,38 +17,46 @@ import type { PermissionMode } from "../permission/mode"
  *
  * Still required: FileTime.withLock / assert / read (the session's read-before-write record).
  *
- * Only plan mode (main session in read-only mode) may write plans: any *.md under Global.Path.data/plans.
+ * Plan mode may write only the current root session plan. Auto bypasses authorization for other paths.
  *
  * The Session module is imported dynamically to avoid the static cycle plan-doc → session → runner →
  * tool/registry → tool/edit → plan-doc. Session is always loaded by the time this runs, so the import hits the cache.
  */
-export type PlanDocAuthor = { agent: string; permissionMode?: PermissionMode.Value; sessionID?: string }
+export type PlanDocAuthor = { agent: string; sessionMode?: SessionMode.Value; sessionID?: string }
 
 /** Whether the path is a .md file under the plans data directory; plansDir can be injected for tests */
 export function isUnderPlansDataDir(absPath: string, plansDir = path.join(Global.Path.data, "plans")): boolean {
   const normalized = path.normalize(absPath)
-  if (!normalized.endsWith(".md")) return false
+  if (!normalized.toLowerCase().endsWith(".md")) return false
   // Filesystem.contains handles Windows drive letter case (c: vs C:), which startsWith gets wrong
   return Filesystem.contains(plansDir, normalized)
 }
 
 /** Plan mode means the main session is in read-only mode; subagents follow that mode but do not write plans */
 async function planning(author: PlanDocAuthor) {
-  if (!Flag.MERAKCODE_PLAN_MODE || author.permissionMode !== "readonly") return false
-  if (!author.sessionID) return true
+  if (!Flag.MERAKCODE_PLAN_MODE || author.sessionMode !== "plan") return false
+  if (!author.sessionID) return false
   const { Session } = await import("../session")
   // Session.get throws synchronously on an invalid id; wrapping it routes that into the catch
   const session = await Promise.resolve(author.sessionID)
     .then((id) => Session.get(id))
     .catch(() => undefined)
-  return !session?.parentID
+  return !!session && !session.parentID
 }
 
 export async function isPlanDocBypass(author: PlanDocAuthor, absPath: string): Promise<boolean> {
   const normalized = path.normalize(absPath)
-  if (!normalized.endsWith(".md")) return false
+  if (!isUnderPlansDataDir(normalized)) return false
 
-  return isUnderPlansDataDir(normalized) && (await planning(author))
+  if (author.sessionMode === "auto") return true
+  if (!author.sessionID || !(await planning(author))) return false
+  const { Session } = await import("../session")
+  const session = await Session.get(author.sessionID).catch(() => undefined)
+  if (!session) return false
+  const expected = path.resolve(Session.plan(session))
+  return process.platform === "win32"
+    ? path.resolve(normalized).toLowerCase() === expected.toLowerCase()
+    : path.resolve(normalized) === expected
 }
 
 /**
@@ -56,7 +64,7 @@ export async function isPlanDocBypass(author: PlanDocAuthor, absPath: string): P
  * error tells the model to call plan_enter first.
  */
 export async function assertCanWritePlanDoc(author: PlanDocAuthor, absPath: string): Promise<void> {
-  if (!isUnderPlansDataDir(absPath)) return
+  if (author.sessionMode === "auto" || !isUnderPlansDataDir(absPath)) return
   if (await isPlanDocBypass(author, absPath)) return
   throw new Error(
     "Cannot modify plan files outside plan mode. Call plan_enter and get user approval before editing the plan.",

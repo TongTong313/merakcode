@@ -27,6 +27,7 @@ import { Text } from "../prompt/text"
 import { ChildEnv } from "@merakcode/util/child-env"
 import { Config } from "@merakcode/engine/agent/settings/index"
 import { Redact } from "../../infra/security/redact"
+import { ModeOperations } from "../permission/operations"
 
 const MAX_METADATA_LENGTH = 30_000
 const METADATA_THROTTLE_MS = 500
@@ -70,7 +71,8 @@ export async function prepareBashCommand(
   })
   // The sandbox should be used but is not ready: commands that change things ask first, even in auto mode
   // ("required" mode refuses every command instead)
-  const unsandboxed = !params.unsandboxed && (await PermissionExecution.missing()) && !analysis.readOnly
+  const unsandboxed =
+    ctx.sessionMode !== "auto" && !params.unsandboxed && (await PermissionExecution.missing()) && !analysis.readOnly
   await ctx.ask({
     permission: "bash",
     checks: [
@@ -181,6 +183,8 @@ export async function spawnCommand(input: {
         workspace: PermissionPolicy.scope().workspace,
         writable: input.sandbox.writable,
       })
+  input.ctx.abort.throwIfAborted()
+  ModeOperations.sandbox(input.ctx.sessionID, input.ctx.callID, Boolean(wrapped))
   if (!wrapped)
     return {
       proc: spawn(input.command, { ...options, shell: input.shell, env }),

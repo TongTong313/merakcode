@@ -32,7 +32,7 @@ async function runBuiltin(
     const result = await runMember({
       launch: builtinLaunch(adapter),
       product: { id: adapter, title: adapter, command, args: [] },
-      task: { prompt: "Hello world", cwd: tmp.path, mode: "ask", model, resume },
+      task: { prompt: "Hello world", cwd: tmp.path, mode: "execute", model, resume },
       abort: new AbortController().signal,
       host: {
         step: () => {},
@@ -158,7 +158,7 @@ test("passes a command model through argv without advertising streamed text", as
   const result = await runMember({
     launch,
     product,
-    task: { prompt: "", cwd: tmp.path, mode: "ask", model: { id: "fixture-model" } },
+    task: { prompt: "", cwd: tmp.path, mode: "execute", model: { id: "fixture-model" } },
     abort: new AbortController().signal,
     host: {
       step: () => {},
@@ -208,7 +208,7 @@ process.exitCode = 7
       resumeArgs: [file, "{id}"],
       sessionLine: "^SESSION_ID: ([A-Za-z0-9-]+)$",
     },
-    task: { prompt: "synthetic task", cwd: tmp.path, mode: "ask" },
+    task: { prompt: "synthetic task", cwd: tmp.path, mode: "execute" },
     abort: controller.signal,
     host: {
       step: () => {},
@@ -253,7 +253,7 @@ test("rejects an invalid adapter result instead of treating it as a successful r
         "malformed",
       ],
       product: { id: "fixture", title: "Fixture" },
-      task: { prompt: "", cwd: tmp.path, mode: "ask" },
+      task: { prompt: "", cwd: tmp.path, mode: "execute" },
       abort: new AbortController().signal,
       host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
     }),
@@ -286,7 +286,7 @@ test("rejects a saved thread when the selected adapter cannot resume it", async 
     runMember({
       launch: [process.execPath, ...process.execArgv, path.join(import.meta.dirname, "adapter-fixture.ts")],
       product: { id: "fixture", title: "Fixture" },
-      task: { prompt: gate, cwd: tmp.path, mode: "ask", resume: "old-external-thread" },
+      task: { prompt: gate, cwd: tmp.path, mode: "execute", resume: "old-external-thread" },
       abort: new AbortController().signal,
       host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
     }),
@@ -315,7 +315,7 @@ test("persists the external session before streaming text and returns a single f
   const result = runMember({
     launch: [process.execPath, ...process.execArgv, path.join(import.meta.dirname, "adapter-fixture.ts")],
     product: { id: "fixture", title: "Fixture" },
-    task: { prompt: gate, cwd: tmp.path, mode: "ask" },
+    task: { prompt: gate, cwd: tmp.path, mode: "execute" },
     abort: new AbortController().signal,
     host,
   })
@@ -338,7 +338,7 @@ test("withholds the session acknowledgement until asynchronous persistence compl
   const result = runMember({
     launch: [process.execPath, ...process.execArgv, path.join(import.meta.dirname, "adapter-fixture.ts"), "ack"],
     product: { id: "fixture", title: "Fixture" },
-    task: { prompt: "", cwd: tmp.path, mode: "ask" },
+    task: { prompt: "", cwd: tmp.path, mode: "execute" },
     abort: new AbortController().signal,
     host: {
       sessionStarted: async ({ sessionId }) => {
@@ -389,7 +389,7 @@ test("rejects the session acknowledgement when persistence fails without continu
   const result = runMember({
     launch: [process.execPath, ...process.execArgv, path.join(import.meta.dirname, "adapter-fixture.ts"), "ack"],
     product: { id: "fixture", title: "Fixture" },
-    task: { prompt: "", cwd: tmp.path, mode: "ask" },
+    task: { prompt: "", cwd: tmp.path, mode: "execute" },
     abort: new AbortController().signal,
     host: {
       sessionStarted: () => saving.promise,

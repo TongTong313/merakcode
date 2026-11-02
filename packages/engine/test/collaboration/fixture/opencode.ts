@@ -86,7 +86,8 @@ async function work(sessionID: string, prompt: string) {
         { question: item.question, header: "选择", options: item.options.map((label) => ({ label, description: "" })) },
       ],
     })
-    replies.push(`answer ${JSON.stringify((await answered).answers)}`)
+    const result = await answered
+    replies.push(result.rejected ? "question rejected" : `answer ${JSON.stringify(result.answers)}`)
   }
   sessions.get(sessionID)!.text = [`prompt: ${prompt}`, ...replies].join("\n")
   emit("session.status", { sessionID, status: { type: "idle" } })
@@ -132,6 +133,11 @@ const server = http.createServer(async (request, response) => {
       },
     ])
   const reply = /^\/(permission|question)\/([^/]+)\/reply$/.exec(url.pathname)
+  const reject = /^\/question\/([^/]+)\/reject$/.exec(url.pathname)
+  if (request.method === "POST" && reject) {
+    waiting.get(reject[1]!)?.({ rejected: true })
+    return json(true)
+  }
   if (request.method === "POST" && reply) {
     waiting.get(reply[2]!)?.(await body(request))
     return json(true)

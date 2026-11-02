@@ -8,6 +8,9 @@ import { runMember } from "../../src/agent/external/runtime"
 import { builtinLaunch } from "../../src/agent/external/adapters"
 import { tmpdir } from "../fixture/fixture"
 import { shim } from "./fixture/shim"
+import { Instance } from "../../src/infra/project/instance"
+import { Session } from "../../src/agent/session"
+import { Question as SessionQuestion } from "../../src/agent/session/question"
 
 /**
  * Runs one task through a built-in adapter against a fake CLI. The host allows what allow says yes to, answers
@@ -19,7 +22,8 @@ async function run(input: {
   resume?: string
   env: Record<string, string>
   allow?: (request: Permission) => boolean
-  answer?: (questions: Question[]) => string[][]
+  answer?: (questions: Question[]) => string[][] | Promise<string[][]>
+  signal?: AbortSignal
 }) {
   await using tmp = await tmpdir()
   const command = await shim(tmp.path, input.adapter, `${input.adapter}.ts`)
@@ -35,8 +39,8 @@ async function run(input: {
     const result = await runMember({
       launch: builtinLaunch(input.adapter),
       product: { id: input.adapter, title: input.adapter, command, args: [] },
-      task: { prompt: "做登录", cwd: tmp.path, mode: input.mode ?? "ask", resume: input.resume },
-      abort: new AbortController().signal,
+      task: { prompt: "做登录", cwd: tmp.path, mode: input.mode ?? "execute", resume: input.resume },
+      abort: input.signal ?? new AbortController().signal,
       host: {
         step: (step) => {
           steps.push(step)
@@ -77,7 +81,7 @@ test("Claude Code asks MerakCode before it fetches a page, and is told the answe
 }, 60_000)
 
 test("Claude Code gets no edit tools in read-only mode, and the resumed session on its next task", async () => {
-  const readonly = await run({ adapter: "claude", mode: "readonly", env: { CLAUDE_FIXTURE: "[]" } })
+  const readonly = await run({ adapter: "claude", mode: "plan", env: { CLAUDE_FIXTURE: "[]" } })
   expect(readonly.args).toEqual(
     expect.arrayContaining(["--permission-mode", "manual", "--permission-prompt-tool", "stdio"]),
   )
@@ -181,7 +185,7 @@ test("Codex runs as an app server that asks MerakCode about its commands, file c
 }, 60_000)
 
 test("Codex reads only in read-only mode, and continues its thread on the next task", async () => {
-  const readonly = await run({ adapter: "codex", mode: "readonly", env: { CODEX_FIXTURE: "[]" } })
+  const readonly = await run({ adapter: "codex", mode: "plan", env: { CODEX_FIXTURE: "[]" } })
   expect(readonly.calls["thread/start"]).toMatchObject({ sandbox: "read-only" })
   const resumed = await run({ adapter: "codex", resume: "codex-thread-7", env: { CODEX_FIXTURE: "[]" } })
   expect(resumed.calls["thread/resume"]).toMatchObject({ threadId: "codex-thread-7", approvalPolicy: "untrusted" })
@@ -197,6 +201,66 @@ test("the shell Codex wraps a command in is taken off before MerakCode judges it
   expect(unwrapShell(`/bin/bash -lc 'rm -rf build && npm test'`)).toBe("rm -rf build && npm test")
   expect(unwrapShell("git status")).toBe("git status")
 })
+
+test.each(["auto", "execute"] as const)(
+  "OpenCode settles native questions under %s and later switches",
+  async (mode) => {
+    await using project = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: project.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMode({ sessionID: session.id, sessionMode: mode })
+        const asked = Promise.withResolvers<void>()
+        const stop = new AbortController()
+        let settled = false
+        const running = run({
+          adapter: "opencode",
+          mode,
+          signal: stop.signal,
+          env: { OPENCODE_FIXTURE: JSON.stringify([{ question: "Choose storage", options: ["SQLite"] }]) },
+          answer: async (questions) => {
+            const answer = SessionQuestion.ask({
+              sessionID: session.id,
+              questions: questions.map((q) => ({
+                ...q,
+                options: q.options.map((o) => ({ ...o, description: o.description ?? "" })),
+              })),
+            })
+            asked.resolve()
+            return answer
+          },
+        })
+        void running.then(
+          () => {
+            settled = true
+          },
+          () => {
+            settled = true
+          },
+        )
+        try {
+          await asked.promise
+          if (mode === "execute") {
+            await expect.poll(async () => (await SessionQuestion.list()).length).toBe(1)
+            await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+            const pending = await SessionQuestion.list()
+            expect(pending).toHaveLength(1)
+            await SessionQuestion.reply({ requestID: pending[0]!.id, answers: [["SQLite"]] })
+          }
+          await expect.poll(() => settled, { timeout: 2000 }).toBe(true)
+          const result = await running
+          expect(result.result.text).toContain(mode === "auto" ? "question rejected" : 'answer [["SQLite"]]')
+          expect(await SessionQuestion.list()).toHaveLength(0)
+        } finally {
+          stop.abort()
+          await running.catch(() => {})
+        }
+      },
+    })
+  },
+  15_000,
+)
 
 test("OpenCode runs as a local server whose permission requests and questions come to MerakCode", async () => {
   const items = [
@@ -238,7 +302,7 @@ test("OpenCode runs as a local server whose permission requests and questions co
 }, 60_000)
 
 test("OpenCode cannot edit in read-only mode, and continues its session on the next task", async () => {
-  const readonly = await run({ adapter: "opencode", mode: "readonly", env: { OPENCODE_FIXTURE: "[]" } })
+  const readonly = await run({ adapter: "opencode", mode: "plan", env: { OPENCODE_FIXTURE: "[]" } })
   expect(readonly.calls.config.permission).toMatchObject({ edit: "deny" })
   const resumed = await run({ adapter: "opencode", resume: "ses_old", env: { OPENCODE_FIXTURE: "[]" } })
   expect(resumed.calls.prompts).toEqual([expect.objectContaining({ sessionID: "ses_old" })])
@@ -289,7 +353,7 @@ test("when MerakCode goes away mid-task, the CLI an adapter started is stopped w
     method: "initialize",
     params: { protocol: 1, product: { id: "opencode", title: "OpenCode", command, args: [] } },
   })
-  send({ id: 2, method: "task/run", params: { prompt: "hi", cwd: tmp.path, mode: "ask" } })
+  send({ id: 2, method: "task/run", params: { prompt: "hi", cwd: tmp.path, mode: "execute" } })
   // Wait until the server runs and asks its question, then go away without answering
   await expect
     .poll(
@@ -323,7 +387,7 @@ test("when a member's task is done, the adapter it ran is already gone", async (
   await runMember({
     launch: [process.execPath, ...process.execArgv, fixture, JSON.stringify({ marker })],
     product: { id: "fixture", title: "Fixture" },
-    task: { prompt: "hi", cwd: tmp.path, mode: "ask" },
+    task: { prompt: "hi", cwd: tmp.path, mode: "execute" },
     abort: new AbortController().signal,
     host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
   })
@@ -348,7 +412,7 @@ test("when MerakCode itself exits mid-task, the CLI of a member at work does not
       `void runMember({`,
       `  launch: builtinLaunch("opencode"),`,
       `  product: { id: "opencode", title: "OpenCode", command: ${JSON.stringify(command)}, args: [] },`,
-      `  task: { prompt: "hi", cwd: ${JSON.stringify(tmp.path)}, mode: "ask" },`,
+      `  task: { prompt: "hi", cwd: ${JSON.stringify(tmp.path)}, mode: "execute" },`,
       `  abort: new AbortController().signal,`,
       `  host: { step: () => {}, permission: async () => ({ allow: true }), question: () => process.exit(0) },`,
       `})`,

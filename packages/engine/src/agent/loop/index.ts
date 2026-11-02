@@ -1,4 +1,7 @@
-import { sessionPermissionMode } from "../permission/session-mode"
+import { sessionModeOf, sessionModeNow } from "../permission/session-mode"
+import { startsSessionPlan } from "@merakcode/util/session-plan"
+import { ModeOperations } from "../permission/operations"
+import { SessionPlan } from "../session/plan"
 import path from "path"
 import os from "os"
 import fs from "fs/promises"
@@ -26,8 +29,6 @@ import { Bus } from "../../infra/bus"
 import { ProviderTransform } from "../model/transform"
 import { ContextAttach } from "../context/context-attach"
 import { Plugin } from "../plugin"
-import BUILD_SWITCH from "../prompt/templates/build-switch.txt"
-import { planStayCallExitReminder, resolvePlanReminderKind } from "../prompt/plan-reminder"
 import MAX_STEPS from "../prompt/templates/max-steps.txt"
 import { defer } from "@merakcode/util/defer"
 import { prepareTools } from "../tools/prepare"
@@ -38,7 +39,6 @@ import { LSP } from "../lsp"
 import { ReadTool } from "../tools/read"
 import { FileTime } from "../../infra/file/time"
 import { RuleSession } from "../prompt/rules/session-state"
-import { Flag } from "../../infra/flag/flag"
 import { ulid } from "ulid"
 import { spawn } from "child_process"
 import { Command } from "../prompt/command"
@@ -53,7 +53,7 @@ import { SubAgentTool } from "../tools/subagent"
 import { Tool } from "../tools/tool"
 import { PermissionNext } from "../permission/next"
 import { Question } from "../session/question/index"
-import { PermissionMode } from "../permission/mode"
+import { SessionMode } from "../permission/mode"
 import { PermissionPolicy } from "../permission/policy"
 import { LoopStatus } from "./status"
 import { LoopRequest } from "./request"
@@ -246,11 +246,15 @@ export namespace Loop {
     format: Message.Format.optional(),
     system: z.string().optional(),
     variant: z.string().optional(),
-    permissionMode: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
+    permissionMode: z
+      .enum(["readonly", "ask"])
+      .optional()
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
     /** Per-turn metadata. The engine does not interpret it and copies it to `UserInfo.metadata`. */
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** @deprecated Use permissionMode. Still parsed for older SubAgentTool / SDK callers. */
-    kind: PermissionMode.Schema.optional(),
+    /** @deprecated Use sessionMode. Still parsed for older SubAgentTool / SDK callers. */
+    kind: SessionMode.Schema.optional(),
     /** Max loop turns for a forked child session, so extraction/notes agents cannot burn tokens. */
     maxTurns: z.number().optional(),
     parts: z.array(
@@ -301,15 +305,9 @@ export namespace Loop {
 
   export type PromptInput = z.infer<typeof PromptInput>
 
-  async function persistSessionPermissionMode(session: Session.Info, mode: PermissionMode.Value | undefined) {
-    if (!mode) return
-    await Session.update(
-      session.id,
-      (draft) => {
-        draft.permissionMode = mode
-      },
-      { touch: false },
-    )
+  async function persistSessionMode(session: Session.Info, mode: SessionMode.Value | undefined) {
+    if (!mode || session.parentID) return
+    await Session.setMode({ sessionID: session.id, sessionMode: mode, expectedRevision: session.modeRevision ?? 0 })
   }
 
   async function prepareAndCreatePromptMessage(
@@ -321,7 +319,6 @@ export namespace Loop {
     LoopExecution.check(input.sessionID)
     const session = await LoopExecution.wait(async () => SessionTarget.assertNativeOperation(input.sessionID))
     if (!session) throw new Storage.NotFoundError({ message: `Resource not found: session ${input.sessionID}` })
-
     // A new message discards the redo history.
     if (session.undoRedo?.stack?.length) {
       await LoopExecution.wait(async () => SessionUndoRedo.discard({ sessionID: session.id }))
@@ -358,12 +355,12 @@ export namespace Loop {
     }
 
     // Write the message's permission mode back to the session, which is the source of truth. The mode sent with a
-    // prompt and a live setPermissionMode change then share one field and cannot diverge (e.g. the client switches back
+    // prompt and a live setMode change then share one field and cannot diverge (e.g. the client switches back
     // to ask while the session stays in auto). Child sessions persist it too (subagents pass "auto",
     // memory-extractor passes "ask"), so restoring after compaction or re-entry does not hit the `parentID ? "auto"`
     // fallback and flip the caller's choice.
     if (message.info.role === "user") {
-      await LoopExecution.wait(async () => persistSessionPermissionMode(session, message.info.permissionMode))
+      await LoopExecution.wait(async () => persistSessionMode(session, message.info.sessionMode))
     }
 
     if (input.noReply === true) {
@@ -447,8 +444,7 @@ export namespace Loop {
 
       return run({
         sessionID: input.sessionID,
-        permissionMode:
-          message.info.role === "user" ? message.info.permissionMode : (input.permissionMode ?? input.kind),
+        sessionMode: message.info.role === "user" ? message.info.sessionMode : (input.sessionMode ?? input.kind),
         maxTurns: input.maxTurns,
       })
     } finally {
@@ -467,9 +463,53 @@ export namespace Loop {
       }),
     }
   }
-  export const prompt = fn(PromptInput, async (input) => Message.native(await promptInternal(publicPromptInput(input))))
+  const planStarts = Instance.state(() => {
+    const starts = new Map<string, Promise<Message.FullMsg>>()
+    Bus.subscribe(SessionPlan.Updated, (event) => {
+      if (event.properties.status === "completed") starts.delete(event.properties.sessionID)
+    })
+    return starts
+  })
+  async function planWorkPending(sessionID: string) {
+    try {
+      const [runs, { BashJobStore }] = await Promise.all([
+        workflows.list(sessionID),
+        import("../tools/bash-background"),
+      ])
+      if (runs.some((run) => run.status === "running")) return true
+      for (const job of BashJobStore.list())
+        if (job.status === "running" && job.sessionID && (await Session.rootID(job.sessionID)) === sessionID)
+          return true
+      return false
+    } catch (error) {
+      log.warn("plan completion check failed", { sessionID, error })
+      return true
+    }
+  }
+  async function admittedPrompt(input: PromptInput, options?: { requireIdle?: boolean }) {
+    const text = input.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+      .trim()
+    if (!startsSessionPlan(text)) return promptInternal(input, options)
+    input = { ...input, sessionID: await Session.rootID(input.sessionID) }
+    const starts = planStarts()
+    const known = starts.get(input.sessionID)
+    if (known) return known
+    const running = promptInternal(input, options)
+    starts.set(input.sessionID, running)
+    void running
+      .finally(async () => {
+        const plan = await SessionPlan.get(input.sessionID).catch(() => undefined)
+        if (plan?.status !== "executing" && starts.get(input.sessionID) === running) starts.delete(input.sessionID)
+      })
+      .catch(() => {})
+    return running
+  }
+  export const prompt = fn(PromptInput, async (input) => Message.native(await admittedPrompt(publicPromptInput(input))))
   export const promptWhenIdle = fn(PromptInput, async (input) =>
-    Message.native(await promptInternal(publicPromptInput(input), { requireIdle: true })),
+    Message.native(await admittedPrompt(publicPromptInput(input), { requireIdle: true })),
   )
   // Engine-generated memory/dream prompts keep synthetic; not exposed through HTTP or the SDK.
   export const promptGenerated = fn(PromptInput, async (input) => Message.native(await promptInternal(input)))
@@ -819,9 +859,13 @@ export namespace Loop {
   export const LoopInput = z.object({
     sessionID: Identifier.schema("session"),
     resume_existing: z.boolean().optional(),
-    permissionMode: PermissionMode.Schema.optional(),
-    /** @deprecated Use permissionMode. */
-    kind: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
+    permissionMode: z
+      .enum(["readonly", "ask"])
+      .optional()
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
+    /** @deprecated Use sessionMode. */
+    kind: SessionMode.Schema.optional(),
     /** Max loop turns for a forked child session, so extraction/notes agents cannot burn tokens. */
     maxTurns: z.number().optional(),
   })
@@ -868,12 +912,12 @@ export namespace Loop {
     sessionID: string
     targetUserID: string
     abort: AbortSignal
-    loopPermissionMode?: PermissionMode.Value
+    loopSessionMode?: SessionMode.Value
     maxTurns?: number
   }
 
   async function runTurn(input: RunTurnInput): Promise<Message.FullMsg> {
-    const { sessionID, targetUserID, abort, loopPermissionMode, maxTurns } = input
+    const { sessionID, targetUserID, abort, loopSessionMode, maxTurns } = input
     // Structured retries belong to this turn even when a later user prompt is
     // already queued. Keep that prompt outside the current model context.
     const turnUserIDs = new Set([targetUserID])
@@ -886,6 +930,13 @@ export namespace Loop {
 
     let step = 0
     const session = await Session.get(sessionID)
+    const requested = await Message.get({ sessionID, messageID: targetUserID })
+    const startText = requested.info.role === "user" ? Message.userSourceTexts(requested).join("\n").trim() : ""
+    if (!session.parentID && startText) await SessionPlan.beginTurn(sessionID, targetUserID)
+    if (!session.parentID && startsSessionPlan(startText)) {
+      await SessionPlan.start(sessionID)
+      if (sessionModeNow(sessionID) !== "auto") await Session.setMode({ sessionID, sessionMode: "execute" })
+    }
     const discoveredSkillNames = new Set<string>()
     const consumedSkillDiscoveryTriggerIDs = new Set<string>()
     let skillPrefetch: SkillDiscoveryPrefetch | undefined
@@ -942,12 +993,12 @@ export namespace Loop {
       }
 
       if (!lastUserInfo) throw new Error("No user message found in stream. This should never happen.")
-      // The session permission mode is the source of truth and is re-read every turn, so a live setPermissionMode
+      // The session permission mode is the source of truth and is re-read every turn, so a live setMode
       // updates the next turn's tool pool and rules. Within a turn, liveExecution re-reads the session before each
-      // tool call, so the ruleset and ctx.permissionMode share one source.
-      const effectivePermissionMode = await modeOf(
+      // tool call, so the ruleset and ctx.sessionMode share one source.
+      const effectiveSessionMode = await modeOf(
         (await Session.get(sessionID).catch(() => undefined)) ?? session,
-        loopPermissionMode ?? lastUserInfo.permissionMode,
+        loopSessionMode ?? lastUserInfo.sessionMode,
       )
       // User interrupt (ESC): on abort the processor writes only error (MessageAbortedError), not finish. Without this
       // check a new loop would treat the interrupted turn as unfinished and call the LLM again, so the model keeps
@@ -1076,13 +1127,13 @@ export namespace Loop {
         const subagentRuleset = buildToolExecutionRuleset({
           agent: subagentAgent,
           session: sessionNow,
-          permissionMode: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
           child: true,
         })
         const subagentCtx: Tool.Context = {
           agent: pendingTask.agent,
-          permissionMode: effectivePermissionMode,
-          kind: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
+          kind: effectiveSessionMode,
           messageID: assistantInfo.id,
           sessionID: sessionID,
           abort,
@@ -1220,7 +1271,7 @@ export namespace Loop {
           tokens: tokensFromUsage(lastFinishedInfo.tokens),
           precise: false,
           reestimate: async () => tokensFromUsage(lastFinishedInfo.tokens),
-          permissionMode: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
         })
         if (action === "blocked") break
         if (action !== "skip") continue
@@ -1230,11 +1281,6 @@ export namespace Loop {
       const agent = await Agent.get(lastUserInfo.agent)
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
-      msgs = await insertReminders({
-        messages: msgs,
-        session,
-        mode: effectivePermissionMode,
-      })
 
       // Check if user explicitly invoked an agent via @ in this turn
       const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
@@ -1274,7 +1320,7 @@ export namespace Loop {
         agent,
         session,
         user: lastUserInfo,
-        permissionMode: effectivePermissionMode,
+        sessionMode: effectiveSessionMode,
         discovered: discoveredSkillNames,
       })
       if (activeSkillPrefetch) {
@@ -1323,7 +1369,7 @@ export namespace Loop {
         session,
         tools: lastUserInfo.tools,
         messages: msgs,
-        permissionMode: effectivePermissionMode,
+        sessionMode: effectiveSessionMode,
         step,
       }).then(
         (value) => ({ ok: true as const, value }),
@@ -1377,7 +1423,7 @@ export namespace Loop {
             })
             return reestimated.tokens
           },
-          permissionMode: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
         })
         if (action === "blocked") break
         if (action !== "skip") continue
@@ -1433,7 +1479,7 @@ export namespace Loop {
               processor,
               bypassAgentCheck,
               messages: msgs,
-              permissionMode: effectivePermissionMode,
+              sessionMode: effectiveSessionMode,
               step,
             })
           : Promise.reject(preparation.error)
@@ -1542,7 +1588,7 @@ export namespace Loop {
           agent,
           session,
           user: lastUserInfo,
-          permissionMode: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
           discovered: discoveredSkillNames,
         })
       } else {
@@ -1624,7 +1670,7 @@ export namespace Loop {
           tokens: tokensFromUsage(lastFinishedInfo?.tokens),
           precise: false,
           reestimate: async () => tokensFromUsage(lastFinishedInfo?.tokens),
-          permissionMode: effectivePermissionMode,
+          sessionMode: effectiveSessionMode,
         })
         if (action === "blocked") break
       }
@@ -1694,10 +1740,10 @@ export namespace Loop {
     sessionID: string
     controller: AbortController
     self: LoopState
-    loopPermissionMode?: PermissionMode.Value
+    loopSessionMode?: SessionMode.Value
     maxTurns?: number
   }) {
-    const { sessionID, controller, self, loopPermissionMode, maxTurns } = input
+    const { sessionID, controller, self, loopSessionMode, maxTurns } = input
     const abort = controller.signal
     let unbind = () => {}
     let completed: { callback: TurnCallback; result: Message.FullMsg } | undefined
@@ -1770,7 +1816,7 @@ export namespace Loop {
             sessionID,
             targetUserID: targetUser.info.id,
             abort,
-            loopPermissionMode,
+            loopSessionMode,
             maxTurns,
           }),
         )
@@ -1798,11 +1844,25 @@ export namespace Loop {
       }
     } finally {
       unbind()
-      self.running = false
-      self.done.resolve()
-      self.releaseCheckout()
-      releaseOwner(sessionID, controller)
-      completed?.callback.resolve(completed.result)
+      try {
+        const rootID = await Session.rootID(sessionID)
+        const plan = rootID === sessionID || !resume(rootID) ? await SessionPlan.get(rootID) : undefined
+        // Background work keeps this execution's fixed plan until its completion notification resumes the loop.
+        if (
+          plan?.status === "executing" &&
+          !(await planWorkPending(rootID)) &&
+          (rootID === sessionID || !resume(rootID))
+        )
+          await SessionPlan.setStatus(rootID, "completed")
+      } catch (error) {
+        log.warn("plan completion deferred", { sessionID, error })
+      } finally {
+        self.running = false
+        self.done.resolve()
+        self.releaseCheckout()
+        releaseOwner(sessionID, controller)
+        completed?.callback.resolve(completed.result)
+      }
     }
   }
 
@@ -1811,7 +1871,7 @@ export namespace Loop {
     await SessionCrash.reconcile(sessionID, () => Boolean(resume(sessionID)))
     LoopExecution.check(sessionID)
     const scope = LoopExecution.current(sessionID)
-    const loopPermissionMode = input.permissionMode ?? input.kind
+    const loopSessionMode = input.sessionMode ?? input.kind
 
     const controller = resume_existing ? undefined : start(sessionID)
     const self = state()[sessionID]
@@ -1827,7 +1887,7 @@ export namespace Loop {
           sessionID,
           controller,
           self,
-          loopPermissionMode,
+          loopSessionMode,
           maxTurns: input.maxTurns,
         }),
       )
@@ -1850,7 +1910,7 @@ export namespace Loop {
           sessionID,
           controller: self.abort,
           self,
-          loopPermissionMode,
+          loopSessionMode,
           maxTurns: input.maxTurns,
         }),
       )
@@ -1967,7 +2027,7 @@ export namespace Loop {
     session: Session.Info
     user: Message.UserInfo
     /** Permission mode used to build the skill discovery ruleset. */
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     discovered: Set<string>
   }) {
     if (!input.trigger || !skillToolAvailable(input)) return undefined
@@ -1975,7 +2035,7 @@ export namespace Loop {
     const ruleset = buildToolExecutionRuleset({
       agent: input.agent,
       session: input.session,
-      permissionMode: input.permissionMode,
+      sessionMode: input.sessionMode,
     })
     const prefetchedAttachment = input.prefetch ? await input.prefetch.promise : undefined
     const prefetched = await filterSkillAttachment({
@@ -2017,7 +2077,7 @@ export namespace Loop {
     session: Session.Info
     user: Message.UserInfo
     /** Permission mode used to build the skill discovery ruleset. */
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     discovered: Set<string>
   }) {
     if (!input.enabled || !input.trigger || input.trigger.kind !== "write_pivot" || !skillToolAvailable(input)) {
@@ -2031,7 +2091,7 @@ export namespace Loop {
         ruleset: buildToolExecutionRuleset({
           agent: input.agent,
           session: input.session,
-          permissionMode: input.permissionMode,
+          sessionMode: input.sessionMode,
         }),
         exclude: input.discovered,
         messageID: input.user.id,
@@ -2145,7 +2205,7 @@ export namespace Loop {
     precise?: boolean
     reestimate: () => Promise<number>
     // The turn that continues after compaction keeps the current permission mode.
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
   }): Promise<"compact" | "pruned" | "blocked" | "skip"> {
     if (!(await SessionCompaction.isOverflow({ model: input.model, tokens: overflowTokens(input.tokens) }))) {
       return "skip"
@@ -2175,7 +2235,7 @@ export namespace Loop {
       sessionID: input.sessionID,
       agent: input.agent,
       model: { providerID: input.model.providerID, modelID: input.model.id },
-      permissionMode: input.permissionMode,
+      sessionMode: input.sessionMode,
       auto: true,
     })
     return "compact"
@@ -2245,8 +2305,8 @@ export namespace Loop {
       variant: latestUser?.info.variant,
       // Inherit the latest real user message's permission mode; otherwise the client falls back to "ask" for the
       // notification turn and shows an auto session as ask. Use latestRealUser, not latestUser, which may be an earlier
-      // synthetic notification message without a permissionMode.
-      permissionMode: latestRealUser?.info.permissionMode,
+      // synthetic notification message without a sessionMode.
+      sessionMode: latestRealUser?.info.sessionMode,
     }
     const notificationIDs = notifications.map((item) => item.id)
     await Session.updateInfo(info)
@@ -2405,7 +2465,7 @@ export namespace Loop {
    * exceed its permissions and a live mode switch applies to the whole tree at once. fallback (the mode sent with this
    * turn's message) is used when the root session has not recorded a mode yet.
    */
-  export const modeOf = sessionPermissionMode
+  export const modeOf = sessionModeOf
 
   /**
    * Rule chain rebuilt before each tool execute (evaluate picks the last matching rule):
@@ -2418,11 +2478,12 @@ export namespace Loop {
   export function buildToolExecutionRuleset(input: {
     agent: Agent.Info
     session: Session.Info
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     child?: boolean
     grants?: PermissionNext.Ruleset
   }): PermissionNext.Ruleset {
-    const mode = input.permissionMode ?? PermissionMode.DEFAULT
+    const mode = input.sessionMode ?? SessionMode.DEFAULT
+    if (mode === "auto") return PermissionPolicy.ruleset(mode)
     const user = PermissionNext.merge(input.agent.permission, input.grants ?? [], input.session.permission ?? [])
     const child = isChildToolSession(input.session, input.child)
     return PermissionNext.merge(
@@ -2441,7 +2502,7 @@ export namespace Loop {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
     messages: Message.FullMsg[]
-    permissionMode?: PermissionMode.Value
+    sessionMode?: SessionMode.Value
     child?: boolean
     /**
      * Step number in the current turn. Only used to run tool discovery once, on step 1: the query does not change
@@ -2454,24 +2515,26 @@ export namespace Loop {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const effectivePermissionMode = input.permissionMode ?? PermissionMode.DEFAULT
+    const effectiveSessionMode = input.sessionMode ?? SessionMode.DEFAULT
+
+    const planSnapshot = !input.session.parentID ? await SessionPlan.get(input.session.id) : undefined
 
     /**
      * Reads the latest Agent/Session before every actual tool call.
-     * The ruleset and ctx.permissionMode / ctx.kind must share one source: after a live mode switch, commands, paths
+     * The ruleset and ctx.sessionMode / ctx.kind must share one source: after a live mode switch, commands, paths
      * outside the workspace and plan switches must be judged by the new mode, not the one captured by resolveTools.
      */
     async function liveExecution() {
       const [agentNext, sessionNext] = await Promise.all([Agent.get(input.agent.id), Session.get(input.session.id)])
       const agent = agentNext ?? input.agent
       const session = sessionNext ?? input.session
-      const permissionMode = await modeOf(session, effectivePermissionMode)
+      const sessionMode = await modeOf(session, effectiveSessionMode)
       return {
-        permissionMode,
+        sessionMode,
         ruleset: buildToolExecutionRuleset({
           agent,
           session,
-          permissionMode,
+          sessionMode,
           child: input.child,
           grants: await grantsOf(session),
         }),
@@ -2492,16 +2555,27 @@ export namespace Loop {
      * The tool wrapper calls dispose() in finally to clean up toolAborts and avoid leaks in long sessions.
      * dispose() is idempotent and safe to call after an abort.
      */
-    function registerToolAbort(callID: string | undefined): { signal: AbortSignal | undefined; dispose: () => void } {
+    function registerToolAbort(
+      callID: string | undefined,
+      toolID: string,
+    ): { signal: AbortSignal | undefined; dispose: () => void } {
       const sessionState = state()[input.session.id]
-      if (!sessionState || !callID) return { signal: undefined, dispose: () => {} }
+      if (!callID) return { signal: undefined, dispose: () => {} }
       const childAbort = new AbortController()
-      sessionState.toolAborts.set(callID, childAbort)
+      sessionState?.toolAborts.set(callID, childAbort)
+      const finish = ModeOperations.register(
+        input.session.id,
+        callID,
+        toolID,
+        childAbort,
+        async () => (await liveExecution()).ruleset,
+      )
       const cascadeAbort = () => childAbort.abort()
-      sessionState.abort.signal.addEventListener("abort", cascadeAbort, { once: true })
+      sessionState?.abort.signal.addEventListener("abort", cascadeAbort, { once: true })
       const dispose = () => {
-        sessionState.abort.signal.removeEventListener("abort", cascadeAbort)
-        sessionState.toolAborts.delete(callID)
+        sessionState?.abort.signal.removeEventListener("abort", cascadeAbort)
+        sessionState?.toolAborts.delete(callID)
+        finish()
       }
       return { signal: childAbort.signal, dispose }
     }
@@ -2511,17 +2585,21 @@ export namespace Loop {
       options: ToolExecutionOptions<unknown>,
       ruleset: PermissionNext.Ruleset,
       abortSignal?: AbortSignal,
-      permissionMode: PermissionMode.Value = effectivePermissionMode,
+      sessionMode: SessionMode.Value = effectiveSessionMode,
     ): Tool.Context => {
       const ctx: Tool.Context = {
         sessionID: input.session.id,
         abort: abortSignal ?? options.abortSignal!,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
-        extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
+        extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck, planRevision: planSnapshot?.revision },
         agent: input.agent.id,
-        permissionMode,
-        kind: permissionMode,
+        get sessionMode() {
+          return sessionModeNow(input.session.id, sessionMode)
+        },
+        get kind() {
+          return sessionModeNow(input.session.id, sessionMode)
+        },
         messages: input.messages,
         ruleset,
         metadata: async (val: { title?: string; metadata?: any }) => {
@@ -2555,13 +2633,23 @@ export namespace Loop {
           await input.processor.updateToolCallMetadata(options.toolCallId, val)
         },
         async ask(req) {
-          await PermissionNext.ask({
-            ...req,
-            sessionID: input.session.id,
-            ...(await origin()),
-            tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-            ruleset,
-          })
+          abortSignal?.throwIfAborted()
+          ModeOperations.record(
+            input.session.id,
+            options.toolCallId,
+            req.checks ?? (req.patterns ?? []).map((pattern) => ({ permission: req.permission, pattern, grants: [] })),
+          )
+          await PermissionNext.askCurrent(
+            {
+              ...req,
+              sessionID: input.session.id,
+              ...(await origin()),
+              tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+            },
+            async () => (await liveExecution()).ruleset,
+            abortSignal,
+          )
+          abortSignal?.throwIfAborted()
         },
       }
       return ctx
@@ -2579,8 +2667,14 @@ export namespace Loop {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const live = await liveExecution()
-          const abort = registerToolAbort(options.toolCallId)
-          const ctx = context(args, options, live.ruleset, abort.signal, live.permissionMode)
+          if (!SessionMode.allowsTool(sessionModeNow(input.session.id, live.sessionMode), item.id))
+            throw new PermissionNext.DeniedError([{ permission: item.id, pattern: "*", action: "deny" }])
+          const abort = registerToolAbort(options.toolCallId, item.id)
+          const signal =
+            abort.signal && options.abortSignal
+              ? AbortSignal.any([abort.signal, options.abortSignal])
+              : (abort.signal ?? options.abortSignal)
+          const ctx = context(args, options, live.ruleset, signal, live.sessionMode)
           try {
             await Plugin.trigger(
               "tool.execute.before",
@@ -2593,6 +2687,7 @@ export namespace Loop {
                 args,
               },
             )
+            ctx.abort.throwIfAborted()
             const result = await item.execute(args, ctx)
             await Plugin.trigger(
               "tool.execute.after",
@@ -2624,8 +2719,14 @@ export namespace Loop {
       // Wrap execute to add plugin hooks and format output
       item.execute = async (args, opts) => {
         const live = await liveExecution()
-        const abort = registerToolAbort(opts.toolCallId)
-        const ctx = context(args, opts, live.ruleset, abort.signal, live.permissionMode)
+        if (!SessionMode.allowsTool(sessionModeNow(input.session.id, live.sessionMode), key))
+          throw new PermissionNext.DeniedError([{ permission: key, pattern: "*", action: "deny" }])
+        const abort = registerToolAbort(opts.toolCallId, key)
+        const signal =
+          abort.signal && opts.abortSignal
+            ? AbortSignal.any([abort.signal, opts.abortSignal])
+            : (abort.signal ?? opts.abortSignal)
+        const ctx = context(args, opts, live.ruleset, signal, live.sessionMode)
         let result: Awaited<ReturnType<typeof execute>>
         try {
           await Plugin.trigger(
@@ -2645,7 +2746,8 @@ export namespace Loop {
           const check = PermissionPolicy.mcp(server ?? key, server ? key.slice(server.length + 1) : "*")
           await ctx.ask({ permission: "mcp", checks: [check], metadata: { toolName: key, server } })
 
-          result = await execute(args, opts)
+          signal?.throwIfAborted()
+          result = await execute(args, { ...opts, abortSignal: signal })
 
           await Plugin.trigger(
             "tool.execute.after",
@@ -2835,7 +2937,7 @@ export namespace Loop {
       },
       tools: input.tools,
       agent: agent.id,
-      permissionMode: selection.permissionMode,
+      sessionMode: selection.sessionMode,
       metadata: input.metadata,
       model,
       system: input.system,
@@ -3086,8 +3188,8 @@ export namespace Loop {
                           sessionID: input.sessionID,
                           abort: new AbortController().signal,
                           agent: agent.id,
-                          permissionMode: PermissionMode.DEFAULT,
-                          kind: PermissionMode.DEFAULT,
+                          sessionMode: SessionMode.DEFAULT,
+                          kind: SessionMode.DEFAULT,
                           messageID: info.id,
                           extra: { bypassCwdCheck: true, model },
                           messages: input.system
@@ -3160,8 +3262,8 @@ export namespace Loop {
                     sessionID: input.sessionID,
                     abort: new AbortController().signal,
                     agent: agent.id,
-                    permissionMode: PermissionMode.DEFAULT,
-                    kind: PermissionMode.DEFAULT,
+                    sessionMode: SessionMode.DEFAULT,
+                    kind: SessionMode.DEFAULT,
                     messageID: info.id,
                     extra: { bypassCwdCheck: true },
                     messages: [],
@@ -3314,168 +3416,16 @@ export namespace Loop {
     }
   }
 
-  /**
-   * System reminders for plan (read-only) mode: the full workflow on entry, a plan_exit nudge while staying, and an
-   * instruction to execute the plan on leaving.
-   */
-  async function insertReminders(input: {
-    messages: Message.FullMsg[]
-    session: Session.Info
-    mode: PermissionMode.Value
-  }) {
-    const { messages, session, mode } = input
-
-    // Find the last user message
-    const lastUserMessage = messages.findLast((m) => m.info.role === "user")
-    if (!lastUserMessage || lastUserMessage.info.role !== "user") return messages
-
-    // Find the last assistant message
-    const assistantMessage = messages.findLast((msg) => msg.info.role === "assistant")
-
-    // Type-safe access to user message properties
-    const userInfo = lastUserMessage.info as Message.UserInfo
-    const userParts = lastUserMessage.parts
-
-    // Mode of the previous reply: the mode on the user message it answered.
-    const lastParent =
-      assistantMessage?.info.role === "assistant"
-        ? messages.find((msg) => msg.info.id === (assistantMessage.info as Message.AssistantInfo).parentID)
-        : undefined
-    const lastMode =
-      lastParent?.info.role === "user" ? PermissionMode.normalize(lastParent.info.permissionMode) : undefined
-    // Only check for the plan file when this or the previous turn is read-only, to avoid extra IO on normal turns.
-    const mayNeedPlanFile = mode === "readonly" || lastMode === "readonly"
-    const plan = Session.plan(session)
-    const planExists = mayNeedPlanFile ? await Filesystem.isFile(plan) : false
-    const reminderKind = resolvePlanReminderKind({
-      planModeEnabled: Flag.MERAKCODE_PLAN_MODE,
-      mode,
-      lastMode,
-      planExists,
-      child: Boolean(session.parentID),
-    })
-
-    // Switching from plan mode to build mode
-    if (reminderKind === "build-switch") {
-      const part = await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: userInfo.id,
-        sessionID: userInfo.sessionID,
-        type: "text",
-        text: BUILD_SWITCH + "\n\n" + `A plan file exists at ${plan}. You should execute on the plan defined within it`,
-        synthetic: true,
-      })
-      userParts.push(part)
-      return messages
-    }
-
-    // Entering plan mode
-    if (reminderKind === "enter") {
-      if (!planExists) await fs.mkdir(path.dirname(plan), { recursive: true })
-      const part = await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: userInfo.id,
-        sessionID: userInfo.sessionID,
-        type: "text",
-        text: `<system-reminder>
-Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
-
-## Plan File Info:
-${planExists ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.` : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-
-## Plan Workflow
-
-### Phase 1: Initial Understanding
-Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the explore subagent type.
-
-1. Focus on understanding the user's request and the code associated with their request
-
-2. **Launch up to 3 explore agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
-   - Use 1 agent when the task is isolated to known files, the user provided specific file paths, or you're making a small targeted change.
-   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before implementing.
-   - Quality over quantity - 3 agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
-   - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns
-
-3. After exploring the code, use the question tool to clarify ambiguities in the user request up front.
-
-### Phase 2: Design
-Goal: Design an implementation approach.
-
-Launch general agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
-
-You can launch up to 1 agent(s) in parallel.
-
-**Guidelines:**
-- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
-- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)
-
-Examples of when to use multiple agents:
-- The task touches multiple parts of the codebase
-- It's a large refactor or architectural change
-- There are many edge cases to consider
-- You'd benefit from exploring different approaches
-
-Example perspectives by task type:
-- New feature: simplicity vs performance vs maintainability
-- Bug fix: root cause vs workaround vs prevention
-- Refactoring: minimal change vs clean architecture
-
-In the agent prompt:
-- Provide comprehensive background context from Phase 1 exploration including filenames and code path traces
-- Describe requirements and constraints
-- Request a detailed implementation plan
-
-### Phase 3: Review
-Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
-1. Read the critical files identified by agents to deepen your understanding
-2. Ensure that the plans align with the user's original request
-3. Use question tool to clarify any remaining questions with the user
-
-### Phase 4: Final Plan
-Goal: Write your final plan to the plan file (the only file you can edit).
-- Include only your recommended approach, not all alternatives
-- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
-- Include the paths of critical files to be modified
-- Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
-
-### Phase 5: Call plan_exit tool
-At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call plan_exit to indicate to the user that you are done planning.
-This is critical - your turn should only end with either asking the user a question or calling plan_exit. Do not stop unless it's for these 2 reasons.
-
-**Important:** Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.
-
-NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
-`,
-        synthetic: true,
-      })
-      userParts.push(part)
-      return messages
-    }
-
-    // Still in plan mode with a saved plan: nudge plan_exit so a request to start does not edit project files directly.
-    if (reminderKind === "stay-call-exit") {
-      const part = await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: userInfo.id,
-        sessionID: userInfo.sessionID,
-        type: "text",
-        text: planStayCallExitReminder(plan),
-        synthetic: true,
-      })
-      userParts.push(part)
-      return messages
-    }
-
-    return messages
-  }
-
   export const ShellInput = z.object({
     sessionID: Identifier.schema("session"),
     agent: z.string(),
-    permissionMode: PermissionMode.Schema.optional(),
-    /** @deprecated Use permissionMode. */
-    kind: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
+    permissionMode: z
+      .enum(["readonly", "ask"])
+      .optional()
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
+    /** @deprecated Use sessionMode. */
+    kind: SessionMode.Schema.optional(),
     model: z
       .object({
         providerID: z.string(),
@@ -3491,6 +3441,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
   }
 
   export async function shell(input: ShellInput) {
+    input.sessionMode ??=
+      input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined
     await assertNativeOperation(input.sessionID)
     const controller = start(input.sessionID)
     if (!controller) {
@@ -3531,14 +3483,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       },
       role: "user",
       agent: input.agent,
-      permissionMode: input.permissionMode ?? input.kind,
+      sessionMode: input.sessionMode ?? input.kind,
       model: {
         providerID: model.providerID,
         modelID: model.modelID,
       },
     }
     await Session.updateInfo(userInfo)
-    await persistSessionPermissionMode(session, userInfo.permissionMode)
+    await persistSessionMode(session, userInfo.sessionMode)
     const userPart: Message.Part = {
       type: "text",
       id: Identifier.ascending("part"),
@@ -3757,9 +3709,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     sessionID: Identifier.schema("session"),
     agent: z.string().optional(),
     model: z.string().optional(),
-    permissionMode: PermissionMode.Schema.optional(),
-    /** @deprecated Use permissionMode. */
-    kind: PermissionMode.Schema.optional(),
+    sessionMode: SessionMode.Schema.optional(),
+    permissionMode: z
+      .enum(["readonly", "ask"])
+      .optional()
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
+    /** @deprecated Use sessionMode. */
+    kind: SessionMode.Schema.optional(),
     arguments: z.string(),
     command: z.string(),
     variant: z.string().optional(),
@@ -4054,6 +4010,8 @@ ${skill.content}`
   }
 
   export async function command(input: CommandInput): Promise<Message.NativeFullMsg> {
+    input.sessionMode ??=
+      input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined
     const session = await assertNativeOperation(input.sessionID)
     await SessionTarget.assertNewMessage(session, input)
     if (LoopExecution.current() && !LoopExecution.current(input.sessionID)) {
@@ -4093,7 +4051,7 @@ ${skill.content}`
         sessionID: input.sessionID,
         model: commandModel,
         agent: agentID,
-        permissionMode: input.permissionMode ?? input.kind,
+        sessionMode: input.sessionMode ?? input.kind,
         parts: [{ type: "text", text: task }],
         variant: input.variant,
         metadata: input.metadata,
@@ -4168,7 +4126,7 @@ ${skill.content}`
           messageID: input.messageID,
           model: userModel,
           agent: userAgent,
-          permissionMode: input.permissionMode ?? input.kind,
+          sessionMode: input.sessionMode ?? input.kind,
           parts,
           variant: input.variant,
           metadata: input.metadata,

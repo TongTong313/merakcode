@@ -291,7 +291,11 @@ test("normal startup repairs a locked ESM dependency and preserves the user's SD
   await using tmp = await tmpdir()
   using _global = globalConfig(tmp.path)
   const zod = path.dirname(fileURLToPath(import.meta.resolve("zod")))
-  await fs.cp(zod, path.join(tmp.path, "package"), { recursive: true })
+  // Keep real ESM/CommonJS code and exports; TypeScript sources and declarations are not used by these Node probes.
+  await fs.cp(zod, path.join(tmp.path, "package"), {
+    recursive: true,
+    filter: (source) => path.relative(zod, source).split(path.sep)[0] !== "src" && !/\.[cm]?ts$/.test(source),
+  })
   const archive = path.join(tmp.path, "zod.tgz")
   const tar = process.platform === "win32" ? path.join(process.env.SystemRoot!, "System32/tar.exe") : "tar"
   await Process.run([tar, "-czf", archive, "-C", tmp.path, "package"])
@@ -348,6 +352,7 @@ test("normal startup repairs a locked ESM dependency and preserves the user's SD
       "packages.node_modules/zod",
     )
     await fs.unlink(path.join(tmp.path, "node_modules/zod/index.js"))
+    await expect(readPlugin()).rejects.toThrow()
     const commonjs = await Process.run(
       evaluate(`
         import { createRequire } from "node:module"

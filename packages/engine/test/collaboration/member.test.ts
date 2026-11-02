@@ -12,7 +12,7 @@ import { Config } from "../../src/app/config/files/config"
 import { Loop } from "../../src/agent/loop/index"
 import { PermissionNext } from "../../src/agent/permission/next"
 import { Question } from "../../src/agent/session/question"
-import type { PermissionMode } from "../../src/agent/permission/mode"
+import type { SessionMode } from "../../src/agent/permission/mode"
 import { create } from "../../src/app/task/collaboration/store"
 import { tmpdir } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
@@ -53,7 +53,7 @@ type User = (request: PermissionNext.Request) => Omit<PermissionNext.ReplyInput,
  * approval the way a person would; the result is the member's verdicts and the approvals that were shown.
  */
 async function delegate(input: {
-  mode: PermissionMode.Value
+  mode: SessionMode.Value
   permissions?: Permission[]
   questions?: Question.Info[]
   user?: User
@@ -89,6 +89,7 @@ async function delegate(input: {
     fn: async () => {
       const group = async () => {
         const session = await Session.create({ metadata: { group: true } })
+        await Session.setMode({ sessionID: session.id, sessionMode: input.mode })
         await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小明", product: product.id }] })
         return { id: session.id, messageID: await turn(session.id, tmp.path) }
       }
@@ -124,7 +125,7 @@ async function delegate(input: {
         const ruleset = Loop.buildToolExecutionRuleset({
           agent,
           session: await Session.get(current.id),
-          permissionMode: input.mode,
+          sessionMode: input.mode,
         })
         return tool
           .execute(
@@ -134,7 +135,7 @@ async function delegate(input: {
               messageID: current.messageID,
               callID: Identifier.ascending("part"),
               agent: "build",
-              permissionMode: input.mode,
+              sessionMode: input.mode,
               abort: stop.signal,
               messages: [],
               ruleset,
@@ -176,12 +177,12 @@ async function delegate(input: {
 }
 
 test("a member's request to reach a website is asked in ask mode, and the member gets the user's answer", async () => {
-  const allowed = await delegate({ mode: "ask", permissions: [{ kind: "network", host: "example.com" }] })
+  const allowed = await delegate({ mode: "execute", permissions: [{ kind: "network", host: "example.com" }] })
   expect(allowed.shown.map((request) => request.permission)).toEqual(["network"])
   expect(allowed.verdicts).toEqual([{ allow: true }])
 
   const refused = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [{ kind: "network", host: "example.com" }],
     user: () => ({ reply: "reject", message: "先别联网" }),
   })
@@ -193,7 +194,7 @@ const forConversation: User = (request) => ({ reply: "session", scope: request.g
 
 test("allowing a website for the conversation covers the member's later pages of it, and not other websites", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [
       { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/1" },
       { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/2" },
@@ -213,7 +214,7 @@ test("allowing a website for the conversation covers the member's later pages of
 test("allowing for the conversation stays in it, while always allowing also covers a new conversation", async () => {
   const page: Permission = { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/1" }
   const conversation = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [page],
     user: forConversation,
     calls: 2,
@@ -223,7 +224,7 @@ test("allowing for the conversation stays in it, while always allowing also cove
   expect(conversation.shown).toHaveLength(2)
 
   const always = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [page],
     user: () => ({ reply: "always" }),
     calls: 2,
@@ -236,14 +237,14 @@ test("allowing for the conversation stays in it, while always allowing also cove
 
 test("allowing once lets only that request go: the same request is asked again", async () => {
   const page: Permission = { kind: "network", host: "example.com", url: "https://example.com/a" }
-  const result = await delegate({ mode: "ask", permissions: [page, page] })
+  const result = await delegate({ mode: "execute", permissions: [page, page] })
   expect(result.verdicts).toEqual([{ allow: true }, { allow: true }])
   expect(result.shown).toHaveLength(2)
 }, 60_000)
 
 test("refusing without a reason still tells the member it was refused", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [{ kind: "network", host: "example.com" }],
     user: () => ({ reply: "reject" }),
   })
@@ -258,7 +259,7 @@ test("requests a member makes at once wait together, and allowing the website fo
     url: `https://apps.apple.com/cn/app/${page}`,
   }))
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: pages,
     scenario: { parallel: true },
     user: forConversation,
@@ -282,12 +283,12 @@ test("each kind of request is judged like MerakCode's own tools, in each permiss
   const allowed = (result: Awaited<ReturnType<typeof delegate>>) => result.verdicts.map((verdict) => verdict.allow)
 
   // Read-only: no edits and no commands that change files; reading a secret, other tools and websites ask
-  const readonly = await delegate({ mode: "readonly", permissions })
+  const readonly = await delegate({ mode: "plan", permissions })
   expect(allowed(readonly)).toEqual([false, false, true, true, true, true, true])
   expect(readonly.shown.map((request) => request.permission)).toEqual(["read", "mcp__github__create_issue", "network"])
 
   // Ask: edits in the workspace go ahead; deleting, a secret, other tools and websites ask
-  const ask = await delegate({ mode: "ask", permissions })
+  const ask = await delegate({ mode: "execute", permissions })
   expect(allowed(ask)).toEqual([true, true, true, true, true, true, true])
   expect(ask.shown.map((request) => request.permission)).toEqual([
     "bash",
@@ -298,7 +299,8 @@ test("each kind of request is judged like MerakCode's own tools, in each permiss
 
   // Auto: only the secret and websites ask
   const auto = await delegate({ mode: "auto", permissions })
-  expect(auto.shown.map((request) => request.permission)).toEqual(["read", "network"])
+  expect(auto.shown).toEqual([])
+  expect(allowed(auto)).toEqual(permissions.map(() => true))
   // In every mode a website on the allowlist (package registries, code hosting) is not asked about
   for (const result of [readonly, ask, auto])
     expect(result.shown.some((request) => request.patterns.includes("registry.npmjs.org"))).toBe(false)
@@ -314,7 +316,7 @@ test("a request with nothing to check (no file, an empty command) is refused wit
     { kind: "network", host: "" },
     { kind: "tool", name: "" },
   ]
-  for (const mode of ["readonly", "ask", "auto"] as const) {
+  for (const mode of ["plan", "execute", "auto"] as const) {
     const result = await delegate({ mode, permissions })
     expect(
       result.verdicts.map((verdict) => verdict.allow),
@@ -327,7 +329,7 @@ test("a request with nothing to check (no file, an empty command) is refused wit
 
 test("allowing a command for the conversation covers the member's later commands of the same kind", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [
       { kind: "command", command: "npm install lodash" },
       { kind: "command", command: "npm install zod" },
@@ -340,7 +342,7 @@ test("allowing a command for the conversation covers the member's later commands
 
 test("a member's question is asked in MerakCode, tied to the member's call, and the answer goes back to it", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     questions: [
       {
         question: "用哪个数据库？",
@@ -364,7 +366,7 @@ test("stopping the group withdraws the member's open question, tells the adapter
   const marker = path.join(tmp.path, "cancelled")
   const started = Date.now()
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     questions: [{ question: "继续吗？", header: "继续", options: [{ label: "是", description: "" }] }],
     stopOnQuestion: true,
     scenario: { marker, ignore: true },
@@ -411,7 +413,7 @@ test("the built-in Claude Code member asks MerakCode before it fetches a page", 
   process.env.CLAUDE_FIXTURE = JSON.stringify([{ name: "WebFetch", input: { url: "https://example.com" } }])
   try {
     const result = await delegate({
-      mode: "ask",
+      mode: "execute",
       product: { id: "claude", config: { command } },
       user: () => ({ reply: "reject", message: "先别联网" }),
     })
@@ -425,7 +427,7 @@ test("the built-in Claude Code member asks MerakCode before it fetches a page", 
 }, 60_000)
 
 test("a member that ends with no reply fails with the product named, rather than reporting an empty result", async () => {
-  const result = await delegate({ mode: "ask", scenario: { reply: "" } })
+  const result = await delegate({ mode: "execute", scenario: { reply: "" } })
   expect(result.error?.message).toMatch(/^MRK-4009: Fixture (?:未返回正文|returned no reply)$/)
 }, 60_000)
 
@@ -441,7 +443,7 @@ for (const name of ["codex", "opencode"] as const) {
         : [{ permission: "bash", patterns: ["rm -rf build"], metadata: { command: "rm -rf build" } }],
     )
     try {
-      const result = await delegate({ mode: "ask", product: { id: name, config: { command } } })
+      const result = await delegate({ mode: "execute", product: { id: name, config: { command } } })
       expect(result.shown.map((request) => request.permission)).toEqual(["bash"])
       expect(result.error).toBeUndefined()
     } finally {
@@ -453,7 +455,7 @@ for (const name of ["codex", "opencode"] as const) {
 
 test("a member's edit offers the same choices as MerakCode's own, and trusting a directory covers its other files", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     // Paths under a folder starting with a dot ask in ask mode, as they do for MerakCode's own edits
     permissions: [
       { kind: "write", paths: [".config/a.json"] },
@@ -475,7 +477,7 @@ test("a member's edit offers the same choices as MerakCode's own, and trusting a
 
 test("trusting a file for the conversation covers that file again, and not the others in its directory", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [
       { kind: "write", paths: [".config/a.json"] },
       { kind: "write", paths: [".config/a.json"] },
@@ -492,7 +494,7 @@ test("trusting a file for the conversation covers that file again, and not the o
 
 test("always allowing a member's command saves the rule to the project, so its next task is not asked again", async () => {
   const result = await delegate({
-    mode: "ask",
+    mode: "execute",
     permissions: [{ kind: "command", command: "npm install lodash" }],
     user: () => ({ reply: "always", scope: "prefix" }),
     calls: 2,
@@ -501,3 +503,14 @@ test("always allowing a member's command saves the rule to the project, so its n
   expect(result.shown).toHaveLength(1)
   expect(JSON.stringify(result.saved)).toContain("npm install *")
 }, 60_000)
+
+test("auto rejects a member's newly reported question without opening human interaction", async () => {
+  const result = await delegate({
+    mode: "auto",
+    questions: [{ question: "Choose?", header: "Choice", options: [{ label: "A", description: "" }] }],
+    answer: () => [["UNEXPECTED_AUTO_ANSWER"]],
+  })
+  expect(result.questions).toEqual([])
+  expect(result.open).toEqual([])
+  expect(result).toMatchObject({ error: expect.any(Error), output: undefined })
+}, 60000)

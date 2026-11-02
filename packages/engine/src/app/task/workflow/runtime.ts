@@ -445,7 +445,7 @@ export namespace WorkflowRuntime {
           messageID: Identifier.ascending("message"),
           agent: agentID,
           model,
-          kind: "ask",
+          kind: "execute",
           ...(restrictions.tools ? { tools: restrictions.tools } : {}),
           format: opts.schema
             ? {

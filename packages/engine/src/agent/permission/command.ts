@@ -260,7 +260,7 @@ export namespace CommandAnalysis {
     return args.some(
       (arg) =>
         long.some((name) => arg === name || arg.startsWith(name + "=")) ||
-        (!!short && /^-[a-zA-Z0-9]+$/.test(arg) && [...short].some((letter) => arg.slice(1).includes(letter))),
+        (!!short && !arg.startsWith("--") && new RegExp(`^-[a-zA-Z0-9]*[${short}]`).test(arg)),
     )
   }
 
@@ -628,8 +628,16 @@ export namespace CommandAnalysis {
       for (const segment of segments) segment.level = "forbidden"
       tags.add("forbidden")
     }
+    // Standalone redirects and redirects on skipped commands (cd) still write files.
+    // Parser errors cannot establish that a command is read-only.
+    const fileRedirects = tree.rootNode.descendantsOfType("file_redirect")
+    if (
+      (tree.rootNode.hasError || fileRedirects.some((redirect) => redirect && writes(redirect))) &&
+      segments.every((segment) => segment.level === "readonly")
+    )
+      segments.push({ text: command, tokens: [command], prefix: command, level: "normal" })
     // Redirects to files outside the workspace
-    for (const redirect of tree.rootNode.descendantsOfType("file_redirect")) {
+    for (const redirect of fileRedirects) {
       const target = redirect && writes(redirect) ? redirect.lastChild?.text : undefined
       if (target && outside(target, input)) tags.add("external-path")
     }
