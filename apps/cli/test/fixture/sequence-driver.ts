@@ -8,14 +8,11 @@ export async function drive(
   sessionID: string,
   input: string,
   permissions: string[] = [],
-  sessionMode?: "execute" | "auto",
-  agent = "build",
 ) {
   let settled = false
   const request = kit
     .api(`/session/${sessionID}/message`, "POST", {
-      agent,
-      ...(sessionMode ? { sessionMode } : {}),
+      agent: "build",
       model: { providerID: "alibaba-cn", modelID: "qwen-plus" },
       parts: [{ type: "text", text: input }],
     })
@@ -31,11 +28,21 @@ export async function drive(
   while (!settled) {
     if (Date.now() >= deadline) throw new Error("Sequence product round exceeded 60 seconds")
     const pending = z
-      .array(z.object({ id: z.string(), sessionID: z.string(), permission: z.string() }))
+      .array(
+        z.object({
+          id: z.string(),
+          sessionID: z.string(),
+          root: z.string().optional(),
+          permission: z.string(),
+          decisionRevision: z.number().optional(),
+        }),
+      )
       .parse(await kit.api("/permission"))
-    for (const item of pending.filter((item) => item.sessionID === sessionID && !replied.has(item.id))) {
+    for (const item of pending.filter(
+      (item) => (item.sessionID === sessionID || item.root === sessionID) && !replied.has(item.id),
+    )) {
       if (!permissions.includes(item.permission)) throw new Error(`Unexpected permission class: ${item.permission}`)
-      await kit.api(`/permission/${item.id}/reply`, "POST", { reply: "once" })
+      await kit.api(`/permission/${item.id}/reply`, "POST", { reply: "once", decisionRevision: item.decisionRevision })
       replied.add(item.id)
     }
     if (!settled) await delay(40)

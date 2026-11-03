@@ -10,17 +10,16 @@ import { FileWatcher } from "../workspace/file/watcher"
 import { Bus } from "../../infra/bus"
 import { FileTime } from "../../infra/file/time"
 import { RuleSession } from "../prompt/rules/session-state"
-import { commitToolFile } from "./file-commit"
+import { authorizeToolFile, commitToolFile } from "./file-commit"
 import { Snapshot } from "../../infra/project/snapshot"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Instance } from "../../infra/project/instance"
 import { Workspace } from "../../infra/project/workspace"
 import { isProjectFileBypass } from "./file-bypass"
-import { assertCanWritePlanDoc, assertPlanModeAllowsWrite } from "./plan-doc"
+import { assertCanWritePlanDoc } from "./plan-doc"
 import { ToolPathGuard } from "./path-guard"
 import { MemoryAccess } from "../memory/access"
 import { ContextAttach } from "../context/context-attach"
-import { PermissionPolicy } from "../permission/policy"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
@@ -50,11 +49,9 @@ export const EditTool = Tool.define("edit", {
     await ToolPathGuard.assertPathAllowed(ctx, filePath, "edit")
     // Plan files can only be changed in plan mode, which needs the user's consent through plan_enter
     await assertCanWritePlanDoc(ctx, filePath)
-    // Plan mode forbids writing project files; this points to plan_exit before the permission layer's DeniedError
-    await assertPlanModeAllowsWrite(ctx, filePath)
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      sessionMode: ctx.sessionMode,
+      permissionLevel: ctx.permissionLevel,
       filePath,
       sessionID: ctx.sessionID,
       access: "write",
@@ -76,19 +73,15 @@ export const EditTool = Tool.define("edit", {
         contentOld = existed ? await Filesystem.readText(filePath) : ""
         contentNew = params.newString
         diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
-        if (!bypass) {
-          await ctx.ask({
-            permission: "edit",
-            checks: [PermissionPolicy.file({ op: "write", path: filePath, ...PermissionPolicy.scope() })],
-            metadata: {
+        const authorization = bypass
+          ? undefined
+          : await authorizeToolFile(ctx, filePath, {
               filepath: filePath,
               diff,
-            },
-          })
-        }
+            })
         if (!bypass) await Snapshot.trackFile(filePath, ctx.sessionID)
         if (MemoryAccess.isWritablePath(filePath)) MemoryAccess.assertNoSecrets(contentNew)
-        await commitToolFile(ctx, filePath, params.newString)
+        await commitToolFile(ctx, filePath, params.newString, authorization)
         if (!bypass) {
           await Bus.publish(File.Event.Edited, {
             file: filePath,
@@ -124,20 +117,16 @@ export const EditTool = Tool.define("edit", {
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
-      if (!bypass) {
-        await ctx.ask({
-          permission: "edit",
-          checks: [PermissionPolicy.file({ op: "write", path: filePath, ...PermissionPolicy.scope() })],
-          metadata: {
+      const authorization = bypass
+        ? undefined
+        : await authorizeToolFile(ctx, filePath, {
             filepath: filePath,
             diff,
-          },
-        })
-      }
+          })
 
       if (!bypass) await Snapshot.trackFile(filePath, ctx.sessionID)
       if (MemoryAccess.isWritablePath(filePath)) MemoryAccess.assertNoSecrets(contentNew)
-      await commitToolFile(ctx, filePath, contentNew)
+      await commitToolFile(ctx, filePath, contentNew, authorization)
       if (!bypass) {
         await Bus.publish(File.Event.Edited, {
           file: filePath,

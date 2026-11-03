@@ -1,9 +1,8 @@
 import z from "zod"
-import { randomUUID } from "node:crypto"
+import { randomUUID, createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
 import path from "node:path"
-import { NamedError } from "@merakcode/util/error"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Lock } from "../../infra/concurrency/lock"
 import { Atomic } from "../../infra/file/atomic"
@@ -16,11 +15,42 @@ import { Message } from "./message"
 import { Text } from "../prompt/text"
 import { Global } from "../../infra/global"
 import { Log } from "@merakcode/log/logger"
+import { diffLines } from "diff"
+import { Token } from "../context/token"
+import { PlanConflictError, PlanReadRangeError, PlanExecutionPausedError } from "./plan-error"
+import { Instance } from "../../infra/project/instance"
 
 /** One editable plan per root session. Revisions coordinate writers; they are not plan history. */
 export namespace SessionPlan {
   const log = Log.create({ service: "session.plan" })
-  export const ConflictError = NamedError.create("PlanConflictError", z.object({ message: z.string() }))
+  export const ConflictError = PlanConflictError
+  export const RangeError = PlanReadRangeError
+  export const PausedError = PlanExecutionPausedError
+  export const Candidate = z
+    .object({
+      id: z.string(),
+      content: z.string(),
+      expectedRevision: z.number(),
+      originalTokens: z.number(),
+      candidateTokens: z.number(),
+      changes: z.array(z.object({ type: z.enum(["same", "delete", "insert"]), text: z.string() })),
+    })
+    .meta({ ref: "PlanCandidate" })
+  export const ChunkInput = z.object({
+    offset: z.coerce.number().int().nonnegative().default(0),
+    limit: z.coerce.number().int().min(1).max(16000).default(8000),
+    executionID: z.string().uuid().optional(),
+  })
+  export const Chunk = z
+    .object({
+      content: z.string(),
+      offset: z.number(),
+      nextOffset: z.number().optional(),
+      totalCharacters: z.number(),
+      revision: z.number(),
+      executionID: z.string().optional(),
+    })
+    .meta({ ref: "PlanChunk" })
   export const Info = z
     .object({
       sessionID: z.string(),
@@ -29,18 +59,59 @@ export namespace SessionPlan {
       revision: z.number().int().nonnegative(),
       humanRevision: z.number().int().nonnegative(),
       source: z.enum(["human", "agent"]),
-      status: z.enum(["draft", "review", "executing", "completed"]),
-      execution: z.object({ id: z.string(), content: z.string(), startedAt: z.number() }).optional(),
+      status: z.enum(["draft", "review", "executing", "completed", "failed", "stopped", "paused"]),
+      execution: z
+        .object({
+          id: z.string(),
+          content: z.string(),
+          startedAt: z.number(),
+          revision: z.number().optional(),
+          source: z.enum(["button", "chat"]).optional(),
+        })
+        .optional(),
+      buttonLocked: z.boolean().optional(),
+      queued: z.boolean().optional(),
+      candidate: Candidate.optional(),
       blockedUserID: z.string().optional(),
       activeUserID: z.string().optional(),
+      anchorMessageID: z.string().optional(),
     })
     .meta({ ref: "SessionPlan" })
   export type Info = z.infer<typeof Info>
+  type Submission = { messageID: string; callID: string; signature: string }
+  type Record = Info & {
+    submissions?: { [key: string]: { signature: string; revision: number } }
+    successfulButton?: { hash: string; executionID: string }
+    idleTurns?: number
+    lastCountedUserID?: string
+  }
   export const Save = z.object({ content: z.string(), expectedRevision: z.number().int().nonnegative() })
   export const Updated = BusEvent.define("session.plan.updated", Info)
+  const queued = Instance.state(() => new Map<string, string>())
 
-  function notify(info: Info) {
-    void Bus.publish(Updated, info).catch((error) =>
+  function publicInfo(record: Record): Info {
+    return Info.parse({
+      ...record,
+      queued: queued().has(record.sessionID),
+      buttonLocked: record.successfulButton?.hash === contentHash(record.content),
+    })
+  }
+
+  export async function queue(sessionID: string, requestID: string) {
+    using _ = await Lock.write(`plan:${sessionID}`)
+    queued().set(sessionID, requestID)
+    notify(await current(sessionID))
+  }
+
+  export async function dequeue(sessionID: string, requestID: string) {
+    using _ = await Lock.write(`plan:${sessionID}`)
+    if (queued().get(sessionID) !== requestID) return
+    queued().delete(sessionID)
+    notify(await current(sessionID))
+  }
+
+  function notify(info: Record) {
+    void Bus.publish(Updated, publicInfo(info)).catch((error) =>
       log.warn("plan update notification failed", { sessionID: info.sessionID, error }),
     )
   }
@@ -73,7 +144,7 @@ export namespace SessionPlan {
       })
   }
 
-  async function current(sessionID: string): Promise<Info> {
+  async function current(sessionID: string): Promise<Record> {
     const session = await Session.get(sessionID)
     const file = Session.plan(session)
     await validatePath(file)
@@ -88,13 +159,13 @@ export namespace SessionPlan {
       if (error.code === "ENOENT") return ""
       throw error
     })
-    const saved = await Storage.read<Info>(["session_plan", sessionID]).catch((error) => {
+    const saved = await Storage.read<Record>(["session_plan", sessionID]).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
     if (saved?.content === content) return { ...saved, path: file }
     const revision = (saved?.revision ?? 0) + (content || saved ? 1 : 0)
-    const result: Info = {
+    const result: Record = {
       ...saved,
       blockedUserID: saved?.activeUserID ?? saved?.blockedUserID,
       sessionID,
@@ -116,7 +187,34 @@ export namespace SessionPlan {
   export async function get(sessionID: string) {
     sessionID = await Session.rootID(sessionID)
     using _ = await Lock.write(`plan:${sessionID}`)
-    return await current(sessionID)
+    const result = await current(sessionID)
+    return publicInfo(result)
+  }
+
+  function contentHash(content: string) {
+    return createHash("sha256").update(content.replace(/\r\n?/g, "\n")).digest("hex")
+  }
+
+  async function receipt(previous: Record, submission: Submission) {
+    const key = `${submission.messageID}:${submission.callID}`
+    const signature = createHash("sha256").update(submission.signature).digest("hex")
+    const known = previous.submissions?.[key]
+    if (!known) return { key, signature }
+    if (known.signature !== signature)
+      throw new ConflictError({
+        message: await Text.pick({
+          zh: "同一计划调用不能使用不同参数重投。",
+          en: "A plan call cannot be reused with different arguments.",
+        }),
+      })
+    return { key, signature, revision: known.revision, path: previous.path }
+  }
+
+  export async function submission(sessionID: string, input: Submission) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const result = await receipt(await current(sessionID), input)
+    return result.revision === undefined ? undefined : { path: result.path!, revision: result.revision }
   }
 
   export async function save(
@@ -125,11 +223,16 @@ export namespace SessionPlan {
       source: "human" | "agent"
       userMessageID?: string
       abort?: AbortSignal
+      submission?: Submission
+      strict?: boolean
     },
   ) {
     input = { ...input, sessionID: await Session.rootID(input.sessionID) }
     using _ = await Lock.write(`plan:${input.sessionID}`)
     const previous = await current(input.sessionID)
+    const submitted =
+      input.source === "agent" && input.submission ? await receipt(previous, input.submission) : undefined
+    if (submitted?.revision !== undefined) return Info.parse({ ...previous, revision: submitted.revision })
     const userMessageID = previous.activeUserID ?? input.userMessageID
     if (input.source === "agent" && userMessageID && previous.blockedUserID === userMessageID)
       throw new ConflictError({
@@ -140,7 +243,7 @@ export namespace SessionPlan {
       })
     if (
       input.expectedRevision !== previous.revision &&
-      (input.source === "agent" || previous.humanRevision > input.expectedRevision)
+      (input.strict || input.source === "agent" || previous.humanRevision > input.expectedRevision)
     )
       throw new ConflictError({
         message: await Text.pick({
@@ -164,21 +267,29 @@ export namespace SessionPlan {
           }
         }
     }
-    const result: Info = {
+    const result: Record = {
       ...previous,
       content: input.content,
       revision,
       source: input.source,
+      candidate: undefined,
+      idleTurns: 0,
       blockedUserID,
       humanRevision: input.source === "human" ? revision : previous.humanRevision,
+      anchorMessageID: previous.anchorMessageID ?? (input.source === "agent" ? input.submission?.messageID : undefined),
+      submissions: submitted
+        ? { ...previous.submissions, [submitted.key]: { signature: submitted.signature, revision } }
+        : previous.submissions,
       status:
-        previous.status === "executing" || (input.source === "human" && previous.status === "review")
+        ["executing", "paused"].includes(previous.status) || (input.source === "human" && previous.status === "review")
           ? previous.status
-          : "draft",
+          : input.source === "agent" && input.submission
+            ? "review"
+            : "draft",
     }
     await Storage.write(["session_plan", input.sessionID], result)
     notify(result)
-    return result
+    return Info.parse(result)
   }
 
   export async function beginTurn(sessionID: string, userMessageID: string) {
@@ -186,7 +297,147 @@ export namespace SessionPlan {
     using _ = await Lock.write(`plan:${sessionID}`)
     const result = await current(sessionID)
     result.activeUserID = userMessageID
+    const message = await Message.get({ sessionID, messageID: userMessageID }).catch(() => undefined)
+    if (message && related(Message.userSourceTexts(message).join("\n"))) result.idleTurns = 0
     await Storage.write(["session_plan", sessionID], result)
+  }
+
+  function related(text: string) {
+    return /计划|方案|第[一二三四五六七八九十\d]+步|精简|\bplan\b|\bstep\s+\d+\b/i.test(text)
+  }
+
+  export async function completeTurn(sessionID: string, userMessageID: string) {
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const plan = await current(sessionID)
+    if (!plan.content || plan.status === "executing" || plan.lastCountedUserID === userMessageID) return
+    const message = await Message.get({ sessionID, messageID: userMessageID }).catch(() => undefined)
+    if (!message || message.info.role !== "user") return
+    const text = Message.userSourceTexts(message).join("\n").trim()
+    if (!text) return
+    plan.lastCountedUserID = userMessageID
+    plan.idleTurns = related(text) ? 0 : (plan.idleTurns ?? 0) + 1
+    await Storage.write(["session_plan", sessionID], plan)
+  }
+
+  export async function view(sessionID: string) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const plan = await current(sessionID)
+    plan.idleTurns = 0
+    await Storage.write(["session_plan", sessionID], plan)
+    return Info.parse(plan)
+  }
+
+  export async function context(sessionID: string, text: string, full = false) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const plan = await current(sessionID)
+    if (plan.execution && ["executing", "paused"].includes(plan.status))
+      return `Execution plan ${plan.execution.id} (immutable snapshot):\n${plan.execution.content}`
+    if (!plan.content) return ""
+    const reference = `Official plan at ${plan.path}, revision ${plan.revision}. Use plan_read_chunk to read all ranges when needed.`
+    if (full || related(text) || (Token.estimate(plan.content) >= 2048 && (plan.idleTurns ?? 0) < 3))
+      return `${reference}\n${plan.content}`
+    return reference
+  }
+
+  export async function chunk(sessionID: string, input: z.infer<typeof ChunkInput>) {
+    const plan = await get(sessionID)
+    const execution = input.executionID
+      ? await Storage.read<NonNullable<Info["execution"]>>([
+          "session_plan_execution",
+          plan.sessionID,
+          input.executionID,
+        ])
+      : undefined
+    const content = execution?.content ?? plan.content
+    if (input.offset > content.length)
+      throw new RangeError({
+        message: await Text.pick({
+          zh: "计划读取位置超出正文范围。",
+          en: "The plan read offset is outside the document.",
+        }),
+      })
+    const end = Math.min(content.length, input.offset + input.limit)
+    return {
+      content: content.slice(input.offset, end),
+      offset: input.offset,
+      nextOffset: end < content.length ? end : undefined,
+      totalCharacters: content.length,
+      revision: execution?.revision ?? plan.revision,
+      executionID: execution?.id,
+    }
+  }
+
+  export function inputForTask(plan: Info, text = "", required = false) {
+    if (plan.execution && ["executing", "paused"].includes(plan.status))
+      return {
+        content: plan.execution.content,
+        revision: plan.execution.revision ?? plan.revision,
+        executionID: plan.execution.id,
+      }
+    if (required || (plan.content.trim() && related(text)))
+      return { content: plan.content, revision: plan.revision, executionID: undefined }
+  }
+
+  export async function assertInputCurrent(sessionID: string, input: { revision: number; executionID?: string }) {
+    const plan = await get(sessionID)
+    const matches = input.executionID
+      ? plan.status === "executing" && plan.execution?.id === input.executionID
+      : plan.revision === input.revision && !["executing", "paused"].includes(plan.status)
+    if (matches) return
+    throw new ConflictError({
+      message: await Text.pick({
+        zh: "计划已变化，请重新读取后发送任务。",
+        en: "The plan changed. Reread it before sending the task.",
+      }),
+    })
+  }
+
+  export async function propose(sessionID: string, input: z.infer<typeof Save>) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const plan = await current(sessionID)
+    if (plan.revision !== input.expectedRevision)
+      throw new ConflictError({
+        message: await Text.pick({
+          zh: "计划已变化，请重新读取后生成精简稿。",
+          en: "The plan changed. Reread it before proposing a simplification.",
+        }),
+      })
+    const candidate = Candidate.parse({
+      id: randomUUID(),
+      content: input.content,
+      expectedRevision: plan.revision,
+      originalTokens: Token.estimate(plan.content),
+      candidateTokens: Token.estimate(input.content),
+      changes: diffLines(plan.content, input.content).map((change) => ({
+        type: change.added ? "insert" : change.removed ? "delete" : "same",
+        text: change.value,
+      })),
+    })
+    plan.candidate = candidate
+    await Storage.write(["session_plan", sessionID], plan)
+    notify(plan)
+    return candidate
+  }
+
+  export async function adopt(sessionID: string, candidateID: string) {
+    const plan = await get(sessionID)
+    if (!plan.candidate || plan.candidate.id !== candidateID || plan.candidate.expectedRevision !== plan.revision)
+      throw new ConflictError({
+        message: await Text.pick({
+          zh: "精简稿已过期，请重新核对计划。",
+          en: "The candidate is stale. Review the current plan again.",
+        }),
+      })
+    return save({
+      sessionID,
+      source: "human",
+      content: plan.candidate.content,
+      expectedRevision: plan.revision,
+      strict: true,
+    })
   }
 
   function legacyPath(session: Session.Info) {
@@ -249,56 +500,65 @@ export namespace SessionPlan {
     )
   }
 
-  export async function writeFromAgent(input: {
-    sessionID: string
-    path: string
-    content: string
-    expectedRevision?: number
-    abort?: AbortSignal
-  }) {
-    if (!(await isFile(input.sessionID, input.path))) return false
-    const root = await Session.rootID(input.sessionID)
-    const currentPlan = await get(root)
-    await save({
-      sessionID: root,
-      content: input.content,
-      source: "agent",
-      abort: input.abort,
-      expectedRevision: input.expectedRevision ?? currentPlan.revision,
-    })
-    return true
-  }
-
   /** Tool reads use the fixed execution view; the plan API exposes the editable human document. */
   export async function contentForTool(sessionID: string, filePath: string) {
     if (!(await isFile(sessionID, filePath))) return undefined
     const plan = await get(await Session.rootID(sessionID))
-    return plan.status === "executing" ? plan.execution?.content : plan.content
+    return ["executing", "paused"].includes(plan.status) ? plan.execution?.content : plan.content
   }
 
-  export async function start(sessionID: string) {
+  export async function start(sessionID: string, source: "button" | "chat" = "chat", expectedRevision?: number) {
     sessionID = await Session.rootID(sessionID)
     using _ = await Lock.write(`plan:${sessionID}`)
     const result = await current(sessionID)
+    queued().delete(sessionID)
     if (result.status === "executing") return result
+    if (result.status === "paused" && result.execution) {
+      result.status = "executing"
+      await Storage.write(["session_plan", sessionID], result)
+      notify(result)
+      return result
+    }
+    if (expectedRevision !== undefined && expectedRevision !== result.revision)
+      throw new ConflictError({
+        message: await Text.pick({
+          zh: "计划已变化，请重新读取后启动。",
+          en: "The plan changed. Reread it before starting.",
+        }),
+      })
     if (!result.content.trim())
       throw new ConflictError({
         message: await Text.pick({ zh: "请先保存计划再开始执行。", en: "Save a plan before starting execution." }),
       })
     result.status = "executing"
-    result.execution = { id: randomUUID(), content: result.content, startedAt: Date.now() }
+    result.execution = {
+      id: randomUUID(),
+      content: result.content,
+      startedAt: Date.now(),
+      revision: result.revision,
+      source,
+    }
     await Storage.write(["session_plan", sessionID], result)
+    await Storage.write(["session_plan_execution", sessionID, result.execution.id], result.execution)
     notify(result)
     return result
   }
 
-  export async function setStatus(sessionID: string, status: "draft" | "review" | "completed", abort?: AbortSignal) {
+  export async function setStatus(
+    sessionID: string,
+    status: Info["status"],
+    abort?: AbortSignal,
+    executionID?: string,
+  ) {
     sessionID = await Session.rootID(sessionID)
     using _ = await Lock.write(`plan:${sessionID}`)
     const result = await current(sessionID)
     abort?.throwIfAborted()
-    if (result.status === "executing" && status !== "completed") return result
+    if (executionID !== undefined && executionID !== result.execution?.id) return result
+    if (result.status === "executing" && (status === "draft" || status === "review")) return result
     result.status = status
+    if (status === "completed" && result.execution?.source === "button")
+      result.successfulButton = { hash: contentHash(result.execution.content), executionID: result.execution.id }
     await Storage.write(["session_plan", sessionID], result)
     notify(result)
     return result

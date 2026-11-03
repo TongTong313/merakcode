@@ -73,6 +73,7 @@ test.each([
         seats: [{ name: "Member", product: "unsupported", role: "Developer", duty: "Reply" }],
       })
     ).json()
+    await request(`/session/${sessionID}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
     if (kind === "config")
       await Config.edit("global", (text) =>
         ConfigEdit.set(text, ["agentConnections", "products", "unsupported"], {
@@ -146,6 +147,14 @@ test.each([
           seats: [{ name: "Member", product: "final", role: "Developer", duty: "Reply" }],
         })
       ).json()
+      expect(
+        (
+          await request(`/session/${sessionID}/permission-level`, {
+            permissionLevel: "fullTakeover",
+            expectedRevision: 0,
+          })
+        ).status,
+      ).toBe(200)
       const response = await request(`/session/${sessionID}/message`, {
         parts: [{ type: "text", text: "Ask the member" }],
       })
@@ -348,6 +357,8 @@ test.each([
       })
     ).json()
     const id: string = created.sessionID
+    await request(`/session/${holder}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
+    await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
     try {
       await request(`/session/${holder}/prompt_async`, { parts: [{ type: "text", text: `hold:${gate}` }] })
       await expect
@@ -467,12 +478,29 @@ test.each(["permission", "question"] as const)(
         })
       ).json()
       const id: string = created.sessionID
+      expect(
+        (await request(`/session/${id}/permission-level`, { permissionLevel: "autoApprove", expectedRevision: 0 }))
+          .status,
+      ).toBe(200)
       const completed = request(`/session/${id}/message`, {
         parts: [{ type: "text", text: "Ask both members in parallel" }],
-        sessionMode: "execute",
       }).then((response) => response.json())
       completed.catch(() => undefined)
       try {
+        const delegations = async () =>
+          ((await (await request("/permission")).json()) as PermissionRequest[]).filter(
+            (item) => item.sessionID === id && item.permission === "subagent",
+          )
+        await expect.poll(delegations, { timeout: 10_000 }).toHaveLength(2)
+        for (const delegation of await delegations())
+          expect(
+            (
+              await request(`/permission/${delegation.id}/reply`, {
+                reply: "once",
+                decisionRevision: delegation.decisionRevision,
+              })
+            ).status,
+          ).toBe(200)
         const pending = async () =>
           ((await (await request(`/${kind}`)).json()) as (PermissionRequest | QuestionRequest)[]).filter(
             (item) => item.sessionID === id,

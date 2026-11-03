@@ -128,8 +128,8 @@ export function applyEvent(state: SessionsState, event: Event): Change {
       if (current.found && (info.targetRevision ?? 0) < (state.session[current.index]!.targetRevision ?? 0))
         return "none"
       const previous = current.found ? state.session[current.index] : undefined
-      if (previous && (info.modeRevision ?? 0) < (previous.modeRevision ?? 0))
-        info = { ...info, sessionMode: previous.sessionMode, modeRevision: previous.modeRevision }
+      if (previous && (info.permissionRevision ?? 0) < (previous.permissionRevision ?? 0))
+        info = { ...info, permissionLevel: previous.permissionLevel, permissionRevision: previous.permissionRevision }
       if (info.time.archived) {
         const change = remove(state.session, info.id)
         forgetSession(state, info.id)

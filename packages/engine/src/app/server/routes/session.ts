@@ -1,4 +1,4 @@
-import { SessionMode } from "../../../agent/permission/mode"
+import { PermissionLevel } from "../../../agent/permission/level"
 import { SessionOperations } from "@merakcode/engine/app/session"
 import { failure } from "@merakcode/log"
 import { Hono } from "hono"
@@ -36,6 +36,22 @@ const log = Log.create({ service: "server" })
 export const SessionRoutes = lazy(() =>
   new Hono()
     .post(
+      "/:sessionID/permission-level",
+      describeRoute({
+        summary: "Select the root conversation permission level",
+        operationId: "session.setPermissionLevel",
+        responses: {
+          200: { description: "Updated session", content: { "application/json": { schema: resolver(Session.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("json", Session.setPermissionLevel.schema.omit({ sessionID: true }).strict()),
+      async (c) =>
+        c.json(
+          await SessionOperations.setPermissionLevel({ ...c.req.valid("json"), sessionID: c.req.param("sessionID") }),
+        ),
+    )
+    .post(
       "/:sessionID/permission-mode",
       describeRoute({
         summary: "Translate a legacy session mode",
@@ -46,16 +62,74 @@ export const SessionRoutes = lazy(() =>
           ...errors(400, 404, 409),
         },
       }),
-      validator("json", z.object({ permissionMode: z.enum(["readonly", "ask"]) })),
-      async (c) => {
-        const mode = c.req.valid("json").permissionMode
-        return c.json(
-          await Session.setMode({
-            sessionID: c.req.param("sessionID"),
-            sessionMode: mode === "readonly" ? "plan" : "execute",
-          }),
-        )
-      },
+      validator("json", z.unknown()),
+      async () =>
+        reject([
+          {
+            path: ["permissionMode"],
+            message: await Text.pick({
+              zh: "权限协议已更新，请升级客户端并重新选择权限级别。",
+              en: "The permission protocol changed. Upgrade the client and select a permission level again.",
+            }),
+          },
+        ]),
+    )
+    .get(
+      "/:sessionID/plan/chunk",
+      describeRoute({
+        summary: "Read a complete character range from a plan",
+        operationId: "session.planChunk",
+        responses: {
+          200: { description: "Plan range", content: { "application/json": { schema: resolver(SessionPlan.Chunk) } } },
+          ...errors(400, 404),
+        },
+      }),
+      validator("query", SessionPlan.ChunkInput),
+      async (c) => c.json(await SessionPlan.chunk(c.req.param("sessionID"), c.req.valid("query"))),
+    )
+    .post(
+      "/:sessionID/plan/view",
+      describeRoute({
+        summary: "Record an explicit human plan view",
+        operationId: "session.planView",
+        responses: {
+          200: { description: "Viewed plan", content: { "application/json": { schema: resolver(SessionPlan.Info) } } },
+          ...errors(404),
+        },
+      }),
+      async (c) => c.json(await SessionPlan.view(c.req.param("sessionID"))),
+    )
+    .post(
+      "/:sessionID/plan/candidate",
+      describeRoute({
+        summary: "Propose a read-only plan simplification",
+        operationId: "session.planCandidate",
+        responses: {
+          200: {
+            description: "Ordered candidate differences",
+            content: { "application/json": { schema: resolver(SessionPlan.Candidate) } },
+          },
+          ...errors(404, 409),
+        },
+      }),
+      validator("json", SessionPlan.Save),
+      async (c) => c.json(await SessionPlan.propose(c.req.param("sessionID"), c.req.valid("json"))),
+    )
+    .post(
+      "/:sessionID/plan/adopt",
+      describeRoute({
+        summary: "Adopt a reviewed plan candidate",
+        operationId: "session.planAdopt",
+        responses: {
+          200: {
+            description: "Saved human plan",
+            content: { "application/json": { schema: resolver(SessionPlan.Info) } },
+          },
+          ...errors(404, 409),
+        },
+      }),
+      validator("json", z.object({ candidateID: z.string().uuid() })),
+      async (c) => c.json(await SessionPlan.adopt(c.req.param("sessionID"), c.req.valid("json").candidateID)),
     )
     .get(
       "/:sessionID/plan",
@@ -116,7 +190,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = await Session.rootID(c.req.param("sessionID"))
         const previous = await SessionPlan.get(sessionID)
-        if (previous.status === "executing") return c.json(previous)
+        if (previous.status === "executing" || previous.buttonLocked) return c.json(previous)
         if (!previous.content.trim())
           throw new SessionPlan.ConflictError({
             message: await Text.pick({
@@ -124,12 +198,7 @@ export const SessionRoutes = lazy(() =>
               en: "Save a plan before starting execution.",
             }),
           })
-        const session = await Session.get(sessionID)
-        void Loop.prompt({
-          sessionID,
-          sessionMode: session.sessionMode ?? "execute",
-          parts: [{ type: "text", text: "Execute the latest saved session plan." }],
-        }).catch((error) => {
+        void Loop.Request.startPlan(sessionID).catch((error) => {
           if (error?.name === "AbortError") return
           log.error("plan execution failed", { sessionID, error })
           void Bus.publish(Session.Event.Error, {
@@ -472,9 +541,9 @@ export const SessionRoutes = lazy(() =>
     .post(
       "/:sessionID/mode",
       describeRoute({
-        summary: "Set session mode",
+        summary: "Reject the legacy session mode protocol",
         description:
-          "Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
+          "Legacy mode updates are rejected. Upgrade the client and use session.setPermissionLevel with the current revision.",
         operationId: "session.setMode",
         responses: {
           200: {
@@ -494,13 +563,17 @@ export const SessionRoutes = lazy(() =>
           sessionID: z.string().meta({ description: "Session ID" }),
         }),
       ),
-      validator("json", Session.setMode.schema.omit({ sessionID: true })),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        const body = c.req.valid("json")
-        const session = await Session.setMode({ ...body, sessionID })
-        return c.json(session)
-      },
+      validator("json", z.unknown()),
+      async () =>
+        reject([
+          {
+            path: ["sessionMode"],
+            message: await Text.pick({
+              zh: "权限协议已更新，请升级客户端并重新选择权限级别。",
+              en: "The permission protocol changed. Upgrade the client and select a permission level again.",
+            }),
+          },
+        ]),
     )
     .post(
       "/:sessionID/init",
@@ -1276,13 +1349,13 @@ function legacyExport(data: unknown) {
   if (!Array.isArray(body?.messages)) return data
   return {
     ...body,
-    info: body.info ? SessionMode.migrate(body.info) : body.info,
+    info: body.info ? PermissionLevel.migrate(body.info) : body.info,
     messages: body.messages.map((item) =>
       item?.info
         ? {
             ...item,
             info: Message.legacy(item.info),
-            parts: Array.isArray(item.parts) ? item.parts.map((part) => SessionMode.migrate(part)) : item.parts,
+            parts: Array.isArray(item.parts) ? item.parts.map((part) => PermissionLevel.migrate(part)) : item.parts,
           }
         : item,
     ),
@@ -1303,6 +1376,11 @@ async function importFull(body: z.infer<ReturnType<typeof ImportFullBody>>) {
     // The parent is most likely not in the target project. Keeping parentID would make isChildToolSession treat the
     // import as a child session (no nested subagents, permission mode following a missing parent).
     parentID: undefined,
+    taskOrigin: undefined,
+    permissionLevel: "ask",
+    permissionRevision: 0,
+    permission: body.info.permission?.filter((rule) => rule.action === "deny"),
+    permissionGrants: undefined,
     target: external ? body.info.target : { kind: "merak" },
     targetRevision: 0,
     targetBlock: undefined,

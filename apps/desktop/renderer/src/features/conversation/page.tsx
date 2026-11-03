@@ -25,7 +25,7 @@ import {
   listen,
   session,
   setState,
-  setSessionMode,
+  setPermissionLevel,
 } from "../../state/store"
 import { saveLayout, setUi, ui } from "../../state/ui"
 import { Confirm, Dialog } from "../../ui/dialog"
@@ -47,7 +47,6 @@ import { Messages } from "./messages"
 import { historyLocked, restore, send, stop } from "./send"
 import { agentConnections, connectionsLoaded, loadConnections } from "../../state/agent-connections"
 import { TakeoverDialog } from "./takeover-dialog"
-import { PlanCard } from "./plan"
 
 /**
  * Discards a worktree conversation: deletes the conversation first (while its worktree directory still exists), then
@@ -355,7 +354,6 @@ export function Conversation(props: { id: string; directory: string }) {
           />
           <div class="dock">
             <div class="dock-inner">
-              <PlanCard sessionID={props.id} directory={dir()} reviewDialog />
               <Show when={!historyLocked(props.id) && !running() && (info()?.undoRedo?.stack.length ?? 0) > 0}>
                 <div class="revert-bar" role="status">
                   <Undo2 class="icon icon-sm" />
@@ -422,7 +420,7 @@ export function Conversation(props: { id: string; directory: string }) {
                 onSubmit={(submission) => send(props.id, props.directory, submission)}
                 onStop={() => void stop(props.id, props.directory)}
                 onMode={(mode) => {
-                  return setSessionMode(props.id, dir(), mode).catch((error: Error) => {
+                  return setPermissionLevel(props.id, dir(), mode).catch((error: Error) => {
                     toast({ kind: "error", title: t("error.request", { message: error.message }), error })
                   })
                 }}

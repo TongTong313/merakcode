@@ -54,8 +54,11 @@ test.each(["complete", "abort", "disable"] as const)(
         `${url}?directory=${encodeURIComponent(project.path)}`,
         body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {},
       )
-    const create = async (productID: string) =>
-      (await (await request("/session", { target: { kind: "external", productID } })).json()).id as string
+    const create = async (productID: string) => {
+      const id = (await (await request("/session", { target: { kind: "external", productID } })).json()).id as string
+      await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
+      return id
+    }
     const first = await create("background")
     const second = await create("control")
     const messages = async (id: string) =>
@@ -122,9 +125,16 @@ test("serializes external chats in one directory while another directory proceed
       `${url}?directory=${encodeURIComponent(directory)}`,
       body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {},
     )
-  const create = async (directory: string) =>
-    (await (await request(directory, "/session", { target: { kind: "external", productID: "locks" } })).json())
-      .id as string
+  const create = async (directory: string) => {
+    const id = (
+      await (await request(directory, "/session", { target: { kind: "external", productID: "locks" } })).json()
+    ).id as string
+    await request(directory, `/session/${id}/permission-level`, {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
+    return id
+  }
   const first = await create(project.path)
   const second = await create(project.path)
   const control = await create(unrelated.path)
@@ -172,8 +182,12 @@ test("cancels a waiting external chat without starting it or leaving a directory
       `${url}?directory=${encodeURIComponent(project.path)}`,
       body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {},
     )
-  const create = async () =>
-    (await (await request("/session", { target: { kind: "external", productID: "locks" } })).json()).id as string
+  const create = async () => {
+    const id = (await (await request("/session", { target: { kind: "external", productID: "locks" } })).json())
+      .id as string
+    await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
+    return id
+  }
   const first = await create()
   const second = await create()
   const third = await create()
@@ -249,6 +263,12 @@ test("shares external directory holds with a multi-root workspace using the same
     const externalID = (await (await request("/session", { target: { kind: "external", productID: "locks" } })).json())
       .id
     const nativeID = (await (await request("/session", {}, true)).json()).id
+    await request(`/session/${externalID}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
+    await request(
+      `/session/${nativeID}/permission-level`,
+      { permissionLevel: "fullTakeover", expectedRevision: 0 },
+      true,
+    )
     const gate = path.join(project.path, "release-workspace")
     const messages = async (id: string, multi = false) =>
       (await (await request(`/session/${id}/message`, undefined, multi)).json()) as {
@@ -264,7 +284,7 @@ test("shares external directory holds with a multi-root workspace using the same
       native = Promise.resolve(
         request(
           `/session/${nativeID}/message`,
-          { parts: [{ type: "text", text: "write a file" }], sessionMode: "auto" },
+          { parts: [{ type: "text", text: "write a file" }], permissionLevel: "fullTakeover" },
           true,
         ),
       )

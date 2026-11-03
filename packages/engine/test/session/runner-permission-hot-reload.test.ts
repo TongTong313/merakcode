@@ -11,7 +11,7 @@ import { Agent } from "@merakcode/engine/agent/agent"
 import { Loop } from "@merakcode/engine/agent/loop/index"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 
-test("buildToolExecutionRuleset applies session.permission changes within the same step (read ask -> allow)", async () => {
+test("buildToolExecutionRuleset applies session.permission changes within the same step (read ask -> deny)", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -24,10 +24,10 @@ test("buildToolExecutionRuleset applies session.permission changes within the sa
       const ruleset1 = Loop.buildToolExecutionRuleset({ agent: agent!, session })
       expect(PermissionNext.evaluate("read", "*", ruleset1).action).toBe("ask")
 
-      // "Always allow" in the permission dialog makes runner.ts write the rule to session.permission (Session.update).
-      session.permission = PermissionNext.fromConfig({ read: "allow" })
+      // A current deny rule takes effect before the next operation.
+      session.permission = PermissionNext.fromConfig({ read: "deny" })
       const ruleset2 = Loop.buildToolExecutionRuleset({ agent: agent!, session })
-      expect(PermissionNext.evaluate("read", "*", ruleset2).action).toBe("allow")
+      expect(PermissionNext.evaluate("read", "*", ruleset2).action).toBe("deny")
     },
   })
 })
@@ -60,13 +60,14 @@ test("buildToolExecutionRuleset bypasses authorization in auto mode including ch
       expect(agent).toBeDefined()
 
       const session = await Session.create({})
+      session.permissionLevel = "fullTakeover"
       const ruleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
       })
 
-      // Auto mode allows the wildcard, including tools like plan/question that the runtime removes separately.
+      // Full takeover allows the wildcard, including tools like plan/question that the runtime removes separately.
       expect(PermissionNext.evaluate("read", "*", ruleset).action).toBe("allow")
       expect(PermissionNext.evaluate("question", "*", ruleset).action).toBe("allow")
       // A main session in auto mode is not a child session, so subagent is allowed too.
@@ -75,12 +76,12 @@ test("buildToolExecutionRuleset bypasses authorization in auto mode including ch
       const childRuleset = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session,
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         child: true,
       })
       expect(PermissionNext.evaluate("read", "*", childRuleset).action).toBe("allow")
       expect(PermissionNext.evaluate("question", "*", childRuleset).action).toBe("allow")
-      expect(PermissionNext.evaluate("subagent", "*", childRuleset).action).toBe("allow")
+      expect(PermissionNext.evaluate("subagent", "*", childRuleset).action).toBe("deny")
     },
   })
 })

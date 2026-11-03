@@ -1,3 +1,4 @@
+import { PermissionPolicy } from "../../../agent/permission/policy"
 import { createHash } from "crypto"
 import { Script, createContext } from "vm"
 import { ulid } from "ulid"
@@ -25,6 +26,7 @@ import type {
 } from "./types"
 import { WorkflowRegistry } from "./registry"
 import { WorkflowState } from "./state"
+import { TaskScope } from "../../../agent/permission/scope"
 
 type Hooks = {
   update(metadata: WorkflowRunMetadata): Promise<void>
@@ -417,6 +419,41 @@ export namespace WorkflowRuntime {
           if (unit) unit.status = "running"
         }
         await update()
+        check()
+        const rootID = await Session.rootID(input.sessionID)
+        const source = await Message.get({ sessionID: input.sessionID, messageID: input.messageID }).catch(
+          () => undefined,
+        )
+        const approval = {
+          sessionID: input.sessionID,
+          root: rootID,
+          permission: "subagent",
+          checks: [PermissionPolicy.subagent(agentID)],
+          metadata: { description: prompt, subagent_type: agentID, workflow: input.script.name },
+          tool: { messageID: input.messageID, callID: `${runId}:${id}` },
+        }
+        const ruleset = async () => {
+          const [current, root, caller] = await Promise.all([
+            Session.get(input.sessionID),
+            Session.get(rootID),
+            Agent.get(source && "agent" in source.info ? source.info.agent : "build"),
+          ])
+          if (!caller) return PermissionPolicy.deny("subagent")
+          return PermissionPolicy.execution({
+            agent: caller,
+            session: {
+              ...current,
+              permissionLevel: root.permissionLevel,
+              permission: PermissionNext.merge(
+                input.callerRuleset ?? [],
+                root.permission ?? [],
+                current.permission ?? [],
+              ),
+            },
+          })
+        }
+        let admission = await PermissionNext.askCurrent(approval, ruleset, signal)
+        check()
         const restrictions = await buildToolRestrictions(info, opts)
         const childPermission = PermissionNext.mergeUnique(input.callerRuleset ?? [], restrictions.ruleset)
         const child = await Session.create({
@@ -424,6 +461,8 @@ export namespace WorkflowRuntime {
           title: `${label} (@${agentID} workflow)`,
           ...(childPermission.length ? { permission: clone(childPermission) } : {}),
         })
+        using _task = await TaskScope.claim(child.id)
+        await TaskScope.bind(child.id, input.sessionID, input.messageID)
         entry.sessionId = child.id
         await update()
         const unsubscribe = Bus.subscribe(Message.Event.PartUpdated, (event) => {
@@ -440,12 +479,16 @@ export namespace WorkflowRuntime {
           signal.removeEventListener("abort", cancel)
           unsubscribe()
         })
+        const parts = await Loop.resolvePromptParts(prompt)
+        while (!(await PermissionNext.isCurrent(admission, approval)))
+          admission = await PermissionNext.askCurrent(approval, ruleset, signal)
+        check()
         const result = await Loop.prompt({
           sessionID: child.id,
           messageID: Identifier.ascending("message"),
           agent: agentID,
           model,
-          kind: "execute",
+          kind: "ask",
           ...(restrictions.tools ? { tools: restrictions.tools } : {}),
           format: opts.schema
             ? {
@@ -454,7 +497,7 @@ export namespace WorkflowRuntime {
                 retryCount: 2,
               }
             : undefined,
-          parts: await Loop.resolvePromptParts(prompt),
+          parts,
         })
         check()
         // A requested schema without structured output (or a child session with StructuredOutputError) fails

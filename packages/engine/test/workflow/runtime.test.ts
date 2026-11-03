@@ -12,7 +12,45 @@ import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
 import { WorkflowRuntime } from "@merakcode/engine/app/task/workflow/runtime"
 import { WorkflowState } from "@merakcode/engine/app/task/workflow/state"
 import type { WorkflowRunMetadata, WorkflowScript } from "@merakcode/engine/app/task/workflow/types"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
+
+const parent = Instance.state(
+  async () => {
+    const session = await Session.create({ title: "Controlled workflow parent" })
+    await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
+    const message = await Session.updateInfo({
+      id: Identifier.ascending("message"),
+      sessionID: session.id,
+      role: "user",
+      agent: "build",
+      model: { providerID: "test", modelID: "test" },
+      time: { created: Date.now() },
+    })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: message.id,
+      sessionID: session.id,
+      type: "text",
+      text: "Run a controlled workflow",
+    })
+    const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+      if (event.properties.sessionID === session.id && event.properties.permission === "subagent")
+        void PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
+    })
+    return { id: session.id, messageID: message.id, off }
+  },
+  async (state) => {
+    ;(await state).off()
+  },
+)
+
+async function parentID() {
+  return Instance.has() ? (await parent()).id : "session-test"
+}
+
+async function messageID() {
+  return Instance.has() ? (await parent()).messageID : "msg_workflow_test"
+}
 
 function script(body: string, extra: Partial<WorkflowScript> = {}): WorkflowScript {
   return {
@@ -67,8 +105,8 @@ describe("WorkflowRuntime", () => {
 				return { a, b }
 			`),
       args: {},
-      sessionID: "session-test",
-      messageID: "message-test",
+      sessionID: await parentID(),
+      messageID: await messageID(),
       abort: new AbortController().signal,
       defaultModel: { providerID: "test", modelID: "test" },
       hooks: {
@@ -95,8 +133,8 @@ describe("WorkflowRuntime", () => {
         { phases: [] },
       ),
       args: {},
-      sessionID: "session-test",
-      messageID: "message-test",
+      sessionID: await parentID(),
+      messageID: await messageID(),
       abort: new AbortController().signal,
       defaultModel: { providerID: "test", modelID: "test" },
       hooks: {
@@ -122,8 +160,8 @@ describe("WorkflowRuntime", () => {
       WorkflowRuntime.run({
         script: script("return 'done'"),
         args: {},
-        sessionID: "session-test",
-        messageID: "message-test",
+        sessionID: await parentID(),
+        messageID: await messageID(),
         abort: controller.signal,
         defaultModel: { providerID: "test", modelID: "test" },
         hooks: {
@@ -168,8 +206,8 @@ describe("WorkflowRuntime", () => {
               { concurrency: 2, maxConcurrentAgents: 2 },
             ),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -217,8 +255,8 @@ describe("WorkflowRuntime", () => {
 							return await fanout(units)
 						`),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -261,8 +299,8 @@ describe("WorkflowRuntime", () => {
 							])
 						`),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -303,8 +341,8 @@ describe("WorkflowRuntime", () => {
 							}
 						`),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -342,7 +380,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        sessionMode: input.kind,
+        permissionLevel: input.kind,
       })
       captured.kind = input.kind
       captured.permission = child.permission
@@ -363,8 +401,8 @@ describe("WorkflowRuntime", () => {
           WorkflowRuntime.run({
             script: script("return await agent('scan', { label: 'scan' })"),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset,
@@ -374,10 +412,10 @@ describe("WorkflowRuntime", () => {
           }),
       })
 
-      expect(captured.kind).toBe("execute")
+      expect(captured.kind).toBe("ask")
       expect(captured.permission).toEqual(callerRuleset)
       expect(captured.edit).toBe("allow")
-      expect(captured.externalDirectory).toBe("allow")
+      expect(captured.externalDirectory).toBe("ask")
       expect(captured.workflowRun).toBe("deny")
       expect(captured.subagent).toBe("deny")
     } finally {
@@ -399,7 +437,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        sessionMode: input.kind,
+        permissionLevel: input.kind,
       })
       captured.kind = input.kind
       captured.edit = PermissionNext.evaluate("edit", "src/file.ts", rules).action
@@ -415,8 +453,8 @@ describe("WorkflowRuntime", () => {
           WorkflowRuntime.run({
             script: script("return await agent('scan', { label: 'scan', kind: 'auto' })"),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: PermissionNext.fromConfig({
@@ -429,7 +467,7 @@ describe("WorkflowRuntime", () => {
           }),
       })
 
-      expect(captured.kind).toBe("execute")
+      expect(captured.kind).toBe("ask")
       expect(captured.edit).toBe("deny")
       expect(captured.write).toBe("deny")
     } finally {
@@ -458,8 +496,8 @@ describe("WorkflowRuntime", () => {
             runId: "resume-source",
             script: scriptValue,
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: allow,
@@ -468,15 +506,15 @@ describe("WorkflowRuntime", () => {
             },
           })
           expect(first.result).toBe("run-1")
-          const resume = await WorkflowState.read("session-test", "resume-source")
+          const resume = await WorkflowState.read(await parentID(), "resume-source")
           expect(resume).toBeDefined()
 
           const samePermission = await WorkflowRuntime.run({
             runId: "resume-same",
             script: scriptValue,
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: allow,
@@ -492,8 +530,8 @@ describe("WorkflowRuntime", () => {
             runId: "resume-changed",
             script: scriptValue,
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: deny,
@@ -527,7 +565,7 @@ describe("WorkflowRuntime", () => {
       const rules = Loop.buildToolExecutionRuleset({
         agent: agent!,
         session: child,
-        sessionMode: input.kind,
+        permissionLevel: input.kind,
       })
       captured.tools = input.tools
       captured.permission = child.permission
@@ -545,8 +583,8 @@ describe("WorkflowRuntime", () => {
           WorkflowRuntime.run({
             script: script("return await agent('scan', { label: 'scan', allowedTools: ['read', 'grep'] })"),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: PermissionNext.fromConfig({ "*": "allow" }),
@@ -599,7 +637,7 @@ describe("WorkflowRuntime", () => {
             id: "workflow-custom",
             name: "workflow-custom",
             profile: {
-              ...(base!.profile ?? { kind: "execute" as const, availableTools: [], restrictedRules: [] }),
+              ...(base!.profile ?? { kind: "autoApprove" as const, availableTools: [], restrictedRules: [] }),
               availableTools: [...(base!.profile?.availableTools ?? []), "custom_lookup"],
             },
           }
@@ -613,7 +651,7 @@ describe("WorkflowRuntime", () => {
             const rules = Loop.buildToolExecutionRuleset({
               agent: agent!,
               session: child,
-              sessionMode: input.kind,
+              permissionLevel: input.kind,
             })
             captured.tools = input.tools
             captured.custom = PermissionNext.evaluate("custom_lookup", "*", rules).action
@@ -623,8 +661,8 @@ describe("WorkflowRuntime", () => {
           await WorkflowRuntime.run({
             script: script("return await agent('scan', { agent: 'workflow-custom', allowedTools: ['read'] })"),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             callerRuleset: PermissionNext.fromConfig({ "*": "allow" }),
@@ -667,8 +705,8 @@ describe("WorkflowRuntime", () => {
 							return await agent('summarize ' + JSON.stringify(findings), { label: 'summary' })
 						`),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -717,8 +755,8 @@ describe("WorkflowRuntime", () => {
 							)
 						`),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -800,8 +838,8 @@ describe("WorkflowRuntime", () => {
           WorkflowRuntime.run({
             script: script("return await agent('scan', { label: 'scan' })"),
             args: {},
-            sessionID: "session-test",
-            messageID: "message-test",
+            sessionID: await parentID(),
+            messageID: await messageID(),
             abort: new AbortController().signal,
             defaultModel: { providerID: "test", modelID: "test" },
             hooks: {
@@ -833,8 +871,8 @@ describe("WorkflowRuntime", () => {
       WorkflowRuntime.run({
         script: script("return Object.constructor('return process')()"),
         args: {},
-        sessionID: "session-test",
-        messageID: "message-test",
+        sessionID: await parentID(),
+        messageID: await messageID(),
         abort: new AbortController().signal,
         defaultModel: { providerID: "test", modelID: "test" },
         hooks: {
@@ -914,8 +952,8 @@ describe("WorkflowRuntime schema failures are not silently downgraded", () => {
                 `return await agent('impl', { schema: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] } })`,
               ),
               args: {},
-              sessionID: "session-test",
-              messageID: "message-test",
+              sessionID: await parentID(),
+              messageID: await messageID(),
               abort: new AbortController().signal,
               defaultModel: { providerID: "test", modelID: "test" },
               hooks: {

@@ -14,8 +14,38 @@ import { SessionCrash } from "../agent/loop/crash-reconcile"
 import { ExternalSession } from "../agent/loop/external"
 import { CronScheduler } from "./task/cron"
 import { Command } from "../agent/prompt/command"
+import { PermissionFlush } from "../agent/permission/flush"
+import { ModeOperations } from "../agent/permission/operations"
 
 export namespace SessionOperations {
+  export const setPermissionLevel = fn(Session.setPermissionLevel.schema, async (input) => {
+    const rootID = await Session.rootID(input.sessionID)
+    let unblock = () => {}
+    try {
+      let selected: Session.Info
+      let changed: boolean
+      {
+        using _ = await Lock.write(`session-permission:${rootID}`)
+        const previous = await Session.get(rootID)
+        unblock = ModeOperations.block(
+          rootID,
+          await Text.pick({
+            zh: "权限正在切换，请等待操作核对完成。",
+            en: "The permission level is changing. Wait for operation reconciliation.",
+          }),
+        )
+        selected = await Session.setPermissionLevel(input)
+        changed = previous.permissionRevision !== selected.permissionRevision
+      }
+      if (!changed) return Session.get(input.sessionID)
+      await PermissionFlush.run()
+      await ModeOperations.reconcile(rootID, selected.permissionLevel ?? "ask", selected.permissionRevision ?? 0)
+      return Session.get(input.sessionID)
+    } finally {
+      unblock()
+    }
+  })
+
   export async function takeover(sessionID: string, input: z.infer<typeof SessionTarget.Decision>) {
     await Session.get(sessionID)
     if (input.decision === "accept") {

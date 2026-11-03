@@ -6,15 +6,17 @@ const command = {
   patterns: ["npm install -D vitest"],
   grants: [{ scope: "prefix" as const, pattern: "npm install *" }],
   always: true,
+  sandboxReady: true,
+  permissionLevel: "ask" as const,
   metadata: { tags: ["network"] },
 }
 
 describe("choices", () => {
-  test("command: allow once, allow this prefix for the session, always allow, reject", () => {
+  test("command: allow once, grant the displayed scope, switch policy, or reject", () => {
     expect(permissionChoices(command).map((choice) => [choice.reply, choice.scope, choice.label])).toEqual([
       ["once", undefined, { key: "permission.option.once" }],
       ["session", "prefix", { key: "permission.option.prefix", vars: { pattern: "npm install" } }],
-      ["always", undefined, { key: "permission.option.always" }],
+      ["autoApprove", undefined, { key: "permission.option.autoApprove" }],
       ["reject", undefined, { key: "permission.option.reject" }],
     ])
   })
@@ -31,7 +33,6 @@ describe("choices", () => {
     })
     expect(choices.filter((choice) => choice.reply === "session").map((choice) => choice.label)).toEqual([
       { key: "permission.option.file", vars: { pattern: "/home/dev/docs/a.md" } },
-      { key: "permission.option.directory", vars: { pattern: "/home/dev/docs" } },
     ])
   })
 
@@ -44,6 +45,13 @@ describe("choices", () => {
     })
     expect(agent.map((choice) => choice.reply)).toEqual(["once", "session", "reject"])
     expect(permissionChoices({ permission: "my_tool", patterns: ["*"] }).map((choice) => choice.reply)).toEqual([
+      "once",
+      "reject",
+    ])
+  })
+
+  test("a missing sandbox offers only once and reject despite stale grants", () => {
+    expect(permissionChoices({ ...command, sandboxReady: false }).map((choice) => choice.reply)).toEqual([
       "once",
       "reject",
     ])

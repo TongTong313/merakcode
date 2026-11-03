@@ -84,7 +84,7 @@ async function edit(content: string, name = file) {
     { text: "Done" },
   ]
   script = (turn) => steps[turn.results.length]!
-  for await (const event of session.run("Update the file", { mode: "auto" }))
+  for await (const event of session.run("Update the file", { permissionLevel: "fullTakeover" }))
     if (event.type === "error") throw event.error
   await ensureSession(session.id, env.project)
   await reload(session.id)

@@ -19,15 +19,15 @@ test("starting a subagent asks in ask mode, is allowed in auto mode and is denie
       const build = (await Agent.get("build"))!
       const session = await Session.create({})
       const child = await Session.create({ parentID: session.id })
-      const decide = (target: Session.Info, sessionMode: "execute" | "auto") =>
+      const decide = (target: Session.Info, permissionLevel: "autoApprove" | "fullTakeover") =>
         PermissionNext.evaluate(
           "subagent",
           "explore",
-          Loop.buildToolExecutionRuleset({ agent: build, session: target, sessionMode }),
+          Loop.buildToolExecutionRuleset({ agent: build, session: { ...target, permissionLevel }, permissionLevel }),
         ).action
-      expect(decide(session, "execute")).toBe("ask")
-      expect(decide(session, "auto")).toBe("allow")
-      expect(decide(child, "auto")).toBe("allow")
+      expect(decide(session, "autoApprove")).toBe("ask")
+      expect(decide(session, "fullTakeover")).toBe("allow")
+      expect(decide(child, "fullTakeover")).toBe("deny")
     },
   })
 })
@@ -241,7 +241,7 @@ test("SubAgentTool routes omitted mode, fork, and task_id without changing their
         messageID: assistant.id,
         callID: "call_subagent_route",
         agent: "build",
-        kind: "execute" as const,
+        kind: "autoApprove" as const,
         abort: new AbortController().signal,
         extra: { bypassAgentCheck: true },
         messages: [],

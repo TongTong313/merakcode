@@ -6,10 +6,10 @@ import { PermissionPolicy } from "../../src/agent/permission/policy"
 import { Session } from "../../src/agent/session"
 import { Instance } from "../../src/infra/project/instance"
 import { Bus } from "../../src/infra/bus"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { decideExternal } from "../../src/agent/external/runtime"
 
-test("a mode change observed while approval is pending wins across reply microtask interleavings", async () => {
+test("an explicit deny observed while approval is pending wins across reply microtask interleavings", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -17,6 +17,7 @@ test("a mode change observed while approval is pending wins across reply microta
       let checked = 0
       for (let turns = 0; turns < 80; turns++) {
         const root = await Session.create({})
+        await selectPermissionLevel({ sessionID: root.id, permissionLevel: "autoApprove" })
         await Session.update(root.id, (draft) => {
           draft.permission = [{ permission: "bash", pattern: "*", action: "allow" }]
         })
@@ -26,7 +27,7 @@ test("a mode change observed while approval is pending wins across reply microta
         })
         let pendingAtSwitch: Promise<PermissionNext.Request[]> | undefined
         const offSession = Bus.subscribe(Session.Event.Updated, (e) => {
-          if (e.properties.info.id === root.id && e.properties.info.sessionMode === "plan")
+          if (e.properties.info.id === root.id && e.properties.info.permissionLevel === "ask")
             pendingAtSwitch = PermissionNext.list()
         })
         const running = decideExternal(
@@ -36,7 +37,10 @@ test("a mode change observed while approval is pending wins across reply microta
         try {
           const reply = PermissionNext.reply({ requestID: await asked.promise, reply: "once" })
           for (let i = 0; i < turns; i++) await Promise.resolve()
-          const change = Session.setMode({ sessionID: root.id, sessionMode: "plan" })
+          await Session.update(root.id, (draft) => {
+            draft.permission = [{ permission: "sensitive_read", pattern: "*", action: "deny" }]
+          })
+          const change = selectPermissionLevel({ sessionID: root.id, permissionLevel: "ask" })
           await Promise.all([reply, change])
           const verdict = await running
           if ((await pendingAtSwitch)?.some((request) => request.sessionID === root.id)) {
@@ -55,7 +59,7 @@ test("a mode change observed while approval is pending wins across reply microta
 }, 30_000)
 
 test.each([false, true])(
-  "mixed external approvals are denied after switching the root to plan (child %s)",
+  "an explicit deny in a mixed external approval applies after switching the root to ask (child %s)",
   async (child) => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
@@ -77,7 +81,10 @@ test.each([false, true])(
         )
         try {
           const id = await asked.promise
-          await Session.setMode({ sessionID: root.id, sessionMode: "plan" })
+          await Session.update(root.id, (draft) => {
+            draft.permission = [{ permission: "sensitive_read", pattern: "*", action: "deny" }]
+          })
+          await selectPermissionLevel({ sessionID: root.id, permissionLevel: "ask" })
           await PermissionNext.reply({ requestID: id, reply: "once" })
           expect((await running).allow).toBe(false)
           expect(await PermissionNext.list()).toEqual([])
@@ -90,38 +97,28 @@ test.each([false, true])(
   },
 )
 
-test("switching to plan while an always grant is being saved cannot release the external command", async () => {
+test("unisolated external approvals cannot save a conversation grant", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const root = await Session.create({})
-      await Session.update(root.id, (draft) => {
-        draft.permission = [{ permission: "bash", pattern: "*", action: "allow" }]
-      })
       const asked = Promise.withResolvers<string>()
-      const offAsked = Bus.subscribe(PermissionNext.Event.Asked, (e) => asked.resolve(e.properties.id))
-      let switched: Promise<unknown> | undefined
-      const offSession = Bus.subscribe(Session.Event.Updated, (e) => {
-        if (
-          e.properties.info.id !== root.id ||
-          !e.properties.info.permission?.some((rule) => rule.permission === "sensitive_read" && rule.action === "allow")
-        )
-          return
-        if (!switched) switched = Session.setMode({ sessionID: root.id, sessionMode: "plan" })
-      })
+      const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => asked.resolve(event.properties.id))
       const running = decideExternal(
-        { sessionID: root.id, executionID: "grant-save-regression", cwd: tmp.path },
+        { sessionID: root.id, executionID: "grant-save", cwd: tmp.path },
         { kind: "command", command: "npm test .env" },
       )
       try {
-        await PermissionNext.reply({ requestID: await asked.promise, reply: "always" })
-        await switched
+        const requestID = await asked.promise
+        await expect(PermissionNext.reply({ requestID, reply: "session" })).rejects.toBeInstanceOf(
+          PermissionNext.GrantUnavailableError,
+        )
+        expect(await PermissionNext.grants(root.id)).toEqual([])
+        await PermissionNext.reply({ requestID, reply: "reject" })
         expect((await running).allow).toBe(false)
-        expect((await Session.get(root.id)).sessionMode).toBe("plan")
       } finally {
-        offAsked()
-        offSession()
+        unsubscribe()
         await PermissionNext.abortPending(root.id)
       }
     },
@@ -129,10 +126,10 @@ test("switching to plan while an always grant is being saved cannot release the 
 })
 
 test.each([
-  { initial: "auto", next: "execute", expected: "reject", cancel: false },
-  { initial: "auto", next: "plan", expected: "reject", cancel: false },
-  { initial: "execute", next: "auto", expected: "allow", cancel: false },
-  { initial: "execute", next: "execute", expected: "reject", cancel: true },
+  { initial: "fullTakeover", next: "autoApprove", expected: "reject", cancel: false },
+  { initial: "fullTakeover", next: "ask", expected: "reject", cancel: false },
+  { initial: "autoApprove", next: "fullTakeover", expected: "allow", cancel: false },
+  { initial: "autoApprove", next: "autoApprove", expected: "reject", cancel: true },
 ] as const)(
   "admission $initial to $next respects cancellation=$cancel",
   async ({ initial, next, expected, cancel }) => {
@@ -142,7 +139,7 @@ test.each([
       fn: async () => {
         const root = await Session.create({})
         const child = await Session.create({ parentID: root.id })
-        await Session.setMode({ sessionID: root.id, sessionMode: initial })
+        await selectPermissionLevel({ sessionID: root.id, permissionLevel: initial })
         const entered = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
         const stop = new AbortController()
@@ -165,7 +162,7 @@ test.each([
           async () => {
             const session = await Session.get(root.id)
             const rules = PermissionPolicy.ruleset(
-              session.sessionMode ?? "execute",
+              session.permissionLevel ?? "autoApprove",
               await PermissionNext.grants(root.id),
             )
             if (first) {
@@ -186,10 +183,10 @@ test.each([
         try {
           await entered.promise
           if (cancel) stop.abort()
-          await Session.setMode({ sessionID: root.id, sessionMode: next })
+          await selectPermissionLevel({ sessionID: root.id, permissionLevel: next })
           release.resolve()
           expect(await running).toBe(expected)
-          expect(popups).toBe(!cancel && next === "execute" ? 1 : 0)
+          expect(popups).toBe(!cancel && next !== "fullTakeover" ? 1 : 0)
           expect(
             await fs.stat(target).then(
               () => true,

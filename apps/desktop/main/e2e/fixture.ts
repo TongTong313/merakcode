@@ -298,7 +298,7 @@ export const test = base.extend<{
     }
     const modeButton = () =>
       page
-        .getByRole("button", { name: /^(配置会话模式|Configure session mode)/ })
+        .getByRole("button", { name: /^(权限级别|Permission level)/ })
         .filter({ visible: true })
         .first()
     const approval = () =>

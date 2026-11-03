@@ -36,7 +36,7 @@ test("recovery from another worktree protects the session's actual checkout", as
   let switching: ReturnType<typeof merak.client.vcs.switchBranch> | undefined
   try {
     const session = await merak.session()
-    for await (const event of session.run("Edit the tracked file", { mode: "auto" })) void event
+    for await (const event of session.run("Edit the tracked file", { permissionLevel: "fullTakeover" })) void event
     const messages = (await merak.client.session.messages({ sessionID: session.id }, { throwOnError: true })).data
     const user = messages.find((message) => message.info.role === "user")!
     git("commit", "--quiet", "-am", "agent edit")

@@ -423,7 +423,7 @@ test("discovers model choices without claiming account access", async () => {
   expect(catalog.models[0].verified).toBeUndefined()
 })
 
-test("verifies the saved Claude model through a text-only adapter run", async () => {
+test("refuses verification when the native adapter cannot report all actual operations", async () => {
   await using project = await tmpdir()
   const command = await shim(project.path, "verify-claude", "claude.ts")
   await Filesystem.write(
@@ -454,10 +454,10 @@ test("verifies the saved Claude model through a text-only adapter run", async ()
     })
     expect(response.status, await response.clone().text()).toBe(200)
     expect(await response.json()).toMatchObject({
-      status: "passed",
+      status: "failed",
       requestedModel: { id: "fixture-explicit" },
-      actualModel: { id: "fixture-explicit" },
-      streamingObserved: true,
+      error: { code: "MRK-4009", message: expect.stringMatching(/全部实际操作|every actual operation/) },
+      streamingObserved: false,
     })
   } finally {
     if (previous === undefined) delete process.env.CLAUDE_FIXTURE_STREAM
@@ -466,9 +466,12 @@ test("verifies the saved Claude model through a text-only adapter run", async ()
 })
 
 test.each([
-  ["zh-CN", "产品未返回回复"],
-  ["en-US", "The product returned no reply"],
-] as const)("localizes an empty verification reply in %s", async (locale, message) => {
+  ["zh-CN", "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择完全接管。"],
+  [
+    "en-US",
+    "This adapter cannot intercept every actual operation and cannot support the selected permission level. Upgrade it or explicitly select full takeover.",
+  ],
+] as const)("localizes incomplete operation control before native verification in %s", async (locale, message) => {
   await using project = await tmpdir({ config: { locale } })
   const command = await shim(project.path, "empty-verify-claude", "claude.ts")
   await Filesystem.write(

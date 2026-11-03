@@ -105,6 +105,13 @@ const row = (host: HTMLElement, title: string) =>
     item.querySelector(".label")?.textContent?.startsWith(title),
   )!
 
+test("an undeclared isolation owner remains explicitly unknown", () => {
+  const host = mount(() => (
+    <ProductSettings products={[theirs]} onChange={async () => true} onRefresh={async () => {}} />
+  ))
+  expect(row(host, "Theirs").textContent).toContain("隔离归属：未知")
+})
+
 test.each([
   ["zh", "权限：由产品自己决定", "权限：由 MerakCode 审批", "不支持审批和提问"],
   ["en", "Permissions: decided by the product", "Permissions: approved in MerakCode", "cannot ask"],

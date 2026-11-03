@@ -9,6 +9,9 @@ import { Wildcard } from "../../infra/match/wildcard"
 import os from "os"
 import z from "zod"
 import { SessionStore } from "../session/store"
+import { PermissionLevel } from "./level"
+import { NamedError } from "@merakcode/util/error"
+import { Text } from "../prompt/text"
 
 /**
  * Permission center: evaluates rules (allow / ask / deny), suspends until the user replies, and records grants.
@@ -36,9 +39,6 @@ export namespace PermissionNext {
     "todowrite",
     "delegate",
   ])
-
-  /** These requests only offer allow once / allow for this session / reject, never "always allow" */
-  const SESSION_ONLY = new Set(["subagent", "workflow_run", "sandbox", "config_write"])
 
   function expand(pattern: string): string {
     if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)
@@ -146,6 +146,16 @@ export namespace PermissionNext {
   })
   export type Check = z.infer<typeof Check>
 
+  /** Ephemeral approval receipt, bound to one call and its execution conditions. */
+  export type Admission = {
+    root: string
+    permissionLevel: PermissionLevel.Value
+    permissionRevision: number
+    sandboxReady: boolean
+    approved: Check[]
+    rulesetOf?: () => Promise<Ruleset>
+  }
+
   export const Request = z
     .object({
       id: Identifier.schema("permission"),
@@ -157,6 +167,10 @@ export namespace PermissionNext {
       /** Items that need asking (command segments, file paths, domains, etc.) */
       patterns: z.string().array(),
       metadata: z.record(z.string(), z.any()),
+      sandboxReady: z.boolean().optional(),
+      permissionLevel: PermissionLevel.Schema.optional(),
+      permissionRevision: z.number().int().nonnegative().optional(),
+      decisionRevision: z.number().int().nonnegative().optional(),
       /** Grant scopes the user may choose */
       grants: Grant.array().optional(),
       /** Whether "always allow" is offered */
@@ -183,7 +197,7 @@ export namespace PermissionNext {
   export type Request = z.infer<typeof Request>
 
   /** once: allow this call; session: allow for this session; always: write to project config; reject: deny */
-  export const Reply = z.enum(["once", "session", "always", "reject"])
+  export const Reply = z.enum(["once", "session", "reject"])
   export type Reply = z.infer<typeof Reply>
 
   export const Event = {
@@ -204,14 +218,12 @@ export namespace PermissionNext {
     checks: Check[]
     asked: Check[]
     replying?: boolean
-    resolve: () => void
+    resolve: (manual?: boolean) => void
     reject: (e: any) => void
   }
 
   const state = Instance.state(() => ({
     pending: {} as Record<string, Pending>,
-    /** Rules "always allowed" in this process; also written to config, kept here so they apply before a reload */
-    always: [] as Ruleset,
   }))
 
   const Ask = Request.partial({ id: true, patterns: true })
@@ -225,12 +237,12 @@ export namespace PermissionNext {
    */
   async function sessionRules(root: string): Promise<Ruleset> {
     const { Session } = await import("../session/index")
-    return (await Session.get(root).catch(() => undefined))?.permission ?? []
+    return (await Session.get(root).catch(() => undefined))?.permissionGrants ?? []
   }
 
   /** Whether a grant covers this check: rules are the new grants; "always allow" rules count before a config reload */
   function granted(rules: Ruleset, check: Check) {
-    return evaluate(check.permission, check.pattern, rules, state().always).action === "allow"
+    return evaluate(check.permission, check.pattern, rules).action === "allow"
   }
 
   async function request(input: z.infer<typeof Ask>) {
@@ -240,17 +252,28 @@ export namespace PermissionNext {
     const checks =
       given ?? (request.patterns ?? []).map((pattern) => ({ permission: request.permission, pattern, grants: [] }))
     const asked: Check[] = []
+    const approved: Check[] = []
     for (const check of checks) {
       const rule = evaluate(check.permission, check.pattern, ruleset)
       log.info("evaluated", { permission: check.permission, action: rule.action })
       if (rule.action === "deny")
         throw new DeniedError(ruleset.filter((r) => Wildcard.match(check.permission, r.permission)))
-      if (rule.action === "ask" && !granted([], check)) asked.push(check)
+      if (rule.action !== "ask") continue
+      if (request.sandboxReady !== false && granted(SessionStore.find(root)?.permissionGrants ?? [], check))
+        approved.push(check)
+      else asked.push(check)
     }
-    if (asked.length === 0) return
+    const receipt = (info: Pick<Request, "sandboxReady" | "permissionLevel">, manual = false): Admission => ({
+      root,
+      permissionLevel: info.permissionLevel ?? PermissionLevel.DEFAULT,
+      permissionRevision: SessionStore.find(root)?.permissionRevision ?? 0,
+      sandboxReady: info.sandboxReady === true,
+      approved: manual ? [...approved, ...asked] : approved,
+    })
+    if (asked.length === 0) return receipt(request)
 
     const id = input.id ?? Identifier.ascending("permission")
-    const grants = asked
+    const grants = (request.sandboxReady === false ? [] : asked)
       .flatMap((check) => check.grants)
       .filter(
         (grant, index, all) =>
@@ -262,18 +285,27 @@ export namespace PermissionNext {
       root,
       patterns: asked.map((check) => check.pattern),
       grants,
-      always: asked.every((check) => !SESSION_ONLY.has(check.permission)),
+      always: false,
+      permissionRevision: SessionStore.find(root)?.permissionRevision ?? 0,
+      decisionRevision: 0,
     }
     /**
      * Register as pending before asking plugins: `reply` and `abortPending` both look up the pending table. A reply
      * can arrive while the hook runs (tests reply right after ask; cancelling calls abortPending); if registration came
      * later, that reply would be lost and ask would hang forever.
      */
-    const settled = Promise.withResolvers<void>()
+    const settled = Promise.withResolvers<Admission>()
     // The reply can arrive before the caller holds this promise (rejected while the hook runs). Attach an observer so
     // the runtime does not report an unhandled rejection; the caller still gets the real result from the return below.
     settled.promise.catch(() => {})
-    s.pending[id] = { info, root, checks, asked, resolve: settled.resolve, reject: settled.reject }
+    s.pending[id] = {
+      info,
+      root,
+      checks,
+      asked,
+      resolve: (manual) => settled.resolve(receipt(info, manual)),
+      reject: settled.reject,
+    }
 
     /**
      * Plugin hook `permission.ask` (same name and shape as opencode 1.16.2) lets plugins change the decision before
@@ -288,11 +320,6 @@ export namespace PermissionNext {
     // Settled by reply/abort while the hook ran: pending was already removed, so return that result
     if (!s.pending[id]) return settled.promise
 
-    if (hook.status === "allow") {
-      delete s.pending[id]
-      log.info("permission.ask hook allowed", { permission: request.permission })
-      return
-    }
     if (hook.status === "deny") {
       delete s.pending[id]
       log.info("permission.ask hook denied", { permission: request.permission })
@@ -302,7 +329,35 @@ export namespace PermissionNext {
     return settled.promise
   }
 
-  export const ask = fn(Ask, (input) => request(input))
+  export const ask = fn(Ask, async ({ ruleset, ...input }) => {
+    await askCurrent(input, async () => ruleset)
+  })
+
+  async function executionPolicy(
+    input: Pick<AskInput, "sessionID" | "root" | "executionID" | "permission" | "metadata" | "tool">,
+    ruleset: Ruleset,
+    checks: Check[],
+  ) {
+    const { TaskScope } = await import("./scope")
+    await TaskScope.assert(input.sessionID, checks, input.tool?.messageID)
+    const { PermissionExecution } = await import("./execution")
+    const permissionLevel = SessionStore.find(input.root ?? input.sessionID)?.permissionLevel ?? PermissionLevel.DEFAULT
+    const sandboxReady =
+      !input.executionID &&
+      !input.metadata.pluginTool &&
+      input.permission !== "mcp" &&
+      input.permission !== "lsp" &&
+      !input.metadata.unsandboxed &&
+      (await PermissionExecution.ready(checks))
+    return {
+      permissionLevel,
+      sandboxReady,
+      ruleset:
+        permissionLevel === "fullTakeover" || sandboxReady
+          ? ruleset
+          : ruleset.map((rule) => (rule.action === "allow" ? { ...rule, action: "ask" as const } : rule)),
+    }
+  }
 
   /** Resolve policy and admit the request in the same mode revision, before any asynchronous plugin hook. */
   export async function askCurrent(
@@ -314,12 +369,45 @@ export namespace PermissionNext {
     for (;;) {
       abort?.throwIfAborted()
       const before = SessionStore.find(root)
-      const ruleset = await rulesetOf()
+      const policy = await executionPolicy(
+        input,
+        await rulesetOf(),
+        input.checks ??
+          (input.patterns ?? []).map((pattern) => ({ permission: input.permission, pattern, grants: [] })),
+      )
       abort?.throwIfAborted()
       const current = SessionStore.find(root)
-      if (before?.modeRevision !== current?.modeRevision || before?.sessionMode !== current?.sessionMode) continue
-      return ask({ ...input, ruleset })
+      if (
+        before?.permissionRevision !== current?.permissionRevision ||
+        before?.permissionLevel !== current?.permissionLevel
+      )
+        continue
+      const admission = await request(Ask.parse({ ...input, ...policy }))
+      return { ...admission, rulesetOf }
     }
+  }
+
+  /** Recheck the receipt immediately before the authorized side effect. */
+  export async function isCurrent(
+    admission: Admission,
+    input: Omit<AskInput, "ruleset" | "sessionID"> & { sessionID?: string },
+  ) {
+    const rules = (await admission.rulesetOf?.()) ?? []
+    const checks =
+      input.checks ?? (input.patterns ?? []).map((pattern) => ({ permission: input.permission, pattern, grants: [] }))
+    if (checks.some((check) => evaluate(check.permission, check.pattern, rules).action === "deny"))
+      throw new DeniedError(rules)
+    const policy = await executionPolicy(
+      { ...input, sessionID: input.sessionID ?? admission.root, root: admission.root },
+      rules,
+      checks,
+    )
+    const current = SessionStore.find(admission.root)
+    return (
+      admission.sandboxReady === policy.sandboxReady &&
+      admission.permissionRevision === (current?.permissionRevision ?? 0) &&
+      admission.permissionLevel === (current?.permissionLevel ?? PermissionLevel.DEFAULT)
+    )
   }
 
   /**
@@ -330,30 +418,24 @@ export namespace PermissionNext {
     return (check.grants.find((grant) => grant.scope === scope) ?? check.grants[0])?.pattern ?? check.pattern
   }
 
-  /**
-   * Writes "always allow" rules to the project config's permission section. A key that holds a plain string is first
-   * expanded to { "*": value }.
-   */
-  async function persist(rules: Ruleset) {
-    const saved = (await Config.loadProjectMerakCodeFile()).permission ?? {}
-    const patch: Record<string, Record<string, Config.PermissionAction>> = {}
-    for (const rule of rules) {
-      const existing = saved[rule.permission]
-      patch[rule.permission] ??= typeof existing === "string" ? { "*": existing } : {}
-      patch[rule.permission]![rule.pattern] = "allow"
-    }
-    await Config.updateProjectMerakCode({ permission: patch }, { skipDispose: true })
-  }
-
   export const ReplyInput = z.object({
     requestID: Identifier.schema("permission"),
     reply: Reply,
+    decisionRevision: z.number().int().nonnegative().optional(),
     /** Grant scope chosen for session / always */
     scope: Grant.shape.scope.optional(),
     /** Reason given with a rejection, passed to the agent verbatim */
     message: z.string().optional(),
   })
   export type ReplyInput = z.infer<typeof ReplyInput>
+  export const GrantUnavailableError = NamedError.create(
+    "PermissionGrantUnavailableError",
+    z.object({ message: z.string() }),
+  )
+  export const DecisionConflictError = NamedError.create(
+    "PermissionDecisionConflictError",
+    z.object({ message: z.string() }),
+  )
 
   async function recheckCurrent(root: string) {
     const { PermissionFlush } = await import("./flush")
@@ -361,7 +443,11 @@ export namespace PermissionNext {
       const before = SessionStore.find(root)
       await PermissionFlush.run()
       const current = SessionStore.find(root)
-      if (before?.modeRevision === current?.modeRevision && before?.sessionMode === current?.sessionMode) return current
+      if (
+        before?.permissionRevision === current?.permissionRevision &&
+        before?.permissionLevel === current?.permissionLevel
+      )
+        return current
     }
   }
 
@@ -373,7 +459,11 @@ export namespace PermissionNext {
       for (;;) {
         const confirmed = await recheckCurrent(pending.root)
         const current = SessionStore.find(pending.root)
-        if (confirmed?.modeRevision === current?.modeRevision && confirmed?.sessionMode === current?.sessionMode) break
+        if (
+          confirmed?.permissionRevision === current?.permissionRevision &&
+          confirmed?.permissionLevel === current?.permissionLevel
+        )
+          break
       }
     }
     const existing = s.pending[input.requestID]
@@ -397,12 +487,31 @@ export namespace PermissionNext {
       existing.reject(input.message ? new CorrectedError(input.message) : new RejectedError())
       return
     }
+    if ((input.decisionRevision ?? 0) !== (existing.info.decisionRevision ?? 0))
+      throw new DecisionConflictError({
+        message: await Text.pick({
+          zh: "审批条件已改变，请核对当前请求后重新选择。",
+          en: "Approval conditions changed. Review the current request before deciding again.",
+        }),
+      })
     if (input.reply === "once") {
       finish()
-      existing.resolve()
+      existing.resolve(true)
       return
     }
 
+    if (
+      existing.info.sandboxReady === false ||
+      !existing.asked.every((check) =>
+        check.grants.some((grant) => input.scope === undefined || grant.scope === input.scope),
+      )
+    )
+      throw new GrantUnavailableError({
+        message: await Text.pick({
+          zh: "当前操作未隔离，只能允许这一次或拒绝。",
+          en: "This operation is not isolated. Allow it once or reject it.",
+        }),
+      })
     existing.replying = true
     const rules = existing.asked.map((check) => ({
       permission: check.permission,
@@ -410,28 +519,28 @@ export namespace PermissionNext {
       action: "allow" as const,
     }))
     await grant(existing.root, rules)
-    if (input.reply === "always" && existing.info.always) {
-      s.always = mergeUnique(s.always, rules)
-      await persist(rules).catch((error) => log.error("failed to persist always-allow rules", { error }))
-    }
     log.info("granted", { root: existing.root, reply: input.reply, count: rules.length })
     // Keep the operation pending throughout grant persistence, so a concurrent tightening can still reject it.
     for (;;) {
       const confirmed = await recheckCurrent(existing.root)
       const current = SessionStore.find(existing.root)
-      if (confirmed?.modeRevision === current?.modeRevision && confirmed?.sessionMode === current?.sessionMode) break
+      if (
+        confirmed?.permissionRevision === current?.permissionRevision &&
+        confirmed?.permissionLevel === current?.permissionLevel
+      )
+        break
     }
     if (!s.pending[input.requestID]) return
     finish()
-    existing.resolve()
+    existing.resolve(true)
 
     // Also release pending requests in the same root session that this grant fully covers
     for (const other of Object.values(s.pending)) {
-      if (other.root !== existing.root) continue
+      if (other.root !== existing.root || other.info.sandboxReady === false) continue
       if (!other.asked.every((check) => granted(rules, check))) continue
       delete s.pending[other.info.id]
       Bus.publish(Event.Replied, { sessionID: other.info.sessionID, requestID: other.info.id, reply: input.reply })
-      other.resolve()
+      other.resolve(true)
     }
   })
 
@@ -444,13 +553,38 @@ export namespace PermissionNext {
     const s = state()
     for (const item of Object.values(s.pending)) {
       const before = SessionStore.find(item.root)
-      const ruleset = await rulesetOf(item.info, item.checks).catch(() => undefined)
+      const proposed = await rulesetOf(item.info, item.checks).catch(() => undefined)
+      const policy = proposed
+        ? await executionPolicy(item.info, proposed, item.checks).catch((error) => {
+            if (error?.name !== "TaskScopeDeniedError") throw error
+            if (!s.pending[item.info.id]) return
+            delete s.pending[item.info.id]
+            Bus.publish(Event.Replied, { sessionID: item.info.sessionID, requestID: item.info.id, reply: "reject" })
+            item.reject(error)
+          })
+        : undefined
+      const ruleset = policy?.ruleset
       const current = SessionStore.find(item.root)
       // Do not apply an old decision after a newer mode switch has already rechecked this request.
-      if (before?.modeRevision !== current?.modeRevision || before?.sessionMode !== current?.sessionMode) continue
-      if (!ruleset) continue
+      if (
+        before?.permissionRevision !== current?.permissionRevision ||
+        before?.permissionLevel !== current?.permissionLevel
+      )
+        continue
+      if (!ruleset || !policy || !s.pending[item.info.id]) continue
+      const changed =
+        item.info.sandboxReady !== policy.sandboxReady ||
+        item.info.permissionLevel !== policy.permissionLevel ||
+        (item.info.permissionRevision ?? 0) !== (current?.permissionRevision ?? 0)
+      if (changed) item.info.decisionRevision = (item.info.decisionRevision ?? 0) + 1
+      item.info.permissionRevision = current?.permissionRevision ?? 0
+      item.info.sandboxReady = policy.sandboxReady
+      item.info.permissionLevel = policy.permissionLevel
+      item.info.grants = policy.sandboxReady ? item.asked.flatMap((check) => check.grants) : []
       const allowed = item.checks.every(
-        (check) => evaluate(check.permission, check.pattern, ruleset).action === "allow" || granted([], check),
+        (check) =>
+          evaluate(check.permission, check.pattern, ruleset).action === "allow" ||
+          (item.info.sandboxReady !== false && granted(SessionStore.find(item.root)?.permissionGrants ?? [], check)),
       )
       if (
         item.checks.some((check) => evaluate(check.permission, check.pattern, ruleset).action === "deny") &&
@@ -461,7 +595,11 @@ export namespace PermissionNext {
         item.reject(new DeniedError(ruleset))
         continue
       }
-      if (!allowed || !s.pending[item.info.id]) continue
+      if (!s.pending[item.info.id]) continue
+      if (!allowed) {
+        if (changed) Bus.publish(Event.Asked, item.info)
+        continue
+      }
       delete s.pending[item.info.id]
       log.info("released by recheck", { requestID: item.info.id })
       Bus.publish(Event.Replied, { sessionID: item.info.sessionID, requestID: item.info.id, reply: "once" })
@@ -472,9 +610,13 @@ export namespace PermissionNext {
   /** Records session grants in the root session's permission field without touching its updated time */
   async function grant(root: string, rules: Ruleset) {
     const { Session } = await import("../session/index")
-    await Session.update(root, (draft) => void (draft.permission = mergeUnique(draft.permission ?? [], rules)), {
-      touch: false,
-    }).catch((error) => log.warn("failed to save session grant", { root, error }))
+    await Session.update(
+      root,
+      (draft) => void (draft.permissionGrants = mergeUnique(draft.permissionGrants ?? [], rules)),
+      {
+        touch: false,
+      },
+    ).catch((error) => log.warn("failed to save session grant", { root, error }))
   }
 
   /** Session grants of the root session, listed and revoked from settings and the `/permissions` panel */
@@ -487,7 +629,7 @@ export namespace PermissionNext {
     await Session.update(
       root,
       (draft) =>
-        void (draft.permission = (draft.permission ?? []).filter(
+        void (draft.permissionGrants = (draft.permissionGrants ?? []).filter(
           (item) => item.action !== "allow" || item.permission !== rule.permission || item.pattern !== rule.pattern,
         )),
       { touch: false },

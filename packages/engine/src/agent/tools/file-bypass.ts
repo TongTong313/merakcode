@@ -1,7 +1,7 @@
 import path from "path"
 import { MemoryAccess } from "../memory/access"
 import { SessionMemoryPath } from "../memory/session-memory/path"
-import { isPlanDocBypass, isUnderPlansDataDir, type PlanDocAuthor } from "./plan-doc"
+import type { PlanDocAuthor } from "./plan-doc"
 
 /**
  * The product's own files (in the data directory, not the workspace) need no approval:
@@ -10,9 +10,8 @@ import { isPlanDocBypass, isUnderPlansDataDir, type PlanDocAuthor } from "./plan
  * - session notes: only the session-memory agent may read and write the notes of its own session
  */
 export async function isProjectFileBypass(input: PlanDocAuthor & { filePath: string; access: "read" | "write" }) {
-  if (await isPlanDocBypass(input, input.filePath)) return true
   if (await isSessionNotes(input.agent, input.filePath, input.sessionID)) return true
-  if (input.access === "read") return MemoryAccess.isReadablePath(input.filePath) || isUnderPlansDataDir(input.filePath)
+  if (input.access === "read") return MemoryAccess.isReadablePath(input.filePath)
   return MemoryAccess.isWritablePath(input.filePath)
 }
 

@@ -162,7 +162,7 @@ test("cancelling after user persistence settles the user before ACK and ignores 
   })
 }, 30000)
 
-test("command writes the mode it carries back to the session", async () => {
+test("command input cannot overwrite the selected root permission level", async () => {
   modelFixture()
   Plugin.trigger = (async (name, _input, output) => {
     if (name === "experimental.chat.guard") Object.assign(output as object, { refuse: true, message: "Done" })
@@ -174,7 +174,7 @@ test("command writes the mode it carries back to the session", async () => {
     fn: async () => {
       const session = await Session.create({ title: "Command mode" })
       await Session.update(session.id, (draft) => {
-        draft.sessionMode = "auto"
+        draft.permissionLevel = "fullTakeover"
       })
       await Loop.command({
         sessionID: session.id,
@@ -182,9 +182,9 @@ test("command writes the mode it carries back to the session", async () => {
         arguments: "",
         agent: "build",
         model: "test/test-model",
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
       })
-      expect((await Session.get(session.id)).sessionMode).toBe("execute")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
       await SessionOperations.remove(session.id)
     },
   })

@@ -65,7 +65,7 @@ test("S04.06 P/MM registered command template failure remains a command error an
         .flatMap((item: { parts: { type: string }[] }) => item.parts)
         .filter((part: { type: string }) => part.type === "tool"),
     ).toEqual([])
-    const follow = await drive(kit, session.id, "S04_FOLLOW read src/a.txt")
+    const follow = await drive(kit, session.id, "S04_FOLLOW read src/a.txt", ["read"])
     await kit.assertResult(session.id, follow.userID, "S04_RECOVERED")
     expect(await Filesystem.readText(join(kit.project, "src/keep.txt"))).toBe("KEEP_UNCHANGED")
     const name = body && typeof body === "object" && "name" in body ? body.name : undefined

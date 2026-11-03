@@ -67,7 +67,7 @@ export async function commands() {
 
 export async function commandHistory(kit: Awaited<ReturnType<typeof commands>>, sessionID: string) {
   for (const input of ["S04_PREP_READ 读取 src/a.txt", "S04_PREP_WRITE 把标记写入 history.txt"]) {
-    const result = await drive(kit, sessionID, input, ["write"])
+    const result = await drive(kit, sessionID, input, ["write", "edit", "read"])
     await kit.assertResult(sessionID, result.userID, "S04_PREP_DONE")
   }
   return kit.api(`/session/${sessionID}/message`)

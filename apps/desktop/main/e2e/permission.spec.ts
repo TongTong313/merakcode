@@ -13,15 +13,22 @@ const node =
 test.describe("command approval", () => {
   test.use({ script: { reply: node("console.log(40+2)") } })
 
-  test("execute mode asks before running a command; allowing it for the conversation stops asking", async ({ kit }) => {
+  test("unisolated commands ask again after each once approval", async ({ kit }) => {
     await kit.send("跑一下 #1")
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
     await expect(card).toContainText("node")
-    await card.getByText(/本对话允许 node 开头的命令/).click()
+    await expect(card).toContainText(/当前操作未隔离|not isolated/i)
+    await expect(card.getByText(/本对话允许|Allow.*conversation/)).toHaveCount(0)
+    await card.getByRole("button", { name: /^允许这一次$|^Allow once$/ }).click()
     await expect(kit.text(/RAN 1 42/)).toBeVisible({ timeout: 60_000 })
 
     await kit.send("再跑一下 #2")
+    await expect(kit.approval()).toBeVisible({ timeout: 60000 })
+    await kit
+      .approval()
+      .getByRole("button", { name: /^允许这一次$|^Allow once$/ })
+      .click()
     await expect(kit.text(/RAN 2 42/)).toBeVisible({ timeout: 60_000 })
     await expect(kit.approval()).toHaveCount(0)
   })
@@ -36,17 +43,17 @@ test.describe("command approval", () => {
   })
 })
 
-test.describe("auto mode", () => {
+test.describe("full takeover", () => {
   test.use({ script: { reply: node("console.log(7*6)") } })
 
-  test("ordinary commands run without approval in auto mode", async ({ kit }) => {
-    await kit.mode(/自动|Auto/)
+  test("full takeover runs a command without safety approval", async ({ kit }) => {
+    await kit.mode(/完全接管|Full takeover/)
     await kit.send("跑一下 #4")
     await expect(kit.text(/RAN 4 42/)).toBeVisible({ timeout: 60_000 })
   })
 })
 
-test.describe("plan mode", () => {
+test.describe("draft task scope", () => {
   test.use({
     script: {
       reply: ({ toolResults }) =>
@@ -56,9 +63,9 @@ test.describe("plan mode", () => {
     },
   })
 
-  test("file writes are denied in plan mode and no file is created", async ({ kit }) => {
-    await kit.mode(/计划|Plan/)
-    await kit.send("写一个文件")
+  test("full takeover preserves an explicit draft task scope", async ({ kit }) => {
+    await kit.mode(/完全接管|Full takeover/)
+    await kit.send("只出稿，不要修改项目。")
     await expect(kit.text(/READONLY/)).toBeVisible({ timeout: 60_000 })
     await expect(access(path.join(kit.project, "blocked.txt"))).rejects.toThrow()
     expect(await readFile(path.join(kit.project, "notes.txt"), "utf8")).toBe("hello from e2e\n")

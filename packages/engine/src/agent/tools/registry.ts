@@ -31,7 +31,7 @@ import { Flag } from "../../infra/flag/flag"
 import { Log } from "@merakcode/log/logger"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
-import { PlanExitTool, PlanEnterTool, PlanWriteTool, PlanEditTool } from "./plan"
+import { PlanGenerateTool, PlanEditTool, PlanReadChunkTool, PlanSimplifyTool } from "./plan"
 import { BashBackgroundTool } from "./bash-background"
 import { MultiEditTool } from "./multi_edit"
 import { RemoteTool } from "./remote"
@@ -74,6 +74,10 @@ export namespace ToolRegistry {
     "subagent",
     "delegate",
     "write",
+    "plan_generate",
+    "plan_edit",
+    "plan_read_chunk",
+    "plan_simplify",
   ])
 
   export const state = Instance.state(async () => {
@@ -156,6 +160,7 @@ export namespace ToolRegistry {
   }
 
   export async function register(tool: Tool.Info) {
+    if (RESERVED.has(tool.id)) return
     const { custom } = await state()
     const idx = custom.findIndex((t) => t.id === tool.id)
     if (idx >= 0) {
@@ -223,7 +228,10 @@ export namespace ToolRegistry {
       ...installed("CronList"),
       ...installed("CronDelete"),
       ...(Flag.MERAKCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...(Flag.MERAKCODE_PLAN_MODE && interactive() ? [PlanExitTool, PlanEnterTool, PlanWriteTool, PlanEditTool] : []),
+      PlanGenerateTool,
+      PlanReadChunkTool,
+      PlanSimplifyTool,
+      PlanEditTool,
       ...installed("workflow_run"),
       BashBackgroundTool,
     ]

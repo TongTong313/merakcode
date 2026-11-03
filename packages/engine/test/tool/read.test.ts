@@ -15,7 +15,7 @@ const ctx = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "execute" as const,
+  kind: "autoApprove" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -24,7 +24,7 @@ const ctx = {
 }
 
 /** Evaluate each read permission check against the mode's ruleset: record asks, throw on denials */
-function recorder(mode: PermissionPolicy.Mode = "execute") {
+function recorder(mode: PermissionPolicy.Mode = "autoApprove") {
   const asked: string[] = []
   const testCtx = {
     ...ctx,
@@ -74,14 +74,14 @@ describe("tool.read inside and outside the workspace", () => {
       directory: tmp.path,
       fn: async () => {
         const read = await ReadTool.init()
-        const ask = recorder("execute")
+        const ask = recorder("autoApprove")
         expect((await read.execute({ filePath: path.join(outer.path, "notes.txt") }, ask.ctx)).output).toContain(
           "outside data",
         )
         expect((await read.execute({ filePath: path.join(outer.path, "external") }, ask.ctx)).output).toContain("a.txt")
         expect(ask.asked).toEqual(["external_read", "external_read"])
 
-        const auto = recorder("auto")
+        const auto = recorder("fullTakeover")
         await read.execute({ filePath: path.join(outer.path, "notes.txt") }, auto.ctx)
         expect(auto.asked).toEqual([])
       },
@@ -127,7 +127,7 @@ describe("tool.read sensitive files", () => {
     ["environment.ts", false],
   ]
 
-  describe.each(["execute", "auto"] as const)("mode=%s", (mode) => {
+  describe.each(["autoApprove", "fullTakeover"] as const)("mode=%s", (mode) => {
     test.each(cases)("%s asks=%s", async (filename, shouldAsk) => {
       await using tmp = await tmpdir({
         git: true,
@@ -139,7 +139,7 @@ describe("tool.read sensitive files", () => {
           const probe = recorder(mode)
           const read = await ReadTool.init()
           await read.execute({ filePath: path.join(tmp.path, filename) }, probe.ctx)
-          expect(probe.asked.includes("sensitive_read")).toBe(mode === "auto" ? false : shouldAsk)
+          expect(probe.asked.includes("sensitive_read")).toBe(mode === "fullTakeover" ? false : shouldAsk)
         },
       })
     })

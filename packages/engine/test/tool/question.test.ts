@@ -9,7 +9,7 @@ const ctx = {
   messageID: "test-message",
   callID: "test-call",
   agent: "test-agent",
-  kind: "execute" as const,
+  kind: "autoApprove" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],

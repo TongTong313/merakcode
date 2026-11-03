@@ -21,7 +21,6 @@ import {
   stop,
   version,
   type Host,
-  type Mode,
   type Permission,
   type Question,
   type Result,
@@ -32,7 +31,7 @@ import {
 const EDIT_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
 
 /** Arguments for one task; they are given again on resume, since Claude Code keeps none of them */
-function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[]; model?: ProductModel }) {
+function claudeArgs(input: { scope?: "draft"; resume?: string; extra?: string[]; model?: ProductModel }) {
   return [
     "-p",
     "--input-format",
@@ -46,7 +45,7 @@ function claudeArgs(input: { mode: Mode; resume?: string; extra?: string[]; mode
     // Everything Claude Code is unsure about goes to MerakCode, which applies the group's mode
     "--permission-mode",
     "manual",
-    ...(input.mode === "plan" ? ["--disallowedTools", ...EDIT_TOOLS] : []),
+    ...(input.scope === "draft" ? ["--disallowedTools", ...EDIT_TOOLS] : []),
     ...(input.resume ? ["--resume", input.resume] : []),
     ...(input.model ? ["--model", input.model.id] : []),
     ...(input.extra ?? []),
@@ -160,6 +159,15 @@ adapter({
       resume: true,
       permission: "merak",
       questions: true,
+      control: {
+        reportedOperations: [],
+        cancellation: "task",
+        liveMode: false,
+        isolation: "product",
+        limitations: [
+          "Only native approval callbacks are reported; complete operation coverage is unverified. 仅上报原生审批回调，完整操作覆盖尚未验证。",
+        ],
+      },
     },
     ...(await version(product.command || "claude")),
   }),

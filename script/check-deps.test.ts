@@ -4,6 +4,26 @@ import { violations } from "./check-deps"
 const host = 'const { EngineHost } = await import("@merakcode/engine/host")\n'
 
 describe("violations", () => {
+  test("permission policy helpers cannot import the execution loop", () => {
+    const found = violations([
+      { path: "packages/engine/src/agent/session/index.ts", text: 'import { flush } from "../permission/flush"' },
+      { path: "packages/engine/src/agent/permission/flush.ts", text: 'import { Loop } from "../loop/index"' },
+    ])
+    expect(found.map((entry) => entry.rule)).toEqual(["permission-does-not-import-loop"])
+  })
+  test("session records cannot load the loop through extensionless package imports", () => {
+    const found = violations([
+      {
+        path: "packages/engine/src/agent/session/index.ts",
+        text: 'import { Loop } from "@merakcode/engine/agent/loop"',
+      },
+      { path: "packages/engine/src/agent/session/plan.ts", text: 'await import("../loop")' },
+    ])
+    expect(found.map((entry) => entry.rule)).toEqual([
+      "session-records-do-not-import-loop",
+      "session-records-do-not-import-loop",
+    ])
+  })
   test("agent code cannot import application implementations through types or lazy loads", () => {
     const found = violations([
       {

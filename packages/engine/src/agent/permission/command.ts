@@ -149,6 +149,8 @@ export namespace CommandAnalysis {
    * list only drives the hint.
    */
   const NETWORK = [
+    "git ls-remote",
+    "npm view",
     "curl",
     "wget",
     "ssh",
@@ -401,10 +403,36 @@ export namespace CommandAnalysis {
     "number",
   ])
 
+  /** Resolve shell quoting without executing expansions or substitutions. */
+  function shellWord(token: string) {
+    let value = ""
+    let quote: string | undefined
+    let known = true
+    for (let index = 0; index < token.length; index++) {
+      const char = token[index]!
+      const next = token[index + 1]
+      if (
+        char === "\\" &&
+        quote !== "'" &&
+        next !== undefined &&
+        (quote !== '"' || ["$", "`", '"', "\\", "\n"].includes(next))
+      ) {
+        if (next !== "\n") value += next
+        index++
+        continue
+      }
+      if ((char === "'" || char === '"') && (!quote || quote === char)) {
+        quote = quote ? undefined : char
+        continue
+      }
+      if (quote !== "'" && (char === "$" || char === "`")) known = false
+      value += char
+    }
+    return { value, known: known && !quote }
+  }
+
   function unquote(token: string) {
-    if (token.length >= 2 && (token[0] === "'" || token[0] === '"') && token.at(-1) === token[0])
-      return token.slice(1, -1)
-    return token
+    return shellWord(token).value
   }
 
   /** Targets that make a recursive rm or chmod wipe the whole system or the home folder */
@@ -456,7 +484,8 @@ export namespace CommandAnalysis {
    * env -S, to be analyzed on its own.
    */
   function classify(tokens: string[], redirected: boolean) {
-    const words = tokens.map(unquote)
+    const parsed = tokens.map(shellWord)
+    const words = parsed.map((word) => word.value)
     const wrapped = unwrap(words)
     const rest = words.slice(wrapped.start)
     const sub = subcommand(rest)
@@ -472,6 +501,7 @@ export namespace CommandAnalysis {
     return {
       level: worst(
         own,
+        parsed.every((word) => word.known) ? "readonly" : "normal",
         wrapped.privileged ? "risky" : "readonly",
         script === undefined && !wrapped.writes ? "readonly" : "normal",
       ),
@@ -499,7 +529,7 @@ export namespace CommandAnalysis {
    * id_rsa, ...) wherever it is. Returns the absolute path, or undefined when the argument does not look like a path.
    */
   function pathOf(token: string, input: { cwd: string; home: string }) {
-    const value = unquote(token)
+    const value = /^[a-z]:\\/i.test(token) ? token : unquote(token)
     if (!value || value.startsWith("-") || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return
     const expanded = value === "~" ? input.home : value.startsWith("~/") ? path.join(input.home, value.slice(2)) : value
     const looksLikePath =

@@ -11,7 +11,7 @@ const ctx = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "execute" as const,
+  kind: "autoApprove" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],

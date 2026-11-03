@@ -16,7 +16,7 @@ for (const [id, kind] of [
     try {
       const session = await kit.api("/session", "POST", { title: id })
       const input = `${id} 读取实际标记并保存`
-      const result = await drive(kit, session.id, input, ["write"])
+      const result = await drive(kit, session.id, input, ["write", "edit", "read"])
       const current = await kit.assertResult(session.id, result.userID, "S19_DONE")
       expect(await Filesystem.readText(join(kit.project, "result.txt"))).toBe(kit.marker)
       expect(await Filesystem.readText(join(kit.project, "src/a.txt"))).toBe(kit.marker)

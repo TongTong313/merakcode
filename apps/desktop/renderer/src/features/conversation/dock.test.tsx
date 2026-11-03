@@ -1,9 +1,13 @@
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
-import { afterEach, beforeEach, expect, test } from "vitest"
+import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import type { PermissionRequest, QuestionRequest } from "@merakcode/sdk/client"
 import { setLocale } from "../../i18n"
 import { Approval, Question } from "./dock"
+vi.mock("undici", () => ({
+  Agent: class {},
+  fetch: async () => Response.json({ status: "unsupported", installable: true, reason: "Needs setup" }),
+}))
 
 let cleanup = () => {}
 
@@ -52,4 +56,35 @@ test("an approval and a question from a member say which member asks", () => {
 test("without a member the approval reads as before", () => {
   const host = mount(() => <Approval request={approval} more={0} directory="/p" />)
   expect(host.querySelector(".approval-from")).toBeNull()
+})
+
+test.each([
+  [false, true, "是否生成官方计划？", 0],
+  [true, true, "是否更新官方计划？", 3],
+  [true, false, "是否更新官方计划？", 3],
+] as const)("official plan approval shows update=%s and isolation=%s", (update, sandboxReady, title, revision) => {
+  const host = mount(() => (
+    <Approval
+      request={{
+        ...approval,
+        permission: "plan_generate",
+        patterns: ["/official.md"],
+        sandboxReady,
+        metadata: { planPath: "/official.md", update, expectedRevision: revision },
+      }}
+      more={0}
+      directory="/p"
+    />
+  ))
+  expect(host.querySelector(".what")?.textContent).toBe(title)
+  expect(host.querySelector(".command")?.textContent).toContain(`${revision} → ${revision + 1}`)
+  if (!sandboxReady) {
+    expect(host.textContent).toContain("当前操作未隔离")
+    expect(host.textContent).toContain("允许后将保存本次计划")
+    expect(
+      [...host.querySelectorAll(".approval-actions button")]
+        .filter((button) => button.querySelector("kbd"))
+        .map((button) => button.textContent),
+    ).toEqual([expect.stringContaining("允许这一次"), expect.stringContaining("拒绝")])
+  }
 })

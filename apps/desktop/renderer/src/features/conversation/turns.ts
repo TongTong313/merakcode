@@ -63,7 +63,7 @@ export function answerBlocks(parts: readonly Part[]): Block[] {
 export type Segment = { kind: "leader"; blocks: Block[] } | { kind: "seat"; part: ToolPart }
 
 /** Splits the leader's parts at each delegate call, so every member's reply reads as a message of its own */
-export function segments(parts: readonly Part[]): Segment[] {
+export function segments(parts: readonly Part[], anchorMessageID?: string): Segment[] {
   const result: Segment[] = []
   let pending: Part[] = []
   const flush = () => {
@@ -72,6 +72,7 @@ export function segments(parts: readonly Part[]): Segment[] {
     pending = []
   }
   for (const part of parts) {
+    if (anchorMessageID && pending.at(-1)?.messageID === anchorMessageID && part.messageID !== anchorMessageID) flush()
     if (part.type !== "tool" || part.tool !== "delegate") {
       pending.push(part)
       continue

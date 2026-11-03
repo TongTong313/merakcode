@@ -44,10 +44,15 @@ async function create(request: Request, productID: string) {
 }
 
 async function send(request: Request, sessionID: string, text: string) {
+  const info = await (await request(`/session/${sessionID}`)).json()
+  if (info.permissionLevel !== "fullTakeover")
+    await request(`/session/${sessionID}/permission-level`, {
+      permissionLevel: "fullTakeover",
+      expectedRevision: info.permissionRevision ?? 0,
+    })
   return (
     await request(`/session/${sessionID}/message`, {
       parts: [{ type: "text", text }],
-      sessionMode: "auto",
     })
   ).json()
 }

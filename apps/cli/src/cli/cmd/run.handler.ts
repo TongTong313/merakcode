@@ -44,8 +44,7 @@ type RunArgs = {
   port?: number
   variant?: string
   thinking?: boolean
-  auto?: boolean
-  mode?: "plan" | "execute" | "auto"
+  "permission-level"?: "ask" | "autoApprove" | "fullTakeover"
   "--"?: string[]
 }
 
@@ -341,10 +340,10 @@ export async function run(args: RunArgs) {
   }
 
   // Auto mode notice; skipped for JSON output to keep it machine-readable.
-  if (args.auto && args.format !== "json") {
+  if (args["permission-level"] === "fullTakeover" && args.format !== "json") {
     UI.println(
-      UI.Style.TEXT_WARNING_BOLD + I18n.t("cli.run.auto.title"),
-      UI.Style.TEXT_NORMAL + I18n.t("cli.run.auto.notice"),
+      UI.Style.TEXT_WARNING_BOLD + I18n.t("cli.run.fullTakeover.title"),
+      UI.Style.TEXT_NORMAL + I18n.t("cli.run.fullTakeover.notice"),
     )
   }
 
@@ -656,6 +655,18 @@ export async function run(args: RunArgs) {
       process.exit(1)
     }
 
+    if (args["permission-level"]) {
+      const current = await sdk.session.get({ sessionID }, { throwOnError: true })
+      await sdk.session.setPermissionLevel(
+        {
+          sessionID,
+          permissionLevel: args["permission-level"],
+          expectedRevision: current.data.permissionRevision ?? 0,
+        },
+        { throwOnError: true },
+      )
+    }
+
     loop().catch(async (e) => {
       console.error(e)
       process.exit(1)
@@ -669,7 +680,6 @@ export async function run(args: RunArgs) {
         command: args.command,
         arguments: message,
         variant: args.variant,
-        sessionMode: args.mode ?? (args.auto ? "auto" : undefined),
       })
     } else {
       const model = args.model ? parseModel(args.model) : undefined
@@ -679,7 +689,6 @@ export async function run(args: RunArgs) {
         model,
         variant: args.variant,
         parts: [...files, { type: "text", text: message }],
-        sessionMode: args.mode ?? (args.auto ? "auto" : undefined),
       })
     }
   }

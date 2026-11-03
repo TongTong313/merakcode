@@ -2,7 +2,7 @@ import z from "zod"
 import type { Message } from "../session/message"
 import type { Agent } from "../agent"
 import type { PermissionNext } from "../permission/next"
-import type { SessionMode } from "../permission/mode"
+import type { PermissionLevel } from "../permission/level"
 import { Truncate } from "./truncation"
 
 export namespace Tool {
@@ -19,9 +19,9 @@ export namespace Tool {
     messageID: string
     agent: string
     /** Permission mode of the session (child sessions follow the main session), set by the runner */
-    sessionMode?: SessionMode.Value
-    /** @deprecated Use sessionMode; kept for older tool contexts. */
-    kind?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
+    /** @deprecated Use permissionLevel; kept for older tool contexts. */
+    kind?: PermissionLevel.Value
     abort: AbortSignal
     callID?: string
     extra?: { [key: string]: any }
@@ -43,7 +43,7 @@ export namespace Tool {
      */
     ask(
       input: Omit<PermissionNext.AskInput, "id" | "sessionID" | "tool" | "ruleset" | "root" | "source">,
-    ): Promise<void>
+    ): Promise<PermissionNext.Admission | void>
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string

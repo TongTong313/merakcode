@@ -70,13 +70,19 @@ describe("write and read", () => {
     within(async () => {
       const session = await Session.create({})
       const info = await Session.updateInfo(user(session.id))
-      await Transcript.update(session.id, info.id, (prev) => ({ ...prev!, sessionMode: "auto" }) as Message.Info)
+      await Transcript.update(
+        session.id,
+        info.id,
+        (prev) => ({ ...prev!, permissionLevel: "fullTakeover" }) as Message.Info,
+      )
       await Session.updateInfo({ ...info, metadata: { tag: "x" } })
 
       const read = await Message.get({ sessionID: session.id, messageID: info.id })
       expect(read.info.metadata).toEqual({ tag: "x" })
-      expect((read.info as Message.UserInfo).sessionMode).toBe("auto")
-      expect(stored(session.id).messages).toMatchObject([{ id: info.id, sessionMode: "auto", metadata: { tag: "x" } }])
+      expect((read.info as Message.UserInfo).permissionLevel).toBe("fullTakeover")
+      expect(stored(session.id).messages).toMatchObject([
+        { id: info.id, permissionLevel: "fullTakeover", metadata: { tag: "x" } },
+      ])
     }),
   )
 

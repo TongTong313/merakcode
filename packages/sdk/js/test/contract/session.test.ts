@@ -32,6 +32,24 @@ function alive(pid: number) {
   }
 }
 
+test("SDK permission selection is explicit and ordinary messages preserve it", async () => {
+  script = () => ({ text: "Permission preserved" })
+  const merak = await createMerakCode({ cwd: env.project, executablePath: engine, env: env.env })
+  try {
+    const session = await merak.session()
+    expect(session.info.permissionLevel).toBe("ask")
+    expect(await session.setPermissionLevel("autoApprove")).toMatchObject({ permissionLevel: "autoApprove" })
+    for await (const _ of session.run("Discuss the current task")) {
+    }
+    expect((await merak.client.session.get({ sessionID: session.id })).data?.permissionLevel).toBe("autoApprove")
+    for await (const _ of session.run("Discuss it again", { permissionLevel: "fullTakeover" })) {
+    }
+    expect((await merak.client.session.get({ sessionID: session.id })).data?.permissionLevel).toBe("fullTakeover")
+  } finally {
+    await merak.close()
+  }
+}, 120_000)
+
 test("starts the engine, streams text from a session, and the engine exits on close", async () => {
   script = () => ({ text: "你好，我是假模型" })
   const merak = await createMerakCode({ cwd: env.project, executablePath: engine, env: env.env })

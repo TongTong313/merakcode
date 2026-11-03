@@ -1,3 +1,11 @@
+import { readySandbox } from "../fixture/sandbox-ready"
+import { semaphoreFor, MAX_CONCURRENT_SUBAGENTS } from "../../src/agent/tools/subagent-scheduler"
+import { fakeModel } from "../../../sdk/js/test/fixture/model"
+import { PermissionNext } from "../../src/agent/permission/next"
+import { PermissionPolicy } from "../../src/agent/permission/policy"
+import { Bus } from "../../src/infra/bus"
+import { Runtime } from "@merakcode/util/runtime"
+import { SubAgentTool } from "../../src/agent/tools/subagent"
 import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -7,7 +15,7 @@ import { Session } from "../../src/agent/session"
 import { DelegateTool } from "../../src/app/task/tools/delegate"
 import { Todo } from "../../src/agent/session/todo"
 import { create, leave, load, update } from "../../src/app/task/collaboration/store"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 import { globalConfigFile } from "@merakcode/util/paths"
 
@@ -82,13 +90,18 @@ async function project(products: Record<string, Product>) {
 }
 
 /** A user message and the leader's reply to it; returns the reply's id, which a tool call belongs to */
-async function turn(sessionID: string, text: string, directory: string) {
+async function turn(
+  sessionID: string,
+  text: string,
+  directory: string,
+  model = { providerID: "openai", modelID: "gpt-4" },
+) {
   const user = await Session.updateInfo({
     id: Identifier.ascending("message"),
     role: "user",
     sessionID,
     agent: "build",
-    model: { providerID: "openai", modelID: "gpt-4" },
+    model,
     time: { created: Date.now() },
   })
   await Session.updatePart({ id: Identifier.ascending("part"), messageID: user.id, sessionID, type: "text", text })
@@ -101,8 +114,8 @@ async function turn(sessionID: string, text: string, directory: string) {
     path: { cwd: directory, root: directory },
     cost: 0,
     tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-    modelID: "gpt-4",
-    providerID: "openai",
+    modelID: model.modelID,
+    providerID: model.providerID,
     parentID: user.id,
     time: { created: Date.now() },
   })
@@ -142,6 +155,7 @@ test("a member gets one English prompt on stdin: its duty, the user's words, oth
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await create(session.id, {
         leader: { name: "小主", role: "交付经理", duty: "负责分派" },
         seats: [
@@ -192,6 +206,7 @@ test("each member resumes its own session; a renamed member keeps it and reads i
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       const group = await create(session.id, {
         leader: { name: "小主" },
         seats: [
@@ -225,6 +240,7 @@ test("a member whose command is not installed does not start, and its todo item 
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小红", product: "gone" }] })
       const messageID = await turn(session.id, "开始", tmp.path)
       const done = await delegate(session.id, messageID, { seat: "小红", task: "做登录" })
@@ -247,6 +263,7 @@ test("a member is named by its name, not its product, and a suggestion in a repl
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await create(session.id, {
         leader: { name: "小主" },
         seats: [
@@ -279,6 +296,7 @@ test("members run together only when their paths cannot touch the same file", as
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ metadata: { group: true } })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         await create(session.id, {
           leader: { name: "小主" },
           seats: [
@@ -325,6 +343,7 @@ test("a member that waited for another one reads that one's result", async () =>
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ metadata: { group: true } })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         await create(session.id, {
           leader: { name: "小主" },
           seats: [
@@ -359,6 +378,7 @@ test("a delegation drives the todo item it names, or adds one; a failure reopens
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ metadata: { group: true } })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         await create(session.id, {
           leader: { name: "小主" },
           seats: [
@@ -408,6 +428,7 @@ test("members finishing together and a todo rewrite in the same step lose no upd
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await create(session.id, {
         leader: { name: "小主" },
         seats: [
@@ -435,6 +456,7 @@ test("a removed member gets no more work, and the other member of the same produ
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       const group = await create(session.id, {
         leader: { name: "小主" },
         seats: [
@@ -461,6 +483,7 @@ test("a member that waited in the queue counts its working time from when it sta
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ metadata: { group: true } })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小红", product: "echo" }] })
         const messageID = await turn(session.id, "开始", tmp.path)
         const asked = Date.now()
@@ -487,6 +510,7 @@ test("turning a product off prevents an existing member from starting", async ()
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小红", product: "echo" }] })
       const messageID = await turn(session.id, "开始", tmp.path)
       const result = await delegate(session.id, messageID, { seat: "小红", task: "做" })
@@ -501,3 +525,515 @@ test("turning a product off prevents an existing member from starting", async ()
     },
   })
 })
+
+test.each(["ask", "autoApprove"] as const)(
+  "%s requires consent before every delegation entry point",
+  async (permissionLevel) => {
+    using _sandbox = readySandbox()
+    const model = await fakeModel(() => ({ text: "Child executed" }))
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "alibaba-cn/qwen-plus",
+          small_model: "alibaba-cn/qwen-plus",
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+          memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+          lsp: false,
+        },
+      })
+      const received = path.join(tmp.path, "task-received")
+      await configureConnections({
+        controlled: {
+          adapter: "member",
+          command: process.execPath,
+          args: [
+            ...Runtime.execArgv(),
+            path.join(import.meta.dirname, "../server/fixture/external-adapter.ts"),
+            "plan-input",
+            received,
+          ],
+        },
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({ metadata: { group: true } })
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel })
+          await create(session.id, { leader: { name: "Leader" }, seats: [{ name: "Member", product: "controlled" }] })
+          const messageID = await turn(session.id, "Delegate a controlled task", tmp.path, {
+            providerID: "alibaba-cn",
+            modelID: "qwen-plus",
+          })
+          const shown: PermissionNext.Request[] = []
+          const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+            shown.push(event.properties)
+            void PermissionNext.reply({ requestID: event.properties.id, reply: "reject" })
+          })
+          const ctx = {
+            sessionID: session.id,
+            messageID,
+            callID: "delegate-admission",
+            agent: "build",
+            permissionLevel,
+            abort: new AbortController().signal,
+            messages: [],
+            ruleset: PermissionPolicy.ruleset(permissionLevel),
+            metadata() {},
+            extra: { bypassAgentCheck: true },
+            ask: (request: Parameters<import("../../src/agent/tools/tool").Tool.Context["ask"]>[0]) =>
+              PermissionNext.askCurrent(
+                { ...request, sessionID: session.id, tool: { messageID, callID: "delegate-admission" } },
+                async () => PermissionPolicy.ruleset(permissionLevel),
+              ),
+          }
+          try {
+            await expect(
+              (await DelegateTool.init()).execute({ seat: "Member", task: "Read controlled input" }, ctx),
+            ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+            expect(shown).toHaveLength(1)
+            expect(shown[0].permission).toBe("subagent")
+            expect(shown[0].sandboxReady).toBe(false)
+            expect(shown[0].grants).toEqual([])
+            await expect(fs.stat(received)).rejects.toMatchObject({ code: "ENOENT" })
+            await expect(
+              (await SubAgentTool.init()).execute(
+                { description: "Controlled child", prompt: "Read controlled input", subagent_type: "general" },
+                ctx,
+              ),
+            ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+            expect(shown).toHaveLength(2)
+            expect(await Session.children(session.id)).toHaveLength(0)
+          } finally {
+            off()
+            await PermissionNext.abortPending(session.id)
+          }
+        },
+      })
+    } finally {
+      await Instance.disposeAll()
+      await model.close()
+    }
+  },
+  20000,
+)
+
+test.each(["member", "subagent"] as const)(
+  "a cancelled %s cannot start child inference after publishing its child id",
+  async (kind) => {
+    const model = await fakeModel(() => ({ text: "Child executed after cancellation" }))
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "alibaba-cn/qwen-plus",
+          small_model: "alibaba-cn/qwen-plus",
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+          memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+          lsp: false,
+        },
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({ metadata: { group: true } })
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+          await create(session.id, { leader: { name: "Leader" }, seats: [{ name: "Member", product: "merak" }] })
+          const messageID = await turn(session.id, "Run a controlled child", tmp.path, {
+            providerID: "alibaba-cn",
+            modelID: "qwen-plus",
+          })
+          const controller = new AbortController()
+          const ctx = {
+            sessionID: session.id,
+            messageID,
+            callID: "cancel-before-inference",
+            agent: "build",
+            permissionLevel: "fullTakeover" as const,
+            abort: controller.signal,
+            messages: [],
+            ruleset: PermissionPolicy.ruleset("fullTakeover"),
+            metadata(value: { metadata?: Record<string, unknown> }) {
+              if (value.metadata?.sessionId) controller.abort()
+            },
+            ask: (request: Parameters<import("../../src/agent/tools/tool").Tool.Context["ask"]>[0]) =>
+              PermissionNext.askCurrent(
+                { ...request, sessionID: session.id, tool: { messageID, callID: "cancel-before-inference" } },
+                async () => PermissionPolicy.ruleset("fullTakeover"),
+              ),
+          }
+          const operation =
+            kind === "member"
+              ? (await DelegateTool.init()).execute({ seat: "Member", task: "Run a controlled child" }, ctx)
+              : (await SubAgentTool.init()).execute(
+                  { description: "Controlled child", prompt: "Run a controlled child", subagent_type: "general" },
+                  ctx,
+                )
+          const error = await operation.then(
+            () => undefined,
+            (error) => error,
+          )
+          expect(controller.signal.aborted).toBe(true)
+          expect(model.turns).toHaveLength(0)
+          expect(error).toMatchObject({ name: "AbortError" })
+        },
+      })
+    } finally {
+      await Instance.disposeAll()
+      await model.close()
+    }
+  },
+  20000,
+)
+
+test("a queued child rechecks fullTakeover to ask before inference", async () => {
+  const model = await fakeModel(() => ({ text: "Controlled queued child" }))
+  try {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "alibaba-cn/qwen-plus",
+        small_model: "alibaba-cn/qwen-plus",
+        enabled_providers: ["alibaba-cn"],
+        provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+        memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+        lsp: false,
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+        const messageID = await turn(session.id, "Start a controlled queued child", tmp.path, {
+          providerID: "alibaba-cn",
+          modelID: "qwen-plus",
+        })
+        const controller = new AbortController()
+        const releases = await Promise.all(
+          Array.from({ length: MAX_CONCURRENT_SUBAGENTS }, () => semaphoreFor(session.id).acquire(controller.signal)),
+        )
+        const queued = Promise.withResolvers<void>()
+        const requests: PermissionNext.Request[] = []
+        const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+          requests.push(event.properties)
+        })
+        const running = (await SubAgentTool.init()).execute(
+          { description: "Queued child", prompt: "Controlled queued child", subagent_type: "general" },
+          {
+            sessionID: session.id,
+            messageID,
+            callID: "queued-child",
+            agent: "build",
+            permissionLevel: "fullTakeover",
+            abort: controller.signal,
+            messages: [],
+            ruleset: [],
+            metadata(value) {
+              if (value.metadata?.phase === "queued") queued.resolve()
+            },
+            ask: async (request) => {
+              const receipt = await PermissionNext.askCurrent(
+                { ...request, sessionID: session.id, tool: { messageID, callID: "queued-child" } },
+                async () => PermissionPolicy.ruleset((await Session.get(session.id)).permissionLevel!),
+              )
+              return receipt
+            },
+          },
+        )
+        running.catch(() => {})
+        try {
+          await queued.promise
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
+          for (const release of releases) release()
+          await expect.poll(() => requests.length > 0 || model.turns.length > 0).toBe(true)
+          expect(model.turns).toHaveLength(0)
+          expect(requests).toHaveLength(1)
+          await PermissionNext.reply({ requestID: requests[0]!.id, reply: "once" })
+          await running
+          expect(model.turns).toHaveLength(1)
+        } finally {
+          off()
+          controller.abort()
+          await PermissionNext.abortPending(session.id)
+          await running.catch(() => {})
+        }
+      },
+    })
+  } finally {
+    await Instance.disposeAll()
+    await model.close()
+  }
+}, 20000)
+
+test.each([false, true])(
+  "subagents cannot resume another root's session (child=%s)",
+  async (child) => {
+    const model = await fakeModel((turn) =>
+      turn.results.length === 0
+        ? { tool: "write", args: { filePath: "foreign-effect.txt", content: "CHANGED" } }
+        : { text: "Foreign task complete" },
+    )
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "alibaba-cn/qwen-plus",
+          small_model: "alibaba-cn/qwen-plus",
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+          memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+          lsp: false,
+        },
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const caller = await Session.create({})
+          const foreign = await Session.create({})
+          await selectPermissionLevel({ sessionID: foreign.id, permissionLevel: "fullTakeover" })
+          const target = child ? await Session.create({ parentID: foreign.id }) : foreign
+          const messageID = await turn(caller.id, "Delegate within this conversation", tmp.path, {
+            providerID: "alibaba-cn",
+            modelID: "qwen-plus",
+          })
+          const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+            void PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
+          })
+          try {
+            const error = await (
+              await SubAgentTool.init()
+            )
+              .execute(
+                {
+                  description: "Foreign resume",
+                  prompt: "Write a controlled sentinel",
+                  subagent_type: "general",
+                  task_id: target.id,
+                },
+                {
+                  sessionID: caller.id,
+                  messageID,
+                  callID: "foreign-resume",
+                  agent: "build",
+                  permissionLevel: "ask",
+                  abort: new AbortController().signal,
+                  messages: [],
+                  ruleset: [],
+                  metadata() {},
+                  ask: (request) =>
+                    PermissionNext.askCurrent(
+                      { ...request, sessionID: caller.id, tool: { messageID, callID: "foreign-resume" } },
+                      async () => PermissionPolicy.ruleset("ask"),
+                    ),
+                },
+              )
+              .then(
+                () => undefined,
+                (error) => error,
+              )
+            expect(model.turns).toHaveLength(0)
+            expect(error).toMatchObject({ name: "SubagentSessionMismatchError" })
+            await expect(fs.stat(path.join(tmp.path, "foreign-effect.txt"))).rejects.toMatchObject({ code: "ENOENT" })
+          } finally {
+            off()
+          }
+        },
+      })
+    } finally {
+      await Instance.disposeAll()
+      await model.close()
+    }
+  },
+  20000,
+)
+
+test("an external member rechecks delegation consent after its delayed handshake", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const gate = path.join(tmp.path, "release-delegate")
+  await configureConnections({
+    guarded: {
+      adapter: "member",
+      command: process.execPath,
+      args: [
+        ...Runtime.execArgv(),
+        path.join(import.meta.dirname, "../server/fixture/external-adapter.ts"),
+        "plan-gate",
+        gate,
+      ],
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ metadata: { group: true } })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+      await create(session.id, { leader: { name: "Leader" }, seats: [{ name: "Member", product: "guarded" }] })
+      const messageID = await turn(session.id, "Start a controlled member", tmp.path)
+      const controller = new AbortController()
+      const requests: PermissionNext.Request[] = []
+      const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+        requests.push(event.properties)
+      })
+      const exists = (file: string) =>
+        fs.access(file).then(
+          () => true,
+          () => false,
+        )
+      const running = (await DelegateTool.init()).execute(
+        { seat: "Member", task: "Reply with a controlled result" },
+        {
+          sessionID: session.id,
+          messageID,
+          callID: "delayed-delegate",
+          agent: "build",
+          permissionLevel: "fullTakeover",
+          abort: controller.signal,
+          messages: [],
+          ruleset: [],
+          metadata() {},
+          ask: (request) =>
+            PermissionNext.askCurrent(
+              { ...request, sessionID: session.id, tool: { messageID, callID: "delayed-delegate" } },
+              async () => PermissionPolicy.ruleset((await Session.get(session.id)).permissionLevel!),
+            ),
+        },
+      )
+      running.catch(() => {})
+      try {
+        await expect.poll(() => exists(`${gate}.started`), { timeout: 10000 }).toBe(true)
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
+        await fs.writeFile(gate, "release")
+        await expect.poll(async () => requests.length > 0 || (await exists(`${gate}.received`))).toBe(true)
+        expect(await exists(`${gate}.received`)).toBe(false)
+        expect(requests).toHaveLength(1)
+        await PermissionNext.reply({ requestID: requests[0]!.id, reply: "once" })
+        await running
+        expect(await exists(`${gate}.received`)).toBe(true)
+      } finally {
+        off()
+        controller.abort()
+        await fs.writeFile(gate, "release")
+        await PermissionNext.abortPending(session.id)
+        await running.catch(() => {})
+      }
+    },
+  })
+}, 20000)
+
+test("resuming a busy child cannot replace its active draft source", async () => {
+  const started = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const model = await fakeModel(async (turn) => {
+    if (turn.prompt.includes("FIRST_CHILD") && turn.results.length === 0) {
+      started.resolve()
+      await release.promise
+      return { tool: "write", args: { filePath: "active-draft-effect.txt", content: "CHANGED" } }
+    }
+    return { text: "Controlled child finished" }
+  })
+  try {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "alibaba-cn/qwen-plus",
+        small_model: "alibaba-cn/qwen-plus",
+        enabled_providers: ["alibaba-cn"],
+        provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+        memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+        lsp: false,
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+        const modelID = { providerID: "alibaba-cn", modelID: "qwen-plus" }
+        const firstID = await turn(session.id, "只出稿，不要修改项目。", tmp.path, modelID)
+        const firstAbort = new AbortController(),
+          secondAbort = new AbortController()
+        const context = (messageID: string, sessionID = session.id, abort = firstAbort.signal) => ({
+          sessionID,
+          messageID,
+          callID: messageID,
+          agent: "build",
+          permissionLevel: "fullTakeover" as const,
+          abort,
+          messages: [],
+          ruleset: [],
+          metadata(value: { metadata?: Record<string, unknown> }) {
+            if (abort === secondAbort.signal && value.metadata?.sessionId)
+              throw new Error("Controlled resume stopped before inference")
+          },
+          ask: (request: Parameters<import("../../src/agent/tools/tool").Tool.Context["ask"]>[0]) =>
+            PermissionNext.askCurrent({ ...request, sessionID, tool: { messageID, callID: messageID } }, async () =>
+              PermissionPolicy.ruleset("fullTakeover"),
+            ),
+        })
+        const tool = await SubAgentTool.init()
+        const first = tool.execute(
+          { description: "Draft child", prompt: "FIRST_CHILD", subagent_type: "general" },
+          context(firstID),
+        )
+        let firstError: unknown
+        first.catch((error) => {
+          firstError = error
+        })
+        let second: Promise<unknown> | undefined
+        try {
+          await expect.poll(() => model.turns.length > 0 || !!firstError).toBe(true)
+          expect(firstError).toBeUndefined()
+          expect(model.turns.some((turn) => turn.prompt.includes("FIRST_CHILD"))).toBe(true)
+          await started.promise
+          const child = (await Session.children(session.id))[0]!
+          const secondID = await turn(session.id, "开始实施另一个任务。", tmp.path, modelID)
+          let settled = false,
+            failure: unknown
+          second = tool
+            .execute(
+              { description: "Resume child", prompt: "SECOND_CHILD", subagent_type: "general", task_id: child.id },
+              context(secondID, session.id, secondAbort.signal),
+            )
+            .catch((error) => {
+              failure = error
+            })
+            .finally(() => {
+              settled = true
+            })
+          await expect
+            .poll(async () => settled || (await Session.get(child.id)).taskOrigin?.messageID !== firstID)
+            .toBe(true)
+          await second
+          release.resolve()
+          await first
+          const writes = (await Session.messages({ sessionID: child.id }))
+            .flatMap((message) => message.parts)
+            .filter((part) => part.type === "tool" && part.tool === "write")
+          expect(writes).toHaveLength(1)
+          expect(writes[0]).toMatchObject({ state: { status: "error", error: expect.stringMatching(/MRK-5014/) } })
+          expect(failure).toMatchObject({
+            name: "TaskScopeBusyError",
+            data: { message: expect.stringMatching(/正在运行|running/) },
+          })
+          expect((failure as { toObject(): { code: string } }).toObject().code).toBe("MRK-4017")
+          expect((await Session.get(child.id)).taskOrigin?.messageID).toBe(firstID)
+          await expect(fs.stat(path.join(tmp.path, "active-draft-effect.txt"))).rejects.toMatchObject({
+            code: "ENOENT",
+          })
+        } finally {
+          release.resolve()
+          await Promise.allSettled([first, second])
+          firstAbort.abort()
+          secondAbort.abort()
+        }
+      },
+    })
+  } finally {
+    release.resolve()
+    await Instance.disposeAll()
+    await model.close()
+  }
+}, 25000)

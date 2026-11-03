@@ -6,15 +6,16 @@ import type { Permission, Verdict } from "@merakcode/sdk/adapter"
 import { Bus } from "../../src/infra/bus"
 import { Instance } from "../../src/infra/project/instance"
 import { Session } from "../../src/agent/session"
+import { SessionPlan } from "../../src/agent/session/plan"
 import { DelegateTool } from "../../src/app/task/tools/delegate"
 import { Agent } from "../../src/agent/agent"
 import { Config } from "../../src/app/config/files/config"
 import { Loop } from "../../src/agent/loop/index"
 import { PermissionNext } from "../../src/agent/permission/next"
 import { Question } from "../../src/agent/session/question"
-import type { SessionMode } from "../../src/agent/permission/mode"
+import type { PermissionLevel } from "../../src/agent/permission/level"
 import { create } from "../../src/app/task/collaboration/store"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { configureConnections } from "../fixture/agent-connections"
 
 const FIXTURE = path.join(import.meta.dirname, "fixture", "adapter.ts")
@@ -53,7 +54,7 @@ type User = (request: PermissionNext.Request) => Omit<PermissionNext.ReplyInput,
  * approval the way a person would; the result is the member's verdicts and the approvals that were shown.
  */
 async function delegate(input: {
-  mode: SessionMode.Value
+  permissionLevel: PermissionLevel.Value
   permissions?: Permission[]
   questions?: Question.Info[]
   user?: User
@@ -71,6 +72,7 @@ async function delegate(input: {
   gather?: number
   /** Gives each task after the first in a new group of the same project, as a new conversation */
   newGroup?: boolean
+  plan?: string
 }) {
   const scenario = JSON.stringify({ permissions: input.permissions, questions: input.questions, ...input.scenario })
   const product = input.product ?? {
@@ -89,8 +91,18 @@ async function delegate(input: {
     fn: async () => {
       const group = async () => {
         const session = await Session.create({ metadata: { group: true } })
-        await Session.setMode({ sessionID: session.id, sessionMode: input.mode })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: input.permissionLevel })
         await create(session.id, { leader: { name: "小主" }, seats: [{ name: "小明", product: product.id }] })
+        if (input.plan) {
+          await SessionPlan.save({ sessionID: session.id, source: "human", content: input.plan, expectedRevision: 0 })
+          await SessionPlan.start(session.id)
+          await SessionPlan.save({
+            sessionID: session.id,
+            source: "human",
+            content: "LATER_EDITABLE_B",
+            expectedRevision: 1,
+          })
+        }
         return { id: session.id, messageID: await turn(session.id, tmp.path) }
       }
       let current = await group()
@@ -103,10 +115,24 @@ async function delegate(input: {
         if (input.answer)
           void Question.reply({ requestID: event.properties.id, answers: input.answer(event.properties) })
       })
+      const replyErrors: unknown[] = []
       const answer = (request: PermissionNext.Request) =>
-        void PermissionNext.reply({ requestID: request.id, ...(input.user ?? (() => ({ reply: "once" })))(request) })
+        void PermissionNext.reply({
+          requestID: request.id,
+          decisionRevision: request.decisionRevision,
+          ...(input.user ?? (() => ({ reply: "once" })))(request),
+        }).catch(async (error) => {
+          replyErrors.push(error)
+          await PermissionNext.reply({ requestID: request.id, reply: "reject", message: "Unsupported approval reply" })
+        })
       const waiting: PermissionNext.Request[] = []
+      const delegations: PermissionNext.Request[] = []
       const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+        if (event.properties.permission === "subagent") {
+          delegations.push(event.properties)
+          void PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
+          return
+        }
         shown.push(event.properties)
         if (!input.gather) return answer(event.properties)
         waiting.push(event.properties)
@@ -125,7 +151,7 @@ async function delegate(input: {
         const ruleset = Loop.buildToolExecutionRuleset({
           agent,
           session: await Session.get(current.id),
-          sessionMode: input.mode,
+          permissionLevel: input.permissionLevel,
         })
         return tool
           .execute(
@@ -135,7 +161,7 @@ async function delegate(input: {
               messageID: current.messageID,
               callID: Identifier.ascending("part"),
               agent: "build",
-              sessionMode: input.mode,
+              permissionLevel: input.permissionLevel,
               abort: stop.signal,
               messages: [],
               ruleset,
@@ -159,15 +185,16 @@ async function delegate(input: {
           results.push(await call())
         }
         const result = results.at(-1)!
+        expect(delegations).toHaveLength(input.permissionLevel === "fullTakeover" ? 0 : (input.calls ?? 1))
         // Questions still waiting for an answer once the member is done
         const open = await Question.list()
         if (result instanceof Error)
-          return { error: result, output: undefined, verdicts: [], shown, questions, open, calls: [] }
+          return { error: result, output: undefined, verdicts: [], shown, questions, open, calls: [], replyErrors }
         const output = parse(result.output)
         const calls = results.map((item) => (item instanceof Error ? item : (parse(item.output) as Verdict[])))
-        // What "always allow" wrote to the project config
+        // No per-operation approval may add permanent project grants.
         const saved = (await Config.loadProjectMerakCodeFile()).permission
-        return { output, verdicts: output as Verdict[], shown, questions, open, calls, saved }
+        return { output, verdicts: output as Verdict[], shown, questions, open, calls, saved, replyErrors }
       } finally {
         off()
         unasked()
@@ -176,13 +203,47 @@ async function delegate(input: {
   })
 }
 
+test.each(["complete", "missing", "small"] as const)(
+  "a dependent external group member validates %s plan input before dispatch",
+  async (kind) => {
+    const content = "FIXED_PLAN_A_" + "x".repeat(24000)
+    const result = await delegate({
+      permissionLevel: "fullTakeover",
+      plan: content,
+      scenario: {
+        echoTask: true,
+        planCapability:
+          kind === "missing"
+            ? undefined
+            : {
+                fullInput: true,
+                contextTokens: kind === "small" ? 6500 : 20000,
+                reservedTokens: 0,
+                fixedInputTokens: 100,
+              },
+      },
+    })
+    if (kind !== "complete") {
+      expect(result.error).toBeInstanceOf(Error)
+      return
+    }
+    expect(result.error).toBeUndefined()
+    expect(result.output).toMatchObject({ plan: { content, revision: 1 } })
+    expect((result.output as { prompt: string }).prompt).toContain(content)
+    expect((result.output as { prompt: string }).prompt).not.toContain("LATER_EDITABLE_B")
+  },
+)
+
 test("a member's request to reach a website is asked in ask mode, and the member gets the user's answer", async () => {
-  const allowed = await delegate({ mode: "execute", permissions: [{ kind: "network", host: "example.com" }] })
+  const allowed = await delegate({
+    permissionLevel: "autoApprove",
+    permissions: [{ kind: "network", host: "example.com" }],
+  })
   expect(allowed.shown.map((request) => request.permission)).toEqual(["network"])
   expect(allowed.verdicts).toEqual([{ allow: true }])
 
   const refused = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [{ kind: "network", host: "example.com" }],
     user: () => ({ reply: "reject", message: "先别联网" }),
   })
@@ -192,9 +253,9 @@ test("a member's request to reach a website is asked in ask mode, and the member
 /** "Allow for this conversation" as the approval bar sends it: the first grant the request offers */
 const forConversation: User = (request) => ({ reply: "session", scope: request.grants?.[0]?.scope })
 
-test("allowing a website for the conversation covers the member's later pages of it, and not other websites", async () => {
+test("unisolated member pages reject conversation grants for every actual request", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [
       { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/1" },
       { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/2" },
@@ -202,49 +263,57 @@ test("allowing a website for the conversation covers the member's later pages of
     ],
     user: forConversation,
   })
-  expect(result.verdicts).toEqual([{ allow: true }, { allow: true }, { allow: true }])
-  // The choice names the website, as in the approval bar
-  expect(result.shown[0]!.grants?.[0]?.pattern).toContain("apps.apple.com")
+  expect(result.verdicts.map((verdict) => verdict.allow)).toEqual([false, false, false])
+  expect(result.replyErrors).toHaveLength(3)
+  for (const error of result.replyErrors) expect(error).toMatchObject({ name: "PermissionGrantUnavailableError" })
+  for (const request of result.shown) {
+    expect(request.sandboxReady).toBe(false)
+    expect(request.grants).toEqual([])
+  }
   expect(result.shown.map((request) => request.metadata.url)).toEqual([
     "https://apps.apple.com/cn/app/1",
+    "https://apps.apple.com/cn/app/2",
     "https://example.com/",
   ])
 }, 60_000)
 
-test("allowing for the conversation stays in it, while always allowing also covers a new conversation", async () => {
+test("unisolated conversation grants are unavailable and once approvals never persist", async () => {
   const page: Permission = { kind: "network", host: "apps.apple.com", url: "https://apps.apple.com/cn/app/1" }
   const conversation = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [page],
     user: forConversation,
     calls: 2,
     newGroup: true,
   })
-  expect(conversation.calls).toEqual([[{ allow: true }], [{ allow: true }]])
+  expect(conversation.calls.map((call) => (Array.isArray(call) ? call.map((verdict) => verdict.allow) : call))).toEqual(
+    [[false], [false]],
+  )
+  expect(conversation.replyErrors).toHaveLength(2)
   expect(conversation.shown).toHaveLength(2)
 
-  const always = await delegate({
-    mode: "execute",
+  const once = await delegate({
+    permissionLevel: "autoApprove",
     permissions: [page],
-    user: () => ({ reply: "always" }),
+    user: () => ({ reply: "once" }),
     calls: 2,
     newGroup: true,
   })
-  expect(always.calls).toEqual([[{ allow: true }], [{ allow: true }]])
-  expect(always.shown).toHaveLength(1)
-  expect(JSON.stringify(always.saved)).toContain("apps.apple.com")
+  expect(once.calls).toEqual([[{ allow: true }], [{ allow: true }]])
+  expect(once.shown).toHaveLength(2)
+  expect(JSON.stringify(once.saved ?? {})).not.toContain("apps.apple.com")
 }, 60_000)
 
 test("allowing once lets only that request go: the same request is asked again", async () => {
   const page: Permission = { kind: "network", host: "example.com", url: "https://example.com/a" }
-  const result = await delegate({ mode: "execute", permissions: [page, page] })
+  const result = await delegate({ permissionLevel: "autoApprove", permissions: [page, page] })
   expect(result.verdicts).toEqual([{ allow: true }, { allow: true }])
   expect(result.shown).toHaveLength(2)
 }, 60_000)
 
 test("refusing without a reason still tells the member it was refused", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [{ kind: "network", host: "example.com" }],
     user: () => ({ reply: "reject" }),
   })
@@ -252,22 +321,24 @@ test("refusing without a reason still tells the member it was refused", async ()
   expect((result.verdicts[0] as { message: string }).message.trim()).not.toBe("")
 }, 60_000)
 
-test("requests a member makes at once wait together, and allowing the website for the conversation lets them all go", async () => {
+test("a forged conversation reply cannot release parallel unisolated member operations", async () => {
   const pages = [1, 2, 3, 4].map((page): Permission => ({
     kind: "network",
     host: "apps.apple.com",
     url: `https://apps.apple.com/cn/app/${page}`,
   }))
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: pages,
     scenario: { parallel: true },
     user: forConversation,
     gather: 4,
   })
-  // All four were in the approval bar ("3 more waiting"); one answer let them all go
+  // A forged scope cannot release the other pending unisolated operations.
   expect(result.shown).toHaveLength(4)
-  expect(result.verdicts).toEqual(pages.map(() => ({ allow: true })))
+  expect(result.verdicts.map((verdict) => verdict.allow)).toEqual(pages.map(() => false))
+  expect(result.replyErrors).toHaveLength(1)
+  expect(result.replyErrors[0]).toMatchObject({ name: "PermissionGrantUnavailableError" })
 }, 60_000)
 
 test("each kind of request is judged like MerakCode's own tools, in each permission mode", async () => {
@@ -282,28 +353,26 @@ test("each kind of request is judged like MerakCode's own tools, in each permiss
   ]
   const allowed = (result: Awaited<ReturnType<typeof delegate>>) => result.verdicts.map((verdict) => verdict.allow)
 
-  // Read-only: no edits and no commands that change files; reading a secret, other tools and websites ask
-  const readonly = await delegate({ mode: "plan", permissions })
-  expect(allowed(readonly)).toEqual([false, false, true, true, true, true, true])
-  expect(readonly.shown.map((request) => request.permission)).toEqual(["read", "mcp__github__create_issue", "network"])
-
-  // Ask: edits in the workspace go ahead; deleting, a secret, other tools and websites ask
-  const ask = await delegate({ mode: "execute", permissions })
-  expect(allowed(ask)).toEqual([true, true, true, true, true, true, true])
-  expect(ask.shown.map((request) => request.permission)).toEqual([
-    "bash",
-    "read",
-    "mcp__github__create_issue",
-    "network",
-  ])
-
-  // Auto: only the secret and websites ask
-  const auto = await delegate({ mode: "auto", permissions })
-  expect(auto.shown).toEqual([])
-  expect(allowed(auto)).toEqual(permissions.map(() => true))
-  // In every mode a website on the allowlist (package registries, code hosting) is not asked about
-  for (const result of [readonly, ask, auto])
-    expect(result.shown.some((request) => request.patterns.includes("registry.npmjs.org"))).toBe(false)
+  for (const permissionLevel of ["ask", "autoApprove"] as const) {
+    const result = await delegate({ permissionLevel, permissions })
+    expect(allowed(result)).toEqual(permissions.map(() => true))
+    expect(result.shown.map((request) => request.permission)).toEqual([
+      "edit",
+      "bash",
+      "read",
+      "bash",
+      "mcp__github__create_issue",
+      "network",
+      "network",
+    ])
+    for (const request of result.shown) {
+      expect(request.sandboxReady).toBe(false)
+      expect(request.grants).toEqual([])
+    }
+  }
+  const full = await delegate({ permissionLevel: "fullTakeover", permissions })
+  expect(full.shown).toEqual([])
+  expect(allowed(full)).toEqual(permissions.map(() => true))
 }, 120_000)
 
 test("a request with nothing to check (no file, an empty command) is refused without asking, in every mode", async () => {
@@ -316,8 +385,8 @@ test("a request with nothing to check (no file, an empty command) is refused wit
     { kind: "network", host: "" },
     { kind: "tool", name: "" },
   ]
-  for (const mode of ["plan", "execute", "auto"] as const) {
-    const result = await delegate({ mode, permissions })
+  for (const mode of ["ask", "autoApprove", "fullTakeover"] as const) {
+    const result = await delegate({ permissionLevel: mode, permissions })
     expect(
       result.verdicts.map((verdict) => verdict.allow),
       mode,
@@ -327,22 +396,24 @@ test("a request with nothing to check (no file, an empty command) is refused wit
   }
 }, 120_000)
 
-test("allowing a command for the conversation covers the member's later commands of the same kind", async () => {
+test("unisolated command prefix grants cannot authorize later member commands", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [
       { kind: "command", command: "npm install lodash" },
       { kind: "command", command: "npm install zod" },
     ],
     user: () => ({ reply: "session", scope: "prefix" }),
   })
-  expect(result.verdicts).toEqual([{ allow: true }, { allow: true }])
-  expect(result.shown).toHaveLength(1)
+  expect(result.verdicts.map((verdict) => verdict.allow)).toEqual([false, false])
+  expect(result.replyErrors).toHaveLength(2)
+  for (const error of result.replyErrors) expect(error).toMatchObject({ name: "PermissionGrantUnavailableError" })
+  expect(result.shown).toHaveLength(2)
 }, 60_000)
 
 test("a member's question is asked in MerakCode, tied to the member's call, and the answer goes back to it", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     questions: [
       {
         question: "用哪个数据库？",
@@ -366,7 +437,7 @@ test("stopping the group withdraws the member's open question, tells the adapter
   const marker = path.join(tmp.path, "cancelled")
   const started = Date.now()
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     questions: [{ question: "继续吗？", header: "继续", options: [{ label: "是", description: "" }] }],
     stopOnQuestion: true,
     scenario: { marker, ignore: true },
@@ -406,20 +477,20 @@ async function shim(dir: string, name: string, fixture: string) {
   return command
 }
 
-test("the built-in Claude Code member asks MerakCode before it fetches a page", async () => {
+test("a partially controlled Claude Code member cannot run under auto approval", async () => {
   await using bin = await tmpdir()
   const command = await shim(bin.path, "claude", "claude.ts")
   const saved = process.env.CLAUDE_FIXTURE
   process.env.CLAUDE_FIXTURE = JSON.stringify([{ name: "WebFetch", input: { url: "https://example.com" } }])
   try {
     const result = await delegate({
-      mode: "execute",
+      permissionLevel: "autoApprove",
       product: { id: "claude", config: { command } },
       user: () => ({ reply: "reject", message: "先别联网" }),
     })
-    expect(result.shown.map((request) => request.permission)).toEqual(["network"])
-    expect(result.output).toContain("WebFetch denied")
-    expect(result.output).toContain("先别联网")
+    expect(result.shown).toEqual([])
+    expect(result.error?.message).toMatch(/cannot intercept|不能拦截/)
+    expect(result.output).toBeUndefined()
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_FIXTURE
     else process.env.CLAUDE_FIXTURE = saved
@@ -427,12 +498,12 @@ test("the built-in Claude Code member asks MerakCode before it fetches a page", 
 }, 60_000)
 
 test("a member that ends with no reply fails with the product named, rather than reporting an empty result", async () => {
-  const result = await delegate({ mode: "execute", scenario: { reply: "" } })
+  const result = await delegate({ permissionLevel: "autoApprove", scenario: { reply: "" } })
   expect(result.error?.message).toMatch(/^MRK-4009: Fixture (?:未返回正文|returned no reply)$/)
 }, 60_000)
 
 for (const name of ["codex", "opencode"] as const) {
-  test(`the built-in ${name} member asks MerakCode before it runs a command`, async () => {
+  test(`the partially controlled ${name} member cannot run under auto approval`, async () => {
     await using bin = await tmpdir()
     const command = await shim(bin.path, name, `${name}.ts`)
     const fixture = `${name.toUpperCase()}_FIXTURE`
@@ -443,9 +514,10 @@ for (const name of ["codex", "opencode"] as const) {
         : [{ permission: "bash", patterns: ["rm -rf build"], metadata: { command: "rm -rf build" } }],
     )
     try {
-      const result = await delegate({ mode: "execute", product: { id: name, config: { command } } })
-      expect(result.shown.map((request) => request.permission)).toEqual(["bash"])
-      expect(result.error).toBeUndefined()
+      const result = await delegate({ permissionLevel: "autoApprove", product: { id: name, config: { command } } })
+      expect(result.shown).toEqual([])
+      expect(result.error?.message).toMatch(/cannot intercept|不能拦截/)
+      expect(result.output).toBeUndefined()
     } finally {
       if (saved === undefined) delete process.env[fixture]
       else process.env[fixture] = saved
@@ -453,9 +525,9 @@ for (const name of ["codex", "opencode"] as const) {
   }, 60_000)
 }
 
-test("a member's edit offers the same choices as MerakCode's own, and trusting a directory covers its other files", async () => {
+test("unisolated member edits never offer directory grants or permanent grants", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     // Paths under a folder starting with a dot ask in ask mode, as they do for MerakCode's own edits
     permissions: [
       { kind: "write", paths: [".config/a.json"] },
@@ -464,20 +536,22 @@ test("a member's edit offers the same choices as MerakCode's own, and trusting a
     ],
     user: () => ({ reply: "session", scope: "directory" }),
   })
-  expect(result.verdicts).toEqual([{ allow: true }, { allow: true }, { allow: true }])
-  // The file and its directory can each be trusted for the conversation, and always allowed, as for the edit tool
-  expect((result.shown[0]!.grants ?? []).map((grant) => grant.scope)).toEqual(["file", "directory"])
-  expect(result.shown[0]!.always).toBe(true)
-  // Trusting .config covered b.json; .github is another directory and asked again
+  expect(result.verdicts.map((verdict) => verdict.allow)).toEqual([false, false, false])
+  expect(result.replyErrors).toHaveLength(3)
+  for (const request of result.shown) {
+    expect(request.grants).toEqual([])
+    expect(request.always).toBe(false)
+  }
   expect(result.shown.map((request) => request.patterns[0]?.split("/").slice(-2).join("/"))).toEqual([
     ".config/a.json",
+    ".config/b.json",
     ".github/c.yml",
   ])
 }, 60_000)
 
-test("trusting a file for the conversation covers that file again, and not the others in its directory", async () => {
+test("unisolated repeated file requests cannot reuse a conversation grant", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [
       { kind: "write", paths: [".config/a.json"] },
       { kind: "write", paths: [".config/a.json"] },
@@ -485,32 +559,35 @@ test("trusting a file for the conversation covers that file again, and not the o
     ],
     user: () => ({ reply: "session", scope: "file" }),
   })
-  expect(result.verdicts).toEqual([{ allow: true }, { allow: true }, { allow: true }])
+  expect(result.verdicts.map((verdict) => verdict.allow)).toEqual([false, false, false])
+  expect(result.replyErrors).toHaveLength(3)
   expect(result.shown.map((request) => request.patterns[0]?.split("/").slice(-2).join("/"))).toEqual([
+    ".config/a.json",
     ".config/a.json",
     ".config/b.json",
   ])
 }, 60_000)
 
-test("always allowing a member's command saves the rule to the project, so its next task is not asked again", async () => {
+test("once approval for a member command never creates a persistent allow rule", async () => {
   const result = await delegate({
-    mode: "execute",
+    permissionLevel: "autoApprove",
     permissions: [{ kind: "command", command: "npm install lodash" }],
-    user: () => ({ reply: "always", scope: "prefix" }),
+    user: () => ({ reply: "once", scope: "prefix" }),
     calls: 2,
   })
   expect(result.calls).toEqual([[{ allow: true }], [{ allow: true }]])
-  expect(result.shown).toHaveLength(1)
-  expect(JSON.stringify(result.saved)).toContain("npm install *")
+  expect(result.shown).toHaveLength(2)
+  expect(JSON.stringify(result.saved ?? {})).not.toContain("npm install *")
 }, 60_000)
 
-test("auto rejects a member's newly reported question without opening human interaction", async () => {
+test("full takeover preserves a member business question and its human answer", async () => {
   const result = await delegate({
-    mode: "auto",
+    permissionLevel: "fullTakeover",
     questions: [{ question: "Choose?", header: "Choice", options: [{ label: "A", description: "" }] }],
-    answer: () => [["UNEXPECTED_AUTO_ANSWER"]],
+    answer: () => [["A"]],
   })
-  expect(result.questions).toEqual([])
+  expect(result.questions).toHaveLength(1)
   expect(result.open).toEqual([])
-  expect(result).toMatchObject({ error: expect.any(Error), output: undefined })
+  expect(result.error).toBeUndefined()
+  expect(result.output).toEqual([["A"]])
 }, 60000)

@@ -1,3 +1,4 @@
+import { readableErrorText } from "@merakcode/util/error"
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
 import { z } from "zod"
@@ -150,7 +151,7 @@ export const AgentConnectionRoutes = lazy(() =>
                 task: {
                   prompt: "Reply with a short synthetic greeting. Do not use any tools or access files.",
                   cwd: directory,
-                  mode: "plan",
+                  permissionLevel: "ask",
                   model: product.model,
                 },
                 abort: controller.signal,
@@ -173,8 +174,7 @@ export const AgentConnectionRoutes = lazy(() =>
         } catch (error) {
           report.error = {
             code: ErrorCode.CATALOG.EXTERNAL_ADAPTER_FAILED.code,
-            message:
-              error instanceof Error ? error.message : await Text.pick({ zh: "验证失败", en: "Verification failed" }),
+            message: readableErrorText(error, await Text.pick({ zh: "验证失败", en: "Verification failed" })),
           }
         } finally {
           clearTimeout(timeout)

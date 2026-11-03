@@ -14,6 +14,7 @@ import { Config } from "@merakcode/engine/agent/settings/index"
 import { Redact } from "../../infra/security/redact"
 import { Checkout } from "../../infra/project/checkout"
 import { Instance } from "../../infra/project/instance"
+import { SessionPlan } from "../session/plan"
 
 const log = Log.create({ service: "bash-background" })
 
@@ -38,6 +39,7 @@ export type BashJob = {
   sessionID?: string
   messageID?: string
   callID?: string
+  planExecutionID?: string
 }
 
 const MAX_LOG_BYTES = 500_000
@@ -179,6 +181,7 @@ export namespace BashJobStore {
     sessionID?: string
     messageID?: string
     callID?: string
+    planExecutionID?: string
   }): BashJob {
     const running = [...jobs.values()].filter((job) => job.status === "running").length
     if (running >= MAX_RUNNING_JOBS) {
@@ -212,6 +215,7 @@ export namespace BashJobStore {
       sessionID: params.sessionID,
       messageID: params.messageID,
       callID: params.callID,
+      planExecutionID: params.planExecutionID,
     }
     jobs.set(id, job)
     releases.set(id, release)
@@ -294,7 +298,7 @@ async function notifyAgent(job: BashJob) {
     await LoopExecution.run(undefined, () =>
       Loop.promptGenerated({
         sessionID,
-        parts: [{ type: "text", text, synthetic: true }],
+        parts: [{ type: "text", text, synthetic: true, metadata: { taskOriginMessageID: job.messageID } }],
       }),
     )
   } catch (e) {
@@ -344,29 +348,48 @@ export const BashBackgroundTool = Tool.define(
         // barrier would block every edit / write forever. The cost is no protection when a background command and an
         // edit write the same file at once; callers have to manage that themselves.
         const { cwd, shellEnv, sandbox } = await prepareBashCommand(params, ctx)
-        const { proc, finish } = await spawnCommand({
-          command: params.command,
-          shell,
-          cwd,
-          env: shellEnv,
-          ctx,
-          sandbox,
-        })
-
-        const job = BashJobStore.create({
-          command: params.command,
-          description: params.description,
-          cwd,
-          proc,
-          timeoutMs: params.timeout,
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          callID: ctx.callID,
-        })
-
+        const plan = await SessionPlan.get(ctx.sessionID)
         const jobController = new AbortController()
-        const jobCallID = `background:${job.id}`
+        const jobCallID = `background:${randomUUID()}`
         const unregister = ModeOperations.register(ctx.sessionID, jobCallID, "bash_background", jobController)
+        ModeOperations.inherit(ctx.sessionID, ctx.callID, jobCallID)
+        let started: Awaited<ReturnType<typeof spawnCommand>>
+        try {
+          started = await spawnCommand({
+            command: params.command,
+            shell,
+            cwd,
+            env: shellEnv,
+            ctx,
+            sandbox,
+            abort: AbortSignal.any([ctx.abort, jobController.signal]),
+          })
+        } catch (error) {
+          unregister()
+          throw error
+        }
+        const { proc, finish } = started
+
+        let job: BashJob
+        try {
+          job = BashJobStore.create({
+            command: params.command,
+            description: params.description,
+            cwd,
+            proc,
+            timeoutMs: params.timeout,
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: ctx.callID,
+            planExecutionID: plan.status === "executing" ? plan.execution?.id : undefined,
+          })
+        } catch (error) {
+          await Shell.killTree(proc)
+          finish("", null)
+          unregister()
+          throw error
+        }
+
         ModeOperations.inherit(ctx.sessionID, ctx.callID, jobCallID)
         jobController.signal.addEventListener(
           "abort",

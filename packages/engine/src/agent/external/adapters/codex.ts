@@ -24,7 +24,6 @@ import {
   stop,
   version,
   type Host,
-  type Mode,
   type Question,
   type Result,
   type Task,
@@ -33,13 +32,13 @@ import {
 } from "@merakcode/sdk/adapter"
 
 /** Thread settings for a mode: read-only keeps Codex's sandbox read-only; otherwise it writes the workspace */
-function codexThread(input: { mode: Mode; cwd: string }) {
+function codexThread(input: { scope?: "draft"; cwd: string }) {
   return {
     cwd: input.cwd,
     approvalPolicy: "untrusted",
-    sandbox: input.mode === "plan" ? "read-only" : "workspace-write",
+    sandbox: input.scope === "draft" ? "read-only" : "workspace-write",
     // Commands that need the network ask first: the approval request comes to MerakCode
-    config: input.mode === "plan" ? undefined : { sandbox_workspace_write: { network_access: true } },
+    config: input.scope === "draft" ? undefined : { sandbox_workspace_write: { network_access: true } },
   }
 }
 
@@ -84,6 +83,15 @@ adapter({
       resume: true,
       permission: "merak",
       questions: true,
+      control: {
+        reportedOperations: [],
+        cancellation: "task",
+        liveMode: false,
+        isolation: "product",
+        limitations: [
+          "Only native approval callbacks are reported; complete operation coverage is unverified. 仅上报原生审批回调，完整操作覆盖尚未验证。",
+        ],
+      },
     },
     ...(await version(product.command || "codex")),
   }),

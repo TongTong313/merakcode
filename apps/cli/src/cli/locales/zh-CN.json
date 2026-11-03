@@ -105,9 +105,6 @@
   "cli.mcp.auth.failed": "授权失败：{error}",
   "cli.mcp.auth.notConnected": "授权已保存，但服务器还没有连上（{status}）",
   "cli.run.describe": "使用指定消息运行 MerakCode",
-  "cli.run.option.auto": "自动模式：跳过权限审批与沙箱保护，不发起新询问",
-  "cli.run.auto.title": "⚠ 自动模式：",
-  "cli.run.auto.notice": "自动模式下所有操作直接放行，不再询问，也不使用沙箱；请只在完全信任任务时使用",
   "cli.run.conflictingFlags": "-c 与 -s 不能同时使用，请选择自动续接或指定会话 ID。",
   "cli.run.serverDirectoryFailed": "无法查询服务端工作目录，请检查连接后重试。",
   "cli.run.noContinuableSession": "当前目录没有可继续的会话，请去掉 -c 创建新会话。",
@@ -360,5 +357,7 @@
   "cli.failed": "失败",
   "cli.agent.location": "保存位置",
   "cli.agent.descriptionPrompt": "描述",
-  "cli.run.option.mode": "会话模式：plan、execute（默认）、auto"
+  "cli.run.option.permissionLevel": "权限级别：ask（询问，默认）、autoApprove（自动审批）、fullTakeover（完全接管）",
+  "cli.run.fullTakeover.title": "⚠ 完全接管：",
+  "cli.run.fullTakeover.notice": "不再请求操作审批。需要时将使用当前账户访问沙箱外的文件和网络。"
 }

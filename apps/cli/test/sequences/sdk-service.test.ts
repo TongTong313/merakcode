@@ -9,6 +9,10 @@ test(`I1 S06.06 service/MCP ${fault ? "failure detector" : "error correction and
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "I1 S06.06" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",
       model: { providerID: "alibaba-cn", modelID: "qwen-plus" },

@@ -4,7 +4,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Agent } from "@merakcode/engine/agent/agent"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
-import type { SessionMode } from "@merakcode/engine/agent/permission/mode"
+import type { PermissionLevel } from "@merakcode/engine/agent/permission/level"
 import { Loop } from "@merakcode/engine/agent/loop/index"
 import type { Session } from "@merakcode/engine/agent/session/index"
 
@@ -13,12 +13,15 @@ function evalPerm(
   agent: Agent.Info | undefined,
   permission: string,
   pattern = "*",
-  sessionMode: SessionMode.Value = "execute",
+  permissionLevel: PermissionLevel.Value = "autoApprove",
 ): PermissionNext.Action | undefined {
   if (!agent) return undefined
-  const session = { id: "ses_agent_test", permission: [] } as unknown as Session.Info
-  return PermissionNext.evaluate(permission, pattern, Loop.buildToolExecutionRuleset({ agent, session, sessionMode }))
-    .action
+  const session = { id: "ses_agent_test", permission: [], permissionLevel } as unknown as Session.Info
+  return PermissionNext.evaluate(
+    permission,
+    pattern,
+    Loop.buildToolExecutionRuleset({ agent, session, permissionLevel }),
+  ).action
 }
 
 test("returns default native agents when no config", async () => {
@@ -30,7 +33,7 @@ test("returns default native agents when no config", async () => {
       const names = agents.map((a) => a.name)
       expect(names).toContain("build")
       // Plan mode is a read-only permission mode, not an agent.
-      expect(names).not.toContain("plan")
+      expect(names).not.toContain("ask")
       expect(names).not.toContain("自动模式")
       expect(names).toContain("general")
       expect(names).toContain("explore")
@@ -72,7 +75,7 @@ test("explore agent denies edit and write but allows todo", async () => {
       expect(explore?.mode).toBe("subagent")
       for (const key of ["edit", "protected_write", "external_write"]) expect(evalPerm(explore, key), key).toBe("deny")
       // todowrite is an internal protocol and is allowed in every mode.
-      expect(evalPerm(explore, "todowrite")).toBe("allow")
+      expect(evalPerm(explore, "todowrite")).toBe("ask")
     },
   })
 })
@@ -86,7 +89,7 @@ test("general agent allows todowrite (internal protocol; subsession isolation re
       expect(general).toBeDefined()
       expect(general?.mode).toBe("subagent")
       expect(general?.hidden).toBeUndefined()
-      expect(evalPerm(general, "todowrite")).toBe("allow")
+      expect(evalPerm(general, "todowrite")).toBe("ask")
     },
   })
 })
@@ -386,16 +389,16 @@ test("evaluate matches Windows drive letters case-insensitively (non-bash path p
   expect(PermissionNext.evaluate("external_read", "c:/Users/demo/plans/1-a.md", ruleset).action).toBe("allow")
 })
 
-test("ask mode defaults: internal protocols allowed, external reads and non-allowlisted network ask", async () => {
+test("ask rules keep all operation keys at ask before admission exemptions", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const build = await Agent.get("build")
-      expect(evalPerm(build, "doom_loop")).toBe("allow")
+      expect(evalPerm(build, "doom_loop", "*", "ask")).toBe("ask")
       expect(evalPerm(build, "external_read", "/some/other/path")).toBe("ask")
       expect(evalPerm(build, "network", "example.com")).toBe("ask")
-      expect(evalPerm(build, "network", "registry.npmjs.org")).toBe("allow")
+      expect(evalPerm(build, "network", "registry.npmjs.org")).toBe("ask")
     },
   })
 })
@@ -459,12 +462,12 @@ test("user deny rules apply from both global and per-agent config", async () => 
       expect(evalPerm(build, "external_read", "/some/other/path")).toBe("deny")
       expect(evalPerm(general, "external_read", "/some/other/path")).toBe("deny")
       expect(evalPerm(build, "network", "registry.npmjs.org")).toBe("deny")
-      expect(evalPerm(general, "network", "registry.npmjs.org")).toBe("allow")
+      expect(evalPerm(general, "network", "registry.npmjs.org")).toBe("ask")
     },
   })
 })
 
-test("user path rules allow one directory outside the workspace while the rest still ask", async () => {
+test("legacy path allow rules do not authorize external reads", async () => {
   await using tmp = await tmpdir({
     config: { permission: { external_read: { "~/docs/*": "allow" } } },
   })
@@ -475,7 +478,7 @@ test("user path rules allow one directory outside the workspace while the rest s
       const os = await import("os")
       expect(
         evalPerm(build, "external_read", PermissionNext.normalizePath(path.join(os.homedir(), "docs", "a.md"))),
-      ).toBe("allow")
+      ).toBe("ask")
       expect(evalPerm(build, "external_read", PermissionNext.normalizePath(path.join(os.homedir(), "a.md")))).toBe(
         "ask",
       )
@@ -564,9 +567,9 @@ test("auto mode: build edits files, dotfiles and runs commands without asking; r
       const build = await Agent.get("build")
       expect(build).toBeDefined()
       for (const key of ["edit", "protected_write", "bash", "bash_delete", "read", "todowrite"])
-        expect(evalPerm(build, key, "*", "auto"), key).toBe("allow")
-      expect(evalPerm(build, "bash_risky", "git push", "auto")).toBe("allow")
-      expect(evalPerm(build, "external_write", "/etc/hosts", "auto")).toBe("allow")
+        expect(evalPerm(build, key, "*", "fullTakeover"), key).toBe("allow")
+      expect(evalPerm(build, "bash_risky", "git push", "fullTakeover")).toBe("allow")
+      expect(evalPerm(build, "external_write", "/etc/hosts", "fullTakeover")).toBe("allow")
     },
   })
 })
@@ -578,9 +581,9 @@ test("auto mode bypasses agent safety rules while tool availability stays separa
     fn: async () => {
       const simplifier = await Agent.get("simplifier")
       expect(simplifier).toBeDefined()
-      expect(evalPerm(simplifier, "edit", "*", "auto")).toBe("allow")
+      expect(evalPerm(simplifier, "edit", "*", "fullTakeover")).toBe("allow")
       // Availability removes new interactions independently of safety authorization.
-      expect(evalPerm(simplifier, "question", "*", "auto")).toBe("allow")
+      expect(evalPerm(simplifier, "question", "*", "fullTakeover")).toBe("deny")
     },
   })
 })
@@ -634,12 +637,12 @@ test("auto mode bypasses user deny rules while execute retains them", async () =
     fn: async () => {
       const build = await Agent.get("build")
       expect(build).toBeDefined()
-      expect(evalPerm(build, "edit", "/work/pnpm.lock", "auto")).toBe("allow")
-      expect(evalPerm(build, "edit", "/work/pnpm.lock", "execute")).toBe("deny")
-      expect(evalPerm(build, "edit", "/work/a.ts", "auto")).toBe("allow")
-      expect(evalPerm(build, "bash", "docker run x", "auto")).toBe("allow")
-      expect(evalPerm(build, "bash", "docker run x", "execute")).toBe("deny")
-      expect(evalPerm(build, "bash", "npm test", "auto")).toBe("allow")
+      expect(evalPerm(build, "edit", "/work/pnpm.lock", "fullTakeover")).toBe("allow")
+      expect(evalPerm(build, "edit", "/work/pnpm.lock", "autoApprove")).toBe("deny")
+      expect(evalPerm(build, "edit", "/work/a.ts", "fullTakeover")).toBe("allow")
+      expect(evalPerm(build, "bash", "docker run x", "fullTakeover")).toBe("allow")
+      expect(evalPerm(build, "bash", "docker run x", "autoApprove")).toBe("deny")
+      expect(evalPerm(build, "bash", "npm test", "fullTakeover")).toBe("allow")
     },
   })
 })
@@ -671,7 +674,7 @@ test("build agent: user config cannot override plan_* internal keys but can over
     config: {
       permission: {
         question: "deny",
-        plan_enter: "deny",
+        plan_generate: "deny",
       },
     },
   })
@@ -681,8 +684,8 @@ test("build agent: user config cannot override plan_* internal keys but can over
       const build = await Agent.get("build")
       expect(build).toBeDefined()
       expect(evalPerm(build, "question")).toBe("deny")
-      // plan_enter is in INTERNAL_PERMISSION_KEYS, so user config is filtered out and the mode default applies.
-      expect(evalPerm(build, "plan_enter")).toBe("allow")
+      // Official plan tools honor explicit deny rules.
+      expect(evalPerm(build, "plan_generate")).toBe("deny")
     },
   })
 })

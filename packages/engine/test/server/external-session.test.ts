@@ -21,9 +21,9 @@ beforeEach(async () => {
 afterEach(() => Instance.disposeAll())
 
 test.each([
-  ["execute", "plan"],
-  ["auto", "execute"],
-  ["plan", "auto"],
+  ["autoApprove", "ask"],
+  ["fullTakeover", "autoApprove"],
+  ["ask", "fullTakeover"],
 ] as const)(
   "queued external tasks use live %s to %s mode at startup",
   async (original, latest) => {
@@ -48,9 +48,13 @@ test.each([
     const messages = async () => (await (await request(`/session/${created.id}/message`)).json()) as Message.FullMsg[]
     try {
       expect(
+        (await request(`/session/${created.id}/permission-level`, { permissionLevel: original, expectedRevision: 0 }))
+          .status,
+      ).toBe(200)
+      expect(
         (
           await request(`/session/${created.id}/prompt_async`, {
-            sessionMode: original,
+            permissionLevel: original,
             parts: [{ type: "text", text: `gate:${gate}` }],
           })
         ).status,
@@ -68,13 +72,20 @@ test.each([
       expect(
         (
           await request(`/session/${created.id}/prompt_async`, {
-            sessionMode: original,
+            permissionLevel: original,
             parts: [{ type: "text", text: "Second task" }],
           })
         ).status,
       ).toBe(204)
       await expect.poll(async () => (await messages()).filter((message) => message.info.role === "user").length).toBe(2)
-      expect((await request(`/session/${created.id}/mode`, { sessionMode: latest })).status).toBe(200)
+      expect(
+        (
+          await request(`/session/${created.id}/permission-level`, {
+            permissionLevel: latest,
+            expectedRevision: original === "ask" ? 0 : 1,
+          })
+        ).status,
+      ).toBe(200)
       await fs.writeFile(gate, "release")
       await expect
         .poll(
@@ -116,13 +127,14 @@ test("updates external conversation activity only after a message is admitted", 
   const created = await (
     await request("/session", { target: { kind: "external", productID: "activity-fixture" } })
   ).json()
+  await request(`/session/${created.id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
   const current = async () => (await request(`/session/${created.id}`)).json()
   let previous = created.time.updated
   for (const text of ["First turn", "Second turn"]) {
     await expect.poll(() => Date.now()).toBeGreaterThan(previous)
     const response = await request(`/session/${created.id}/message`, {
       parts: [{ type: "text", text }],
-      sessionMode: "execute",
+      permissionLevel: "autoApprove",
     })
     const reply = await response.json()
     expect(response.status, JSON.stringify(reply)).toBe(200)
@@ -164,6 +176,7 @@ test.each([-60_000, 60_000])(
     const { id } = await (
       await request("/session", { target: { kind: "external", productID: "clock-fixture" } })
     ).json()
+    await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
     const clientTime = Date.now() + offset
     const first = await (
       await request(`/session/${id}/message`, {
@@ -323,6 +336,7 @@ test.each([
       body: JSON.stringify(body),
     })
   const { id } = await (await request("/session", { target: { kind: "external", productID: "invalid-locale" } })).json()
+  await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
   const response = await request(`/session/${id}/message`, { parts: [{ type: "text", text: "Reply" }] })
   expect(response.status).toBe(200)
   expect(await response.json()).toMatchObject({
@@ -869,6 +883,7 @@ test.each([false, true])(
         const { id } = (await (
           await request("/session", { target: { kind: "external", productID: "replay-fixture" } })
         ).json()) as { id: string }
+        await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
         const first = await (
           await request(`/session/${id}/message`, { parts: [{ type: "text", text: "Remember the blue square" }] })
         ).json()
@@ -904,6 +919,7 @@ test("passes a globally configured command model to a direct conversation", asyn
       body: JSON.stringify(body),
     })
   const { id } = await (await request("/session", { target: { kind: "external", productID: "command-model" } })).json()
+  await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
   const response = await request(`/session/${id}/message`, {
     parts: [{ type: "text", text: "Use the configured model" }],
   })
@@ -964,7 +980,7 @@ test("preserves observed external tool steps without inventing tool results", as
   })
 })
 
-test("applies a readonly turn mode over a previously stored auto mode", async () => {
+test("ordinary external prompts cannot change the selected permission level", async () => {
   await using tmp = await tmpdir({ git: true })
   await Config.edit("global", (text) =>
     ConfigEdit.set(text, ["agentConnections", "products", "permission-fixture"], {
@@ -985,14 +1001,17 @@ test("applies a readonly turn mode over a previously stored auto mode", async ()
       const { id } = (await (
         await request("/session", { target: { kind: "external", productID: "permission-fixture" } })
       ).json()) as { id: string }
-      expect((await request(`/session/${id}/mode`, { sessionMode: "auto" })).status).toBe(200)
+      expect(
+        (await request(`/session/${id}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 }))
+          .status,
+      ).toBe(200)
       const reply = (await (
         await request(`/session/${id}/message`, {
-          sessionMode: "plan",
+          permissionLevel: "ask",
           parts: [{ type: "text", text: "ask to write" }],
         })
       ).json()) as { parts: { text?: string }[] }
-      expect(reply.parts.map((part) => part.text ?? "").join("")).toBe("allow:false")
+      expect(reply.parts.map((part) => part.text ?? "").join("")).toBe("allow:true")
     },
   })
 })
@@ -1061,7 +1080,7 @@ test("a direct external prompt recovers an unfinished old turn without a prior a
         sessionID: session.id,
         role: "user",
         time: { created: Date.now() },
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         execution,
       })
       const stuck = await Session.updateInfo({

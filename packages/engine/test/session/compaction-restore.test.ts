@@ -135,7 +135,7 @@ test("auto-compaction continuation restores todos, plan, files and skills, with 
         sessionID: session.id,
         agent: "build",
         model,
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         auto: true,
       })
       const before = await Session.messages({ sessionID: session.id })
@@ -232,7 +232,7 @@ test("continuation holds only the instruction when there is nothing to restore",
         sessionID: session.id,
         agent: "build",
         model,
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         auto: true,
       })
       const before = await Session.messages({ sessionID: session.id })
@@ -313,7 +313,7 @@ async function runCompaction(input: {
     sessionID: input.sessionID,
     agent: "build",
     model: input.model,
-    sessionMode: "execute",
+    permissionLevel: "autoApprove",
     auto: true,
   })
   const before = await Session.messages({ sessionID: input.sessionID })

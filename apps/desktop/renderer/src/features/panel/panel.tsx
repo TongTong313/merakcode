@@ -12,10 +12,19 @@ import { CodeView } from "../code/code"
 import { ReviewPanel } from "../review/review"
 import { progress, useReview } from "../review/state"
 import { SourceControl } from "../git/source-control"
-import { PlanCard } from "../conversation/plan"
+import { PlanPanel } from "../conversation/plan"
+import { call, client } from "../../state/client"
+import { toast } from "../../ui/toast"
 
 /** Side panel with review, code and browser tabs; drag the left edge to resize */
 export function Panel(props: { sessionID?: string; directory: string; folder: string }) {
+  const select = (tab: Tab) => {
+    showTab(tab)
+    if (tab === "plan" && props.sessionID)
+      void call(client(props.directory).session.planView({ sessionID: props.sessionID })).catch((error) =>
+        toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error }),
+      )
+  }
   let panel!: HTMLElement
   const data = useReview(
     () => props.sessionID,
@@ -53,7 +62,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
     if (!step) return
     event.preventDefault()
     const next = tabs[(index + step + tabs.length) % tabs.length]!
-    showTab(next.id)
+    select(next.id)
     document.getElementById(`panel-tab-${next.id}`)?.focus()
   }
 
@@ -70,7 +79,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
               aria-selected={ui.tab === tab.id}
               aria-controls={`panel-${tab.id}`}
               tabIndex={ui.tab === tab.id ? 0 : -1}
-              onClick={() => showTab(tab.id)}
+              onClick={() => select(tab.id)}
             >
               <tab.icon class="icon icon-sm" />
               {tab.label()}
@@ -92,7 +101,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
       <div class="panel-body" role="tabpanel" id={`panel-${ui.tab}`} aria-labelledby={`panel-tab-${ui.tab}`}>
         <Switch>
           <Match when={ui.tab === "plan"}>
-            <Show when={props.sessionID}>{(id) => <PlanCard sessionID={id()} directory={props.directory} />}</Show>
+            <Show when={props.sessionID}>{(id) => <PlanPanel sessionID={id()} directory={props.directory} />}</Show>
           </Match>
           <Match when={ui.tab === "review"}>
             <ReviewPanel sessionID={props.sessionID} directory={props.directory} data={data} />

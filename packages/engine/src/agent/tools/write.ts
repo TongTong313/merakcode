@@ -9,18 +9,17 @@ import { File } from "../workspace/file"
 import { FileWatcher } from "../workspace/file/watcher"
 import { FileTime } from "../../infra/file/time"
 import { RuleSession } from "../prompt/rules/session-state"
-import { commitToolFile } from "./file-commit"
+import { authorizeToolFile, commitToolFile } from "./file-commit"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Instance } from "../../infra/project/instance"
 import { Workspace } from "../../infra/project/workspace"
 import { trimDiff } from "./edit"
 import { Snapshot } from "../../infra/project/snapshot"
 import { isProjectFileBypass } from "./file-bypass"
-import { assertCanWritePlanDoc, assertPlanModeAllowsWrite } from "./plan-doc"
+import { assertCanWritePlanDoc } from "./plan-doc"
 import { ToolPathGuard } from "./path-guard"
 import { MemoryAccess } from "../memory/access"
 import { ContextAttach } from "../context/context-attach"
-import { PermissionPolicy } from "../permission/policy"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -38,11 +37,9 @@ export const WriteTool = Tool.define("write", {
     // Checked before writing, as in read, so the model cannot leak sensitive file contents through write diffs
     await ToolPathGuard.assertPathAllowed(ctx, filepath, "write")
     await assertCanWritePlanDoc(ctx, filepath)
-    // Plan mode forbids writing project files; this points to plan_exit before the permission layer's DeniedError
-    await assertPlanModeAllowsWrite(ctx, filepath)
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      sessionMode: ctx.sessionMode,
+      permissionLevel: ctx.permissionLevel,
       filePath: filepath,
       sessionID: ctx.sessionID,
       access: "write",
@@ -59,22 +56,18 @@ export const WriteTool = Tool.define("write", {
       if (exists) await FileTime.assert(ctx.sessionID, filepath)
 
       const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
-      if (!bypass) {
-        await ctx.ask({
-          permission: "edit",
-          checks: [PermissionPolicy.file({ op: "write", path: filepath, ...PermissionPolicy.scope() })],
-          metadata: {
+      const authorization = bypass
+        ? undefined
+        : await authorizeToolFile(ctx, filepath, {
             filepath,
             diff,
-          },
-        })
-      }
+          })
 
       if (!bypass) await Snapshot.trackFile(filepath, ctx.sessionID)
       // Checks the memory directory itself rather than bypass (which plan files also set), and scans for credentials
       // so real secrets do not end up in memory files that are recalled again and again
       if (MemoryAccess.isWritablePath(filepath)) MemoryAccess.assertNoSecrets(params.content)
-      await commitToolFile(ctx, filepath, params.content)
+      await commitToolFile(ctx, filepath, params.content, authorization)
       if (!bypass) {
         await Bus.publish(File.Event.Edited, {
           file: filepath,

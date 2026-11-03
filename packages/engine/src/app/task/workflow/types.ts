@@ -1,5 +1,5 @@
 import z from "zod"
-import type { SessionMode } from "../../../agent/permission/mode"
+import type { PermissionLevel } from "../../../agent/permission/level"
 
 // Run records are sent to clients (workflow.list / workflow.get), so they are schemas to give the SDK types
 export const WorkflowPhaseMeta = z.object({
@@ -82,6 +82,7 @@ export const WorkflowRunStatus = z.enum(["running", "completed", "failed", "abor
 export type WorkflowRunStatus = z.infer<typeof WorkflowRunStatus>
 
 export const WorkflowRunMetadata = z.object({
+  planExecutionID: z.string().optional(),
   status: WorkflowRunStatus,
   workflowName: z.string(),
   description: z.string().optional(),
@@ -145,7 +146,7 @@ export type WorkflowAgentOptions = {
   tools?: string[]
   schema?: Record<string, unknown>
   /** @deprecated Workflow child permissions inherit from the caller; this option is ignored. */
-  kind?: SessionMode.Value
+  kind?: PermissionLevel.Value
   /** @deprecated Currently ignored by the workflow runtime. */
   isolation?: "worktree"
   workUnitId?: string

@@ -1,10 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs"
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
 import type { Page } from "@playwright/test"
-import { test, expect } from "./fixture"
+import { test, expect, type Kit } from "./fixture"
 
 /** Stand-in for a coding CLI: reads the prompt on stdin and prints only its final reply */
 const SEAT = [
@@ -42,6 +40,12 @@ async function createGroup(page: Page, member: { product: string; name: string; 
   if (member.duty) await dialog.getByRole("textbox", { name: "职责" }).fill(member.duty)
   await dialog.getByRole("button", { name: "加入" }).click()
   await dialog.getByRole("button", { name: "创建" }).click()
+  await page
+    .getByRole("button", { name: /^(权限级别|Permission level)/ })
+    .filter({ visible: true })
+    .first()
+    .click()
+  await page.getByRole("option", { name: /完全接管|Full takeover/ }).click()
 }
 
 test.describe("group chat", () => {
@@ -528,28 +532,15 @@ test.describe("collaboration settings", () => {
   })
 })
 
-/**
- * A fake Claude Code (fake-claude.ts) on disk, wanting to use tools. It is written when this file loads, so
- * the config can name it before the app starts: a config written later would leave the real claude to be run.
- */
-function fakeClaude(name: string, tools: unknown[]) {
-  const dir = path.join(os.tmpdir(), "merakcode-e2e-claude 中文 space", name)
-  mkdirSync(dir, { recursive: true })
-  const script = path.join(import.meta.dirname, "fake-claude.ts")
-  const run = `"${process.execPath}" --import ${LOADER} --disable-warning=ExperimentalWarning "${script}"`
-  // The tools go in a file: quotes and Chinese text do not survive a .cmd set line
-  const file = path.join(dir, "tools.json")
-  writeFileSync(file, JSON.stringify(tools))
-  writeFileSync(path.join(dir, "run.mjs"), `await import(${JSON.stringify(pathToFileURL(script).href)})\n`)
-  const command = path.join(dir, process.platform === "win32" ? "claude.cmd" : "claude")
-  writeFileSync(
-    command,
-    process.platform === "win32"
-      ? `@set "CLAUDE_FIXTURE_FILE=%~dp0tools.json"\r\n@node --import ${LOADER} --disable-warning=ExperimentalWarning "%~dp0run.mjs" %*\r\n`
-      : `#!/bin/sh\nexport CLAUDE_FIXTURE_FILE="${file}"\nexec ${run} "$@"\n`,
-    { mode: 0o755 },
-  )
-  return command
+/** Controlled protocol fixture; every task operation asks the host before it can finish. */
+function controlledMember(tools: unknown[]) {
+  return member("Controlled CLI", { tools })
+}
+
+async function approveDelegation(kit: Kit) {
+  await expect(kit.approval()).toBeVisible({ timeout: 60000 })
+  await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
+  await expect(kit.approval()).toContainText("example.com", { timeout: 60000 })
 }
 
 const delegateOnce = {
@@ -557,29 +548,31 @@ const delegateOnce = {
     toolResults.length === 0 ? { tool: "delegate", args: { seat: "小明", task: "查资料" } } : { text: "好了" },
 }
 
-test.describe("a Claude Code member that needs approval", () => {
-  const command = fakeClaude("approval", [{ name: "WebFetch", input: { url: "https://example.com" } }])
-  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
+test.describe("a controlled external member that needs approval", () => {
+  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com" } }])
+  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
 
   test("its request to reach a website is asked in the approval bar, named after it, and allowing it lets it go on", async ({
     kit,
   }) => {
     const { page } = kit
-    await createGroup(page, { product: "Claude Code", name: "小明" })
+    await createGroup(page, { product: "Controlled CLI", name: "小明" })
+    await kit.mode(/自动审批|Auto approve/)
     await kit.send("@小明 查资料")
+    await approveDelegation(kit)
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
-    await expect(card).toContainText("小明 · Claude Code 请求")
+    await expect(card).toContainText("小明 · Controlled CLI 请求")
     await expect(card).toContainText("example.com")
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText("等待你批准")
-    await card.getByText("允许", { exact: true }).click()
+    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
     await expect(xiaoming).toContainText("WebFetch allowed", { timeout: 60_000 })
   })
 })
 
-test.describe("a Claude Code member that asks a question", () => {
-  const command = fakeClaude("question", [
+test.describe("a controlled external member that asks a question", () => {
+  const command = controlledMember([
     {
       name: "AskUserQuestion",
       input: {
@@ -597,49 +590,55 @@ test.describe("a Claude Code member that asks a question", () => {
       },
     },
   ])
-  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
 
   test("its question opens MerakCode's question, named after it, and the answer reaches it", async ({ kit }) => {
     const { page } = kit
-    await createGroup(page, { product: "Claude Code", name: "小明" })
+    await createGroup(page, { product: "Controlled CLI", name: "小明" })
     await kit.send("@小明 查资料")
     const dialog = page.getByRole("region", { name: "提问" })
     await expect(dialog).toBeVisible({ timeout: 60_000 })
-    await expect(dialog).toContainText("小明 · Claude Code 提问")
+    await expect(dialog).toContainText("小明 · Controlled CLI 提问")
     await dialog.getByRole("button", { name: /SQLite/ }).click()
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText('"用哪个数据库？":"SQLite"', { timeout: 60_000 })
   })
 })
 
-test.describe("a Claude Code member allowed a website for the conversation", () => {
-  const command = fakeClaude("conversation", [
+test.describe("a controlled external member allowed a website for the conversation", () => {
+  const command = controlledMember([
     { name: "WebFetch", input: { url: "https://example.com/a" } },
     { name: "WebFetch", input: { url: "https://example.com/b" } },
   ])
-  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
+  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
 
-  test("its next page of that website is not asked about", async ({ kit }) => {
+  test("its unisolated next page asks again without a conversation grant", async ({ kit }) => {
     const { page } = kit
-    await createGroup(page, { product: "Claude Code", name: "小明" })
+    await createGroup(page, { product: "Controlled CLI", name: "小明" })
+    await kit.mode(/自动审批|Auto approve/)
     await kit.send("@小明 查资料")
+    await approveDelegation(kit)
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
-    await card.getByText(/本对话允许 example\.com/).click()
-    // A second approval would wait with no one to answer it: the reply means it was not asked
+    await expect(card.getByText(/本对话允许/)).toHaveCount(0)
+    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
+    await expect(card).toContainText("https://example.com/b")
+    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText('WebFetch allowed {"url":"https://example.com/b"}', { timeout: 60_000 })
   })
 })
 
-test.describe("a Claude Code member refused with a reason", () => {
-  const command = fakeClaude("reason", [{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
+test.describe("a controlled external member refused with a reason", () => {
+  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com/a" } }])
+  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
 
   test("gets the reason the user wrote", async ({ kit }) => {
     const { page } = kit
-    await createGroup(page, { product: "Claude Code", name: "小明" })
+    await createGroup(page, { product: "Controlled CLI", name: "小明" })
+    await kit.mode(/自动审批|Auto approve/)
     await kit.send("@小明 查资料")
+    await approveDelegation(kit)
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
     await card.getByText("拒绝并说明…").click()
@@ -678,9 +677,11 @@ test.describe("a Claude Code member refused with a reason", () => {
       { times: 1 },
     )
     try {
-      await createGroup(page, { product: "Claude Code", name: "小明" })
+      await createGroup(page, { product: "Controlled CLI", name: "小明" })
       await started.promise
+      await kit.mode(/自动审批|Auto approve/)
       await kit.send("@小明 查资料")
+      await approveDelegation(kit)
       const card = kit.approval()
       await expect(card).toBeVisible({ timeout: 60_000 })
       await capture()
@@ -706,20 +707,23 @@ test.describe("a Claude Code member refused with a reason", () => {
   })
 })
 
-test.describe("a Claude Code member always allowed a website", () => {
-  const command = fakeClaude("always", [{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { agentConnections: { products: { claude: { command } } } }, script: delegateOnce })
+test.describe("a controlled external member always allowed a website", () => {
+  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com/a" } }])
+  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
 
-  test("has the rule saved to the project", async ({ kit }) => {
+  test("offers no always grant and leaves the project permission file unchanged", async ({ kit }) => {
     const { page } = kit
-    await createGroup(page, { product: "Claude Code", name: "小明" })
+    await createGroup(page, { product: "Controlled CLI", name: "小明" })
+    await kit.mode(/自动审批|Auto approve/)
     await kit.send("@小明 查资料")
+    await approveDelegation(kit)
     const card = kit.approval()
     await expect(card).toBeVisible({ timeout: 60_000 })
-    await card.getByText("总是允许", { exact: true }).click()
+    await expect(card.getByText("总是允许", { exact: true })).toHaveCount(0)
+    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
     const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
     await expect(xiaoming).toContainText("WebFetch allowed", { timeout: 60_000 })
     const config = path.join(kit.project, ".merakcode", "merakcode.json")
-    await expect.poll(async () => readFile(config, "utf8").catch(() => "")).toContain("example.com")
+    expect(await readFile(config, "utf8").catch(() => "")).not.toContain("example.com")
   })
 })

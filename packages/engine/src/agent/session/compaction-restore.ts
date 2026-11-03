@@ -11,7 +11,7 @@ import { Skill } from "../skill/skill"
 import { Token } from "../context/token"
 import { Flag } from "../../infra/flag/flag"
 import { Log } from "@merakcode/log/logger"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 import type { Provider } from "../model/provider"
 import type { Tool } from "../tools/tool"
 import { truncateSections } from "../memory/session-memory/template"
@@ -168,8 +168,8 @@ export namespace SessionCompactionRestore {
         sessionID,
         abort: new AbortController().signal,
         agent,
-        sessionMode: SessionMode.DEFAULT,
-        kind: SessionMode.DEFAULT,
+        permissionLevel: PermissionLevel.DEFAULT,
+        kind: PermissionLevel.DEFAULT,
         messageID: "",
         extra: { bypassCwdCheck: true, model },
         messages: [],

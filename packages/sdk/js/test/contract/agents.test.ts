@@ -50,7 +50,7 @@ test("a custom agent uses its prompt and its permission denials apply in execute
       ? { tool: "write", args: { filePath: file, content: "x" } }
       : { text: `评审完毕：${turn.results[0]}` }
   const session = await merak.session()
-  const text = await collect(session.run("看看这段代码", { agent: "reviewer", mode: "execute" }))
+  const text = await collect(session.run("看看这段代码", { agent: "reviewer", permissionLevel: "ask" }))
   expect(model.turns.at(-1)!.system).toContain("REVIEWER_PROMPT")
   expect(text).toMatch(/评审完毕：.*(denied|reject|not allowed|prevents)/i)
   expect(existsSync(file)).toBe(false)
@@ -64,7 +64,7 @@ test("the main session delegates to a custom subagent and gets its reply", async
     return { text: `汇总：${turn.results[0]}` }
   }
   const session = await merak.session()
-  const text = await collect(session.run("找人帮忙查", { mode: "auto" }))
+  const text = await collect(session.run("找人帮忙查", { permissionLevel: "fullTakeover" }))
   expect(text).toContain("子智能体查到了：42")
 }, 120_000)
 
@@ -95,7 +95,7 @@ test("a workflow script runs two agents in parallel and returns their results to
     }
     return text
   })()
-  const first = await collect(session.run("用工作流跑两个任务", { mode: "auto" }))
+  const first = await collect(session.run("用工作流跑两个任务", { permissionLevel: "fullTakeover" }))
   expect(first).toContain("Workflow launched in background")
   const text = await later
   abort.abort()

@@ -1,10 +1,4 @@
-/**
- * sandbox.mode with the bash tool, in auto mode where commands normally run without asking:
- * - preferred: while the sandbox is not ready, commands that change things ask first; read-only ones do not
- * - required: while the sandbox is not ready, commands are refused with MRK-5007
- * - off: commands run as usual
- * The backends here stand in for "not set up" and "on"; real enforcement is tested by test/sandbox/os/conformance.test.ts.
- */
+/** Actual isolation status determines per-operation approval in the first two levels. */
 import { afterAll, afterEach, beforeAll, expect, test } from "vitest"
 import path from "path"
 import { BashTool } from "@merakcode/engine/agent/tools/bash"
@@ -15,8 +9,8 @@ import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
 import { Bus } from "@merakcode/engine/infra/bus/index"
 import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import type { Backend } from "@merakcode/engine/infra/sandbox/index"
-import { ErrorCode } from "@merakcode/util/error-code"
-import { tmpdir } from "../fixture/fixture"
+import { Session } from "@merakcode/engine/agent/session/index"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 
 const previous = process.env.MERAKCODE_SANDBOX_MODE
 afterAll(() => {
@@ -55,9 +49,9 @@ beforeAll(() => {
 type AskRequest = Parameters<Tool.Context["ask"]>[0]
 
 /** The real approval center in auto mode; records what was asked and answers "once" */
-function auto(sessionID: string) {
+function approvals(sessionID: string, permissionLevel: "autoApprove" | "fullTakeover") {
   const requests: PermissionNext.Request[] = []
-  const ruleset = PermissionPolicy.ruleset("auto")
+  const ruleset = PermissionPolicy.ruleset(permissionLevel)
   const ask = async (req: AskRequest) => {
     const asked = Promise.withResolvers<PermissionNext.Request>()
     const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
@@ -65,20 +59,20 @@ function auto(sessionID: string) {
       asked.resolve(event.properties)
       void PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
     })
-    const running = PermissionNext.ask({ ...req, sessionID, ruleset })
+    const running = PermissionNext.askCurrent({ ...req, sessionID }, async () => ruleset)
     const winner = await Promise.race([
       asked.promise.then((request) => ({ request })),
       running.then(() => undefined),
     ]).finally(unsubscribe)
     if (winner) requests.push(winner.request)
-    await running
+    return await running
   }
   const ctx = {
     sessionID,
     messageID: "",
     callID: "",
     agent: "build",
-    sessionMode: "auto" as const,
+    permissionLevel,
     abort: AbortSignal.any([]),
     messages: [],
     ruleset,
@@ -88,7 +82,13 @@ function auto(sessionID: string) {
   return { ctx, requests }
 }
 
-async function run(mode: string, backend: Backend, command: string, sessionID: string) {
+async function run(
+  mode: string,
+  backend: Backend,
+  command: string,
+  title: string,
+  permissionLevel: "autoApprove" | "fullTakeover" = "autoApprove",
+) {
   process.env.MERAKCODE_SANDBOX_MODE = mode
   PermissionExecution.useBackendForTest(backend)
   await using tmp = await tmpdir({ git: true })
@@ -96,8 +96,9 @@ async function run(mode: string, backend: Backend, command: string, sessionID: s
   return await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const { ctx, requests } = auto(sessionID)
-      if (mode === "required") Object.assign(ctx, { sessionMode: "execute" })
+      const session = await Session.create({ title })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel })
+      const { ctx, requests } = approvals(session.id, permissionLevel)
       const bash = await BashTool.init()
       const outcome = await bash.execute({ command, description: "test" }, ctx).then(
         (result) => ({ result, error: undefined }),
@@ -108,35 +109,38 @@ async function run(mode: string, backend: Backend, command: string, sessionID: s
   })
 }
 
-test("auto bypasses approval when the configured sandbox is not ready", async () => {
-  const { result, error, requests } = await run("preferred", missing, "echo hi > out.txt", "ses_mode_pref_write")
+test("fullTakeover bypasses approval when isolation is not ready", async () => {
+  const { result, error, requests } = await run(
+    "preferred",
+    missing,
+    "echo hi > out.txt",
+    "ses_mode_pref_write",
+    "fullTakeover",
+  )
   expect(requests).toHaveLength(0)
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
 })
 
-test("preferred, sandbox not ready: a read-only command does not ask", async () => {
-  const { requests } = await run("preferred", missing, "git status", "ses_mode_pref_read")
-  expect(requests).toHaveLength(0)
+test("autoApprove asks for a read-only command when isolation is not ready", async () => {
+  const { result, error, requests } = await run("preferred", missing, "git status", "ses_mode_pref_read")
+  expect(requests).toHaveLength(1)
+  expect(requests[0].sandboxReady).toBe(false)
+  expect(error).toBeUndefined()
+  expect(result?.metadata.exit).toBe(0)
 })
 
-test("required, sandbox not ready: commands are refused with MRK-5007, pointing to the desktop settings first", async () => {
-  const { error, requests } = await run("required", missing, "git status", "ses_mode_required")
-  expect(requests).toHaveLength(0)
-  expect(PermissionExecution.SetupRequiredError.isInstance(error)).toBe(true)
-  const refused = error as InstanceType<typeof PermissionExecution.SetupRequiredError>
-  expect(refused.toObject().code).toBe("MRK-5007")
-  expect(refused.data.message).toContain("Settings → Permissions & security")
-  expect(refused.data.message).toContain("merak sandbox setup")
-  const hint = ErrorCode.CATALOG.SANDBOX_SETUP_REQUIRED.hint
-  expect(hint.zh).toContain("设置 → 权限与安全")
-  expect(hint.en).toContain("Settings → Permissions & security")
-  for (const text of [hint.zh, hint.en]) expect(text).toContain("merak sandbox setup")
+test("legacy required configuration still asks once when isolation is not ready", async () => {
+  const { result, error, requests } = await run("required", missing, "git status", "ses_mode_required")
+  expect(requests).toHaveLength(1)
+  expect(requests[0].sandboxReady).toBe(false)
+  expect(error).toBeUndefined()
+  expect(result?.metadata.exit).toBe(0)
 })
 
-test("off: commands run as usual without asking", async () => {
+test("system isolation prohibition makes autoApprove ask for each command", async () => {
   const { result, error, requests } = await run("off", missing, "echo hi > out.txt", "ses_mode_off")
-  expect(requests).toHaveLength(0)
+  expect(requests).toHaveLength(1)
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
 })
@@ -163,7 +167,7 @@ test("waking prepares an already set up sandbox so the next command can run insi
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   PermissionExecution.useBackendForTest(backend)
   await PermissionExecution.wake()
-  const { result, error, requests } = await run("preferred", backend, "echo hi > warmed.txt", "ses_wake_prepare")
+  const { result, error, requests } = await run("preferred", backend, "git status", "ses_wake_prepare")
   expect(requests).toHaveLength(0)
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
@@ -176,14 +180,22 @@ test("resetting while the sandbox is off still reports that setup can be done ag
     reset: async () => ({ status: "unsupported", installable: true, reason: "needs a one-time setup" }),
   })
   const status = await PermissionExecution.reset()
-  expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
+  expect(status).toMatchObject({
+    status: "off",
+    installable: true,
+    reason: expect.stringMatching(/System policy|系统策略/),
+  })
 })
 
 test("turning the sandbox off keeps whether a one-time setup is still needed", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "off"
   PermissionExecution.useBackendForTest(missing)
   const status = await PermissionExecution.current()
-  expect(status).toMatchObject({ status: "off", installable: true, reason: "needs a one-time setup" })
+  expect(status).toMatchObject({
+    status: "off",
+    installable: true,
+    reason: expect.stringMatching(/System policy|系统策略/),
+  })
 })
 
 test("waking leaves sandbox configuration on while auto bypasses it", async () => {
@@ -193,7 +205,7 @@ test("waking leaves sandbox configuration on while auto bypasses it", async () =
   const status = await PermissionExecution.wake()
   expect(status.status).toBe("on")
 
-  const { result, error, requests } = await run("preferred", on, "echo hi > out.txt", "ses_wake_on")
+  const { result, error, requests } = await run("preferred", on, "echo hi > out.txt", "ses_wake_on", "fullTakeover")
   expect(requests).toHaveLength(0)
   expect(wrapped).toEqual([])
   expect(error).toBeUndefined()
@@ -202,7 +214,13 @@ test("waking leaves sandbox configuration on while auto bypasses it", async () =
 
 test("auto bypasses an available sandbox without changing configuration", async () => {
   wrapped.length = 0
-  const { result, error, requests, dir } = await run("preferred", on, "echo hi > out.txt", "ses_mode_on")
+  const { result, error, requests, dir } = await run(
+    "preferred",
+    on,
+    "echo hi > out.txt",
+    "ses_mode_on",
+    "fullTakeover",
+  )
   expect(requests).toHaveLength(0)
   expect(wrapped).toEqual([])
   expect(error).toBeUndefined()

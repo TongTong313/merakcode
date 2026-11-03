@@ -198,14 +198,14 @@ await merak.close()
 
 `run` 的选项（`RunOptions`，包含 `Handlers` 的全部字段）：
 
-| 选项           | 说明                                                        |
-| -------------- | ----------------------------------------------------------- |
-| `model`        | 这一轮用的模型，写成 `服务商/模型`                          |
-| `agent`        | 这一轮用的智能体                                            |
-| `mode`         | 权限模式：`"plan"`、`"execute"`、`"auto"`                   |
-| `onPermission` | 需要审批时调用，见第 6 节。不给的话，需要审批的请求一律拒绝 |
-| `onQuestion`   | 模型提问时调用，见第 6 节。不给的话跳过提问                 |
-| `signal`       | 中止这一轮                                                  |
+| 选项              | 说明                                                        |
+| ----------------- | ----------------------------------------------------------- |
+| `model`           | 这一轮用的模型，写成 `服务商/模型`                          |
+| `agent`           | 这一轮用的智能体                                            |
+| `permissionLevel` | 权限级别：`"ask"`、`"autoApprove"`、`"fullTakeover"`        |
+| `onPermission`    | 需要审批时调用，见第 6 节。不给的话，需要审批的请求一律拒绝 |
+| `onQuestion`      | 模型提问时调用，见第 6 节。不给的话跳过提问                 |
+| `signal`          | 中止这一轮                                                  |
 
 `run` 产出的事件（`RunEvent`）有 5 种：
 
@@ -223,7 +223,7 @@ import { createMerakCode } from "@merakcode/sdk"
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session({ title: "改 README" })
 let answer = ""
-for await (const event of session.run("README 里有错别字吗？只列出来，不要改。", { mode: "plan" })) {
+for await (const event of session.run("README 里有错别字吗？只列出来，不要改。", { permissionLevel: "ask" })) {
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("工具：", event.part.tool, event.part.state.status)
@@ -258,7 +258,6 @@ await merak.close()
 
 - `"allow-once"`：只允许这一次
 - `"allow-session"`：这个会话里同一范围的请求都允许：命令按前缀（比如 `npm install *`），文件按这个文件或它所在的目录
-- `"always"`：总是允许，写进项目配置。请求的 `always` 为 `false` 时（子智能体、工作流、沙箱权限、改 MerakCode 的配置文件）只在这个会话里生效
 - `"deny"`：拒绝
 
 没给 `onPermission` 时，需要审批的请求一律拒绝：宿主没表态，就不放行。
@@ -316,7 +315,10 @@ const session = await merak.session()
 const controller = new AbortController()
 setTimeout(() => controller.abort(), 60_000)
 try {
-  for await (const event of session.run("把所有测试跑一遍", { signal: controller.signal, mode: "auto" }))
+  for await (const event of session.run("把所有测试跑一遍", {
+    signal: controller.signal,
+    permissionLevel: "fullTakeover",
+  }))
     if (event.type === "text") process.stdout.write(event.delta)
 } catch (error) {
   if (error instanceof Error && error.name === "AbortError") console.log("超过一分钟，停了")
@@ -901,7 +903,7 @@ adapter({
   async run(task, host) {
     // 1. 按权限模式拼出 mycli 的参数：让它遇到拿不准的事都来问，由 MerakCode 决定
     const args = ["run", "--json", "--approvals", "ask"]
-    if (task.mode === "plan") args.push("--read-only") // 只读模式：不让它改文件
+    if (task.scope === "draft") args.push("--read-only") // 只读模式：不让它改文件
     if (task.resume) args.push("--session", task.resume) // 接着上次的会话
 
     // 2. 启动 mycli。用库里的 spawn：在 Windows 上，npm 装的 CLI 是 .cmd 文件，Node 自带的 spawn 启动不了
@@ -990,14 +992,14 @@ async function ask(host: Host, event: Extract<MyCliEvent, { type: "question" }>,
 
 `task`（类型 `Task`）里有：
 
-| 字段           | 是什么                                                                                                                                 |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.prompt`  | 交给成员的完整任务，包括它的职责和群里的情况                                                                                           |
-| `task.cwd`     | 项目目录，CLI 要在这里干活                                                                                                             |
-| `task.mode`    | 群里的权限模式（类型 `Mode`）：`"plan"`、`"execute"` 或 `"auto"`                                                                       |
-| `task.resume`  | 上次任务返回的 `sessionId`，第一次是空的                                                                                               |
-| `task.product` | 这个产品的 id 和名称（类型 `Product`）。接入方式是 `member` 时只有 `id`、`title`：配置里的命令和参数用来启动适配器本身，不会传给适配器 |
-| `task.signal`  | 用户停止群聊时触发，这时要停掉 CLI                                                                                                     |
+| 字段                   | 是什么                                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.prompt`          | 交给成员的完整任务，包括它的职责和群里的情况                                                                                           |
+| `task.cwd`             | 项目目录，CLI 要在这里干活                                                                                                             |
+| `task.permissionLevel` | 群里的权限模式（类型 `PermissionLevel`）：`"ask"`、`"autoApprove"` 或 `"fullTakeover"`                                                 |
+| `task.resume`          | 上次任务返回的 `sessionId`，第一次是空的                                                                                               |
+| `task.product`         | 这个产品的 id 和名称（类型 `Product`）。接入方式是 `member` 时只有 `id`、`title`：配置里的命令和参数用来启动适配器本身，不会传给适配器 |
+| `task.signal`          | 用户停止群聊时触发，这时要停掉 CLI                                                                                                     |
 
 ### 15.6 五种审批请求
 
@@ -1100,16 +1102,33 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 - `connect`：你的 CLI 也说 JSON-RPC 的话，可以用它来连，写法见 `example-codex.mts`。对方先断开时，还在等的请求会以 `ConnectionClosed` 失败。
 - `PROTOCOL`：成员协议的版本号。协议本身是标准输入输出上的 JSON-RPC 2.0，一行一条消息，由库处理。
 
-### 会话模式与适配器控制
+### 权限级别与适配器控制
 
-子会话的计划 API 与根会话共用文档，返回的 `sessionID` 是计划所有者。客户端应按该 ID 关联编辑器和更新事件。
-普通消息可以省略 `sessionMode`，由服务端使用当前模式；桌面仅在明确指定初始模式时随消息提交此字段。
-计划执行开始后的读取和内置搜索使用批准快照，人工编辑仍可保存到当前文档。
+子会话计划 API 返回根对话的 `sessionID`。客户端按该 ID 关联编辑器与计划事件。
+普通消息保留服务端权限级别。显式切换调用 `session.setPermissionLevel` 并提交期望修订号。
+高级会话接口提供同名方法。`run({ permissionLevel })` 会先显式切换，再发送消息。
 
-模式为 `plan`、`execute`、`auto`。外部产品继续使用自己的原生工具；MerakCode 只审批上报的操作，未上报行为及产品自身沙箱不受宿主控制。auto 在后端直接允许权限请求并禁止新增问答，切换前已提出的问题继续等待用户回答。适配器库收到模式通知后更新 `task.mode`；可选 `modeChanged` 仅用于产品确实支持的原生策略更新。通过 `capabilities.control` 如实报告覆盖范围、取消粒度和已知限制，未知能力不得标记为已支持。
+三档为 `ask`、`autoApprove`、`fullTakeover`。所需隔离就绪时才使用本对话授权。
+隔离未就绪时，前两档逐次询问。协议 3 校验成功后才传任务。
+库按修订更新 `task.permissionLevel`。产品确实支持原生热更新时才实现 `permissionLevelChanged`。
+外部产品保留原生工具，并如实报告覆盖范围和限制。
 
-宿主拒绝新问题时，适配器必须通过原生协议拒绝或取消该问题，使原生任务结束等待。切换前已提出的问题仍须转发
-真实人工回答。内置 OpenCode 适配器使用原生问题拒绝接口，生成适配器遵守相同契约。
+依赖计划的任务需要完整输入与容量声明。适配器收到完整固定正文。
+能力不足时，宿主在任务派发前拒绝。只出稿任务需要原生限制能力。
+普通任务不要求计划能力。
 
-客户端导出的 startsSessionPlan(text) 用于识别明确的开始执行计划消息。桌面在发送前据此保存已打开的计划缓冲区，
-引擎继续根据最新策略决定任务准入。
+客户端导出的 `startsSessionPlan(text)` 识别明确的整份计划启动指令。
+桌面在发送前保存已打开的计划缓冲区。引擎独立执行当前权限与快照检查。
+
+适配器操作协议使用 `OperationStart`、`OperationAdmission` 和 `OperationFinish`。调用方先发送
+`host.operationStart({ id, request, isolation })`。只有 `allow: true` 才能执行操作。
+调用方必须在操作前检查返回的 `signal`，并在真实操作结束后发送 `host.operationFinish`。
+失败或停止不能发送成功结果。`cancelOperation` 只有确认原生操作停止后才能返回 `stopped: true`。
+
+`parseOperationStart` 和 `parseOperationFinish` 校验协议参数。
+`supportsPerOperationControl` 检查适配器是否声明全部实际操作类别的事前回调。
+声明不足的适配器不能用于询问或自动审批。隔离归属声明不证明隔离已经生效，未知覆盖仍须逐次询问。
+
+独立自检默认使用询问。无法逐项拦截的适配器需要明确选择完全接管：
+`node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`。
+自检会显示操作开始和结束，不会把普通任务解释为完整计划执行。

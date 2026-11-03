@@ -70,7 +70,7 @@ test("refuses to switch while the checkout's session is running", async () => {
   }
   const session = await merak.session()
   const running = (async () => {
-    for await (const event of session.run("Wait for this request", { mode: "auto" })) void event
+    for await (const event of session.run("Wait for this request", { permissionLevel: "fullTakeover" })) void event
   })()
   try {
     await expect.poll(() => entered, { timeout: 30_000 }).toBe(true)
@@ -129,7 +129,9 @@ test("keeps a background command protected after its foreground turn finishes", 
   const session = await merak.session()
   let jobID: string | undefined
   try {
-    for await (const event of session.run("Start the background command and finish this turn", { mode: "auto" }))
+    for await (const event of session.run("Start the background command and finish this turn", {
+      permissionLevel: "fullTakeover",
+    }))
       void event
     const parts = (await client.session.messages({ sessionID: session.id }, { throwOnError: true })).data.flatMap(
       (message) => message.parts,
@@ -178,7 +180,9 @@ test("protects a background workflow even after its cancellation has been acknow
         }
   try {
     const session = await workflowMerak.session()
-    for await (const event of session.run("Start the waiting workflow and finish this turn", { mode: "auto" }))
+    for await (const event of session.run("Start the waiting workflow and finish this turn", {
+      permissionLevel: "fullTakeover",
+    }))
       void event
     const { client } = workflowMerak
     const workflowParts = (
@@ -247,7 +251,7 @@ test("keeps cancelled command preparation protected until the actual command set
   const release = path.join(preparing.root, "prepare-release")
   await Filesystem.write(
     path.join(preparing.project, "prepare.cjs"),
-    'const fs = require("node:fs"), path = require("node:path"); const root = process.env.MERAKCODE_HOME; fs.writeFileSync(path.join(root, "prepare-entered"), "ready"); const end = Date.now() + 15000; while (!fs.existsSync(path.join(root, "prepare-release")) && Date.now() < end) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25); fs.writeFileSync("late.txt", "late content");',
+    'const fs = require("node:fs"), path = require("node:path"); const root = process.env.MERAKCODE_HOME; fs.writeFileSync(path.join(root, "prepare-entered"), "ready"); const end = Date.now() + 15000; while (!fs.existsSync(path.join(root, "prepare-release")) && Date.now() < end) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25); fs.writeFileSync("late.txt", "late content"); fs.writeFileSync(path.join(root, "prepare-settled"), "settled");',
   )
   const preparingGit = (...args: string[]) =>
     execFileSync("git", ["-c", "user.name=Branch Test", "-c", "user.email=branch@example.test", ...args], {
@@ -275,12 +279,18 @@ test("keeps cancelled command preparation protected until the actual command set
     expect(switched.response.status).toBe(409)
   } finally {
     await Filesystem.write(release, "release")
-    await pending
-    await expect
-      .poll(async () => (await client.file.read({ path: "late.txt" }, { throwOnError: true })).data.content)
-      .toBe("late content")
-    await preparingMerak.close()
-    await preparing[Symbol.asyncDispose]()
+    try {
+      await pending
+      await expect
+        .poll(() => Filesystem.readText(path.join(preparing.root, "prepare-settled")).catch(() => ""), {
+          timeout: 10_000,
+        })
+        .toBe("settled")
+      expect((await client.file.read({ path: "late.txt" }, { throwOnError: true })).data.content).toBe("late content")
+    } finally {
+      await preparingMerak.close()
+      await preparing[Symbol.asyncDispose]()
+    }
   }
 }, 120_000)
 
@@ -312,7 +322,7 @@ test("keeps inherited background pipes protected after their parent exits and ca
   let entered = false
   try {
     for await (const event of session.run("Start the inherited background bash_background command and finish", {
-      mode: "auto",
+      permissionLevel: "fullTakeover",
     }))
       void event
     const parts = (await client.session.messages({ sessionID: session.id }, { throwOnError: true })).data.flatMap(
@@ -384,7 +394,10 @@ setInterval(() => {}, 1000)
   const session = await merak.session()
   let jobID: string | undefined
   try {
-    for await (const event of session.run("Start the attached background processes", { mode: "auto" })) void event
+    for await (const event of session.run("Start the attached background processes", {
+      permissionLevel: "fullTakeover",
+    }))
+      void event
     await expect.poll(() => Filesystem.readText(marker).catch(() => ""), { timeout: 10_000 }).not.toBe("")
     const pids = JSON.parse(await Filesystem.readText(marker)) as number[]
     expect(pids).toHaveLength(2)
@@ -454,10 +467,13 @@ test("reports a background process start failure once and releases its checkout"
   }
   const session = await failingMerak.session()
   try {
-    for await (const event of session.run("Start a failing background bash_background command", { mode: "auto" }))
+    for await (const event of session.run("Start a failing background bash_background command", {
+      permissionLevel: "fullTakeover",
+    }))
       void event
     await expect.poll(() => notifications, { timeout: 10_000 }).toBeGreaterThan(0)
-    for await (const event of session.run("Continue after the process failure", { mode: "auto" })) void event
+    for await (const event of session.run("Continue after the process failure", { permissionLevel: "fullTakeover" }))
+      void event
     const messages = (await failingMerak.client.session.messages({ sessionID: session.id }, { throwOnError: true }))
       .data
     const background = messages

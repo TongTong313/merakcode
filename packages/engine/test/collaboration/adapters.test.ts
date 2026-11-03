@@ -3,14 +3,30 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import readline from "node:readline"
-import type { Mode, Permission, Question, Step } from "@merakcode/sdk/adapter"
-import { runMember } from "../../src/agent/external/runtime"
+import type { PermissionLevel, Permission, Question, Step } from "@merakcode/sdk/adapter"
+import { runMember, inspectMember } from "../../src/agent/external/runtime"
 import { builtinLaunch } from "../../src/agent/external/adapters"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { shim } from "./fixture/shim"
 import { Instance } from "../../src/infra/project/instance"
 import { Session } from "../../src/agent/session"
 import { Question as SessionQuestion } from "../../src/agent/session/question"
+
+test.each(["claude", "codex", "opencode"] as const)(
+  "%s reports its limited control and native isolation ownership",
+  async (name) => {
+    await using tmp = await tmpdir()
+    const command = await shim(tmp.path, name, `${name}.ts`)
+    const info = await inspectMember({
+      launch: builtinLaunch(name),
+      product: { id: name, title: name, command },
+      cwd: tmp.path,
+    })
+    expect(info.capabilities?.control).toMatchObject({ cancellation: "task", liveMode: false, isolation: "product" })
+    expect(info.capabilities?.control?.limitations.length).toBeGreaterThan(0)
+  },
+  15000,
+)
 
 /**
  * Runs one task through a built-in adapter against a fake CLI. The host allows what allow says yes to, answers
@@ -18,7 +34,7 @@ import { Question as SessionQuestion } from "../../src/agent/session/question"
  */
 async function run(input: {
   adapter: "claude" | "codex" | "opencode"
-  mode?: Mode
+  permissionLevel?: PermissionLevel
   resume?: string
   env: Record<string, string>
   allow?: (request: Permission) => boolean
@@ -39,7 +55,12 @@ async function run(input: {
     const result = await runMember({
       launch: builtinLaunch(input.adapter),
       product: { id: input.adapter, title: input.adapter, command, args: [] },
-      task: { prompt: "做登录", cwd: tmp.path, mode: input.mode ?? "execute", resume: input.resume },
+      task: {
+        prompt: "做登录",
+        cwd: tmp.path,
+        permissionLevel: input.permissionLevel ?? "fullTakeover",
+        resume: input.resume,
+      },
       abort: input.signal ?? new AbortController().signal,
       host: {
         step: (step) => {
@@ -80,14 +101,11 @@ test("Claude Code asks MerakCode before it fetches a page, and is told the answe
   expect(denied.result.text).toContain("WebFetch denied: 不行")
 }, 60_000)
 
-test("Claude Code gets no edit tools in read-only mode, and the resumed session on its next task", async () => {
-  const readonly = await run({ adapter: "claude", mode: "plan", env: { CLAUDE_FIXTURE: "[]" } })
-  expect(readonly.args).toEqual(
-    expect.arrayContaining(["--permission-mode", "manual", "--permission-prompt-tool", "stdio"]),
-  )
-  expect(readonly.args.slice(readonly.args.indexOf("--disallowedTools"))).toEqual(
-    expect.arrayContaining(["Edit", "Write", "NotebookEdit"]),
-  )
+test("Claude Code refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const)
+    await expect(run({ adapter: "claude", permissionLevel, env: { CLAUDE_FIXTURE: "[]" } })).rejects.toMatchObject({
+      name: "ExternalAdapterError",
+    })
   const resumed = await run({ adapter: "claude", resume: "claude-session-7", env: { CLAUDE_FIXTURE: "[]" } })
   expect(resumed.args).not.toContain("--disallowedTools")
   expect(resumed.args.slice(resumed.args.indexOf("--resume"), resumed.args.indexOf("--resume") + 2)).toEqual([
@@ -184,9 +202,11 @@ test("Codex runs as an app server that asks MerakCode about its commands, file c
   ])
 }, 60_000)
 
-test("Codex reads only in read-only mode, and continues its thread on the next task", async () => {
-  const readonly = await run({ adapter: "codex", mode: "plan", env: { CODEX_FIXTURE: "[]" } })
-  expect(readonly.calls["thread/start"]).toMatchObject({ sandbox: "read-only" })
+test("Codex refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const)
+    await expect(run({ adapter: "codex", permissionLevel, env: { CODEX_FIXTURE: "[]" } })).rejects.toMatchObject({
+      name: "ExternalAdapterError",
+    })
   const resumed = await run({ adapter: "codex", resume: "codex-thread-7", env: { CODEX_FIXTURE: "[]" } })
   expect(resumed.calls["thread/resume"]).toMatchObject({ threadId: "codex-thread-7", approvalPolicy: "untrusted" })
   expect(resumed.calls["thread/start"]).toBeUndefined()
@@ -202,21 +222,21 @@ test("the shell Codex wraps a command in is taken off before MerakCode judges it
   expect(unwrapShell("git status")).toBe("git status")
 })
 
-test.each(["auto", "execute"] as const)(
-  "OpenCode settles native questions under %s and later switches",
+test.each(["fullTakeover"] as const)(
+  "OpenCode preserves business questions under %s",
   async (mode) => {
     await using project = await tmpdir({ git: true })
     await Instance.provide({
       directory: project.path,
       fn: async () => {
         const session = await Session.create({})
-        await Session.setMode({ sessionID: session.id, sessionMode: mode })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: mode })
         const asked = Promise.withResolvers<void>()
         const stop = new AbortController()
         let settled = false
         const running = run({
           adapter: "opencode",
-          mode,
+          permissionLevel: mode,
           signal: stop.signal,
           env: { OPENCODE_FIXTURE: JSON.stringify([{ question: "Choose storage", options: ["SQLite"] }]) },
           answer: async (questions) => {
@@ -241,16 +261,16 @@ test.each(["auto", "execute"] as const)(
         )
         try {
           await asked.promise
-          if (mode === "execute") {
+          {
             await expect.poll(async () => (await SessionQuestion.list()).length).toBe(1)
-            await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+            await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
             const pending = await SessionQuestion.list()
             expect(pending).toHaveLength(1)
             await SessionQuestion.reply({ requestID: pending[0]!.id, answers: [["SQLite"]] })
           }
           await expect.poll(() => settled, { timeout: 2000 }).toBe(true)
           const result = await running
-          expect(result.result.text).toContain(mode === "auto" ? "question rejected" : 'answer [["SQLite"]]')
+          expect(result.result.text).toContain('answer [["SQLite"]]')
           expect(await SessionQuestion.list()).toHaveLength(0)
         } finally {
           stop.abort()
@@ -301,9 +321,11 @@ test("OpenCode runs as a local server whose permission requests and questions co
   ])
 }, 60_000)
 
-test("OpenCode cannot edit in read-only mode, and continues its session on the next task", async () => {
-  const readonly = await run({ adapter: "opencode", mode: "plan", env: { OPENCODE_FIXTURE: "[]" } })
-  expect(readonly.calls.config.permission).toMatchObject({ edit: "deny" })
+test("OpenCode refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const)
+    await expect(run({ adapter: "opencode", permissionLevel, env: { OPENCODE_FIXTURE: "[]" } })).rejects.toMatchObject({
+      name: "ExternalAdapterError",
+    })
   const resumed = await run({ adapter: "opencode", resume: "ses_old", env: { OPENCODE_FIXTURE: "[]" } })
   expect(resumed.calls.prompts).toEqual([expect.objectContaining({ sessionID: "ses_old" })])
   expect(resumed.result.sessionId).toBe("ses_old")
@@ -342,18 +364,21 @@ test("when MerakCode goes away mid-task, the CLI an adapter started is stopped w
   })
   const send = (message: object) => adapter.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n")
   const asked = Promise.withResolvers<void>()
+  const initialized = Promise.withResolvers<void>()
   const lines = readline.createInterface({ input: adapter.stdout, crlfDelay: Infinity })
   lines.on("line", (line) => {
     const message = JSON.parse(line)
+    if (message.id === 1 && message.result) initialized.resolve()
     if (message.method === "session.started") send({ id: message.id, result: null })
     if (message.method === "question/ask") asked.resolve()
   })
   send({
     id: 1,
     method: "initialize",
-    params: { protocol: 1, product: { id: "opencode", title: "OpenCode", command, args: [] } },
+    params: { protocol: 3, product: { id: "opencode", title: "OpenCode", command, args: [] } },
   })
-  send({ id: 2, method: "task/run", params: { prompt: "hi", cwd: tmp.path, mode: "execute" } })
+  await initialized.promise
+  send({ id: 2, method: "task/run", params: { prompt: "hi", cwd: tmp.path, permissionLevel: "fullTakeover" } })
   // Wait until the server runs and asks its question, then go away without answering
   await expect
     .poll(
@@ -387,7 +412,7 @@ test("when a member's task is done, the adapter it ran is already gone", async (
   await runMember({
     launch: [process.execPath, ...process.execArgv, fixture, JSON.stringify({ marker })],
     product: { id: "fixture", title: "Fixture" },
-    task: { prompt: "hi", cwd: tmp.path, mode: "execute" },
+    task: { prompt: "hi", cwd: tmp.path, permissionLevel: "fullTakeover" },
     abort: new AbortController().signal,
     host: { step: () => {}, permission: async () => ({ allow: true }), question: async () => [] },
   })
@@ -412,7 +437,7 @@ test("when MerakCode itself exits mid-task, the CLI of a member at work does not
       `void runMember({`,
       `  launch: builtinLaunch("opencode"),`,
       `  product: { id: "opencode", title: "OpenCode", command: ${JSON.stringify(command)}, args: [] },`,
-      `  task: { prompt: "hi", cwd: ${JSON.stringify(tmp.path)}, mode: "execute" },`,
+      `  task: { prompt: "hi", cwd: ${JSON.stringify(tmp.path)}, permissionLevel: "fullTakeover" },`,
       `  abort: new AbortController().signal,`,
       `  host: { step: () => {}, permission: async () => ({ allow: true }), question: () => process.exit(0) },`,
       `})`,

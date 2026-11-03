@@ -34,7 +34,7 @@ test.use({
 })
 
 test("clicking a subagent opens its conversation, with a way back to the main one", async ({ kit }) => {
-  await kit.mode(/自动/)
+  await kit.mode(/完全接管|Full takeover/)
   await kit.send("派子智能体去查")
   await expect(kit.text("主对话完成")).toBeVisible({ timeout: 90_000 })
   await kit.page.getByRole("button", { name: /智能体工作完成/ }).click()
@@ -45,7 +45,7 @@ test("clicking a subagent opens its conversation, with a way back to the main on
 })
 
 test("the workflow card shows task progress and is marked canceled after canceling", async ({ kit }) => {
-  await kit.mode(/自动/)
+  await kit.mode(/完全接管|Full takeover/)
   await kit.send("跑工作流")
   await expect(kit.text("工作流已启动")).toBeVisible({ timeout: 60000 })
   await kit.page.getByRole("button", { name: /智能体工作完成/ }).click()

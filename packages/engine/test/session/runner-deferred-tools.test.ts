@@ -163,9 +163,9 @@ test("resolveTools leaves workflow_run out of the child session tool_search list
 })
 
 for (const scenario of [
-  { name: "root", child: false, mode: "execute" as const },
-  { name: "readonly child", child: true, mode: "plan" as const },
-  { name: "automatic root", child: false, mode: "auto" as const },
+  { name: "root", child: false, permissionLevel: "autoApprove" as const },
+  { name: "readonly child", child: true, permissionLevel: "ask" as const },
+  { name: "automatic root", child: false, permissionLevel: "fullTakeover" as const },
 ]) {
   test("context tool names match the prepared model tools for a " + scenario.name, async () => {
     await withSession(async ({ session, user, agent, processor }) => {
@@ -178,7 +178,7 @@ for (const scenario of [
         processor,
         bypassAgentCheck: false,
         messages,
-        sessionMode: scenario.mode,
+        permissionLevel: scenario.permissionLevel,
         child: scenario.child,
         step: 2,
       })
@@ -201,8 +201,8 @@ for (const scenario of [
         for (const id of ["subagent", "workflow_run", "plan_enter", "plan_exit"])
           expect(view.stats.tools.standard.names).not.toContain(id)
       }
-      if (scenario.mode === "auto") {
-        expect(view.stats.tools.standard.names).not.toContain("question")
+      if (scenario.permissionLevel === "fullTakeover") {
+        expect(view.stats.tools.standard.names).toContain("question")
         expect(view.stats.tools.standard.names).not.toContain("plan_enter")
       }
     })

@@ -18,7 +18,10 @@ import { Question } from "../session/question"
 import { runAdmitted } from "../../infra/process/admission"
 import { Text } from "../prompt/text"
 import { Lock } from "@merakcode/engine/infra/concurrency/lock"
-import { sessionModeNow } from "../permission/session-mode"
+import { permissionLevelNow } from "../permission/permission-level"
+import { SessionPlan } from "../session/plan"
+import { TaskScope } from "../permission/scope"
+import { startsSessionPlan } from "@merakcode/util/session-plan"
 
 export namespace ExternalSession {
   const log = Log.create({ service: "session.external" })
@@ -29,6 +32,7 @@ export namespace ExternalSession {
     { ownerID?: string; sessionID: string; productID: string; controller: AbortController; done: Promise<void> }
   >()
   const recovered = new Set<string>()
+  const planStarts = Instance.state(() => new Map<string, Promise<Message.FullMsg>>())
   onDisable((productID) => {
     for (const run of pending.values())
       if (run.productID === productID) run.controller.abort(new DOMException("The product was disabled", "AbortError"))
@@ -65,11 +69,34 @@ export namespace ExternalSession {
     }
   }
 
-  export async function prompt(input: Loop.PromptInput): Promise<Message.FullMsg> {
+  export async function prompt(
+    input: Loop.PromptInput,
+    options?: { planSource?: "button" | "chat" },
+  ): Promise<Message.FullMsg> {
+    const text = input.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+    if (!startsSessionPlan(text)) return promptInternal(input, options)
+    const sessionID = await Session.rootID(input.sessionID)
+    const starts = planStarts()
+    const known = starts.get(sessionID)
+    if (known) return known
+    const requestID = randomUUID()
+    const running = SessionPlan.queue(sessionID, requestID).then(() => promptInternal({ ...input, sessionID }, options))
+    starts.set(sessionID, running)
+    void running
+      .finally(async () => {
+        if (starts.get(sessionID) === running) starts.delete(sessionID)
+        await SessionPlan.dequeue(sessionID, requestID)
+      })
+      .catch(() => {})
+    return running
+  }
+
+  async function promptInternal(
+    input: Loop.PromptInput,
+    options?: { planSource?: "button" | "chat" },
+  ): Promise<Message.FullMsg> {
     await reconcile(input.sessionID)
     const session = await SessionTarget.assertCanSend(input.sessionID, input)
-    if (input.sessionMode && !session.parentID)
-      await Session.setMode({ sessionID: session.id, sessionMode: input.sessionMode })
     if (session.target?.kind !== "external")
       throw new Error(await Text.pick({ zh: "此对话没有外部产品目标", en: "The conversation has no external target" }))
     const productID = session.target.productID
@@ -92,7 +119,7 @@ export namespace ExternalSession {
       sessionID: session.id,
       role: "user",
       time: { created: Date.now() },
-      sessionMode: input.sessionMode ?? session.sessionMode ?? "execute",
+      permissionLevel: permissionLevelNow(session.id),
       execution,
       metadata:
         input.metadata || input.messageID ? { ...input.metadata, externalClientMessageID: input.messageID } : undefined,
@@ -138,6 +165,7 @@ export namespace ExternalSession {
     await Session.updateInfo(assistant)
     const parts = new Map<string, Message.TextPart>()
     const steps: { tool: string; detail?: string }[] = []
+    let planExecutionID: string | undefined
     const write = async (messageID: string, partID: string, text: string, append: boolean) => {
       const key = `${messageID}\0${partID}`
       const prev = parts.get(key)
@@ -199,6 +227,17 @@ export namespace ExternalSession {
           await Session.updateInfo(user)
           await Session.updateInfo(assistant)
           const currentText = input.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+          const plan = await SessionPlan.get(session.id)
+          const startingPlan = startsSessionPlan(currentText)
+          const planInput = SessionPlan.inputForTask(plan, currentText, startingPlan)
+          planExecutionID = planInput?.executionID
+          if (startingPlan && !planInput?.content.trim())
+            throw new SessionPlan.ConflictError({
+              message: await Text.pick({
+                zh: "请先保存计划再开始执行。",
+                en: "Save a plan before starting execution.",
+              }),
+            })
           const history = !binding?.resumeID
             ? (await Session.messages({ sessionID: session.id }))
                 .filter((message) => message.info.id < user.id)
@@ -228,11 +267,19 @@ export namespace ExternalSession {
                   ? `Conversation history (background only; do not repeat previous actions):\n${history}\n\nCurrent user task:\n${currentText}`
                   : currentText,
                 cwd: Instance.directory,
-                mode: sessionModeNow(session.id),
+                permissionLevel: permissionLevelNow(session.id),
+                scope: await TaskScope.current(session.id, user.id),
+                plan: planInput,
                 model: selected.model,
                 resume: binding?.productID === selected.id ? binding.resumeID : undefined,
               },
               abort: signal,
+              beforeTask: async (task) => {
+                if (!startingPlan && plan.status !== "paused") return
+                const started = await SessionPlan.start(session.id, options?.planSource ?? "chat", plan.revision)
+                planExecutionID = started.execution?.id
+                if (task.plan) task.plan.executionID = planExecutionID
+              },
               host: {
                 sessionStarted: async ({ sessionId }) =>
                   Storage.write<Binding>(["external_session", session.id], {
@@ -247,9 +294,16 @@ export namespace ExternalSession {
                   assistant.metadata = { ...assistant.metadata, externalSteps: [...steps] }
                   await Session.updateInfo(assistant)
                 },
-                permission: (request) =>
+                permission: (request, operation) =>
                   decideExternal(
-                    { sessionID: session.id, executionID: runID, cwd: Instance.directory, mode: user.sessionMode },
+                    {
+                      sessionID: session.id,
+                      executionID: runID,
+                      cwd: Instance.directory,
+                      permissionLevel: user.permissionLevel,
+                      tool: { messageID: assistant.id, callID: operation?.id ?? runID },
+                      operation,
+                    },
                     request,
                   ),
                 question: async (questions) =>
@@ -303,11 +357,22 @@ export namespace ExternalSession {
             terminal: "completed",
             time: { ...assistant.time, completed: Date.now() },
           }
+          if (planExecutionID) await SessionPlan.setStatus(session.id, "completed", undefined, planExecutionID)
         },
         signal,
       )
     } catch (error) {
-      const cancelled = signal.aborted || !(await productState(productID)).enabled
+      const cancelled =
+        signal.aborted ||
+        (error instanceof Error && error.name === "AbortError") ||
+        !(await productState(productID)).enabled
+      if (planExecutionID)
+        await SessionPlan.setStatus(
+          session.id,
+          Message.PlanCapacityError.isInstance(error) ? "paused" : cancelled ? "stopped" : "failed",
+          undefined,
+          planExecutionID,
+        )
       assistant = {
         ...assistant,
         terminal: cancelled ? "cancelled" : "failed",
@@ -316,7 +381,11 @@ export namespace ExternalSession {
           ? new Message.AbortedError({
               message: await Text.pick({ zh: "外部任务已取消", en: "External execution was cancelled" }),
             }).toObject()
-          : new ExternalAdapterError({ message: error instanceof Error ? error.message : String(error) }).toObject(),
+          : ExternalAdapterError.isInstance(error) ||
+              Message.PlanCapacityError.isInstance(error) ||
+              SessionPlan.ConflictError.isInstance(error)
+            ? error.toObject()
+            : new ExternalAdapterError({ message: error instanceof Error ? error.message : String(error) }).toObject(),
       }
     } finally {
       try {

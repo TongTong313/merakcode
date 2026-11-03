@@ -116,7 +116,7 @@ test.each(["file", "directory", "directory-link", "hardlink", "child"])(
           sessionID: session.id,
           messageID: "",
           agent: "build",
-          sessionMode: "auto" as const,
+          permissionLevel: "fullTakeover" as const,
           abort: new AbortController().signal,
           messages: [],
           ruleset: [],
@@ -193,7 +193,7 @@ test("legacy plans migrate independently while retaining human protection and th
         sessionID: session.id,
         messageID: "",
         agent: "build",
-        sessionMode: "auto" as const,
+        permissionLevel: "fullTakeover" as const,
         abort: new AbortController().signal,
         messages: [],
         ruleset: [],
@@ -230,7 +230,7 @@ test("execution reads and compaction restore never expose later editable plan co
         sessionID: session.id,
         messageID: "",
         agent: "build",
-        sessionMode: "auto" as const,
+        permissionLevel: "fullTakeover" as const,
         abort: new AbortController().signal,
         messages: [],
         ruleset: [],
@@ -356,13 +356,13 @@ test("starting uses the latest plan once and later saves do not change its execu
   })
 })
 
-test("compaction identifiers and generic writes cannot bypass a human save in the active turn", async () => {
+test("compaction identifiers cannot bypass a human save before a new task", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await SessionPlan.beginTurn(session.id, "real-user")
+      await SessionPlan.beginTurn(session.id, "msg_real-user")
       const human = await SessionPlan.save({
         sessionID: session.id,
         source: "human",
@@ -378,11 +378,14 @@ test("compaction identifiers and generic writes cannot bypass a human save in th
           userMessageID: "compaction-continuation",
         }),
       ).rejects.toThrow()
-      await expect(
-        SessionPlan.writeFromAgent({ sessionID: session.id, path: human.path, content: "Generic tool retry" }),
-      ).rejects.toThrow()
-      await SessionPlan.beginTurn(session.id, "next-real-user")
-      await SessionPlan.writeFromAgent({ sessionID: session.id, path: human.path, content: "Requested revision" })
+      await SessionPlan.beginTurn(session.id, "msg_next-real-user")
+      await SessionPlan.save({
+        sessionID: session.id,
+        source: "agent",
+        content: "Requested revision",
+        expectedRevision: human.revision,
+        userMessageID: "msg_next-real-user",
+      })
       expect((await SessionPlan.get(session.id)).content).toBe("Requested revision")
     },
   })

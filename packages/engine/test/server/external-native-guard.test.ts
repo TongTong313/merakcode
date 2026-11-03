@@ -40,9 +40,10 @@ test("refuses a native subagent task that reuses an external conversation", asyn
       )
     targetID = (await (await request("/session", { target: { kind: "external", productID: "external" } })).json()).id
     const nativeID = (await (await request("/session", {})).json()).id
+    await request(`/session/${nativeID}/permission-level`, { permissionLevel: "fullTakeover", expectedRevision: 0 })
     const response = await request(`/session/${nativeID}/message`, {
       parts: [{ type: "text", text: "try external reuse" }],
-      sessionMode: "auto",
+      permissionLevel: "fullTakeover",
     })
     expect(response.status).toBe(200)
     await response.text()
@@ -57,7 +58,7 @@ test("refuses a native subagent task that reuses an external conversation", asyn
     expect(calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          state: expect.objectContaining({ status: "error", error: expect.stringMatching(/external/i) }),
+          state: expect.objectContaining({ status: "error", error: expect.stringMatching(/external|外部/i) }),
         }),
       ]),
     )

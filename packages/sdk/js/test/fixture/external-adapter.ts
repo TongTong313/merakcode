@@ -11,6 +11,13 @@ adapter({
       textStreaming: true,
       resume: true,
       permission: "merak",
+      control: {
+        reportedOperations: ["read", "write", "command", "network", "tool"],
+        cancellation: "task",
+        liveMode: true,
+        isolation: "none",
+        limitations: [],
+      },
       questions: true,
     },
   }),

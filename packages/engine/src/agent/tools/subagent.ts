@@ -1,3 +1,5 @@
+import { NamedError } from "@merakcode/util/error"
+import { Text } from "../prompt/text"
 import { Tool } from "./tool"
 import DESCRIPTION from "./subagent.txt"
 import z from "zod"
@@ -11,6 +13,8 @@ import { defer } from "@merakcode/util/defer"
 import { PermissionNext } from "../permission/next"
 import { semaphoreFor } from "./subagent-scheduler"
 import { PermissionPolicy } from "../permission/policy"
+
+const SessionMismatchError = NamedError.create("SubagentSessionMismatchError", z.object({ message: z.string() }))
 
 export interface SubagentMetrics {
   source: "merakcode-subagent"
@@ -151,18 +155,15 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
         .catch(() => undefined)
       const planned = agent.model ?? inherited
 
-      // Ask before delegating; @ mentions and slash-command subtasks skip this via bypassAgentCheck
-      if (!ctx.extra?.bypassAgentCheck) {
-        await ctx.ask({
-          permission: "subagent",
-          checks: [PermissionPolicy.subagent(params.subagent_type)],
-          metadata: {
-            description: params.description,
-            subagent_type: params.subagent_type,
-            mode: params.mode ?? "fresh",
-            model: planned ? `${planned.providerID}/${planned.modelID}` : undefined,
-          },
-        })
+      const approval = {
+        permission: "subagent",
+        checks: [PermissionPolicy.subagent(params.subagent_type)],
+        metadata: {
+          description: params.description,
+          subagent_type: params.subagent_type,
+          mode: params.mode ?? "fresh",
+          model: planned ? `${planned.providerID}/${planned.modelID}` : undefined,
+        },
       }
 
       // Each subagent holds a slot of its parent session's semaphore for the whole prompt and releases it in finally.
@@ -178,11 +179,24 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
       })
 
       try {
+        let admission = await ctx.ask(approval)
+        ctx.abort.throwIfAborted()
         const session = await iife(async () => {
           // task_id takes precedence over mode, which is ignored when resuming
           if (params.task_id) {
             const found = await Session.get(params.task_id).catch(() => {})
-            if (found) return found
+            if (found) {
+              const { SessionTarget } = await import("../session/target")
+              await SessionTarget.assertNativeOperation(found.id)
+              if (!found.parentID || (await Session.rootID(found.id)) !== (await Session.rootID(ctx.sessionID)))
+                throw new SessionMismatchError({
+                  message: await Text.pick({
+                    zh: "只能恢复当前根对话中的子任务。请使用当前对话的子任务编号。",
+                    en: "Only child tasks belonging to this root conversation can be resumed. Use a child task ID from this conversation.",
+                  }),
+                })
+              return found
+            }
           }
 
           // fork copies the main session's messages since its last compaction into the child session
@@ -201,6 +215,9 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
             title: params.description + ` (@${agent.id} subagent)`,
           })
         })
+        const { TaskScope } = await import("../permission/scope")
+        using _task = await TaskScope.claim(session.id, () => Loop.assertNotBusy(session.id))
+        await TaskScope.bind(session.id, ctx.sessionID, ctx.messageID)
         const fullMsg = await Message.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
         if (fullMsg.info.role !== "assistant" || Message.isExternal(fullMsg.info))
           throw new Error("Not a native assistant message")
@@ -229,6 +246,16 @@ export const SubAgentTool = Tool.define("subagent", async (ctx) => {
         const promptParts = await Loop.resolvePromptParts(params.prompt)
 
         const before = new Set((await Session.messages({ sessionID: session.id })).map((message) => message.info.id))
+        while (
+          admission &&
+          !(await PermissionNext.isCurrent(admission, {
+            ...approval,
+            sessionID: ctx.sessionID,
+            tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
+          }))
+        )
+          admission = await ctx.ask(approval)
+        ctx.abort.throwIfAborted()
         const result = await Loop.prompt({
           messageID,
           sessionID: session.id,

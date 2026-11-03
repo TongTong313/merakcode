@@ -18,6 +18,7 @@ import { isProjectFileBypass } from "./file-bypass"
 import { ToolPathGuard } from "./path-guard"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { PermissionPolicy } from "../permission/policy"
+import { PermissionNext } from "../permission/next"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -51,29 +52,53 @@ export const ReadTool = Tool.define("read", {
     }
 
     const resolved = Workspace.resolveToolPath(Instance.workspace, params.filePath)
-    const filepath = resolved.filepath
+    let filepath = resolved.filepath
     await ToolPathGuard.assertPathAllowed(ctx, filepath, "read")
     const title = Workspace.displayPath(Instance.workspace, filepath)
-
-    const stat = await fs.promises.stat(filepath).catch(() => undefined)
-    const mime = Filesystem.mimeType(filepath)
 
     // Project-owned side files such as memory and generated plans live outside the worktree,
     // but should not prompt like arbitrary external files.
     const bypass = await isProjectFileBypass({
       agent: ctx.agent,
-      sessionMode: ctx.sessionMode,
+      permissionLevel: ctx.permissionLevel,
       filePath: filepath,
       sessionID: ctx.sessionID,
       access: "read",
     })
     if (!bypass) {
-      await ctx.ask({
+      const requestedPath = filepath
+      const request = {
         permission: "read",
         checks: [PermissionPolicy.file({ op: "read", path: filepath, ...PermissionPolicy.scope() })],
         metadata: { filepath },
-      })
+      }
+      let admission = await ctx.ask(request)
+      for (;;) {
+        ctx.abort.throwIfAborted()
+        const current =
+          !admission ||
+          (await PermissionNext.isCurrent(admission, {
+            ...request,
+            sessionID: ctx.sessionID,
+            tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
+          }))
+        const check = PermissionPolicy.file({ op: "read", path: requestedPath, ...PermissionPolicy.scope() })
+        const changed = JSON.stringify(check) !== JSON.stringify(request.checks[0])
+        if (!changed && current) {
+          try {
+            filepath = fs.realpathSync.native(check.pattern)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+            filepath = check.pattern
+          }
+          break
+        }
+        request.checks = [check]
+        admission = await ctx.ask(request)
+      }
     }
+    const stat = await fs.promises.stat(filepath).catch(() => undefined)
+    const mime = Filesystem.mimeType(filepath)
 
     if (!stat) {
       const dir = path.dirname(filepath)

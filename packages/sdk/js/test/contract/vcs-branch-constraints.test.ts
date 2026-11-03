@@ -231,7 +231,7 @@ test("explains that branch switching is unavailable while a session is running",
   }
   const session = await merak.session()
   const running = (async () => {
-    for await (const event of session.run("Wait for this request", { mode: "auto" })) void event
+    for await (const event of session.run("Wait for this request", { permissionLevel: "fullTakeover" })) void event
   })()
   try {
     await expect.poll(() => entered, { timeout: 30_000 }).toBe(true)
@@ -475,7 +475,8 @@ test("shares checkout identity and active work through a directory alias", async
   }
   const session = await merak.session()
   const running = (async () => {
-    for await (const event of session.run("Wait while the alias is inspected", { mode: "auto" })) void event
+    for await (const event of session.run("Wait while the alias is inspected", { permissionLevel: "fullTakeover" }))
+      void event
   })()
   try {
     await expect.poll(() => entered, { timeout: 30_000 }).toBe(true)

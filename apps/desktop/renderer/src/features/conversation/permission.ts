@@ -8,13 +8,15 @@ export type PermissionRequestLike = {
   patterns: string[]
   grants?: { scope: PermissionScope; pattern: string }[]
   always?: boolean
+  sandboxReady?: boolean
+  permissionLevel?: "ask" | "autoApprove" | "fullTakeover"
   metadata?: Record<string, unknown>
 }
 
 export type PermissionChoice = {
   /** Stable choice id, used for UI key bindings and tests */
   id: string
-  reply: "once" | "session" | "always" | "reject"
+  reply: "once" | "session" | "autoApprove" | "reject"
   scope?: PermissionScope
   label: { key: string; vars?: Record<string, string> }
 }
@@ -26,7 +28,7 @@ function display(pattern: string) {
 
 /** Approval bar choices: allow once → each session grant → always allow (when available) → reject */
 export function permissionChoices(request: PermissionRequestLike): PermissionChoice[] {
-  const grants = request.grants ?? []
+  const grants = request.sandboxReady === false ? [] : (request.grants ?? []).slice(0, 1)
   return [
     { id: "once", reply: "once", label: { key: "permission.option.once" } },
     ...grants.map((grant) => ({
@@ -35,12 +37,14 @@ export function permissionChoices(request: PermissionRequestLike): PermissionCho
       scope: grant.scope,
       label: { key: `permission.option.${grant.scope}`, vars: { pattern: display(grant.pattern) } },
     })),
-    ...(request.always ? [{ id: "always", reply: "always" as const, label: { key: "permission.option.always" } }] : []),
+    ...(request.sandboxReady === true && request.permissionLevel !== "autoApprove"
+      ? [{ id: "autoApprove", reply: "autoApprove" as const, label: { key: "permission.option.autoApprove" } }]
+      : []),
     { id: "reject", reply: "reject", label: { key: "permission.option.reject" } },
   ]
 }
 
-export type PermissionKind = "command" | "edit" | "read" | "network" | "subagent" | "workflow" | "mcp" | "tool"
+export type PermissionKind = "command" | "edit" | "read" | "network" | "subagent" | "workflow" | "mcp" | "tool" | "plan"
 
 const KINDS: Record<string, PermissionKind> = {
   bash: "command",
@@ -50,6 +54,8 @@ const KINDS: Record<string, PermissionKind> = {
   subagent: "subagent",
   workflow_run: "workflow",
   mcp: "mcp",
+  plan_generate: "plan",
+  plan_edit: "plan",
 }
 
 /**

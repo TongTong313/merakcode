@@ -187,6 +187,7 @@ export type AgentConnectionProduct = {
   capabilities: {
     control?: {
       cancellation: "none" | "operation" | "task"
+      isolation?: "none" | "product" | "unknown"
       limitations: Array<string>
       liveMode: boolean
       reportedOperations: Array<string>
@@ -334,6 +335,10 @@ export type AssistantMessage = {
     | MessageAbortedError
     | MessageOutputLengthError
     | ModelNotFoundError
+    | PlanCapacityError
+    | PlanConflictError
+    | PlanExecutionPausedError
+    | PlanReadRangeError
     | PluginInstallError
     | ProviderAuthError
     | StructuredOutputError
@@ -401,6 +406,10 @@ export type AssistantMessageOutput = {
     | MessageAbortedErrorOutput
     | MessageOutputLengthErrorOutput
     | ModelNotFoundErrorOutput
+    | PlanCapacityErrorOutput
+    | PlanConflictErrorOutput
+    | PlanExecutionPausedErrorOutput
+    | PlanReadRangeErrorOutput
     | PluginInstallErrorOutput
     | ProviderAuthErrorOutput
     | StructuredOutputErrorOutput
@@ -605,9 +614,9 @@ export type CompactionPart = {
   auto: boolean
   id: string
   messageID: string
+  permissionLevel?: PermissionLevel
   preCompactActivatedTools?: Array<string>
   sessionID: string
-  sessionMode?: SessionMode
   type: "compaction"
 }
 
@@ -615,9 +624,9 @@ export type CompactionPartOutput = {
   auto: boolean
   id: string
   messageID: string
+  permissionLevel?: PermissionLevel
   preCompactActivatedTools?: Array<string>
   sessionID: string
-  sessionMode?: SessionMode
   type: "compaction"
 }
 
@@ -1576,6 +1585,7 @@ export type Event =
   | EventQuestionReplied
   | EventReviewUpdated
   | EventRuleUpdated
+  | EventSandboxUpdated
   | EventServerConnected
   | EventServerInstanceDisposed
   | EventSessionCompacted
@@ -1724,7 +1734,7 @@ export type EventPermissionAsked = {
 
 export type EventPermissionReplied = {
   properties: {
-    reply: "always" | "once" | "reject" | "session"
+    reply: "once" | "reject" | "session"
     requestID: string
     sessionID: string
   }
@@ -1811,6 +1821,11 @@ export type EventRuleUpdated = {
   type: "rule.updated"
 }
 
+export type EventSandboxUpdated = {
+  properties: SandboxStatus
+  type: "sandbox.updated"
+}
+
 export type EventServerConnected = {
   properties: {
     [key: string]: never
@@ -1869,6 +1884,10 @@ export type EventSessionError = {
       | MessageAbortedErrorOutput
       | MessageOutputLengthErrorOutput
       | ModelNotFoundErrorOutput
+      | PlanCapacityErrorOutput
+      | PlanConflictErrorOutput
+      | PlanExecutionPausedErrorOutput
+      | PlanReadRangeErrorOutput
       | PluginInstallErrorOutput
       | ProviderAuthErrorOutput
       | StructuredOutputErrorOutput
@@ -2016,6 +2035,10 @@ export type ExternalAssistantMessage = {
     | MessageAbortedError
     | MessageOutputLengthError
     | ModelNotFoundError
+    | PlanCapacityError
+    | PlanConflictError
+    | PlanExecutionPausedError
+    | PlanReadRangeError
     | PluginInstallError
     | ProviderAuthError
     | StructuredOutputError
@@ -2066,6 +2089,10 @@ export type ExternalAssistantMessageOutput = {
     | MessageAbortedErrorOutput
     | MessageOutputLengthErrorOutput
     | ModelNotFoundErrorOutput
+    | PlanCapacityErrorOutput
+    | PlanConflictErrorOutput
+    | PlanExecutionPausedErrorOutput
+    | PlanReadRangeErrorOutput
     | PluginInstallErrorOutput
     | ProviderAuthErrorOutput
     | StructuredOutputErrorOutput
@@ -2162,9 +2189,9 @@ export type ExternalUserMessage = {
   metadata?: {
     [key: string]: unknown
   }
+  permissionLevel: PermissionLevel
   role: "user"
   sessionID: string
-  sessionMode: SessionMode
   time: {
     created: number
   }
@@ -2190,9 +2217,9 @@ export type ExternalUserMessageOutput = {
   metadata?: {
     [key: string]: unknown
   }
+  permissionLevel: PermissionLevel
   role: "user"
   sessionID: string
-  sessionMode: SessionMode
   time: {
     created: number
   }
@@ -2952,12 +2979,15 @@ export type PermissionGrant = {
   scope: "agent" | "directory" | "domain" | "file" | "prefix" | "tool"
 }
 
+export type PermissionLevel = "ask" | "autoApprove" | "fullTakeover"
+
 export type PermissionObjectConfig = {
   [key: string]: PermissionActionConfig
 }
 
 export type PermissionRequest = {
   always?: boolean
+  decisionRevision?: number
   executionID?: string
   grants?: Array<PermissionGrant>
   id: string
@@ -2966,7 +2996,10 @@ export type PermissionRequest = {
   }
   patterns: Array<string>
   permission: string
+  permissionLevel?: PermissionLevel
+  permissionRevision?: number
   root?: string
+  sandboxReady?: boolean
   sessionID: string
   source?: {
     agent: string
@@ -2996,6 +3029,99 @@ export type PermissionRuleOutput = {
 export type PermissionRuleset = Array<PermissionRule>
 
 export type PermissionRulesetOutput = Array<PermissionRuleOutput>
+
+export type PlanCandidate = {
+  candidateTokens: number
+  changes: Array<{
+    text: string
+    type: "delete" | "insert" | "same"
+  }>
+  content: string
+  expectedRevision: number
+  id: string
+  originalTokens: number
+}
+
+export type PlanCapacityError = {
+  code?: string
+  data: {
+    availableTokens: number
+    deficit: number
+    message: string
+    reason: "body" | "reserve"
+    requiredTokens: number
+  }
+  name: "PlanCapacityError"
+}
+
+export type PlanCapacityErrorOutput = {
+  code?: string
+  data: {
+    availableTokens: number
+    deficit: number
+    message: string
+    reason: "body" | "reserve"
+    requiredTokens: number
+  }
+  name: "PlanCapacityError"
+}
+
+export type PlanChunk = {
+  content: string
+  executionID?: string
+  nextOffset?: number
+  offset: number
+  revision: number
+  totalCharacters: number
+}
+
+export type PlanConflictError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanConflictError"
+}
+
+export type PlanConflictErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanConflictError"
+}
+
+export type PlanExecutionPausedError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanExecutionPausedError"
+}
+
+export type PlanExecutionPausedErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanExecutionPausedError"
+}
+
+export type PlanReadRangeError = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanReadRangeError"
+}
+
+export type PlanReadRangeErrorOutput = {
+  code?: string
+  data: {
+    message: string
+  }
+  name: "PlanReadRangeError"
+}
 
 export type PluginInstallError = {
   code?: string
@@ -3612,9 +3738,10 @@ export type RuleUserEntry = {
 export type SandboxStatus = {
   backend?: "landlock" | "seatbelt" | "windows-account"
   degraded?: Array<string>
+  errorCode?: string
   installable?: boolean
   reason?: string
-  status: "off" | "on" | "unsupported"
+  status: "failed" | "off" | "on" | "starting" | "unsupported"
 }
 
 /**
@@ -3649,9 +3776,12 @@ export type Session = {
   metadata?: {
     [key: string]: unknown
   }
-  modeRevision?: number
   parentID?: string
   permission?: PermissionRuleset
+  permissionGrants?: PermissionRuleset
+  permissionLevel?: PermissionLevel
+  permissionNotice?: "legacy-permissions-reset"
+  permissionRevision?: number
   projectID: string
   readOnlyReason?: "imported-external-history"
   revert?: {
@@ -3671,7 +3801,6 @@ export type Session = {
     }>
     userTurns?: Array<string>
   }
-  sessionMode?: SessionMode
   slug: string
   summary?: {
     additions: number
@@ -3699,6 +3828,10 @@ export type Session = {
     productID: string
   }
   targetRevision?: number
+  taskOrigin?: {
+    messageID: string
+    sessionID: string
+  }
   time: {
     archived?: number
     compacting?: number
@@ -3721,17 +3854,18 @@ export type Session = {
   }>
 }
 
-export type SessionMode = "auto" | "execute" | "plan"
-
 export type SessionOutput = {
   directory: string
   id: string
   metadata?: {
     [key: string]: unknown
   }
-  modeRevision?: number
   parentID?: string
   permission?: PermissionRulesetOutput
+  permissionGrants?: PermissionRulesetOutput
+  permissionLevel?: PermissionLevel
+  permissionNotice?: "legacy-permissions-reset"
+  permissionRevision?: number
   projectID: string
   readOnlyReason?: "imported-external-history"
   revert?: {
@@ -3751,7 +3885,6 @@ export type SessionOutput = {
     }>
     userTurns?: Array<string>
   }
-  sessionMode?: SessionMode
   slug: string
   summary?: {
     additions: number
@@ -3779,6 +3912,10 @@ export type SessionOutput = {
     productID: string
   }
   targetRevision?: number
+  taskOrigin?: {
+    messageID: string
+    sessionID: string
+  }
   time: {
     archived?: number
     compacting?: number
@@ -3803,19 +3940,25 @@ export type SessionOutput = {
 
 export type SessionPlan = {
   activeUserID?: string
+  anchorMessageID?: string
   blockedUserID?: string
+  buttonLocked?: boolean
+  candidate?: PlanCandidate
   content: string
   execution?: {
     content: string
     id: string
+    revision?: number
+    source?: "button" | "chat"
     startedAt: number
   }
   humanRevision: number
   path: string
+  queued?: boolean
   revision: number
   sessionID: string
   source: "agent" | "human"
-  status: "completed" | "draft" | "executing" | "review"
+  status: "completed" | "draft" | "executing" | "failed" | "paused" | "review" | "stopped"
 }
 
 export type SessionSearchResult = {
@@ -4310,9 +4453,9 @@ export type UserMessage = {
     modelID: string
     providerID: string
   }
+  permissionLevel?: PermissionLevel
   role: "user"
   sessionID: string
-  sessionMode?: SessionMode
   summary?: {
     body?: string
     diffs: Array<FileDiff>
@@ -4345,9 +4488,9 @@ export type UserMessageOutput = {
     modelID: string
     providerID: string
   }
+  permissionLevel?: PermissionLevel
   role: "user"
   sessionID: string
-  sessionMode?: SessionMode
   summary?: {
     body?: string
     diffs: Array<FileDiffOutput>
@@ -4513,6 +4656,7 @@ export type WorkflowRun = {
     model?: string
     title: string
   }>
+  planExecutionID?: string
   queuedAgentCount?: number
   result?: unknown
   resumable: boolean
@@ -7230,8 +7374,9 @@ export type PermissionRuleResponse = PermissionRuleResponses[keyof PermissionRul
 
 export type PermissionReplyData = {
   body: {
+    decisionRevision?: number
     message?: string
-    reply: "always" | "once" | "reject" | "session"
+    reply: "once" | "reject" | "session"
     scope?: "agent" | "directory" | "domain" | "file" | "prefix" | "tool"
   }
   path: {
@@ -8912,7 +9057,7 @@ export type SessionCommandData = {
     agent?: string
     arguments: string
     command: string
-    kind?: SessionMode
+    kind?: PermissionLevel
     messageID?: string
     metadata?: {
       [key: string]: unknown
@@ -8926,11 +9071,11 @@ export type SessionCommandData = {
       type: "file"
       url: string
     }>
+    permissionLevel?: PermissionLevel
     /**
-     * Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.
+     * Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.
      */
     permissionMode?: "ask" | "readonly"
-    sessionMode?: SessionMode
     variant?: string
   }
   path: {
@@ -9166,7 +9311,7 @@ export type SessionPromptData = {
   body: {
     agent?: string
     format?: OutputFormat
-    kind?: SessionMode
+    kind?: PermissionLevel
     maxTurns?: number
     messageID?: string
     metadata?: {
@@ -9178,11 +9323,11 @@ export type SessionPromptData = {
     }
     noReply?: boolean
     parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+    permissionLevel?: PermissionLevel
     /**
-     * Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.
+     * Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.
      */
     permissionMode?: "ask" | "readonly"
-    sessionMode?: SessionMode
     system?: string
     /**
      * @deprecated tools and permissions have been merged, you can set permissions on the session itself now
@@ -9405,10 +9550,7 @@ export type PartUpdateResponses = {
 export type PartUpdateResponse = PartUpdateResponses[keyof PartUpdateResponses]
 
 export type SessionSetModeData = {
-  body: {
-    expectedRevision?: number
-    sessionMode: SessionMode
-  }
+  body: unknown
   path: {
     /**
      * Session ID
@@ -9447,10 +9589,49 @@ export type SessionSetModeResponses = {
 
 export type SessionSetModeResponse = SessionSetModeResponses[keyof SessionSetModeResponses]
 
-export type SessionSetLegacyModeData = {
+export type SessionSetPermissionLevelData = {
   body: {
-    permissionMode: "ask" | "readonly"
+    expectedRevision: number
+    permissionLevel: PermissionLevel
   }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/permission-level"
+}
+
+export type SessionSetPermissionLevelErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionSetPermissionLevelError = SessionSetPermissionLevelErrors[keyof SessionSetPermissionLevelErrors]
+
+export type SessionSetPermissionLevelResponses = {
+  /**
+   * Updated session
+   */
+  200: SessionOutput
+}
+
+export type SessionSetPermissionLevelResponse =
+  SessionSetPermissionLevelResponses[keyof SessionSetPermissionLevelResponses]
+
+export type SessionSetLegacyModeData = {
+  body: unknown
   path: {
     sessionID: string
   }
@@ -9563,6 +9744,129 @@ export type SessionPlanSaveResponses = {
 
 export type SessionPlanSaveResponse = SessionPlanSaveResponses[keyof SessionPlanSaveResponses]
 
+export type SessionPlanAdoptData = {
+  body: {
+    candidateID: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/plan/adopt"
+}
+
+export type SessionPlanAdoptErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionPlanAdoptError = SessionPlanAdoptErrors[keyof SessionPlanAdoptErrors]
+
+export type SessionPlanAdoptResponses = {
+  /**
+   * Saved human plan
+   */
+  200: SessionPlan
+}
+
+export type SessionPlanAdoptResponse = SessionPlanAdoptResponses[keyof SessionPlanAdoptResponses]
+
+export type SessionPlanCandidateData = {
+  body: {
+    content: string
+    expectedRevision: number
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/plan/candidate"
+}
+
+export type SessionPlanCandidateErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+  /**
+   * Checkout is busy or the request conflicts with its current state
+   */
+  409: ErrorResponse
+}
+
+export type SessionPlanCandidateError = SessionPlanCandidateErrors[keyof SessionPlanCandidateErrors]
+
+export type SessionPlanCandidateResponses = {
+  /**
+   * Ordered candidate differences
+   */
+  200: PlanCandidate
+}
+
+export type SessionPlanCandidateResponse = SessionPlanCandidateResponses[keyof SessionPlanCandidateResponses]
+
+export type SessionPlanChunkData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    offset?: number
+    limit?: number
+    executionID?: string
+  }
+  url: "/session/{sessionID}/plan/chunk"
+}
+
+export type SessionPlanChunkErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionPlanChunkError = SessionPlanChunkErrors[keyof SessionPlanChunkErrors]
+
+export type SessionPlanChunkResponses = {
+  /**
+   * Plan range
+   */
+  200: PlanChunk
+}
+
+export type SessionPlanChunkResponse = SessionPlanChunkResponses[keyof SessionPlanChunkResponses]
+
 export type SessionPlanReviseData = {
   body?: never
   path: {
@@ -9641,11 +9945,48 @@ export type SessionPlanStartResponses = {
 
 export type SessionPlanStartResponse = SessionPlanStartResponses[keyof SessionPlanStartResponses]
 
+export type SessionPlanViewData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/plan/view"
+}
+
+export type SessionPlanViewErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionPlanViewError = SessionPlanViewErrors[keyof SessionPlanViewErrors]
+
+export type SessionPlanViewResponses = {
+  /**
+   * Viewed plan
+   */
+  200: SessionPlan
+}
+
+export type SessionPlanViewResponse = SessionPlanViewResponses[keyof SessionPlanViewResponses]
+
 export type SessionPromptAsyncData = {
   body: {
     agent?: string
     format?: OutputFormat
-    kind?: SessionMode
+    kind?: PermissionLevel
     maxTurns?: number
     messageID?: string
     metadata?: {
@@ -9657,11 +9998,11 @@ export type SessionPromptAsyncData = {
     }
     noReply?: boolean
     parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+    permissionLevel?: PermissionLevel
     /**
-     * Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.
+     * Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.
      */
     permissionMode?: "ask" | "readonly"
-    sessionMode?: SessionMode
     system?: string
     /**
      * @deprecated tools and permissions have been merged, you can set permissions on the session itself now
@@ -9753,16 +10094,16 @@ export type SessionShellData = {
   body: {
     agent: string
     command: string
-    kind?: SessionMode
+    kind?: PermissionLevel
     model?: {
       modelID: string
       providerID: string
     }
+    permissionLevel?: PermissionLevel
     /**
-     * Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.
+     * Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.
      */
     permissionMode?: "ask" | "readonly"
-    sessionMode?: SessionMode
   }
   path: {
     /**

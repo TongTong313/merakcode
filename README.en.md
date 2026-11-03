@@ -144,27 +144,27 @@ cd your-project
 merak run "Explain how src/index.ts starts up"
 ```
 
-| Command                                         | What it does                                                                                                                                                                             |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `merak run "<task>"`                            | Run one task and print the result. `-c` continues the last session, `-m` picks the model, `-f` attaches files, `--format json` prints the raw events; the task can also come from a pipe |
-| `merak run --auto "<task>"`                     | Run it in auto mode; see below                                                                                                                                                           |
-| `merak provider login`                          | Connect a model provider; `list` shows the connected ones, `logout` removes one, `relay` adds a relay                                                                                    |
-| `merak serve --port 4096`                       | Start only the engine, for the SDK or other programs                                                                                                                                     |
-| `merak upgrade` (or `update`)                   | Upgrade. `--check` only looks for a new version, `--yes` skips the question                                                                                                              |
-| `merak models`                                  | List the models you can use; `--refresh` fetches the model lists again                                                                                                                   |
-| `merak mcp list`                                | Show MCP server status                                                                                                                                                                   |
-| `merak skill`, `merak plugin`                   | Manage skills and plugins                                                                                                                                                                |
-| `merak session`, `merak export`, `merak import` | Manage, export and import sessions                                                                                                                                                       |
-| `merak stats`                                   | Token usage and cost                                                                                                                                                                     |
-| `merak sandbox status`                          | Is the sandbox on? `setup` sets it up (Windows only), `reset` undoes it                                                                                                                  |
-| `merak doctor`                                  | Check the install, config, models and sandbox, and say what is wrong                                                                                                                     |
-| `merak logs`                                    | Where the logs are and recent runs; `--tail` follows the newest log                                                                                                                      |
-| `merak bug-report`                              | Zip the checks, config and logs for an issue; keys and conversations are left out                                                                                                        |
-| `merak acp`                                     | Run as an [ACP](https://agentclientprotocol.com) agent for editors such as Zed                                                                                                           |
+| Command                                              | What it does                                                                                                                                                                             |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merak run "<task>"`                                 | Run one task and print the result. `-c` continues the last session, `-m` picks the model, `-f` attaches files, `--format json` prints the raw events; the task can also come from a pipe |
+| `merak run --permission-level fullTakeover "<task>"` | Run it in auto mode; see below                                                                                                                                                           |
+| `merak provider login`                               | Connect a model provider; `list` shows the connected ones, `logout` removes one, `relay` adds a relay                                                                                    |
+| `merak serve --port 4096`                            | Start only the engine, for the SDK or other programs                                                                                                                                     |
+| `merak upgrade` (or `update`)                        | Upgrade. `--check` only looks for a new version, `--yes` skips the question                                                                                                              |
+| `merak models`                                       | List the models you can use; `--refresh` fetches the model lists again                                                                                                                   |
+| `merak mcp list`                                     | Show MCP server status                                                                                                                                                                   |
+| `merak skill`, `merak plugin`                        | Manage skills and plugins                                                                                                                                                                |
+| `merak session`, `merak export`, `merak import`      | Manage, export and import sessions                                                                                                                                                       |
+| `merak stats`                                        | Token usage and cost                                                                                                                                                                     |
+| `merak sandbox status`                               | Is the sandbox on? `setup` sets it up (Windows only), `reset` undoes it                                                                                                                  |
+| `merak doctor`                                       | Check the install, config, models and sandbox, and say what is wrong                                                                                                                     |
+| `merak logs`                                         | Where the logs are and recent runs; `--tail` follows the newest log                                                                                                                      |
+| `merak bug-report`                                   | Zip the checks, config and logs for an issue; keys and conversations are left out                                                                                                        |
+| `merak acp`                                          | Run as an [ACP](https://agentclientprotocol.com) agent for editors such as Zed                                                                                                           |
 
 Add `--help` to any command for the full details.
 
-`merak run` has no one to approve anything: an action that would ask (in ask mode, `npm install` or `npm test`, say) is refused, and the agent is told why. To let such actions through, add `--auto`, or write allow rules in the project config (see [Configuration](#configuration)). `--auto` directly allows every action, asks nothing and skips the command sandbox; use it only when you fully trust the task.
+Without an approval handler, `merak run` refuses operations that need confirmation. `--permission-level autoApprove` allows only eligible safe operations. Explicit `--permission-level fullTakeover` skips safety approvals. The old `--auto` option was removed.
 
 `merak serve` listens only on `127.0.0.1` by default, but has no password, so any program on this computer can call it. When other programs connect, set the environment variable `MERAKCODE_SERVER_PASSWORD` (HTTP Basic auth; the user name is `merakcode` by default). See [SECURITY.md](SECURITY.md#the-engines-api).
 
@@ -182,31 +182,23 @@ Editors that speak [ACP](https://agentclientprotocol.com) can use MerakCode as t
 
 ## Permissions and the sandbox
 
-Sessions use `plan`, `execute` (the default), and `auto`. The selector sits immediately after the attachment button at the lower left of the composer; `Shift+Tab` also switches modes. Modes select available tool categories. In plan and execute, existing authorization rules and the OS sandbox assess each operation.
+New conversations default to Ask. Child tasks, group members and background work follow the root conversation's latest permission level.
 
-| Mode              | Behavior                                                                                                                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Plan              | Research, reads and read-only commands; writes only the current session plan, without modifying project files.                                                                                    |
-| Execute (default) | Read, write and execute tasks under existing external-directory, sensitive-path, dangerous-command, network and sandbox rules.                                                                    |
-| Auto              | Red danger mode. The backend allows all safety requests, including deny rules, blacklisted operations and external access, and bypasses the command sandbox. No new questions or approval popups. |
+| Permission level             | Required isolation is ready                                                                                                           | Required isolation is unavailable                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Ask `ask`                    | Ask before each operation; scoped conversation grants may apply                                                                       | Ask each time; allow once or reject                        |
+| Auto approve `autoApprove`   | Allow controlled project reads and edits, provably read-only commands and dedicated plan writes; ask for dangerous or unknown actions | Preserve the selection and ask each time                   |
+| Full takeover `fullTakeover` | Skip safety approvals; isolate compatible controlled commands and use the current account when needed                                 | Skip safety approvals and report current-account execution |
 
-Execute normally edits workspace files directly when no path segment starts with `.`. Hidden paths, MerakCode configuration, secrets, external access, mutating or dangerous commands and websites off the allowlist retain their existing checks. Text classification cannot observe every action inside scripts or commands constructed from variables; the OS sandbox adds enforcement. Auto bypasses these safety controls without creating permanent grants. Input validation, cancellation and concurrent-edit conflict protection still apply.
+Full takeover still respects the user's task scope, input validation and concurrency protection. A failed command is never automatically replayed with the current account.
 
-Mode changes apply immediately without restarting the conversation. Incompatible controllable operations are interrupted; completed writes are not rolled back. Same-mode messages preserve approved running work. Entering auto releases pending safety approvals, while questions already asked still require a human response. Processes already running in an OS sandbox retain its restrictions.
+The product prepares isolation. On Windows, the first interactive desktop setup requests system administrator approval once. Cancellation leaves Ask and Auto approve on per-operation approval. Retry from sandbox status, or diagnose and repair with `merak sandbox status` and `merak sandbox setup`.
 
-A completed plan shows “Plan generated / Awaiting review”, with actions to view, edit, execute or continue editing. Review has no timeout; a suggestion to enter plan still times out after 15 seconds. Each session has one plan, opened in the same editor from the card or Plan tab. Human saves take priority. Execution uses the latest saved content when work actually starts; later edits do not change that execution. See [Session modes and plans](docs/session-modes.md).
+Every level supports official plans. The model saves Markdown with `plan_generate` and edits it with `plan_edit`. Draft-only requests do not authorize project changes. Human saves need no agent approval. The Plan tab renders full Markdown; Edit plan opens the existing editor.
 
-External products retain their native tools. Direct chats and group members share host authorization, which controls only reported operations. Unreported actions and each product's own sandbox remain outside host control; settings describe those limits. Auto allows reported safety requests and refuses new questions.
+The button and explicit chat instructions share plan startup. Startup uses the latest saved document, records an immutable execution snapshot and preserves the selected permission level. Later edits do not change that snapshot. See [Permission levels and official plans](docs/session-modes.md).
 
-The **OS sandbox** keeps its independent on/off setting. When enabled in plan or execute, it limits command writes to the workspace, temporary directories and package caches, and restricts secret directories, protected configuration and network access. Auto bypasses command sandbox enforcement regardless of the switch, without changing that setting. Leaving auto restores the configured policy.
-
-| System  | Built on                                                   | Setup                                                                                                 |
-| ------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Windows | Separate low-rights account, NTFS permissions and firewall | Set up in the sandbox control or run `merak sandbox setup`; one administrator confirmation is needed. |
-| Linux   | Landlock (kernel 5.13+, glibc)                             | None; network restrictions need kernel 6.7+.                                                          |
-| macOS   | Seatbelt (sandbox-exec)                                    | None.                                                                                                 |
-
-In plan and execute, mutating commands still ask when a preferred sandbox is unavailable. Setup or turning the sandbox off re-evaluates requests blocked only on readiness. See [SECURITY.md](SECURITY.md) for the enforcement boundary.
+External adapters use protocol 3. The host controls only operations the adapter actually reports; native restrictions remain in effect. Plan-dependent work requires declared full-input and capacity support.
 
 ## Collaboration groups
 

@@ -11,7 +11,7 @@ import type { Provider } from "@merakcode/engine/agent/model/provider"
 import { ToolRegistry } from "@merakcode/engine/agent/tools/registry"
 import z from "zod"
 
-test("resolveTools drops question and plan mode tools in auto mode, and also subagent in child sessions", async () => {
+test("resolveTools retains business questions and official plans while preventing nested subagents", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -23,7 +23,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         role: "user",
         sessionID,
         agent: "build",
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         model: { providerID: "openai", modelID: "gpt-4" },
         time: { created: Date.now() },
       })
@@ -66,11 +66,11 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         processor,
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
       })
       // Auto mode never interrupts the user: no question and no plan_enter (plan mode needs human approval); outside
       // plan mode there is no plan_exit either.
-      expect(toolsMain.question).toBeUndefined()
+      expect(toolsMain.question).toBeDefined()
       expect(toolsMain.plan_enter).toBeUndefined()
       expect(toolsMain.plan_exit).toBeUndefined()
       expect(toolsMain.subagent).toBeDefined()
@@ -86,7 +86,7 @@ test("resolveTools drops question and plan mode tools in auto mode, and also sub
         processor,
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         child: true,
       })
       expect(toolsSub.subagent).toBeUndefined()

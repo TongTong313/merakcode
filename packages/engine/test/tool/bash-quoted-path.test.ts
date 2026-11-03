@@ -48,7 +48,7 @@ async function fixture(
               sessionID,
               messageID: "message",
               agent: "build",
-              sessionMode: "execute",
+              permissionLevel: "autoApprove",
               abort: new AbortController().signal,
               messages: [],
               ruleset,

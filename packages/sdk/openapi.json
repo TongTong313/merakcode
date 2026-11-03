@@ -247,6 +247,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "cancellation": { "enum": ["none", "operation", "task"], "type": "string" },
+                  "isolation": { "enum": ["none", "product", "unknown"], "type": "string" },
                   "limitations": { "items": { "type": "string" }, "type": "array" },
                   "liveMode": { "type": "boolean" },
                   "reportedOperations": { "items": { "type": "string" }, "type": "array" }
@@ -468,6 +469,10 @@
               { "$ref": "#/components/schemas/MessageAbortedError" },
               { "$ref": "#/components/schemas/MessageOutputLengthError" },
               { "$ref": "#/components/schemas/ModelNotFoundError" },
+              { "$ref": "#/components/schemas/PlanCapacityError" },
+              { "$ref": "#/components/schemas/PlanConflictError" },
+              { "$ref": "#/components/schemas/PlanExecutionPausedError" },
+              { "$ref": "#/components/schemas/PlanReadRangeError" },
               { "$ref": "#/components/schemas/PluginInstallError" },
               { "$ref": "#/components/schemas/ProviderAuthError" },
               { "$ref": "#/components/schemas/StructuredOutputError" },
@@ -577,6 +582,10 @@
               { "$ref": "#/components/schemas/MessageAbortedErrorOutput" },
               { "$ref": "#/components/schemas/MessageOutputLengthErrorOutput" },
               { "$ref": "#/components/schemas/ModelNotFoundErrorOutput" },
+              { "$ref": "#/components/schemas/PlanCapacityErrorOutput" },
+              { "$ref": "#/components/schemas/PlanConflictErrorOutput" },
+              { "$ref": "#/components/schemas/PlanExecutionPausedErrorOutput" },
+              { "$ref": "#/components/schemas/PlanReadRangeErrorOutput" },
               { "$ref": "#/components/schemas/PluginInstallErrorOutput" },
               { "$ref": "#/components/schemas/ProviderAuthErrorOutput" },
               { "$ref": "#/components/schemas/StructuredOutputErrorOutput" },
@@ -920,9 +929,9 @@
           "auto": { "type": "boolean" },
           "id": { "type": "string" },
           "messageID": { "type": "string" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "preCompactActivatedTools": { "items": { "type": "string" }, "type": "array" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "type": { "const": "compaction", "type": "string" }
         },
         "required": ["auto", "id", "messageID", "sessionID", "type"],
@@ -934,9 +943,9 @@
           "auto": { "type": "boolean" },
           "id": { "type": "string" },
           "messageID": { "type": "string" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "preCompactActivatedTools": { "items": { "type": "string" }, "type": "array" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "type": { "const": "compaction", "type": "string" }
         },
         "required": ["auto", "id", "messageID", "sessionID", "type"],
@@ -2238,6 +2247,7 @@
           { "$ref": "#/components/schemas/Event.question.replied" },
           { "$ref": "#/components/schemas/Event.review.updated" },
           { "$ref": "#/components/schemas/Event.rule.updated" },
+          { "$ref": "#/components/schemas/Event.sandbox.updated" },
           { "$ref": "#/components/schemas/Event.server.connected" },
           { "$ref": "#/components/schemas/Event.server.instance.disposed" },
           { "$ref": "#/components/schemas/Event.session.compacted" },
@@ -2486,7 +2496,7 @@
           "properties": {
             "additionalProperties": false,
             "properties": {
-              "reply": { "enum": ["always", "once", "reject", "session"], "type": "string" },
+              "reply": { "enum": ["once", "reject", "session"], "type": "string" },
               "requestID": { "type": "string" },
               "sessionID": { "type": "string" }
             },
@@ -2651,6 +2661,15 @@
         "required": ["properties", "type"],
         "type": "object"
       },
+      "Event.sandbox.updated": {
+        "additionalProperties": false,
+        "properties": {
+          "properties": { "$ref": "#/components/schemas/SandboxStatus" },
+          "type": { "const": "sandbox.updated", "type": "string" }
+        },
+        "required": ["properties", "type"],
+        "type": "object"
+      },
       "Event.server.connected": {
         "additionalProperties": false,
         "properties": {
@@ -2757,6 +2776,10 @@
                   { "$ref": "#/components/schemas/MessageAbortedErrorOutput" },
                   { "$ref": "#/components/schemas/MessageOutputLengthErrorOutput" },
                   { "$ref": "#/components/schemas/ModelNotFoundErrorOutput" },
+                  { "$ref": "#/components/schemas/PlanCapacityErrorOutput" },
+                  { "$ref": "#/components/schemas/PlanConflictErrorOutput" },
+                  { "$ref": "#/components/schemas/PlanExecutionPausedErrorOutput" },
+                  { "$ref": "#/components/schemas/PlanReadRangeErrorOutput" },
                   { "$ref": "#/components/schemas/PluginInstallErrorOutput" },
                   { "$ref": "#/components/schemas/ProviderAuthErrorOutput" },
                   { "$ref": "#/components/schemas/StructuredOutputErrorOutput" },
@@ -3011,6 +3034,10 @@
               { "$ref": "#/components/schemas/MessageAbortedError" },
               { "$ref": "#/components/schemas/MessageOutputLengthError" },
               { "$ref": "#/components/schemas/ModelNotFoundError" },
+              { "$ref": "#/components/schemas/PlanCapacityError" },
+              { "$ref": "#/components/schemas/PlanConflictError" },
+              { "$ref": "#/components/schemas/PlanExecutionPausedError" },
+              { "$ref": "#/components/schemas/PlanReadRangeError" },
               { "$ref": "#/components/schemas/PluginInstallError" },
               { "$ref": "#/components/schemas/ProviderAuthError" },
               { "$ref": "#/components/schemas/StructuredOutputError" },
@@ -3074,6 +3101,10 @@
               { "$ref": "#/components/schemas/MessageAbortedErrorOutput" },
               { "$ref": "#/components/schemas/MessageOutputLengthErrorOutput" },
               { "$ref": "#/components/schemas/ModelNotFoundErrorOutput" },
+              { "$ref": "#/components/schemas/PlanCapacityErrorOutput" },
+              { "$ref": "#/components/schemas/PlanConflictErrorOutput" },
+              { "$ref": "#/components/schemas/PlanExecutionPausedErrorOutput" },
+              { "$ref": "#/components/schemas/PlanReadRangeErrorOutput" },
               { "$ref": "#/components/schemas/PluginInstallErrorOutput" },
               { "$ref": "#/components/schemas/ProviderAuthErrorOutput" },
               { "$ref": "#/components/schemas/StructuredOutputErrorOutput" },
@@ -3212,12 +3243,12 @@
           },
           "id": { "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "time": { "properties": { "created": { "type": "number" } }, "required": ["created"], "type": "object" }
         },
-        "required": ["execution", "id", "role", "sessionID", "sessionMode", "time"],
+        "required": ["execution", "id", "permissionLevel", "role", "sessionID", "time"],
         "type": "object"
       },
       "ExternalUserMessageOutput": {
@@ -3249,9 +3280,9 @@
           },
           "id": { "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "time": {
             "additionalProperties": false,
             "properties": { "created": { "type": "number" } },
@@ -3259,7 +3290,7 @@
             "type": "object"
           }
         },
-        "required": ["execution", "id", "role", "sessionID", "sessionMode", "time"],
+        "required": ["execution", "id", "permissionLevel", "role", "sessionID", "time"],
         "type": "object"
       },
       "File": {
@@ -4274,6 +4305,7 @@
         "required": ["pattern", "scope"],
         "type": "object"
       },
+      "PermissionLevel": { "enum": ["ask", "autoApprove", "fullTakeover"], "type": "string" },
       "PermissionObjectConfig": {
         "additionalProperties": { "$ref": "#/components/schemas/PermissionActionConfig" },
         "propertyNames": { "type": "string" },
@@ -4283,13 +4315,17 @@
         "additionalProperties": false,
         "properties": {
           "always": { "type": "boolean" },
+          "decisionRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "executionID": { "type": "string" },
           "grants": { "items": { "$ref": "#/components/schemas/PermissionGrant" }, "type": "array" },
           "id": { "format": "starts_with", "pattern": "^per.*", "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
           "patterns": { "items": { "type": "string" }, "type": "array" },
           "permission": { "type": "string" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
+          "permissionRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "root": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
+          "sandboxReady": { "type": "boolean" },
           "sessionID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "source": {
             "additionalProperties": false,
@@ -4338,6 +4374,155 @@
       },
       "PermissionRuleset": { "items": { "$ref": "#/components/schemas/PermissionRule" }, "type": "array" },
       "PermissionRulesetOutput": { "items": { "$ref": "#/components/schemas/PermissionRuleOutput" }, "type": "array" },
+      "PlanCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateTokens": { "type": "number" },
+          "changes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "text": { "type": "string" },
+                "type": { "enum": ["delete", "insert", "same"], "type": "string" }
+              },
+              "required": ["text", "type"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "content": { "type": "string" },
+          "expectedRevision": { "type": "number" },
+          "id": { "type": "string" },
+          "originalTokens": { "type": "number" }
+        },
+        "required": ["candidateTokens", "changes", "content", "expectedRevision", "id", "originalTokens"],
+        "type": "object"
+      },
+      "PlanCapacityError": {
+        "properties": {
+          "code": { "type": "string" },
+          "data": {
+            "properties": {
+              "availableTokens": { "type": "number" },
+              "deficit": { "type": "number" },
+              "message": { "type": "string" },
+              "reason": { "enum": ["body", "reserve"], "type": "string" },
+              "requiredTokens": { "type": "number" }
+            },
+            "required": ["availableTokens", "deficit", "message", "reason", "requiredTokens"],
+            "type": "object"
+          },
+          "name": { "const": "PlanCapacityError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanCapacityErrorOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "availableTokens": { "type": "number" },
+              "deficit": { "type": "number" },
+              "message": { "type": "string" },
+              "reason": { "enum": ["body", "reserve"], "type": "string" },
+              "requiredTokens": { "type": "number" }
+            },
+            "required": ["availableTokens", "deficit", "message", "reason", "requiredTokens"],
+            "type": "object"
+          },
+          "name": { "const": "PlanCapacityError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanChunk": {
+        "additionalProperties": false,
+        "properties": {
+          "content": { "type": "string" },
+          "executionID": { "type": "string" },
+          "nextOffset": { "type": "number" },
+          "offset": { "type": "number" },
+          "revision": { "type": "number" },
+          "totalCharacters": { "type": "number" }
+        },
+        "required": ["content", "offset", "revision", "totalCharacters"],
+        "type": "object"
+      },
+      "PlanConflictError": {
+        "properties": {
+          "code": { "type": "string" },
+          "data": { "properties": { "message": { "type": "string" } }, "required": ["message"], "type": "object" },
+          "name": { "const": "PlanConflictError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanConflictErrorOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "data": {
+            "additionalProperties": false,
+            "properties": { "message": { "type": "string" } },
+            "required": ["message"],
+            "type": "object"
+          },
+          "name": { "const": "PlanConflictError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanExecutionPausedError": {
+        "properties": {
+          "code": { "type": "string" },
+          "data": { "properties": { "message": { "type": "string" } }, "required": ["message"], "type": "object" },
+          "name": { "const": "PlanExecutionPausedError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanExecutionPausedErrorOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "data": {
+            "additionalProperties": false,
+            "properties": { "message": { "type": "string" } },
+            "required": ["message"],
+            "type": "object"
+          },
+          "name": { "const": "PlanExecutionPausedError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanReadRangeError": {
+        "properties": {
+          "code": { "type": "string" },
+          "data": { "properties": { "message": { "type": "string" } }, "required": ["message"], "type": "object" },
+          "name": { "const": "PlanReadRangeError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
+      "PlanReadRangeErrorOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "data": {
+            "additionalProperties": false,
+            "properties": { "message": { "type": "string" } },
+            "required": ["message"],
+            "type": "object"
+          },
+          "name": { "const": "PlanReadRangeError", "type": "string" }
+        },
+        "required": ["data", "name"],
+        "type": "object"
+      },
       "PluginInstallError": {
         "properties": {
           "code": { "type": "string" },
@@ -5265,9 +5450,10 @@
         "properties": {
           "backend": { "enum": ["landlock", "seatbelt", "windows-account"], "type": "string" },
           "degraded": { "items": { "type": "string" }, "type": "array" },
+          "errorCode": { "type": "string" },
           "installable": { "type": "boolean" },
           "reason": { "type": "string" },
-          "status": { "enum": ["off", "on", "unsupported"], "type": "string" }
+          "status": { "enum": ["failed", "off", "on", "starting", "unsupported"], "type": "string" }
         },
         "required": ["status"],
         "type": "object"
@@ -5301,9 +5487,12 @@
           "directory": { "type": "string" },
           "id": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
-          "modeRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "parentID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "permission": { "$ref": "#/components/schemas/PermissionRuleset" },
+          "permissionGrants": { "$ref": "#/components/schemas/PermissionRuleset" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
+          "permissionNotice": { "const": "legacy-permissions-reset", "type": "string" },
+          "permissionRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "projectID": { "type": "string" },
           "readOnlyReason": { "const": "imported-external-history", "type": "string" },
           "revert": {
@@ -5341,7 +5530,6 @@
             },
             "type": "object"
           },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "slug": { "type": "string" },
           "summary": {
             "properties": {
@@ -5390,6 +5578,11 @@
             "type": "object"
           },
           "targetRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
+          "taskOrigin": {
+            "properties": { "messageID": { "type": "string" }, "sessionID": { "type": "string" } },
+            "required": ["messageID", "sessionID"],
+            "type": "object"
+          },
           "time": {
             "properties": {
               "archived": { "type": "number" },
@@ -5433,16 +5626,18 @@
         "required": ["directory", "id", "projectID", "slug", "time", "title", "version"],
         "type": "object"
       },
-      "SessionMode": { "enum": ["auto", "execute", "plan"], "type": "string" },
       "SessionOutput": {
         "additionalProperties": false,
         "properties": {
           "directory": { "type": "string" },
           "id": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
-          "modeRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "parentID": { "format": "starts_with", "pattern": "^ses.*", "type": "string" },
           "permission": { "$ref": "#/components/schemas/PermissionRulesetOutput" },
+          "permissionGrants": { "$ref": "#/components/schemas/PermissionRulesetOutput" },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
+          "permissionNotice": { "const": "legacy-permissions-reset", "type": "string" },
+          "permissionRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "projectID": { "type": "string" },
           "readOnlyReason": { "const": "imported-external-history", "type": "string" },
           "revert": {
@@ -5484,7 +5679,6 @@
             },
             "type": "object"
           },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "slug": { "type": "string" },
           "summary": {
             "additionalProperties": false,
@@ -5538,6 +5732,12 @@
             "type": "object"
           },
           "targetRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
+          "taskOrigin": {
+            "additionalProperties": false,
+            "properties": { "messageID": { "type": "string" }, "sessionID": { "type": "string" } },
+            "required": ["messageID", "sessionID"],
+            "type": "object"
+          },
           "time": {
             "additionalProperties": false,
             "properties": {
@@ -5589,13 +5789,18 @@
         "additionalProperties": false,
         "properties": {
           "activeUserID": { "type": "string" },
+          "anchorMessageID": { "type": "string" },
           "blockedUserID": { "type": "string" },
+          "buttonLocked": { "type": "boolean" },
+          "candidate": { "$ref": "#/components/schemas/PlanCandidate" },
           "content": { "type": "string" },
           "execution": {
             "additionalProperties": false,
             "properties": {
               "content": { "type": "string" },
               "id": { "type": "string" },
+              "revision": { "type": "number" },
+              "source": { "enum": ["button", "chat"], "type": "string" },
               "startedAt": { "type": "number" }
             },
             "required": ["content", "id", "startedAt"],
@@ -5603,10 +5808,14 @@
           },
           "humanRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "path": { "type": "string" },
+          "queued": { "type": "boolean" },
           "revision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
           "sessionID": { "type": "string" },
           "source": { "enum": ["agent", "human"], "type": "string" },
-          "status": { "enum": ["completed", "draft", "executing", "review"], "type": "string" }
+          "status": {
+            "enum": ["completed", "draft", "executing", "failed", "paused", "review", "stopped"],
+            "type": "string"
+          }
         },
         "required": ["content", "humanRevision", "path", "revision", "sessionID", "source", "status"],
         "type": "object"
@@ -6307,9 +6516,9 @@
             "required": ["modelID", "providerID"],
             "type": "object"
           },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "summary": {
             "properties": {
               "body": { "type": "string" },
@@ -6356,9 +6565,9 @@
             "required": ["modelID", "providerID"],
             "type": "object"
           },
+          "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
-          "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
           "summary": {
             "additionalProperties": false,
             "properties": {
@@ -6643,6 +6852,7 @@
             },
             "type": "array"
           },
+          "planExecutionID": { "type": "string" },
           "queuedAgentCount": { "type": "number" },
           "result": {},
           "resumable": { "type": "boolean" },
@@ -10229,7 +10439,7 @@
     },
     "/permission/{requestID}/reply": {
       "post": {
-        "description": "Approve or deny a permission request from the AI assistant. `session` allows it for the rest of the session (shared with subagents), `always` also saves the rule to the project config; `scope` picks the grant (file, directory, command prefix, domain, ...).",
+        "description": "Approve or deny the displayed operations. `once` consumes this request. `session` remembers only an offered scope in the current root conversation while isolation remains ready. `reject` refuses the request. Permanent grants are not supported.",
         "operationId": "permission.reply",
         "parameters": [
           { "in": "query", "name": "directory", "schema": { "type": "string" } },
@@ -10240,8 +10450,9 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "decisionRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
                   "message": { "type": "string" },
-                  "reply": { "enum": ["always", "once", "reject", "session"], "type": "string" },
+                  "reply": { "enum": ["once", "reject", "session"], "type": "string" },
                   "scope": { "enum": ["agent", "directory", "domain", "file", "prefix", "tool"], "type": "string" }
                 },
                 "required": ["reply"],
@@ -12471,7 +12682,7 @@
                   "agent": { "type": "string" },
                   "arguments": { "type": "string" },
                   "command": { "type": "string" },
-                  "kind": { "$ref": "#/components/schemas/SessionMode" },
+                  "kind": { "$ref": "#/components/schemas/PermissionLevel" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
                   "model": { "type": "string" },
@@ -12494,12 +12705,12 @@
                     },
                     "type": "array"
                   },
+                  "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
                   "permissionMode": {
-                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.",
                     "enum": ["ask", "readonly"],
                     "type": "string"
                   },
-                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "variant": { "type": "string" }
                 },
                 "required": ["arguments", "command"],
@@ -12836,7 +13047,7 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "format": { "$ref": "#/components/schemas/OutputFormat" },
-                  "kind": { "$ref": "#/components/schemas/SessionMode" },
+                  "kind": { "$ref": "#/components/schemas/PermissionLevel" },
                   "maxTurns": { "type": "number" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
@@ -12857,12 +13068,12 @@
                     },
                     "type": "array"
                   },
+                  "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
                   "permissionMode": {
-                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.",
                     "enum": ["ask", "readonly"],
                     "type": "string"
                   },
-                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "system": { "type": "string" },
                   "tools": {
                     "additionalProperties": { "type": "boolean" },
@@ -13113,7 +13324,7 @@
     },
     "/session/{sessionID}/mode": {
       "post": {
-        "description": "Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.",
+        "description": "Legacy mode updates are rejected. Upgrade the client and use session.setPermissionLevel with the current revision.",
         "operationId": "session.setMode",
         "parameters": [
           { "in": "query", "name": "directory", "schema": { "type": "string" } },
@@ -13125,15 +13336,51 @@
             "schema": { "type": "string" }
           }
         ],
+        "requestBody": { "content": { "application/json": { "schema": {} } }, "required": true },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionOutput" } } },
+            "description": "Updated session"
+          },
+          "400": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Reject the legacy session mode protocol",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/permission-level": {
+      "post": {
+        "operationId": "session.setPermissionLevel",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "expectedRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" },
-                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" }
+                  "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" }
                 },
-                "required": ["sessionMode"],
+                "required": ["expectedRevision", "permissionLevel"],
                 "type": "object"
               }
             }
@@ -13158,11 +13405,11 @@
             "description": "Checkout is busy or the request conflicts with its current state"
           }
         },
-        "summary": "Set session mode",
+        "summary": "Select the root conversation permission level",
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setMode({\n  ...\n})"
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.setPermissionLevel({\n  ...\n})"
           }
         ]
       }
@@ -13175,18 +13422,7 @@
           { "in": "query", "name": "directory", "schema": { "type": "string" } },
           { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": { "permissionMode": { "enum": ["ask", "readonly"], "type": "string" } },
-                "required": ["permissionMode"],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
+        "requestBody": { "content": { "application/json": { "schema": {} } }, "required": true },
         "responses": {
           "200": {
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionOutput" } } },
@@ -13303,6 +13539,180 @@
         ]
       }
     },
+    "/session/{sessionID}/plan/adopt": {
+      "post": {
+        "operationId": "session.planAdopt",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "candidateID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "required": ["candidateID"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Saved human plan"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Adopt a reviewed plan candidate",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planAdopt({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/plan/candidate": {
+      "post": {
+        "operationId": "session.planCandidate",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "content": { "type": "string" },
+                  "expectedRevision": { "maximum": 9007199254740991, "minimum": 0, "type": "integer" }
+                },
+                "required": ["content", "expectedRevision"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanCandidate" } } },
+            "description": "Ordered candidate differences"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          },
+          "409": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Checkout is busy or the request conflicts with its current state"
+          }
+        },
+        "summary": "Propose a read-only plan simplification",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planCandidate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/plan/chunk": {
+      "get": {
+        "operationId": "session.planChunk",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": { "default": 0, "maximum": 9007199254740991, "minimum": 0, "type": "integer" }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 8000, "maximum": 16000, "minimum": 1, "type": "integer" }
+          },
+          {
+            "in": "query",
+            "name": "executionID",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanChunk" } } },
+            "description": "Plan range"
+          },
+          "400": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Read a complete character range from a plan",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planChunk({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/plan/revise": {
       "post": {
         "operationId": "session.planRevise",
@@ -13391,6 +13801,48 @@
         ]
       }
     },
+    "/session/{sessionID}/plan/view": {
+      "post": {
+        "operationId": "session.planView",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
+            "description": "Viewed plan"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Record an explicit human plan view",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.planView({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/prompt_async": {
       "post": {
         "description": "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
@@ -13412,7 +13864,7 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "format": { "$ref": "#/components/schemas/OutputFormat" },
-                  "kind": { "$ref": "#/components/schemas/SessionMode" },
+                  "kind": { "$ref": "#/components/schemas/PermissionLevel" },
                   "maxTurns": { "type": "number" },
                   "messageID": { "format": "starts_with", "pattern": "^msg.*", "type": "string" },
                   "metadata": { "additionalProperties": {}, "propertyNames": { "type": "string" }, "type": "object" },
@@ -13433,12 +13885,12 @@
                     },
                     "type": "array"
                   },
+                  "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
                   "permissionMode": {
-                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.",
                     "enum": ["ask", "readonly"],
                     "type": "string"
                   },
-                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" },
                   "system": { "type": "string" },
                   "tools": {
                     "additionalProperties": { "type": "boolean" },
@@ -13550,18 +14002,18 @@
                 "properties": {
                   "agent": { "type": "string" },
                   "command": { "type": "string" },
-                  "kind": { "$ref": "#/components/schemas/SessionMode" },
+                  "kind": { "$ref": "#/components/schemas/PermissionLevel" },
                   "model": {
                     "properties": { "modelID": { "type": "string" }, "providerID": { "type": "string" } },
                     "required": ["modelID", "providerID"],
                     "type": "object"
                   },
+                  "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
                   "permissionMode": {
-                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode.",
+                    "description": "Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel.",
                     "enum": ["ask", "readonly"],
                     "type": "string"
-                  },
-                  "sessionMode": { "$ref": "#/components/schemas/SessionMode" }
+                  }
                 },
                 "required": ["agent", "command"],
                 "type": "object"

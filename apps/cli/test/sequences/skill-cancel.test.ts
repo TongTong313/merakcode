@@ -29,6 +29,10 @@ test("aborting a running built-in skill stops the model stream and records the t
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "skill-cancel" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     // The command route answers only when the turn ends, so it runs in the background until the abort
     const command = kit
       .api(`/session/${session.id}/command`, "POST", {

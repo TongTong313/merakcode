@@ -72,8 +72,11 @@ export async function prepareBashCommand(
   // The sandbox should be used but is not ready: commands that change things ask first, even in auto mode
   // ("required" mode refuses every command instead)
   const unsandboxed =
-    ctx.sessionMode !== "auto" && !params.unsandboxed && (await PermissionExecution.missing()) && !analysis.readOnly
-  await ctx.ask({
+    ctx.permissionLevel !== "fullTakeover" &&
+    !params.unsandboxed &&
+    (await PermissionExecution.missing()) &&
+    !analysis.readOnly
+  const request = {
     permission: "bash",
     checks: [
       ...analysis.segments.map((segment) =>
@@ -88,13 +91,33 @@ export async function prepareBashCommand(
       cwd,
       tags: unsandboxed ? [...analysis.tags, "no-sandbox"] : analysis.tags,
     },
-  })
+  }
+  const admission = await ctx.ask(request)
   const sandbox = await escalate(params, cwd, prefix, ctx)
 
   // Same shell.env input as @opencode-ai/plugin@1.16.2, including session and call ids, so plugins can inject a
   // different environment per session
   const shellEnv = await Plugin.trigger("shell.env", { cwd, sessionID: ctx.sessionID, callID: ctx.callID }, { env: {} })
-  return { cwd, shellEnv: shellEnv.env as Record<string, string>, readOnly: analysis.readOnly, sandbox }
+  return {
+    cwd,
+    shellEnv: shellEnv.env as Record<string, string>,
+    readOnly: analysis.readOnly,
+    sandbox: {
+      ...sandbox,
+      canIsolate:
+        analysis.readOnly &&
+        reads.length === 0 &&
+        !analysis.tags.includes("network") &&
+        analysis.segments.every(
+          (segment) =>
+            !["whoami", "id", "groups", "env", "printenv", "ps", "top", "which", "where", "whereis", "type"].includes(
+              segment.prefix,
+            ),
+        ),
+      admission,
+      request,
+    },
+  }
 }
 
 /** Extra permissions the agent requests when a command needs to leave the sandbox; approved under the sandbox key */
@@ -163,7 +186,14 @@ export async function spawnCommand(input: {
   cwd: string
   env: Record<string, string>
   ctx: Tool.Context
-  sandbox: { writable: string[]; unsandboxed?: boolean }
+  abort?: AbortSignal
+  sandbox: {
+    writable: string[]
+    unsandboxed?: boolean
+    canIsolate?: boolean
+    admission?: PermissionNext.Admission | void
+    request?: Parameters<Tool.Context["ask"]>[0]
+  }
 }) {
   const options = {
     cwd: input.cwd,
@@ -172,35 +202,57 @@ export async function spawnCommand(input: {
     detached: process.platform !== "win32",
   }
   const env = ChildEnv.build({ extra: input.env })
-  const wrapped = input.sandbox.unsandboxed
-    ? undefined
-    : await PermissionExecution.wrap({
-        command: input.command,
-        shell: input.shell,
-        cwd: input.cwd,
-        env,
-        ctx: input.ctx,
-        workspace: PermissionPolicy.scope().workspace,
-        writable: input.sandbox.writable,
-      })
-  input.ctx.abort.throwIfAborted()
-  ModeOperations.sandbox(input.ctx.sessionID, input.ctx.callID, Boolean(wrapped))
-  if (!wrapped)
-    return {
-      proc: spawn(input.command, { ...options, shell: input.shell, env }),
-      finish: (output: string, _exitCode?: number | null) => output,
+  const abort = input.abort ?? input.ctx.abort
+  let admission = input.sandbox.admission
+  let request = input.sandbox.request
+  for (;;) {
+    abort.throwIfAborted()
+    if (admission && request && !(await PermissionNext.isCurrent(admission, request)))
+      admission = await input.ctx.ask(request)
+    const wrapped = input.sandbox.unsandboxed
+      ? undefined
+      : await PermissionExecution.wrap({
+          command: input.command,
+          shell: input.shell,
+          cwd: input.cwd,
+          env,
+          ctx: input.ctx,
+          workspace: PermissionPolicy.scope().workspace,
+          writable: input.sandbox.writable,
+          canIsolate: input.sandbox.canIsolate,
+        })
+    try {
+      abort.throwIfAborted()
+      ModeOperations.sandbox(input.ctx.sessionID, input.ctx.callID, Boolean(wrapped))
+      await input.ctx.metadata({ metadata: { executionPath: wrapped ? "sandbox" : "account" } })
+      abort.throwIfAborted()
+      if (admission && request && !(await PermissionNext.isCurrent(admission, request))) {
+        wrapped?.finish("", null)
+        admission = await input.ctx.ask(request)
+        continue
+      }
+      if (!wrapped && admission?.sandboxReady && admission.permissionLevel !== "fullTakeover" && request) {
+        request = { ...request, metadata: { ...request.metadata, unsandboxed: true } }
+        admission = await input.ctx.ask(request)
+        continue
+      }
+      abort.throwIfAborted()
+      if (!wrapped)
+        return {
+          proc: spawn(input.command, { ...options, shell: input.shell, env }),
+          finish: (output: string, _exitCode?: number | null) => output,
+        }
+      return {
+        proc: spawn(wrapped.file, wrapped.args, { ...options, shell: false, windowsHide: true, env: wrapped.env }),
+        finish: (output: string, exitCode: number | null = null) => {
+          const report = wrapped.finish(output, exitCode)
+          return report ? `${output}\n\n${report}` : output
+        },
+      }
+    } catch (error) {
+      wrapped?.finish("", null)
+      throw error
     }
-  try {
-    return {
-      proc: spawn(wrapped.file, wrapped.args, { ...options, shell: false, windowsHide: true, env: wrapped.env }),
-      finish: (output: string, exitCode: number | null = null) => {
-        const report = wrapped.finish(output, exitCode)
-        return report ? `${output}\n\n${report}` : output
-      },
-    }
-  } catch (error) {
-    wrapped.finish("", null)
-    throw error
   }
 }
 

@@ -4,16 +4,9 @@ import { Identifier } from "@merakcode/util/id"
 import { Instance } from "../../../infra/project/instance"
 import { Log } from "@merakcode/log/logger"
 import z from "zod"
-import { NamedError } from "@merakcode/util/error"
-import { SessionStore } from "../store"
 
 export namespace Question {
   const log = Log.create({ service: "question" })
-  export const InteractionDisabledError = NamedError.create(
-    "InteractionDisabledError",
-    z.object({ message: z.string() }),
-  )
-
   export const Option = z
     .object({
       label: z.string().describe("Display text (1-5 words, concise)"),
@@ -126,16 +119,6 @@ export namespace Question {
     abort?: AbortSignal
   }): Promise<Answer[]> {
     const s = await state()
-    let owner = SessionStore.find(input.sessionID)
-    const visited = new Set<string>()
-    while (owner?.parentID && !visited.has(owner.id)) {
-      visited.add(owner.id)
-      owner = SessionStore.find(owner.parentID)
-    }
-    if (owner?.sessionMode === "auto")
-      throw new InteractionDisabledError({
-        message: "New human interactions are disabled in auto mode. Continue autonomously.",
-      })
     const id = Identifier.ascending("question")
 
     log.info("asking", { id, questions: input.questions.length })
