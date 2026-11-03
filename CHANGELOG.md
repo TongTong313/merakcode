@@ -13,6 +13,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### Fixed
 
 - Image attachments in the composer and sent messages show thumbnails; clicking an image attachment opens the full image.
+- Unsigned macOS builds no longer crash at launch on Apple Silicon after Electron fuses are flipped (CODESIGNING / Invalid Page).
 
 ### 变更
 
@@ -21,6 +22,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### 修复
 
 - 输入框和已发送消息里的图片附件显示缩略图，点击整个图片附件可以查看大图。
+- 无证书签名的 macOS 构建在翻 Electron fuses 后，不再于 Apple Silicon 上启动即闪退（CODESIGNING / Invalid Page）。
 
 ## [0.3.0] - 2026-11-01
 
