@@ -11,6 +11,10 @@ test("persistence oracle rejects dropped text and tool output from an actual com
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "Oracle persistence" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     const input = "I1_READ read the actual marker"
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",
@@ -72,6 +76,10 @@ test("post-success evidence failure stays red despite successful resource cleanu
   const kit = await sequence("read")
   try {
     const session = await kit.api("/session", "POST", { title: "Oracle finalization" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     const input = "I1_READ read actual marker before evidence finalization"
     await kit.api(`/session/${session.id}/message`, "POST", {
       agent: "build",

@@ -13,7 +13,7 @@ import type {
   Event,
   MessageOutput,
   PartOutput,
-  SessionMode,
+  PermissionLevel,
   PermissionRequest,
   QuestionRequest,
   SessionOutput,
@@ -52,7 +52,7 @@ export type RunEvent =
   | { type: "error"; error: MerakCodeError }
 
 /** Answer to a permission request: allow once / allow for this session / always (saved to project config) / deny */
-export type PermissionDecision = "allow-once" | "allow-session" | "always" | "deny"
+export type PermissionDecision = "allow-once" | "allow-session" | "deny"
 
 export type Handlers = {
   /**
@@ -73,20 +73,21 @@ export type RunOptions = Handlers & {
   agent?: string
   /** Model, written as "provider/model" */
   model?: string
-  /** Session mode: plan / execute (default) / auto. Omission preserves the current session mode. */
-  mode?: SessionMode
+  /** Explicitly select a permission level before this run. Omission preserves the root conversation's selection. */
+  permissionLevel?: PermissionLevel
 }
 
 const replies = {
   "allow-once": "once",
   "allow-session": "session",
-  always: "always",
   deny: "reject",
 } as const
 
 export type MerakCodeSession = {
   id: string
   info: SessionOutput
+  /** Explicit user selection; a supplied expected revision rejects concurrent changes. */
+  setPermissionLevel(permissionLevel: PermissionLevel, expectedRevision?: number): Promise<SessionOutput>
   /** Sends a message and yields the events of this turn, ending with `done` */
   run(prompt: string, options?: RunOptions): AsyncIterable<RunEvent>
   /**
@@ -185,9 +186,30 @@ export async function createMerakCode(options: MerakCodeOptions = {}): Promise<M
     // Permission requests and questions from this session and its child sessions (subagents, workflows)
     const ours = (request: { sessionID: string; root?: string }) =>
       request.sessionID === sessionID || request.root === sessionID
+    const failures: MerakCodeError[] = []
+    const approvalError = (
+      name: "PERMISSION_HANDLER_MISSING" | "PERMISSION_HANDLER_FAILED" | "PERMISSION_GRANT_UNAVAILABLE",
+    ) => {
+      const spec = ErrorCode.CATALOG[name]
+      return new MerakCodeError({ code: spec.code, message: `${spec.title.en}. ${spec.hint.en}` })
+    }
     const permit = async (request: PermissionRequest) => {
-      const decision = handlers.onPermission ? await handlers.onPermission(request) : "deny"
-      await client.permission.reply({ requestID: request.id, reply: replies[decision] })
+      try {
+        if (!handlers.onPermission) throw approvalError("PERMISSION_HANDLER_MISSING")
+        const decision = await handlers.onPermission(request)
+        if (!Object.hasOwn(replies, decision)) throw approvalError("PERMISSION_HANDLER_FAILED")
+        if (decision === "allow-session" && request.sandboxReady === false)
+          throw approvalError("PERMISSION_GRANT_UNAVAILABLE")
+        const response = await client.permission.reply({
+          requestID: request.id,
+          reply: replies[decision],
+          decisionRevision: request.decisionRevision,
+        })
+        if (response.error) throw fromResponse(response.error, response.response)
+      } catch (error) {
+        failures.push(error instanceof MerakCodeError ? error : approvalError("PERMISSION_HANDLER_FAILED"))
+        await client.permission.reply({ requestID: request.id, reply: "reject" })
+      }
     }
     const answer = async (request: QuestionRequest) => {
       if (!handlers.onQuestion) return void (await client.question.reject({ requestID: request.id }))
@@ -202,10 +224,11 @@ export async function createMerakCode(options: MerakCodeOptions = {}): Promise<M
             if (abort.signal.aborted) return { done: true as const, value: undefined }
             throw error
           })
+          for (const error of failures.splice(0)) yield { type: "error" as const, error }
           if (next.done) break
           const event = next.value as Event
           if (event.type === "permission.asked" && ours(event.properties)) {
-            void permit(event.properties)
+            void permit(event.properties).catch((error) => failures.push(fromResponse(error)))
             continue
           }
           if (event.type === "question.asked" && ours(event.properties)) {
@@ -244,17 +267,30 @@ export async function createMerakCode(options: MerakCodeOptions = {}): Promise<M
   }
 
   function wrap(info: SessionOutput): MerakCodeSession {
+    const setPermissionLevel = async (permissionLevel: PermissionLevel, expectedRevision?: number) => {
+      const current = await client.session.get({ sessionID: info.id })
+      if (current.error) throw fromResponse(current.error, current.response)
+      const selected = await client.session.setPermissionLevel({
+        sessionID: info.id,
+        permissionLevel,
+        expectedRevision: expectedRevision ?? current.data.permissionRevision ?? 0,
+      })
+      if (selected.error) throw fromResponse(selected.error, selected.response)
+      Object.assign(info, selected.data)
+      return selected.data
+    }
     return {
       id: info.id,
       info,
+      setPermissionLevel,
       async *run(prompt, input = {}) {
         input.signal?.throwIfAborted()
+        if (input.permissionLevel) await setPermissionLevel(input.permissionLevel)
         const stream = await subscribe(info.id, input, true)
         const sent = await client.session.promptAsync({
           sessionID: info.id,
           agent: input.agent,
           model: modelOf(input.model),
-          sessionMode: input.mode,
           parts: [{ type: "text", text: prompt }],
         })
         if (sent.error) {

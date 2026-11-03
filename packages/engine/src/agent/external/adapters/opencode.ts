@@ -26,7 +26,6 @@ import {
   stop,
   version,
   type Host,
-  type Mode,
   type Permission,
   type Question,
   type Product,
@@ -37,10 +36,10 @@ import {
  * Permissions for one run, given in OPENCODE_CONFIG_CONTENT: it only overrides the permission section, and the user's
  * own config and files are left as they are
  */
-function opencodeConfig(mode: Mode) {
+function opencodeConfig(scope?: "draft") {
   return {
     permission: {
-      edit: mode === "plan" ? "deny" : "ask",
+      edit: scope === "draft" ? "deny" : "ask",
       bash: "ask",
       webfetch: "ask",
       websearch: "ask",
@@ -107,6 +106,15 @@ adapter({
       resume: true,
       permission: "merak",
       questions: true,
+      control: {
+        reportedOperations: [],
+        cancellation: "task",
+        liveMode: false,
+        isolation: "product",
+        limitations: [
+          "Only native approval callbacks are reported; complete operation coverage is unverified. 仅上报原生审批回调，完整操作覆盖尚未验证。",
+        ],
+      },
     },
     ...(await version(product.command || "opencode")),
   }),
@@ -122,7 +130,7 @@ adapter({
         env: {
           ...process.env,
           OPENCODE_SERVER_PASSWORD: password,
-          OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig(task.mode)),
+          OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig(task.scope)),
         },
       },
     )
@@ -201,7 +209,7 @@ async function opencodeModels(product: Product, signal: AbortSignal): Promise<Mo
       env: {
         ...process.env,
         OPENCODE_SERVER_PASSWORD: password,
-        OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig("plan")),
+        OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig("draft")),
       },
     },
   )

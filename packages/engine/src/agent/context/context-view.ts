@@ -1,5 +1,5 @@
 import { prepareTools } from "../tools/prepare"
-import { sessionModeOf } from "../permission/session-mode"
+import { permissionLevelOf } from "../permission/permission-level"
 import { Session } from "../session"
 import { SessionPlan } from "../session/plan"
 import type { ModelMessage } from "ai"
@@ -46,6 +46,7 @@ export namespace SessionContextView {
     includeToolStats?: boolean
     child?: boolean
     preparedTools?: Awaited<ReturnType<typeof prepareTools>>
+    includePlan?: boolean
   }
 
   export type View = {
@@ -195,21 +196,18 @@ export namespace SessionContextView {
       ...SystemPrompt.secureCoding(input.agent),
     ]
     const currentSession = await Session.get(input.sessionID)
-    const currentMode = await sessionModeOf(currentSession)
-    const plan = await SessionPlan.get(await Session.rootID(input.sessionID))
+    const currentMode = await permissionLevelOf(currentSession)
+    const user = input.messages.find((message) => message.info.id === input.user.id)
+    const planContext = await SessionPlan.context(
+      input.sessionID,
+      user ? Message.userSourceTexts(user).join("\n") : "",
+      input.includePlan,
+    )
     const modeContext =
-      `Current session mode: ${currentMode}. ` +
-      (currentMode === "auto"
-        ? "Act autonomously. Never ask the user questions or request approval. All MerakCode safety approvals and sandbox enforcement are bypassed."
-        : currentMode === "plan"
-          ? "Research only. Do not edit project files or run mutating commands. Use plan_write or plan_edit to update the single session plan, then plan_exit to submit it for review. Human edits take priority."
-          : "Execute the user's task under the configured safety policy. If the user requests a plan before implementation, suggest plan_enter and wait for their choice. Declining that suggestion does not authorize edits.")
-    const planContext =
-      plan?.execution && plan.status === "executing"
-        ? `Execution plan (fixed when execution began; later edits do not alter it):\n${plan.execution.content}`
-        : plan?.content
-          ? `Current session plan at ${plan.path}, revision ${plan.revision}:\n${plan.content}`
-          : "No session plan has been saved yet."
+      `Current permission level: ${currentMode}. ` +
+      (currentMode === "fullTakeover"
+        ? "Safety approvals are automatic. Compatible controlled commands use isolation; commands needing the current account run with that account. Respect the user's task scope and report real failures without replaying effects."
+        : "Follow the user's current task scope. Use plan_generate to save a reviewable official plan when useful. A draft-only request does not authorize project changes.")
     const system = await LLM.prepareSystem({
       sessionID: input.sessionID,
       user: input.user,
@@ -221,7 +219,6 @@ export namespace SessionContextView {
         ...(input.extraSystem ?? []),
         ...SystemPrompt.replyLanguage(input.messages),
         modeContext,
-        planContext,
       ],
     })
     const userContextMessages = toUserContextMessages(userContext)
@@ -230,7 +227,7 @@ export namespace SessionContextView {
       ...(await Message.toModelMessages(deltaMessages, input.model)),
     ]
     const extraMessages = input.extraMessages ?? []
-    const tailMessages = toUserContextMessages(tailContext)
+    const tailMessages = toUserContextMessages([...tailContext, ...(planContext ? [planContext] : [])])
     const messages = attachTail([...userContextMessages, ...extraMessages, ...contextMessages], tailMessages)
     const rules = await RulesPrompt.snapshot({
       agent: input.agent.name,
@@ -471,7 +468,7 @@ export namespace SessionContextView {
         session,
         messages: input.messages,
         tools: input.user.tools,
-        sessionMode: await sessionModeOf(session),
+        permissionLevel: await permissionLevelOf(session),
         child: input.child,
         step: input.step,
         discover: false,

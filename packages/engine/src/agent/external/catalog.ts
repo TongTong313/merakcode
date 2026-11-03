@@ -28,6 +28,7 @@ const Capabilities = z.object({
       reportedOperations: z.string().array(),
       cancellation: z.enum(["operation", "task", "none"]),
       liveMode: z.boolean(),
+      isolation: z.enum(["product", "none", "unknown"]).optional(),
       limitations: z.string().array(),
     })
     .optional(),

@@ -1,3 +1,10 @@
+import { beforeEach, afterEach } from "vitest"
+import { readySandbox } from "../fixture/sandbox-ready"
+let isolation: ReturnType<typeof readySandbox>
+beforeEach(() => {
+  isolation = readySandbox()
+})
+afterEach(() => isolation[Symbol.dispose]())
 import { test, expect } from "vitest"
 import os from "os"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
@@ -399,7 +406,10 @@ test("ask - asks and stays pending when no rule matches", async () => {
         metadata: {},
         ruleset: [],
       })
-      expect((await PermissionNext.list()).map((item) => item.id)).toEqual(["permission_nomatch"])
+      await expect
+        .poll(async () => (await PermissionNext.list()).map((item) => item.id))
+        .toEqual(["permission_nomatch"])
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_nomatch", reply: "once" })
       await expect(promise).resolves.toBeUndefined()
     },
@@ -419,8 +429,11 @@ test("ask - explicit ask rule prompts and stays pending", async () => {
         metadata: {},
         ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
       })
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       const pending = await PermissionNext.list()
       expect(pending.map((item) => item.id)).toEqual(["permission_explicit"])
+
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
 
       await PermissionNext.reply({ requestID: "permission_explicit", reply: "once" })
       await expect(promise).resolves.toBeUndefined()
@@ -462,7 +475,10 @@ test("ask - returns pending promise when action is ask", async () => {
       })
       // An explicit ask stays pending: the promise is unsettled and the request is in the pending list
       expect(promise).toBeInstanceOf(Promise)
-      expect((await PermissionNext.list()).map((item) => item.id)).toEqual(["permission_pending"])
+      await expect
+        .poll(async () => (await PermissionNext.list()).map((item) => item.id))
+        .toEqual(["permission_pending"])
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_pending", reply: "once" })
       await promise
     },
@@ -485,6 +501,10 @@ test("reply - once resolves the pending ask", async () => {
         metadata: {},
         ruleset,
       })
+
+      await expect
+        .poll(async () => (await PermissionNext.list()).some((item) => item.id === "permission_test1"))
+        .toBe(true)
 
       await PermissionNext.reply({
         requestID: "permission_test1",
@@ -511,6 +531,10 @@ test("reply - reject throws RejectedError", async () => {
         ruleset,
       })
 
+      await expect
+        .poll(async () => (await PermissionNext.list()).some((item) => item.id === "permission_test2"))
+        .toBe(true)
+
       await PermissionNext.reply({
         requestID: "permission_test2",
         reply: "reject",
@@ -535,6 +559,10 @@ test("reply - reject with message throws CorrectedError containing user feedback
         metadata: {},
         ruleset,
       })
+
+      await expect
+        .poll(async () => (await PermissionNext.list()).some((item) => item.id === "permission_feedback"))
+        .toBe(true)
 
       await PermissionNext.reply({
         requestID: "permission_feedback",
@@ -588,16 +616,24 @@ test("reply - reject rejects only the target request and keeps other pending one
 
       const result1 = askPromise1.catch((e) => e)
 
+      await expect
+        .poll(async () => (await PermissionNext.list()).some((item) => item.id === "permission_test4a"))
+        .toBe(true)
+
       await PermissionNext.reply({
         requestID: "permission_test4a",
         reply: "reject",
       })
 
       expect(await result1).toBeInstanceOf(PermissionNext.RejectedError)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       const pending = await PermissionNext.list()
       expect(pending.map((p) => p.id).sort()).toEqual(["permission_test4b", "permission_test4c"])
 
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
+
       await PermissionNext.reply({ requestID: "permission_test4b", reply: "reject" })
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_test4c", reply: "reject" })
       await expect(askPromise2).rejects.toBeInstanceOf(PermissionNext.RejectedError)
       await expect(askPromise3).rejects.toBeInstanceOf(PermissionNext.RejectedError)
@@ -624,11 +660,16 @@ test("reply - with 3 parallel asks, rejecting one still lets the others be allow
 
       const r1 = p1.catch((e) => e)
 
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
+
       await PermissionNext.reply({ requestID: "permission_par1", reply: "reject" })
       expect(await r1).toBeInstanceOf(PermissionNext.RejectedError)
       expect((await PermissionNext.list()).length).toBe(2)
 
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
+
       await PermissionNext.reply({ requestID: "permission_par2", reply: "once" })
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_par3", reply: "once" })
       await expect(p2).resolves.toBeUndefined()
       await expect(p3).resolves.toBeUndefined()
@@ -687,6 +728,7 @@ test("abortPending - stopping a session rejects its pending permissions and emit
         if (event.properties.requestID === "permission_abort_me") replied.resolve(event.properties)
       })
 
+      await expect.poll(async () => (await PermissionNext.list()).length).toBe(2)
       await PermissionNext.abortPending("ses_abort")
       const event = await replied.promise
       unsub()
@@ -697,8 +739,11 @@ test("abortPending - stopping a session rejects its pending permissions and emit
         requestID: "permission_abort_me",
         reply: "reject",
       })
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       const pending = await PermissionNext.list()
       expect(pending.map((item) => item.id)).toEqual(["permission_keep"])
+
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
 
       await PermissionNext.reply({ requestID: "permission_keep", reply: "once" })
       await other
@@ -725,6 +770,7 @@ test("Loop.cancel clears the session's pending permissions so the approval bar g
       const unsub = Bus.subscribe(PermissionNext.Event.Replied, (event) => {
         replied.resolve(event.properties.requestID)
       })
+      await expect.poll(async () => (await PermissionNext.list()).length).toBe(1)
       Loop.cancel(session.id)
       expect(await replied.promise).toBe("permission_cancel")
       unsub()

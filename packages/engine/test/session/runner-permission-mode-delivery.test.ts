@@ -1,13 +1,13 @@
 import fs from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 /**
- * prompt and shell write their permission mode back to the session, which is the source of truth.
+ * Ordinary prompt and shell inputs preserve the explicitly selected root permission level.
  * Live asks after setMode during a run are covered in runner-permission-mode-live.test.ts.
  */
 import { test, expect } from "vitest"
 import path from "path"
 import { Instance } from "@merakcode/engine/infra/project/instance"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Session } from "@merakcode/engine/agent/session/index"
 import { Agent } from "@merakcode/engine/agent/agent"
 import { Loop } from "@merakcode/engine/agent/loop/index"
@@ -28,16 +28,16 @@ const model = {
 } as unknown as Provider.Model
 
 async function autoSession() {
-  const session = await Session.setMode({
+  const session = await selectPermissionLevel({
     sessionID: (await Session.create({})).id,
-    sessionMode: "auto",
+    permissionLevel: "fullTakeover",
   })
   const user = await Session.updateInfo({
     id: Identifier.ascending("message"),
     role: "user",
     sessionID: session.id,
     agent: "build",
-    sessionMode: "auto",
+    permissionLevel: "fullTakeover",
     model: { providerID: "openai", modelID: "gpt-4" },
     time: { created: Date.now() },
   })
@@ -80,7 +80,7 @@ async function resolveTools(
     processor,
     bypassAgentCheck: false,
     messages: [{ info: user, parts: [] }],
-    sessionMode: live.sessionMode,
+    permissionLevel: live.permissionLevel,
   })
   return tools
 }
@@ -127,7 +127,7 @@ test("control: while the session stays auto, the resolved write tool does not as
     fn: async () => {
       const { session, user, agent, processor } = await autoSession()
       const tools = await resolveTools(session.id, agent, user, processor)
-      expect((await Session.get(session.id)).sessionMode).toBe("auto")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
 
       let asked = false
       const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => {
@@ -142,29 +142,28 @@ test("control: while the session stays auto, the resolved write tool does not as
   })
 })
 
-test("prompt with ask overrides a leftover auto session mode, and write then runs under ask", async () => {
+test("a stale prompt hint preserves the selected fullTakeover level and existing tools", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const { session, user, agent, processor } = await autoSession()
       const tools = await resolveTools(session.id, agent, user, processor)
-      expect((await Session.get(session.id)).sessionMode).toBe("auto")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
 
-      // Like an Agent submit: the prompt carries the mode before the client's setMode has run.
+      // Ordinary messages cannot select a permission level.
       await Loop.prompt({
         sessionID: session.id,
         agent: "build",
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         noReply: true,
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "delivery probe" }],
       })
 
-      expect((await Session.get(session.id)).sessionMode).toBe("execute")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
 
-      // The previously resolved tools re-read the session on execute and see the written-back ask mode. Nothing
-      // requests an ask for write, so it runs without a permission card.
+      // The resolved tools continue to use the explicit root selection.
       const filePath = path.join(tmp.path, "prompt-writeback.txt")
       const { outcome } = await raceWriteAsk(tools, session.id, filePath)
       expect(outcome).toBe("ran")
@@ -186,12 +185,12 @@ test("prompt without a mode preserves the current explicitly selected mode", asy
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "no mode" }],
       })
-      expect((await Session.get(session.id)).sessionMode).toBe("auto")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
     },
   })
 })
 
-test("shell with ask writes ask back to the session, and previously resolved tools follow it", async () => {
+test("a stale shell hint preserves the selected root level and previously resolved tools", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -201,7 +200,7 @@ test("shell with ask writes ask back to the session, and previously resolved too
       await Loop.shell({
         sessionID: session.id,
         agent: "build",
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         model: { providerID: "openai", modelID: "gpt-4" },
         command: "echo delivery-shell",
       })
@@ -209,8 +208,8 @@ test("shell with ask writes ask back to the session, and previously resolved too
       const messages = await Session.messages({ sessionID: session.id })
       const lastUser = [...messages].reverse().find((msg) => msg.info.role === "user")
       if (lastUser?.info.role !== "user") throw new Error("expected user message")
-      expect(lastUser.info.sessionMode).toBe("execute")
-      expect(live.sessionMode).toBe("execute")
+      expect(lastUser.info.permissionLevel).toBe("fullTakeover")
+      expect(live.permissionLevel).toBe("fullTakeover")
 
       // With no default ask, write runs without a permission card.
       const filePath = path.join(tmp.path, "after-shell.txt")
@@ -248,7 +247,7 @@ test("a manual switch while a real message hook waits survives prompt preparatio
       const session = await Session.create({ title: "Prompt mode race" })
       const pending = Loop.prompt({
         sessionID: session.id,
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         noReply: true,
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "Prepare message" }],
@@ -257,12 +256,12 @@ test("a manual switch while a real message hook waits survives prompt preparatio
         await expect
           .poll(() => Filesystem.isFile(path.join(tmp.path, "mode-hook-ready")), { timeout: 10000 })
           .toBe(true)
-        await Session.setMode({ sessionID: session.id, sessionMode: "plan" })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
       } finally {
         await Filesystem.write(path.join(tmp.path, "mode-hook-release"), "release")
       }
       await pending
-      expect((await Session.get(session.id)).sessionMode).toBe("plan")
+      expect((await Session.get(session.id)).permissionLevel).toBe("ask")
     },
   })
 })

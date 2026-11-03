@@ -1,7 +1,7 @@
 import { Message } from "../session/message"
 import type { Tool } from "./tool"
 import { Text } from "../prompt/text"
-import { sessionModeNow } from "../permission/session-mode"
+import { permissionLevelNow } from "../permission/permission-level"
 
 /**
  * Seam for path decisions at the tool layer.
@@ -65,17 +65,17 @@ export namespace ToolPathGuard {
   /** Single path (read/write/edit/multi_edit, and the root path of glob/grep/ls): throws when denied */
   export async function assertPathAllowed(ctx: Tool.Context, target: string, tool: string) {
     ctx.abort?.throwIfAborted()
-    if (sessionModeNow(ctx.sessionID, ctx.sessionMode) === "auto") return
+    if (permissionLevelNow(ctx.sessionID, ctx.permissionLevel) === "fullTakeover") return
     for (const text of latestUserTexts(ctx.messages)) {
       const { denied, message } = await deniedByPlugin(ctx, tool, [target], text)
       ctx.abort?.throwIfAborted()
-      if (sessionModeNow(ctx.sessionID, ctx.sessionMode) === "auto") return
+      if (permissionLevelNow(ctx.sessionID, ctx.permissionLevel) === "fullTakeover") return
       // Each source text is judged separately, so display text (such as a "fix" label) joined into a sensitive
       // template cannot let the path through by mistake
       if (denied.has(target)) {
         const reason = message || (await Text.pick(DENIED_MESSAGE))
         ctx.abort?.throwIfAborted()
-        if (sessionModeNow(ctx.sessionID, ctx.sessionMode) === "auto") return
+        if (permissionLevelNow(ctx.sessionID, ctx.permissionLevel) === "fullTakeover") return
         throw new Error(reason)
       }
     }
@@ -84,12 +84,12 @@ export namespace ToolPathGuard {
   /** Many paths (filtering ls/glob/grep results): denied entries are dropped without failing the tool */
   export async function filterAllowedPaths(ctx: Tool.Context, targets: string[], tool: string) {
     ctx.abort?.throwIfAborted()
-    if (sessionModeNow(ctx.sessionID, ctx.sessionMode) === "auto") return targets
+    if (permissionLevelNow(ctx.sessionID, ctx.permissionLevel) === "fullTakeover") return targets
     const denied = new Set<string>()
     for (const text of latestUserTexts(ctx.messages)) {
       const result = await deniedByPlugin(ctx, tool, targets, text)
       ctx.abort?.throwIfAborted()
-      if (sessionModeNow(ctx.sessionID, ctx.sessionMode) === "auto") return targets
+      if (permissionLevelNow(ctx.sessionID, ctx.permissionLevel) === "fullTakeover") return targets
       for (const target of result.denied) denied.add(target)
     }
     return denied.size === 0 ? targets : targets.filter((target) => !denied.has(target))

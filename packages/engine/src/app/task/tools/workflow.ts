@@ -18,6 +18,7 @@ import { WorkflowState } from "../workflow/state"
 import type { WorkflowRunMetadata, WorkflowScript } from "../workflow/types"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Message } from "../../../agent/session/message"
+import { SessionPlan } from "../../../agent/session/plan"
 
 const parameters = z
   .object({
@@ -167,6 +168,7 @@ function buildWorkflowNotification(metadata: WorkflowRunMetadata) {
 
 async function notifyCompleted(input: {
   sessionID: string
+  messageID: string
   metadata: WorkflowRunMetadata
   model: { providerID: string; modelID: string }
   agent: string
@@ -190,6 +192,7 @@ async function notifyCompleted(input: {
     agent: input.agent,
     model: input.model,
     metadata: {
+      taskOriginMessageID: input.messageID,
       runId: final.runId,
       workflowName: final.workflowName,
       status: final.status,
@@ -254,6 +257,7 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
         finishNotified = true
         await notifyCompleted({
           sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
           metadata,
           model,
           agent: ctx.agent,
@@ -277,7 +281,10 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
           await finishWorkflow(current)
         },
       }
+      const plan = await SessionPlan.get(ctx.sessionID)
+      const planExecutionID = plan.status === "executing" ? plan.execution?.id : undefined
       const initial: WorkflowRunMetadata = {
+        planExecutionID,
         status: "running",
         workflowName: script.name,
         description: script.description,
@@ -323,8 +330,9 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
               resume,
               hooks: {
                 update: async (metadata) => {
-                  await WorkflowState.writeRun(ctx.sessionID, ctx.messageID, metadata)
-                  await ctx.metadata({ title: script.name, metadata })
+                  const record = { ...metadata, planExecutionID }
+                  await WorkflowState.writeRun(ctx.sessionID, ctx.messageID, record)
+                  await ctx.metadata({ title: script.name, metadata: record })
                 },
               },
             })

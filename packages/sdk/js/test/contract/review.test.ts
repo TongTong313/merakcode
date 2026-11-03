@@ -100,7 +100,7 @@ test("hunks of agent edits can be accepted and rejected, stale hunks get 409, ch
   ]
   script = (turn) => steps[turn.results.length]!
   const session = await merak.session()
-  for await (const _ of session.run("改两个文件", { mode: "auto" })) void _
+  for await (const _ of session.run("改两个文件", { permissionLevel: "fullTakeover" })) void _
 
   const { client } = merak
   const input = { scope: "session" as const, sessionID: session.id }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "vitest"
+import { selectPermissionLevel } from "../fixture/fixture"
 import { LLM } from "@merakcode/engine/agent/model/llm"
 
 const stream = LLM.stream
@@ -25,7 +26,7 @@ afterEach(() => {
   LLM.stream = stream
 })
 
-test("continuation user message after auto-compaction inherits the sessionMode from before compaction", async () => {
+test("continuation user message after auto-compaction inherits the permissionLevel from before compaction", async () => {
   const { Identifier } = await import("@merakcode/util/id")
   const { Instance } = await import("@merakcode/engine/infra/project/instance")
   const { Session } = await import("@merakcode/engine/agent/session/index")
@@ -60,13 +61,14 @@ test("continuation user message after auto-compaction inherits the sessionMode f
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       const model = { providerID: "test-provider", modelID: "test-model" }
       const original = await Session.updateInfo({
         id: Identifier.ascending("message"),
         role: "user",
         sessionID: session.id,
         agent: "build",
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         model,
         time: { created: Date.now() },
       })
@@ -81,14 +83,14 @@ test("continuation user message after auto-compaction inherits the sessionMode f
         sessionID: session.id,
         agent: "build",
         model,
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         auto: true,
       })
 
       const before = await Session.messages({ sessionID: session.id })
       const compaction = before.find((msg) => msg.parts.some((part) => part.type === "compaction"))
       if (compaction?.info.role !== "user") throw new Error("expected compaction user message")
-      expect(compaction.info.sessionMode).toBeUndefined()
+      expect(compaction.info.permissionLevel).toBe("ask")
 
       await SessionCompaction.process({
         parentID: compaction.info.id,
@@ -108,8 +110,8 @@ test("continuation user message after auto-compaction inherits the sessionMode f
       const part = compaction.parts.find((p) => p.type === "compaction")
       if (!part || part.type !== "compaction") throw new Error("expected compaction part")
 
-      expect(part?.sessionMode).toBe("auto")
-      expect(continuation.info.sessionMode).toBe("auto")
+      expect(part?.permissionLevel).toBe("fullTakeover")
+      expect(continuation.info.permissionLevel).toBe("fullTakeover")
     },
   })
 })

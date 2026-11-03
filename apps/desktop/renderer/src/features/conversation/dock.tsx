@@ -6,14 +6,16 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { t, type Key } from "../../i18n"
 import { relative } from "../../lib/route"
 import { call, client } from "../../state/client"
-import { session } from "../../state/store"
+import { session, setPermissionLevel } from "../../state/store"
 import { toast } from "../../ui/toast"
+import { SandboxField } from "./sandbox-control"
 
 const directoryOf = (sessionID: string, fallback: string) => session(sessionID)?.directory ?? fallback
 
 /** Permission request title: what the agent wants to do */
 function title(request: PermissionRequest) {
   const kind = permissionKind(request.permission)
+  if (kind === "plan") return t(request.metadata?.update ? "approval.planUpdate" : "approval.planGenerate")
   if (kind === "tool") return t("approval.tool", { name: request.permission })
   return t(`approval.${kind}` as Key)
 }
@@ -21,6 +23,8 @@ function title(request: PermissionRequest) {
 /** Permission request subject: a command, file, URL and so on */
 function subject(request: PermissionRequest, directory: string) {
   const meta = request.metadata ?? {}
+  if (typeof meta.planPath === "string")
+    return `${relative(directory, meta.planPath)}\n${t("approval.planRevision", { current: Number(meta.expectedRevision ?? 0), next: Number(meta.expectedRevision ?? 0) + 1 })}`
   if (typeof meta.command === "string") return meta.command
   if (typeof meta.filepath === "string") return relative(directory, meta.filepath)
   if (typeof meta.url === "string") return meta.url
@@ -43,14 +47,19 @@ export function Approval(props: {
   const reply = async (choice: PermissionChoice, message?: string) => {
     if (busy()) return
     setBusy(true)
-    await call(
-      client(directoryOf(props.request.sessionID, props.directory)).permission.reply({
-        requestID: props.request.id,
-        reply: choice.reply,
-        ...(choice.scope ? { scope: choice.scope } : {}),
-        ...(message ? { message } : {}),
-      }),
-    )
+    const action =
+      choice.reply === "autoApprove"
+        ? setPermissionLevel(props.request.root ?? props.request.sessionID, props.directory, "autoApprove")
+        : call(
+            client(directoryOf(props.request.sessionID, props.directory)).permission.reply({
+              requestID: props.request.id,
+              decisionRevision: props.request.decisionRevision,
+              reply: choice.reply,
+              ...(choice.scope ? { scope: choice.scope } : {}),
+              ...(message ? { message } : {}),
+            }),
+          )
+    await action
       .catch((error: Error) =>
         toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
       )
@@ -88,6 +97,18 @@ export function Approval(props: {
         </Show>
       </div>
       <pre class="command selectable">{subject(props.request, props.directory)}</pre>
+      <Show when={props.request.sandboxReady === false}>
+        <div class="approval-isolation subtle">
+          <p>
+            {t(
+              ["plan_generate", "plan_edit"].includes(props.request.permission)
+                ? "approval.unisolatedPlan"
+                : "approval.unisolated",
+            )}
+          </p>
+          <SandboxField directory={props.directory} />
+        </div>
+      </Show>
       <Show
         when={reason() === undefined}
         fallback={

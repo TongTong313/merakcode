@@ -426,9 +426,9 @@ describe("session.importFull", () => {
 })
 
 for (const [legacy, expected] of [
-  ["readonly", "plan"],
-  ["ask", "execute"],
-  ["auto", "execute"],
+  ["readonly", "ask"],
+  ["ask", "ask"],
+  ["auto", "ask"],
 ])
   test(`legacy ${legacy} imports as ${expected} without widening authorization`, async () => {
     await Instance.provide({
@@ -439,9 +439,11 @@ for (const [legacy, expected] of [
         Object.assign(payload.messages[0]!.info, { permissionMode: legacy })
         const { res, body } = await postImportFull(Server.App(), payload)
         expect(res.status).toBe(200)
-        expect(body.info.sessionMode).toBe(expected)
+        expect(body.info.permissionLevel).toBe(expected)
         const messages = await Session.messages({ sessionID: body.info.id })
-        expect(messages.find((message) => message.info.role === "user")?.info).toMatchObject({ sessionMode: expected })
+        expect(messages.find((message) => message.info.role === "user")?.info).toMatchObject({
+          permissionLevel: expected,
+        })
         await SessionOperations.remove(body.info.id)
       },
     })
@@ -475,9 +477,9 @@ test("legacy external user messages keep their conservative mode when imported",
       Object.assign(payload.info, { permissionMode: "readonly" })
       const { res, body } = await postImportFull(Server.App(), payload)
       expect(res.status).toBe(200)
-      expect(body.info.sessionMode).toBe("plan")
+      expect(body.info.permissionLevel).toBe("ask")
       const messages = await Session.messages({ sessionID: body.info.id })
-      expect(messages[0]!.info).toMatchObject({ sessionMode: "plan", execution: { kind: "external" } })
+      expect(messages[0]!.info).toMatchObject({ permissionLevel: "ask", execution: { kind: "external" } })
       await SessionOperations.remove(body.info.id)
     },
   })

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Instance } from "../../src/infra/project/instance"
 import { Session } from "../../src/agent/session"
 import { ReadTool } from "../../src/agent/tools/read"
@@ -44,7 +44,7 @@ test.each(["read", "glob"])("%s applies the current mode after a delayed path pl
         sessionID: session.id,
         messageID: "",
         agent: "build",
-        sessionMode: "execute",
+        permissionLevel: "autoApprove",
         abort: new AbortController().signal,
         messages: [],
         ruleset: [],
@@ -59,12 +59,12 @@ test.each(["read", "glob"])("%s applies the current mode after a delayed path pl
       running.catch(() => {})
       try {
         await expect.poll(() => Filesystem.isFile(path.join(tmp.path, ".ready"))).toBe(true)
-        await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       } finally {
         await fs.writeFile(path.join(tmp.path, ".release"), "release")
       }
       expect((await running).output).toContain(kind === "read" ? "READABLE_CONTENT" : "note.txt")
-      await Session.setMode({ sessionID: session.id, sessionMode: "execute" })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
       if (kind === "read") await expect(run()).rejects.toThrow("DELAYED_POLICY_DENIAL")
       else expect((await run()).output).not.toContain("note.txt")
     },

@@ -5,8 +5,9 @@ import path from "path"
 import { BashTool, prepareBashCommand } from "@merakcode/engine/agent/tools/bash"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Config } from "@merakcode/engine/app/config/files/config"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { Session } from "@merakcode/engine/agent/session/index"
 import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
 import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import { Bus } from "@merakcode/engine/infra/bus/index"
@@ -19,7 +20,7 @@ const ctx = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "execute" as const,
+  kind: "autoApprove" as const,
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -36,7 +37,7 @@ type AskRequest = Parameters<Tool.Context["ask"]>[0]
 function permissionCtx(input: { ruleset?: PermissionNext.Ruleset; sessionID?: string } = {}) {
   const requests: PermissionNext.Request[] = []
   const sessionID = input.sessionID ?? ctx.sessionID
-  const ruleset = input.ruleset ?? PermissionPolicy.ruleset("execute")
+  const ruleset = input.ruleset ?? PermissionPolicy.ruleset("autoApprove")
   const ask = async (req: AskRequest) => {
     const asked = Promise.withResolvers<PermissionNext.Request>()
     const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
@@ -125,19 +126,22 @@ describe("tool.bash", () => {
     }
   })
 
-  test("execute asks before reading credentials while workspace reads do not ask", async () => {
+  test("unisolated workspace and credential reads both ask before execution", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
         const bash = await BashTool.init()
-        const auto = permissionCtx({ ruleset: PermissionPolicy.ruleset("execute"), sessionID: "ses_bash_sensitive" })
+        const auto = permissionCtx({
+          ruleset: PermissionPolicy.ruleset("autoApprove"),
+          sessionID: "ses_bash_sensitive",
+        })
         await bash.execute({ command: "cat package.json", description: "Read a workspace file" }, auto.ctx)
-        expect(auto.requests).toHaveLength(0)
+        expect(auto.requests).toHaveLength(1)
         await bash
           .execute({ command: "cat ~/.ssh/merak-test-key", description: "Read a key" }, auto.ctx)
           .catch(() => undefined)
-        expect(auto.requests).toHaveLength(1)
-        expect(auto.requests[0]!.metadata.tags).toContain("sensitive-path")
+        expect(auto.requests).toHaveLength(2)
+        expect(auto.requests[1]!.metadata.tags).toContain("sensitive-path")
       },
     })
   })
@@ -157,22 +161,19 @@ describe("tool.bash", () => {
     })
   })
 
-  test("commands that wipe the system are refused without asking, in every mode", async () => {
+  test("potentially destructive commands require a displayed decision in the first two levels", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
-        const bash = await BashTool.init()
-        for (const mode of ["execute", "plan"] as const) {
+        for (const mode of ["autoApprove", "ask"] as const) {
           const asked = permissionCtx({
             ruleset: PermissionPolicy.ruleset(mode),
             sessionID: `ses_bash_forbidden_${mode}`,
           })
-          const error = await bash.execute({ command: "rm -rf /", description: "Wipe" }, asked.ctx).then(
-            () => undefined,
-            (error: unknown) => error,
-          )
-          expect(error instanceof PermissionNext.DeniedError, mode).toBe(true)
-          expect(asked.requests).toHaveLength(0)
+          await prepareBashCommand({ command: "rm -rf /", description: "Analyze without launching" }, asked.ctx)
+          expect(asked.requests).toHaveLength(1)
+          expect(asked.requests[0]?.metadata.command).toBe("rm -rf /")
+          expect(asked.requests[0]?.sandboxReady).toBe(false)
         }
       },
     })
@@ -290,7 +291,7 @@ describe("tool.bash", () => {
 })
 
 describe("tool.bash permissions", () => {
-  test("ask mode runs read-only commands without asking", async () => {
+  test("ask requires one combined approval for actual read-only commands", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -298,14 +299,15 @@ describe("tool.bash permissions", () => {
         const bash = await BashTool.init()
         const { ctx: testCtx, requests } = permissionCtx()
         const result = await bash.execute({ command: "echo no-card && git status -s", description: "Echo" }, testCtx)
-        expect(requests).toEqual([])
+        expect(requests).toHaveLength(1)
+        expect(requests[0]?.patterns).toEqual(["echo no-card", "git status -s"])
         expect(result.metadata.exit).toBe(0)
         expect(result.metadata.output).toContain("no-card")
       },
     })
   })
 
-  test("ask mode asks for other commands with the raw command, a prefix grant and the working directory", async () => {
+  test("an unisolated command shows its complete command and offers only once or reject", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -316,16 +318,17 @@ describe("tool.bash permissions", () => {
         expect(requests).toHaveLength(1)
         expect(requests[0]).toMatchObject({
           permission: "bash",
-          patterns: ["node -e 1"],
-          grants: [{ scope: "prefix", pattern: "node *" }],
-          always: true,
-          metadata: { command: "node -e 1", cwd: tmp.path, tags: [] },
+          patterns: ["node -e 1", "node -e 1"],
+          grants: [],
+          always: false,
+          sandboxReady: false,
+          metadata: { command: "node -e 1", cwd: tmp.path, tags: ["no-sandbox"] },
         })
       },
     })
   })
 
-  test("chained commands produce one approval listing only the segments that ask, with their redirects", async () => {
+  test("chained unisolated commands produce one approval listing every segment", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -333,8 +336,13 @@ describe("tool.bash permissions", () => {
         const { ctx: testCtx, requests } = permissionCtx()
         await prepareBashCommand({ command: "ls && rm -rf build && echo hi > out.txt", description: "x" }, testCtx)
         expect(requests).toHaveLength(1)
-        expect(requests[0]!.patterns).toEqual(["rm -rf build", "echo hi > out.txt"])
-        expect(requests[0]!.metadata.tags).toEqual(["delete"])
+        expect(requests[0]!.patterns).toEqual([
+          "ls",
+          "rm -rf build",
+          "echo hi > out.txt",
+          "ls && rm -rf build && echo hi > out.txt",
+        ])
+        expect(requests[0]!.metadata.tags).toEqual(["delete", "no-sandbox"])
       },
     })
   })
@@ -351,27 +359,30 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("read-only mode runs read-only commands and denies the rest", async () => {
+  test("ask waits for a real decision for read-only and ordinary operations", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("plan") })
+        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("ask") })
         await prepareBashCommand({ command: "ls -la && git log -1", description: "x" }, testCtx)
-        await expect(
-          prepareBashCommand({ command: "ls && npm test", description: "x" }, testCtx),
-        ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
-        expect(requests).toEqual([])
+        await prepareBashCommand({ command: "ls && npm test", description: "x" }, testCtx)
+        expect(requests).toHaveLength(2)
       },
     })
   })
 
-  test("auto permits risky commands without approval", async () => {
+  test("explicit full takeover permits risky preparation without safety approval", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("auto") })
+        const session = await Session.create({})
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+        const { ctx: testCtx, requests } = permissionCtx({
+          sessionID: session.id,
+          ruleset: PermissionPolicy.ruleset("fullTakeover"),
+        })
         await prepareBashCommand({ command: "npm test && rm -rf dist", description: "x" }, testCtx)
         expect(requests).toEqual([])
         await prepareBashCommand({ command: "npm test && git push origin main", description: "x" }, testCtx)
@@ -393,20 +404,20 @@ describe("tool.bash permissions", () => {
         expect(result.metadata.exit).toBe(0)
         expect(await Filesystem.readText(file)).toContain("secret")
         expect(requests).toHaveLength(1)
-        expect(requests[0]!.metadata.tags).toEqual(["external-path"])
+        expect(requests[0]!.metadata.tags).toEqual(["external-path", "no-sandbox"])
       },
     })
   })
 
-  test("user command rules: allowed prefixes do not ask and denied ones are refused", async () => {
+  test("old allowed command prefixes cannot bypass asking and explicit denies still refuse", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const user = PermissionNext.fromConfig({ bash: { "node *": "allow", "curl *": "deny" } })
-        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("execute", user) })
+        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("autoApprove", user) })
         await prepareBashCommand({ command: "node -e 1", description: "x" }, testCtx)
-        expect(requests).toEqual([])
+        expect(requests).toHaveLength(1)
         await expect(
           prepareBashCommand({ command: "curl https://example.com", description: "x" }, testCtx),
         ).rejects.toBeInstanceOf(PermissionNext.DeniedError)

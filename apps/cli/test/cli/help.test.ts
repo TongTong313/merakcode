@@ -42,9 +42,9 @@ test("merak without a command prints the help and exits without starting an engi
   expect(stdout).toContain("merak run")
 })
 
-test("run help exposes plan, execute and auto modes", async () => {
+test("run help exposes the three permission levels", async () => {
   const { stdout, stderr, code } = await merak(["run", "--help"])
   expect(code, stderr).toBe(0)
-  expect(stdout).toContain("--mode")
-  for (const mode of ["plan", "execute", "auto"]) expect(stdout).toContain(mode)
+  expect(stdout).toContain("--permission-level")
+  for (const mode of ["ask", "autoApprove", "fullTakeover"]) expect(stdout).toContain(mode)
 })

@@ -99,10 +99,12 @@ test("ToolRegistry registers interactive tools by client and noninteractive flag
         fn: async () => {
           const ids = await ToolRegistry.ids()
 
-          for (const id of ["question", "plan_enter", "plan_exit"]) {
+          for (const id of ["question"]) {
             if (item.enabled) expect(ids).toContain(id)
             else expect(ids).not.toContain(id)
           }
+          for (const id of ["plan_generate", "plan_edit"]) expect(ids).toContain(id)
+          for (const id of ["plan_enter", "plan_exit", "plan_write"]) expect(ids).not.toContain(id)
         },
       })
     }

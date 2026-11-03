@@ -16,6 +16,8 @@ export type Reply =
   { text: string; reasoning?: string } | ToolCall | { calls: ToolCall[] } | { status: number; message: string }
 
 export type Turn = {
+  /** The actual request, including all tool parameters and host context. */
+  request: unknown
   /** Text of the latest user message */
   prompt: string
   /** Tool results received so far in this turn, in order */
@@ -100,6 +102,7 @@ export async function fakeModel(script: (turn: Turn) => Reply | Promise<Reply>) 
     }
     const last = messages.findLastIndex((message) => message.role === "user")
     const turn = {
+      request: input,
       prompt: text(messages[last]?.content),
       results: messages.slice(last + 1).flatMap((message) => (message.role === "tool" ? [text(message.content)] : [])),
       tools,

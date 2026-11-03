@@ -4,7 +4,7 @@ import fs from "node:fs"
 
 adapter({
   inspect: async () => {
-    if (process.argv[2] === "inspect-gate") {
+    if (["inspect-gate", "plan-gate"].includes(process.argv[2] ?? "")) {
       const gate = process.argv[3]!
       fs.writeFileSync(`${gate}.started`, "ready")
       while (!fs.existsSync(gate)) await new Promise((resolve) => setTimeout(resolve, 10))
@@ -17,12 +17,46 @@ adapter({
         textStreaming: true,
         resume: true,
         permission: "merak",
+        control: {
+          reportedOperations: ["read", "write", "command", "network", "tool"],
+          cancellation: "task",
+          liveMode: true,
+          limitations: [],
+        },
         questions: true,
+        draftOnly: true,
+        plan: {
+          fullInput: true,
+          contextTokens:
+            process.argv[2] === "plan-capacity" ? Number(fs.readFileSync(process.argv[3]!, "utf8")) : 200000,
+          reservedTokens: 1000,
+          fixedInputTokens: 100,
+        },
       },
     }
   },
   async run(task, host) {
-    const initialMode = task.mode
+    if (["plan-input", "plan-capacity"].includes(process.argv[2] ?? "")) {
+      fs.writeFileSync(process.argv[2] === "plan-capacity" ? process.argv[4]! : process.argv[3]!, JSON.stringify(task))
+      return { text: "Plan received" }
+    }
+    if (process.argv[2] === "plan-gate") {
+      fs.writeFileSync(`${process.argv[3]}.received`, JSON.stringify(task))
+      return { text: "Plan received" }
+    }
+    if (process.argv[2] === "scope-gate") {
+      if (task.scope !== "draft") return { text: "Later task complete" }
+      const gate = process.argv[3]!
+      fs.writeFileSync(`${gate}.started`, "ready")
+      while (!fs.existsSync(gate)) {
+        task.signal.throwIfAborted()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      const verdict = await host.permission({ kind: "write", paths: ["effect.txt"] }).catch(() => ({ allow: false }))
+      if (verdict.allow) fs.writeFileSync(`${task.cwd}/effect.txt`, "CHANGED")
+      return { text: verdict.allow ? "ALLOWED" : "DENIED" }
+    }
+    const initialMode = task.permissionLevel
     const sessionId = task.resume ?? randomUUID()
     await host.sessionStarted({ sessionId })
     if (process.argv[2] === "mode-at-start") {

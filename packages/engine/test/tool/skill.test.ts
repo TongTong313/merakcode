@@ -12,7 +12,7 @@ const baseCtx: Omit<Tool.Context, "ask"> = {
   messageID: "",
   callID: "",
   agent: "build",
-  kind: "execute",
+  kind: "autoApprove",
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],

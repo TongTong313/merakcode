@@ -128,7 +128,7 @@ The repo has three runnable examples in [`packages/sdk/js/examples`](../../packa
 - **Messages and parts**: each message (`role` is `user` or `assistant`) is made of parts. Common parts: `text` (the reply), `reasoning` (the model's thinking), `tool` (one tool call with its input, state and output), `file` (an attachment), `step-start` / `step-finish` (the start and end of a step, with usage), `patch` (files changed in that step), `subtask`, `agent`, `retry`, `compaction`.
 - **Agent**: decides the prompt and which tools are available. The default is `build`; the subagents are `general` and `explore`; `simplifier` works as either. You can add your own in the config.
 - **Model**: written as `provider/model`, such as `anthropic/claude-sonnet-4-5` or `alibaba-cn/qwen-plus`. `merak models` lists what you can use.
-- **Permission mode**: `plan`, `execute` (default) or `auto`. Together with your permission rules it decides whether an action that changes things runs, asks first, or is refused.
+- **Permission level**: `ask` (default), `autoApprove` or `fullTakeover`. Ordinary prompts preserve the root conversation selection.
 - **Events**: the engine pushes every change (new messages, part updates, approval requests, session status...) over an event stream. The high-level API picks out the events of the current session for you.
 
 ## 5. High-level API
@@ -198,14 +198,14 @@ The returned `MerakCode`:
 
 Options of `run` (`RunOptions`, which includes every field of `Handlers`):
 
-| Option         | Meaning                                                                                      |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| `model`        | Model for this turn, as `provider/model`                                                     |
-| `agent`        | Agent for this turn                                                                          |
-| `mode`         | Permission mode: `"plan"`, `"execute"` or `"auto"`                                           |
-| `onPermission` | Called for approvals, see section 6. Without it, every request that needs approval is denied |
-| `onQuestion`   | Called when the model asks a question, see section 6. Without it questions are skipped       |
-| `signal`       | Stops this turn                                                                              |
+| Option            | Meaning                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| `model`           | Model for this turn, as `provider/model`                                                     |
+| `agent`           | Agent for this turn                                                                          |
+| `permissionLevel` | Permission level: `"ask"`, `"autoApprove"` or `"fullTakeover"`                               |
+| `onPermission`    | Called for approvals, see section 6. Without it, every request that needs approval is denied |
+| `onQuestion`      | Called when the model asks a question, see section 6. Without it questions are skipped       |
+| `signal`          | Stops this turn                                                                              |
 
 `run` produces 5 kinds of events (`RunEvent`):
 
@@ -223,7 +223,9 @@ import { createMerakCode } from "@merakcode/sdk"
 const merak = await createMerakCode({ cwd: process.cwd() })
 const session = await merak.session({ title: "README check" })
 let answer = ""
-for await (const event of session.run("Any typos in the README? List them, don't fix them.", { mode: "plan" })) {
+for await (const event of session.run("Any typos in the README? List them, don't fix them.", {
+  permissionLevel: "ask",
+})) {
   if (event.type === "text") answer += event.delta
   if (event.type === "part" && event.part.type === "tool")
     console.log("tool:", event.part.tool, event.part.state.status)
@@ -240,7 +242,7 @@ Run one `run()` at a time per session: messages sent together queue, both iterat
 
 ### Approvals
 
-When the agent wants to edit files, run commands or go online and the permission mode and rules say to ask, the engine sends an approval request (`PermissionRequest`) and the SDK calls your `onPermission`. Approvals from subagents and workflows come here too.
+When the agent wants to edit files, run commands or go online and the permission level and rules say to ask, the engine sends an approval request (`PermissionRequest`) and the SDK calls your `onPermission`. Approvals from subagents and workflows come here too.
 
 Not every action asks: in the default `execute` mode, edits to ordinary files inside the workspace go through without asking, and in `auto` mode all safety approvals and command sandbox enforcement are bypassed, and new questions are disabled (the rules are in [Permissions and the sandbox in the README](../../README.en.md#permissions-and-the-sandbox)). To approve every file edit yourself, set `permission: { edit: "ask" }` in `config`. Use `plan` mode for research and the current session plan only.
 
@@ -258,7 +260,6 @@ Return one `PermissionDecision`:
 
 - `"allow-once"`: allow this one time
 - `"allow-session"`: allow requests of the same scope for the rest of this session: commands by prefix (such as `npm install *`), files by that file or its folder
-- `"always"`: always allow, saved to the project config. When the request's `always` is `false` (subagents, workflows, sandbox permissions, changes to MerakCode's config files), it only lasts for this session
 - `"deny"`: refuse
 
 Without `onPermission`, every request that needs approval is denied: if the host says nothing, nothing goes through.
@@ -316,7 +317,10 @@ const session = await merak.session()
 const controller = new AbortController()
 setTimeout(() => controller.abort(), 60_000)
 try {
-  for await (const event of session.run("Run all the tests", { signal: controller.signal, mode: "auto" }))
+  for await (const event of session.run("Run all the tests", {
+    signal: controller.signal,
+    permissionLevel: "fullTakeover",
+  }))
     if (event.type === "text") process.stdout.write(event.delta)
 } catch (error) {
   if (error instanceof Error && error.name === "AbortError") console.log("Stopped after a minute")
@@ -381,7 +385,7 @@ Define them with `tool()` (type `HostTool`) and pass them as `tools` to `createM
 
 `context` (type `ToolRunContext`) has `sessionID`, `messageID` and `callID`.
 
-Host tools are approved like plugin tools: plan exposes research tools only, execute applies safety rules, and auto bypasses authorization; the permission name is the tool name.
+Host tools use the root conversation permission level. Ask requires approval. Auto approve requires ready isolation and safe operations. Full takeover skips safety approvals while retaining task scope and hard tool limits. The permission name is the tool name.
 
 Host tools are registered on the whole engine process: any later registration replaces them all, and `close()` does not unregister them. Programs sharing one engine through `url` replace each other's host tools.
 
@@ -801,7 +805,7 @@ MerakCode  ⇄  adapter library merakcode-adapter.mjs  ⇄  your adapter.mts  �
 - MerakCode starts the adapter for each task it hands out, and the adapter exits when the task is done.
 - The library does the talking to MerakCode; you need not know the protocol.
 - You write the right half only: how to start your CLI, how to read its output, how to pass its approvals and questions on to MerakCode, and how to hand back the result.
-- The adapter decides nothing itself. When the CLI wants to edit files, run commands, reach a website or ask the user something, it goes to MerakCode, which decides under the group's permission mode (read-only, ask, auto) and the user's rules, and shows the approval bar or the question box when needed. So a member follows the same rules as MerakCode's own tools.
+- The adapter decides nothing itself. When the CLI wants to edit files, run commands, reach a website or ask the user something, it goes to MerakCode, which decides under the group's permission mode (ask, autoApprove, fullTakeover) and the user's rules, and shows the approval bar or the question box when needed. So a member follows the same rules as MerakCode's own tools.
 - The built-in adapters for Claude Code, Codex and OpenCode are written this way too, with this library and Node built-ins only. The `adapter-generator` skill works from them as its examples.
 
 ### 15.2 How one task goes
@@ -819,7 +823,7 @@ One product may have several adapter processes at once: different members whose 
 
 `host` is MerakCode. The two arguments of `run(task, host)`:
 
-- `task` is the work at hand: the task, the project directory, the permission mode and more (see the table in 15.5);
+- `task` is the work at hand: the task, the project directory, the permission level and more (see the table in 15.5);
 - `host` holds the three methods for going to MerakCode while you work.
 
 | Method                     | What it does                                                                                       | Waits?                                                                        |
@@ -833,7 +837,7 @@ When the CLI wants to run `npm test`, one approval goes like this:
 ```text
 CLI → adapter: "I want to run npm test"
 adapter → await host.permission({ kind: "command", command: "npm test" })   ← waits here
-          MerakCode decides under the permission mode: it allows, refuses outright (a project edit in plan mode, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
+          MerakCode decides under the permission level: it allows, refuses outright (a project edit in plan mode, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
           The user clicks "Allow"
 host.permission resolves to { allow: true }
 adapter → CLI: "go ahead"
@@ -899,9 +903,9 @@ adapter({
 
   // run: does one task. task is the work, host is MerakCode (see 15.3); the library passes both
   async run(task, host) {
-    // 1. mycli's arguments for the permission mode: it asks about everything it is unsure of, and MerakCode decides
+    // 1. mycli's arguments for the permission level: it asks about everything it is unsure of, and MerakCode decides
     const args = ["run", "--json", "--approvals", "ask"]
-    if (task.mode === "plan") args.push("--read-only") // read-only: it must not edit files
+    if (task.scope === "draft") args.push("--read-only") // read-only: it must not edit files
     if (task.resume) args.push("--session", task.resume) // continue the last session
 
     // 2. Start mycli. spawn from the library also starts a CLI npm installed on Windows (a .cmd file), unlike Node's
@@ -991,14 +995,14 @@ The object `adapter()` takes (type `Definition`) is those two functions:
 
 `task` (type `Task`) holds:
 
-| Field          | What it is                                                                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.prompt`  | The member's whole task, with its duty and what goes on in the group                                                                                                               |
-| `task.cwd`     | The project directory, where the CLI works                                                                                                                                         |
-| `task.mode`    | The group's permission mode (type `Mode`): `"plan"`, `"execute"` or `"auto"`                                                                                                       |
-| `task.resume`  | The `sessionId` the last task returned; empty the first time                                                                                                                       |
-| `task.product` | The product's id and title (type `Product`). With adapter `member` it has only `id` and `title`: the config's command and arguments start the adapter itself and are not passed on |
-| `task.signal`  | Fires when the user stops the group; stop the CLI then                                                                                                                             |
+| Field                  | What it is                                                                                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.prompt`          | The member's whole task, with its duty and what goes on in the group                                                                                                               |
+| `task.cwd`             | The project directory, where the CLI works                                                                                                                                         |
+| `task.permissionLevel` | The group's permission mode (type `PermissionLevel`): `"ask"`, `"autoApprove"` or `"fullTakeover"`                                                                                 |
+| `task.resume`          | The `sessionId` the last task returned; empty the first time                                                                                                                       |
+| `task.product`         | The product's id and title (type `Product`). With adapter `member` it has only `id` and `title`: the config's command and arguments start the adapter itself and are not passed on |
+| `task.signal`          | Fires when the user stops the group; stop the CLI then                                                                                                                             |
 
 ### 15.6 The five kinds of request
 
@@ -1085,7 +1089,7 @@ Once registered, the product's row in settings shows the version `inspect` repor
 - **`inspect` in settings has a time limit**: with no answer within 10 seconds, the product shows as unavailable. The call before a task has none, so keep `inspect` quick and free of side effects; in settings its working directory is not the project, so don't rely on it.
 - **Never print to stdout**: stdout is for talking to MerakCode. The library sends only `console.log` and `console.info` to stderr (protocol diagnostics); `console.debug` and `console.dir` still write to stdout, so log with `console.error`. Writing to `process.stdout`, or letting the CLI inherit the adapter's stdout, breaks the talking.
 - **Troubleshooting**: the engine records diagnostic events without logging raw stderr lines, which may contain conversation text or credentials. When an adapter exits midway, the failure message carries its last error line.
-- **Never give the CLI options that skip approvals** (such as "allow everything"): MerakCode then no longer governs it, and the permission mode and approvals stop working.
+- **Never give the CLI options that skip approvals** (such as "allow everything"): MerakCode then no longer governs it, and the permission level and approvals stop working.
 - **An adapter runs with your own rights, outside MerakCode's sandbox.** MerakCode only governs what the CLI asks about, so connect only CLIs you trust.
 
 ### 15.10 What TypeScript can be used
@@ -1105,18 +1109,27 @@ The Node MerakCode ships with runs a `.mts` file by removing its types, so:
 - `connect`: when your CLI speaks JSON-RPC too, it connects to it; see `example-codex.mts`. Requests still waiting when the other side goes away fail with `ConnectionClosed`.
 - `PROTOCOL`: the member protocol's version. The protocol is JSON-RPC 2.0 on stdin and stdout, one message per line, which the library takes care of.
 
-### Conversation modes and adapter control
+### Permission levels and adapter control
 
-Child plan APIs share the root conversation's document and return its owner as `sessionID`. Use that ID to associate
-editor buffers and plan update events. Omit `sessionMode` from ordinary prompts to inherit current server policy;
-the desktop submits it with a prompt only when explicitly selecting an initial mode. During execution, reads and
-built-in searches use the approved snapshot while human edits remain saveable in the current document.
+Child plan APIs return the root owner as `sessionID`. Associate editor buffers and plan events with that owner.
+Ordinary prompts preserve the server's permission level. Explicit selection uses `session.setPermissionLevel` with an expected revision, or the high-level session setter. `run({ permissionLevel })` selects explicitly before sending the prompt.
 
-Modes are `plan`, `execute`, and `auto`. Keep each external product's native tools. MerakCode governs only reported operations; unreported actions and the product's own sandbox remain outside host control. Auto approves reported permissions without showing approval UI and rejects new questions, while questions already pending still require the human response. The adapter library updates `task.mode` in place on mode notifications. Optional `modeChanged` adapts native policy when supported; report actual coverage, cancellation granularity and limitations in `capabilities.control`. Unknown capabilities must remain unknown.
+Levels are `ask`, `autoApprove` and `fullTakeover`. Conversation grants apply only while required isolation is ready. Without isolation, the first two levels ask per operation. The adapter library validates protocol 3 and updates `task.permissionLevel` on revisioned notifications. Implement `permissionLevelChanged` only for real native support. Keep the product's native tools and report actual control limitations.
 
-Rejected host questions must settle the native CLI question through its rejection or cancellation protocol.
-An already pending question must forward the actual human answer after a mode switch. Do not leave a native CLI
-waiting when auto rejects a new interaction. The builtin OpenCode adapter uses the native question rejection endpoint.
+Plan-dependent tasks require full-input and capacity declarations. Their prompt includes complete fixed content. A missing capability fails before task dispatch. Draft-only tasks require enforceable native draft restrictions. Ordinary tasks need no plan declaration.
 
-The client export startsSessionPlan(text) recognizes explicit plan-start messages. Desktop clients use it to save
-an open plan buffer before sending the message. The engine independently admits the start under the current policy.
+The client export `startsSessionPlan(text)` recognizes explicit full-plan starts. Save an open plan buffer before sending that instruction. The engine independently applies current authorization and snapshot checks.
+
+The operation protocol uses `OperationStart`, `OperationAdmission` and `OperationFinish`.
+Call `host.operationStart({ id, request, isolation })` before the real action. Execute only after `allow: true`,
+check the returned `signal` before the action, and call `host.operationFinish` after the real action settles.
+A failed or stopped action must not report completion. `cancelOperation` returns `stopped: true` only after the native action actually stops.
+
+`parseOperationStart` and `parseOperationFinish` validate protocol parameters.
+`supportsPerOperationControl` checks the declaration of pre-action callbacks for every actual operation category.
+Incomplete adapters cannot run under Ask or Auto approve. Declaring an isolation owner does not establish readiness;
+unknown protection still requires per-operation approval.
+
+The standalone host defaults to Ask. Explicitly select full takeover for an adapter without complete operation control:
+`node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`.
+The host prints operation start and finish. Ordinary tasks do not require official-plan support.

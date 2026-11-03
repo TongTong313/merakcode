@@ -1,3 +1,4 @@
+import { PermissionNext } from "../../../agent/permission/next"
 import { Tool } from "../../../agent/tools/tool"
 import path from "node:path"
 import { z } from "zod"
@@ -6,6 +7,9 @@ import { Identifier } from "@merakcode/util/id"
 import { Instance } from "../../../infra/project/instance"
 import { Todo } from "../../../agent/session/todo"
 import { Session } from "../../../agent/session"
+import { SessionPlan } from "../../../agent/session/plan"
+import { TaskScope } from "../../../agent/permission/scope"
+import { PermissionPolicy } from "../../../agent/permission/policy"
 import { Message } from "../../../agent/session/message"
 import { Agent } from "../../../agent/agent"
 import { Loop } from "../../../agent/loop/index"
@@ -132,10 +136,38 @@ export const DelegateTool = Tool.define("delegate", {
               if (steps.length > STEP_LIMIT) steps.shift()
               ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
             }
+            const approval = {
+              permission: "subagent",
+              checks: [PermissionPolicy.subagent(`${current.id}:${current.product}`)],
+              metadata: {
+                description: params.task,
+                subagent_type: current.name,
+                product: current.product,
+                unsandboxed: current.product !== "merak",
+              },
+            }
+            let admission = await ctx.ask(approval)
+            const beforeTask = async () => {
+              while (
+                admission &&
+                !(await PermissionNext.isCurrent(admission, {
+                  ...approval,
+                  sessionID: ctx.sessionID,
+                  tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
+                }))
+              )
+                admission = await ctx.ask(approval)
+              signal.throwIfAborted()
+            }
+            signal.throwIfAborted()
             const output: Output =
               current.product === "merak"
-                ? await runMerak(ctx, current, prompt, (sessionId) =>
-                    ctx.metadata({ title: seat.name, metadata: { ...metadata, sessionId } }),
+                ? await runMerak(
+                    ctx,
+                    current,
+                    prompt,
+                    (sessionId) => ctx.metadata({ title: seat.name, metadata: { ...metadata, sessionId } }),
+                    beforeTask,
                   )
                 : await runAdapter(
                     { ...ctx, abort: signal },
@@ -148,6 +180,7 @@ export const DelegateTool = Tool.define("delegate", {
                       metadata.external = progress
                       await ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
                     },
+                    beforeTask,
                   ).catch(async (error: unknown) => {
                     const fallback = ErrorCode.CATALOG.EXTERNAL_ADAPTER_FAILED
                     const code = errorCode(error instanceof NamedError ? error.toObject() : error) ?? fallback.code
@@ -231,6 +264,7 @@ async function runAdapter(
   onStep: (step: Step) => void,
   runID: string,
   onProgress: (progress: Message.ExternalDelegateProgress) => Promise<void>,
+  beforeTask: () => Promise<void>,
 ): Promise<Output> {
   if (!product) throw new Error(`Product is not available: ${seat.product}`)
   const driven = await adapterOf(product)
@@ -253,6 +287,8 @@ async function runAdapter(
     await onProgress(structuredClone(progress))
   }
   let running!: ReturnType<typeof runExternal>
+  const plan = SessionPlan.inputForTask(await SessionPlan.get(ctx.sessionID), prompt)
+  const scope = await TaskScope.current(ctx.sessionID, ctx.messageID)
   await withProduct(product.id, (state) => {
     ctx.abort.throwIfAborted()
     if (!state.enabled) throw new Error(`${product.title} is offline`)
@@ -264,24 +300,28 @@ async function runAdapter(
       task: {
         prompt,
         cwd: Instance.directory,
-        mode: ctx.sessionMode ?? ctx.kind ?? "execute",
+        permissionLevel: ctx.permissionLevel ?? ctx.kind ?? "ask",
         resume: seat.privateSessionID,
         model: product.model,
+        plan,
+        scope,
       },
       abort: ctx.abort,
+      beforeTask,
       host: {
         step: (step) => onStep({ tool: step.tool, detail: shown(step.detail ?? "") }),
         sessionStarted: async ({ sessionId }) => {
           await remember(ctx.sessionID, seat.id, sessionId)
         },
         textDelta: (delta) => text(delta.messageID, delta.partID, delta.delta, true),
-        permission: (request) =>
+        permission: (request, operation) =>
           decideExternal(
             {
               sessionID: ctx.sessionID,
               executionID: runID,
               cwd: Instance.directory,
-              mode: ctx.sessionMode ?? ctx.kind,
+              permissionLevel: ctx.permissionLevel ?? ctx.kind,
+              operation,
               tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
             },
             request,
@@ -341,9 +381,12 @@ async function runMerak(
   seat: Seat,
   prompt: string,
   started: (sessionID: string) => void,
+  beforeTask: () => Promise<void>,
 ) {
   const child = seat.privateSessionID ? await Session.get(seat.privateSessionID).catch(() => undefined) : undefined
   const session = child ?? (await Session.create({ parentID: ctx.sessionID, title: seat.name }))
+  using _task = await TaskScope.claim(session.id, () => Loop.assertNotBusy(session.id))
+  await TaskScope.bind(session.id, ctx.sessionID, ctx.messageID)
   const parent = await Message.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
   if (parent.info.role !== "assistant" || Message.isExternal(parent.info))
     throw new Error("Not a native assistant message")
@@ -354,6 +397,7 @@ async function runMerak(
   ctx.abort.addEventListener("abort", cancel)
   using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
   const parts = await Loop.resolvePromptParts(prompt)
+  await beforeTask()
   const result = await Loop.prompt({
     sessionID: session.id,
     messageID: Identifier.ascending("message"),

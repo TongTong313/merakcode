@@ -409,7 +409,7 @@ test("an external reply keeps its product and model signature and does not offer
     sessionID,
     role: "user",
     time: { created: 1 },
-    sessionMode: "execute",
+    permissionLevel: "autoApprove",
     execution,
   }
   const reply: ExternalAssistantMessage = {

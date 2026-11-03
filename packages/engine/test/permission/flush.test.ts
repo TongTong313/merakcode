@@ -18,7 +18,7 @@ async function waitForFlush(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }
 
-test("parallel write asks are all resolved after permission.write=allow is written", async () => {
+test("legacy config allows cannot release parallel ask approvals", async () => {
   await using tmp = await tmpdir({ git: true, config: { permission: { write: "ask" } } })
   await Instance.provide({
     directory: tmp.path,
@@ -70,12 +70,15 @@ test("parallel write asks are all resolved after permission.write=allow is writt
       const p2 = PermissionNext.ask({ ...baseAsk, tool: { messageID: assistant.id, callID: "tc2" } })
       const p3 = PermissionNext.ask({ ...baseAsk, tool: { messageID: assistant.id, callID: "tc3" } })
 
-      expect((await PermissionNext.list()).length).toBe(3)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBe(3)
 
       await Config.updateProjectMerakCode({ permission: { write: "allow" } }, { skipDispose: true })
       Agent.invalidate()
       await waitForFlush()
 
+      expect(await PermissionNext.list()).toHaveLength(3)
+      for (const request of await PermissionNext.list())
+        await PermissionNext.reply({ requestID: request.id, reply: "once" })
       await Promise.all([p1, p2, p3])
       expect(await PermissionNext.list()).toEqual([])
     },
@@ -104,7 +107,7 @@ test("child session: buildToolExecutionRuleset ends with subagent deny (asserts 
   })
 })
 
-test("pending ask from explicit permission.read=ask is resolved after config changes to allow", async () => {
+test("legacy read allows cannot answer an ask approval", async () => {
   await using tmp = await tmpdir({ git: true, config: { permission: { read: "ask" } } })
   await Instance.provide({
     directory: tmp.path,
@@ -149,12 +152,14 @@ test("pending ask from explicit permission.read=ask is resolved after config cha
         tool: { messageID: assistant.id, callID: "tc1" },
       })
 
-      expect((await PermissionNext.list()).length).toBe(1)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBe(1)
 
       await Config.updateProjectMerakCode({ permission: { read: "allow" } }, { skipDispose: true })
       Agent.invalidate()
       await waitForFlush()
 
+      expect(await PermissionNext.list()).toHaveLength(1)
+      await PermissionNext.reply({ requestID: (await PermissionNext.list())[0]!.id, reply: "once" })
       await p
       expect(await PermissionNext.list()).toEqual([])
     },
@@ -214,7 +219,7 @@ test("glob=allow alone does not resolve a pending read ask", async () => {
       Agent.invalidate()
       await waitForFlush()
 
-      expect((await PermissionNext.list()).length).toBe(1)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBe(1)
       await PermissionNext.reply({ requestID: (await PermissionNext.list())[0]!.id, reply: "once" })
       await p
     },

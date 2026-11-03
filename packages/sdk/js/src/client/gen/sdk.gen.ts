@@ -155,6 +155,7 @@ import type {
   PermissionAction,
   PermissionGrantsErrors,
   PermissionGrantsResponses,
+  PermissionLevel,
   PermissionListErrors,
   PermissionListResponses,
   PermissionReplyErrors,
@@ -266,7 +267,12 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
-  SessionMode,
+  SessionPlanAdoptErrors,
+  SessionPlanAdoptResponses,
+  SessionPlanCandidateErrors,
+  SessionPlanCandidateResponses,
+  SessionPlanChunkErrors,
+  SessionPlanChunkResponses,
   SessionPlanGetErrors,
   SessionPlanGetResponses,
   SessionPlanReviseErrors,
@@ -275,6 +281,8 @@ import type {
   SessionPlanSaveResponses,
   SessionPlanStartErrors,
   SessionPlanStartResponses,
+  SessionPlanViewErrors,
+  SessionPlanViewResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -287,6 +295,8 @@ import type {
   SessionSetLegacyModeResponses,
   SessionSetModeErrors,
   SessionSetModeResponses,
+  SessionSetPermissionLevelErrors,
+  SessionSetPermissionLevelResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -2882,14 +2892,15 @@ export class Permission extends HeyApiClient {
   /**
    * Respond to permission request
    *
-   * Approve or deny a permission request from the AI assistant. `session` allows it for the rest of the session (shared with subagents), `always` also saves the rule to the project config; `scope` picks the grant (file, directory, command prefix, domain, ...).
+   * Approve or deny the displayed operations. `once` consumes this request. `session` remembers only an offered scope in the current root conversation while isolation remains ready. `reject` refuses the request. Permanent grants are not supported.
    */
   public reply<ThrowOnError extends boolean = false>(
     parameters: {
       requestID: string
       directory?: string
+      decisionRevision?: number
       message?: string
-      reply: "always" | "once" | "reject" | "session"
+      reply: "once" | "reject" | "session"
       scope?: "agent" | "directory" | "domain" | "file" | "prefix" | "tool"
     },
     options?: Options<never, ThrowOnError>,
@@ -2901,6 +2912,7 @@ export class Permission extends HeyApiClient {
           args: [
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
+            { in: "body", key: "decisionRevision" },
             { in: "body", key: "message" },
             { in: "body", key: "reply" },
             { in: "body", key: "scope" },
@@ -4376,7 +4388,7 @@ export class Session2 extends HeyApiClient {
       agent?: string
       arguments: string
       command: string
-      kind?: SessionMode
+      kind?: PermissionLevel
       messageID?: string
       metadata?: {
         [key: string]: unknown
@@ -4390,8 +4402,8 @@ export class Session2 extends HeyApiClient {
         type: "file"
         url: string
       }>
+      permissionLevel?: PermissionLevel
       permissionMode?: "ask" | "readonly"
-      sessionMode?: SessionMode
       variant?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4411,8 +4423,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "metadata" },
             { in: "body", key: "model" },
             { in: "body", key: "parts" },
+            { in: "body", key: "permissionLevel" },
             { in: "body", key: "permissionMode" },
-            { in: "body", key: "sessionMode" },
             { in: "body", key: "variant" },
           ],
         },
@@ -4613,7 +4625,7 @@ export class Session2 extends HeyApiClient {
       directory?: string
       agent?: string
       format?: OutputFormat
-      kind?: SessionMode
+      kind?: PermissionLevel
       maxTurns?: number
       messageID?: string
       metadata?: {
@@ -4625,8 +4637,8 @@ export class Session2 extends HeyApiClient {
       }
       noReply?: boolean
       parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+      permissionLevel?: PermissionLevel
       permissionMode?: "ask" | "readonly"
-      sessionMode?: SessionMode
       system?: string
       tools?: {
         [key: string]: boolean
@@ -4651,8 +4663,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "model" },
             { in: "body", key: "noReply" },
             { in: "body", key: "parts" },
+            { in: "body", key: "permissionLevel" },
             { in: "body", key: "permissionMode" },
-            { in: "body", key: "sessionMode" },
             { in: "body", key: "system" },
             { in: "body", key: "tools" },
             { in: "body", key: "variant" },
@@ -4741,16 +4753,15 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
-   * Set session mode
+   * Reject the legacy session mode protocol
    *
-   * Switch the session mode (plan, execute, auto) while it runs. Pending approvals are re-evaluated under the new mode and released if now allowed; subagents follow the main session.
+   * Legacy mode updates are rejected. Upgrade the client and use session.setPermissionLevel with the current revision.
    */
   public setMode<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
-      expectedRevision?: number
-      sessionMode: SessionMode
+      body: unknown
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<SessionSetModeResponses, SessionSetModeErrors, ThrowOnError> {
@@ -4761,14 +4772,54 @@ export class Session2 extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
-            { in: "body", key: "expectedRevision" },
-            { in: "body", key: "sessionMode" },
+            { key: "body", map: "body" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).post<SessionSetModeResponses, SessionSetModeErrors, ThrowOnError>({
       url: "/session/{sessionID}/mode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Select the root conversation permission level
+   */
+  public setPermissionLevel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      expectedRevision: number
+      permissionLevel: PermissionLevel
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionSetPermissionLevelResponses, SessionSetPermissionLevelErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "permissionLevel" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSetPermissionLevelResponses,
+      SessionSetPermissionLevelErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/permission-level",
       ...options,
       ...params,
       headers: {
@@ -4788,7 +4839,7 @@ export class Session2 extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
-      permissionMode: "ask" | "readonly"
+      body: unknown
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<SessionSetLegacyModeResponses, SessionSetLegacyModeErrors, ThrowOnError> {
@@ -4799,7 +4850,7 @@ export class Session2 extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
-            { in: "body", key: "permissionMode" },
+            { key: "body", map: "body" },
           ],
         },
       ],
@@ -4886,6 +4937,116 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Adopt a reviewed plan candidate
+   */
+  public planAdopt<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      candidateID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionPlanAdoptResponses, SessionPlanAdoptErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "candidateID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPlanAdoptResponses, SessionPlanAdoptErrors, ThrowOnError>({
+      url: "/session/{sessionID}/plan/adopt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Propose a read-only plan simplification
+   */
+  public planCandidate<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      content: string
+      expectedRevision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionPlanCandidateResponses, SessionPlanCandidateErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "content" },
+            { in: "body", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionPlanCandidateResponses,
+      SessionPlanCandidateErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/plan/candidate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a complete character range from a plan
+   */
+  public planChunk<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      offset?: number
+      limit?: number
+      executionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionPlanChunkResponses, SessionPlanChunkErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "executionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionPlanChunkResponses, SessionPlanChunkErrors, ThrowOnError>({
+      url: "/session/{sessionID}/plan/chunk",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Continue editing the session plan
    */
   public planRevise<ThrowOnError extends boolean = false>(
@@ -4942,6 +5103,34 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Record an explicit human plan view
+   */
+  public planView<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionPlanViewResponses, SessionPlanViewErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPlanViewResponses, SessionPlanViewErrors, ThrowOnError>({
+      url: "/session/{sessionID}/plan/view",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Send async message
    *
    * Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.
@@ -4952,7 +5141,7 @@ export class Session2 extends HeyApiClient {
       directory?: string
       agent?: string
       format?: OutputFormat
-      kind?: SessionMode
+      kind?: PermissionLevel
       maxTurns?: number
       messageID?: string
       metadata?: {
@@ -4964,8 +5153,8 @@ export class Session2 extends HeyApiClient {
       }
       noReply?: boolean
       parts: Array<AgentPartInput | FilePartInput | SubtaskPartInput | TextPartInput>
+      permissionLevel?: PermissionLevel
       permissionMode?: "ask" | "readonly"
-      sessionMode?: SessionMode
       system?: string
       tools?: {
         [key: string]: boolean
@@ -4990,8 +5179,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "model" },
             { in: "body", key: "noReply" },
             { in: "body", key: "parts" },
+            { in: "body", key: "permissionLevel" },
             { in: "body", key: "permissionMode" },
-            { in: "body", key: "sessionMode" },
             { in: "body", key: "system" },
             { in: "body", key: "tools" },
             { in: "body", key: "variant" },
@@ -5061,13 +5250,13 @@ export class Session2 extends HeyApiClient {
       directory?: string
       agent: string
       command: string
-      kind?: SessionMode
+      kind?: PermissionLevel
       model?: {
         modelID: string
         providerID: string
       }
+      permissionLevel?: PermissionLevel
       permissionMode?: "ask" | "readonly"
-      sessionMode?: SessionMode
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<SessionShellResponses, SessionShellErrors, ThrowOnError> {
@@ -5082,8 +5271,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "command" },
             { in: "body", key: "kind" },
             { in: "body", key: "model" },
+            { in: "body", key: "permissionLevel" },
             { in: "body", key: "permissionMode" },
-            { in: "body", key: "sessionMode" },
           ],
         },
       ],

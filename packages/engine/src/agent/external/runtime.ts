@@ -2,6 +2,9 @@ import {
   connect,
   ConnectionClosed,
   PROTOCOL,
+  supportsPerOperationControl,
+  parseOperationStart,
+  parseOperationFinish,
   type Answer,
   type Info,
   type ModelList,
@@ -31,9 +34,15 @@ import { containAdapter } from "./process-tree"
 import { randomUUID } from "node:crypto"
 import { Bus } from "../../infra/bus"
 import { SessionStore } from "../session/store"
+import { PlanCapacity } from "../context/plan-capacity"
+import { SessionPlan } from "../session/plan"
+import { Token } from "../context/token"
+import { ExternalAdapterError } from "../session/external-error"
+import { ModeOperations } from "../permission/operations"
 
 const log = Log.create({ service: "agent.connection" })
 const Model = z.object({ id: z.string().min(1), providerID: z.string().min(1).optional() })
+type OperationContext = { id: string; signal: AbortSignal }
 const Capabilities = z.object({
   modelSelection: z.boolean(),
   modelDiscovery: z.boolean(),
@@ -41,11 +50,21 @@ const Capabilities = z.object({
   resume: z.boolean(),
   permission: z.enum(["merak", "external"]),
   questions: z.boolean(),
+  draftOnly: z.boolean().optional(),
+  plan: z
+    .object({
+      fullInput: z.boolean(),
+      contextTokens: z.number().int().positive(),
+      reservedTokens: z.number().int().nonnegative(),
+      fixedInputTokens: z.number().int().nonnegative(),
+    })
+    .optional(),
   control: z
     .object({
       reportedOperations: z.string().array(),
       cancellation: z.enum(["operation", "task", "none"]),
       liveMode: z.boolean(),
+      isolation: z.enum(["product", "none", "unknown"]).optional(),
       limitations: z.string().array(),
     })
     .optional(),
@@ -59,6 +78,17 @@ const InfoSchema = z.object({
   unavailable: z.string().optional(),
   capabilities: Capabilities.optional(),
 })
+async function handshake(value: unknown): Promise<Info> {
+  if (!z.object({ protocol: z.literal(PROTOCOL) }).safeParse(value).success)
+    throw new Error(
+      await Text.pick({
+        zh: "适配器协议不兼容，请升级适配器后重试。",
+        en: "Unsupported adapter protocol. Upgrade the adapter and retry.",
+      }),
+    )
+  return InfoSchema.parse(value)
+}
+
 const ResultSchema = z.object({
   text: z.string(),
   sessionId: z.string().min(1).optional(),
@@ -77,7 +107,7 @@ type MemberHost = {
   sessionStarted?(input: { sessionId: string }): Promise<void>
   textDelta?(input: TextDelta): void | Promise<void>
   step(step: Step): void | Promise<void>
-  permission(request: Permission): Promise<Verdict>
+  permission(request: Permission, operation?: OperationContext): Promise<Verdict>
   question(questions: Question[]): Promise<Answer[]>
 }
 
@@ -95,6 +125,7 @@ export async function runExternal(
   input: RunInput & { runID: string; sessionID: string; seatID?: string },
 ): Promise<Result> {
   input.abort.throwIfAborted()
+  ModeOperations.assertAvailable(input.sessionID)
   const controller = new AbortController()
   const finished = Promise.withResolvers<void>()
   const restore = AsyncLocalStorage.snapshot()
@@ -151,13 +182,36 @@ export async function runMember(input: {
   task: Task
   abort: AbortSignal
   host: MemberHost
+  beforeTask?: (task: Task) => Promise<void>
 }): Promise<Result> {
   input.abort.throwIfAborted()
   const stoppedMessage = await Text.pick({ zh: "外部任务已停止", en: "The external task was stopped" })
   input.abort.throwIfAborted()
-  let accepting = true
+  let accepting = false
   let writes = Promise.resolve()
   let writeError: unknown
+  let verified = false
+  let executionContext: RegisteredRun | undefined
+  let rootID: string | undefined
+  let capabilities: Info["capabilities"]
+  const operationPrefix = `external-operation:${randomUUID()}:`
+  const operations = new Map<
+    string,
+    {
+      signature: string
+      controller: AbortController
+      finish: () => void
+      admitted: boolean
+      decision: Promise<Verdict>
+    }
+  >()
+  const finishedOperations = new Set<string>()
+  let operationOutcome: "failed" | "stopped" | undefined
+  const finishOperation = (id: string) => {
+    operations.get(id)?.finish()
+    operations.delete(id)
+    finishedOperations.add(id)
+  }
   const enqueue = (write: () => void | Promise<void>) => {
     const next = writes.then(write)
     writes = next.catch((error) => {
@@ -170,6 +224,73 @@ export async function runMember(input: {
     product: input.product,
     cwd: input.task.cwd,
     handlers: {
+      "operation/start": async (value: unknown) => {
+        if (!verified || !accepting) throw new Error("The external task is not accepting operations")
+        const operation = parseOperationStart(value)
+        if (finishedOperations.has(operation.id)) return { allow: false, message: "The operation already finished" }
+        const signature = JSON.stringify(operation)
+        const known = operations.get(operation.id)
+        if (known) {
+          if (known.signature !== signature) throw new Error("The operation id cannot be reused for a different action")
+          return known.decision
+        }
+        const controller = new AbortController()
+        const id = `${operationPrefix}${operation.id}`
+        const finish = executionContext
+          ? ModeOperations.register(executionContext.sessionID, id, "external_operation", controller, async () => {
+              const owner = SessionStore.find(rootID!)
+              const config = await Config.get()
+              return PermissionPolicy.ruleset(
+                owner?.permissionLevel ?? "ask",
+                PermissionNext.merge(PermissionNext.fromUserConfig(config.permission ?? {}), owner?.permission ?? []),
+              )
+            })
+          : () => {}
+        const decision = Promise.withResolvers<Verdict>()
+        const entry = { signature, controller, finish, admitted: false, decision: decision.promise }
+        operations.set(operation.id, entry)
+        controller.signal.addEventListener(
+          "abort",
+          () => {
+            if (!entry.admitted) return
+            if (capabilities?.control?.cancellation !== "operation") {
+              executionContext?.controller.abort()
+              return
+            }
+            void rpc
+              .request<{ stopped: boolean }>("operation/cancel", { id: operation.id })
+              .then((result) => {
+                if (result?.stopped === true) {
+                  operationOutcome ??= "stopped"
+                  finishOperation(operation.id)
+                }
+              })
+              .catch((error) =>
+                log.warn("operation cancellation unconfirmed", { product: input.product.id, error: String(error) }),
+              )
+          },
+          { once: true },
+        )
+        try {
+          const verdict = await input.host.permission(operation.request, { id, signal: controller.signal })
+          controller.signal.throwIfAborted()
+          if (!verdict.allow) finishOperation(operation.id)
+          else entry.admitted = true
+          decision.resolve(verdict)
+        } catch (error) {
+          finishOperation(operation.id)
+          decision.reject(error)
+        }
+        return decision.promise
+      },
+      "operation/finish": (value: unknown) => {
+        if (!verified) throw new Error("A successful protocol handshake is required")
+        const input = parseOperationFinish(value)
+        if (!operations.has(input.id) && !finishedOperations.has(input.id)) throw new Error("Unknown operation id")
+        if (input.status !== "completed")
+          operationOutcome = input.status === "failed" ? "failed" : (operationOutcome ?? "stopped")
+        finishOperation(input.id)
+      },
       "session.started": (value: unknown) => {
         const inputSession = z.object({ sessionId: z.string().min(1) }).parse(value)
         if (!accepting) return
@@ -213,8 +334,7 @@ export async function runMember(input: {
   // Stopping tells the adapter first, so it can stop its CLI cleanly; one that is still there after the grace period
   // is ended with everything it started
   const { Session } = await import("../session")
-  const executionContext = [...running.values()].find((run) => run.controller.signal === input.abort)
-  let rootID: string | undefined
+  executionContext = [...running.values()].find((run) => run.controller.signal === input.abort)
   if (executionContext && Instance.has()) {
     try {
       rootID = await Session.rootID(executionContext.sessionID)
@@ -222,19 +342,18 @@ export async function runMember(input: {
       // Connection verification has a synthetic run id rather than a persisted session.
     }
   }
+  let unregisterOpaque = () => {}
   const unsubscribeMode =
     rootID && Instance.has()
       ? Bus.subscribe(Session.Event.Updated, (event) => {
-          if (event.properties.sessionID !== rootID) return
-          rpc.notify("task/mode", {
-            mode: event.properties.info.sessionMode ?? "execute",
-            revision: event.properties.info.modeRevision ?? 0,
+          if (!verified || event.properties.sessionID !== rootID) return
+          rpc.notify("task/permission-level", {
+            permissionLevel: event.properties.info.permissionLevel ?? "ask",
+            revision: event.properties.info.permissionRevision ?? 0,
           })
         })
       : () => {}
   // Subscribe before taking the snapshot so queued work and initialization gaps cannot lose the current policy.
-  const owner = rootID ? SessionStore.find(rootID) : undefined
-  if (owner) rpc.notify("task/mode", { mode: owner.sessionMode ?? "execute", revision: owner.modeRevision ?? 0 })
   const stopped = Promise.withResolvers<never>()
   stopped.promise.catch(() => {})
   const cancel = () => {
@@ -245,12 +364,45 @@ export async function runMember(input: {
   input.abort.addEventListener("abort", cancel, { once: true })
   if (input.abort.aborted) cancel()
   try {
-    const info = InfoSchema.parse(
+    const info = await handshake(
       await Promise.race([
         rpc.request<Info>("initialize", { protocol: PROTOCOL, product: input.product }).catch(ended),
         stopped.promise,
       ]),
     )
+    verified = true
+    capabilities = info.capabilities
+    const owner = rootID ? SessionStore.find(rootID) : undefined
+    if (owner)
+      rpc.notify("task/permission-level", {
+        permissionLevel: owner.permissionLevel ?? "ask",
+        revision: owner.permissionRevision ?? 0,
+      })
+    input.task.permissionLevel = owner?.permissionLevel ?? input.task.permissionLevel
+    if (input.task.permissionLevel !== "fullTakeover" && !supportsPerOperationControl(info.capabilities))
+      throw new ExternalAdapterError({
+        message: await Text.pick({
+          zh: "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择完全接管。",
+          en: "This adapter cannot intercept every actual operation and cannot support the selected permission level. Upgrade it or explicitly select full takeover.",
+        }),
+      })
+    if (executionContext && rootID && !supportsPerOperationControl(info.capabilities)) {
+      const operationID = `external-task:${randomUUID()}`
+      unregisterOpaque = ModeOperations.register(
+        executionContext.sessionID,
+        operationID,
+        "external_task",
+        executionContext.controller,
+        async () => {
+          const owner = SessionStore.find(rootID!)
+          return PermissionPolicy.ruleset(owner?.permissionLevel ?? "ask", owner?.permission)
+        },
+      )
+      ModeOperations.record(executionContext.sessionID, operationID, [
+        { permission: "external_unreported", pattern: input.product.id, grants: [] },
+      ])
+      ModeOperations.sandbox(executionContext.sessionID, operationID, false)
+    }
     if (info.unavailable) throw new Error(info.unavailable)
     if (input.task.model && !info.capabilities?.modelSelection)
       throw new Error(
@@ -263,6 +415,44 @@ export async function runMember(input: {
           en: "This adapter does not support resuming the saved thread; start a new conversation",
         }),
       )
+    if (input.task.plan) {
+      const plan = input.task.plan
+      const capacity = info.capabilities?.plan
+      if (!capacity?.fullInput)
+        throw new Error(
+          await Text.pick({
+            zh: "适配器未提供完整计划与容量能力，请升级适配器。",
+            en: "The adapter does not report full plan input and capacity support. Upgrade the adapter.",
+          }),
+        )
+      input.task = {
+        ...input.task,
+        prompt: `${input.task.prompt}\n\nOfficial plan (complete fixed input):\n${plan.content}`,
+      }
+      await PlanCapacity.assert({
+        content: plan.content,
+        requestTokens: Token.estimate(input.task.prompt) + capacity.fixedInputTokens,
+        availableTokens: capacity.contextTokens - capacity.reservedTokens,
+      })
+    }
+    if (input.task.scope === "draft" && info.capabilities?.draftOnly !== true)
+      throw new Error(
+        await Text.pick({
+          zh: "此适配器不能保证只出稿，请选择支持该范围的产品。",
+          en: "This adapter cannot enforce draft-only scope. Select a product that supports it.",
+        }),
+      )
+    for (;;) {
+      const revision = rootID ? SessionStore.find(rootID)?.permissionRevision : undefined
+      await input.beforeTask?.(input.task)
+      if (input.task.plan && rootID) await SessionPlan.assertInputCurrent(rootID, input.task.plan)
+      input.abort.throwIfAborted()
+      const owner = rootID ? SessionStore.find(rootID) : undefined
+      if (owner?.permissionRevision !== revision) continue
+      input.task.permissionLevel = owner?.permissionLevel ?? input.task.permissionLevel
+      break
+    }
+    accepting = true
     const result = await Promise.race([rpc.request<Result>("task/run", input.task).catch(ended), stopped.promise])
     accepting = false
     await writes
@@ -270,6 +460,21 @@ export async function runMember(input: {
     const parsed = ResultSchema.safeParse(result)
     if (!parsed.success)
       throw new Error(await Text.pick({ zh: "适配器返回的结果格式无效", en: "The adapter returned an invalid result" }))
+    if (operationOutcome === "stopped")
+      throw new DOMException(
+        await Text.pick({
+          zh: "外部操作已停止，任务未完成。",
+          en: "An external operation stopped. The task did not complete.",
+        }),
+        "AbortError",
+      )
+    if (operationOutcome === "failed" || operations.size > 0)
+      throw new ExternalAdapterError({
+        message: await Text.pick({
+          zh: "外部操作失败或尚未确认完成，任务未完成。",
+          en: "An external operation failed or has not confirmed completion. The task did not complete.",
+        }),
+      })
     return parsed.data
   } finally {
     unsubscribeMode()
@@ -280,6 +485,8 @@ export async function runMember(input: {
     // closed. A stopped one has its grace period. Waiting matters: on Windows a CLI started through a shim outlives an
     // adapter that is gone before it stopped it.
     await close()
+    unregisterOpaque()
+    for (const id of operations.keys()) finishOperation(id)
     await writes
   }
 }
@@ -302,7 +509,7 @@ export async function inspectMember(input: { launch: string[]; product: Product;
     }, INSPECT_TIMEOUT).unref()
   })
   try {
-    return InfoSchema.parse(
+    return await handshake(
       await Promise.race([
         rpc.request<Info>("initialize", { protocol: PROTOCOL, product: input.product }).catch(ended),
         timeout,
@@ -328,7 +535,7 @@ export async function discoverModels(input: { launch: string[]; product: Product
   try {
     return await Promise.race([
       (async () => {
-        const info = InfoSchema.parse(
+        const info = await handshake(
           await rpc.request<Info>("initialize", { protocol: PROTOCOL, product: input.product }).catch(ended),
         )
         if (info.unavailable) throw new Error(info.unavailable)
@@ -442,20 +649,26 @@ export async function decideExternal(
     sessionID: string
     executionID: string
     cwd: string
-    mode?: Task["mode"]
+    permissionLevel?: Task["permissionLevel"]
     tool?: { messageID: string; callID: string }
+    operation?: OperationContext
   },
   request: Permission,
 ): Promise<Verdict> {
-  const abort = running.get(context.executionID)?.controller.signal
+  const taskAbort = running.get(context.executionID)?.controller.signal
+  const abort =
+    taskAbort && context.operation
+      ? AbortSignal.any([taskAbort, context.operation.signal])
+      : (context.operation?.signal ?? taskAbort)
   abort?.throwIfAborted()
   const missing = nothingToCheck(request)
   if (missing) return { allow: false, message: missing }
   const { Session } = await import("../session")
   const root = await Session.rootID(context.sessionID)
   const input = await checksOf(request, context.cwd)
+  if (context.operation) ModeOperations.record(context.sessionID, context.operation.id, input.checks)
   try {
-    await PermissionNext.askCurrent(
+    const admission = await PermissionNext.askCurrent(
       {
         ...input,
         sessionID: context.sessionID,
@@ -470,7 +683,7 @@ export async function decideExternal(
           PermissionNext.grants(root),
           Session.get(context.sessionID),
         ])
-        const mode = session.sessionMode ?? context.mode ?? "execute"
+        const mode = session.permissionLevel ?? context.permissionLevel ?? "ask"
         const user = PermissionNext.merge(
           PermissionNext.fromUserConfig(config.permission ?? {}),
           session.permission ?? [],
@@ -487,6 +700,10 @@ export async function decideExternal(
       },
       abort,
     )
+    if (context.operation) {
+      ModeOperations.authorize(context.sessionID, context.operation.id, admission)
+      ModeOperations.sandbox(context.sessionID, context.operation.id, false)
+    }
     return { allow: true }
   } catch (error) {
     if (

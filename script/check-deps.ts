@@ -56,7 +56,13 @@ const rules: Rule[] = [
     name: "session-records-do-not-import-loop",
     from: /^packages\/engine\/src\/agent\/session\//,
     except: [TESTS],
-    to: /^(packages\/engine\/src\/agent\/loop\/|@merakcode\/engine\/agent\/loop\/)/,
+    to: /^(packages\/engine\/src\/agent\/loop|@merakcode\/engine\/(?:src\/)?agent\/loop)(\/|$)/,
+  },
+  {
+    name: "permission-does-not-import-loop",
+    from: /^packages\/engine\/src\/agent\/permission\//,
+    except: [TESTS],
+    to: /^(packages\/engine\/src\/agent\/loop|@merakcode\/engine\/(?:src\/)?agent\/loop)(\/|$)/,
   },
   {
     name: "engine-infra-only",

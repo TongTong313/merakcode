@@ -28,9 +28,9 @@ export declare function version(command: string): Promise<{
   unavailable?: string
 }>
 /** Version of the member protocol */
-export declare const PROTOCOL = 2
+export declare const PROTOCOL = 3
 /** The user's permission mode in the group */
-export type Mode = "plan" | "execute" | "auto"
+export type PermissionLevel = "ask" | "autoApprove" | "fullTakeover"
 export type ProductModel = {
   id: string
   providerID?: string
@@ -48,14 +48,24 @@ export type Capabilities = {
   resume: boolean
   permission: "merak" | "external"
   questions: boolean
+  draftOnly?: boolean
+  plan?: {
+    fullInput: boolean
+    contextTokens: number
+    reservedTokens: number
+    fixedInputTokens: number
+  }
   /** Only reported operations are governed; unreported native actions remain outside host control. */
   control?: {
     reportedOperations: string[]
     cancellation: "operation" | "task" | "none"
     liveMode: boolean
+    isolation?: "product" | "none" | "unknown"
     limitations: string[]
   }
 }
+/** Whether the adapter declares a pre-action callback for every operation category. */
+export declare function supportsPerOperationControl(capabilities?: Capabilities): boolean
 /**
  * The product as configured in MerakCode. command and args are the CLI and extra arguments the user set; an adapter
  * written for one CLI may ignore them. resumeArgs and sessionLine are a one-shot product's settings.
@@ -88,7 +98,14 @@ export type Task = {
   prompt: string
   /** The project directory to work in */
   cwd: string
-  mode: Mode
+  permissionLevel: PermissionLevel
+  /** Draft-only scope does not authorize project mutations. */
+  scope?: "draft"
+  plan?: {
+    content: string
+    revision: number
+    executionID?: string
+  }
   /** The member's private session from its last task, to continue */
   resume?: string
   model?: ProductModel
@@ -131,6 +148,26 @@ export type Verdict =
       allow: false
       message: string
     }
+export type OperationStart = {
+  id: string
+  request: Permission
+  isolation: "product" | "none" | "unknown"
+}
+export type OperationFinish = {
+  id: string
+  status: "completed" | "failed" | "stopped"
+}
+export type OperationAdmission =
+  | {
+      allow: true
+      signal: AbortSignal
+    }
+  | {
+      allow: false
+      message: string
+    }
+export declare function parseOperationStart(input: unknown): OperationStart
+export declare function parseOperationFinish(input: unknown): OperationFinish
 export type Question = {
   question: string
   /** Very short label */
@@ -169,11 +206,21 @@ export type Host = {
   textDelta(input: TextDelta): void
   step(step: Step): void
   permission(request: Permission): Promise<Verdict>
+  operationStart(input: OperationStart): Promise<OperationAdmission>
+  operationFinish(input: OperationFinish): Promise<void>
   question(questions: Question[]): Promise<Answer[]>
 }
 export type Definition = {
+  /** Confirm true only after the named native operation has actually stopped. */
+  cancelOperation?(id: string):
+    | {
+        stopped: boolean
+      }
+    | Promise<{
+        stopped: boolean
+      }>
   /** Optional native policy update. The task object also receives the current mode in place. */
-  modeChanged?(mode: Mode): void | Promise<void>
+  permissionLevelChanged?(mode: PermissionLevel): void | Promise<void>
   inspect(product: Product): Info | Promise<Info>
   models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>
   /** Does the task; signal aborts when the user stops the group */
@@ -208,5 +255,5 @@ export declare function connect(options: {
  * so stray output cannot break the protocol.
  */
 export declare function adapter(definition: Definition): void
-/** node merakcode-adapter.mjs check|test -- <adapter command> ["<task>"] */
+/** node merakcode-adapter.mjs check|test [--permission-level <level>] -- <adapter command> ["<task>"] */
 export declare function cli(argv: string[]): Promise<void>

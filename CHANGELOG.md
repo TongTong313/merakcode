@@ -8,13 +8,15 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
-- Conversation modes are now `Plan`, `Execute`, and `Auto`, and can be switched while a turn is running. `Plan` has `read-only` permissions and only writes a plan document; human edits take priority during plan generation. Once execution starts, that run keeps its approved plan even if the document is edited. `Execute` is the usual mode with `read-write` permissions; its behavior is protected by the sandbox. `Auto` builds on `Execute` by skipping approvals and bypassing sandbox enforcement, while keeping questions already awaiting an answer — for cases where you do not want to interact with the agent. External agent products use MerakCode's shared adapter protocol for permission control, but MerakCode does not guarantee full control over every action from those products.
+- Replace conversation modes with Ask (`ask`, the default), Auto approve (`autoApprove`) and Full takeover (`fullTakeover`). Ask and Auto approve require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
 
 - After a turn finishes, reasoning and tool steps collapse into a single timing line, keeping the final reply and that turn's changed files. Copy takes only the final reply while folded, and the whole turn once expanded.
 
 ### Fixed
 
-- Plan mode blocks standalone shell redirections and attached output options. Mode changes apply to compound approvals, grant saving and delayed path checks. Child conversations share the root plan, execution searches keep the approved content, and repeated editor saves preserve conflict detection. Session deletion validates plan paths and cleans up unshared legacy copies.
+- Preserve task limits across child tasks, imported history, queued delegations and workflow notifications. Revalidate root permissions before dispatch and restore only idle child tasks owned by the same root conversation. Visual tooltips no longer intercept panel controls.
+
+- Permission changes apply to compound approvals, scoped grants and delayed target checks. Child conversations share the root official plan and preserve fixed execution content. Repeated saves retain conflict detection, and session deletion validates plan paths before removing unshared legacy copies.
 
 - Switching modes rechecks approvals and cancels unfinished MCP operations. Imported plans stay isolated from the current plan; the approved plan still applies after path aliases and context compaction. Rejected native questions are settled properly.
 
@@ -26,13 +28,15 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
-- 对话模式改为 `计划`、`执行`、`自动` 三种，运行中亦可切换。`计划` 模式下只有 `只读` 权限，仅可生成计划文档。生成计划时人工修改优先，执行开始后修改文档不会改变本次已批准的执行计划；`执行` 模式是最常用的具有`读写`权限的模式，其行为受安全沙箱保护；`自动` 模式在 `执行` 基础上进一步跳过各类审批，沙箱防护失效，已提出并等待回答的问题仍会保留，适用于不想与智能体进行任何交互的场景。外部智能体产品通过统一适配器协议接入权限管控，但 MerakCode 不保证能完全管控其全部操作。
+- 权限级别改为询问（`ask`，默认）、自动审批（`autoApprove`）和完全接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。完全接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
 
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
 
-- 计划模式阻止独立 Shell 重定向和连写输出选项。模式切换即时作用于复合审批、授权保存和延迟路径检查。子会话共用根计划，执行中的搜索读取已批准内容，连续编辑保存保持冲突保护。删除会话会校验计划路径，并清理已无其他引用的旧计划。
+- 子任务、导入历史、排队委派和工作流通知保留原任务限制。实际派发前重新检查根对话权限。只恢复当前根对话中空闲的子任务。纯显示提示框不再拦截面板操作。
+
+- 权限变化即时作用于复合审批、范围授权和延迟目标检查。子会话共用根对话官方计划，并保留固定执行内容。连续保存保留冲突检查。删除会话会先校验计划路径，再清理没有其他引用的旧计划副本。
 
 - 切换模式时重新检查审批，并取消未完成的 MCP 操作；导入的计划与当前计划隔离，路径别名和上下文压缩后仍沿用已批准的执行计划；被拒绝的原生提问也会正常收尾。
 

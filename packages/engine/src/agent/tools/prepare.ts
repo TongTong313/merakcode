@@ -8,7 +8,7 @@ import { buildDeferredPlan, buildToolSearchTool } from "./tool-search"
 import { ToolDiscovery } from "./tool-discovery"
 import { ToolDiscoveryRerank } from "./tool-discovery-rerank"
 import { SkillSearch } from "../skill/search"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 
 export async function prepareTools(input: {
   agent: Agent.Info
@@ -16,13 +16,13 @@ export async function prepareTools(input: {
   session: Pick<Session.Info, "id" | "parentID" | "metadata">
   messages: Message.FullMsg[]
   tools?: Record<string, boolean>
-  sessionMode?: SessionMode.Value
+  permissionLevel?: PermissionLevel.Value
   child?: boolean
   step?: number
   discover?: boolean
 }) {
   const childSession = Boolean(input.session.parentID) || input.child === true
-  const effectiveSessionMode = input.sessionMode ?? SessionMode.DEFAULT
+  const effectivePermissionLevel = input.permissionLevel ?? PermissionLevel.DEFAULT
   const pool = new Set(input.agent.profile?.availableTools ?? STANDARD_TOOL_POOL)
   const allowMcp = pool.has("mcp")
 
@@ -46,7 +46,7 @@ export async function prepareTools(input: {
     mcp: mcpTools,
     deferredStandardIds: computeDeferred(input.agent),
     messages: input.messages,
-    disabled: (id) => input.tools?.[id] === false || !SessionMode.allowsTool(effectiveSessionMode, id),
+    disabled: (id) => input.tools?.[id] === false || !PermissionLevel.allowsTool(effectivePermissionLevel, id),
   })
 
   // Tools removed outright: child sessions cannot nest workflows. Computed here because auto-activation must skip
@@ -114,7 +114,7 @@ export async function prepareTools(input: {
   const dynamic = await ToolRegistry.dynamicIds()
   const mcpIds = new Set(Object.keys(mcpTools))
   function visible(id: string) {
-    if (!SessionMode.allowsTool(effectiveSessionMode, id)) return false
+    if (!PermissionLevel.allowsTool(effectivePermissionLevel, id)) return false
     if (id === "invalid") return true
     if (input.tools?.[id] === false) return false
     if (mcpIds.has(id)) return allowMcp

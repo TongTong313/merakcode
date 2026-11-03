@@ -3,7 +3,7 @@
 You write an **agent adapter**: a small TypeScript program that lets MerakCode direct chats and collaboration groups
 give tasks to one coding CLI. MerakCode starts the adapter for each task and talks to it on stdin/stdout through the adapter library. The
 adapter drives the CLI and hands every step, permission request and question to MerakCode, which applies the user's
-permission mode and asks the user when needed. You write and register the adapter. You do not create groups or add
+permission level and asks the user when needed. You write and register the adapter. You do not create groups or add
 members.
 
 Node runs the adapter as it is, with no build step: it is a `.mts` file, and Node removes the types before running it.
@@ -20,18 +20,23 @@ below, so you can copy it with `cp`.
 
 ## The contract
 
+Use protocol 3. The library validates initialization before task messages. Protocol 2 requires an upgrade; never infer a new level from old auto.
+
 `adapter({ inspect, models?, run })` from the library:
 
 - `inspect(product)` returns `{ name, version?, path?, recommended?, upgrade?, unavailable?, capabilities? }`. Report
   capabilities accurately: modelSelection, modelDiscovery, textStreaming, resume, permission (`"merak"` or `"external"`),
-  and questions, plus optional control coverage and limitations. It runs before each task
+  and questions, plus control coverage, isolation and cancellation limitations. Report `draftOnly` only when native restrictions enforce it.
+  Plan-dependent tasks require `plan.fullInput` and measured `contextTokens`, `reservedTokens` and `fixedInputTokens`; ordinary tasks do not.
+  Missing capacity must fail before dispatch, rather than truncate the plan. Unknown protection stays unknown.
+  Report optional control coverage and limitations. It runs before each task
   (`unavailable` fails the task) and when settings shows the product, so it must be quick and never start work or rely
   on the working directory: `version(command)` from the library runs `<cli> --version` and gives `{ version }` or
   `{ unavailable }`.
 - `models(product, signal)` optionally returns `{ models: [{ id, providerID?, title }], allowCustomID }` without running
   a model task. Discovery lists models; it does not prove account access.
 - `run(task, host)` does one task and returns `{ text, sessionId?, actualModel?, final? }`; an empty `text` fails the task. `task` has
-  `prompt`, `cwd`, `mode` (`"plan" | "execute" | "auto"`), `resume` (the `sessionId` the CLI returned last time, to
+  `prompt`, `cwd`, `permissionLevel` (`"ask" | "autoApprove" | "fullTakeover"`), optional draft-only `scope`, optional complete `plan`, `resume` (the `sessionId` the CLI returned last time, to
   continue its session; a missing session must fail without creating a replacement), optional `model: { id, providerID? }`,
   `product` and `signal`. Pass an explicit model on every new or resumed task; omit the argument when no model is set.
   Report actualModel only when the CLI reports it. For a member
@@ -97,10 +102,10 @@ lower-case letters, digits and `-`, and must not be `merak`, `claude`, `codex`, 
 `agentConnections.products`: a built-in id there overrides that built-in product. Put there:
 
 - `merakcode-adapter.mjs` and `merakcode-adapter.d.mts`: the library and its types, copied with `cp`
-- `NOTES.md`: what you learned in step 1 with its sources, then the version you tested with, how each mode maps to the
+- `NOTES.md`: what you learned in step 1 with its sources, then the version you tested with, how each permission level maps to the
   CLI's options, and the test result, so the adapter can be fixed when the CLI changes
 - `adapter.mts`: when the CLI talks in one of the three ways, copy that way's example here with `cp` and change what
-  differs for this CLI: its name, command and arguments, how the modes map to its options, and its messages as in
+  differs for this CLI: its name, command and arguments, how the permission levels map to its options, and its messages as in
   NOTES.md. Otherwise write it yourself, following the examples.
 
 Rules for `adapter.mts`:
@@ -111,15 +116,15 @@ Rules for `adapter.mts`:
 - Import what is only a type with `type` (`import { adapter, type Host } from "./merakcode-adapter.mjs"`), and write
   relative imports with their full extension.
 - Start the CLI with `spawn` from the library, and stop it with `stop`.
-- Keep the CLI's own tools and runtime. Forward the operations it reports to MerakCode; the host applies plan,
-  execute or auto using the current root conversation mode. Auto permissions return allow without user approval.
+- Keep the CLI's own tools and runtime. Forward the operations it reports to MerakCode; the host applies the current
+  root permission level. Full takeover permissions return allow without safety approval.
   Keep the reporting channel available so later mode switches can take effect. A host allow does not remove the
   CLI's own sandbox limits. Report unobservable operations and native restrictions as limitations.
 - Treat each reported operation as one approval unit. A mode change can reject a pending request even when only
   one of its checks originally needed approval. Wait for the host's final result before executing the native
   operation, and honor rejection without replaying a previously allowed command.
 - Declare control coverage accurately, including cancellation granularity and whether native policies support live
-  updates. Unknown coverage stays unknown. The library updates task.mode in place; implement modeChanged only when
+  updates. Unknown coverage stays unknown. The library updates task.permissionLevel in place; implement permissionLevelChanged only when
   the CLI actually supports changing native policy during a task. Stopping an operation must not restart the task.
 - New questions in auto are rejected by the host. Existing questions still wait for the human after a switch to auto;
   forward their actual answers. Handle disabled interactions by continuing autonomously, without inventing answers.
@@ -150,8 +155,8 @@ install Node 24 or later for the test; do not register an untested adapter.
    ```
 
    Test mode prints every step, permission request and question, allows each request and picks the first option of
-   each question, then prints the result. It uses execute mode by default. Check the plan restrictions and auto
-   behavior against the mode contract above; this smoke test alone does not verify every mode, live switching or
+   each question, then prints the result. It uses Ask by default. Check draft-only scope and all three permission levels
+   against the contract above; this smoke test alone does not verify every level, live switching or
    control coverage.
 
 3. Fix the adapter until the command and the file write each arrive as one request of the right kind and the result

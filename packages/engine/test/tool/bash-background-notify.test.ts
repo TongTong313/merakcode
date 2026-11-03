@@ -10,7 +10,7 @@ import { Session } from "@merakcode/engine/agent/session/index"
 import { Message } from "@merakcode/engine/agent/session/message"
 import { LoopExecution } from "@merakcode/engine/agent/loop/execution"
 import { Shell } from "@merakcode/engine/infra/process/shell/shell"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { setTimeout as delay } from "node:timers/promises"
 import { Loop } from "@merakcode/engine/agent/loop/index"
@@ -29,11 +29,11 @@ test("background notifications preserve human plan edits until a new human instr
   const model = await fakeModel(async (turn) => {
     if (turn.prompt.includes("[Background bash job"))
       return turn.results.length === 0
-        ? { tool: "plan_write", args: { content: "AUTOMATIC_OVERWRITE" } }
+        ? { tool: "plan_generate", args: { content: "AUTOMATIC_OVERWRITE", expectedRevision: 2 } }
         : { text: "Notification handled" }
     if (turn.prompt === "Revise the plan now")
       return turn.results.length === 0
-        ? { tool: "plan_write", args: { content: "REQUESTED_REVISION" } }
+        ? { tool: "plan_generate", args: { content: "REQUESTED_REVISION", expectedRevision: 2 } }
         : { text: "Revision handled" }
     return { text: "Initial request handled" }
   })
@@ -59,9 +59,10 @@ console.log("background-result")`,
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ title: "Human plan precedence" })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         const initial = await Loop.prompt({
           sessionID: session.id,
-          sessionMode: "auto",
+          permissionLevel: "fullTakeover",
           parts: [{ type: "text", text: "Prepare a plan" }],
         })
         const plan = await SessionPlan.save({
@@ -82,7 +83,7 @@ console.log("background-result")`,
             messageID: initial.info.id,
             callID: "human-plan-notification",
             agent: "build",
-            sessionMode: "auto",
+            permissionLevel: "fullTakeover",
             abort: new AbortController().signal,
             messages: [],
             ruleset: [],
@@ -173,7 +174,7 @@ console.log("background-result")
               messageID: Identifier.ascending("message"),
               callID: "background-call",
               agent: "build",
-              sessionMode: "auto",
+              permissionLevel: "fullTakeover",
               abort: scope.controller.signal,
               messages: [],
               ruleset: [],
@@ -223,3 +224,94 @@ console.log("background-result")
     })
   }, 30_000)
 }
+
+test.each([false, true])(
+  "a background continuation keeps draft scope after a later implementation request (origin deleted=%s)",
+  async (deleted) => {
+    const model = await fakeModel(async (turn) => {
+      if (turn.prompt.includes("[Background bash job"))
+        return turn.results.length === 0
+          ? { tool: "write", args: { filePath: "effect.txt", content: "CHANGED" } }
+          : { text: "Original draft continuation complete" }
+      return { text: "Initial draft complete" }
+    })
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "alibaba-cn/qwen-plus",
+          small_model: "alibaba-cn/qwen-plus",
+          enabled_providers: ["alibaba-cn"],
+          provider: { "alibaba-cn": { options: { apiKey: "fake", baseURL: model.url } } },
+          memory: { auto_extract: false, auto_recall: false, auto_dream: false, session_memory: false },
+          lsp: false,
+        },
+      })
+      await Filesystem.write(
+        path.join(tmp.path, "background.mjs"),
+        `import fs from "node:fs";while(!fs.existsSync("release-job"))await new Promise(r=>setTimeout(r,10));console.log("complete")`,
+      )
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+          const initial = await Loop.prompt({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "只出稿，不要修改项目。" }],
+          })
+          await (
+            await BashBackgroundTool.init()
+          ).execute(
+            {
+              command: `"${process.execPath.replaceAll("\\", "/")}" background.mjs`,
+              description: "Controlled draft completion",
+              timeout: 15000,
+            },
+            {
+              sessionID: session.id,
+              messageID: initial.info.id,
+              callID: "draft-notification",
+              agent: "build",
+              permissionLevel: "fullTakeover",
+              abort: new AbortController().signal,
+              messages: [],
+              ruleset: [],
+              metadata() {},
+              async ask() {},
+            },
+          )
+          await Loop.prompt({
+            sessionID: session.id,
+            noReply: true,
+            parts: [{ type: "text", text: "开始实施另一个任务。" }],
+          })
+          if (deleted) await Session.removeMessage({ sessionID: session.id, messageID: initial.info.id })
+          await Filesystem.write(path.join(tmp.path, "release-job"), "release")
+          await expect
+            .poll(
+              async () =>
+                (await Session.messages({ sessionID: session.id }))
+                  .flatMap((m) => m.parts)
+                  .some((p) => p.type === "text" && p.text === "Original draft continuation complete"),
+              { timeout: 15000 },
+            )
+            .toBe(true)
+          const attempts = (await Session.messages({ sessionID: session.id }))
+            .flatMap((m) => m.parts)
+            .filter((p) => p.type === "tool" && p.tool === "write")
+          expect(attempts).toHaveLength(1)
+          expect(attempts[0]).toMatchObject({
+            state: { status: "error", error: expect.stringMatching(/只出稿|draft-only/) },
+          })
+          expect(await Filesystem.exists(path.join(tmp.path, "effect.txt"))).toBe(false)
+        },
+      })
+    } finally {
+      await BashJobStore.stopAll()
+      await Instance.disposeAll()
+      await model.close()
+    }
+  },
+  30000,
+)

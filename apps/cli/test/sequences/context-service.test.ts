@@ -63,7 +63,7 @@ for (const item of [
         kit,
         session.id,
         item.mode === "auto" ? "S07_AUTO 搜索并修复加法函数" : "S07_HIERARCHY 读取 src/a.txt 并报告标记",
-        ["grep", "edit"],
+        ["grep", "read", "edit"],
       )
       const current = await kit.assertResult(session.id, result.userID, item.answer)
       expect(
@@ -101,14 +101,14 @@ test("S07.08 P/M external file change is reread after real history without rewri
   try {
     const session = await kit.api("/session", "POST", { title: "S07.08" })
     for (const input of ["S07_FIRST 读取 src/a.txt", "S07_WRITE 将读到的标记保存为 history.txt"]) {
-      const result = await drive(kit, session.id, input, ["write"])
+      const result = await drive(kit, session.id, input, ["write", "edit", "read"])
       await kit.assertResult(session.id, result.userID, "S07_INITIAL_DONE")
     }
     expect(await Filesystem.readText(join(kit.project, "history.txt"))).toBe(kit.marker)
     const before = await kit.api(`/session/${session.id}/message`)
     const fresh = `FRESH_${crypto.randomUUID()}`
     await Filesystem.write(join(kit.project, "src/a.txt"), `${kit.marker}\n${fresh}`)
-    const result = await drive(kit, session.id, "S07_FOLLOW 文件已在外部修改，请重新读取")
+    const result = await drive(kit, session.id, "S07_FOLLOW 文件已在外部修改，请重新读取", ["read"])
     const current = await kit.assertResult(session.id, result.userID, "S07_FRESH_DONE")
     expect(current.flatMap((entry) => entry.parts).some((part) => part.text?.includes(fresh))).toBe(true)
     expect(

@@ -57,7 +57,7 @@ test("the sidebar marks a conversation awaiting approval, and opening it allows 
   const waiting = sidebar.getByRole("link", { name: /待审批/ })
   await expect(waiting).toHaveCount(1)
   await waiting.click()
-  await kit.approval().getByText("允许", { exact: true }).click()
+  await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
   await expect(kit.text("审批过了")).toBeVisible({ timeout: 60_000 })
   await expect(sidebar.getByRole("link", { name: /待审批/ })).toHaveCount(0)
 })

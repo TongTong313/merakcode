@@ -2,7 +2,7 @@
 // scenario: the permission requests to make, in order, then questions to ask; it replies with MerakCode's verdicts
 // or the answers as JSON. With ignore it keeps running after it was told to stop; marker records that it was told.
 import fs from "node:fs"
-import { adapter, type Permission, type Question } from "@merakcode/sdk/adapter"
+import { adapter, type Permission, type Question, type Capabilities } from "@merakcode/sdk/adapter"
 
 const scenario = JSON.parse(process.argv[2] ?? "{}") as {
   permissions?: Permission[]
@@ -19,6 +19,8 @@ const scenario = JSON.parse(process.argv[2] ?? "{}") as {
   steps?: { tool: string; detail?: string; gate?: string }[]
   /** A fixed reply instead of the verdicts */
   reply?: string
+  planCapability?: Capabilities["plan"]
+  echoTask?: boolean
 }
 
 adapter({
@@ -28,6 +30,22 @@ adapter({
     recommended: scenario.recommended,
     upgrade: scenario.upgrade,
     unavailable: scenario.unavailable,
+    capabilities: {
+      modelSelection: false,
+      modelDiscovery: false,
+      textStreaming: false,
+      resume: false,
+      permission: "merak",
+      control: {
+        reportedOperations: ["read", "write", "command", "network", "tool"],
+        cancellation: "task",
+        liveMode: true,
+        limitations: [],
+      },
+      questions: true,
+      draftOnly: true,
+      plan: scenario.planCapability,
+    },
   }),
   async run(task, host) {
     if (scenario.marker) fs.writeFileSync(scenario.marker + ".pid", String(process.pid))
@@ -46,6 +64,10 @@ adapter({
       verdicts.push(...(await Promise.all((scenario.permissions ?? []).map((request) => host.permission(request)))))
     else for (const request of scenario.permissions ?? []) verdicts.push(await host.permission(request))
     const answers = scenario.questions ? await host.question(scenario.questions) : undefined
-    return { text: scenario.reply ?? JSON.stringify(answers ?? verdicts) }
+    return {
+      text: scenario.echoTask
+        ? JSON.stringify({ plan: task.plan, scope: task.scope, prompt: task.prompt })
+        : (scenario.reply ?? JSON.stringify(answers ?? verdicts)),
+    }
   },
 })

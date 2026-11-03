@@ -59,11 +59,11 @@ describe("file operation classification", () => {
 
   test("config writes retain execute approval and are allowed in auto", () => {
     const config = PermissionPolicy.file({ ...ctx, op: "write", path: at(".merakcode", "merakcode.json") })
-    expect(decide("plan", config)).toBe("deny")
-    expect(decide("execute", config)).toBe("ask")
-    expect(decide("auto", config)).toBe("allow")
+    expect(decide("ask", config)).toBe("ask")
+    expect(decide("autoApprove", config)).toBe("ask")
+    expect(decide("fullTakeover", config)).toBe("allow")
     expect(
-      decide("auto", PermissionPolicy.file({ ...ctx, op: "write", path: at(".git", "hooks", "pre-commit") })),
+      decide("fullTakeover", PermissionPolicy.file({ ...ctx, op: "write", path: at(".git", "hooks", "pre-commit") })),
     ).toBe("allow")
   })
 
@@ -97,18 +97,18 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "plan",
+      "ask",
       [
-        [read, "allow"],
+        [read, "ask"],
         [external, "ask"],
         [sensitive, "ask"],
-        [edit, "deny"],
-        [dotfile, "deny"],
-        [outside, "deny"],
+        [edit, "ask"],
+        [dotfile, "ask"],
+        [outside, "ask"],
       ],
     ],
     [
-      "execute",
+      "autoApprove",
       [
         [read, "allow"],
         [external, "ask"],
@@ -119,7 +119,7 @@ describe("default decisions in the three modes", () => {
       ],
     ],
     [
-      "auto",
+      "fullTakeover",
       [
         [read, "allow"],
         [external, "allow"],
@@ -135,16 +135,16 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "plan",
+      "ask",
       [
-        [ls, "allow"],
-        [npmTest, "deny"],
-        [remove, "deny"],
-        [push, "deny"],
+        [ls, "ask"],
+        [npmTest, "ask"],
+        [remove, "ask"],
+        [push, "ask"],
       ],
     ],
     [
-      "execute",
+      "autoApprove",
       [
         [ls, "allow"],
         [npmTest, "ask"],
@@ -153,7 +153,7 @@ describe("default decisions in the three modes", () => {
       ],
     ],
     [
-      "auto",
+      "fullTakeover",
       [
         [ls, "allow"],
         [npmTest, "allow"],
@@ -167,25 +167,25 @@ describe("default decisions in the three modes", () => {
 
   test.each([
     [
-      "plan",
+      "ask",
       [
         [agent, "ask"],
         [mcp, "ask"],
         [network, "ask"],
-        [npm, "allow"],
+        [npm, "ask"],
       ],
     ],
     [
-      "execute",
+      "autoApprove",
       [
         [agent, "ask"],
         [mcp, "ask"],
         [network, "ask"],
-        [npm, "allow"],
+        [npm, "ask"],
       ],
     ],
     [
-      "auto",
+      "fullTakeover",
       [
         [agent, "allow"],
         [mcp, "allow"],
@@ -199,30 +199,34 @@ describe("default decisions in the three modes", () => {
 
   test("unregistered (plugin) tools ask in readonly and ask modes and are allowed in auto mode", () => {
     const plugin = { permission: "my_plugin_tool", pattern: "*", grants: [] }
-    expect(decide("plan", plugin)).toBe("ask")
-    expect(decide("execute", plugin)).toBe("ask")
-    expect(decide("auto", plugin)).toBe("allow")
+    expect(decide("ask", plugin)).toBe("ask")
+    expect(decide("autoApprove", plugin)).toBe("ask")
+    expect(decide("fullTakeover", plugin)).toBe("allow")
   })
 })
 
 describe("precedence of user rules and modes", () => {
-  test("ask mode: user always-allow overrides the default ask and user deny overrides the default allow", () => {
+  test("legacy allows cannot approve a risky command and explicit denies still apply", () => {
     const npmTest = PermissionPolicy.command({ command: "npm test", level: "normal", prefix: "npm test" })
     const user = PermissionNext.fromConfig({ bash: { "npm test*": "allow" }, edit: { "*.lock": "deny" } })
-    expect(decide("execute", npmTest, user)).toBe("allow")
-    expect(decide("execute", PermissionPolicy.file({ ...ctx, op: "write", path: at("pnpm.lock") }), user)).toBe("deny")
+    expect(decide("autoApprove", npmTest, user)).toBe("ask")
+    expect(decide("autoApprove", PermissionPolicy.file({ ...ctx, op: "write", path: at("pnpm.lock") }), user)).toBe(
+      "deny",
+    )
   })
 
-  test("readonly mode still denies commands and file writes the user allowed", () => {
+  test("ask still requests approval for commands and files covered by legacy allows", () => {
     const npmTest = PermissionPolicy.command({ command: "npm test", level: "normal", prefix: "npm test" })
     const user = PermissionNext.fromConfig({ bash: { "npm test*": "allow" }, edit: "allow" })
-    expect(decide("plan", npmTest, user)).toBe("deny")
-    expect(decide("plan", PermissionPolicy.file({ ...ctx, op: "write", path: at("a.ts") }), user)).toBe("deny")
+    expect(decide("ask", npmTest, user)).toBe("ask")
+    expect(decide("ask", PermissionPolicy.file({ ...ctx, op: "write", path: at("a.ts") }), user)).toBe("ask")
   })
 
   test("auto mode allows risky operations without grants", () => {
     const push = PermissionPolicy.command({ command: "git push origin main", level: "risky", prefix: "git push" })
-    expect(decide("auto", push)).toBe("allow")
-    expect(decide("auto", push, PermissionNext.fromConfig({ bash_risky: { "git push*": "allow" } }))).toBe("allow")
+    expect(decide("fullTakeover", push)).toBe("allow")
+    expect(decide("fullTakeover", push, PermissionNext.fromConfig({ bash_risky: { "git push*": "allow" } }))).toBe(
+      "allow",
+    )
   })
 })

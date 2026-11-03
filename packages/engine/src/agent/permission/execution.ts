@@ -13,6 +13,10 @@ import { SandboxPolicy } from "./sandbox-policy"
 import { EngineAddress } from "../../infra/process/engine-address"
 import type { Tool } from "../tools/tool"
 import { lazy } from "@merakcode/util/lazy"
+import { Text } from "../prompt/text"
+import { Bus } from "../../infra/bus"
+import { BusEvent } from "../../infra/bus/bus-event"
+import { ErrorCode } from "@merakcode/util/error-code"
 
 /**
  * Permission decisions for sandboxed commands: they may only write the
@@ -25,10 +29,11 @@ export namespace PermissionExecution {
 
   export const Info = z
     .object({
-      status: z.enum(["on", "off", "unsupported"]),
+      status: z.enum(["on", "off", "unsupported", "starting", "failed"]),
       backend: z.enum(["windows-account", "landlock", "seatbelt"]).optional(),
       /** Why it is not on */
       reason: z.string().optional(),
+      errorCode: z.string().optional(),
       /** What this system cannot enforce, e.g. network-not-enforced */
       degraded: z.array(z.string()).optional(),
       /** A one-time setup (POST /sandbox/install) would turn it on */
@@ -36,6 +41,7 @@ export namespace PermissionExecution {
     })
     .meta({ ref: "SandboxStatus" })
   export type Info = z.infer<typeof Info>
+  export const Updated = BusEvent.define("sandbox.updated", Info)
   export type Mode = "preferred" | "required" | "off"
 
   export const SetupRequiredError = NamedError.create(
@@ -44,11 +50,17 @@ export namespace PermissionExecution {
   )
 
   let backend: Backend | undefined
+  let installing: Promise<Info> | undefined
+  let starting = false
+  let startupFailure: string | undefined
   const sandbox = lazy(() => Sandbox.create(backend ?? Sandbox.backend(SandboxPolicy.base(os.homedir()))))
 
   /** Tests: use this backend instead of the one for the current system */
   export function useBackendForTest(next: Backend | undefined) {
     backend = next
+    installing = undefined
+    starting = false
+    startupFailure = undefined
     sandbox.reset()
   }
 
@@ -57,7 +69,7 @@ export namespace PermissionExecution {
     if (override === "preferred" || override === "required" || override === "off") return override
     // Engine startup has no project yet; the sandbox account is per machine, so the global config decides.
     const config = Instance.has() ? await Config.get() : await Config.getGlobal()
-    return config.sandbox?.mode ?? "preferred"
+    return config.sandbox?.mode === "required" ? "required" : "preferred"
   }
 
   /** Approved writable folders: sandbox rules written as directories ("/abs/dir/*") that evaluate to allow */
@@ -107,7 +119,23 @@ export namespace PermissionExecution {
   export async function current(): Promise<Info> {
     const status = await sandbox().status()
     // Off still reports whether a one-time setup remains, so the conversation control can offer it.
-    if ((await mode()) === "off") return { ...status, status: "off" }
+    if ((await mode()) === "off")
+      return {
+        ...status,
+        status: "off",
+        reason: await Text.pick({
+          zh: "系统策略或测试环境禁止启动沙箱。前两档按每次操作询问。",
+          en: "System policy or the test environment disables the sandbox. The first two permission levels require approval for each operation.",
+        }),
+      }
+    if (starting) return { ...status, status: "starting" }
+    if (startupFailure)
+      return {
+        ...status,
+        status: "failed",
+        reason: startupFailure,
+        errorCode: ErrorCode.CATALOG.SANDBOX_UNAVAILABLE.code,
+      }
     return status
   }
 
@@ -115,48 +143,94 @@ export namespace PermissionExecution {
    * Brings an already set up sandbox to ready when the engine starts. Does not create the Windows account; that
    * still takes the one-time setup.
    */
-  export async function wake(): Promise<Info> {
-    const status = await current()
-    if (status.status === "on") await sandbox().warm()
-    return current()
+  export function wake(): Promise<Info> {
+    return initialize(async () => {
+      if ((await mode()) !== "off" && (await sandbox().status()).status === "on") await sandbox().warm()
+    })
   }
 
   /** Commands are not waiting on sandbox setup: it is on, or the user turned it off */
-  export async function ready(): Promise<boolean> {
-    if ((await mode()) === "off") return true
-    return (await current()).status === "on"
+  export async function ready(checks: PermissionNext.Check[] = []): Promise<boolean> {
+    const status = await current()
+    if (status.status !== "on") return false
+    return !status.degraded?.some((reason) => {
+      if (
+        [
+          "network-not-enforced",
+          "loopback-not-restricted",
+          "tcp-matched-by-port",
+          "udp-not-restricted",
+          "unix-socket-not-restricted",
+        ].includes(reason)
+      )
+        return checks.some(
+          (check) =>
+            check.permission === "network" ||
+            (check.permission.startsWith("bash") && check.permission !== "bash_readonly"),
+        )
+      return true
+    })
   }
 
-  export async function install(progress?: (step: string) => void): Promise<Info> {
-    const status = await sandbox().setup((step) => {
-      log.info("setup", { step })
-      progress?.(step)
-    })
+  export function install(progress?: (step: string) => void): Promise<Info> {
+    return initialize(() => installOnce(progress))
+  }
+
+  function initialize(action: () => Promise<unknown>): Promise<Info> {
+    if (installing) return installing
+    const pending = (async () => {
+      starting = true
+      try {
+        await Bus.publishGlobal(Updated, await current())
+        await action()
+        startupFailure = undefined
+      } catch (error) {
+        startupFailure = await Text.pick({
+          zh: `沙箱启动失败：${error instanceof Error ? error.message : String(error)}。请重试启动。`,
+          en: `Sandbox startup failed: ${error instanceof Error ? error.message : String(error)}. Retry startup.`,
+        })
+      } finally {
+        starting = false
+      }
+      const status = await current()
+      await Bus.publishGlobal(Updated, status)
+      if (status.status === "on" && Instance.has()) await import("./flush").then((m) => m.PermissionFlush.run())
+      return status
+    })()
+    installing = pending
+    void pending
+      .finally(() => {
+        if (installing === pending) installing = undefined
+      })
+      .catch(() => {})
+    return pending
+  }
+
+  async function installOnce(progress?: (step: string) => void) {
+    const current = await sandbox().status()
+    const status =
+      current.status === "on"
+        ? current
+        : await sandbox().setup((step) => {
+            log.info("setup", { step })
+            progress?.(step)
+          })
     log.info("setup finished", { status: status.status })
-    const reported = (await mode()) === "off" ? { ...status, status: "off" as const } : status
-    if (reported.status === "on") await import("./flush").then((m) => m.PermissionFlush.run())
-    return reported
+    if (status.status === "on") await sandbox().warm()
   }
 
   export async function reset(): Promise<Info> {
     const status = await sandbox().reset()
     log.info("reset finished", { status: status.status })
-    return (await mode()) === "off" ? { ...status, status: "off" as const } : status
+    startupFailure = undefined
+    const reported = await current()
+    await Bus.publishGlobal(Updated, reported)
+    return reported
   }
 
   /** True when commands that change things must ask first because the sandbox should be used but is not ready */
   export async function missing() {
-    const configured = await mode()
-    if (configured === "off") return false
-    const status = await current()
-    if (status.status === "on") return false
-    if (configured === "required")
-      throw new SetupRequiredError({
-        message:
-          "The sandbox is required but not ready. Set it up in the desktop app under Settings → Permissions & security (or run merak sandbox setup), or set sandbox.mode to preferred.",
-        reason: status.reason,
-      })
-    return true
+    return !(await ready())
   }
 
   export type Prepared = Sandbox.Prepared
@@ -170,8 +244,9 @@ export namespace PermissionExecution {
     ctx: Tool.Context
     workspace: string[]
     writable?: string[]
+    canIsolate?: boolean
   }): Promise<Prepared | undefined> {
-    if (input.ctx.sessionMode === "auto") return
+    if (input.ctx.permissionLevel === "fullTakeover" && !input.canIsolate) return
     if ((await mode()) === "off") return
     if ((await current()).status !== "on") return
     const config = (await Config.get()).sandbox

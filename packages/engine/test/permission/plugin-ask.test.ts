@@ -1,125 +1,125 @@
-import { afterEach, expect, test, type Mock, vi } from "vitest"
-import { Bus } from "@merakcode/engine/infra/bus/index"
-import { PermissionNext } from "@merakcode/engine/agent/permission/next"
-import { Plugin } from "@merakcode/engine/agent/plugin/index"
-import { Instance } from "@merakcode/engine/infra/project/instance"
+import { expect, test } from "vitest"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { Bus } from "../../src/infra/bus"
+import { PermissionNext } from "../../src/agent/permission/next"
+import { Instance } from "../../src/infra/project/instance"
+import { Session } from "../../src/agent/session"
 import { tmpdir } from "../fixture/fixture"
+import { readySandbox } from "../fixture/sandbox-ready"
 
-/**
- * The `permission.ask` plugin hook may override a decision only when the rules say ask; config-level allow/deny is
- * not affected. Plugin.trigger is replaced with a spy to avoid wiring a real plugin chain; the subject is how
- * PermissionNext.ask handles the hook result.
- */
-
-let spy: Mock<typeof Plugin.trigger> | undefined
-afterEach(() => {
-  spy?.mockRestore()
-  spy = undefined
-})
-
-function stub(status: "ask" | "allow" | "deny", seen: string[] = []) {
-  spy?.mockRestore()
-  spy = vi.spyOn(Plugin, "trigger").mockImplementation((async (name: string, input: unknown, output: unknown) => {
-    if (name === "permission.ask") {
-      seen.push((input as { permission: string }).permission)
-      ;(output as { status: string }).status = status
-    }
-    return output
-  }) as typeof Plugin.trigger)
-  return seen
-}
-
-const base = {
-  sessionID: "session_plugin_ask",
-  permission: "bash",
-  patterns: ["ls"],
-  metadata: {},
-  // An explicit ask rule, so the hook fires whatever the default rules are
-  ruleset: [{ permission: "bash", pattern: "*", action: "ask" }] as PermissionNext.Ruleset,
-}
-
-test("hook returning allow resolves the ask without emitting permission.asked", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      const seen = stub("allow")
-      let asked = 0
-      const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => asked++)
-      await expect(PermissionNext.ask({ ...base, id: "permission_plugin_allow" })).resolves.toBeUndefined()
-      unsub()
-      expect(seen).toEqual(["bash"])
-      expect(asked).toBe(0)
-      expect(await PermissionNext.list()).toEqual([])
-    },
-  })
-})
-
-test("hook returning deny throws DeniedError and leaves nothing pending", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      stub("deny")
-      await expect(PermissionNext.ask({ ...base, id: "permission_plugin_deny" })).rejects.toBeInstanceOf(
-        PermissionNext.DeniedError,
+async function project(
+  status: "ask" | "allow" | "deny" | "gate",
+  fn: (input: PermissionNext.AskInput, directory: string) => Promise<void>,
+) {
+  using _isolation = readySandbox()
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (directory) => {
+      const plugins = path.join(directory, ".merakcode", "plugin")
+      await fs.mkdir(plugins, { recursive: true })
+      await fs.writeFile(
+        path.join(plugins, "permission.ts"),
+        `
+      import fs from "node:fs"
+      import path from "node:path"
+      export default {id:"permission-fixture",server:async ({directory})=>({
+        "permission.ask":async (_input,output)=>{
+          fs.writeFileSync(path.join(directory,"observed"),"seen")
+          if (${JSON.stringify(status)} === "gate") while (!fs.existsSync(path.join(directory,"release"))) await new Promise(resolve=>setTimeout(resolve,5))
+          output.status=${JSON.stringify(status === "gate" ? "ask" : status)}
+        }
+      })}
+    `,
       )
-      expect(await PermissionNext.list()).toEqual([])
     },
   })
-})
+  try {
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await fn(
+          {
+            id: "permission_fixture",
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["ls"],
+            metadata: {},
+            ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+          },
+          tmp.path,
+        )
+      },
+    })
+  } finally {
+    await fs.writeFile(path.join(tmp.path, "release"), "released")
+  }
+}
 
-test("hook that does not override emits permission.asked and waits for a reply", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      stub("ask")
-      const asked = Promise.withResolvers<string>()
-      const unsub = Bus.subscribe(PermissionNext.Event.Asked, (e) => asked.resolve(e.properties.id))
-      const pending = PermissionNext.ask({ ...base, id: "permission_plugin_ask" })
-      expect(await asked.promise).toBe("permission_plugin_ask")
-      unsub()
-      await PermissionNext.reply({ requestID: "permission_plugin_ask", reply: "once" })
-      await expect(pending).resolves.toBeUndefined()
-    },
-  })
-})
+test("a plugin allow cannot replace the human approval", () =>
+  project("allow", async (input) => {
+    let asked = 0
+    const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+      asked++
+      void PermissionNext.reply({ requestID: event.properties.id, reply: "reject" })
+    })
+    try {
+      await expect(PermissionNext.ask(input)).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+      expect(asked).toBe(1)
+    } finally {
+      unsubscribe()
+    }
+  }))
 
-test("config-level allow or deny skips the hook so plugins cannot override user config", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      const seen = stub("deny")
-      await expect(
-        PermissionNext.ask({ ...base, ruleset: [{ permission: "bash", pattern: "*", action: "allow" }] }),
-      ).resolves.toBeUndefined()
-      stub("allow", seen)
-      await expect(
-        PermissionNext.ask({ ...base, ruleset: [{ permission: "bash", pattern: "*", action: "deny" }] }),
-      ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
-      expect(seen).toEqual([])
-    },
-  })
-})
+test("a plugin deny rejects the operation and leaves no approval pending", () =>
+  project("deny", async (input) => {
+    await expect(PermissionNext.ask(input)).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+    expect(await PermissionNext.list()).toEqual([])
+  }))
 
-test("a reply received while the hook runs is neither lost nor registered twice", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      const gate = Promise.withResolvers<void>()
-      spy = vi.spyOn(Plugin, "trigger").mockImplementation((async (name: string, _input: unknown, output: unknown) => {
-        if (name === "permission.ask") await gate.promise
-        return output
-      }) as typeof Plugin.trigger)
-      const pending = PermissionNext.ask({ ...base, id: "permission_plugin_race" })
-      // The request is registered as pending before the hook runs, so the reply finds it
-      await PermissionNext.reply({ requestID: "permission_plugin_race", reply: "once" })
-      gate.resolve()
-      await expect(pending).resolves.toBeUndefined()
-      expect(await PermissionNext.list()).toEqual([])
-    },
-  })
-})
+test("a plugin ask waits for the actual human reply", () =>
+  project("ask", async (input) => {
+    const asked = Promise.withResolvers<string>()
+    const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => asked.resolve(event.properties.id))
+    const running = PermissionNext.ask(input)
+    try {
+      await PermissionNext.reply({ requestID: await asked.promise, reply: "once" })
+      await expect(running).resolves.toBeUndefined()
+    } finally {
+      unsubscribe()
+    }
+  }))
+
+test("a policy allow or deny settles before invoking the plugin", () =>
+  project("deny", async (input, directory) => {
+    await expect(
+      PermissionNext.ask({ ...input, ruleset: [{ permission: "bash", pattern: "*", action: "allow" }] }),
+    ).resolves.toBeUndefined()
+    await expect(
+      PermissionNext.ask({ ...input, ruleset: [{ permission: "bash", pattern: "*", action: "deny" }] }),
+    ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+    await expect(fs.stat(path.join(directory, "observed"))).rejects.toMatchObject({ code: "ENOENT" })
+  }))
+
+test("a reply during a running plugin hook is neither lost nor registered twice", () =>
+  project("gate", async (input, directory) => {
+    const running = PermissionNext.ask(input)
+    try {
+      await expect
+        .poll(
+          () =>
+            fs.stat(path.join(directory, "observed")).then(
+              () => true,
+              () => false,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true)
+      await PermissionNext.reply({ requestID: input.id!, reply: "once" })
+    } finally {
+      await fs.writeFile(path.join(directory, "release"), "released")
+    }
+    await expect(running).resolves.toBeUndefined()
+    expect(await PermissionNext.list()).toEqual([])
+  }))

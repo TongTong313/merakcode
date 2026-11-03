@@ -11,10 +11,11 @@ import { fn } from "@merakcode/util/fn"
 import { Storage } from "../../infra/storage/storage"
 import { ProviderError } from "../model/error"
 import type { Provider } from "../model/provider"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 import { SessionToolResult } from "./tool-result"
 import { Transcript } from "./transcript"
 import { ExternalAdapterError } from "./external-error"
+import { PlanConflictError, PlanReadRangeError, PlanExecutionPausedError } from "./plan-error"
 
 export namespace Message {
   const ProductModel = z.object({ id: z.string(), providerID: z.string().optional() })
@@ -61,6 +62,16 @@ export namespace Message {
   export const ContextOverflowError = NamedError.create(
     "ContextOverflowError",
     z.object({ message: z.string(), responseBody: z.string().optional() }),
+  )
+  export const PlanCapacityError = NamedError.create(
+    "PlanCapacityError",
+    z.object({
+      message: z.string(),
+      requiredTokens: z.number(),
+      availableTokens: z.number(),
+      deficit: z.number(),
+      reason: z.enum(["body", "reserve"]),
+    }),
   )
   // Hard stop raised when auto-compaction has tripped its failure breaker and the context is still over capacity.
   // Unlike ContextOverflowError (a 413 from the provider), this is decided locally before the request. It tells the
@@ -280,7 +291,7 @@ export namespace Message {
     type: z.literal("compaction"),
     auto: z.boolean(),
     // Continuing after auto-compaction must keep the permission mode from before compaction.
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     // Deferred tools activated before compaction. After compaction, scanActivatedTools restores them from the compact
     // boundary so they do not fall back to deferred once their history is compacted. Only names are stored; older
     // parts without this field are skipped.
@@ -469,7 +480,7 @@ export namespace Message {
       })
       .optional(),
     agent: z.string(),
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     model: z.object({
       providerID: z.string(),
       modelID: z.string(),
@@ -515,6 +526,10 @@ export namespace Message {
       .discriminatedUnion("name", [
         AuthError.Schema,
         NamedError.Unknown.Schema,
+        PlanCapacityError.Schema,
+        PlanConflictError.Schema,
+        PlanReadRangeError.Schema,
+        PlanExecutionPausedError.Schema,
         OutputLengthError.Schema,
         AbortedError.Schema,
         StructuredOutputError.Schema,
@@ -590,7 +605,7 @@ export namespace Message {
   export const ExternalUserInfo = Base.extend({
     role: z.literal("user"),
     time: z.object({ created: z.number() }),
-    sessionMode: SessionMode.Schema,
+    permissionLevel: PermissionLevel.Schema,
     execution: ExternalExecution,
   }).meta({ ref: "ExternalUserMessage" })
   export type ExternalUserInfo = z.infer<typeof ExternalUserInfo>
@@ -1051,7 +1066,7 @@ export namespace Message {
    * Transcript replay output and before import-full validation; only the returned value changes, nothing is written.
    */
   export function legacy(info: Message.Info): Message.Info {
-    info = SessionMode.migrate(info)
+    info = PermissionLevel.migrate(info, "message")
     if (isExternal(info)) return info
     if (info.role === "user") {
       const diffs = info.summary?.diffs
@@ -1129,6 +1144,9 @@ export namespace Message {
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {
+    if (PlanCapacityError.isInstance(e)) return e.toObject()
+    if (PlanConflictError.isInstance(e) || PlanReadRangeError.isInstance(e) || PlanExecutionPausedError.isInstance(e))
+      return e.toObject()
     switch (true) {
       case e instanceof DOMException && e.name === "AbortError":
         return new Message.AbortedError(

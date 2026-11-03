@@ -65,7 +65,8 @@ test("when a tool throws, the model gets the error message and the turn ends nor
   script = (turn) => (turn.results.length === 0 ? { tool: "broken", args: {} } : { text: `出错了：${turn.results[0]}` })
   const session = await merak.session()
   let text = ""
-  for await (const event of session.run("试试 broken", { mode: "auto" })) if (event.type === "text") text += event.delta
+  for await (const event of session.run("试试 broken", { permissionLevel: "fullTakeover" }))
+    if (event.type === "text") text += event.delta
   expect(text).toContain("服务不可用")
 }, 120_000)
 

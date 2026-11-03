@@ -8,6 +8,111 @@ import { bundle, declarations } from "../script/adapter-library"
 
 const run = promisify(execFile)
 
+test.each(["ask", "autoApprove", "fullTakeover"])(
+  "standalone host checks actual operation coverage for %s",
+  async (permissionLevel) => {
+    await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
+    import fs from "node:fs/promises"
+    adapter({inspect:()=>({name:"Opaque fixture"}),run:async()=>{await fs.writeFile("effect","CHANGED");return{text:"DONE"}}})`)
+    const execution = run(
+      process.execPath,
+      [
+        "merakcode-adapter.mjs",
+        "test",
+        "--permission-level",
+        permissionLevel,
+        "--",
+        process.execPath,
+        "adapter.mts",
+        "Write one file",
+      ],
+      { cwd: space.dir },
+    )
+    if (permissionLevel === "fullTakeover") {
+      expect((await execution).stdout).toContain("result DONE")
+      expect(await fs.readFile(path.join(space.dir, "effect"), "utf8")).toBe("CHANGED")
+      return
+    }
+    await expect(execution).rejects.toMatchObject({ stderr: expect.stringContaining("MRK-4009") })
+    await expect(fs.stat(path.join(space.dir, "effect"))).rejects.toMatchObject({ code: "ENOENT" })
+  },
+  30000,
+)
+
+test("the standalone SDK host exercises operation start and finish through a real adapter", async () => {
+  await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
+    import fs from "node:fs/promises"
+    adapter({inspect:()=>({name:"Operation self-test",capabilities:{modelSelection:false,modelDiscovery:false,textStreaming:false,resume:false,permission:"merak",questions:false,control:{reportedOperations:["read","write","command","network","tool"],cancellation:"task",liveMode:false,limitations:[]}}}),run:async(task,host)=>{
+      const decision=await host.operationStart({id:"one",request:{kind:"write",paths:["effect"]},isolation:"none"})
+      if(!decision.allow)return{text:"DENIED"}
+      decision.signal.throwIfAborted();await fs.writeFile("effect","CHANGED")
+      await host.operationFinish({id:"one",status:"completed"});return{text:"DONE"}
+    }})`)
+  const result = await run(
+    process.execPath,
+    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mts", "Write one controlled file"],
+    { cwd: space.dir },
+  )
+  expect(result.stdout).toContain("operation/start one")
+  expect(result.stdout).toContain("operation/finish one completed")
+  expect(result.stdout).toContain("result DONE")
+  expect(await fs.readFile(path.join(space.dir, "effect"), "utf8")).toBe("CHANGED")
+}, 30000)
+
+test("adapter rejects tasks before a valid handshake and validates live permission parameters", async () => {
+  const { spawn } = await import("node:child_process")
+  const readline = await import("node:readline")
+  const { connect } = await import("../src/adapter/index")
+  await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
+    import fs from "node:fs/promises"
+    adapter({inspect: () => ({name: "Validation fixture"}), run: async task => {await fs.writeFile("effect", "ran");return {text: task.permissionLevel}}})`)
+  const child = spawn(process.execPath, ["adapter.mts"], { cwd: space.dir, stdio: ["pipe", "pipe", "inherit"] })
+  const rpc = connect({
+    lines: readline.createInterface({ input: child.stdout }),
+    send: (line) => child.stdin.write(line + "\n"),
+    handlers: {},
+  })
+  const task = { prompt: "Go", cwd: space.dir, permissionLevel: "ask" }
+  try {
+    await expect(rpc.request("initialize", { protocol: 2, product: { id: "old", title: "Old" } })).rejects.toThrow()
+    await expect(rpc.request("task/run", task)).rejects.toThrow(/initializ|handshake/i)
+    await rpc.request("initialize", { protocol: 3, product: { id: "new", title: "New" } })
+    await expect(rpc.request("task/run", { ...task, permissionLevel: "fullAccess" })).rejects.toThrow()
+    await expect(rpc.request("task/run", { ...task, scope: "execute" })).rejects.toThrow()
+    await expect(rpc.request("task/permission-level", { permissionLevel: "auto", revision: 1 })).rejects.toThrow()
+    await expect(rpc.request("task/permission-level", { permissionLevel: "ask", revision: "2" })).rejects.toThrow()
+    await expect(fs.stat(path.join(space.dir, "effect"))).rejects.toMatchObject({ code: "ENOENT" })
+  } finally {
+    child.stdin.end()
+    await rpc.closed
+  }
+}, 30_000)
+
+test("permission level updates preserve the newest root revision in protocol 3", async () => {
+  const { spawn } = await import("node:child_process")
+  const readline = await import("node:readline")
+  const { connect } = await import("../src/adapter/index")
+  await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
+    adapter({inspect: () => ({name: "Permission fixture"}), run: async task => ({text: task.permissionLevel})})`)
+  const child = spawn(process.execPath, ["adapter.mts"], { cwd: space.dir, stdio: ["pipe", "pipe", "inherit"] })
+  const rpc = connect({
+    lines: readline.createInterface({ input: child.stdout }),
+    send: (line) => child.stdin.write(line + "\n"),
+    handlers: {},
+  })
+  try {
+    await rpc.request("initialize", { protocol: 3, product: { id: "level", title: "Level" } })
+    await rpc.request("task/permission-level", { permissionLevel: "autoApprove", revision: 2 })
+    await rpc.request("task/permission-level", { permissionLevel: "fullTakeover", revision: 1 })
+    expect(await rpc.request("task/run", { prompt: "Go", cwd: space.dir, permissionLevel: "ask" })).toMatchObject({
+      text: "autoApprove",
+    })
+  } finally {
+    child.stdin.end()
+    await rpc.closed
+  }
+}, 30_000)
+
 /** The single-file library, its types and an adapter written with them, in a fresh directory removed after the test */
 async function workspace(adapter: string) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-adapter 中文 space-"))
@@ -66,7 +171,16 @@ adapter({
     })
   const { stdout } = await run(
     process.execPath,
-    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mts", "go"],
+    [
+      "merakcode-adapter.mjs",
+      "test",
+      "--permission-level",
+      "fullTakeover",
+      "--",
+      process.execPath,
+      "adapter.mts",
+      "go",
+    ],
     { cwd: space.dir, env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH } },
   )
   expect(stdout).toContain(`result ${JSON.stringify(["two words", 'say "hi"'])}`)
@@ -166,7 +280,16 @@ test("test runs one task, allowing every request and picking the first option, a
   await using space = await workspace(ADAPTER)
   const { stdout } = await run(
     process.execPath,
-    ["merakcode-adapter.mjs", "test", "--", process.execPath, "adapter.mts", "do it"],
+    [
+      "merakcode-adapter.mjs",
+      "test",
+      "--permission-level",
+      "fullTakeover",
+      "--",
+      process.execPath,
+      "adapter.mts",
+      "do it",
+    ],
     { cwd: space.dir },
   )
   expect(stdout).toContain("step shell npm test")
@@ -220,26 +343,3 @@ adapter({
   )
   expect(await typecheck(space.dir, "wrong.mts")).toContain("Type 'number' is not assignable to type 'string'")
 }, 60_000)
-
-test("mode notifications received before task startup replace the stale launch mode", async () => {
-  const { spawn, connect, stop } = await import("../src/adapter")
-  const readline = await import("node:readline")
-  await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
-    adapter({inspect: () => ({name: "Mode fixture"}), run: async task => ({text: task.mode})})`)
-  const child = spawn(process.execPath, ["adapter.mts"], { cwd: space.dir, stdio: ["pipe", "pipe", "inherit"] })
-  const rpc = connect({
-    lines: readline.createInterface({ input: child.stdout! }),
-    send: (line) => child.stdin!.write(line + "\n"),
-    handlers: {},
-  })
-  try {
-    await rpc.request("initialize", { product: { id: "mode", title: "Mode" } })
-    await rpc.request("task/mode", { mode: "execute", revision: 2 })
-    await rpc.request("task/mode", { mode: "auto", revision: 1 })
-    const result = await rpc.request<{ text: string }>("task/run", { mode: "auto", prompt: "Probe", cwd: space.dir })
-    expect(result.text).toBe("execute")
-  } finally {
-    await stop(child)
-    await rpc.closed
-  }
-}, 30000)

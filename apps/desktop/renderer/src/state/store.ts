@@ -17,7 +17,7 @@ import type {
   GlobalEvent,
   Message,
   Part,
-  SessionMode,
+  PermissionLevel,
   Project,
   ProviderListResponses,
   Session,
@@ -72,7 +72,7 @@ type State = {
   /** Directory → status snapshot applied; a session without a status entry is then idle */
   statusLoaded: Record<string, boolean>
   /** Default permission mode for new conversations */
-  mode: SessionMode
+  mode: PermissionLevel
   /** Invalid config entries the engine skipped */
   warnings: ConfigWarning[]
 }
@@ -87,7 +87,7 @@ export const [state, setState] = createStore<State>({
   remote: {},
   loaded: {},
   statusLoaded: {},
-  mode: "execute",
+  mode: "ask",
   warnings: [],
 })
 
@@ -481,25 +481,43 @@ export async function ensureSession(id: string, directory: string) {
 
 const modeChanges = new Map<string, Promise<void>>()
 
-export function waitForSessionMode(id: string) {
+export function waitForPermissionLevel(id: string) {
   return modeChanges.get(rootOf(state.sessions, id))
 }
 
 /** Mode selections share the root queue, and successful responses apply without waiting for SSE. */
-export function setSessionMode(id: string, directory: string, mode: SessionMode) {
+export function setPermissionLevel(id: string, directory: string, mode: PermissionLevel) {
   const owner = rootOf(state.sessions, id)
   const pending = (modeChanges.get(owner) ?? Promise.resolve())
     .catch(() => {})
     .then(async () => {
-      const info = await call(client(directory).session.setMode({ sessionID: id, sessionMode: mode }))
+      const info = await call(
+        client(directory).session.setPermissionLevel({
+          sessionID: id,
+          permissionLevel: mode,
+          expectedRevision: session(owner)?.permissionRevision ?? 0,
+        }),
+      ).catch(async (error) => {
+        if (error?.status === 409) {
+          await call(client(directory).session.get({ sessionID: owner }))
+            .then((current) =>
+              setState(
+                "sessions",
+                produce((draft) => reduce(draft, { type: "session.updated", properties: { info: current } } as Event)),
+              ),
+            )
+            .catch(() => {})
+        }
+        throw error
+      })
       setState(
         "sessions",
         produce((draft) => {
           reduce(draft, { type: "session.updated", properties: { info } } as Event)
           const root = draft.session.find((session) => session.id === owner)
-          if (root && (info.modeRevision ?? 0) >= (root.modeRevision ?? 0)) {
-            root.sessionMode = info.sessionMode
-            root.modeRevision = info.modeRevision
+          if (root && (info.permissionRevision ?? 0) >= (root.permissionRevision ?? 0)) {
+            root.permissionLevel = info.permissionLevel
+            root.permissionRevision = info.permissionRevision
           }
         }),
       )

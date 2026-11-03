@@ -53,6 +53,7 @@ function status(product: Product) {
     permission,
     product.connected && !product.capabilities.textStreaming ? t("conversation.outputOnCompletion") : undefined,
     t("settings.agentConnections.controlWarning"),
+    t(`settings.agentConnections.isolation.${product.capabilities.control?.isolation ?? "unknown"}`),
     product.capabilities.control &&
       t("settings.agentConnections.coverage", {
         operations: product.capabilities.control.reportedOperations.join(", ") || "—",

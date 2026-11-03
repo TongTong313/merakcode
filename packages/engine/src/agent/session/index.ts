@@ -25,7 +25,8 @@ import { Snapshot } from "../../infra/project/snapshot"
 
 import type { Provider } from "../model/provider"
 import { PermissionNext } from "../permission/next"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
+import { Text } from "../prompt/text"
 import { Global } from "../../infra/global"
 import { failure } from "@merakcode/log"
 import { SessionTitle } from "@merakcode/util/session-title"
@@ -73,6 +74,7 @@ export namespace Session {
         )
         .optional(),
       parentID: Identifier.schema("session").optional(),
+      taskOrigin: z.object({ sessionID: z.string(), messageID: z.string() }).optional(),
       summary: z
         .object({
           additions: z.number(),
@@ -90,11 +92,13 @@ export namespace Session {
         archived: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
+      permissionGrants: PermissionNext.Ruleset.optional(),
       // Session mode (plan, execute, auto); this is the source of truth. It is written back with each user
       // message and can change mid-run via setMode. The runner recomputes the ruleset before each tool call,
       // so a switch takes effect immediately. Child sessions follow the root session (Loop.modeOf).
-      sessionMode: SessionMode.Schema.optional(),
-      modeRevision: z.number().int().nonnegative().optional(),
+      permissionLevel: PermissionLevel.Schema.optional(),
+      permissionRevision: z.number().int().nonnegative().optional(),
+      permissionNotice: z.literal("legacy-permissions-reset").optional(),
       undoRedo: z
         .object({
           stack: z.array(
@@ -368,6 +372,16 @@ export namespace Session {
     metadata?: Info["metadata"]
     target?: SessionTarget.Value
   }) {
+    let taskOrigin: Info["taskOrigin"]
+    if (input.parentID) {
+      taskOrigin = SessionStore.find(input.parentID)?.taskOrigin
+      if (!taskOrigin)
+        for await (const message of Message.stream(input.parentID)) {
+          if (message.info.role !== "user" || !Message.userSourceTexts(message).some((text) => text.trim())) continue
+          taskOrigin = { sessionID: input.parentID, messageID: message.info.id }
+          break
+        }
+    }
     const workspaceFolders =
       Instance.workspace.folders.length > 1
         ? Instance.workspace.folders.map((f) => ({ name: f.name, path: f.path }))
@@ -382,8 +396,11 @@ export namespace Session {
       directory: input.directory,
       workspaceFolders,
       parentID: input.parentID,
+      taskOrigin,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
+      permissionLevel: PermissionLevel.DEFAULT,
+      permissionRevision: 0,
       time: {
         created: Date.now(),
         updated: Date.now(),
@@ -427,8 +444,8 @@ export namespace Session {
       }
       return migrateRevertToUndoRedo({
         ...session,
-        sessionMode: owner.sessionMode,
-        modeRevision: owner.modeRevision,
+        permissionLevel: owner.permissionLevel ?? PermissionLevel.DEFAULT,
+        permissionRevision: owner.permissionRevision ?? 0,
       }) as Info
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error
@@ -584,60 +601,36 @@ export namespace Session {
 
   /**
    * Switches the session mode (plan, execute, auto) while it may be running.
-   * - Writes the session sessionMode (source of truth); the runner's liveExecution reads it before every tool call,
+   * - Writes the session permissionLevel (source of truth); the runner's liveExecution reads it before every tool call,
    *   so it applies immediately, and child sessions follow the root session.
    * - Re-evaluates pending approvals under the new mode and releases those that are now allowed, without waiting for
    *   the next prompt.
    */
-  export const setMode = fn(
+  export const setPermissionLevel = fn(
     z.object({
       sessionID: Identifier.schema("session"),
-      sessionMode: SessionMode.Schema,
-      expectedRevision: z.number().int().nonnegative().optional(),
+      permissionLevel: PermissionLevel.Schema,
+      expectedRevision: z.number().int().nonnegative(),
     }),
     async (input) => {
-      const started = Date.now()
-      const selectedID = input.sessionID
-      input = { ...input, sessionID: await rootID(selectedID) }
-      const current = await get(input.sessionID).catch(() => undefined)
-      let applied = false
-      const result = await update(
-        input.sessionID,
+      const root = await rootID(input.sessionID)
+      const conflictMessage = await Text.pick({
+        zh: "权限级别已变化，请刷新后重试。",
+        en: "The permission level changed. Refresh before retrying.",
+      })
+      await update(
+        root,
         (draft) => {
-          if (input.expectedRevision !== undefined && (draft.modeRevision ?? 0) !== input.expectedRevision) return
-          if (draft.sessionMode === input.sessionMode) return
-          draft.sessionMode = input.sessionMode
-          draft.modeRevision = (draft.modeRevision ?? 0) + 1
-          applied = true
+          if ((draft.permissionRevision ?? 0) !== input.expectedRevision)
+            throw new PermissionLevel.ConflictError({ message: conflictMessage })
+          delete draft.permissionNotice
+          if (draft.permissionLevel === input.permissionLevel) return
+          draft.permissionLevel = input.permissionLevel
+          draft.permissionRevision = (draft.permissionRevision ?? 0) + 1
         },
         { touch: false },
-      ).then(
-        (session) => session,
-        (error) => {
-          log.error("setMode failed", {
-            sessionID: input.sessionID,
-            from: current?.sessionMode,
-            to: input.sessionMode,
-            duration: Date.now() - started,
-            ...failure(error),
-          })
-          throw error
-        },
       )
-      if (!applied) return selectedID === result.id ? result : get(selectedID)
-      // Re-evaluate pending approvals (including subagents') under the new mode.
-      // Dynamic import breaks the cycle flush -> runner -> session.
-      await import("../permission/flush").then((m) => m.PermissionFlush.run())
-      await import("../permission/operations").then((m) =>
-        m.ModeOperations.reconcile(result.id, input.sessionMode, result.modeRevision ?? 0),
-      )
-      log.info("setMode completed", {
-        sessionID: input.sessionID,
-        from: current?.sessionMode,
-        to: input.sessionMode,
-        duration: Date.now() - started,
-      })
-      return selectedID === result.id ? result : get(selectedID)
+      return get(input.sessionID)
     },
   )
 

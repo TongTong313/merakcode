@@ -1,101 +1,35 @@
 import os from "os"
 import path from "path"
+import { realpathSync, statSync } from "node:fs"
 import { SandboxPolicy } from "./sandbox-policy"
 import { Global } from "../../infra/global/index"
 import { Instance } from "../../infra/project/instance"
 import { PermissionNext } from "./next"
-import type { SessionMode } from "./mode"
+import type { PermissionLevel } from "./level"
+import type { Session } from "../session"
+import type { Agent } from "../agent"
 
-/**
- * Permission policy: classifies a tool call as an operation (permission key + pattern), then gives the default
- * decision for the session's permission mode.
- *
- * Rule chain order (evaluate takes the last matching rule):
- *   mode defaults -> user rules (config, "always allow", session grants) -> mode enforcement (read-only denies)
- * Execute applies user rules; plan additionally forbids project mutations. Auto bypasses the safety rule chain.
- */
+/** Classifies actual operations and combines the selected root level with explicit and hard agent limits. */
 export namespace PermissionPolicy {
-  export type Mode = SessionMode.Value
-  type Action = PermissionNext.Action
-
-  export type Grant = PermissionNext.Grant
-
-  /** One operation to evaluate */
-  export type Ask = PermissionNext.Check
-
-  type Table = Record<string, Record<Exclude<Mode, "auto">, Action>>
-
-  const allow = { plan: "allow", execute: "allow" } as const
-  const ask = { plan: "ask", execute: "ask" } as const
-
-  /** Default decision for each operation in the three modes */
-  const DEFAULTS: Table = {
-    // Unregistered tools (plugins, etc.)
-    "*": { plan: "ask", execute: "ask" },
-    // Read-only tools and internal protocols
-    read: allow,
-    glob: allow,
-    grep: allow,
-    ls: allow,
-    lsp: allow,
-    skill: allow,
-    todowrite: allow,
-    delegate: allow,
-    question: allow,
-    plan_enter: allow,
-    plan_exit: allow,
-    doom_loop: allow,
-    external_read: { plan: "ask", execute: "ask" },
-    sensitive_read: ask,
-    // File edits
-    edit: { plan: "deny", execute: "allow" },
-    protected_write: { plan: "deny", execute: "ask" },
-    // MerakCode's own config holds the permission rules; execute asks before changing it
-    config_write: { plan: "deny", execute: "ask" },
-    external_write: { plan: "deny", execute: "ask" },
-    // Commands
-    bash_readonly: allow,
-    bash: { plan: "deny", execute: "ask" },
-    bash_delete: { plan: "deny", execute: "ask" },
-    bash_risky: { plan: "deny", execute: "ask" },
-    // Wiping the system or the home folder, formatting, raw disk writes: only an explicit allow in the config runs them
-    bash_forbidden: { plan: "deny", execute: "deny" },
-    // A command that may change things while the sandbox is not ready (sandbox.mode "preferred")
-    bash_unsandboxed: { plan: "deny", execute: "ask" },
-    sandbox: { plan: "deny", execute: "ask" },
-    // Subagents, workflows, scheduled tasks, MCP
-    subagent: { plan: "ask", execute: "ask" },
-    workflow_run: { plan: "ask", execute: "ask" },
-    cron: { plan: "ask", execute: "ask" },
-    mcp: { plan: "ask", execute: "ask" },
-    // Network: always ask outside the allowlist
-    network: ask,
+  function realTarget(file: string): string {
+    const absolute = path.resolve(file)
+    try {
+      return realpathSync.native(absolute)
+    } catch (error) {
+      if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error
+      const parent = path.dirname(absolute)
+      return parent === absolute ? absolute : path.join(realTarget(parent), path.basename(absolute))
+    }
   }
+  export type Mode = PermissionLevel.Value
+  export type Grant = PermissionNext.Grant
+  export type Ask = PermissionNext.Check
 
   /** Permission keys that edit files */
   export const WRITE = ["edit", "protected_write", "config_write", "external_write"]
-  /** Permission keys that run commands, including leaving the sandbox */
-  export const COMMAND = [
-    "bash_readonly",
-    "bash",
-    "bash_delete",
-    "bash_risky",
-    "bash_forbidden",
-    "bash_unsandboxed",
-    "sandbox",
-  ]
-
-  /** Read-only mode denies, placed after user rules */
-  const READONLY_DENY = [...WRITE, ...COMMAND.filter((key) => key !== "bash_readonly")]
-
   /** Hard agent limits: denies whole keys, placed after user rules and grants so no mode can lift them */
   export function deny(...keys: string[]): PermissionNext.Ruleset {
     return keys.map((permission) => ({ permission, pattern: "*", action: "deny" as const }))
-  }
-
-  /** Read-only: denies file edits and non-read-only commands */
-  export function readonly(): PermissionNext.Ruleset {
-    return deny(...READONLY_DENY)
   }
 
   /** Default allowlist, only for downloading dependencies and code; uploads are caught by the risky command rules */
@@ -141,19 +75,44 @@ export namespace PermissionPolicy {
 
   /** Full rule chain: mode defaults + user rules + mode enforcement */
   export function ruleset(mode: Mode, user: PermissionNext.Ruleset = []): PermissionNext.Ruleset {
-    if (mode === "auto") return [{ permission: "*", pattern: "*", action: "allow" }]
-    const defaults: PermissionNext.Ruleset = Object.entries(DEFAULTS).map(([permission, actions]) => ({
-      permission,
-      pattern: "*",
-      action: actions[mode],
-    }))
-    const network = NETWORK_ALLOW.map((pattern) => ({ permission: "network", pattern, action: "allow" as const }))
-    return [...defaults, ...network, ...user, ...(mode === "plan" ? readonly() : [])]
+    if (mode === "ask" || mode === "autoApprove")
+      return [
+        { permission: "*", pattern: "*", action: "ask" },
+        ...(mode === "autoApprove"
+          ? [
+              "read",
+              "glob",
+              "grep",
+              "ls",
+              "skill",
+              "edit",
+              "bash_readonly",
+              "plan_generate",
+              "plan_edit",
+              "plan_read_chunk",
+              "plan_simplify",
+            ].map((permission) => ({ permission, pattern: "*", action: "allow" as const }))
+          : []),
+        ...user.filter((rule) => rule.action === "deny"),
+      ]
+    return [{ permission: "*", pattern: "*", action: "allow" }]
   }
 
-  /** Permission keys unavailable in plan mode */
-  export function forbiddenInPlan(permission: string) {
-    return READONLY_DENY.includes(permission)
+  export function execution(input: {
+    agent: Agent.Info
+    session: Session.Info
+    permissionLevel?: PermissionLevel.Value
+    child?: boolean
+    grants?: PermissionNext.Ruleset
+  }): PermissionNext.Ruleset {
+    const mode = input.session.permissionLevel ?? "ask"
+    const user = PermissionNext.merge(input.agent.permission, input.grants ?? [], input.session.permission ?? [])
+    const child = Boolean(input.session.parentID) || input.child === true
+    return PermissionNext.merge(
+      PermissionPolicy.ruleset(mode, user),
+      input.agent.profile?.restrictedRules ?? [],
+      child ? PermissionNext.appendForbidNestedSubagentRule() : [],
+    )
   }
 
   /**
@@ -221,19 +180,32 @@ export namespace PermissionPolicy {
     /** A directory (search root of ls, glob, grep): evaluated and granted for the whole directory */
     directory?: boolean
   }): Ask {
-    const target = path.resolve(input.path)
-    const root = input.workspace.find((dir) => inside(path.resolve(dir), target))
+    const logical = path.resolve(input.path)
+    const target = realTarget(logical)
+    const root = input.workspace.map(realTarget).find((dir) => inside(dir, target))
+    const identity = (() => {
+      try {
+        return statSync(target)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+        throw error
+      }
+    })()
+    const hardlinked = identity?.isFile() && identity.nlink > 1
     const permission = (() => {
       if (input.op === "read") {
-        if (sensitive(target, input.home)) return "sensitive_read"
+        if (hardlinked || sensitive(logical, input.home) || sensitive(target, realTarget(input.home)))
+          return "sensitive_read"
         return root ? "read" : "external_read"
       }
-      if (config(target)) return "config_write"
+      if (config(target) || config(logical)) return "config_write"
       if (!root) return "external_write"
+      if (hardlinked) return "protected_write"
       const relative = path.relative(path.resolve(root), target)
       return relative.split(path.sep).some((part) => part.startsWith(".")) ? "protected_write" : "edit"
     })()
     const pattern = PermissionNext.normalizePath(target)
+    if (hardlinked) return { permission, pattern, grants: [] }
     if (input.directory) {
       const all = pattern.replace(/\/$/, "") + "/*"
       return { permission, pattern: all, grants: [{ scope: "directory", pattern: all }] }

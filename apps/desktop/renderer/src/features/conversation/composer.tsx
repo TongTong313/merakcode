@@ -1,4 +1,4 @@
-import type { FilePartInput, SessionMode } from "@merakcode/sdk/client"
+import type { FilePartInput, PermissionLevel } from "@merakcode/sdk/client"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import Brain from "lucide-solid/icons/brain"
 import Eye from "lucide-solid/icons/eye"
@@ -13,7 +13,7 @@ import Zap from "lucide-solid/icons/zap"
 import { createEffect, createResource, createSignal, For, on, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
-import { bridge, mac } from "../../lib/bridge"
+import { bridge, mac, storage } from "../../lib/bridge"
 import { call, client } from "../../state/client"
 import { choice, choiceKey, choose, find, usage } from "../../state/models"
 import { connected, session } from "../../state/store"
@@ -28,17 +28,22 @@ import { COMPACT, loadCommands } from "./send"
 import { apply, fileUrl, trigger, type Trigger } from "./suggest"
 import { mentionChoices, type Product } from "./members"
 
-const MODES: SessionMode[] = ["plan", "execute", "auto"]
+const MODES: PermissionLevel[] = ["ask", "autoApprove", "fullTakeover"]
 export const modeOptions = () => [
-  { value: "plan" as const, label: t("mode.plan"), description: t("mode.plan.desc"), icon: Eye },
-  { value: "execute" as const, label: t("mode.execute"), description: t("mode.execute.desc"), icon: Hand },
+  { value: "ask" as const, label: t("permissionLevel.ask"), description: t("permissionLevel.ask.desc"), icon: Eye },
   {
-    value: "auto" as const,
-    label: t("mode.auto"),
-    description: t("mode.auto.desc"),
+    value: "autoApprove" as const,
+    label: t("permissionLevel.autoApprove"),
+    description: t("permissionLevel.autoApprove.desc"),
+    icon: Hand,
+  },
+  {
+    value: "fullTakeover" as const,
+    label: t("permissionLevel.fullTakeover"),
+    description: t("permissionLevel.fullTakeover.desc"),
     icon: Zap,
     tone: "danger" as const,
-    badge: t("mode.auto.badge"),
+    badge: t("permissionLevel.fullTakeover.badge"),
   },
 ]
 
@@ -117,7 +122,7 @@ export function Composer(props: {
   products?: readonly Product[]
   onSubmit: (submission: Submission) => Promise<unknown> | void
   onStop?: () => void
-  onMode?: (mode: SessionMode) => void | Promise<void>
+  onMode?: (mode: PermissionLevel) => void | Promise<void>
 }) {
   let input!: HTMLTextAreaElement
   const [text, setText] = createSignal(props.draft?.text ?? "")
@@ -132,6 +137,16 @@ export function Composer(props: {
   /** For a conversation in a worktree, files and commands are looked up in the worktree directory */
   const dir = () => (props.sessionID ? session(props.sessionID)?.directory : undefined) ?? props.directory
   const key = () => choiceKey(props.sessionID, props.directory)
+  createEffect(() => {
+    const info = props.sessionID ? session(props.sessionID) : undefined
+    if (info?.permissionNotice !== "legacy-permissions-reset") return
+    const key = `permission-migration:${info.id}`
+    void (async () => {
+      if (await storage.get(key, false)) return
+      await storage.set(key, true)
+      toast({ kind: "info", title: t("permissionLevel.migrated") })
+    })()
+  })
   let attachmentEpoch = 0
   createEffect(
     on(
@@ -272,7 +287,7 @@ export function Composer(props: {
     }
   }
 
-  const setMode = (mode: SessionMode) => {
+  const setMode = (mode: PermissionLevel) => {
     if (props.disabled) return
     if (props.onMode) return props.onMode(mode)
     choose(props.sessionID, props.directory, { mode })
@@ -466,10 +481,10 @@ export function Composer(props: {
             <Paperclip class="icon" />
           </button>
         </Show>
-        <Tip label={t("mode.hint")} placement="top">
+        <Tip label={t("permissionLevel.hint")} placement="top">
           <Select
-            class={current().mode === "auto" ? "chip session-mode-auto" : "chip"}
-            label={t("mode.named", {
+            class={current().mode === "fullTakeover" ? "chip session-mode-auto" : "chip"}
+            label={t("permissionLevel.named", {
               mode: modeOptions().find((option) => option.value === current().mode)?.label ?? "",
             })}
             options={modeOptions()}
@@ -510,7 +525,7 @@ export function Composer(props: {
           </Tip>
         </Show>
         <Show when={!props.external}>
-          <SandboxField directory={dir()} disabled={props.disabled} />
+          <SandboxField directory={dir()} disabled={props.disabled} permissionLevel={current().mode} />
         </Show>
         <Show
           when={props.busy && !text().trim()}

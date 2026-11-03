@@ -1,4 +1,4 @@
-import type { AssistantMessage, SessionMode, UserMessage } from "@merakcode/sdk/client"
+import type { AssistantMessage, PermissionLevel, UserMessage } from "@merakcode/sdk/client"
 import { batch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { messagesOf, session, state } from "./store"
@@ -61,7 +61,7 @@ export function shownSmallModel(): string | undefined {
 }
 
 /** Composer choices, kept per conversation (per directory for a new conversation) */
-type Choice = { model?: ModelRef; variantByModel?: Record<string, string>; mode?: SessionMode }
+type Choice = { model?: ModelRef; variantByModel?: Record<string, string>; mode?: PermissionLevel }
 const [choices, setChoices] = createStore<Record<string, Choice>>({})
 
 export const choiceKey = (sessionID: string | undefined, directory: string) => sessionID ?? `new:${directory}`
@@ -106,7 +106,7 @@ export function choice(sessionID: string | undefined, directory: string) {
   return {
     model: resolved,
     variant: stored ?? sent ?? official,
-    mode: owner?.sessionMode ?? own.mode ?? state.mode,
+    mode: owner?.permissionLevel ?? own.mode ?? state.mode,
   }
 }
 

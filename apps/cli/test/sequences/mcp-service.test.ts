@@ -10,7 +10,7 @@ test("S06 concurrent MCP selection ends disabled in both backend and session wor
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "S06 serialized selection" })
-    const first = await drive(kit, session.id, "S06_LOOKUP 先运行真实 lookup")
+    const first = await drive(kit, session.id, "S06_LOOKUP 先运行真实 lookup", ["mcp"])
     await kit.assertResult(session.id, first.userID, "S06_DONE")
     const initialized = (await ledger(kit.root)).filter((item) => item.method === "initialized").length
     const connecting = kit.api("/mcp/sequence/connect", "POST")
@@ -22,7 +22,7 @@ test("S06 concurrent MCP selection ends disabled in both backend and session wor
     await Promise.all([connecting, disconnecting])
     expect((await kit.api("/mcp")).sequence.status).toBe("disabled")
     const calls = (await ledger(kit.root)).filter((item) => item.method === "call").length
-    const unavailable = await drive(kit, session.id, "S06_UNAVAILABLE 并发切换后不得再调用 lookup")
+    const unavailable = await drive(kit, session.id, "S06_UNAVAILABLE 并发切换后不得再调用 lookup", ["read"])
     const messages = await kit.api(`/session/${session.id}/message`)
     expect(
       messages.some(
@@ -45,11 +45,11 @@ test("S06 deleting MCP removes stale tool from the existing session worker", asy
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "S06 remove existing worker" })
-    const first = await drive(kit, session.id, "S06_LOOKUP 删除前使用 lookup")
+    const first = await drive(kit, session.id, "S06_LOOKUP 删除前使用 lookup", ["mcp"])
     await kit.assertResult(session.id, first.userID, "S06_DONE")
     const calls = (await ledger(kit.root)).filter((item) => item.method === "call").length
     await kit.api("/mcp/sequence?scope=project", "DELETE")
-    const next = await drive(kit, session.id, "S06_UNAVAILABLE 删除后不使用旧工具")
+    const next = await drive(kit, session.id, "S06_UNAVAILABLE 删除后不使用旧工具", ["read"])
     const messages = await kit.api(`/session/${session.id}/message`)
     expect(
       messages.some(
@@ -78,7 +78,7 @@ test("S06 MCP server process dies: its tools are withdrawn, ordinary read stays 
     process.kill(server.pid)
     await until(async () => (await kit.api("/mcp")).sequence.status === "failed", "MCP marked failed after exit")
     const session = await kit.api("/session", "POST", { title: "S06 optional MCP failure" })
-    const result = await drive(kit, session.id, "S06_READ 可选 MCP 故障后读取普通文件")
+    const result = await drive(kit, session.id, "S06_READ 可选 MCP 故障后读取普通文件", ["read"])
     await kit.assertResult(session.id, result.userID, "S06_READ_DONE")
     expect(kit.observations[0].tools.includes("sequence_lookup")).toBe(false)
     success = true
@@ -92,7 +92,7 @@ test("S06.01 P/MM configured enabled MCP initializes and its real lookup result 
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "S06.01" })
-    const result = await drive(kit, session.id, "S06_LOOKUP 使用已配置的 lookup 读取标记")
+    const result = await drive(kit, session.id, "S06_LOOKUP 使用已配置的 lookup 读取标记", ["mcp"])
     const current = await kit.assertResult(session.id, result.userID, "S06_DONE")
     const tools = current.flatMap((item) => item.parts).filter((part) => part.type === "tool")
     expect(tools).toHaveLength(1)

@@ -15,7 +15,7 @@ import { MCP } from "@merakcode/engine/agent/mcp/index"
 import { Bus } from "@merakcode/engine/infra/bus/index"
 import { SubAgentTool } from "@merakcode/engine/agent/tools/subagent"
 import { Provider } from "@merakcode/engine/agent/model/provider"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 /**
@@ -93,6 +93,7 @@ async function withTools(fn: (ctx: { dir: string; tools: Record<string, AITool> 
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       const user = (await Session.updateInfo({
         id: Identifier.ascending("message"),
         role: "user",
@@ -128,7 +129,7 @@ async function withTools(fn: (ctx: { dir: string; tools: Record<string, AITool> 
         bypassAgentCheck: false,
         messages: [{ info: user, parts: [] }],
         // Auto mode so plugin tools don't wait on approval; only the gate hooks are under test
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
       })
       await fn({ dir: tmp.path, tools })
     },
@@ -218,6 +219,7 @@ describe("gate hooks reject by throwing", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
           const settled = Promise.withResolvers<Message.ToolPart>()
           const unsubscribe = Bus.subscribe(Message.Event.PartUpdated, (event) => {
             const part = event.properties.part
@@ -260,6 +262,7 @@ describe("gate hooks reject by throwing", () => {
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({})
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
           const running = Loop.command({
             sessionID: session.id,
             command: "gatecheck",

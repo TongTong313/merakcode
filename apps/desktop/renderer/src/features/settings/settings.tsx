@@ -20,7 +20,7 @@ import { bridge } from "../../lib/bridge"
 import type { SandboxStatus } from "@merakcode/sdk/client"
 import { call, client } from "../../state/client"
 import { available, shownDefaultModel, shownSmallModel } from "../../state/models"
-import { loadConfig, loadProviders, setState, state, updateConfig } from "../../state/store"
+import { loadConfig, loadProviders, state, updateConfig } from "../../state/store"
 import { setUi, ui, type SettingsSection } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
 import { Select } from "../../ui/select"
@@ -28,7 +28,6 @@ import { Switch } from "../../ui/switch"
 import { Confirm, Dialog } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 import { trackOverlay } from "../../ui/overlay"
-import { modeOptions } from "../conversation/composer"
 import { providerLabel } from "../../ui/provider-label"
 import { nextPicker } from "./model-visibility"
 import { CustomDialog } from "./relay-dialog"
@@ -80,14 +79,6 @@ function General() {
               setTheme(value)
               void bridge?.setTheme(value)
             }}
-          />
-        </Row>
-        <Row label={t("settings.defaultMode")} desc={t("settings.defaultMode.desc")}>
-          <Segmented
-            label={t("settings.defaultMode")}
-            options={modeOptions()}
-            value={state.mode}
-            onChange={(mode) => setState("mode", mode)}
           />
         </Row>
       </div>

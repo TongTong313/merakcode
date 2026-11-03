@@ -5,12 +5,19 @@ import { setLocale } from "../../i18n"
 import { setState } from "../../state/store"
 import { Messages } from "./messages"
 
+const http = vi.hoisted(() => ({ plan: undefined as unknown }))
+vi.mock("undici", () => ({
+  Agent: class {},
+  fetch: async () => Response.json(http.plan ?? { sessionID: "none", content: "", revision: 0 }),
+}))
+
 const png =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
 
 let cleanup = () => {}
 beforeEach(() => setLocale("zh"))
 afterEach(() => {
+  http.plan = undefined
   cleanup()
   cleanup = () => {}
 })
@@ -182,6 +189,7 @@ test("a finished turn folds its work under a completed-time line and keeps the f
   expect(turn.textContent).toContain("登录做好了")
   expect(turn.querySelector(".changes-card")?.textContent).toContain("本轮改动")
   expect(turn.querySelectorAll(".assistant")).toHaveLength(1)
+  expect(turn.lastElementChild).toBe(turn.querySelector(".changes-card"))
 
   line!.click()
   expect(line!.getAttribute("aria-expanded")).toBe("true")
@@ -194,6 +202,116 @@ test("a finished turn folds its work under a completed-time line and keeps the f
   expect(line!.getAttribute("aria-expanded")).toBe("false")
   expect(turn.textContent).not.toContain("我先看看")
   expect(turn.textContent).not.toContain("npm test")
+})
+
+test("the official plan card stays in its first successful reply after a later turn", async () => {
+  const sessionID = "plan-anchor"
+  http.plan = {
+    sessionID,
+    path: "/official.md",
+    content: "# Updated plan",
+    revision: 2,
+    humanRevision: 0,
+    source: "agent",
+    status: "review",
+    anchorMessageID: "a1",
+  }
+  conversation(
+    sessionID,
+    [
+      userMessage("u1", sessionID, 0),
+      assistantMessage("a1", sessionID, "u1", 1, 2),
+      userMessage("u2", sessionID, 3),
+      assistantMessage("a2", sessionID, "u2", 4, 5),
+    ],
+    {
+      u1: [textPart("p1", sessionID, "u1", "生成方案")],
+      a1: [textPart("p2", sessionID, "a1", "首次提交")],
+      u2: [textPart("p3", sessionID, "u2", "修改方案")],
+      a2: [textPart("p4", sessionID, "a2", "已经更新")],
+    },
+  )
+  const host = renderConversation(sessionID)
+  await vi.waitFor(() => expect(host.querySelectorAll(".plan-card")).toHaveLength(1))
+  expect(host.querySelector(".plan-card")?.closest(".turn")).toBe(host.querySelector(".turn"))
+  expect(host.querySelector(".plan-card")?.getAttribute("data-anchor-message-id")).toBe("a1")
+})
+
+test("a group reply split by a delegate keeps exactly one official plan card", async () => {
+  const sessionID = "group-plan-anchor"
+  http.plan = {
+    sessionID,
+    path: "/official.md",
+    content: "# Group plan",
+    revision: 1,
+    humanRevision: 0,
+    source: "agent",
+    status: "review",
+    anchorMessageID: "group-a",
+  }
+  conversation(
+    sessionID,
+    [
+      userMessage("group-u", sessionID, 0),
+      assistantMessage("group-a", sessionID, "group-u", 1, 2),
+      assistantMessage("group-later", sessionID, "group-u", 3, 4),
+    ],
+    {
+      "group-u": [textPart("group-p1", sessionID, "group-u", "生成方案")],
+      "group-later": [textPart("group-later-p", sessionID, "group-later", "LATER_REPLY")],
+      "group-a": [
+        textPart("group-p2", sessionID, "group-a", "提交计划"),
+        {
+          id: "group-call",
+          type: "tool",
+          messageID: "group-a",
+          sessionID,
+          callID: "delegate",
+          tool: "delegate",
+          state: {
+            status: "completed",
+            input: { seat: "Member", task: "Research" },
+            output: "Done",
+            title: "Member",
+            metadata: { phase: "completed" },
+            time: { start: 1, end: 2 },
+          },
+        },
+        textPart("group-p3", sessionID, "group-a", "调研完成"),
+      ],
+    },
+  )
+  const host = document.createElement("div")
+  document.body.append(host)
+  const dispose = render(
+    () => (
+      <Messages
+        sessionID={sessionID}
+        directory="/p"
+        group={{ seats: [], events: [], products: [] }}
+        onReviewTurn={() => {}}
+        onReviewFile={() => {}}
+      />
+    ),
+    host,
+  )
+  cleanup = () => {
+    dispose()
+    host.remove()
+  }
+  await vi.waitFor(() => expect(host.querySelectorAll(".plan-card")).toHaveLength(1))
+  expect(host.querySelector(".plan-card")?.getAttribute("data-anchor-message-id")).toBe("group-a")
+  const card = host.querySelector(".plan-card")!
+  const leaf = (text: string) =>
+    [...host.querySelectorAll("*")].find(
+      (element) => element.childElementCount === 0 && element.textContent?.trim() === text,
+    )!
+  await vi.waitFor(() => {
+    expect(leaf("调研完成")).toBeDefined()
+    expect(leaf("LATER_REPLY")).toBeDefined()
+  })
+  expect(leaf("调研完成").compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(card.compareDocumentPosition(leaf("LATER_REPLY")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 
 test("a running turn stays open and folds when the session goes idle", () => {
@@ -222,6 +340,33 @@ test("a running turn stays open and folds when the session goes idle", () => {
   expect(turn.textContent).not.toContain("思考了 1 秒")
   expect(turn.textContent).toContain("正在回答")
   expect(turn.querySelectorAll(".assistant")).toHaveLength(1)
+})
+
+test.each(["busy", "retry"] as const)("the %s status precedes the final changed-files card", (type) => {
+  const sessionID = `changes-${type}`
+  conversation(
+    sessionID,
+    [userMessage("changes-u", sessionID, 0), assistantMessage("changes-a", sessionID, "changes-u", 1)],
+    {
+      "changes-u": [textPart("changes-p", sessionID, "changes-u", "Continue")],
+      "changes-a": [editPart("changes-edit", sessionID, "changes-a")],
+    },
+    "busy",
+  )
+  if (type === "retry")
+    setState("sessions", "session_status", sessionID, {
+      type: "retry",
+      attempt: 2,
+      message: "Controlled retry",
+      next: Date.now() + 1000,
+    })
+  const host = renderConversation(sessionID)
+  const changes = host.querySelector(".changes-card")!
+  const working = host.querySelector(".working")!
+  expect(changes).not.toBeNull()
+  expect(working).not.toBeNull()
+  expect(working.compareDocumentPosition(changes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(changes.parentElement?.lastElementChild).toBe(changes)
 })
 
 test("a queued next message does not fold a still-running turn or unfold a finished one", () => {

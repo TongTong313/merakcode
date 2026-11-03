@@ -1,11 +1,19 @@
-import type { Command, FilePartInput, Message, SessionMode, Worktree } from "@merakcode/sdk/client"
+import type { Command, FilePartInput, Message, PermissionLevel, Worktree } from "@merakcode/sdk/client"
 import { MerakCodeError } from "@merakcode/sdk/errors"
 import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { baseName, sameDir } from "../../lib/route"
 import { choice, modelKey } from "../../state/models"
 import { call, client } from "../../state/client"
-import { listen, messagesOf, partsOf, reload, session, waitForSessionMode } from "../../state/store"
+import {
+  listen,
+  messagesOf,
+  partsOf,
+  reload,
+  session,
+  setPermissionLevel,
+  waitForPermissionLevel,
+} from "../../state/store"
 import type { Submission } from "./composer"
 import { buffersFor } from "../code/state"
 import { startsSessionPlan } from "@merakcode/sdk/client"
@@ -35,8 +43,9 @@ function parseCommand(text: string) {
  * Sends a message with the model, reasoning effort and permission mode chosen in the composer.
  * "/command args" runs a command (/compact compacts the context); anything else is a plain message.
  */
-export async function send(sessionID: string, directory: string, submission: Submission, mode?: SessionMode) {
-  await waitForSessionMode(sessionID)
+export async function send(sessionID: string, directory: string, submission: Submission, mode?: PermissionLevel) {
+  if (mode !== undefined) await setPermissionLevel(sessionID, directory, mode)
+  await waitForPermissionLevel(sessionID)
   if (startsSessionPlan(submission.text)) {
     if (!(await buffersFor(directory).savePlan(sessionID))) throw new Error(t("plan.saveFirst"))
   }
@@ -55,7 +64,6 @@ export async function send(sessionID: string, directory: string, submission: Sub
       client(dir).session.promptAsync({
         sessionID,
         parts: [{ type: "text", text: submission.text }],
-        sessionMode: mode,
       }),
     )
     return
@@ -73,7 +81,6 @@ export async function send(sessionID: string, directory: string, submission: Sub
         arguments: command.arguments,
         ...(picked.model ? { model: modelKey(picked.model) } : {}),
         ...(picked.variant ? { variant: picked.variant } : {}),
-        sessionMode: mode,
         ...(submission.files.length ? { parts: submission.files } : {}),
       }),
     )
@@ -85,7 +92,6 @@ export async function send(sessionID: string, directory: string, submission: Sub
       parts: [...(submission.text ? [{ type: "text" as const, text: submission.text }] : []), ...submission.files],
       ...(picked.model ? { model: picked.model } : {}),
       ...(picked.variant ? { variant: picked.variant } : {}),
-      sessionMode: mode,
     }),
   )
 }

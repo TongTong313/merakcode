@@ -14,7 +14,7 @@ import { Agent } from "../agent"
 import { Plugin } from "../plugin"
 import { Config } from "@merakcode/engine/agent/settings/index"
 import { ProviderTransform } from "../model/transform"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 import { SessionContextLayer } from "./context-layer"
 import { SessionContextBudget } from "./context-budget"
 import { SessionToolResult } from "../session/tool-result"
@@ -213,9 +213,14 @@ export namespace SessionCompaction {
    * Shared by the SessionMemory summary path and the LLM summary path.
    */
   async function restoreAfterCompaction(
-    input: { sessionID: string; messages: Message.FullMsg[]; auto: boolean },
+    input: {
+      sessionID: string
+      messages: Message.FullMsg[]
+      auto: boolean
+      onContinuation?: (messageID: string) => void
+    },
     userInfo: Message.UserInfo,
-    continuationSessionMode: SessionMode.Value | undefined,
+    continuationPermissionLevel: PermissionLevel.Value | undefined,
     model: Provider.Model,
   ) {
     if (!input.auto) return
@@ -225,9 +230,10 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       time: { created: Date.now() },
       agent: userInfo.agent,
-      sessionMode: continuationSessionMode,
+      permissionLevel: continuationPermissionLevel,
       model: userInfo.model,
     })
+    input.onContinuation?.(continueMsg.id)
     // Write the restored attachment parts first so their smaller ids sort before the continuation instruction in
     // toModelMessages. Re-injecting todos, plan, recent files and skills lost to compaction gives the model a clear
     // signal that work remains. Each category handles its own errors: failures are logged and never block.
@@ -305,12 +311,13 @@ export namespace SessionCompaction {
     sessionID: string
     abort: AbortSignal
     auto: boolean
+    onContinuation?: (messageID: string) => void
   }) {
     const parent = input.messages.findLast((m) => m.info.id === input.parentID)
     if (!parent || parent.info.role !== "user") throw new Error("Compaction parent user message not found")
     const userInfo = parent.info as Message.UserInfo
     const part = parent.parts.find((p): p is Message.CompactionPart => p.type === "compaction")
-    const continuationSessionMode = part?.sessionMode ?? userInfo.sessionMode
+    const continuationPermissionLevel = part?.permissionLevel ?? userInfo.permissionLevel
 
     // Persist the activated deferred tools on the compaction part. After compaction, filterCompacted drops earlier
     // messages (including tool_search calls), so scanActivatedTools reads them back from the boundary; otherwise
@@ -363,7 +370,7 @@ export namespace SessionCompaction {
       })
       assistantInfo.finish = "stop"
       await Session.updateInfo(assistantInfo)
-      await restoreAfterCompaction(input, userInfo, continuationSessionMode, model)
+      await restoreAfterCompaction(input, userInfo, continuationPermissionLevel, model)
       await finalizeCompaction(input.sessionID, assistantInfo)
       return "continue"
     }
@@ -470,7 +477,7 @@ When constructing the summary, try to stick to this template:
     })
 
     if (result === "continue" && input.auto) {
-      await restoreAfterCompaction(input, userInfo, continuationSessionMode, model)
+      await restoreAfterCompaction(input, userInfo, continuationPermissionLevel, model)
     }
     if (processor.message.error) {
       // Only auto compaction failures count toward the breaker; a failed manual /compact does not.
@@ -519,7 +526,7 @@ When constructing the summary, try to stick to this template:
         providerID: z.string(),
         modelID: z.string(),
       }),
-      sessionMode: SessionMode.Schema.optional(),
+      permissionLevel: PermissionLevel.Schema.optional(),
       auto: z.boolean(),
     }),
     async (input) => {
@@ -539,8 +546,9 @@ When constructing the summary, try to stick to this template:
         sessionID: userInfo.sessionID,
         type: "compaction",
         auto: input.auto,
-        sessionMode: input.sessionMode,
+        permissionLevel: input.permissionLevel,
       })
+      return userInfo.id
     },
   )
 }

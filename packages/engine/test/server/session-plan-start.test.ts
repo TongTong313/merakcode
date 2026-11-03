@@ -5,7 +5,7 @@ import { SessionPlan } from "../../src/agent/session/plan"
 import { Instance } from "../../src/infra/project/instance"
 import { Loop } from "../../src/agent/loop"
 import { Message } from "../../src/agent/session/message"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { fakeModel } from "../../../sdk/js/test/fixture/model"
 import { WorkflowState } from "../../src/app/task/workflow/state"
 import { Bus } from "../../src/infra/bus"
@@ -17,7 +17,7 @@ test.each(["button", "chat"])(
   async (kind) => {
     let seen = ""
     const model = await fakeModel((turn) => {
-      seen = turn.system
+      seen = JSON.stringify(turn.request)
       return { text: "DONE" }
     })
     try {
@@ -93,7 +93,7 @@ test("queued button and chat starts share one execution of the latest saved plan
       return { text: "FIRST_DONE" }
     }
     executions++
-    system = turn.system
+    system = JSON.stringify(turn.request)
     executing.resolve()
     await finish.promise
     return { text: "PLAN_DONE" }
@@ -129,19 +129,20 @@ test("queued button and chat starts share one execution of the latest saved plan
         })
         const first = Loop.prompt({
           sessionID: session.id,
-          sessionMode: "plan",
+          permissionLevel: "ask",
           parts: [{ type: "text", text: "BLOCK_FIRST" }],
         })
         await entered.promise
         const chat = Loop.prompt({
           sessionID: session.id,
-          sessionMode: "plan",
+          permissionLevel: "ask",
           parts: [{ type: "text", text: "开始执行" }],
         })
         expect((await request(`/session/${session.id}/plan/start`)).status).toBe(200)
         const pending = await SessionPlan.get(session.id)
+        expect(pending).toMatchObject({ queued: true })
         expect(pending.execution).toBeUndefined()
-        expect((await Session.get(session.id)).sessionMode).toBe("plan")
+        expect((await Session.get(session.id)).permissionLevel).toBe("ask")
         const latest = await SessionPlan.save({
           sessionID: session.id,
           content: "PLAN_B_HUMAN",
@@ -196,7 +197,7 @@ test.each(["workflow", "command", "child command"])(
         return { text: "CHILD_LAUNCHED" }
       }
       if (turn.prompt.includes("[Background bash job")) {
-        continued.resolve(turn.system)
+        continued.resolve(JSON.stringify(turn.request))
         return { text: "BACKGROUND_DONE" }
       }
       if (turn.prompt.includes("CHILD_FROZEN")) {
@@ -205,7 +206,7 @@ test.each(["workflow", "command", "child command"])(
           await release.promise
           return { tool: "read", args: { filePath: "input.txt" } }
         }
-        continued.resolve(turn.system)
+        continued.resolve(JSON.stringify(turn.request))
         return { text: "CHILD_DONE" }
       }
       if (turn.prompt === "开始执行" && !launched) {
@@ -260,6 +261,7 @@ console.log("background-result")`,
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({ title: "Background execution plan" })
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
           const completed = Promise.withResolvers<void>()
           const unsubscribe = Bus.subscribe(SessionPlan.Updated, (event) => {
             if (event.properties.sessionID === session.id && event.properties.status === "completed")
@@ -273,7 +275,7 @@ console.log("background-result")`,
           })
           const root = Loop.prompt({
             sessionID: session.id,
-            sessionMode: "auto",
+            permissionLevel: "fullTakeover",
             parts: [{ type: "text", text: "开始执行" }],
           })
           try {

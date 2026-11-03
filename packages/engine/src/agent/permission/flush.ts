@@ -5,7 +5,7 @@ import { PermissionNext } from "./next"
 import { Session } from "../session/index"
 import { Message } from "../session/message"
 import { Agent } from "../agent"
-import { Loop } from "../loop/index"
+import { permissionLevelOf } from "./permission-level"
 import { PermissionPolicy } from "./policy"
 
 const log = Log.create({ service: "permission.flush" })
@@ -65,7 +65,7 @@ export namespace PermissionFlush {
       const owner = root === session.id ? session : await Session.get(root)
       const config = await Config.get()
       const user = PermissionNext.merge(PermissionNext.fromUserConfig(config.permission ?? {}), owner.permission ?? [])
-      const mode = await Loop.modeOf(owner)
+      const mode = await permissionLevelOf(owner)
       const enforced = PermissionPolicy.ruleset(mode, user)
       if (checks.some((check) => PermissionNext.evaluate(check.permission, check.pattern, enforced).action === "deny"))
         return enforced
@@ -78,11 +78,11 @@ export namespace PermissionFlush {
     if (!msg || msg.info.role !== "assistant" || Message.isExternal(msg.info)) return undefined
     const agent = await Agent.get(msg.info.agent).catch(() => undefined)
     if (!agent) return undefined
-    return Loop.buildToolExecutionRuleset({
+    return PermissionPolicy.execution({
       agent,
       session,
-      sessionMode: await Loop.modeOf(session),
-      grants: await Loop.grantsOf(session),
+      permissionLevel: await permissionLevelOf(session),
+      grants: await PermissionNext.grants(await Session.rootID(session.id)),
     })
   }
 }

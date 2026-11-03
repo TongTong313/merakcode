@@ -16,7 +16,7 @@ for (const id of ["S17.02", "S17.03"]) {
         kit,
         session.id,
         failed ? "S17_FAIL 委派明确失败后恢复" : "S17_ORDINARY 委派读取实际文件",
-        ["subagent"],
+        ["subagent", "read"],
       )
       const current = await kit.assertResult(
         session.id,
@@ -47,7 +47,7 @@ for (const id of ["S17.02", "S17.03"]) {
             .flatMap((entry: { parts: { tool?: string }[] }) => entry.parts)
             .some((part: { tool?: string }) => part.tool === "write"),
         ).toBe(false)
-        const follow = await drive(kit, session.id, "S17_FOLLOW 失败后独立读取")
+        const follow = await drive(kit, session.id, "S17_FOLLOW 失败后独立读取", ["read"])
         await kit.assertResult(session.id, follow.userID, "S17_FOLLOW_DONE")
       } else {
         await kit.assertResult(children[0].id, childUser.info.id, "S17_CHILD_DONE")

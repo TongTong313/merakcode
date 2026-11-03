@@ -16,6 +16,7 @@ import { Config } from "@merakcode/engine/agent/settings/index"
 import { SessionCompaction } from "../context/compaction"
 import { PermissionNext } from "../permission/next"
 import { Question } from "../session/question"
+import { NamedError, errorCode, readableErrorText } from "@merakcode/util/error"
 
 /** Throttle (ms) for persisting tool-input-delta, matching text-delta, so SSE and the store are not flooded */
 const TOOL_INPUT_FLUSH_MS = 50
@@ -503,7 +504,9 @@ export namespace SessionProcessor {
                     const rejected =
                       value.error instanceof PermissionNext.RejectedError ||
                       value.error instanceof Question.RejectedError
-                    const message = value.error instanceof Error ? value.error.message : String(value.error)
+                    const failure = value.error instanceof NamedError ? value.error.toObject() : value.error
+                    const code = errorCode(failure)
+                    const message = `${code ? `${code}: ` : ""}${readableErrorText(failure, String(value.error))}`
                     const errorKind: Message.ToolErrorKind = rejected
                       ? "permission_rejected"
                       : /(?:timed?\s*out|timeout)/i.test(message)

@@ -119,7 +119,7 @@ describe("ToolRegistry trusted origin", () => {
   test("register cannot claim a builtin origin through tool fields or initialization results", async () => {
     await withInstance(async () => {
       const tool = Object.assign(
-        Tool.define("read", async () => ({
+        Tool.define("origin-fixture", async () => ({
           origin: "builtin" as const,
           description: "registered custom read",
           parameters: z.object({}),
@@ -130,29 +130,29 @@ describe("ToolRegistry trusted origin", () => {
         { origin: "builtin", metadata: { origin: "builtin" } },
       )
       await ToolRegistry.register(tool)
-      const reads = (await ToolRegistry.tools(model, agent)).filter((item) => item.id === "read")
-      expect(reads.map((item) => item.origin)).toEqual(["builtin", "custom"])
-      expect(reads[1].description).toBe("registered custom read")
-      expect((await ToolRegistry.ids()).filter((id) => id === "read")).toHaveLength(2)
-      expect(await ToolRegistry.dynamicIds()).toContain("read")
+      const reads = (await ToolRegistry.tools(model, agent)).filter((item) => item.id === "origin-fixture")
+      expect(reads.map((item) => item.origin)).toEqual(["custom"])
+      expect(reads[0].description).toBe("registered custom read")
+      expect((await ToolRegistry.ids()).filter((id) => id === "origin-fixture")).toHaveLength(1)
+      expect(await ToolRegistry.dynamicIds()).toContain("origin-fixture")
 
       await ToolRegistry.register({
         ...tool,
         init: async () => ({ ...(await tool.init()), description: "replacement" }),
       })
-      const replaced = (await ToolRegistry.tools(model, agent)).filter((item) => item.id === "read")
-      expect(replaced.map((item) => item.origin)).toEqual(["builtin", "custom"])
-      expect(replaced[1].description).toBe("replacement")
+      const replaced = (await ToolRegistry.tools(model, agent)).filter((item) => item.id === "origin-fixture")
+      expect(replaced.map((item) => item.origin)).toEqual(["custom"])
+      expect(replaced[0].description).toBe("replacement")
     })
   })
 
-  test("registering the same builtin object still creates a custom entry", async () => {
+  test("registering a reserved builtin cannot create a replacement entry", async () => {
     await withInstance(async () => {
       await ToolRegistry.register(ReadTool)
       await ToolRegistry.register(ReadTool)
       const reads = (await ToolRegistry.tools(model, agent)).filter((item) => item.id === "read")
-      expect(reads.map((item) => item.origin)).toEqual(["builtin", "custom"])
-      expect(reads[0].parameters).toBe(reads[1].parameters)
+      expect(reads.map((item) => item.origin)).toEqual(["builtin"])
+      expect(await ToolRegistry.dynamicIds()).not.toContain("read")
       expect("origin" in ReadTool).toBe(false)
     })
   })

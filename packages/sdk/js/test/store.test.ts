@@ -21,20 +21,25 @@ function run(events: Event[]) {
 describe("sessions", () => {
   test("a delayed session event cannot replace a mode already received in an HTTP reply", () => {
     const state = run([
-      { type: "session.updated", properties: { info: session("ses_a", { sessionMode: "plan", modeRevision: 2 }) } },
       {
         type: "session.updated",
-        properties: { info: session("ses_a", { sessionMode: "auto", modeRevision: 1, title: "Renamed" }) },
+        properties: { info: session("ses_a", { permissionLevel: "ask", permissionRevision: 2 }) },
+      },
+      {
+        type: "session.updated",
+        properties: {
+          info: session("ses_a", { permissionLevel: "fullTakeover", permissionRevision: 1, title: "Renamed" }),
+        },
       },
     ] as Event[])
-    expect(state.session[0]?.sessionMode).toBe("plan")
-    expect(state.session[0]?.modeRevision).toBe(2)
+    expect(state.session[0]?.permissionLevel).toBe("ask")
+    expect(state.session[0]?.permissionRevision).toBe(2)
     expect(state.session[0]?.title).toBe("Renamed")
     applyEvent(state, {
       type: "session.updated",
-      properties: { info: session("ses_a", { sessionMode: "execute", modeRevision: 3 }) },
+      properties: { info: session("ses_a", { permissionLevel: "autoApprove", permissionRevision: 3 }) },
     } as Event)
-    expect(state.session[0]?.sessionMode).toBe("execute")
+    expect(state.session[0]?.permissionLevel).toBe("autoApprove")
   })
   test.each(["accept", "decline"] as const)("ignores session snapshots older than a takeover %s", (decision) => {
     const state = createSessionsState()

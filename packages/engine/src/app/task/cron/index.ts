@@ -5,7 +5,7 @@ import { Storage } from "../../../infra/storage/storage"
 import { Log } from "@merakcode/log/logger"
 import { Loop } from "../../../agent/loop/index"
 import { Session } from "../../../agent/session"
-import type { SessionMode } from "../../../agent/permission/mode"
+import type { PermissionLevel } from "../../../agent/permission/level"
 import type { Workspace } from "../../../infra/project/workspace"
 
 /**
@@ -50,7 +50,7 @@ export namespace CronScheduler {
     interval: number
     prompt: string
     agent?: string
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
     model?: {
       providerID: string
       modelID: string
@@ -159,7 +159,7 @@ export namespace CronScheduler {
         parts: [{ type: "text", text: task.prompt }],
         noReply: false,
         ...(task.agent ? { agent: task.agent } : {}),
-        sessionMode: await Loop.modeOf(await Session.get(task.sessionID)),
+        permissionLevel: await Loop.modeOf(await Session.get(task.sessionID)),
         ...(task.model ? { model: task.model } : {}),
       })
       if (!ran) {
@@ -187,7 +187,7 @@ export namespace CronScheduler {
     prompt: string
     sessionID: string
     agent?: string
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
     model?: {
       providerID: string
       modelID: string
@@ -203,7 +203,7 @@ export namespace CronScheduler {
       interval: params.interval,
       prompt: params.prompt,
       agent: params.agent,
-      sessionMode: params.sessionMode,
+      permissionLevel: params.permissionLevel,
       model: params.model,
       createdAt: Date.now(),
       nextRun: Date.now() + params.interval,
@@ -222,7 +222,7 @@ export namespace CronScheduler {
       id,
       interval: params.interval,
       agent: params.agent,
-      sessionMode: params.sessionMode,
+      permissionLevel: params.permissionLevel,
       providerID: params.model?.providerID,
       modelID: params.model?.modelID,
     })

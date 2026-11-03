@@ -1,6 +1,6 @@
 import { Text } from "../prompt/text"
 import { SessionStore } from "../session/store"
-import { SessionMode } from "./mode"
+import { PermissionLevel } from "./level"
 import { PermissionNext } from "./next"
 import { PermissionExecution } from "./execution"
 import { NamedError } from "@merakcode/util/error"
@@ -16,10 +16,32 @@ export namespace ModeOperations {
     controller: AbortController
     checks: PermissionNext.Check[]
     sandboxed?: boolean
+    approved?: PermissionNext.Check[]
     rules?: () => Promise<PermissionNext.Ruleset>
     done: Promise<void>
+    stopping?: string
   }
   const active = new Map<string, Operation>()
+  const transitions = new Map<string, Set<{ message: string }>>()
+
+  export function block(rootID: string, message: string) {
+    const ticket = { message }
+    const pending = transitions.get(rootID) ?? new Set<{ message: string }>()
+    pending.add(ticket)
+    transitions.set(rootID, pending)
+    return () => {
+      pending.delete(ticket)
+      if (pending.size === 0) transitions.delete(rootID)
+    }
+  }
+
+  export function assertAvailable(sessionID: string) {
+    const root = rootOf(sessionID)
+    const pending =
+      transitions.get(root)?.values().next().value?.message ??
+      [...active.values()].find((operation) => rootOf(operation.sessionID) === root && operation.stopping)?.stopping
+    if (pending) throw new PendingError({ message: pending })
+  }
 
   export function register(
     sessionID: string,
@@ -28,6 +50,7 @@ export namespace ModeOperations {
     controller: AbortController,
     rules?: () => Promise<PermissionNext.Ruleset>,
   ) {
+    assertAvailable(sessionID)
     const settled = Promise.withResolvers<void>()
     const key = `${sessionID}:${callID}`
     active.set(key, { sessionID, tool, controller, checks: [], rules, done: settled.promise })
@@ -46,11 +69,21 @@ export namespace ModeOperations {
     if (operation) operation.sandboxed = sandboxed
   }
 
+  export function authorize(sessionID: string, callID: string | undefined, admission: PermissionNext.Admission) {
+    const operation = active.get(`${sessionID}:${callID}`)
+    if (operation) operation.approved = [...(operation.approved ?? []), ...admission.approved]
+  }
+
   export function inherit(sessionID: string, from: string | undefined, to: string) {
     const source = active.get(`${sessionID}:${from}`)
     const target = active.get(`${sessionID}:${to}`)
     if (source && target)
-      Object.assign(target, { checks: [...source.checks], rules: source.rules, sandboxed: source.sandboxed })
+      Object.assign(target, {
+        checks: [...source.checks],
+        approved: source.approved,
+        rules: source.rules,
+        sandboxed: source.sandboxed,
+      })
   }
 
   function rootOf(sessionID: string) {
@@ -63,41 +96,50 @@ export namespace ModeOperations {
     return session?.id ?? sessionID
   }
 
-  export async function reconcile(rootID: string, mode: SessionMode.Value, revision: number) {
+  export async function reconcile(rootID: string, mode: PermissionLevel.Value, revision: number) {
     const isCurrent = () => {
       const session = SessionStore.find(rootID)
-      return session?.sessionMode === mode && (session.modeRevision ?? 0) === revision
+      return session?.permissionLevel === mode && (session.permissionRevision ?? 0) === revision
     }
     if (!isCurrent()) return
-    if (mode === "auto") return
-    const sandboxMode = await PermissionExecution.mode()
+    if (mode === "fullTakeover") return
     const affected = (
       await Promise.all(
         [...active.entries()].map(async ([key, operation]) => {
           if (rootOf(operation.sessionID) !== rootID || orchestration.has(operation.tool)) return undefined
           const rules = await operation.rules?.()
+          if (operation.checks.length > 0 && operation.approved === undefined && operation.sandboxed === undefined)
+            return undefined
+          const ready = await PermissionExecution.ready(operation.checks)
+          const manuallyApproved = (check: PermissionNext.Check) =>
+            operation.approved?.some(
+              (approved) => approved.permission === check.permission && approved.pattern === check.pattern,
+            ) === true
           const forbidden =
-            !SessionMode.allowsTool(mode, operation.tool) ||
+            !PermissionLevel.allowsTool(mode, operation.tool) ||
             (operation.checks.length > 0 &&
               (!rules ||
-                operation.checks.some(
-                  (check) => PermissionNext.evaluate(check.permission, check.pattern, rules).action !== "allow",
-                ))) ||
-            (sandboxMode !== "off" && operation.sandboxed === false)
+                operation.checks.some((check) => {
+                  const action = PermissionNext.evaluate(check.permission, check.pattern, rules).action
+                  return action === "deny" || (!(ready && action === "allow") && !manuallyApproved(check))
+                }))) ||
+            (operation.sandboxed === false && !operation.checks.every(manuallyApproved))
           return forbidden ? { key, operation } : undefined
         }),
       )
     ).filter((item) => item !== undefined)
     // Rule providers can await I/O. A newer switch supersedes this decision before any cancellation is sent.
     if (!isCurrent()) return
+    const pendingMessage = await Text.pick({
+      zh: "新权限已生效，但仍有操作尚未确认停止。该对话暂不派发新操作。",
+      en: "The new policy is active, but an operation has not confirmed cancellation. New work for this conversation is blocked.",
+    })
+    if (!isCurrent()) return
+    for (const { operation } of affected) operation.stopping = pendingMessage
     for (const { operation } of affected)
       operation.controller.abort(new Error("Operation interrupted by session mode change"))
     for (const { key, operation } of affected)
       await PermissionNext.abortTool(operation.sessionID, key.slice(operation.sessionID.length + 1))
-    const pendingMessage = await Text.pick({
-      zh: "新模式已生效，但仍有操作尚未确认中止。",
-      en: "The new policy is active, but an operation has not confirmed cancellation.",
-    })
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([

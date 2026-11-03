@@ -1,5 +1,5 @@
 import type { Session } from "."
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 import { Database } from "../../infra/storage/db"
 
 /**
@@ -13,7 +13,7 @@ export namespace SessionStore {
   function decode(row: Row): Info {
     const info = JSON.parse(row.data)
     if (!info || typeof info !== "object" || info.id !== row.id) throw new SyntaxError("session data does not match")
-    return SessionMode.migrate(info)
+    return PermissionLevel.migrate(info)
   }
 
   function decodeAll(rows: Row[]) {

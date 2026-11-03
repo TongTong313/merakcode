@@ -1,14 +1,48 @@
 import { expect, test } from "vitest"
-import { SessionMode } from "@merakcode/engine/agent/permission/mode"
+import { PermissionLevel } from "@merakcode/engine/agent/permission/level"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Session } from "@merakcode/engine/agent/session/index"
 import { SessionStore } from "@merakcode/engine/agent/session/store"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
 import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
 import { Question } from "@merakcode/engine/agent/session/question/index"
 import { Server } from "@merakcode/engine/app/server/server"
 import { ModeOperations } from "@merakcode/engine/agent/permission/operations"
+
+test("repeating the selected level preserves an unfinished transition block", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const controller = new AbortController()
+      const finish = ModeOperations.register(session.id, "waiting", "write", controller, async () => {
+        entered.resolve()
+        await release.promise
+        return PermissionPolicy.ruleset("ask")
+      })
+      controller.signal.addEventListener("abort", finish, { once: true })
+      const switching = selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
+      let cleanup = () => {}
+      try {
+        await entered.promise
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
+        expect(() => {
+          cleanup = ModeOperations.register(session.id, "new-work", "write", new AbortController())
+        }).toThrow(ModeOperations.PendingError)
+      } finally {
+        cleanup()
+        release.resolve()
+        finish()
+        await switching
+      }
+    },
+  })
+})
 
 test("explicit child mode selection changes the effective root policy and child prompts preserve it", async () => {
   const { Loop } = await import("../../src/agent/loop")
@@ -18,27 +52,27 @@ test("explicit child mode selection changes the effective root policy and child 
     fn: async () => {
       const root = await Session.create({})
       const child = await Session.create({ parentID: root.id })
-      await Session.setMode({ sessionID: root.id, sessionMode: "auto" })
+      await selectPermissionLevel({ sessionID: root.id, permissionLevel: "fullTakeover" })
       const response = await Server.App().request(
-        `/session/${child.id}/mode?directory=${encodeURIComponent(tmp.path)}`,
+        `/session/${child.id}/permission-level?directory=${encodeURIComponent(tmp.path)}`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionMode: "plan" }),
+          body: JSON.stringify({ permissionLevel: "ask", expectedRevision: 1 }),
         },
       )
       expect(response.status).toBe(200)
-      expect((await Session.get(root.id)).sessionMode).toBe("plan")
-      expect((await Session.get(child.id)).sessionMode).toBe("plan")
+      expect((await Session.get(root.id)).permissionLevel).toBe("ask")
+      expect((await Session.get(child.id)).permissionLevel).toBe("ask")
       await Loop.prompt({
         sessionID: child.id,
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         noReply: true,
         model: { providerID: "openai", modelID: "gpt-4" },
         parts: [{ type: "text", text: "Inherited task" }],
       })
-      expect((await Session.get(root.id)).sessionMode).toBe("plan")
-      expect((await Session.get(child.id)).sessionMode).toBe("plan")
+      expect((await Session.get(root.id)).permissionLevel).toBe("ask")
+      expect((await Session.get(child.id)).permissionLevel).toBe("ask")
     },
   })
 })
@@ -49,7 +83,7 @@ test("an asynchronous permission reevaluation cannot approve after a newer execu
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       // An in-flight caller may register checks from its earlier execute policy.
       let allowed = false
       const waiting = PermissionNext.ask({
@@ -58,7 +92,7 @@ test("an asynchronous permission reevaluation cannot approve after a newer execu
         permission: "external_write",
         metadata: {},
         checks: [{ permission: "external_write", pattern: "/outside/file", grants: [] }],
-        ruleset: PermissionPolicy.ruleset("execute"),
+        ruleset: PermissionPolicy.ruleset("autoApprove"),
       }).then(
         () => {
           allowed = true
@@ -71,11 +105,11 @@ test("an asynchronous permission reevaluation cannot approve after a newer execu
       const older = PermissionNext.recheck(async () => {
         entered.resolve()
         await release.promise
-        return PermissionPolicy.ruleset("auto")
+        return PermissionPolicy.ruleset("fullTakeover")
       })
       try {
         await entered.promise
-        await Session.setMode({ sessionID: session.id, sessionMode: "execute" })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
         release.resolve()
         await older
         expect(allowed).toBe(false)
@@ -91,7 +125,7 @@ test("an asynchronous permission reevaluation cannot approve after a newer execu
   })
 })
 
-test.each(["auto", "execute"] as const)(
+test.each(["fullTakeover", "autoApprove"] as const)(
   "an older plan switch cannot cancel operations allowed by newer %s",
   async (latestMode) => {
     await using tmp = await tmpdir({ git: true })
@@ -99,7 +133,7 @@ test.each(["auto", "execute"] as const)(
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
         const entered = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
         const controller = new AbortController()
@@ -113,13 +147,13 @@ test.each(["auto", "execute"] as const)(
           return [{ permission: "*", pattern: "*", action: "allow" }]
         })
         controller.signal.addEventListener("abort", finish, { once: true })
-        const older = Session.setMode({ sessionID: session.id, sessionMode: "plan" })
+        const older = selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
         try {
           await entered.promise
-          await Session.setMode({ sessionID: session.id, sessionMode: latestMode })
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: latestMode })
           release.resolve()
           await older
-          expect((await Session.get(session.id)).sessionMode).toBe(latestMode)
+          expect((await Session.get(session.id)).permissionLevel).toBe(latestMode)
           expect(controller.signal.aborted).toBe(false)
         } finally {
           release.resolve()
@@ -132,10 +166,10 @@ test.each(["auto", "execute"] as const)(
 )
 
 test("sessions expose plan, execute and auto with execute as the default", () => {
-  expect(SessionMode.Schema.options).toEqual(["plan", "execute", "auto"])
-  expect(SessionMode.normalize()).toBe("execute")
-  expect(SessionMode.Schema.safeParse("readonly").success).toBe(false)
-  expect(SessionMode.Schema.safeParse("ask").success).toBe(false)
+  expect(PermissionLevel.Schema.options).toEqual(["ask", "autoApprove", "fullTakeover"])
+  expect(PermissionLevel.DEFAULT).toBe("ask")
+  expect(PermissionLevel.Schema.safeParse("readonly").success).toBe(false)
+  expect(PermissionLevel.Schema.safeParse("plan").success).toBe(false)
 })
 
 test("legacy HTTP mode requests preserve read-only authorization and reject old auto", async () => {
@@ -151,31 +185,49 @@ test("legacy HTTP mode requests preserve read-only authorization and reject old 
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         })
-      expect((await request(`/session/${session.id}/permission-mode`, { permissionMode: "readonly" })).status).toBe(200)
-      expect((await Session.get(session.id)).sessionMode).toBe("plan")
+      expect((await request(`/session/${session.id}/permission-mode`, { permissionMode: "readonly" })).status).toBe(400)
+      expect((await Session.get(session.id)).permissionLevel).toBe("ask")
       expect(
         (
           await request(`/session/${session.id}/message`, {
-            permissionMode: "auto",
+            permissionMode: "fullTakeover",
             noReply: true,
             parts: [{ type: "text", text: "Legacy request" }],
           })
         ).status,
       ).toBe(400)
-      expect((await Session.get(session.id)).sessionMode).toBe("plan")
+      expect((await Session.get(session.id)).permissionLevel).toBe("ask")
     },
   })
 })
 
-test("auto refuses new questions without publishing a pending interaction", async () => {
+test("fullTakeover preserves business questions and requires the actual human answer", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
-      await expect(Question.ask({ sessionID: session.id, questions: [] })).rejects.toThrow(/interaction/i)
-      expect(await Question.list()).toEqual([])
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
+      const answering = Question.ask({
+        sessionID: session.id,
+        questions: [
+          {
+            header: "Database",
+            question: "Choose a database",
+            options: [{ label: "SQLite", description: "Local database" }],
+          },
+        ],
+      })
+      answering.catch(() => {})
+      try {
+        await expect.poll(async () => (await Question.list()).length).toBe(1)
+        const request = (await Question.list())[0]!
+        await Question.reply({ requestID: request.id, answers: [["SQLite"]] })
+        expect(await answering).toEqual([["SQLite"]])
+      } finally {
+        for (const request of await Question.list()) await Question.reject(request.id)
+        await answering.catch(() => {})
+      }
     },
   })
 })
@@ -192,28 +244,29 @@ test("switching to auto preserves an already registered question and its human a
       })
       const pending = await Question.list()
       expect(pending).toHaveLength(1)
-      await Session.setMode({ sessionID: session.id, sessionMode: "auto" })
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       expect((await Question.list())[0]?.id).toBe(pending[0]!.id)
       await Question.reply({ requestID: pending[0]!.id, answers: [["Keep"]] })
       expect(await answering).toEqual([["Keep"]])
-      expect((await Session.get(session.id)).sessionMode).toBe("auto")
+      expect((await Session.get(session.id)).permissionLevel).toBe("fullTakeover")
     },
   })
 })
 
-test("auto permits a denied sensitive operation without creating approval requests or grants", async () => {
+test("fullTakeover permits a denied sensitive operation without creating approval requests or grants", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
       await expect(
         PermissionNext.ask({
           sessionID: session.id,
           permission: "sensitive_read",
           metadata: {},
           checks: [{ permission: "sensitive_read", pattern: "/secret", grants: [] }],
-          ruleset: PermissionPolicy.ruleset("auto", PermissionNext.fromConfig({ "*": "deny" })),
+          ruleset: PermissionPolicy.ruleset("fullTakeover", PermissionNext.fromConfig({ "*": "deny" })),
         }),
       ).resolves.toBeUndefined()
       expect(await PermissionNext.list()).toEqual([])
@@ -228,41 +281,53 @@ test("reading legacy sessions migrates modes without expanding old auto authoriz
     directory: tmp.path,
     fn: async () => {
       for (const [legacy, expected] of [
-        ["readonly", "plan"],
-        ["ask", "execute"],
-        ["auto", "execute"],
+        ["readonly", "ask"],
+        ["ask", "ask"],
+        ["auto", "ask"],
       ]) {
         const session = await Session.create({})
         SessionStore.put({ ...session, permissionMode: legacy } as Session.Info)
-        expect((await Session.get(session.id)).sessionMode).toBe(expected)
+        expect((await Session.get(session.id)).permissionLevel).toBe(expected)
+        expect(await Session.get(session.id)).toMatchObject({ permissionNotice: "legacy-permissions-reset" })
       }
     },
   })
 })
 
-test("a stale prompt mode cannot overwrite a newer manual mode change", async () => {
+test.each([undefined, -1, "1"])(
+  "a persisted permission level without a valid revision %s restores ask",
+  async (revision) => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        SessionStore.put({ ...session, permissionLevel: "fullTakeover", permissionRevision: revision } as Session.Info)
+        expect(await Session.get(session.id)).toMatchObject({ permissionLevel: "ask", permissionRevision: 0 })
+      },
+    })
+  },
+)
+
+test("a stale permission selection cannot overwrite a newer manual choice", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
-      await Session.setMode({ sessionID: session.id, sessionMode: "plan" })
-      const current = await Session.get(session.id)
-      const saved = await Session.setMode({
-        sessionID: session.id,
-        sessionMode: "auto",
-        expectedRevision: session.modeRevision ?? 0,
-      })
-      expect(saved.sessionMode).toBe("plan")
-      expect(saved.modeRevision).toBe(current.modeRevision)
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
+      await expect(
+        selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover", expectedRevision: 0 }),
+      ).rejects.toBeInstanceOf(PermissionLevel.ConflictError)
+      expect((await Session.get(session.id)).permissionLevel).toBe("autoApprove")
     },
   })
 })
 
-test("execute excludes plan mutation tools while plan and auto can update the artifact", () => {
-  for (const tool of ["plan_write", "plan_edit"]) {
-    expect(SessionMode.allowsTool("plan", tool)).toBe(true)
-    expect(SessionMode.allowsTool("execute", tool)).toBe(false)
-    expect(SessionMode.allowsTool("auto", tool)).toBe(true)
+test("all permission levels expose official plan tools and hide retired mode tools", () => {
+  for (const level of PermissionLevel.Schema.options) {
+    for (const tool of ["plan_generate", "plan_edit"]) expect(PermissionLevel.allowsTool(level, tool)).toBe(true)
+    for (const tool of ["plan_enter", "plan_exit", "plan_write"])
+      expect(PermissionLevel.allowsTool(level, tool)).toBe(false)
   }
 })

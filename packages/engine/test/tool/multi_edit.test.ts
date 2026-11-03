@@ -1,7 +1,6 @@
 import { Session } from "@merakcode/engine/agent/session/index"
 import { describe, expect, test } from "vitest"
 import path from "path"
-import * as fs from "fs/promises"
 // Import Session first so message.ts is fully initialized; otherwise the tool/multi_edit -> ../lsp ->
 // ../session/message import chain sees the LSP namespace before it is ready.
 import "@merakcode/engine/agent/session/index"
@@ -9,19 +8,19 @@ import { MultiEditTool } from "@merakcode/engine/agent/tools/multi_edit"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { FileTime } from "@merakcode/engine/infra/file/time"
-import { Global } from "@merakcode/engine/infra/global/index"
+import { SessionPlan } from "@merakcode/engine/agent/session/plan"
 import { Filesystem } from "@merakcode/util/filesystem"
 
 const makeCtx = (
   sessionID = "test",
-  overrides?: { agent?: string; sessionMode?: "plan" | "execute"; ask?: () => Promise<void> },
+  overrides?: { agent?: string; permissionLevel?: "ask" | "autoApprove" | "fullTakeover"; ask?: () => Promise<void> },
 ) => ({
   sessionID,
   messageID: "",
   callID: "",
   agent: overrides?.agent ?? "build",
-  sessionMode: overrides?.sessionMode ?? ("execute" as const),
-  kind: overrides?.sessionMode ?? ("execute" as const),
+  permissionLevel: overrides?.permissionLevel ?? ("autoApprove" as const),
+  kind: overrides?.permissionLevel ?? ("autoApprove" as const),
   abort: AbortSignal.any([]),
   messages: [],
   ruleset: [],
@@ -240,45 +239,33 @@ describe("multi_edit: sequential dependency between edits", () => {
   })
 })
 
-describe("multi_edit: plan bypass", () => {
-  test("in plan mode, paths under Global.Path.data/plans do not ask", async () => {
-    // On the plan bypass, multi_edit skips the permission ask (and Snapshot, Bus and LSP; only the ask is checked).
-    // ask throws, so passing proves the bypass took effect.
-    const planDir = path.join(Global.Path.data, "plans")
-    await fs.mkdir(planDir, { recursive: true })
-    let planFile = ""
+describe("multi_edit: official plan protection", () => {
+  test("generic edits cannot replace the dedicated official plan save", async () => {
     await using tmp = await tmpdir({ git: true })
-    try {
-      await Instance.provide({
-        directory: tmp.path,
-        fn: async () => {
-          const session = await Session.create({})
-          planFile = Session.plan(session)
-          const ctx = makeCtx(session.id, {
-            sessionMode: "plan",
-            ask: async () => {
-              throw new Error("ask should NOT be called on plan-bypass path")
-            },
-          })
-          const tool = await MultiEditTool.init()
-          // The empty oldString creates the plan file; the second edit patches the seed content
-          await tool.execute(
-            {
-              filePath: planFile,
-              edits: [
-                { oldString: "", newString: "# Plan\n\nstep 1\n" },
-                { oldString: "step 1", newString: "STEP 1" },
-              ],
-            },
-            ctx,
-          )
-          const content = await Filesystem.readText(planFile)
-          expect(content).toBe("# Plan\n\nSTEP 1\n")
-        },
-      })
-    } finally {
-      await fs.unlink(planFile).catch(() => {})
-    }
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        const plan = await SessionPlan.save({
+          sessionID: session.id,
+          source: "human",
+          content: "# Plan\nstep 1",
+          expectedRevision: 0,
+        })
+        const ctx = makeCtx(session.id, {
+          permissionLevel: "fullTakeover",
+          ask: async () => {
+            throw new Error("Generic plan writes must fail before approval")
+          },
+        })
+        const tool = await MultiEditTool.init()
+        await expect(
+          tool.execute({ filePath: plan.path, edits: [{ oldString: "step 1", newString: "CHANGED" }] }, ctx),
+        ).rejects.toMatchObject({ name: "PlanConflictError" })
+        expect(await Filesystem.readText(plan.path)).toBe("# Plan\nstep 1")
+        expect((await SessionPlan.get(session.id)).revision).toBe(1)
+      },
+    })
   })
 })
 

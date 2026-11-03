@@ -684,6 +684,7 @@ kbd {
   max-width: 100%;
 }
 .tooltip {
+  pointer-events: none;
   padding: 4px 8px;
   border-radius: var(--radius);
   background: var(--text);

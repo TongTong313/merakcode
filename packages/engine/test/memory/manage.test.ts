@@ -214,7 +214,7 @@ describe("MemoryManage.remove", () => {
             messageID: "",
             callID: "",
             agent: "build",
-            kind: "execute",
+            kind: "autoApprove",
             abort: AbortSignal.any([]),
             messages: [],
             ruleset: [],

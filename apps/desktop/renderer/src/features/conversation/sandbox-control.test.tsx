@@ -3,18 +3,41 @@ import { render } from "solid-js/web"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ProviderListResponses } from "@merakcode/sdk/client"
 import { setLocale } from "../../i18n"
-import { setState } from "../../state/store"
+import { connect, setState } from "../../state/store"
 import { Toasts } from "../../ui/toast"
 import { Composer } from "./composer"
-import { changeSandbox, SandboxControl, SandboxField } from "./sandbox-control"
+import { SandboxControl, SandboxField } from "./sandbox-control"
 
 const requests: { url: string; body: string }[] = []
-const http = vi.hoisted(() => ({ failInstall: false }))
+const http = vi.hoisted(() => ({
+  failInstall: false,
+  events: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
+}))
+
+test("auto approval explains per-operation asking while isolation is unavailable", async () => {
+  setLocale("zh")
+  const host = mount(() => <SandboxField directory="/degraded-auto" permissionLevel="autoApprove" />)
+  await expect.poll(() => host.textContent).toContain("自动审批 · 当前逐次询问")
+})
 vi.mock("undici", () => ({
   Agent: class {
     constructor() {}
   },
   fetch: async (url: string, init?: { body?: ArrayBuffer }) => {
+    if (url.includes("/global/event"))
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            http.events = controller
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({ directory: "global", payload: { type: "server.connected", properties: {} } })}\n\n`,
+              ),
+            )
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      )
     const body = init?.body ? new TextDecoder().decode(init.body) : ""
     requests.push({ url, body })
     if (http.failInstall && url.includes("/sandbox/install")) {
@@ -60,6 +83,50 @@ function open(host: HTMLElement) {
     ?.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
   return [...document.querySelectorAll("[role=option]")].map((item) => item.textContent ?? "")
 }
+
+test("all mounted sandbox controls follow the SDK global status event", async () => {
+  setLocale("zh")
+  const stop = connect()
+  const host = mount(() => (
+    <>
+      <SandboxField directory="/one" />
+      <SandboxField directory="/two" />
+    </>
+  ))
+  try {
+    await vi.waitFor(() =>
+      expect(
+        [...host.querySelectorAll("button")].filter((button) => button.textContent?.includes("未启动")),
+      ).toHaveLength(2),
+    )
+    await vi.waitFor(() => expect(http.events).toBeDefined())
+    http.events!.enqueue(
+      new TextEncoder().encode(
+        `data: ${JSON.stringify({ directory: "global", payload: { type: "sandbox.updated", properties: { status: "on", backend: "windows-account" } } })}\n\n`,
+      ),
+    )
+    await vi.waitFor(() =>
+      expect(
+        [...host.querySelectorAll("button")].filter((button) => button.textContent?.includes("已启动")),
+      ).toHaveLength(2),
+    )
+  } finally {
+    stop()
+    http.events?.close()
+    http.events = undefined
+  }
+})
+
+test.each([
+  ["starting", "启动中"],
+  ["failed", "启动失败"],
+] as const)("the %s sandbox status remains visible", (status, label) => {
+  setLocale("zh")
+  const host = mount(() => (
+    <SandboxControl status={{ status, reason: "Controlled failure" }} busy={false} onInstall={() => {}} />
+  ))
+  expect(host.querySelector("button")?.textContent?.trim()).toBe(label)
+})
 
 test("the reasoning control keeps the current level beside its icon and says what it configures", async () => {
   setLocale("zh")
@@ -164,9 +231,9 @@ test("usage, the model and the permission mode use the same hint above the contr
     const modelButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("Claude"))
     expect(modelButton?.getAttribute("aria-label")).toBe("配置模型，Claude")
     expect(await hint(modelButton)).toBe("配置模型")
-    const modeButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("执行"))
-    expect(modeButton?.getAttribute("aria-label")).toBe("配置会话模式，执行")
-    expect(await hint(modeButton)).toBe("配置会话模式")
+    const modeButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("询问"))
+    expect(modeButton?.getAttribute("aria-label")).toBe("权限级别，询问")
+    expect(await hint(modeButton)).toBe("选择权限级别")
   } finally {
     vi.useRealTimers()
     setState({ providers: undefined })
@@ -195,11 +262,13 @@ test("a failed setup shows the error and leaves the sandbox mode unchanged", asy
       <Toasts />
     </>
   ))
-  await vi.waitFor(() => expect(host.textContent).toContain("关"))
+  await vi.waitFor(() => expect(host.textContent).toContain("未启动"))
   host
     .querySelector("button")
     ?.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
-  const option = [...document.querySelectorAll("[role=option]")].find((item) => item.textContent?.includes("初始化"))
+  const option = [...document.querySelectorAll("[role=option]")].find((item) =>
+    item.textContent?.includes("设置并启动"),
+  )
   option?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   await vi.waitFor(() => expect(document.body.textContent).toContain("请求失败：administrator approval was not given"))
   expect(requests.some((item) => item.url.includes("/global/config"))).toBe(false)
@@ -209,66 +278,28 @@ test("the composer shows the sandbox control", () => {
   setLocale("zh")
   const host = mount(() => <Composer directory="/proj" busy={false} onSubmit={() => {}} />)
   const button = [...host.querySelectorAll("button")].find((item) => item.querySelector(".lucide-shield"))
-  expect(button?.textContent?.trim()).toBe("")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱")
+  expect(button?.textContent?.trim()).toBe("检查中")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，检查中")
 })
 
-test("turning the sandbox off or on writes the global mode without restarting the conversation, and setup installs it", async () => {
-  requests.length = 0
-  await changeSandbox("/proj", "off")
-  await changeSandbox("/proj", "preferred")
-  await changeSandbox("/proj", "install")
-  const config = requests.filter((item) => item.url.includes("/global/config"))
-  expect(config).toHaveLength(3)
-  for (const item of config) expect(item.url).toContain("skipDispose=true")
-  expect(config[0]?.body).toContain('"off"')
-  expect(config[1]?.body).toContain('"preferred"')
-  expect(requests.some((item) => item.url.includes("/sandbox/install"))).toBe(true)
-  expect(config[2]?.body).toContain('"preferred"')
-})
-
-test("choosing setup, turning on, or turning off runs that action", () => {
+test("sandbox repair uses the SDK without saving an on-off configuration", async () => {
   setLocale("zh")
-  const actions: string[] = []
-  const choose = (label: string) => {
-    const option = [...document.querySelectorAll("[role=option]")].find((item) => item.textContent?.includes(label))
-    option?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-  }
-  const uninitialized = mount(() => (
-    <SandboxControl
-      status={{ status: "unsupported", installable: true }}
-      busy={false}
-      onInstall={() => actions.push("install")}
-      onMode={(mode) => actions.push(mode)}
-    />
-  ))
-  open(uninitialized)
-  choose("初始化")
-  choose("关闭")
-  cleanup()
-  cleanup = () => {}
-  const off = mount(() => (
-    <SandboxControl
-      status={{ status: "off", backend: "landlock" }}
-      busy={false}
-      onInstall={() => {}}
-      onMode={(mode) => actions.push(mode)}
-    />
-  ))
-  open(off)
-  choose("开启")
-  expect(actions).toEqual(["install", "off", "preferred"])
+  requests.length = 0
+  const host = mount(() => <SandboxField directory="/repair-only" />)
+  await vi.waitFor(() => expect(host.textContent).toContain("未启动"))
+  open(host)
+  const setup = [...document.querySelectorAll("[role=option]")].find((item) =>
+    item.textContent?.includes("设置并启动沙箱"),
+  )
+  setup?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+  await vi.waitFor(() => expect(requests.filter((item) => item.url.includes("/sandbox/install"))).toHaveLength(1))
+  expect(requests.some((item) => item.url.includes("/global/config"))).toBe(false)
 })
 
 test("hovering the sandbox control says that it configures the sandbox", async () => {
   setLocale("zh")
   const host = mount(() => (
-    <SandboxControl
-      status={{ status: "on", backend: "windows-account" }}
-      busy={false}
-      onInstall={() => {}}
-      onMode={() => {}}
-    />
+    <SandboxControl status={{ status: "on", backend: "windows-account" }} busy={false} onInstall={() => {}} />
   ))
   const button = host.querySelector("button")
   const trigger = button?.closest(".tip") as HTMLElement | null
@@ -293,7 +324,7 @@ test("hovering the sandbox control says that it configures the sandbox", async (
   button?.dispatchEvent(new PointerEvent("pointerenter", { bubbles: true, pointerType: "mouse" }))
   await vi.waitFor(() => {
     const hint = document.querySelector<HTMLElement>(".tooltip")
-    expect(hint?.textContent).toBe("配置沙箱")
+    expect(hint?.textContent).toBe("沙箱状态")
     const placed = [...document.querySelectorAll<HTMLElement>("body *")].find((item) =>
       item.style.transform.includes("translate3d"),
     )
@@ -302,95 +333,83 @@ test("hovering the sandbox control says that it configures the sandbox", async (
   })
 })
 
-test("setup in progress disables the sandbox control", () => {
+test("setup in progress shows a starting state and disables the control", () => {
   setLocale("zh")
   const host = mount(() => (
-    <SandboxControl status={{ status: "unsupported", installable: true }} busy onInstall={() => {}} onMode={() => {}} />
+    <SandboxControl status={{ status: "unsupported", installable: true }} busy onInstall={() => {}} />
   ))
   const button = host.querySelector("button")
-  expect(button?.textContent?.trim()).toBe("关")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱，关")
+  expect(button?.textContent?.trim()).toBe("启动中")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，启动中")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   expect(button?.hasAttribute("disabled")).toBe(true)
 })
 
-test("an unavailable sandbox shows why and offers turning it off", () => {
+test("an unavailable sandbox shows why and offers a retry", () => {
   setLocale("zh")
   const host = mount(() => (
     <SandboxControl
       status={{ status: "unsupported", reason: "csc.exe is missing" }}
       busy={false}
       onInstall={() => {}}
-      onMode={() => {}}
     />
   ))
   const button = host.querySelector("button")
-  expect(button?.textContent?.trim()).toBe("关")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱，关")
+  expect(button?.textContent?.trim()).toBe("不支持")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，不支持")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
   expect(options.some((item) => item.includes("csc.exe is missing"))).toBe(true)
-  expect(options.some((item) => item.includes("关闭"))).toBe(true)
-  expect(options.some((item) => item.includes("初始化"))).toBe(false)
+  expect(options.some((item) => item.includes("关闭"))).toBe(false)
+  expect(options.some((item) => item.includes("设置并启动"))).toBe(false)
   expect(options.some((item) => item.includes("开启"))).toBe(false)
 })
 
-test("a sandbox that is turned off, and already set up, offers turning it on", () => {
+test("a configured but stopped sandbox offers retry without an off switch", () => {
   setLocale("zh")
   const host = mount(() => (
-    <SandboxControl
-      status={{ status: "off", backend: "windows-account" }}
-      busy={false}
-      onInstall={() => {}}
-      onMode={() => {}}
-    />
+    <SandboxControl status={{ status: "off", backend: "windows-account" }} busy={false} onInstall={() => {}} />
   ))
   const button = host.querySelector("button")
-  expect(button?.textContent?.trim()).toBe("关")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱，关")
+  expect(button?.textContent?.trim()).toBe("未启动")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，未启动")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
-  expect(options.some((item) => item.includes("开启"))).toBe(true)
-  expect(options.some((item) => item.includes("初始化"))).toBe(false)
+  expect(options.some((item) => item.includes("重试启动"))).toBe(true)
+  expect(options.some((item) => item.includes("设置并启动"))).toBe(false)
   expect(options.some((item) => item.includes("关闭"))).toBe(false)
 })
 
-test("a running sandbox shows that it is on and only offers turning it off", () => {
+test("a running sandbox reports its state and offers no off switch", () => {
   setLocale("zh")
   const host = mount(() => (
-    <SandboxControl
-      status={{ status: "on", backend: "windows-account" }}
-      busy={false}
-      onInstall={() => {}}
-      onMode={() => {}}
-    />
+    <SandboxControl status={{ status: "on", backend: "windows-account" }} busy={false} onInstall={() => {}} />
   ))
   const button = host.querySelector("button")
-  expect(button?.textContent?.trim()).toBe("开")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱，开")
+  expect(button?.textContent?.trim()).toBe("已启动")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，已启动")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
-  expect(options.some((item) => item.includes("关闭"))).toBe(true)
-  expect(options.some((item) => item.includes("初始化"))).toBe(false)
+  expect(options.some((item) => item.includes("关闭"))).toBe(false)
+  expect(options.some((item) => item.includes("设置并启动"))).toBe(false)
   expect(options.some((item) => item.includes("开启"))).toBe(false)
 })
 
-test("an uninitialized sandbox shows that state and offers setup or turning it off", () => {
+test("an uninitialized sandbox offers setup without turning it off", () => {
   setLocale("zh")
   const host = mount(() => (
     <SandboxControl
       status={{ status: "unsupported", installable: true, reason: "needs a one-time setup" }}
       busy={false}
       onInstall={() => {}}
-      onMode={() => {}}
     />
   ))
   const button = host.querySelector("button")
-  expect(button?.textContent?.trim()).toBe("关")
-  expect(button?.getAttribute("aria-label")).toBe("配置沙箱，关")
+  expect(button?.textContent?.trim()).toBe("未启动")
+  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，未启动")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
-  expect(options.some((item) => item.includes("初始化"))).toBe(true)
-  expect(options.some((item) => item.includes("关闭"))).toBe(true)
+  expect(options.some((item) => item.includes("设置并启动"))).toBe(true)
+  expect(options.some((item) => item.includes("关闭"))).toBe(false)
   expect(options.some((item) => item.includes("开启"))).toBe(false)
 })

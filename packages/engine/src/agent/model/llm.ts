@@ -52,6 +52,7 @@ export namespace LLM {
     mcpToolIds?: Set<string>
     // Plugin dynamic tool ids already fetched by the caller (ToolRegistry.dynamicIds()); fetched here when absent.
     dynamicToolIds?: Set<string>
+    beforeRequest?: (request: unknown) => Promise<void>
   }
 
   export type StreamOutput = ReturnType<typeof streamText<ToolSet>>
@@ -314,6 +315,11 @@ export namespace LLM {
               async transformParams(args) {
                 if (args.type === "stream") {
                   args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                  await input.beforeRequest?.({
+                    prompt: args.params.prompt,
+                    tools: args.params.tools,
+                    responseFormat: args.params.responseFormat,
+                  })
                 }
                 return args.params
               },

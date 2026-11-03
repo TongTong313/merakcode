@@ -1,85 +1,24 @@
 import path from "path"
 import { Global } from "../../infra/global"
-import { Flag } from "../../infra/flag/flag"
 import { Filesystem } from "@merakcode/util/filesystem"
-import type { SessionMode } from "../permission/mode"
+import { SessionPlan } from "../session/plan"
+import { Text } from "../prompt/text"
+import type { PermissionLevel } from "../permission/level"
 
-/**
- * Decides whether a path is a plan file the agent may write silently, without approval.
- *
- * On a bypass, callers must also skip these side effects (plan files live outside the worktree and mean nothing to
- * the project):
- *   1. the ctx.ask permission prompt
- *   2. Snapshot.trackFile (plans are not on the project's undo/revert stack)
- *   3. Bus.publish(File.Event.Edited)
- *   4. Bus.publish(FileWatcher.Event.Updated)
- *   5. LSP.diagnosticsAfterEdit (or the equivalent touchFile / diagnostics)
- *
- * Still required: FileTime.withLock / assert / read (the session's read-before-write record).
- *
- * Plan mode may write only the current root session plan. Auto bypasses authorization for other paths.
- *
- * The Session module is imported dynamically to avoid the static cycle plan-doc → session → runner →
- * tool/registry → tool/edit → plan-doc. Session is always loaded by the time this runs, so the import hits the cache.
- */
-export type PlanDocAuthor = { agent: string; sessionMode?: SessionMode.Value; sessionID?: string }
+export type PlanDocAuthor = { agent: string; permissionLevel?: PermissionLevel.Value; sessionID?: string }
 
-/** Whether the path is a .md file under the plans data directory; plansDir can be injected for tests */
 export function isUnderPlansDataDir(absPath: string, plansDir = path.join(Global.Path.data, "plans")): boolean {
-  const normalized = path.normalize(absPath)
-  if (!normalized.toLowerCase().endsWith(".md")) return false
-  // Filesystem.contains handles Windows drive letter case (c: vs C:), which startsWith gets wrong
-  return Filesystem.contains(plansDir, normalized)
+  return path.extname(absPath).toLowerCase() === ".md" && Filesystem.contains(plansDir, path.normalize(absPath))
 }
 
-/** Plan mode means the main session is in read-only mode; subagents follow that mode but do not write plans */
-async function planning(author: PlanDocAuthor) {
-  if (!Flag.MERAKCODE_PLAN_MODE || author.sessionMode !== "plan") return false
-  if (!author.sessionID) return false
-  const { Session } = await import("../session")
-  // Session.get throws synchronously on an invalid id; wrapping it routes that into the catch
-  const session = await Promise.resolve(author.sessionID)
-    .then((id) => Session.get(id))
-    .catch(() => undefined)
-  return !!session && !session.parentID
-}
-
-export async function isPlanDocBypass(author: PlanDocAuthor, absPath: string): Promise<boolean> {
-  const normalized = path.normalize(absPath)
-  if (!isUnderPlansDataDir(normalized)) return false
-
-  if (author.sessionMode === "auto") return true
-  if (!author.sessionID || !(await planning(author))) return false
-  const { Session } = await import("../session")
-  const session = await Session.get(author.sessionID).catch(() => undefined)
-  if (!session) return false
-  const expected = path.resolve(Session.plan(session))
-  return process.platform === "win32"
-    ? path.resolve(normalized).toLowerCase() === expected.toLowerCase()
-    : path.resolve(normalized) === expected
-}
-
-/**
- * Forbids writing plan files outside plan mode. Plans must stay protected after the user declines plan_enter; the
- * error tells the model to call plan_enter first.
- */
+/** Only the dedicated plan tools can save official plans, including file identity aliases. */
 export async function assertCanWritePlanDoc(author: PlanDocAuthor, absPath: string): Promise<void> {
-  if (author.sessionMode === "auto" || !isUnderPlansDataDir(absPath)) return
-  if (await isPlanDocBypass(author, absPath)) return
-  throw new Error(
-    "Cannot modify plan files outside plan mode. Call plan_enter and get user approval before editing the plan.",
-  )
-}
-
-/**
- * Forbids writing project files in plan mode; implementing needs the user's approval through plan_exit first. Plan
- * files are still allowed (isPlanDocBypass lets them through). This fails earlier and more clearly than the
- * permission layer's DeniedError, before the model has generated long content in plan mode.
- */
-export async function assertPlanModeAllowsWrite(author: PlanDocAuthor, absPath: string): Promise<void> {
-  if (!(await planning(author))) return
-  if (await isPlanDocBypass(author, absPath)) return
-  throw new Error(
-    "Cannot edit project files while in plan mode. Call plan_exit and get user approval before implementing.",
-  )
+  if (!isUnderPlansDataDir(absPath) && !(author.sessionID && (await SessionPlan.isFile(author.sessionID, absPath))))
+    return
+  throw new SessionPlan.ConflictError({
+    message: await Text.pick({
+      zh: "请使用官方计划工具保存计划。通用文件工具不能修改官方计划。",
+      en: "Use the official plan tools to save the plan. General file tools cannot modify official plans.",
+    }),
+  })
 }

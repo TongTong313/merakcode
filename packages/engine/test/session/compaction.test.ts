@@ -4,7 +4,7 @@ import { SessionCompaction } from "@merakcode/engine/agent/context/compaction"
 import { Token } from "@merakcode/engine/agent/context/token"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { Log } from "@merakcode/log/logger"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Session } from "@merakcode/engine/agent/session/index"
 import { Message } from "@merakcode/engine/agent/session/message"
 import type { Provider } from "@merakcode/engine/agent/model/provider"
@@ -99,18 +99,19 @@ function createModel(opts: {
   } as Provider.Model
 }
 
-test("compaction create stores the sessionMode that the auto-continuation inherits", async () => {
+test("compaction create stores the permissionLevel that the auto-continuation inherits", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const session = await Session.create({})
+      await selectPermissionLevel({ sessionID: session.id, permissionLevel: "fullTakeover" })
 
       await SessionCompaction.create({
         sessionID: session.id,
         agent: "build",
         model: { providerID: "openai", modelID: "gpt-4" },
-        sessionMode: "auto",
+        permissionLevel: "fullTakeover",
         auto: true,
       })
 
@@ -119,8 +120,8 @@ test("compaction create stores the sessionMode that the auto-continuation inheri
       if (user?.info.role !== "user") throw new Error("expected compaction user message")
       const part = user.parts.find((p): p is Message.CompactionPart => p.type === "compaction")
 
-      expect(user.info.sessionMode).toBeUndefined()
-      expect(part?.sessionMode).toBe("auto")
+      expect(user.info.permissionLevel).toBe("ask")
+      expect(part?.permissionLevel).toBe("fullTakeover")
     },
   })
 })

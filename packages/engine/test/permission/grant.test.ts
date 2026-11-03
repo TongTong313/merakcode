@@ -1,3 +1,10 @@
+import { beforeEach, afterEach } from "vitest"
+import { readySandbox } from "../fixture/sandbox-ready"
+let isolation: ReturnType<typeof readySandbox>
+beforeEach(() => {
+  isolation = readySandbox()
+})
+afterEach(() => isolation[Symbol.dispose]())
 import { expect, test } from "vitest"
 import path from "path"
 import { PermissionNext } from "@merakcode/engine/agent/permission/next"
@@ -15,17 +22,17 @@ const command = (text: string, level: PermissionPolicy.CommandLevel, prefix: str
   PermissionPolicy.command({ command: text, level, prefix })
 
 /** Same as the runner: mode defaults plus the main session's grants (in the user rule layer) */
-const chain = async (root: string, mode: PermissionPolicy.Mode = "execute") =>
-  PermissionPolicy.ruleset(mode, await PermissionNext.grants(root))
+const chain = async (root: string, mode: PermissionPolicy.Mode = "autoApprove") =>
+  PermissionPolicy.ruleset(mode, (await Session.get(root)).permission ?? [])
 
 const ask = async (input: {
   id: string
   sessionID: string
   root?: string
   checks: PermissionPolicy.Ask[]
-  mode?: PermissionPolicy.Mode
+  permissionLevel?: PermissionPolicy.Mode
 }) => {
-  const ruleset = await chain(input.root ?? input.sessionID, input.mode)
+  const ruleset = await chain(input.root ?? input.sessionID, input.permissionLevel)
   return PermissionNext.ask({
     id: input.id,
     sessionID: input.sessionID,
@@ -70,18 +77,22 @@ test("a multi-segment command shows one approval listing only the segments that 
       { scope: "prefix", pattern: "npm install *" },
       { scope: "prefix", pattern: "rm *" },
     ])
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_multi", reply: "once" })
     await running
   }))
 
 test("denies the whole command without an approval when any segment is denied", () =>
   project(async (main) => {
+    await Session.update(main.id, (draft) => {
+      draft.permission = [{ permission: "bash", pattern: "*", action: "deny" }]
+    })
     await expect(
       ask({
         id: "permission_denied",
         sessionID: main.id,
         checks: [command("ls", "readonly", "ls"), command("npm test", "normal", "npm test")],
-        mode: "plan",
+        permissionLevel: "ask",
       }),
     ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
     expect(await PermissionNext.list()).toEqual([])
@@ -97,6 +108,7 @@ test("session prefix grant is stored on the main session, covers subagents and n
       checks: [command("npm install lodash", "normal", "npm install")],
     })
     await pending()
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_grant", reply: "session", scope: "prefix" })
     await first
     expect(await PermissionNext.grants(main.id)).toEqual([
@@ -118,6 +130,7 @@ test("session prefix grant is stored on the main session, covers subagents and n
       checks: [command("npm install lodash", "normal", "npm install")],
     })
     expect((await pending()).map((item) => item.id)).toEqual(["permission_other"])
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_other", reply: "reject" })
     await expect(elsewhere).rejects.toBeInstanceOf(PermissionNext.RejectedError)
   }))
@@ -134,10 +147,12 @@ test("a grant also resolves waiting approvals in the same main session that it c
     })
     const c = ask({ id: "permission_c", sessionID: main.id, checks: [command("cargo build", "normal", "cargo build")] })
     await pending(3)
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_a", reply: "session", scope: "prefix" })
     await a
     await b
-    expect((await PermissionNext.list()).map((item) => item.id)).toEqual(["permission_c"])
+    await expect.poll(async () => (await PermissionNext.list()).map((item) => item.id)).toEqual(["permission_c"])
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_c", reply: "once" })
     await c
   }))
@@ -150,14 +165,18 @@ test("grants cannot override deny: a granted command is still denied in readonly
       checks: [command("npm test", "normal", "npm test")],
     })
     await pending()
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_then_readonly", reply: "session" })
     await first
+    await Session.update(main.id, (draft) => {
+      draft.permission = [{ permission: "bash", pattern: "*", action: "deny" }]
+    })
     await expect(
       ask({
         id: "permission_readonly",
         sessionID: main.id,
         checks: [command("npm test", "normal", "npm test")],
-        mode: "plan",
+        permissionLevel: "ask",
       }),
     ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
   }))
@@ -189,6 +208,7 @@ test("file grants cover this file or this directory and ask again after revocati
 
       const first = read("permission_dir", "a.md")
       await pending()
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_dir", reply: "session", scope: "directory" })
       await first
       await expect(read("permission_sibling", "b.md")).resolves.toBeUndefined()
@@ -198,13 +218,14 @@ test("file grants cover this file or this directory and ask again after revocati
       expect(await PermissionNext.grants(main.id)).toEqual([])
       const again = read("permission_again", "b.md")
       expect((await pending()).map((item) => item.id)).toEqual(["permission_again"])
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
       await PermissionNext.reply({ requestID: "permission_again", reply: "once" })
       await again
     },
   })
 })
 
-test("always allow writes to the permission section of project .merakcode config and applies immediately", async () => {
+test("once approval never writes project rules or authorizes another conversation", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,
@@ -212,25 +233,26 @@ test("always allow writes to the permission section of project .merakcode config
       const main = await Session.create({})
       const other = await Session.create({})
       const first = ask({
-        id: "permission_always",
+        id: "permission_once",
         sessionID: main.id,
         checks: [command("pnpm build", "normal", "pnpm build")],
       })
       const [request] = await pending()
-      expect(request!.always).toBe(true)
-      await PermissionNext.reply({ requestID: "permission_always", reply: "always" })
+      expect(request!.always).toBe(false)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
+      await PermissionNext.reply({ requestID: request!.id, reply: "once" })
       await first
-
-      expect(Config.projectMerakCodeFile()).toBe(path.join(tmp.path, ".merakcode", "merakcode.json"))
-      const saved = await Config.loadProjectMerakCodeFile()
-      expect(saved.permission).toEqual({ bash: { "pnpm build *": "allow" } })
-      await expect(
-        ask({
-          id: "permission_always_again",
-          sessionID: other.id,
-          checks: [command("pnpm build --watch", "normal", "pnpm build")],
-        }),
-      ).resolves.toBeUndefined()
+      expect((await Config.loadProjectMerakCodeFile()).permission).toBeUndefined()
+      const second = ask({
+        id: "permission_other",
+        sessionID: other.id,
+        checks: [command("pnpm build", "normal", "pnpm build")],
+      })
+      expect((await pending())[0]!.id).toBe("permission_other")
+      const rejected = expect(second).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+      await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
+      await PermissionNext.reply({ requestID: "permission_other", reply: "reject" })
+      await rejected
     },
   })
 })
@@ -245,10 +267,11 @@ test("subagent approvals do not offer always allow", () =>
       patterns: [check.pattern],
       checks: [check],
       metadata: {},
-      ruleset: PermissionPolicy.ruleset("execute"),
+      ruleset: PermissionPolicy.ruleset("autoApprove"),
     })
     const [request] = await pending()
     expect(request!.always).toBe(false)
+    await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_subagent", reply: "once" })
     await running
   }))

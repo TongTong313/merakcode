@@ -32,13 +32,37 @@ const writeThenReport = (file: string) => (turn: Turn) =>
     ? { tool: "write", args: { filePath: file, content: "hello" } }
     : { text: `结果：${turn.results[0]}` }
 
+test.each(["missing", "throws", "unavailable-scope"] as const)(
+  "a %s approval handler fails visibly and leaves no pending operation",
+  async (kind) => {
+    const file = path.join(env.project, `callback-${kind}.txt`)
+    script = writeThenReport(file)
+    const session = await merak.session()
+    const codes: string[] = []
+    const onPermission =
+      kind === "missing"
+        ? undefined
+        : kind === "throws"
+          ? () => {
+              throw new Error("Fixture handler failure")
+            }
+          : () => "allow-session" as const
+    for await (const event of session.run("Write one file", { signal: AbortSignal.timeout(10000), onPermission }))
+      if (event.type === "error") codes.push(event.error.code)
+    expect(existsSync(file)).toBe(false)
+    expect((await merak.client.permission.list()).data).toEqual([])
+    expect(codes).toContain(kind === "missing" ? "MRK-5015" : kind === "throws" ? "MRK-5016" : "MRK-5013")
+  },
+  30000,
+)
+
 test("when the permission callback allows, the file is written and the callback sees the edit request", async () => {
   const file = path.join(env.project, "allowed.txt")
   script = writeThenReport(file)
   const session = await merak.session()
   const asked: string[] = []
   for await (const _ of session.run("写个文件", {
-    mode: "execute",
+    permissionLevel: "ask",
     onPermission: async (request) => {
       asked.push(request.permission)
       return "allow-once"
@@ -54,7 +78,7 @@ test("when the permission callback denies, no file is written and the model gets
   script = writeThenReport(file)
   const session = await merak.session()
   let text = ""
-  for await (const event of session.run("写个文件", { mode: "execute", onPermission: async () => "deny" })) {
+  for await (const event of session.run("写个文件", { permissionLevel: "ask", onPermission: async () => "deny" })) {
     if (event.type === "text") text += event.delta
   }
   expect(existsSync(file)).toBe(false)

@@ -17,6 +17,20 @@ type TmpDirOptions<T> = {
   init?: (dir: string) => Promise<T>
   dispose?: (dir: string) => Promise<T>
 }
+
+/** Explicit user selection through the application coordinator, using the latest revision unless testing a conflict. */
+export async function selectPermissionLevel(input: {
+  sessionID: string
+  permissionLevel: import("../../src/agent/permission/level").PermissionLevel.Value
+  expectedRevision?: number
+}) {
+  const { Session } = await import("../../src/agent/session")
+  const { SessionOperations } = await import("../../src/app/session")
+  return SessionOperations.setPermissionLevel({
+    ...input,
+    expectedRevision: input.expectedRevision ?? (await Session.get(input.sessionID)).permissionRevision ?? 0,
+  })
+}
 /** Temporary directories being removed in the background (see the dispose of tmpdir) */
 const removals = new Set<Promise<void>>()
 

@@ -5,6 +5,7 @@ import type {
   Part,
   ReasoningPart,
   ToolPart,
+  SessionPlan,
 } from "@merakcode/sdk/client"
 import Brain from "lucide-solid/icons/brain"
 import ChevronRight from "lucide-solid/icons/chevron-right"
@@ -41,6 +42,7 @@ import { fill } from "./composer"
 import { historyLocked, retry, revertTo, submissionOf } from "./send"
 import { Avatar, seatMeta, type Product, type Seat } from "./members"
 import { Tool, Explore } from "./tools"
+import { PlanCard, usePlan } from "./plan"
 import {
   answerBlocks,
   blocks,
@@ -273,6 +275,7 @@ function Changes(props: { turn: Turn; directory: string; onReview: (messageID: s
 }
 
 function Reply(props: {
+  plan?: SessionPlan
   message: AssistantMessage
   last: boolean
   sessionID: string
@@ -318,6 +321,9 @@ function Reply(props: {
       </Show>
       <Blocks blocks={list()} done={done} directory={props.directory} onReviewFile={props.onReviewFile} />
       <ErrorCard message={props.message} />
+      <Show when={props.plan?.anchorMessageID === props.message.id}>
+        <PlanCard sessionID={props.sessionID} directory={props.directory} plan={props.plan} />
+      </Show>
     </Show>
   )
 }
@@ -585,6 +591,7 @@ export function SeatBubble(props: { part: ToolPart; group: GroupView; stopped?: 
 
 /** The leader's replies in a group turn, split at each delegate call into the leader's and the members' messages */
 function GroupReplies(props: {
+  plan?: SessionPlan
   replies: AssistantMessage[]
   last: boolean
   sessionID: string
@@ -593,9 +600,23 @@ function GroupReplies(props: {
   onReviewFile: (file: string) => void
 }) {
   const list = createMemo(() =>
-    segments(props.replies.filter((message) => !isSummary(message)).flatMap((message) => partsOf(message.id))),
+    segments(
+      props.replies.filter((message) => !isSummary(message)).flatMap((message) => partsOf(message.id)),
+      props.plan?.anchorMessageID,
+    ),
   )
   const leader = () => props.group.seats.find((seat) => seat.leader)
+  const planSegment = createMemo(() =>
+    list().findLastIndex((segment) =>
+      segment.kind === "seat"
+        ? segment.part.messageID === props.plan?.anchorMessageID
+        : segment.blocks.some((block) =>
+            block.kind === "part"
+              ? block.part.messageID === props.plan?.anchorMessageID
+              : block.parts.some((part) => part.messageID === props.plan?.anchorMessageID),
+          ),
+    ),
+  )
   /** The turn is over and this call did not end on its own: still marked running, or ended by the turn being stopped */
   const aborted = () => props.replies.some((message) => message.error?.name === "MessageAbortedError")
   const stopped = (part: ToolPart) =>
@@ -620,32 +641,37 @@ function GroupReplies(props: {
       {/* Rebuilt on every update and only grows at the end: kept by position, like the blocks */}
       <Index each={list()}>
         {(segment, index) => (
-          <Switch>
-            <Match when={segment().kind === "seat" && (segment() as Extract<Segment, { kind: "seat" }>).part}>
-              {(part) => <SeatBubble part={part()} group={props.group} stopped={stopped(part())} />}
-            </Match>
-            <Match when={segment().kind === "leader" && (segment() as Extract<Segment, { kind: "leader" }>).blocks}>
-              {(blocks) => (
-                <Bubble
-                  id={leader()?.id ?? ""}
-                  name={leader()?.name ?? ""}
-                  meta={leader() ? seatMeta(leader()!, props.group.products) : ""}
-                  leader
-                  onOpen={
-                    leader() && props.group.onOpenMember ? () => props.group.onOpenMember!(leader()!.id) : undefined
-                  }
-                >
-                  <Blocks
-                    blocks={blocks()}
-                    done={done(index, blocks().length)}
-                    directory={props.directory}
-                    onReviewFile={props.onReviewFile}
-                    bubble
-                  />
-                </Bubble>
-              )}
-            </Match>
-          </Switch>
+          <>
+            <Switch>
+              <Match when={segment().kind === "seat" && (segment() as Extract<Segment, { kind: "seat" }>).part}>
+                {(part) => <SeatBubble part={part()} group={props.group} stopped={stopped(part())} />}
+              </Match>
+              <Match when={segment().kind === "leader" && (segment() as Extract<Segment, { kind: "leader" }>).blocks}>
+                {(blocks) => (
+                  <Bubble
+                    id={leader()?.id ?? ""}
+                    name={leader()?.name ?? ""}
+                    meta={leader() ? seatMeta(leader()!, props.group.products) : ""}
+                    leader
+                    onOpen={
+                      leader() && props.group.onOpenMember ? () => props.group.onOpenMember!(leader()!.id) : undefined
+                    }
+                  >
+                    <Blocks
+                      blocks={blocks()}
+                      done={done(index, blocks().length)}
+                      directory={props.directory}
+                      onReviewFile={props.onReviewFile}
+                      bubble
+                    />
+                  </Bubble>
+                )}
+              </Match>
+            </Switch>
+            <Show when={index === planSegment()}>
+              <PlanCard sessionID={props.sessionID} directory={props.directory} plan={props.plan} />
+            </Show>
+          </>
         )}
       </Index>
       <For each={props.replies}>{(message) => <ErrorCard message={message} />}</For>
@@ -689,6 +715,10 @@ export function Messages(props: {
 }) {
   let scroller!: HTMLDivElement
   let content!: HTMLDivElement
+  const plan = usePlan(
+    () => props.sessionID,
+    () => props.directory,
+  ).plan
   const grouped = createMemo(() => turns(messagesOf(props.sessionID)))
   const lastWorked = createMemo(() => grouped().turns.findLastIndex((turn) => turn.replies.length > 0))
   const events = createMemo(() =>
@@ -700,6 +730,22 @@ export function Messages(props: {
   const [pinned, setPinned] = createSignal(true)
   const status = () => state.sessions.session_status[props.sessionID]
   const running = () => busy(props.sessionID)
+
+  const working = () => (
+    <>
+      <div class="working muted" aria-live="polite">
+        <Show when={status()?.type === "retry"} fallback={<span class="pulse">{t("conversation.working")}</span>}>
+          <RotateCw class="icon icon-sm" />
+          {(() => {
+            const value = status()
+            return value?.type === "retry"
+              ? t("conversation.retry", { attempt: value.attempt, message: value.message })
+              : ""
+          })()}
+        </Show>
+      </div>
+    </>
+  )
 
   const toBottom = () => scroller.scrollTo({ top: scroller.scrollHeight })
   onMount(() => {
@@ -732,6 +778,7 @@ export function Messages(props: {
         <For each={grouped().orphans}>
           {(message) => (
             <Reply
+              plan={plan()}
               message={message}
               last={false}
               sessionID={props.sessionID}
@@ -795,6 +842,7 @@ export function Messages(props: {
                     <Show when={answer()}>
                       {(message) => (
                         <Reply
+                          plan={plan()}
                           message={message()}
                           last={false}
                           answerOnly
@@ -812,6 +860,7 @@ export function Messages(props: {
                       <For each={turn().replies}>
                         {(message, i) => (
                           <Reply
+                            plan={plan()}
                             message={message}
                             last={last() && i() === turn().replies.length - 1}
                             sessionID={props.sessionID}
@@ -824,6 +873,7 @@ export function Messages(props: {
                   >
                     {(group) => (
                       <GroupReplies
+                        plan={plan()}
                         replies={turn().replies}
                         last={last()}
                         sessionID={props.sessionID}
@@ -836,7 +886,16 @@ export function Messages(props: {
                 </Show>
                 {/* Review stays available once edits exist. The turn can still be marked running after the reply is on
                     screen, and hiding the card then leaves no Review button. */}
-                <Changes turn={turn()} directory={props.directory} onReview={props.onReviewTurn} />
+                <Show
+                  when={
+                    folded() &&
+                    !open() &&
+                    answer()?.id !== plan()?.anchorMessageID &&
+                    turn().replies.some((reply) => reply.id === plan()?.anchorMessageID)
+                  }
+                >
+                  <PlanCard sessionID={props.sessionID} directory={props.directory} plan={plan()} />
+                </Show>
                 <Show when={!last() || !running()}>
                   <Show when={turn().replies.length && !turn().replies.some(isSummary)}>
                     <TurnActions
@@ -848,24 +907,14 @@ export function Messages(props: {
                     />
                   </Show>
                 </Show>
+                <Show when={last() && running()}>{working()}</Show>
+                <Changes turn={turn()} directory={props.directory} onReview={props.onReviewTurn} />
               </section>
             )
           }}
         </Index>
         <SystemLines events={events().at(-1) ?? []} />
-        <Show when={running()}>
-          <div class="working muted" aria-live="polite">
-            <Show when={status()?.type === "retry"} fallback={<span class="pulse">{t("conversation.working")}</span>}>
-              <RotateCw class="icon icon-sm" />
-              {(() => {
-                const value = status()
-                return value?.type === "retry"
-                  ? t("conversation.retry", { attempt: value.attempt, message: value.message })
-                  : ""
-              })()}
-            </Show>
-          </div>
-        </Show>
+        <Show when={running() && !grouped().turns.length}>{working()}</Show>
       </div>
     </div>
   )

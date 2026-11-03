@@ -1,7 +1,8 @@
-import { sessionModeOf, sessionModeNow } from "../permission/session-mode"
+import { permissionLevelOf, permissionLevelNow } from "../permission/permission-level"
 import { startsSessionPlan } from "@merakcode/util/session-plan"
 import { ModeOperations } from "../permission/operations"
 import { SessionPlan } from "../session/plan"
+import { SessionStore } from "../session/store"
 import path from "path"
 import os from "os"
 import fs from "fs/promises"
@@ -22,6 +23,8 @@ import { Provider } from "../model/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema, type ModelMessage } from "ai"
 import { SessionCompaction } from "../context/compaction"
 import { SessionContextView } from "../context/context-view"
+import { PlanCapacity } from "../context/plan-capacity"
+import { Token } from "../context/token"
 import { SessionContextLayer } from "../context/context-layer"
 import { Instance } from "../../infra/project/instance"
 import { Checkout } from "../../infra/project/checkout"
@@ -53,7 +56,7 @@ import { SubAgentTool } from "../tools/subagent"
 import { Tool } from "../tools/tool"
 import { PermissionNext } from "../permission/next"
 import { Question } from "../session/question/index"
-import { SessionMode } from "../permission/mode"
+import { PermissionLevel } from "../permission/level"
 import { PermissionPolicy } from "../permission/policy"
 import { LoopStatus } from "./status"
 import { LoopRequest } from "./request"
@@ -90,7 +93,7 @@ const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested struc
 
 export namespace Loop {
   type WorkflowCancellation = {
-    list(sessionID: string): Promise<Array<{ runId: string; status: string }>>
+    list(sessionID: string): Promise<Array<{ runId: string; status: string; planExecutionID?: string }>>
     cancel(sessionID: string, runID: string): Promise<unknown>
   }
   let workflows: WorkflowCancellation = { list: async () => [], cancel: async () => {} }
@@ -104,6 +107,7 @@ export namespace Loop {
     // Request dispatch also calls the native loop; read its live binding when invoked, after both modules load.
     command: (input) => LoopRequest.command(input),
     prompt: (input) => LoopRequest.prompt(input),
+    startPlan: (sessionID) => LoopRequest.startPlan(sessionID),
     cancel: (sessionID) => LoopRequest.cancel(sessionID),
   }
   /** Process-local busy/retry state and the existing session status events. */
@@ -246,15 +250,15 @@ export namespace Loop {
     format: Message.Format.optional(),
     system: z.string().optional(),
     variant: z.string().optional(),
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     permissionMode: z
       .enum(["readonly", "ask"])
       .optional()
-      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel."),
     /** Per-turn metadata. The engine does not interpret it and copies it to `UserInfo.metadata`. */
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** @deprecated Use sessionMode. Still parsed for older SubAgentTool / SDK callers. */
-    kind: SessionMode.Schema.optional(),
+    /** @deprecated Use permissionLevel. Still parsed for older SubAgentTool / SDK callers. */
+    kind: PermissionLevel.Schema.optional(),
     /** Max loop turns for a forked child session, so extraction/notes agents cannot burn tokens. */
     maxTurns: z.number().optional(),
     parts: z.array(
@@ -305,11 +309,6 @@ export namespace Loop {
 
   export type PromptInput = z.infer<typeof PromptInput>
 
-  async function persistSessionMode(session: Session.Info, mode: SessionMode.Value | undefined) {
-    if (!mode || session.parentID) return
-    await Session.setMode({ sessionID: session.id, sessionMode: mode, expectedRevision: session.modeRevision ?? 0 })
-  }
-
   async function prepareAndCreatePromptMessage(
     input: PromptInput,
     options?: {
@@ -352,15 +351,6 @@ export namespace Loop {
           draft.permission = PermissionNext.mergeUnique(draft.permission ?? [], permissions)
         }),
       )
-    }
-
-    // Write the message's permission mode back to the session, which is the source of truth. The mode sent with a
-    // prompt and a live setMode change then share one field and cannot diverge (e.g. the client switches back
-    // to ask while the session stays in auto). Child sessions persist it too (subagents pass "auto",
-    // memory-extractor passes "ask"), so restoring after compaction or re-entry does not hit the `parentID ? "auto"`
-    // fallback and flip the caller's choice.
-    if (message.info.role === "user") {
-      await LoopExecution.wait(async () => persistSessionMode(session, message.info.sessionMode))
     }
 
     if (input.noReply === true) {
@@ -444,7 +434,8 @@ export namespace Loop {
 
       return run({
         sessionID: input.sessionID,
-        sessionMode: message.info.role === "user" ? message.info.sessionMode : (input.sessionMode ?? input.kind),
+        permissionLevel:
+          message.info.role === "user" ? message.info.permissionLevel : (input.permissionLevel ?? input.kind),
         maxTurns: input.maxTurns,
       })
     } finally {
@@ -463,30 +454,31 @@ export namespace Loop {
       }),
     }
   }
-  const planStarts = Instance.state(() => {
-    const starts = new Map<string, Promise<Message.FullMsg>>()
-    Bus.subscribe(SessionPlan.Updated, (event) => {
-      if (event.properties.status === "completed") starts.delete(event.properties.sessionID)
-    })
-    return starts
-  })
-  async function planWorkPending(sessionID: string) {
+  const planStarts = Instance.state(() => new Map<string, { promise: Promise<Message.FullMsg>; settled: boolean }>())
+  const planSources = Instance.state(() => new Map<string, "button" | "chat">())
+  async function planWorkStatus(sessionID: string, executionID: string) {
     try {
       const [runs, { BashJobStore }] = await Promise.all([
         workflows.list(sessionID),
         import("../tools/bash-background"),
       ])
-      if (runs.some((run) => run.status === "running")) return true
+      const statuses = runs.filter((run) => run.planExecutionID === executionID).map((run) => run.status)
       for (const job of BashJobStore.list())
-        if (job.status === "running" && job.sessionID && (await Session.rootID(job.sessionID)) === sessionID)
-          return true
-      return false
+        if (job.planExecutionID === executionID && job.sessionID && (await Session.rootID(job.sessionID)) === sessionID)
+          statuses.push(job.status)
+      if (statuses.includes("running")) return "running"
+      if (statuses.includes("failed")) return "failed"
+      if (statuses.some((status) => status === "stopped" || status === "aborted")) return "stopped"
+      return "completed"
     } catch (error) {
       log.warn("plan completion check failed", { sessionID, error })
-      return true
+      return "running"
     }
   }
-  async function admittedPrompt(input: PromptInput, options?: { requireIdle?: boolean }) {
+  async function admittedPrompt(
+    input: PromptInput,
+    options?: { requireIdle?: boolean; planSource?: "button" | "chat" },
+  ) {
     const text = input.parts
       .filter((part) => part.type === "text")
       .map((part) => part.text)
@@ -496,13 +488,24 @@ export namespace Loop {
     input = { ...input, sessionID: await Session.rootID(input.sessionID) }
     const starts = planStarts()
     const known = starts.get(input.sessionID)
-    if (known) return known
-    const running = promptInternal(input, options)
-    starts.set(input.sessionID, running)
+    if (known) {
+      if (!known.settled) return known.promise
+      const plan = await SessionPlan.get(input.sessionID)
+      if (["executing", "paused"].includes(plan.status)) return known.promise
+    }
+    input = { ...input, messageID: input.messageID ?? Identifier.ascending("message") }
+    planSources().set(input.messageID!, options?.planSource ?? "chat")
+    const running = SessionPlan.queue(input.sessionID, input.messageID!).then(() => promptInternal(input, options))
+    const entry = { promise: running, settled: false }
+    starts.set(input.sessionID, entry)
     void running
       .finally(async () => {
+        entry.settled = true
+        await SessionPlan.dequeue(input.sessionID, input.messageID!)
+        planSources().delete(input.messageID!)
         const plan = await SessionPlan.get(input.sessionID).catch(() => undefined)
-        if (plan?.status !== "executing" && starts.get(input.sessionID) === running) starts.delete(input.sessionID)
+        if (plan?.status !== "executing" && plan?.status !== "paused" && starts.get(input.sessionID) === entry)
+          starts.delete(input.sessionID)
       })
       .catch(() => {})
     return running
@@ -511,6 +514,15 @@ export namespace Loop {
   export const promptWhenIdle = fn(PromptInput, async (input) =>
     Message.native(await admittedPrompt(publicPromptInput(input), { requireIdle: true })),
   )
+  export async function startPlan(sessionID: string) {
+    return admittedPrompt(
+      {
+        sessionID: await Session.rootID(sessionID),
+        parts: [{ type: "text", text: "Execute the latest saved session plan." }],
+      },
+      { planSource: "button" },
+    )
+  }
   // Engine-generated memory/dream prompts keep synthetic; not exposed through HTTP or the SDK.
   export const promptGenerated = fn(PromptInput, async (input) => Message.native(await promptInternal(input)))
   /**
@@ -859,13 +871,13 @@ export namespace Loop {
   export const LoopInput = z.object({
     sessionID: Identifier.schema("session"),
     resume_existing: z.boolean().optional(),
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     permissionMode: z
       .enum(["readonly", "ask"])
       .optional()
-      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
-    /** @deprecated Use sessionMode. */
-    kind: SessionMode.Schema.optional(),
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel."),
+    /** @deprecated Use permissionLevel. */
+    kind: PermissionLevel.Schema.optional(),
     /** Max loop turns for a forked child session, so extraction/notes agents cannot burn tokens. */
     maxTurns: z.number().optional(),
   })
@@ -912,12 +924,12 @@ export namespace Loop {
     sessionID: string
     targetUserID: string
     abort: AbortSignal
-    loopSessionMode?: SessionMode.Value
+    loopPermissionLevel?: PermissionLevel.Value
     maxTurns?: number
   }
 
   async function runTurn(input: RunTurnInput): Promise<Message.FullMsg> {
-    const { sessionID, targetUserID, abort, loopSessionMode, maxTurns } = input
+    const { sessionID, targetUserID, abort, loopPermissionLevel, maxTurns } = input
     // Structured retries belong to this turn even when a later user prompt is
     // already queued. Keep that prompt outside the current model context.
     const turnUserIDs = new Set([targetUserID])
@@ -933,10 +945,8 @@ export namespace Loop {
     const requested = await Message.get({ sessionID, messageID: targetUserID })
     const startText = requested.info.role === "user" ? Message.userSourceTexts(requested).join("\n").trim() : ""
     if (!session.parentID && startText) await SessionPlan.beginTurn(sessionID, targetUserID)
-    if (!session.parentID && startsSessionPlan(startText)) {
-      await SessionPlan.start(sessionID)
-      if (sessionModeNow(sessionID) !== "auto") await Session.setMode({ sessionID, sessionMode: "execute" })
-    }
+    const startingPlan = !session.parentID && startsSessionPlan(startText)
+    let planCompactionAttempted = false
     const discoveredSkillNames = new Set<string>()
     const consumedSkillDiscoveryTriggerIDs = new Set<string>()
     let skillPrefetch: SkillDiscoveryPrefetch | undefined
@@ -995,10 +1005,10 @@ export namespace Loop {
       if (!lastUserInfo) throw new Error("No user message found in stream. This should never happen.")
       // The session permission mode is the source of truth and is re-read every turn, so a live setMode
       // updates the next turn's tool pool and rules. Within a turn, liveExecution re-reads the session before each
-      // tool call, so the ruleset and ctx.sessionMode share one source.
-      const effectiveSessionMode = await modeOf(
+      // tool call, so the ruleset and ctx.permissionLevel share one source.
+      const effectivePermissionLevel = await modeOf(
         (await Session.get(sessionID).catch(() => undefined)) ?? session,
-        loopSessionMode ?? lastUserInfo.sessionMode,
+        loopPermissionLevel ?? lastUserInfo.permissionLevel,
       )
       // User interrupt (ESC): on abort the processor writes only error (MessageAbortedError), not finish. Without this
       // check a new loop would treat the interrupted turn as unfinished and call the LLM again, so the model keeps
@@ -1120,27 +1130,22 @@ export namespace Loop {
             return true
           },
         )
-        const subagentAgent = await Agent.get(pendingTask.agent)
-        // Slash/@ subtasks are started by the user, so skip agent approval (bypassAgentCheck). The child follows the
-        // main session's mode and cannot nest subagents.
-        const sessionNow = (await Session.get(sessionID)) ?? session
-        const subagentRuleset = buildToolExecutionRuleset({
-          agent: subagentAgent,
-          session: sessionNow,
-          sessionMode: effectiveSessionMode,
-          child: true,
-        })
+        const subagentRuleset = async () =>
+          buildToolExecutionRuleset({
+            agent: await Agent.get(lastUserInfo.agent),
+            session: await Session.get(sessionID),
+          })
         const subagentCtx: Tool.Context = {
           agent: pendingTask.agent,
-          sessionMode: effectiveSessionMode,
-          kind: effectiveSessionMode,
+          permissionLevel: effectivePermissionLevel,
+          kind: effectivePermissionLevel,
           messageID: assistantInfo.id,
           sessionID: sessionID,
           abort,
           callID: part.callID,
           extra: { bypassAgentCheck: true },
           messages: msgs,
-          ruleset: subagentRuleset,
+          ruleset: await subagentRuleset(),
           async metadata(input) {
             await Session.updatePart({
               ...part,
@@ -1152,12 +1157,15 @@ export namespace Loop {
             } satisfies Message.ToolPart)
           },
           async ask(req) {
-            await PermissionNext.ask({
-              ...req,
-              sessionID: sessionID,
-              tool: { messageID: assistantInfo.id, callID: part.callID },
-              ruleset: subagentRuleset,
-            })
+            return PermissionNext.askCurrent(
+              {
+                ...req,
+                sessionID,
+                tool: { messageID: assistantInfo.id, callID: part.callID },
+              },
+              subagentRuleset,
+              abort,
+            )
           },
         }
         const result = rejected
@@ -1254,6 +1262,7 @@ export namespace Loop {
           abort,
           sessionID,
           auto: pendingTask.auto,
+          onContinuation: (messageID) => turnUserIDs.add(messageID),
         })
         if (result === "stop") break
         continue
@@ -1271,7 +1280,7 @@ export namespace Loop {
           tokens: tokensFromUsage(lastFinishedInfo.tokens),
           precise: false,
           reestimate: async () => tokensFromUsage(lastFinishedInfo.tokens),
-          sessionMode: effectiveSessionMode,
+          permissionLevel: effectivePermissionLevel,
         })
         if (action === "blocked") break
         if (action !== "skip") continue
@@ -1320,7 +1329,7 @@ export namespace Loop {
         agent,
         session,
         user: lastUserInfo,
-        sessionMode: effectiveSessionMode,
+        permissionLevel: effectivePermissionLevel,
         discovered: discoveredSkillNames,
       })
       if (activeSkillPrefetch) {
@@ -1369,13 +1378,15 @@ export namespace Loop {
         session,
         tools: lastUserInfo.tools,
         messages: msgs,
-        sessionMode: effectiveSessionMode,
+        permissionLevel: effectivePermissionLevel,
         step,
       }).then(
         (value) => ({ ok: true as const, value }),
         (error: unknown) => ({ ok: false as const, error }),
       )
+      const planForRequest = await SessionPlan.get(await Session.rootID(sessionID))
       const view = await SessionContextView.build({
+        includePlan: startingPlan,
         preparedTools: preparation.ok ? preparation.value : undefined,
         includeToolStats: preparation.ok,
         messages: msgs,
@@ -1423,7 +1434,7 @@ export namespace Loop {
             })
             return reestimated.tokens
           },
-          sessionMode: effectiveSessionMode,
+          permissionLevel: effectivePermissionLevel,
         })
         if (action === "blocked") break
         if (action !== "skip") continue
@@ -1479,7 +1490,7 @@ export namespace Loop {
               processor,
               bypassAgentCheck,
               messages: msgs,
-              sessionMode: effectiveSessionMode,
+              permissionLevel: effectivePermissionLevel,
               step,
             })
           : Promise.reject(preparation.error)
@@ -1538,6 +1549,7 @@ export namespace Loop {
         }).catch((err) => log.error("session summary failed", { error: err }))
       }
 
+      let compactPlanRequest = false
       const result = await processor.process({
         user: lastUserInfo,
         agent,
@@ -1562,7 +1574,56 @@ export namespace Loop {
         dynamicToolIds: dynamicToolIds,
         model,
         toolChoice: format.type === "json_schema" ? "required" : undefined,
+        beforeRequest: async (request) => {
+          const content =
+            planForRequest.execution && ["executing", "paused"].includes(planForRequest.status)
+              ? planForRequest.execution.content
+              : planForRequest.content
+          if (!content.trim()) {
+            if (startingPlan)
+              await SessionPlan.start(sessionID, planSources().get(targetUserID) ?? "chat", planForRequest.revision)
+            return
+          }
+          if (!startingPlan && !["executing", "paused"].includes(planForRequest.status)) return
+          const capacity = await SessionCompaction.capacity(model)
+          try {
+            await PlanCapacity.assert({
+              content,
+              requestTokens: Token.estimateValue(request),
+              availableTokens: capacity.usable,
+            })
+          } catch (error) {
+            if (Message.PlanCapacityError.isInstance(error) && planForRequest.execution)
+              await SessionPlan.setStatus(await Session.rootID(sessionID), "paused")
+            if (
+              Message.PlanCapacityError.isInstance(error) &&
+              !planCompactionAttempted &&
+              Token.estimateValue(msgs.filter((message) => message.info.id !== lastUserInfo.id)) >= error.data.deficit
+            ) {
+              compactPlanRequest = true
+              throw new Message.ContextOverflowError({
+                message: "The plan request requires history compaction before dispatch.",
+              })
+            }
+            throw error
+          }
+          if (startingPlan || planForRequest.status === "paused")
+            await SessionPlan.start(sessionID, planSources().get(targetUserID) ?? "chat", planForRequest.revision)
+        },
       })
+      if (compactPlanRequest) {
+        planCompactionAttempted = true
+        turnUserIDs.add(
+          await SessionCompaction.create({
+            sessionID,
+            agent: lastUserInfo.agent,
+            model: lastUserInfo.model,
+            permissionLevel: effectivePermissionLevel,
+            auto: true,
+          }),
+        )
+        continue
+      }
 
       // If structured output was captured, save it and exit immediately
       // This takes priority because the StructuredOutput tool was called successfully
@@ -1588,7 +1649,7 @@ export namespace Loop {
           agent,
           session,
           user: lastUserInfo,
-          sessionMode: effectiveSessionMode,
+          permissionLevel: effectivePermissionLevel,
           discovered: discoveredSkillNames,
         })
       } else {
@@ -1670,7 +1731,7 @@ export namespace Loop {
           tokens: tokensFromUsage(lastFinishedInfo?.tokens),
           precise: false,
           reestimate: async () => tokensFromUsage(lastFinishedInfo?.tokens),
-          sessionMode: effectiveSessionMode,
+          permissionLevel: effectivePermissionLevel,
         })
         if (action === "blocked") break
       }
@@ -1740,10 +1801,10 @@ export namespace Loop {
     sessionID: string
     controller: AbortController
     self: LoopState
-    loopSessionMode?: SessionMode.Value
+    loopPermissionLevel?: PermissionLevel.Value
     maxTurns?: number
   }) {
-    const { sessionID, controller, self, loopSessionMode, maxTurns } = input
+    const { sessionID, controller, self, loopPermissionLevel, maxTurns } = input
     const abort = controller.signal
     let unbind = () => {}
     let completed: { callback: TurnCallback; result: Message.FullMsg } | undefined
@@ -1816,10 +1877,17 @@ export namespace Loop {
             sessionID,
             targetUserID: targetUser.info.id,
             abort,
-            loopSessionMode,
+            loopPermissionLevel,
             maxTurns,
           }),
         )
+        if (
+          !SessionStore.find(sessionID)?.parentID &&
+          result.info.role === "assistant" &&
+          !result.info.error &&
+          !abort.aborted
+        )
+          await SessionPlan.completeTurn(sessionID, targetUser.info.id)
 
         const cb = self.activeCallback
         self.activeCallback = undefined
@@ -1847,16 +1915,32 @@ export namespace Loop {
       try {
         const rootID = await Session.rootID(sessionID)
         const plan = rootID === sessionID || !resume(rootID) ? await SessionPlan.get(rootID) : undefined
+        const work = plan?.execution ? await planWorkStatus(rootID, plan.execution.id) : "running"
         // Background work keeps this execution's fixed plan until its completion notification resumes the loop.
         if (
           plan?.status === "executing" &&
-          !(await planWorkPending(rootID)) &&
+          plan.execution &&
+          work !== "running" &&
           (rootID === sessionID || !resume(rootID))
         )
-          await SessionPlan.setStatus(rootID, "completed")
+          await SessionPlan.setStatus(
+            rootID,
+            abort.aborted
+              ? "stopped"
+              : completed?.result.info.role === "assistant" && completed.result.info.error
+                ? "failed"
+                : work,
+            undefined,
+            plan.execution.id,
+          )
       } catch (error) {
         log.warn("plan completion deferred", { sessionID, error })
       } finally {
+        if (!abort.aborted && self.queuedPrompts.length > 0) {
+          completed?.callback.resolve(completed.result)
+          void processSessionTurns(input)
+          return
+        }
         self.running = false
         self.done.resolve()
         self.releaseCheckout()
@@ -1871,7 +1955,7 @@ export namespace Loop {
     await SessionCrash.reconcile(sessionID, () => Boolean(resume(sessionID)))
     LoopExecution.check(sessionID)
     const scope = LoopExecution.current(sessionID)
-    const loopSessionMode = input.sessionMode ?? input.kind
+    const loopPermissionLevel = input.permissionLevel ?? input.kind
 
     const controller = resume_existing ? undefined : start(sessionID)
     const self = state()[sessionID]
@@ -1887,7 +1971,7 @@ export namespace Loop {
           sessionID,
           controller,
           self,
-          loopSessionMode,
+          loopPermissionLevel,
           maxTurns: input.maxTurns,
         }),
       )
@@ -1910,7 +1994,7 @@ export namespace Loop {
           sessionID,
           controller: self.abort,
           self,
-          loopSessionMode,
+          loopPermissionLevel,
           maxTurns: input.maxTurns,
         }),
       )
@@ -2027,7 +2111,7 @@ export namespace Loop {
     session: Session.Info
     user: Message.UserInfo
     /** Permission mode used to build the skill discovery ruleset. */
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
     discovered: Set<string>
   }) {
     if (!input.trigger || !skillToolAvailable(input)) return undefined
@@ -2035,7 +2119,7 @@ export namespace Loop {
     const ruleset = buildToolExecutionRuleset({
       agent: input.agent,
       session: input.session,
-      sessionMode: input.sessionMode,
+      permissionLevel: input.permissionLevel,
     })
     const prefetchedAttachment = input.prefetch ? await input.prefetch.promise : undefined
     const prefetched = await filterSkillAttachment({
@@ -2077,7 +2161,7 @@ export namespace Loop {
     session: Session.Info
     user: Message.UserInfo
     /** Permission mode used to build the skill discovery ruleset. */
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
     discovered: Set<string>
   }) {
     if (!input.enabled || !input.trigger || input.trigger.kind !== "write_pivot" || !skillToolAvailable(input)) {
@@ -2091,7 +2175,7 @@ export namespace Loop {
         ruleset: buildToolExecutionRuleset({
           agent: input.agent,
           session: input.session,
-          sessionMode: input.sessionMode,
+          permissionLevel: input.permissionLevel,
         }),
         exclude: input.discovered,
         messageID: input.user.id,
@@ -2205,7 +2289,7 @@ export namespace Loop {
     precise?: boolean
     reestimate: () => Promise<number>
     // The turn that continues after compaction keeps the current permission mode.
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
   }): Promise<"compact" | "pruned" | "blocked" | "skip"> {
     if (!(await SessionCompaction.isOverflow({ model: input.model, tokens: overflowTokens(input.tokens) }))) {
       return "skip"
@@ -2235,7 +2319,7 @@ export namespace Loop {
       sessionID: input.sessionID,
       agent: input.agent,
       model: { providerID: input.model.providerID, modelID: input.model.id },
-      sessionMode: input.sessionMode,
+      permissionLevel: input.permissionLevel,
       auto: true,
     })
     return "compact"
@@ -2305,8 +2389,8 @@ export namespace Loop {
       variant: latestUser?.info.variant,
       // Inherit the latest real user message's permission mode; otherwise the client falls back to "ask" for the
       // notification turn and shows an auto session as ask. Use latestRealUser, not latestUser, which may be an earlier
-      // synthetic notification message without a sessionMode.
-      sessionMode: latestRealUser?.info.sessionMode,
+      // synthetic notification message without a permissionLevel.
+      permissionLevel: latestRealUser?.info.permissionLevel,
     }
     const notificationIDs = notifications.map((item) => item.id)
     await Session.updateInfo(info)
@@ -2320,6 +2404,9 @@ export namespace Loop {
       metadata: {
         source: "session.notification",
         notificationIDs,
+        taskOriginMessageIDs: notifications.flatMap((item) =>
+          typeof item.metadata?.taskOriginMessageID === "string" ? [item.metadata.taskOriginMessageID] : [],
+        ),
       },
     } satisfies Message.TextPart)
     await SessionNotification.markDelivered(input.sessionID, notificationIDs, info.id)
@@ -2450,10 +2537,6 @@ export namespace Loop {
    *
    * The nested subagent ban depends only on parentID / child, not on the permission mode.
    */
-  function isChildToolSession(session: Session.Info, child?: boolean): boolean {
-    return Boolean(session.parentID) || child === true
-  }
-
   /** Child sessions use the root session's session grants (the root's own are already in session.permission). */
   export async function grantsOf(session: Session.Info): Promise<PermissionNext.Ruleset> {
     if (!session.parentID) return []
@@ -2465,7 +2548,7 @@ export namespace Loop {
    * exceed its permissions and a live mode switch applies to the whole tree at once. fallback (the mode sent with this
    * turn's message) is used when the root session has not recorded a mode yet.
    */
-  export const modeOf = sessionModeOf
+  export const modeOf = permissionLevelOf
 
   /**
    * Rule chain rebuilt before each tool execute (evaluate picks the last matching rule):
@@ -2475,23 +2558,7 @@ export namespace Loop {
    * Session grants live on the root session: the root's own are in session.permission; for child sessions the caller
    * passes the root's grants.
    */
-  export function buildToolExecutionRuleset(input: {
-    agent: Agent.Info
-    session: Session.Info
-    sessionMode?: SessionMode.Value
-    child?: boolean
-    grants?: PermissionNext.Ruleset
-  }): PermissionNext.Ruleset {
-    const mode = input.sessionMode ?? SessionMode.DEFAULT
-    if (mode === "auto") return PermissionPolicy.ruleset(mode)
-    const user = PermissionNext.merge(input.agent.permission, input.grants ?? [], input.session.permission ?? [])
-    const child = isChildToolSession(input.session, input.child)
-    return PermissionNext.merge(
-      PermissionPolicy.ruleset(mode, user),
-      input.agent.profile?.restrictedRules ?? [],
-      child ? PermissionNext.appendForbidNestedSubagentRule() : [],
-    )
-  }
+  export const buildToolExecutionRuleset = PermissionPolicy.execution
 
   /** @internal Exported for testing */
   export async function resolveTools(input: {
@@ -2502,7 +2569,7 @@ export namespace Loop {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
     messages: Message.FullMsg[]
-    sessionMode?: SessionMode.Value
+    permissionLevel?: PermissionLevel.Value
     child?: boolean
     /**
      * Step number in the current turn. Only used to run tool discovery once, on step 1: the query does not change
@@ -2515,26 +2582,26 @@ export namespace Loop {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const effectiveSessionMode = input.sessionMode ?? SessionMode.DEFAULT
+    const effectivePermissionLevel = input.permissionLevel ?? PermissionLevel.DEFAULT
 
     const planSnapshot = !input.session.parentID ? await SessionPlan.get(input.session.id) : undefined
 
     /**
      * Reads the latest Agent/Session before every actual tool call.
-     * The ruleset and ctx.sessionMode / ctx.kind must share one source: after a live mode switch, commands, paths
+     * The ruleset and ctx.permissionLevel / ctx.kind must share one source: after a live mode switch, commands, paths
      * outside the workspace and plan switches must be judged by the new mode, not the one captured by resolveTools.
      */
     async function liveExecution() {
       const [agentNext, sessionNext] = await Promise.all([Agent.get(input.agent.id), Session.get(input.session.id)])
       const agent = agentNext ?? input.agent
       const session = sessionNext ?? input.session
-      const sessionMode = await modeOf(session, effectiveSessionMode)
+      const permissionLevel = await modeOf(session, effectivePermissionLevel)
       return {
-        sessionMode,
+        permissionLevel,
         ruleset: buildToolExecutionRuleset({
           agent,
           session,
-          sessionMode,
+          permissionLevel,
           child: input.child,
           grants: await grantsOf(session),
         }),
@@ -2585,7 +2652,7 @@ export namespace Loop {
       options: ToolExecutionOptions<unknown>,
       ruleset: PermissionNext.Ruleset,
       abortSignal?: AbortSignal,
-      sessionMode: SessionMode.Value = effectiveSessionMode,
+      permissionLevel: PermissionLevel.Value = effectivePermissionLevel,
     ): Tool.Context => {
       const ctx: Tool.Context = {
         sessionID: input.session.id,
@@ -2594,11 +2661,11 @@ export namespace Loop {
         callID: options.toolCallId,
         extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck, planRevision: planSnapshot?.revision },
         agent: input.agent.id,
-        get sessionMode() {
-          return sessionModeNow(input.session.id, sessionMode)
+        get permissionLevel() {
+          return permissionLevelNow(input.session.id, permissionLevel)
         },
         get kind() {
-          return sessionModeNow(input.session.id, sessionMode)
+          return permissionLevelNow(input.session.id, permissionLevel)
         },
         messages: input.messages,
         ruleset,
@@ -2639,7 +2706,7 @@ export namespace Loop {
             options.toolCallId,
             req.checks ?? (req.patterns ?? []).map((pattern) => ({ permission: req.permission, pattern, grants: [] })),
           )
-          await PermissionNext.askCurrent(
+          const admission = await PermissionNext.askCurrent(
             {
               ...req,
               sessionID: input.session.id,
@@ -2650,6 +2717,8 @@ export namespace Loop {
             abortSignal,
           )
           abortSignal?.throwIfAborted()
+          ModeOperations.authorize(input.session.id, options.toolCallId, admission)
+          return admission
         },
       }
       return ctx
@@ -2667,14 +2736,14 @@ export namespace Loop {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const live = await liveExecution()
-          if (!SessionMode.allowsTool(sessionModeNow(input.session.id, live.sessionMode), item.id))
+          if (!PermissionLevel.allowsTool(permissionLevelNow(input.session.id, live.permissionLevel), item.id))
             throw new PermissionNext.DeniedError([{ permission: item.id, pattern: "*", action: "deny" }])
           const abort = registerToolAbort(options.toolCallId, item.id)
           const signal =
             abort.signal && options.abortSignal
               ? AbortSignal.any([abort.signal, options.abortSignal])
               : (abort.signal ?? options.abortSignal)
-          const ctx = context(args, options, live.ruleset, signal, live.sessionMode)
+          const ctx = context(args, options, live.ruleset, signal, live.permissionLevel)
           try {
             await Plugin.trigger(
               "tool.execute.before",
@@ -2719,14 +2788,14 @@ export namespace Loop {
       // Wrap execute to add plugin hooks and format output
       item.execute = async (args, opts) => {
         const live = await liveExecution()
-        if (!SessionMode.allowsTool(sessionModeNow(input.session.id, live.sessionMode), key))
+        if (!PermissionLevel.allowsTool(permissionLevelNow(input.session.id, live.permissionLevel), key))
           throw new PermissionNext.DeniedError([{ permission: key, pattern: "*", action: "deny" }])
         const abort = registerToolAbort(opts.toolCallId, key)
         const signal =
           abort.signal && opts.abortSignal
             ? AbortSignal.any([abort.signal, opts.abortSignal])
             : (abort.signal ?? opts.abortSignal)
-        const ctx = context(args, opts, live.ruleset, signal, live.sessionMode)
+        const ctx = context(args, opts, live.ruleset, signal, live.permissionLevel)
         let result: Awaited<ReturnType<typeof execute>>
         try {
           await Plugin.trigger(
@@ -2937,7 +3006,7 @@ export namespace Loop {
       },
       tools: input.tools,
       agent: agent.id,
-      sessionMode: selection.sessionMode,
+      permissionLevel: selection.permissionLevel,
       metadata: input.metadata,
       model,
       system: input.system,
@@ -3188,8 +3257,8 @@ export namespace Loop {
                           sessionID: input.sessionID,
                           abort: new AbortController().signal,
                           agent: agent.id,
-                          sessionMode: SessionMode.DEFAULT,
-                          kind: SessionMode.DEFAULT,
+                          permissionLevel: PermissionLevel.DEFAULT,
+                          kind: PermissionLevel.DEFAULT,
                           messageID: info.id,
                           extra: { bypassCwdCheck: true, model },
                           messages: input.system
@@ -3262,8 +3331,8 @@ export namespace Loop {
                     sessionID: input.sessionID,
                     abort: new AbortController().signal,
                     agent: agent.id,
-                    sessionMode: SessionMode.DEFAULT,
-                    kind: SessionMode.DEFAULT,
+                    permissionLevel: PermissionLevel.DEFAULT,
+                    kind: PermissionLevel.DEFAULT,
                     messageID: info.id,
                     extra: { bypassCwdCheck: true },
                     messages: [],
@@ -3419,13 +3488,13 @@ export namespace Loop {
   export const ShellInput = z.object({
     sessionID: Identifier.schema("session"),
     agent: z.string(),
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     permissionMode: z
       .enum(["readonly", "ask"])
       .optional()
-      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
-    /** @deprecated Use sessionMode. */
-    kind: SessionMode.Schema.optional(),
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel."),
+    /** @deprecated Use permissionLevel. */
+    kind: PermissionLevel.Schema.optional(),
     model: z
       .object({
         providerID: z.string(),
@@ -3441,8 +3510,7 @@ export namespace Loop {
   }
 
   export async function shell(input: ShellInput) {
-    input.sessionMode ??=
-      input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined
+    input.permissionLevel ??= input.permissionMode ? "ask" : undefined
     await assertNativeOperation(input.sessionID)
     const controller = start(input.sessionID)
     if (!controller) {
@@ -3483,14 +3551,13 @@ export namespace Loop {
       },
       role: "user",
       agent: input.agent,
-      sessionMode: input.sessionMode ?? input.kind,
+      permissionLevel: permissionLevelNow(input.sessionID),
       model: {
         providerID: model.providerID,
         modelID: model.modelID,
       },
     }
     await Session.updateInfo(userInfo)
-    await persistSessionMode(session, userInfo.sessionMode)
     const userPart: Message.Part = {
       type: "text",
       id: Identifier.ascending("part"),
@@ -3709,13 +3776,13 @@ export namespace Loop {
     sessionID: Identifier.schema("session"),
     agent: z.string().optional(),
     model: z.string().optional(),
-    sessionMode: SessionMode.Schema.optional(),
+    permissionLevel: PermissionLevel.Schema.optional(),
     permissionMode: z
       .enum(["readonly", "ask"])
       .optional()
-      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through sessionMode."),
-    /** @deprecated Use sessionMode. */
-    kind: SessionMode.Schema.optional(),
+      .describe("Deprecated mode input; legacy auto must be explicitly reauthorized through permissionLevel."),
+    /** @deprecated Use permissionLevel. */
+    kind: PermissionLevel.Schema.optional(),
     arguments: z.string(),
     command: z.string(),
     variant: z.string().optional(),
@@ -4010,8 +4077,7 @@ ${skill.content}`
   }
 
   export async function command(input: CommandInput): Promise<Message.NativeFullMsg> {
-    input.sessionMode ??=
-      input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined
+    input.permissionLevel ??= input.permissionMode ? "ask" : undefined
     const session = await assertNativeOperation(input.sessionID)
     await SessionTarget.assertNewMessage(session, input)
     if (LoopExecution.current() && !LoopExecution.current(input.sessionID)) {
@@ -4051,7 +4117,7 @@ ${skill.content}`
         sessionID: input.sessionID,
         model: commandModel,
         agent: agentID,
-        sessionMode: input.sessionMode ?? input.kind,
+        permissionLevel: input.permissionLevel ?? input.kind,
         parts: [{ type: "text", text: task }],
         variant: input.variant,
         metadata: input.metadata,
@@ -4126,7 +4192,7 @@ ${skill.content}`
           messageID: input.messageID,
           model: userModel,
           agent: userAgent,
-          sessionMode: input.sessionMode ?? input.kind,
+          permissionLevel: input.permissionLevel ?? input.kind,
           parts,
           variant: input.variant,
           metadata: input.metadata,

@@ -31,13 +31,23 @@ export namespace LoopRequest {
   export function prompt(input: Loop.PromptInput) {
     input = {
       ...input,
-      sessionMode:
-        input.sessionMode ??
-        (input.permissionMode === "readonly" ? "plan" : input.permissionMode === "ask" ? "execute" : undefined),
+      permissionLevel: input.permissionLevel ?? (input.permissionMode ? "ask" : undefined),
     }
     return local("prompt", input.sessionID, async () => {
       const session = await SessionTarget.assertCanSend(input.sessionID, input)
       return session.target?.kind === "external" ? ExternalSession.prompt(input) : Loop.prompt(input)
+    })
+  }
+
+  export function startPlan(sessionID: string) {
+    return local("prompt", sessionID, async () => {
+      const session = await SessionTarget.assertCanSend(sessionID)
+      if (session.target?.kind === "external")
+        return ExternalSession.prompt(
+          { sessionID, parts: [{ type: "text", text: "Execute the latest saved session plan." }] },
+          { planSource: "button" },
+        )
+      return Loop.startPlan(sessionID)
     })
   }
 

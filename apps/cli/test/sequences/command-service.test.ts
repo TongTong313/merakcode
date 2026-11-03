@@ -8,6 +8,10 @@ test("S04.03 P/M synchronous context report is consumed by its real follow-up re
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "S04.03" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     await commandHistory(kit, session.id)
     const input = "S04_CONTEXT 读取 src/a.txt 并报告标记"
     await kit.api(`/session/${session.id}/command`, "POST", {

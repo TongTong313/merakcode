@@ -9,6 +9,10 @@ test("S02.06 P/M selected model endpoint refuses connections then same model com
   let success = false
   try {
     const session = await kit.api("/session", "POST", { title: "S02.06 isolated connection failure" })
+    await kit.api(`/session/${session.id}/permission-level`, "POST", {
+      permissionLevel: "fullTakeover",
+      expectedRevision: 0,
+    })
     const request = async (text: string) => {
       const result = await fetch(`${kit.url}/session/${session.id}/message`, {
         method: "POST",

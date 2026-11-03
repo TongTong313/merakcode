@@ -8,13 +8,13 @@ type Providers = ProviderListResponses[200]
 
 test("child mode controls follow root policy updates already delivered by the SDK", () => {
   setState("sessions", "session", [
-    { id: "ses_child_mode", parentID: "ses_root_mode", sessionMode: "auto" } as Session,
-    { id: "ses_root_mode", sessionMode: "plan" } as Session,
+    { id: "ses_child_mode", parentID: "ses_root_mode", permissionLevel: "fullTakeover" } as Session,
+    { id: "ses_root_mode", permissionLevel: "ask" } as Session,
   ])
   try {
-    expect(choice("ses_child_mode", "/work").mode).toBe("plan")
-    setState("sessions", "session", 1, "sessionMode", "execute")
-    expect(choice("ses_child_mode", "/work").mode).toBe("execute")
+    expect(choice("ses_child_mode", "/work").mode).toBe("ask")
+    setState("sessions", "session", 1, "permissionLevel", "autoApprove")
+    expect(choice("ses_child_mode", "/work").mode).toBe("autoApprove")
   } finally {
     setState("sessions", "session", [])
   }

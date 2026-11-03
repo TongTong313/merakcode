@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
-import { validator } from "../validator"
+import { reject, validator } from "../validator"
 import z from "zod"
 import { PermissionNext } from "../../../agent/permission/next"
 import { Identifier } from "@merakcode/util/id"
@@ -8,6 +8,7 @@ import { Session } from "../../../agent/session"
 import { Config } from "../../config/files/config"
 import { errors } from "../error"
 import { lazy } from "@merakcode/util/lazy"
+import { Text } from "../../../agent/prompt/text"
 
 export const PermissionRoutes = lazy(() =>
   new Hono()
@@ -16,7 +17,7 @@ export const PermissionRoutes = lazy(() =>
       describeRoute({
         summary: "Respond to permission request",
         description:
-          "Approve or deny a permission request from the AI assistant. `session` allows it for the rest of the session (shared with subagents), `always` also saves the rule to the project config; `scope` picks the grant (file, directory, command prefix, domain, ...).",
+          "Approve or deny the displayed operations. `once` consumes this request. `session` remembers only an offered scope in the current root conversation while isolation remains ready. `reject` refuses the request. Permanent grants are not supported.",
         operationId: "permission.reply",
         responses: {
           200: {
@@ -36,7 +37,20 @@ export const PermissionRoutes = lazy(() =>
           requestID: z.string(),
         }),
       ),
-      validator("json", PermissionNext.ReplyInput.omit({ requestID: true })),
+      validator("json", PermissionNext.ReplyInput.omit({ requestID: true }), async (result) => {
+        if (result.success) return
+        if (z.object({ reply: z.literal("always") }).safeParse(result.data).success)
+          reject([
+            {
+              path: ["reply"],
+              message: await Text.pick({
+                zh: "永久授权已取消。请升级客户端，并重新选择本次操作的审批方式。",
+                en: "Permanent grants are no longer supported. Upgrade the client and choose approval for this operation again.",
+              }),
+            },
+          ])
+        reject(result.error)
+      }),
       async (c) => {
         const input = { ...c.req.valid("json"), requestID: c.req.valid("param").requestID }
         await PermissionNext.reply(input)

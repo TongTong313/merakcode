@@ -1,6 +1,6 @@
 import { test, expect } from "vitest"
 import { Instance } from "@merakcode/engine/infra/project/instance"
-import { tmpdir } from "../fixture/fixture"
+import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { Session } from "@merakcode/engine/agent/session/index"
 import { CronScheduler } from "@merakcode/engine/app/task/cron/index"
 import { Storage } from "@merakcode/engine/infra/storage/storage"
@@ -29,14 +29,14 @@ for (const legacy of [false, true])
         directory: tmp.path,
         fn: async () => {
           const session = await Session.create({ title: "Scheduled mode regression" })
-          await Session.setMode({ sessionID: session.id, sessionMode: legacy ? "plan" : "execute" })
+          await selectPermissionLevel({ sessionID: session.id, permissionLevel: legacy ? "ask" : "autoApprove" })
           const id = legacy
             ? "legacy-task"
             : await CronScheduler.create({
                 sessionID: session.id,
                 interval: 50,
                 prompt: "Run scheduled probe",
-                sessionMode: "auto",
+                permissionLevel: "fullTakeover",
               })
           if (legacy) {
             await Storage.write(["cron", session.id, id], {
@@ -55,8 +55,8 @@ for (const legacy of [false, true])
           }
           try {
             await expect.poll(() => requests.length, { timeout: 10000 }).toBeGreaterThan(0)
-            expect(requests[0]).toContain(`Current session mode: ${legacy ? "plan" : "execute"}.`)
-            expect((await Session.get(session.id)).sessionMode).toBe(legacy ? "plan" : "execute")
+            expect(requests[0]).toContain(`Current permission level: ${legacy ? "ask" : "autoApprove"}.`)
+            expect((await Session.get(session.id)).permissionLevel).toBe(legacy ? "ask" : "autoApprove")
           } finally {
             await CronScheduler.remove(id)
           }

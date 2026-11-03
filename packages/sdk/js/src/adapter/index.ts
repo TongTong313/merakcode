@@ -10,6 +10,8 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process"
 import readline from "node:readline"
 import crossSpawn from "cross-spawn"
+import z from "zod"
+import { ErrorCode } from "@merakcode/util/error-code"
 
 /**
  * Starts a CLI: node:child_process spawn with the same arguments and result, which also starts a CLI installed by npm
@@ -108,13 +110,14 @@ export async function version(command: string): Promise<{ version?: string; unav
 }
 
 /** Version of the member protocol */
-export const PROTOCOL = 2
+export const PROTOCOL = 3
 
 /** How long an adapter may take to stop its CLI once MerakCode is gone */
 const GONE_GRACE = 5_000
 
 /** The user's permission mode in the group */
-export type Mode = "plan" | "execute" | "auto"
+export type PermissionLevel = "ask" | "autoApprove" | "fullTakeover"
+const level = z.enum(["ask", "autoApprove", "fullTakeover"])
 
 export type ProductModel = { id: string; providerID?: string }
 export type ModelList = { models: (ProductModel & { title: string })[]; allowCustomID: boolean }
@@ -125,13 +128,26 @@ export type Capabilities = {
   resume: boolean
   permission: "merak" | "external"
   questions: boolean
+  draftOnly?: boolean
+  plan?: { fullInput: boolean; contextTokens: number; reservedTokens: number; fixedInputTokens: number }
   /** Only reported operations are governed; unreported native actions remain outside host control. */
   control?: {
     reportedOperations: string[]
     cancellation: "operation" | "task" | "none"
     liveMode: boolean
+    isolation?: "product" | "none" | "unknown"
     limitations: string[]
   }
+}
+
+/** Whether the adapter declares a pre-action callback for every operation category. */
+export function supportsPerOperationControl(capabilities?: Capabilities) {
+  return (
+    capabilities?.permission === "merak" &&
+    ["read", "write", "command", "network", "tool"].every((kind) =>
+      capabilities.control?.reportedOperations.includes(kind),
+    )
+  )
 }
 
 /**
@@ -168,7 +184,10 @@ export type Task = {
   prompt: string
   /** The project directory to work in */
   cwd: string
-  mode: Mode
+  permissionLevel: PermissionLevel
+  /** Draft-only scope does not authorize project mutations. */
+  scope?: "draft"
+  plan?: { content: string; revision: number; executionID?: string }
   /** The member's private session from its last task, to continue */
   resume?: string
   model?: ProductModel
@@ -187,6 +206,27 @@ export type Permission =
 
 /** MerakCode's answer; a refusal says why, for the CLI to work around */
 export type Verdict = { allow: true } | { allow: false; message: string }
+export type OperationStart = { id: string; request: Permission; isolation: "product" | "none" | "unknown" }
+export type OperationFinish = { id: string; status: "completed" | "failed" | "stopped" }
+export type OperationAdmission = { allow: true; signal: AbortSignal } | { allow: false; message: string }
+const operationStartSchema = z.object({
+  id: z.string().min(1),
+  isolation: z.enum(["product", "none", "unknown"]),
+  request: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("read"), paths: z.array(z.string()).min(1) }),
+    z.object({ kind: z.literal("write"), paths: z.array(z.string()).min(1) }),
+    z.object({ kind: z.literal("command"), command: z.string().min(1) }),
+    z.object({ kind: z.literal("network"), host: z.string().min(1), url: z.string().optional() }),
+    z.object({ kind: z.literal("tool"), name: z.string().min(1), detail: z.string().optional() }),
+  ]),
+})
+const operationFinishSchema = z.object({ id: z.string().min(1), status: z.enum(["completed", "failed", "stopped"]) })
+export function parseOperationStart(input: unknown): OperationStart {
+  return operationStartSchema.parse(input)
+}
+export function parseOperationFinish(input: unknown): OperationFinish {
+  return operationFinishSchema.parse(input)
+}
 
 export type Question = {
   question: string
@@ -217,12 +257,16 @@ export type Host = {
   textDelta(input: TextDelta): void
   step(step: Step): void
   permission(request: Permission): Promise<Verdict>
+  operationStart(input: OperationStart): Promise<OperationAdmission>
+  operationFinish(input: OperationFinish): Promise<void>
   question(questions: Question[]): Promise<Answer[]>
 }
 
 export type Definition = {
+  /** Confirm true only after the named native operation has actually stopped. */
+  cancelOperation?(id: string): { stopped: boolean } | Promise<{ stopped: boolean }>
   /** Optional native policy update. The task object also receives the current mode in place. */
-  modeChanged?(mode: Mode): void | Promise<void>
+  permissionLevelChanged?(mode: PermissionLevel): void | Promise<void>
   inspect(product: Product): Info | Promise<Info>
   models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>
   /** Does the task; signal aborts when the user stops the group */
@@ -330,33 +374,89 @@ export function adapter(definition: Definition) {
   const stop = new AbortController()
   let product: Product = { id: "", title: "" }
   let currentTask: Task | undefined
-  let currentMode: Mode | undefined
-  let modeRevision = -1
+  let currentPermissionLevel: PermissionLevel | undefined
+  let permissionRevision = -1
+  let initialized = false
+  const operations = new Map<string, { controller: AbortController; admitted: boolean }>()
+  const productSchema = z.object({
+    id: z.string(),
+    title: z.string(),
+    command: z.string().optional(),
+    args: z.array(z.string()).optional(),
+    resumeArgs: z.array(z.string()).optional(),
+    sessionLine: z.string().optional(),
+  })
+  const taskSchema = z.object({
+    prompt: z.string(),
+    cwd: z.string(),
+    permissionLevel: level,
+    scope: z.literal("draft").optional(),
+    plan: z
+      .object({ content: z.string(), revision: z.number().int().nonnegative(), executionID: z.string().optional() })
+      .optional(),
+    resume: z.string().optional(),
+    model: z.object({ id: z.string(), providerID: z.string().optional() }).optional(),
+  })
+  const requireInitialized = () => {
+    if (!initialized) throw new Error("A successful protocol handshake is required before task messages.")
+  }
   const rpc = connect({
     lines: readline.createInterface({ input: process.stdin, crlfDelay: Infinity }),
     send: (line) => process.stdout.write(line + "\n"),
     handlers: {
-      initialize: async (params: { product: Product }) => {
-        product = params.product
-        return { protocol: PROTOCOL, ...(await definition.inspect(product)) }
+      initialize: async (value: unknown) => {
+        initialized = false
+        const params = z.object({ protocol: z.literal(PROTOCOL), product: productSchema }).safeParse(value)
+        if (!params.success)
+          throw new Error(
+            "Unsupported adapter protocol or initialization parameters. Upgrade the host before running a task.",
+          )
+        product = params.data.product
+        const info = await definition.inspect(product)
+        initialized = true
+        return { ...info, protocol: PROTOCOL }
       },
       "model/list": () => {
+        requireInitialized()
         if (!definition.models) throw new Error("This adapter does not support model discovery")
         return definition.models(product, stop.signal)
       },
-      "task/run": (task: Task) => {
-        const active = { ...task, mode: currentMode ?? task.mode, product, signal: stop.signal }
+      "task/run": (value: unknown) => {
+        requireInitialized()
+        const task = taskSchema.parse(value)
+        const active = {
+          ...task,
+          permissionLevel: currentPermissionLevel ?? task.permissionLevel,
+          product,
+          signal: stop.signal,
+        }
         currentTask = active
         return definition.run(active, host)
       },
-      "task/mode": async (input: { mode: Mode; revision: number }) => {
-        if (input.revision <= modeRevision) return
-        modeRevision = input.revision
-        currentMode = input.mode
-        if (currentTask) currentTask.mode = input.mode
-        await definition.modeChanged?.(input.mode)
+      "task/permission-level": async (value: unknown) => {
+        requireInitialized()
+        const input = z.object({ permissionLevel: level, revision: z.number().int().nonnegative() }).parse(value)
+        if (input.revision <= permissionRevision) return
+        permissionRevision = input.revision
+        currentPermissionLevel = input.permissionLevel
+        if (currentTask) currentTask.permissionLevel = input.permissionLevel
+        await definition.permissionLevelChanged?.(input.permissionLevel)
       },
-      "task/cancel": () => stop.abort(),
+      "operation/cancel": async (value: unknown) => {
+        requireInitialized()
+        const { id } = z.object({ id: z.string().min(1) }).parse(value)
+        const operation = operations.get(id)
+        if (!operation) return { stopped: true }
+        operation.controller.abort()
+        if (!operation.admitted) return { stopped: true }
+        return definition.cancelOperation
+          ? z.object({ stopped: z.boolean() }).parse(await definition.cancelOperation(id))
+          : { stopped: false }
+      },
+      "task/cancel": () => {
+        stop.abort()
+        for (const operation of operations.values()) operation.controller.abort()
+      },
     },
   })
   const host: Host = {
@@ -364,6 +464,34 @@ export function adapter(definition: Definition) {
     textDelta: (input) => rpc.notify("text.delta", input),
     step: (step) => rpc.notify("step", step),
     permission: (request) => rpc.request<Verdict>("permission/request", { request }),
+    operationStart: async (input) => {
+      input = parseOperationStart(input)
+      stop.signal.throwIfAborted()
+      if (operations.has(input.id)) throw new Error("The operation id is already active")
+      const operation = { controller: new AbortController(), admitted: false }
+      operations.set(input.id, operation)
+      try {
+        const verdict = await rpc.request<Verdict>("operation/start", input)
+        if (!verdict.allow) {
+          operations.delete(input.id)
+          return verdict
+        }
+        if (operation.controller.signal.aborted) {
+          operations.delete(input.id)
+          return { allow: false, message: "The operation was cancelled before launch" }
+        }
+        operation.admitted = true
+        return { allow: true, signal: operation.controller.signal }
+      } catch (error) {
+        operations.delete(input.id)
+        throw error
+      }
+    },
+    operationFinish: async (input) => {
+      input = parseOperationFinish(input)
+      await rpc.request<void>("operation/finish", input)
+      operations.delete(input.id)
+    },
     question: async (questions) => (await rpc.request<{ answers: Answer[] }>("question/ask", { questions })).answers,
   }
   // MerakCode closes stdin when it is done with the adapter, or when it goes away: the task stops. A request still
@@ -384,7 +512,12 @@ export function adapter(definition: Definition) {
  * the adapter reports; test also gives it one task in the current directory, allows every request, picks the first
  * option of every question, and prints each step, request, question and the result. Run it in an empty directory.
  */
-async function tryAdapter(input: { launch: string[]; prompt?: string; mode?: Mode; print?: (line: string) => void }) {
+async function tryAdapter(input: {
+  launch: string[]
+  prompt?: string
+  permissionLevel?: PermissionLevel
+  print?: (line: string) => void
+}) {
   const print = input.print ?? ((line: string) => console.log(line))
   const { spawn } = await import("node:child_process")
   const [command, ...args] = input.launch
@@ -401,6 +534,15 @@ async function tryAdapter(input: { launch: string[]; prompt?: string; mode?: Mod
         print(`permission ${JSON.stringify(params.request)}`)
         return { allow: true }
       },
+      "operation/start": (value: unknown) => {
+        const operation = parseOperationStart(value)
+        print(`operation/start ${operation.id} ${operation.isolation} ${JSON.stringify(operation.request)}`)
+        return { allow: true }
+      },
+      "operation/finish": (value: unknown) => {
+        const operation = parseOperationFinish(value)
+        print(`operation/finish ${operation.id} ${operation.status}`)
+      },
       "question/ask": (params: { questions: Question[] }) => {
         for (const question of params.questions) print(`question ${question.question}`)
         return { answers: params.questions.map((question) => (question.options[0] ? [question.options[0].label] : [])) }
@@ -413,13 +555,22 @@ async function tryAdapter(input: { launch: string[]; prompt?: string; mode?: Mod
       protocol: PROTOCOL,
       product: { id: "test", title: "test" },
     })
+    if (info.protocol !== PROTOCOL)
+      throw new Error("Unsupported adapter protocol. Upgrade the adapter before running a task.")
     print(`adapter ${info.name}${info.version ? " " + info.version : ""}${info.path ? " at " + info.path : ""}`)
     if (info.unavailable) print(`unavailable: ${info.unavailable}`)
     if (input.prompt === undefined || info.unavailable) return info
+    const permissionLevel = input.permissionLevel ?? "ask"
+    if (permissionLevel !== "fullTakeover" && !supportsPerOperationControl(info.capabilities)) {
+      const error = ErrorCode.CATALOG.EXTERNAL_ADAPTER_FAILED
+      throw new Error(
+        `${error.code}: The adapter cannot intercept every actual operation. Upgrade the adapter or explicitly select fullTakeover. 此适配器不能拦截全部实际操作。请升级适配器或明确选择完全接管。`,
+      )
+    }
     const result = await rpc.request<Result>("task/run", {
       prompt: input.prompt,
       cwd: process.cwd(),
-      mode: input.mode ?? "execute",
+      permissionLevel,
     })
     print(`result ${result.text}`)
     if (result.sessionId) print(`session ${result.sessionId}`)
@@ -429,19 +580,28 @@ async function tryAdapter(input: { launch: string[]; prompt?: string; mode?: Mod
   }
 }
 
-/** node merakcode-adapter.mjs check|test -- <adapter command> ["<task>"] */
+/** node merakcode-adapter.mjs check|test [--permission-level <level>] -- <adapter command> ["<task>"] */
 export async function cli(argv: string[]) {
-  const [mode, separator, ...rest] = argv
-  if ((mode !== "check" && mode !== "test") || separator !== "--" || rest.length === 0) {
+  const mode = argv[0]
+  const explicit = argv[1] === "--permission-level"
+  const permissionLevel = explicit ? argv[2] : "ask"
+  const separator = explicit ? 3 : 1
+  const rest = argv.slice(separator + 1)
+  if (
+    (mode !== "check" && mode !== "test") ||
+    argv[separator] !== "--" ||
+    rest.length === 0 ||
+    !level.safeParse(permissionLevel).success
+  ) {
     console.error(
-      'Usage: node merakcode-adapter.mjs check -- <adapter command>\n       node merakcode-adapter.mjs test -- <adapter command> "<task>"',
+      'Usage: node merakcode-adapter.mjs check -- <adapter command>\n       node merakcode-adapter.mjs test [--permission-level ask|autoApprove|fullTakeover] -- <adapter command> "<task>"',
     )
     process.exitCode = 2
     return
   }
   const launch = mode === "test" ? rest.slice(0, -1) : rest
   const prompt = mode === "test" ? rest.at(-1) : undefined
-  await tryAdapter({ launch, prompt }).catch((error: Error) => {
+  await tryAdapter({ launch, prompt, permissionLevel: level.parse(permissionLevel) }).catch((error: Error) => {
     console.error(`failed: ${error.message}`)
     process.exitCode = 1
   })

@@ -12,6 +12,48 @@ const png =
 
 let cleanup = () => {}
 beforeEach(() => setLocale("zh"))
+
+test("a migrated conversation shows its permission change notice once across composer reopen", async () => {
+  const id = "ses_permission_migration"
+  localStorage.removeItem(`ui:permission-migration:${id}`)
+  setState("sessions", "session", [
+    {
+      id,
+      slug: id,
+      projectID: "global",
+      directory: "/migration",
+      title: "Migrated",
+      version: "1",
+      time: { created: 1, updated: 1 },
+      permissionLevel: "ask",
+      permissionNotice: "legacy-permissions-reset",
+    },
+  ])
+  const host = document.createElement("div")
+  document.body.append(host)
+  const mount = () =>
+    render(
+      () => (
+        <>
+          <Composer sessionID={id} directory="/migration" busy={false} onSubmit={() => {}} />
+          <Toasts />
+        </>
+      ),
+      host,
+    )
+  let dispose = mount()
+  try {
+    await vi.waitFor(() => expect(host.textContent).toContain("旧权限已改为询问"))
+    dispose()
+    dispose = mount()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(host.textContent?.split("旧权限已改为询问").length).toBe(2)
+  } finally {
+    dispose()
+    host.remove()
+    setState("sessions", "session", [])
+  }
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -41,23 +83,22 @@ function renderImageDraft(directory: string) {
   return host
 }
 
-test("session mode follows the attachment button and defaults to Execute", () => {
+test("permission level follows the attachment button and defaults to Ask", () => {
   const host = renderImageDraft("/session-mode-layout")
   const buttons = [...host.querySelector(".composer-bar")!.querySelectorAll("button")]
   expect(buttons[0]?.getAttribute("aria-label")).toBe("附件")
-  expect(buttons[1]?.getAttribute("aria-label")).toContain("执行")
+  expect(buttons[1]?.getAttribute("aria-label")).toContain("询问")
 })
 
-test("auto mode warns that everything is allowed without a sandbox", () => {
-  const modes = modeOptions()
-  expect(modes.map((option) => option.value)).toEqual(["plan", "execute", "auto"])
-  const auto = modes.find((option) => option.value === "auto")!
-  expect(auto.tone).toBe("danger")
-  expect(auto.badge).toBe("危险")
-  expect(auto.description).toContain("危险")
-  expect(auto.description).toContain("沙箱")
-  expect(modes.find((option) => option.value === "plan")!.description).toContain("不改动项目")
-  expect(modes.find((option) => option.value === "execute")!.description).toContain("直接进行")
+test("the composer exposes three permission levels and explains full takeover", () => {
+  const levels = modeOptions()
+  expect(levels.map((option) => option.value)).toEqual(["ask", "autoApprove", "fullTakeover"])
+  const takeover = levels.find((option) => option.value === "fullTakeover")!
+  expect(takeover.tone).toBe("danger")
+  expect(takeover.badge).toBe("危险")
+  expect(takeover.description).toContain("当前账户")
+  expect(levels.find((option) => option.value === "ask")!.label).toBe("询问")
+  expect(levels.find((option) => option.value === "autoApprove")!.label).toBe("自动审批")
 })
 
 test("a disabled composer keeps its draft and prevents typing or sending", () => {
