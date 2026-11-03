@@ -157,7 +157,10 @@ for (const target of targets) {
         { from: path.join(stage, "THIRD_PARTY_LICENSES.txt"), to: "THIRD_PARTY_LICENSES.txt" },
         { from: path.join(stage, "build-info.json"), to: "build-info.json" },
       ],
-      // Disable unused entry points that could be abused to run arbitrary code
+      // Disable unused entry points that could be abused to run arbitrary code.
+      // Flipping fuses rewrites Electron Framework bytes; without a Developer ID re-sign afterwards,
+      // Apple Silicon kills the app at launch (CODESIGNING / Invalid Page at IsRunAsNodeEnabled).
+      // resetAdHocDarwinSignature re-seals with an ad-hoc signature when CSC_LINK is absent.
       electronFuses: {
         runAsNode: false,
         enableCookieEncryption: true,
@@ -165,6 +168,7 @@ for (const target of targets) {
         enableNodeCliInspectArguments: false,
         onlyLoadAppFromAsar: true,
         grantFileProtocolExtraPrivileges: false,
+        resetAdHocDarwinSignature: !process.env.CSC_LINK,
       },
       protocols: [{ name: Project.NAME, schemes: ["merakcode"] }],
       publish: owner && name ? [{ provider: "github", owner, repo: name, releaseType: "release" }] : undefined,
