@@ -1,4 +1,5 @@
 import { defineConfig, type ViteUserConfig } from "vitest/config"
+import { availableParallelism } from "node:os"
 import type { PluginOption } from "vite"
 import { text } from "./vitest-text.ts"
 
@@ -24,6 +25,7 @@ export function config(test: Test, plugins: PluginOption[] = []) {
     oxc: { typescript: { onlyRemoveTypeImports: false } },
     test: {
       pool: "forks",
+      maxWorkers: process.platform === "win32" ? Math.min(2, availableParallelism()) : undefined,
       testTimeout: 30_000,
       hookTimeout: 30_000,
       execArgv: ["--import", register, "--disable-warning=ExperimentalWarning"],

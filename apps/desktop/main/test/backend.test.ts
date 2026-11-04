@@ -37,6 +37,13 @@ test("starts the backend and returns its address and token once ready, listening
   expect(await res.json()).toMatchObject({ auth: endpoint.headers.authorization, client: "desktop" })
 })
 
+test("first startup binds its port atomically when another server starts concurrently", async () => {
+  const endpoint = await backend({ FAKE_PORT_RACE: "1" }).start()
+  const response = await fetch(endpoint.url, { headers: endpoint.headers })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ client: "desktop" })
+})
+
 test("restarts after an unexpected exit on the same port with a new token", async () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "backend-")), "crash")
   fs.writeFileSync(file, "1")

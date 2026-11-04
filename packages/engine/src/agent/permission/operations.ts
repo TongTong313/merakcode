@@ -9,7 +9,7 @@ import z from "zod"
 /** Active calls and background processes are evaluated against the latest policy before a mode switch settles. */
 export namespace ModeOperations {
   export const PendingError = NamedError.create("ModeOperationPendingError", z.object({ message: z.string() }))
-  const orchestration = new Set(["subagent", "delegate", "question", "plan_enter"])
+  const orchestration = new Set(["subagent", "delegate", "question"])
   type Operation = {
     sessionID: string
     tool: string

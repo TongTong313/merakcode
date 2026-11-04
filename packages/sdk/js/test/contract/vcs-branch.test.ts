@@ -294,7 +294,7 @@ test("keeps cancelled command preparation protected until the actual command set
   }
 }, 120_000)
 
-test("keeps inherited background pipes protected after their parent exits and cancellation is acknowledged", async () => {
+test("stopping orphaned background descendants prevents late writes and releases the checkout", async () => {
   const { client } = merak
   const marker = path.join(env.root, "descendant-entered")
   const release = path.join(env.root, "descendant-release")
@@ -320,6 +320,7 @@ test("keeps inherited background pipes protected after their parent exits and ca
         }
   const session = await merak.session()
   let entered = false
+  let stopped = false
   try {
     for await (const event of session.run("Start the inherited background bash_background command and finish", {
       permissionLevel: "fullTakeover",
@@ -342,19 +343,30 @@ test("keeps inherited background pipes protected after their parent exits and ca
       background?.type === "tool" && background.state.status === "completed" && background.state.metadata.jobId
     expect(typeof jobId).toBe("string")
     expect((await client.bash.jobStop({ id: String(jobId) }, { throwOnError: true })).data).toBe(true)
+    stopped = true
     await client.session.abort({ sessionID: session.id }, { throwOnError: true })
+    await expect
+      .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason, {
+        timeout: 10000,
+      })
+      .not.toBe("busy")
     const afterCancel = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
     const cancelled = await client.vcs.switchBranch({ branch: "dev", expectedCheckout: afterCancel.checkout })
-    expect(cancelled.response.status).toBe(409)
+    expect(cancelled.response.status).toBe(200)
   } finally {
     reply = () => ({ text: "OK" })
     await Filesystem.write(release, "release")
-    if (entered)
+    if (entered && !stopped)
       await expect
         .poll(async () => (await client.file.read({ path: "descendant.txt" }, { throwOnError: true })).data.content, {
           timeout: 10_000,
         })
         .toBe("finished")
+    if (stopped) {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      expect((await client.file.read({ path: "descendant.txt" }, { throwOnError: true })).data.content).toBe("")
+      expect(await Filesystem.isFile(path.join(env.project, "descendant.txt"))).toBe(false)
+    }
     await client.session.abort({ sessionID: session.id })
     await client.file.delete({ path: "descendant.txt" })
   }

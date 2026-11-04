@@ -21,6 +21,7 @@ const scenario = JSON.parse(process.argv[2] ?? "{}") as {
   reply?: string
   planCapability?: Capabilities["plan"]
   echoTask?: boolean
+  planSubmission?: { id: string; content: string; expectedRevision: number }
 }
 
 adapter({
@@ -58,6 +59,18 @@ adapter({
     for (const step of scenario.steps ?? []) {
       host.step({ tool: step.tool, detail: step.detail })
       while (step.gate && !fs.existsSync(step.gate)) await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    if (scenario.planSubmission) {
+      const submitPlan = (
+        host as typeof host & {
+          submitPlan?: (input: {
+            id: string
+            content: string
+            expectedRevision: number
+          }) => Promise<{ revision: number }>
+        }
+      ).submitPlan
+      return { text: submitPlan ? JSON.stringify(await submitPlan(scenario.planSubmission)) : "MISSING" }
     }
     const verdicts = []
     if (scenario.parallel)

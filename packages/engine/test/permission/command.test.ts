@@ -12,7 +12,7 @@ const levels = async (command: string) => (await analyze(command)).segments.map(
 
 describe("levels", () => {
   test("allowlisted read-only commands are readonly unless output is redirected", async () => {
-    expect(await levels("ls -la && git status")).toEqual(["readonly", "readonly"])
+    expect(await levels("ls -la && git status")).toEqual(["readonly", "normal"])
     expect(await levels("echo hi > out.txt")).toEqual(["normal"])
     expect(await levels("find . -name '*.ts' -delete")).toEqual(["delete"])
   })
@@ -102,11 +102,32 @@ describe("commands inside other commands", () => {
     ])
       expect(await worst(command), command).toBe("risky")
     expect(await worst("git -C sub clean -fdx")).toBe("delete")
-    expect(await worst("git -C sub status")).toBe("readonly")
+    expect(await worst("git -C sub status")).toBe("normal")
   })
 
   test("git options that set config never count as read-only: config can name programs git runs", async () => {
     expect(await worst("git -c core.pager=evil log")).toBe("normal")
+  })
+
+  test("git inspection commands can run configured external programs", async () => {
+    for (const command of ["git status", "git diff --no-index a b", "git show", "git ls-files"])
+      expect(await worst(command), command).toBe("normal")
+  })
+
+  test("only standalone supported Git history uses controlled read-only execution", async () => {
+    expect(await worst("git log --oneline -1")).toBe("normal")
+    expect(
+      (
+        await CommandAnalysis.analyze("git log --oneline -1", {
+          cwd: root,
+          workspace: [root],
+          home,
+          controlledGit: true,
+        })
+      ).readOnly,
+    ).toBe(true)
+    for (const command of ["git log --output=out", "env git log", "git log && echo done", "git -c core.pager=evil log"])
+      expect(await worst(command), command).toBe("normal")
   })
 
   test("command lines handed to a shell or eval are analyzed too", async () => {

@@ -32,7 +32,7 @@ test.describe("file read and write", () => {
   })
 
   test("full takeover reads and writes the workspace without safety approval", async ({ kit }) => {
-    await kit.mode(/完全接管|Full takeover/)
+    await kit.mode(/全面接管|Full takeover/)
     await kit.send("读 notes.txt 再写 out.txt")
     await expect(kit.text("E2E_DONE")).toBeVisible({ timeout: 90_000 })
     expect(await readFile(path.join(kit.project, "out.txt"), "utf8")).toBe("written by e2e\n")

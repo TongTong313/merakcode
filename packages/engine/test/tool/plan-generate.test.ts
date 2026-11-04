@@ -10,6 +10,84 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import { PlanGenerateTool, PlanEditTool, PlanReadChunkTool } from "@merakcode/engine/agent/tools/plan"
+import { PermissionExecution } from "@merakcode/engine/agent/permission/execution"
+import { PermissionNext } from "@merakcode/engine/agent/permission/next"
+import { PermissionPolicy } from "@merakcode/engine/agent/permission/policy"
+import { Bus } from "@merakcode/engine/infra/bus/index"
+import { selectPermissionLevel } from "../fixture/fixture"
+
+test.each(["generate", "edit"] as const)("plan %s rechecks isolation before saving", async (kind) => {
+  await using tmp = await tmpdir({ git: true })
+  const previous = process.env.MERAKCODE_SANDBOX_MODE
+  process.env.MERAKCODE_SANDBOX_MODE = "preferred"
+  let lost = false
+  PermissionExecution.useBackendForTest({
+    status: async () =>
+      lost ? { status: "unsupported", reason: "Lost after admission" } : { status: "on", backend: "landlock" },
+    wrap: async () => {
+      throw new Error("No process expected")
+    },
+  })
+  try {
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
+        if (kind === "edit")
+          await SessionPlan.save({ sessionID: session.id, source: "human", content: "# Original", expectedRevision: 0 })
+        const before = await SessionPlan.get(session.id)
+        let approvals = 0
+        const off = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+          approvals++
+          void PermissionNext.reply({ requestID: event.properties.id, reply: "reject" })
+        })
+        const ctx: Tool.Context = {
+          sessionID: session.id,
+          messageID: "msg_plan_isolation",
+          callID: "call_plan_isolation",
+          agent: "build",
+          permissionLevel: "autoApprove",
+          abort: new AbortController().signal,
+          messages: [],
+          ruleset: PermissionPolicy.ruleset("autoApprove"),
+          metadata: () => {},
+          ask: async (input) => {
+            const receipt = await PermissionNext.askCurrent({ ...input, sessionID: session.id }, async () =>
+              PermissionPolicy.ruleset("autoApprove"),
+            )
+            lost = true
+            return receipt
+          },
+        }
+        try {
+          const running =
+            kind === "generate"
+              ? (await PlanGenerateTool.init()).execute(
+                  { content: "# Unauthorized", expectedRevision: before.revision },
+                  ctx,
+                )
+              : (await PlanEditTool.init()).execute(
+                  { oldString: "Original", newString: "Unauthorized", expectedRevision: before.revision },
+                  ctx,
+                )
+          await expect(running).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+          expect(await SessionPlan.get(session.id)).toMatchObject({
+            content: before.content,
+            revision: before.revision,
+          })
+          expect(approvals).toBe(1)
+        } finally {
+          off()
+        }
+      },
+    })
+  } finally {
+    PermissionExecution.useBackendForTest(undefined)
+    if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
+    else process.env.MERAKCODE_SANDBOX_MODE = previous
+  }
+})
 
 test.each(["executing", "paused"] as const)(
   "plan tools read the fixed snapshot while %s after human edits",

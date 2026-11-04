@@ -128,7 +128,7 @@ try {
 - **消息和 Part**：每条消息（`role` 是 `user` 或 `assistant`）由若干 Part 组成。常见的 Part：`text`（正文）、`reasoning`（思考过程）、`tool`（一次工具调用，含参数、状态和输出）、`file`（附件）、`step-start` / `step-finish`（一步的开始和结束，带用量）、`patch`（这一步改了哪些文件）、`subtask`、`agent`、`retry`、`compaction`。
 - **智能体**（agent）：决定用什么提示词、能用哪些工具。默认是 `build`；子智能体有 `general`、`explore`；`simplifier` 两种都能当。可以在配置里自己加。
 - **模型**：写成 `服务商/模型`，比如 `anthropic/claude-sonnet-4-5`、`alibaba-cn/qwen-plus`。`merak models` 能列出可用的。
-- **权限模式**：`plan`（只读）、`execute`（执行，默认）、`auto`（自动）。会改东西的操作是直接做、先问，还是不做，由它和你的权限规则决定。
+- **权限级别**：`ask`（每次询问，默认）、`autoApprove`（仅询问危险行为）、`fullTakeover`（全面接管）。普通消息保留根对话选择的级别。
 - **事件**：引擎把所有变化（新消息、Part 更新、审批请求、会话状态……）通过事件流推出来。高层 API 帮你只挑出当前会话的事件。
 
 ## 5. 高层 API
@@ -242,7 +242,7 @@ await merak.close()
 
 智能体要改文件、跑命令、联网时，如果按权限模式和规则需要问人，引擎会发一个审批请求（`PermissionRequest`），SDK 调用你的 `onPermission`。子智能体和工作流的审批也会转到这里。
 
-不是每个操作都会问：默认的 `execute` 模式下，工作区里普通文件的修改直接执行；`auto` 模式下所有安全审批与沙箱执行限制均绕过，且不允许发起新提问（规则见 [README 的权限和沙箱](../../README.md#权限和沙箱)）。想让每次改文件都经过你，在 `config` 里写 `permission: { edit: "ask" }`；`plan` 模式则只允许研究和编写当前计划。
+`ask` 默认逐次审批。`autoApprove` 仅在所需隔离就绪时自动允许安全操作。隔离不可用时，前两档逐次询问。`fullTakeover` 跳过安全审批，并在启动前选择沙箱或当前账户。三档都遵守任务范围和工具限制。只出稿任务只允许必要调研和官方计划写入。详见 [README 的权限和沙箱](../../README.md#权限和沙箱)。
 
 `PermissionRequest` 里常用的字段：
 
@@ -283,7 +283,7 @@ await merak.close()
 
 ### 提问
 
-模型有时会停下来问你选择题（`QuestionRequest`）。`questions` 里每一题有 `question`（题目）、`header`（短标题）、`options`（选项，每项有 `label` 和 `description`），`multiple` 表示能多选，`custom` 表示能自己写答案（模型提的问题都能）。子智能体的提问也会转到这里；`auto` 模式下模型不会提问。
+模型有时会停下来问你选择题（`QuestionRequest`）。`questions` 里每一题有 `question`（题目）、`header`（短标题）、`options`（选项，每项有 `label` 和 `description`），`multiple` 表示能多选，`custom` 表示能自己写答案（模型提的问题都能）。子智能体的提问也会转到这里。业务问题与安全审批分别处理，三档均可保留业务问题。
 
 `onQuestion` 按题目顺序返回每一题的答案，每题是一个字符串数组：选中的 `label`，或者自己写的文字。没给 `onQuestion` 时这次提问会被跳过，模型会知道你没有回答。
 
@@ -331,7 +331,7 @@ await merak.close()
 
 ### 等后台任务
 
-你明确让智能体用工作流时（提示词里写了"工作流"或 "workflow"），它会在后台启动工作流，这一轮先结束；工作流做完后，引擎给这个会话发一条通知（正文里有 `<workflow-notification>`），模型再回复一轮。启动工作流（`workflow_run`）在 `execute` 模式下要审批。
+你明确让智能体用工作流时（提示词里写了"工作流"或 "workflow"），它会在后台启动工作流，这一轮先结束；工作流做完后，引擎给这个会话发一条通知（正文里有 `<workflow-notification>`），模型再回复一轮。启动工作流（`workflow_run`）受当前权限级别和任务范围约束。
 
 - 先用 `events()` 订阅，再调用 `run()`，否则可能错过工作流结束后的那一轮。
 - 工作流做得快时，两轮会连在一起，只产出一个 `done`，所以不要靠数 `done`，要等看到通知之后的那个 `done`。
@@ -383,7 +383,7 @@ await merak.close()
 
 `context`（类型 `ToolRunContext`）里有 `sessionID`、`messageID`、`callID`。
 
-宿主工具和插件注册的工具一样审批：计划模式仅提供研究工具，执行模式按安全规则审批，自动模式绕过安全审批，审批名就是工具名。
+宿主工具使用根对话的权限级别。每次询问级别需要审批。“仅询问危险行为”要求所需隔离就绪，并且操作安全。全面接管跳过安全审批，但仍遵守任务范围和工具限制。审批名就是工具名。
 
 宿主工具注册在整个引擎进程上：之后任何一次注册都会整体替换它，`close()` 也不会注销。几个程序用 `url` 连同一个引擎时，会互相覆盖对方的宿主工具。
 
@@ -835,7 +835,7 @@ MerakCode  ⇄  适配器库 merakcode-adapter.mjs  ⇄  你写的 adapter.mts  
 ```text
 CLI → 适配器："我想跑 npm test"
 适配器 → await host.permission({ kind: "command", command: "npm test" })   ← 在这里停下来等
-         MerakCode 按权限模式判断：自动放行、直接拒绝（比如只读模式下改文件），或者弹出审批栏"小明 · MyCLI 请求 / 要运行命令"
+         MerakCode 按权限级别判断：自动放行、直接拒绝（比如只出稿任务修改项目），或者弹出审批栏"小明 · MyCLI 请求 / 要运行命令"
          用户点"允许"
 host.permission 返回 { allow: true }
 适配器 → CLI："可以，跑吧"
@@ -1044,7 +1044,7 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 - 写 `hello.txt` 作为 `write` 请求到达；
 - 结果正常返回。
 
-只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试模式固定用 `execute` 模式，工作目录是当前目录，产品是 `{ id: "test", title: "test" }`，测不到只读模式下的参数。SDK 里同样的入口是 `cli(argv)`。
+只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试默认使用 `ask`。`--permission-level` 可指定三档。工作目录是当前目录，产品是 `{ id: "test", title: "test" }`。不能报告全部操作的适配器须显式选择 `fullTakeover`。SDK 里同样的入口是 `cli(argv)`。
 
 ### 15.8 注册到 MerakCode
 
@@ -1104,6 +1104,10 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 
 ### 权限级别与适配器控制
 
+外部根对话可调用 `host.submitPlan({ id, content, expectedRevision })` 保存官方计划。宿主决定文档路径和消息编号，并检查当前权限。人工修改优先。同一调用编号和参数重投时，宿主返回原修订。群成员只能返回草稿建议，不能提交根对话的计划。
+
+`PlanSubmission` 定义调用编号、Markdown 和期望修订。`PlanReceipt` 返回保存后的修订。
+
 子会话计划 API 返回根对话的 `sessionID`。客户端按该 ID 关联编辑器与计划事件。
 普通消息保留服务端权限级别。显式切换调用 `session.setPermissionLevel` 并提交期望修订号。
 高级会话接口提供同名方法。`run({ permissionLevel })` 会先显式切换，再发送消息。
@@ -1127,8 +1131,8 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 
 `parseOperationStart` 和 `parseOperationFinish` 校验协议参数。
 `supportsPerOperationControl` 检查适配器是否声明全部实际操作类别的事前回调。
-声明不足的适配器不能用于询问或自动审批。隔离归属声明不证明隔离已经生效，未知覆盖仍须逐次询问。
+声明不足的适配器不能用于每次询问或仅询问危险行为。隔离归属声明不证明隔离已经生效，未知覆盖仍须逐次询问。
 
-独立自检默认使用询问。无法逐项拦截的适配器需要明确选择完全接管：
+独立自检默认使用每次询问。无法逐项拦截的适配器需要明确选择全面接管：
 `node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`。
 自检会显示操作开始和结束，不会把普通任务解释为完整计划执行。

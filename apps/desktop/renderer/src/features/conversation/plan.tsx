@@ -131,50 +131,58 @@ export function PlanPanel(props: { sessionID: string; directory: string }) {
   return (
     <section class="plan-panel">
       <Show when={resource.plan()?.content} fallback={<p class="muted">{t("plan.empty")}</p>}>
-        <div class="row">
-          <button class="button secondary sm" onClick={edit}>
-            {t("plan.edit")}
-          </button>
-          <button
-            class="button primary sm"
-            disabled={busy() || (resource.plan()?.buttonLocked && !active())}
-            onClick={() => void run("start")}
-          >
-            {t(active() ? "plan.progress" : resource.plan()?.status === "paused" ? "plan.resume" : "plan.start")}
-          </button>
+        <div class="plan-toolbar">
+          <strong>{t("panel.plan")}</strong>
+          <div class="plan-toolbar-actions">
+            <button class="button secondary sm" onClick={edit}>
+              {t("plan.edit")}
+            </button>
+            <button
+              class="button primary sm"
+              disabled={busy() || (resource.plan()?.buttonLocked && !active())}
+              onClick={() => void run("start")}
+            >
+              {t(active() ? "plan.progress" : resource.plan()?.status === "paused" ? "plan.resume" : "plan.start")}
+            </button>
+          </div>
         </div>
-        <Show when={resource.plan()?.status === "paused"}>
-          <p class="subtle">{t("plan.paused")}</p>
-        </Show>
-        <Show when={resource.plan()?.queued}>
-          <p class="subtle">{t("plan.queued")}</p>
-        </Show>
-        <Show when={resource.plan()?.execution && resource.plan()?.status === "executing"}>
-          <p class="subtle">{t("plan.fixed")}</p>
-        </Show>
-        <Markdown text={resource.plan()?.content ?? ""} />
-        <Show when={resource.plan()?.candidate}>
-          {(candidate) => (
-            <section class="plan-candidate">
-              <p>
-                {t("plan.candidateTokens", { before: candidate().originalTokens, after: candidate().candidateTokens })}
-              </p>
-              <p class="subtle">{t("plan.candidateCheck")}</p>
-              <Markdown text={candidate().content} />
-              <For each={candidate().changes}>
-                {(change) => (
-                  <pre class="selectable" data-change={change.type}>
-                    {change.type === "delete" ? "− " : change.type === "insert" ? "+ " : "  "}
-                    {change.text}
-                  </pre>
-                )}
-              </For>
-              <button class="button secondary sm" disabled={busy()} onClick={() => void run("adopt")}>
-                {t("plan.adopt")}
-              </button>
-            </section>
-          )}
-        </Show>
+        <div class="plan-scroll">
+          <Show when={resource.plan()?.status === "paused"}>
+            <p class="subtle">{t("plan.paused")}</p>
+          </Show>
+          <Show when={resource.plan()?.queued}>
+            <p class="subtle">{t("plan.queued")}</p>
+          </Show>
+          <Show when={resource.plan()?.execution && resource.plan()?.status === "executing"}>
+            <p class="subtle">{t("plan.fixed")}</p>
+          </Show>
+          <Markdown text={resource.plan()?.content ?? ""} />
+          <Show when={resource.plan()?.candidate}>
+            {(candidate) => (
+              <section class="plan-candidate">
+                <p>
+                  {t("plan.candidateTokens", {
+                    before: candidate().originalTokens,
+                    after: candidate().candidateTokens,
+                  })}
+                </p>
+                <p class="subtle">{t("plan.candidateCheck")}</p>
+                <Markdown text={candidate().content} />
+                <For each={candidate().changes}>
+                  {(change) => (
+                    <pre class="selectable" data-change={change.type}>
+                      {change.type === "delete" ? "− " : change.type === "insert" ? "+ " : "  "}
+                      {change.text}
+                    </pre>
+                  )}
+                </For>
+                <button class="button secondary sm" disabled={busy()} onClick={() => void run("adopt")}>
+                  {t("plan.adopt")}
+                </button>
+              </section>
+            )}
+          </Show>
+        </div>
       </Show>
     </section>
   )

@@ -52,6 +52,7 @@ export namespace Sandbox {
         backend.setup ? backend.setup(progress) : backend.status(),
       reset: (): Promise<Status> => (backend.reset ? backend.reset() : backend.status()),
       warm: (): Promise<void> => (backend.warm ? backend.warm() : Promise.resolve()),
+      tmp: (): string | undefined => backend.tmp?.(),
 
       /** Prepares one command; spawn `file` with `args` and `env` instead of the shell */
       async prepare(input: {
@@ -97,7 +98,7 @@ export namespace Sandbox {
             finish(output, exitCode) {
               if (done) return ""
               done = true
-              launch.cleanup?.()
+              launch.cleanup?.(output, exitCode)
               const restored = Guard.restore(input.policy.write.protect, before)
               const blocked = handle.blocked(owner)
               handle.unregister(owner)

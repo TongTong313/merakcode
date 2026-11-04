@@ -244,7 +244,7 @@ Run one `run()` at a time per session: messages sent together queue, both iterat
 
 When the agent wants to edit files, run commands or go online and the permission level and rules say to ask, the engine sends an approval request (`PermissionRequest`) and the SDK calls your `onPermission`. Approvals from subagents and workflows come here too.
 
-Not every action asks: in the default `execute` mode, edits to ordinary files inside the workspace go through without asking, and in `auto` mode all safety approvals and command sandbox enforcement are bypassed, and new questions are disabled (the rules are in [Permissions and the sandbox in the README](../../README.en.md#permissions-and-the-sandbox)). To approve every file edit yourself, set `permission: { edit: "ask" }` in `config`. Use `plan` mode for research and the current session plan only.
+`ask` requires per-operation approval by default. `autoApprove` automatically allows safe operations only while required isolation is ready. Without isolation, both levels ask for every operation. `fullTakeover` skips safety approvals and chooses the sandbox or current account before launch. Every level retains task scope and hard tool limits. Draft-only tasks permit necessary research and official-plan writes. See [Permissions and the sandbox in the README](../../README.en.md#permissions-and-the-sandbox).
 
 Useful fields of `PermissionRequest`:
 
@@ -285,7 +285,7 @@ await merak.close()
 
 ### Questions
 
-Sometimes the model stops to ask multiple-choice questions (`QuestionRequest`). Each entry in `questions` has `question` (the text), `header` (a short title) and `options` (each with `label` and `description`); `multiple` means more than one can be picked, and `custom` means you can write your own answer (true for every question the model asks). Questions from subagents come here too; the model never asks questions in `auto` mode.
+Sometimes the model stops to ask multiple-choice questions (`QuestionRequest`). Each entry in `questions` has `question` (the text), `header` (a short title) and `options` (each with `label` and `description`); `multiple` means more than one can be picked, and `custom` means you can write your own answer (true for every question the model asks). Questions from subagents come here too. Business questions are separate from safety approvals and remain available in all three levels.
 
 `onQuestion` returns one answer per question, in order. Each answer is an array of strings: the chosen `label`s, or your own text. Without `onQuestion` the question is skipped and the model is told you didn't answer.
 
@@ -333,7 +333,7 @@ await merak.close()
 
 ### Waiting for background work
 
-When you ask the agent for a workflow by name (the prompt says "workflow"), it starts one in the background and ends the turn first; when the workflow finishes, the engine posts a notification to the session (its text contains `<workflow-notification>`) and the model replies in another turn. Starting a workflow (`workflow_run`) needs approval in `execute` mode.
+When you ask the agent for a workflow by name (the prompt says "workflow"), it starts one in the background and ends the turn first; when the workflow finishes, the engine posts a notification to the session (its text contains `<workflow-notification>`) and the model replies in another turn. Starting a workflow (`workflow_run`) follows the current permission level and task scope.
 
 - Subscribe with `events()` before calling `run()`, or you may miss the turn after the workflow finishes.
 - When the workflow is quick, the two turns run together and produce a single `done`, so don't count `done`s: wait for the `done` after the notification.
@@ -385,7 +385,7 @@ Define them with `tool()` (type `HostTool`) and pass them as `tools` to `createM
 
 `context` (type `ToolRunContext`) has `sessionID`, `messageID` and `callID`.
 
-Host tools use the root conversation permission level. Ask requires approval. Auto approve requires ready isolation and safe operations. Full takeover skips safety approvals while retaining task scope and hard tool limits. The permission name is the tool name.
+Host tools use the root conversation permission level. Ask every time requires approval. Ask only for risky actions requires ready isolation and safe operations. Full takeover skips safety approvals while retaining task scope and hard tool limits. The permission name is the tool name.
 
 Host tools are registered on the whole engine process: any later registration replaces them all, and `close()` does not unregister them. Programs sharing one engine through `url` replace each other's host tools.
 
@@ -837,7 +837,7 @@ When the CLI wants to run `npm test`, one approval goes like this:
 ```text
 CLI → adapter: "I want to run npm test"
 adapter → await host.permission({ kind: "command", command: "npm test" })   ← waits here
-          MerakCode decides under the permission level: it allows, refuses outright (a project edit in plan mode, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
+          MerakCode decides under the permission level: it allows, refuses outright (a project edit in a draft-only task, say), or shows "Xiaoming · MyCLI asks to / Wants to run a command"
           The user clicks "Allow"
 host.permission resolves to { allow: true }
 adapter → CLI: "go ahead"
@@ -1050,7 +1050,7 @@ Test mode prints every step, permission request and question, allows each reques
 - writing `hello.txt` arrives as a `write` request;
 - the result comes back.
 
-A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test mode always uses `execute` mode, the current directory, and the product `{ id: "test", title: "test" }`, so it cannot check the arguments for plan mode. In the SDK the same entry is `cli(argv)`.
+A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test defaults to `ask`; `--permission-level` selects any of the three levels. It uses the current directory and the product `{ id: "test", title: "test" }`. An adapter without complete operation reporting requires explicit `fullTakeover`. In the SDK the same entry is `cli(argv)`.
 
 ### 15.8 Register it with MerakCode
 
@@ -1111,6 +1111,10 @@ The Node MerakCode ships with runs a `.mts` file by removing its types, so:
 
 ### Permission levels and adapter control
 
+Root external conversations can call `host.submitPlan({ id, content, expectedRevision })` to save an official plan. The host owns the document path and message identity, checks current permissions, and preserves human edits. Reusing the same call ID and arguments returns the original revision. Group members return draft suggestions and cannot submit the root plan.
+
+`PlanSubmission` defines the call ID, Markdown and expected revision. `PlanReceipt` returns the saved revision.
+
 Child plan APIs return the root owner as `sessionID`. Associate editor buffers and plan events with that owner.
 Ordinary prompts preserve the server's permission level. Explicit selection uses `session.setPermissionLevel` with an expected revision, or the high-level session setter. `run({ permissionLevel })` selects explicitly before sending the prompt.
 
@@ -1127,9 +1131,9 @@ A failed or stopped action must not report completion. `cancelOperation` returns
 
 `parseOperationStart` and `parseOperationFinish` validate protocol parameters.
 `supportsPerOperationControl` checks the declaration of pre-action callbacks for every actual operation category.
-Incomplete adapters cannot run under Ask or Auto approve. Declaring an isolation owner does not establish readiness;
+Incomplete adapters cannot run under Ask every time or Ask only for risky actions. Declaring an isolation owner does not establish readiness;
 unknown protection still requires per-operation approval.
 
-The standalone host defaults to Ask. Explicitly select full takeover for an adapter without complete operation control:
+The standalone host defaults to Ask every time. Explicitly select full takeover for an adapter without complete operation control:
 `node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`.
 The host prints operation start and finish. Ordinary tasks do not require official-plan support.

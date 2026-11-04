@@ -466,7 +466,7 @@ test("refuses verification when the native adapter cannot report all actual oper
 })
 
 test.each([
-  ["zh-CN", "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择完全接管。"],
+  ["zh-CN", "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择全面接管。"],
   [
     "en-US",
     "This adapter cannot intercept every actual operation and cannot support the selected permission level. Upgrade it or explicitly select full takeover.",

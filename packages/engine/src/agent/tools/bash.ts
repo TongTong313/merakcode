@@ -1,6 +1,6 @@
 import z from "zod"
 import { unlink } from "fs/promises"
-import { spawn } from "child_process"
+import { spawnOwnedCommand } from "../../infra/process/command"
 import { finished } from "stream/promises"
 import { Tool } from "./tool"
 import DESCRIPTION from "./bash.txt"
@@ -25,6 +25,7 @@ import { createToolOutputSink, metadataTail } from "./output-sink"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Text } from "../prompt/text"
 import { ChildEnv } from "@merakcode/util/child-env"
+import { Process } from "@merakcode/util/process"
 import { Config } from "@merakcode/engine/agent/settings/index"
 import { Redact } from "../../infra/security/redact"
 import { ModeOperations } from "../permission/operations"
@@ -61,7 +62,7 @@ export async function prepareBashCommand(
     : Instance.directory
 
   const scope = PermissionPolicy.scope()
-  const analysis = await CommandAnalysis.analyze(params.command, { cwd, ...scope })
+  const analysis = await CommandAnalysis.analyze(params.command, { cwd, ...scope, controlledGit: true })
   const prefix = analysis.segments[0]?.prefix ?? params.command
   // Credential paths are asked about even for read-only commands; outside paths too when the command only reads
   const reads = analysis.paths.flatMap((file) => {
@@ -114,6 +115,7 @@ export async function prepareBashCommand(
               segment.prefix,
             ),
         ),
+      git: analysis.git,
       admission,
       request,
     },
@@ -180,6 +182,8 @@ async function escalate(params: Escalation & { command: string }, cwd: string, p
  * through the shell. Call finish when the command ends: it removes the network approval registration and appends the
  * operations the sandbox blocked, which the agent uses to request extra permissions.
  */
+class CommandAdmissionExpiredError extends Error {}
+
 export async function spawnCommand(input: {
   command: string
   shell: string
@@ -193,15 +197,50 @@ export async function spawnCommand(input: {
     canIsolate?: boolean
     admission?: PermissionNext.Admission | void
     request?: Parameters<Tool.Context["ask"]>[0]
+    git?: string[]
   }
 }) {
-  const options = {
-    cwd: input.cwd,
-    stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"],
-    // On Linux and macOS, detached creates a process group so Shell.killTree can kill the whole group
-    detached: process.platform !== "win32",
-  }
   const env = ChildEnv.build({ extra: input.env })
+  const git = input.sandbox.git
+  const gitNull = process.platform === "win32" ? "NUL" : "/dev/null"
+  if (git) {
+    for (const key of Object.keys(env))
+      if (/^(GIT_|NODE_|LD_|DYLD_|BASH_FUNC_)|^(BASH_ENV|ENV)$/i.test(key)) delete env[key]
+    Object.assign(env, {
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: gitNull,
+      GIT_OPTIONAL_LOCKS: "0",
+      GIT_NO_LAZY_FETCH: "1",
+      GIT_TERMINAL_PROMPT: "0",
+    })
+  }
+  const gitArgs = git
+    ? [
+        "--no-pager",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        `core.hooksPath=${gitNull}`,
+        "-c",
+        "log.showSignature=false",
+        "-c",
+        "diff.submodule=short",
+        "-c",
+        "maintenance.auto=false",
+        "-c",
+        "gc.auto=0",
+        git[0]!,
+        "--no-ext-diff",
+        "--no-textconv",
+        "--format=medium",
+        ...git.slice(1),
+      ]
+    : undefined
+  const gitFile = gitArgs ? (Process.which("git") ?? "git") : undefined
+  const shell = git ? (process.platform === "win32" ? process.env.COMSPEC || "cmd.exe" : "/bin/sh") : input.shell
+  const command = gitArgs
+    ? [gitFile!, ...gitArgs].map((word) => (/cmd(\.exe)?$/i.test(shell) ? `"${word}"` : Shell.quote(word))).join(" ")
+    : input.command
   const abort = input.abort ?? input.ctx.abort
   let admission = input.sandbox.admission
   let request = input.sandbox.request
@@ -212,8 +251,8 @@ export async function spawnCommand(input: {
     const wrapped = input.sandbox.unsandboxed
       ? undefined
       : await PermissionExecution.wrap({
-          command: input.command,
-          shell: input.shell,
+          command,
+          shell,
           cwd: input.cwd,
           env,
           ctx: input.ctx,
@@ -223,6 +262,11 @@ export async function spawnCommand(input: {
         })
     try {
       abort.throwIfAborted()
+      const beforeStart = async () => {
+        abort.throwIfAborted()
+        if (admission && request && !(await PermissionNext.isCurrent(admission, request)))
+          throw new CommandAdmissionExpiredError()
+      }
       ModeOperations.sandbox(input.ctx.sessionID, input.ctx.callID, Boolean(wrapped))
       await input.ctx.metadata({ metadata: { executionPath: wrapped ? "sandbox" : "account" } })
       abort.throwIfAborted()
@@ -239,11 +283,28 @@ export async function spawnCommand(input: {
       abort.throwIfAborted()
       if (!wrapped)
         return {
-          proc: spawn(input.command, { ...options, shell: input.shell, env }),
+          ...(await spawnOwnedCommand({
+            file: gitFile ?? command,
+            args: gitArgs,
+            shell: git ? undefined : input.shell,
+            cwd: input.cwd,
+            env,
+            pick: Text.pick,
+            signal: abort,
+            beforeStart,
+          })),
           finish: (output: string, _exitCode?: number | null) => output,
         }
       return {
-        proc: spawn(wrapped.file, wrapped.args, { ...options, shell: false, windowsHide: true, env: wrapped.env }),
+        ...(await spawnOwnedCommand({
+          file: wrapped.file,
+          args: wrapped.args,
+          cwd: input.cwd,
+          env: wrapped.env,
+          pick: Text.pick,
+          signal: abort,
+          beforeStart,
+        })),
         finish: (output: string, exitCode: number | null = null) => {
           const report = wrapped.finish(output, exitCode)
           return report ? `${output}\n\n${report}` : output
@@ -251,6 +312,10 @@ export async function spawnCommand(input: {
       }
     } catch (error) {
       wrapped?.finish("", null)
+      if (error instanceof CommandAdmissionExpiredError && request) {
+        admission = await input.ctx.ask(request)
+        continue
+      }
       throw error
     }
   }
@@ -364,9 +429,7 @@ export const BashTool = Tool.define("bash", async () => {
 
       let timedOut = false
       let aborted = false
-      let exited = false
-
-      const kill = () => Shell.killTree(proc, { exited: () => exited })
+      const kill = () => started.stop()
 
       if (ctx.abort.aborted) {
         aborted = true
@@ -393,17 +456,16 @@ export const BashTool = Tool.define("bash", async () => {
           }
 
           proc.once("exit", () => {
-            exited = true
             cleanup()
             resolve()
           })
 
           proc.once("error", (error) => {
-            exited = true
             cleanup()
             reject(error)
           })
         })
+        await started.stop()
       } catch (error) {
         started.finish("")
         outputSink.destroy()

@@ -97,7 +97,7 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.agentConnections.isolation.none": "Isolation owner: no isolation",
   "settings.agentConnections.isolation.unknown": "Isolation owner: unknown",
   "permissionLevel.migrated":
-    "Legacy permissions now use Ask. Old allow rules do not become conversation grants. Select the permission level again.",
+    "Legacy permissions now use Ask every time. Old allow rules do not become conversation grants. Select the permission level again.",
   "settings.agentConnections.coverage": "Reported approval coverage: {operations}",
   "settings.agentConnections.cancel.operation": "Supports operation cancellation",
   "settings.agentConnections.cancel.task": "Supports task cancellation only",
@@ -106,18 +106,17 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.agentConnections.staticMode": "Live mode changes are not reported",
   "settings.agentConnections.controlWarning":
     "Only reported operations are governed. Unreported actions are outside MerakCode approval control, native sandbox limits may still apply, and undeclared capabilities are unknown.",
-  "permissionLevel.degraded": "Auto approve · currently asking for each operation",
+  "permissionLevel.degraded": "Ask only for risky actions · currently asking for each operation",
   "permissionLevel.label": "Permission level",
   "permissionLevel.hint": "Select permission level",
   "permissionLevel.named": "Permission level, {mode}",
-  "permissionLevel.ask": "Ask",
-  "permissionLevel.ask.desc": "Ask before each operation. Conversation grants apply only while the sandbox is ready.",
-  "permissionLevel.autoApprove": "Auto approve",
+  "permissionLevel.ask": "Ask every time",
+  "permissionLevel.ask.desc": "Ask the user about every agent operation. Highest safety.",
+  "permissionLevel.autoApprove": "Ask only for risky actions",
   "permissionLevel.autoApprove.desc":
-    "Approve ordinary safe operations while the sandbox is ready. Dangerous operations still require approval.",
+    "Automatically approve non-risky actions and ask the user only about risky actions. Medium safety.",
   "permissionLevel.fullTakeover": "Full takeover",
-  "permissionLevel.fullTakeover.desc":
-    "No operation approvals. When needed, use the current account to access files and networks outside the sandbox.",
+  "permissionLevel.fullTakeover.desc": "Give MerakCode full control and allow all operations. Lowest safety.",
   "permissionLevel.fullTakeover.badge": "Danger",
 
   "model.label": "Model",
@@ -219,7 +218,7 @@ export const en: Record<keyof typeof zh, string> = {
   "permission.option.domain": "Allow {pattern} in this conversation",
   "permission.option.agent": "Allow the {pattern} agent in this conversation",
   "permission.option.tool": "Allow this tool in this conversation",
-  "permission.option.autoApprove": "Switch to auto approve",
+  "permission.option.autoApprove": "Switch to asking only for risky actions",
   "permission.option.reject": "Reject",
 
   "question.label": "Question",

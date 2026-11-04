@@ -318,6 +318,7 @@ export const test = base.extend<{
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
     const tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
+    const appProcess = app.process()
     await use({
       app,
       page,
@@ -335,13 +336,22 @@ export const test = base.extend<{
       panel,
       git: run,
     })
-    if (info.status !== info.expectedStatus) {
+    const alreadyExited = appProcess.exitCode !== null || appProcess.signalCode !== null
+    if (!alreadyExited && info.status !== info.expectedStatus) {
       const trace = info.outputPath("electron-trace.zip")
       await tracing.stop({ path: trace })
       await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
-    } else await tracing.stop()
+    } else if (!alreadyExited) await tracing.stop()
     await app.close().catch(() => undefined)
     fake.close()
+    const initializedSandbox = await readFile(path.join(root, "data", "sandbox", "state.json")).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false
+        throw error
+      },
+    )
+    expect(initializedSandbox, "Ordinary desktop tests must not initialize a system sandbox").toBe(false)
     if (info.status !== info.expectedStatus) console.log("KEPT", root)
     else await rm(root, { recursive: true, force: true }).catch(() => undefined)
   },

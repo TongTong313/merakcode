@@ -123,7 +123,7 @@ test("fullTakeover bypasses approval when isolation is not ready", async () => {
 })
 
 test("autoApprove asks for a read-only command when isolation is not ready", async () => {
-  const { result, error, requests } = await run("preferred", missing, "git status", "ses_mode_pref_read")
+  const { result, error, requests } = await run("preferred", missing, "pwd", "ses_mode_pref_read")
   expect(requests).toHaveLength(1)
   expect(requests[0].sandboxReady).toBe(false)
   expect(error).toBeUndefined()
@@ -131,7 +131,7 @@ test("autoApprove asks for a read-only command when isolation is not ready", asy
 })
 
 test("legacy required configuration still asks once when isolation is not ready", async () => {
-  const { result, error, requests } = await run("required", missing, "git status", "ses_mode_required")
+  const { result, error, requests } = await run("required", missing, "pwd", "ses_mode_required")
   expect(requests).toHaveLength(1)
   expect(requests[0].sandboxReady).toBe(false)
   expect(error).toBeUndefined()
@@ -167,13 +167,13 @@ test("waking prepares an already set up sandbox so the next command can run insi
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   PermissionExecution.useBackendForTest(backend)
   await PermissionExecution.wake()
-  const { result, error, requests } = await run("preferred", backend, "git status", "ses_wake_prepare")
+  const { result, error, requests } = await run("preferred", backend, "pwd", "ses_wake_prepare")
   expect(requests).toHaveLength(0)
   expect(error).toBeUndefined()
   expect(result?.metadata.exit).toBe(0)
 })
 
-test("resetting while the sandbox is off still reports that setup can be done again", async () => {
+test("resetting while sandbox operations are disabled preserves the disabled state", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "off"
   PermissionExecution.useBackendForTest({
     ...missing,
@@ -182,20 +182,20 @@ test("resetting while the sandbox is off still reports that setup can be done ag
   const status = await PermissionExecution.reset()
   expect(status).toMatchObject({
     status: "off",
-    installable: true,
     reason: expect.stringMatching(/System policy|系统策略/),
   })
+  expect(status.installable).toBeUndefined()
 })
 
-test("turning the sandbox off keeps whether a one-time setup is still needed", async () => {
+test("disabled sandbox operations do not offer system setup", async () => {
   process.env.MERAKCODE_SANDBOX_MODE = "off"
   PermissionExecution.useBackendForTest(missing)
   const status = await PermissionExecution.current()
   expect(status).toMatchObject({
     status: "off",
-    installable: true,
     reason: expect.stringMatching(/System policy|系统策略/),
   })
+  expect(status.installable).toBeUndefined()
 })
 
 test("waking leaves sandbox configuration on while auto bypasses it", async () => {

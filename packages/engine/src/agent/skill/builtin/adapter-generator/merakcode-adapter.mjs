@@ -21277,6 +21277,11 @@ function supportsPerOperationControl(capabilities) {
     )
   )
 }
+var planSubmissionSchema = external_exports.object({
+  id: external_exports.string().min(1),
+  content: external_exports.string(),
+  expectedRevision: external_exports.number().int().nonnegative(),
+})
 var operationStartSchema = external_exports.object({
   id: external_exports.string().min(1),
   isolation: external_exports.enum(["product", "none", "unknown"]),
@@ -21516,6 +21521,7 @@ function adapter(definition) {
       operations.delete(input2.id)
     },
     question: async (questions) => (await rpc.request("question/ask", { questions })).answers,
+    submitPlan: (input2) => rpc.request("plan/submit", planSubmissionSchema.parse(input2)),
   }
   void rpc.closed.then(() => {
     stop2.abort()

@@ -61,6 +61,15 @@ const run = (file: string) =>
   ).trim()
 
 describe("Release.install", () => {
+  test.skipIf(process.platform !== "win32")("a Chinese installation path keeps the command runnable", async () => {
+    const dir = await temp()
+    await archive(dir, "1.0.0")
+    await using server = await serve(dir)
+    const layout = { home: path.join(dir, "安装 目录"), bin: path.join(dir, "命令 目录") }
+    await Release.install("1.0.0", { base: server.url.href, layout })
+    expect(run(Release.command(layout, "merak"))).toBe("1.0.0")
+  })
+
   test("downloads, verifies and extracts to versions/<version>, and links the command to that version", async () => {
     const dir = await temp()
     await archive(dir, "1.0.0")

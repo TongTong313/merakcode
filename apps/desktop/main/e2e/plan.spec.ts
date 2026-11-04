@@ -12,15 +12,42 @@ test.use({
       if (toolResults.length === 0)
         return {
           tool: "plan_generate",
-          args: { content: "# Plan\nInspect the project, then implement the requested change.", expectedRevision: 0 },
+          args: {
+            content: prompt.includes("LONG_PLAN")
+              ? "# Long plan\n\n" +
+                Array.from({ length: 100 }, (_, i) => `## Step ${i + 1}\n\nCheck the result.\n\n`).join("") +
+                "PLAN_END"
+              : "# Plan\nInspect the project, then implement the requested change.",
+            expectedRevision: 0,
+          },
         }
       return { text: "PLAN_DRAFT_SAVED" }
     },
   },
 })
 
+test("a long plan scrolls to its last section while actions remain available", async ({ kit }, testInfo) => {
+  await kit.mode(/全面接管|Full takeover/)
+  await kit.send("LONG_PLAN")
+  await kit.page
+    .getByRole("button", { name: /查看计划|View plan/ })
+    .filter({ visible: true })
+    .first()
+    .click()
+  const panel = kit.panel()
+  await expect(panel.getByRole("heading", { name: "Long plan" })).toBeVisible()
+  await expect(panel.getByRole("button", { name: /编辑计划|Edit plan/ })).toBeVisible()
+  await expect(panel.getByRole("button", { name: /开始执行|Start execution/ })).toBeVisible()
+  const bounds = await panel.boundingBox()
+  await kit.page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + 200)
+  for (let i = 0; i < 8; i++) await kit.page.mouse.wheel(0, 1600)
+  await expect(panel.getByText("PLAN_END", { exact: true })).toBeInViewport()
+  await expect(panel.getByRole("button", { name: /开始执行|Start execution/ })).toBeInViewport()
+  await kit.page.screenshot({ path: testInfo.outputPath("plan-panel.png") })
+})
+
 test("a generated plan opens for review and starts execution without a second confirmation", async ({ kit }) => {
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
   await kit.send("请先制定方案")
   await expect(kit.page.getByText(/计划已生成|Plan generated/).first()).toBeVisible({ timeout: 60_000 })
   await kit.page
@@ -43,7 +70,7 @@ test("a generated plan opens for review and starts execution without a second co
     .first()
     .click()
   await expect(kit.text("PLAN_EXECUTED_HUMAN")).toBeVisible({ timeout: 60_000 })
-  await expect(kit.modeButton()).toContainText(/完全接管|Full takeover/)
+  await expect(kit.modeButton()).toContainText(/全面接管|Full takeover/)
   expect(kit.modelRequests().some((request) => request.prompt.includes("HUMAN_APPROVED_PLAN"))).toBe(true)
   await expect(kit.page.locator(".plan-card")).toHaveCount(1)
   await expect(kit.page.locator(".plan-card").getByRole("button", { name: /开始执行|Start execution/ })).toBeDisabled()

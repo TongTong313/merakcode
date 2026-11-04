@@ -19,7 +19,7 @@ test.use({
 /** Starts a conversation in a new worktree and waits for the agent to finish writing */
 async function start(kit: Kit) {
   await kit.page.getByRole("button", { name: "新工作树", exact: true }).click()
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
   await kit.send("在 worktree 里写个文件")
   await expect(kit.text("写好了")).toBeVisible({ timeout: 90_000 })
   await expect(access(path.join(kit.project, "feature.txt"))).rejects.toThrow()

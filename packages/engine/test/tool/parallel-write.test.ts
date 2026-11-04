@@ -188,20 +188,17 @@ describe("bash read-only classification (decides whether to take the write barri
     return readOnly
   }
 
+  test.each(["ls -la", "cat foo.txt", "grep -rn pattern .", "echo hello", "git log --oneline -n 5"])(
+    "read-only: %s",
+    async (command) => {
+      expect(await check(command)).toBe(true)
+    },
+  )
+
   test.each([
     "git status",
     "git diff --stat",
-    "git log --oneline -n 5",
-    "ls -la",
-    "cat foo.txt",
-    "grep -rn pattern .",
-    "echo hello",
     "git status && git diff",
-  ])("read-only: %s", async (command) => {
-    expect(await check(command)).toBe(true)
-  })
-
-  test.each([
     "rm -rf foo",
     "mv a b",
     "sed -i s/a/b/ foo.txt",

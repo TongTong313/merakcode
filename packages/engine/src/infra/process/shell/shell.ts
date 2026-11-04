@@ -13,18 +13,17 @@ export namespace Shell {
   export async function killTree(
     proc: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
     opts?: { exited?: () => boolean },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const pid = proc.pid
-    if (!pid || opts?.exited?.()) return
+    if (!pid || opts?.exited?.()) return false
 
     if (process.platform === "win32") {
-      await new Promise<void>((resolve) => {
+      return new Promise<boolean>((resolve) => {
         // Hidden: a process without a console of its own (a detached member adapter) would open a window for it
         const killer = spawn("taskkill", ["/pid", String(pid), "/f", "/t"], { stdio: "ignore", windowsHide: true })
-        killer.once("exit", () => resolve())
-        killer.once("error", () => resolve())
+        killer.once("exit", (code) => resolve(code === 0))
+        killer.once("error", () => resolve(false))
       })
-      return
     }
 
     try {
@@ -33,12 +32,14 @@ export namespace Shell {
       if (!opts?.exited?.()) {
         process.kill(-pid, "SIGKILL")
       }
+      return true
     } catch (_e) {
       proc.kill("SIGTERM")
       await delay(SIGKILL_TIMEOUT_MS)
       if (!opts?.exited?.()) {
-        proc.kill("SIGKILL")
+        return Boolean(proc.kill("SIGKILL"))
       }
+      return false
     }
   }
   const BLACKLIST = new Set(["fish", "nu"])

@@ -8,6 +8,139 @@ import { engine, sandbox } from "../fixture/engine"
 import { Identifier } from "@merakcode/util/id"
 import { fakeModel } from "../fixture/model"
 
+test("a queued SDK message cannot let an older external task overwrite a human plan", async () => {
+  await using isolated = await sandbox("http://127.0.0.1:1", { enabled_providers: [] })
+  const connection = await createMerakCode({ cwd: isolated.project, executablePath: engine, env: isolated.env })
+  const gate = path.join(isolated.project, "submit-plan")
+  try {
+    const { client } = connection
+    await client.agentConnection.product.change(
+      {
+        body: {
+          type: "add",
+          id: "plan-human",
+          product: {
+            adapter: "member",
+            command: process.execPath,
+            args: [...engine.slice(1, -1), path.join(import.meta.dirname, "../fixture/external-adapter.ts")],
+          },
+        },
+      },
+      { throwOnError: true },
+    )
+    const session = (
+      await client.session.create({ target: { kind: "external", productID: "plan-human" } }, { throwOnError: true })
+    ).data
+    await client.session.setPermissionLevel(
+      { sessionID: session.id, permissionLevel: "fullTakeover", expectedRevision: 0 },
+      { throwOnError: true },
+    )
+    await client.session.promptAsync(
+      { sessionID: session.id, parts: [{ type: "text", text: `plan-human-gate:${gate}` }] },
+      { throwOnError: true },
+    )
+    await expect
+      .poll(
+        () =>
+          fs.stat(`${gate}.started`).then(
+            () => true,
+            () => false,
+          ),
+        { timeout: 10000 },
+      )
+      .toBe(true)
+    const human = (
+      await client.session.planSave(
+        { sessionID: session.id, content: "Human choice", expectedRevision: 0 },
+        { throwOnError: true },
+      )
+    ).data
+    await client.session.promptAsync(
+      { sessionID: session.id, parts: [{ type: "text", text: "Explain the code without editing my plan" }] },
+      { throwOnError: true },
+    )
+    const messages = async () => (await client.session.messages({ sessionID: session.id }, { throwOnError: true })).data
+    await expect
+      .poll(async () => (await messages()).filter((item) => item.info.role === "user").length, { timeout: 10000 })
+      .toBe(2)
+    await fs.writeFile(gate, JSON.stringify({ revision: human.revision }))
+    await expect
+      .poll(
+        async () =>
+          (await messages()).filter(
+            (item) => item.info.role === "assistant" && "terminal" in item.info && item.info.terminal,
+          ).length,
+        { timeout: 15000 },
+      )
+      .toBe(2)
+    expect((await client.session.planGet({ sessionID: session.id }, { throwOnError: true })).data).toMatchObject({
+      content: "Human choice",
+      revision: human.revision,
+    })
+  } finally {
+    await fs.writeFile(gate, JSON.stringify({ revision: 1 }))
+    await connection.close()
+  }
+}, 60000)
+
+test.each(["fullTakeover", "ask"] as const)(
+  "an external root plan follows %s permission and cancellation",
+  async (mode) => {
+    await using isolated = await sandbox("http://127.0.0.1:1", { enabled_providers: [] })
+    const connection = await createMerakCode({ cwd: isolated.project, executablePath: engine, env: isolated.env })
+    try {
+      const { client } = connection
+      await client.agentConnection.product.change(
+        {
+          body: {
+            type: "add",
+            id: "plan-fixture",
+            product: {
+              adapter: "member",
+              command: process.execPath,
+              args: [...engine.slice(1, -1), path.join(import.meta.dirname, "../fixture/external-adapter.ts")],
+            },
+          },
+        },
+        { throwOnError: true },
+      )
+      const session = (
+        await client.session.create({ target: { kind: "external", productID: "plan-fixture" } }, { throwOnError: true })
+      ).data
+      await client.session.setPermissionLevel(
+        { sessionID: session.id, permissionLevel: mode, expectedRevision: 0 },
+        { throwOnError: true },
+      )
+      if (mode === "ask") {
+        await client.session.promptAsync(
+          { sessionID: session.id, parts: [{ type: "text", text: "plan-submit:# Official plan" }] },
+          { throwOnError: true },
+        )
+        await expect.poll(async () => (await client.permission.list({})).data?.length, { timeout: 10000 }).toBe(1)
+        await client.session.abort({ sessionID: session.id }, { throwOnError: true })
+        await expect.poll(async () => (await client.permission.list({})).data?.length, { timeout: 10000 }).toBe(0)
+        expect((await client.session.planGet({ sessionID: session.id }, { throwOnError: true })).data.revision).toBe(0)
+        return
+      }
+      const reply = (
+        await client.session.prompt(
+          { sessionID: session.id, parts: [{ type: "text", text: "plan-submit:# Official plan" }] },
+          { throwOnError: true },
+        )
+      ).data
+      expect(reply.info).toMatchObject({ terminal: "completed" })
+      expect((await client.session.planGet({ sessionID: session.id }, { throwOnError: true })).data).toMatchObject({
+        content: "# Official plan",
+        revision: 1,
+        source: "agent",
+      })
+    } finally {
+      await connection.close()
+    }
+  },
+  120000,
+)
+
 test.each(["failed", "cancelled"] as const)(
   "preserves observed steps from an external %s turn without text when MerakCode takes over",
   async (terminal) => {

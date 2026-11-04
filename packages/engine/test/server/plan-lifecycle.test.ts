@@ -47,7 +47,9 @@ test.each(["ask", "autoApprove", "fullTakeover"] as const)(
             })
           await save("# A\nPerform the approved work.")
           expect((await button()).status).toBe(200)
-          await expect.poll(async () => (await SessionPlan.get(session.id)).status).toBe("completed")
+          await expect
+            .poll(async () => (await SessionPlan.get(session.id)).status, { timeout: 10000 })
+            .toBe("completed")
           const first = await SessionPlan.get(session.id)
           expect(first.execution).toMatchObject({ source: "button", content: "# A\nPerform the approved work." })
           expect(first.buttonLocked).toBe(true)

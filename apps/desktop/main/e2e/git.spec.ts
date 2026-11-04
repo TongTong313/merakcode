@@ -4,7 +4,7 @@ import path from "node:path"
 import { test, expect, type Kit } from "./fixture"
 
 test.beforeEach(async ({ kit }) => {
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
 })
 
 // Source Control stages, commits and pushes independently of pending conversation review.
@@ -125,7 +125,7 @@ test("Git selection and all-file index actions preserve working files and pendin
   const loaded = await kit.page.reload()
   const authorization = (await loaded!.request().allHeaders()).authorization
   expect(authorization).toBeTruthy()
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
   await kit.send("Write a file")
   await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
   await writeFile(path.join(kit.project, "manual-a.txt"), "manual A\n")

@@ -22,6 +22,11 @@ import { permissionLevelNow } from "../permission/permission-level"
 import { SessionPlan } from "../session/plan"
 import { TaskScope } from "../permission/scope"
 import { startsSessionPlan } from "@merakcode/util/session-plan"
+import { PlanGenerateTool } from "../tools/plan"
+import { PermissionNext } from "../permission/next"
+import { PermissionPolicy } from "../permission/policy"
+import { Config } from "../settings"
+import type { Tool } from "../tools/tool"
 
 export namespace ExternalSession {
   const log = Log.create({ service: "session.external" })
@@ -227,6 +232,7 @@ export namespace ExternalSession {
           await Session.updateInfo(user)
           await Session.updateInfo(assistant)
           const currentText = input.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+          if (!session.parentID) await SessionPlan.beginTurn(session.id, user.id)
           const plan = await SessionPlan.get(session.id)
           const startingPlan = startsSessionPlan(currentText)
           const planInput = SessionPlan.inputForTask(plan, currentText, startingPlan)
@@ -314,6 +320,51 @@ export namespace ExternalSession {
                     questions,
                     abort: signal,
                   }),
+                submitPlan: session.parentID
+                  ? undefined
+                  : async (submission) => {
+                      const rulesetOf = async () => {
+                        const [owner, config, grants] = await Promise.all([
+                          Session.get(session.id),
+                          Config.get(),
+                          PermissionNext.grants(session.id),
+                        ])
+                        const mode = owner.permissionLevel ?? "ask"
+                        const user = PermissionNext.merge(
+                          PermissionNext.fromUserConfig(config.permission ?? {}),
+                          owner.permission ?? [],
+                        )
+                        return PermissionPolicy.ruleset(mode, PermissionNext.merge(user, grants))
+                      }
+                      const ctx: Tool.Context = {
+                        sessionID: session.id,
+                        messageID: assistant.id,
+                        callID: submission.id,
+                        agent: "build",
+                        permissionLevel: permissionLevelNow(session.id),
+                        abort: signal,
+                        messages: (await Session.messages({ sessionID: session.id })).filter(
+                          (message) => message.info.id <= user.id,
+                        ),
+                        ruleset: await rulesetOf(),
+                        metadata: () => {},
+                        ask: (request) =>
+                          PermissionNext.askCurrent(
+                            {
+                              ...request,
+                              sessionID: session.id,
+                              executionID: runID,
+                              tool: { messageID: assistant.id, callID: submission.id },
+                            },
+                            rulesetOf,
+                            signal,
+                          ),
+                      }
+                      const saved = await (
+                        await PlanGenerateTool.init()
+                      ).execute({ content: submission.content, expectedRevision: submission.expectedRevision }, ctx)
+                      return { revision: saved.metadata.revision }
+                    },
               },
             })
           })
@@ -361,6 +412,7 @@ export namespace ExternalSession {
         },
         signal,
       )
+      if (!session.parentID) await SessionPlan.completeTurn(session.id, user.id)
     } catch (error) {
       const cancelled =
         signal.aborted ||

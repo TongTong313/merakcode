@@ -505,7 +505,7 @@ export async function sequence(
     const result = await fetch(`${url}${route}`, {
       method,
       signal: AbortSignal.timeout(25_000),
-      headers: { "Content-Type": "application/json", "x-merakcode-directory": project },
+      headers: { "Content-Type": "application/json", "x-merakcode-directory": encodeURIComponent(project) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!result.ok) throw new Error(`${method} ${route}: ${result.status}`)

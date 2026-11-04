@@ -1,12 +1,11 @@
 import { EventEmitter } from "node:events"
 import { startEngine, type Engine } from "@merakcode/sdk/process"
-import { Network } from "@merakcode/util/network"
 
 /**
  * Lifecycle of the local backend (the engine's `serve` child process): started through the SDK, awaited until it
  * listens, and restarted after an unexpected exit.
  *
- * - Listens on 127.0.0.1 only, on a port picked here. Restarts reuse the same port so open windows keep their address
+ * - Listens on 127.0.0.1 only, on a port assigned when binding. Restarts reuse it so open windows keep their address
  *   and the UI event stream simply reconnects. Only when the port is taken is a new one picked, and windows reload.
  * - Each start gets a new random token from the SDK. It stays in the main process, which adds it to window requests
  *   (see auth.ts).
@@ -122,7 +121,6 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
   }
 
   private async spawn(): Promise<Endpoint> {
-    if (!this.port) this.port = await Network.freePort()
     this.options.log("info", "backend starting", { port: this.port, attempt: this.attempt })
     const engine = await startEngine({
       cwd: this.options.cwd,
@@ -140,6 +138,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     this.engine = engine
     void engine.exited.then((code) => this.exited(engine, code))
     const { origin, port } = new URL(engine.url)
+    this.port = Number(port)
     this.endpoint = { url: origin, origin, port: Number(port), headers: engine.headers }
     this.error = undefined
     this.ready = Date.now()

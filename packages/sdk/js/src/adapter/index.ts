@@ -209,6 +209,13 @@ export type Verdict = { allow: true } | { allow: false; message: string }
 export type OperationStart = { id: string; request: Permission; isolation: "product" | "none" | "unknown" }
 export type OperationFinish = { id: string; status: "completed" | "failed" | "stopped" }
 export type OperationAdmission = { allow: true; signal: AbortSignal } | { allow: false; message: string }
+export type PlanSubmission = { id: string; content: string; expectedRevision: number }
+export type PlanReceipt = { revision: number }
+const planSubmissionSchema = z.object({
+  id: z.string().min(1),
+  content: z.string(),
+  expectedRevision: z.number().int().nonnegative(),
+})
 const operationStartSchema = z.object({
   id: z.string().min(1),
   isolation: z.enum(["product", "none", "unknown"]),
@@ -260,6 +267,7 @@ export type Host = {
   operationStart(input: OperationStart): Promise<OperationAdmission>
   operationFinish(input: OperationFinish): Promise<void>
   question(questions: Question[]): Promise<Answer[]>
+  submitPlan(input: PlanSubmission): Promise<PlanReceipt>
 }
 
 export type Definition = {
@@ -493,6 +501,7 @@ export function adapter(definition: Definition) {
       operations.delete(input.id)
     },
     question: async (questions) => (await rpc.request<{ answers: Answer[] }>("question/ask", { questions })).answers,
+    submitPlan: (input) => rpc.request<PlanReceipt>("plan/submit", planSubmissionSchema.parse(input)),
   }
   // MerakCode closes stdin when it is done with the adapter, or when it goes away: the task stops. A request still
   // waiting then fails with ConnectionClosed; left unhandled it must not end the adapter before it stopped its CLI.

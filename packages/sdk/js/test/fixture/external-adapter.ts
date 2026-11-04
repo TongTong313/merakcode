@@ -24,6 +24,21 @@ adapter({
   async run(task, host) {
     const sessionId = task.resume ?? `sdk-fixture-thread-${randomUUID()}`
     await host.sessionStarted({ sessionId })
+    if (task.prompt.startsWith("plan-human-gate:")) {
+      const gate = task.prompt.slice("plan-human-gate:".length)
+      await fs.writeFile(`${gate}.started`, "ready")
+      while (!(await fs.stat(gate).catch(() => undefined))) {
+        task.signal.throwIfAborted()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      const input = JSON.parse(await fs.readFile(gate, "utf8"))
+      await host.submitPlan({ id: "older-task", content: "Automatic overwrite", expectedRevision: input.revision })
+      return { text: "Plan overwritten", sessionId }
+    }
+    if (task.prompt.startsWith("plan-submit:")) {
+      const receipt = await host.submitPlan({ id: "submit-once", content: task.prompt.slice(12), expectedRevision: 0 })
+      return { text: `Plan revision ${receipt.revision}`, sessionId }
+    }
     if (task.prompt.startsWith("step-without-text:")) {
       host.step({ tool: "Write", detail: "ALREADY_EDITED_MARKER.txt" })
       if (task.prompt.endsWith("failed")) throw new Error("Stopped after the observed step")

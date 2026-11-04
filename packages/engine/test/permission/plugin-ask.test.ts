@@ -7,6 +7,7 @@ import { Instance } from "../../src/infra/project/instance"
 import { Session } from "../../src/agent/session"
 import { tmpdir } from "../fixture/fixture"
 import { readySandbox } from "../fixture/sandbox-ready"
+import { Plugin } from "../../src/agent/plugin"
 
 async function project(
   status: "ask" | "allow" | "deny" | "gate",
@@ -104,6 +105,7 @@ test("a policy allow or deny settles before invoking the plugin", () =>
 
 test("a reply during a running plugin hook is neither lost nor registered twice", () =>
   project("gate", async (input, directory) => {
+    await Plugin.init()
     const running = PermissionNext.ask(input)
     try {
       await expect

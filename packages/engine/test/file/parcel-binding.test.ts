@@ -113,14 +113,19 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
         (_, events) => seen.push(...events.map((event) => path.relative(tmp.path, event.path))),
         { ignore: ["ignored"] },
       )
-      // Control the quiet-period clock; a loaded filesystem cannot guarantee uninterrupted real-time writes.
-      // Native subscriptions, file writes and notification delivery remain real.
-      if (folder === ".") {
-        await fs.writeFile(path.join(tmp.path, "initial.txt"), "initial")
-        await expect.poll(() => seen.includes("initial.txt"), { timeout: 10_000 }).toBe(true)
-      }
-      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
       try {
+        if (folder === ".")
+          await expect
+            .poll(
+              async () => {
+                await fs.writeFile(path.join(tmp.path, "initial.txt"), String(Date.now()))
+                return seen.includes("initial.txt")
+              },
+              { timeout: 10_000 },
+            )
+            .toBe(true)
+        // Native subscriptions, file writes and notification delivery remain real.
+        vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
         await fs.writeFile(path.join(tmp.path, folder, "f.txt"), "initial")
         await sleep(1_000)
         await subscription.unsubscribe()
@@ -135,8 +140,10 @@ describe.runIf(process.platform === "win32")("a queued cancel", () => {
         await expect.poll(() => pendingParcelCancels()).toBe(0)
       } finally {
         await subscription.unsubscribe()
-        await vi.advanceTimersByTimeAsync(2_000)
-        vi.useRealTimers()
+        if (vi.isFakeTimers()) {
+          await vi.advanceTimersByTimeAsync(2_000)
+          vi.useRealTimers()
+        }
       }
       // macOS also reports the watched directory itself ("") when files inside it change
       if (folder === "ignored") expect(seen.filter((file) => file.split(path.sep)[0] === "ignored")).toEqual([])

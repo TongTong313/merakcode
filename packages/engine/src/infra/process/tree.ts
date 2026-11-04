@@ -9,7 +9,7 @@ type Pick = (text: Text.Pair, params?: Record<string, unknown>) => Promise<strin
 
 /** Contains descendants before the child is allowed to start work. */
 export async function containProcess(
-  child: Process.Child,
+  child: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
   marker: { name: string; value: string },
   pick: Pick,
 ): Promise<() => Promise<void>> {

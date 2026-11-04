@@ -249,9 +249,9 @@ function main() {
     })
   let quitting = false
   app.on("before-quit", (event) => {
+    event.preventDefault()
     if (quitting) return
     quitting = true
-    event.preventDefault()
     tray.destroy()
     void Promise.allSettled([backend.stop()])
       .then(() => Log.close())

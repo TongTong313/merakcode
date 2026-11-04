@@ -43,11 +43,11 @@ test("a migrated conversation shows its permission change notice once across com
     )
   let dispose = mount()
   try {
-    await vi.waitFor(() => expect(host.textContent).toContain("旧权限已改为询问"))
+    await vi.waitFor(() => expect(host.textContent).toContain("旧权限已改为每次询问"))
     dispose()
     dispose = mount()
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(host.textContent?.split("旧权限已改为询问").length).toBe(2)
+    expect(host.textContent?.split("旧权限已改为每次询问").length).toBe(2)
   } finally {
     dispose()
     host.remove()
@@ -90,15 +90,29 @@ test("permission level follows the attachment button and defaults to Ask", () =>
   expect(buttons[1]?.getAttribute("aria-label")).toContain("询问")
 })
 
-test("the composer exposes three permission levels and explains full takeover", () => {
+test("the composer exposes the requested permission labels and safety descriptions", () => {
   const levels = modeOptions()
   expect(levels.map((option) => option.value)).toEqual(["ask", "autoApprove", "fullTakeover"])
   const takeover = levels.find((option) => option.value === "fullTakeover")!
   expect(takeover.tone).toBe("danger")
   expect(takeover.badge).toBe("危险")
-  expect(takeover.description).toContain("当前账户")
-  expect(levels.find((option) => option.value === "ask")!.label).toBe("询问")
-  expect(levels.find((option) => option.value === "autoApprove")!.label).toBe("自动审批")
+  expect(levels.map(({ label, description }) => ({ label, description }))).toEqual([
+    { label: "每次询问", description: "智能体全量操作询问用户，安全性最高" },
+    { label: "仅询问危险行为", description: "智能体自动审批非危险行为，仅危险行为询问用户，安全性中等" },
+    { label: "全面接管", description: "将控制权完全交给 MerakCode，所有操作均允许，安全性最低" },
+  ])
+})
+
+test("English permission choices explain the same safety levels", () => {
+  setLocale("en")
+  expect(modeOptions().map(({ label, description }) => ({ label, description }))).toEqual([
+    { label: "Ask every time", description: "Ask the user about every agent operation. Highest safety." },
+    {
+      label: "Ask only for risky actions",
+      description: "Automatically approve non-risky actions and ask the user only about risky actions. Medium safety.",
+    },
+    { label: "Full takeover", description: "Give MerakCode full control and allow all operations. Lowest safety." },
+  ])
 })
 
 test("a disabled composer keeps its draft and prevents typing or sending", () => {

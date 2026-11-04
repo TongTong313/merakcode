@@ -117,23 +117,30 @@ export namespace PermissionExecution {
 
   /** Status shown in the status bar, settings and `merak sandbox status` */
   export async function current(): Promise<Info> {
-    const status = await sandbox().status()
-    // Off still reports whether a one-time setup remains, so the conversation control can offer it.
     if ((await mode()) === "off")
       return {
-        ...status,
         status: "off",
         reason: await Text.pick({
           zh: "系统策略或测试环境禁止启动沙箱。前两档按每次操作询问。",
           en: "System policy or the test environment disables the sandbox. The first two permission levels require approval for each operation.",
         }),
       }
+    const status = await sandbox().status()
     if (starting) return { ...status, status: "starting" }
     if (startupFailure)
       return {
         ...status,
         status: "failed",
         reason: startupFailure,
+        errorCode: ErrorCode.CATALOG.SANDBOX_UNAVAILABLE.code,
+      }
+    if (status.status === "failed")
+      return {
+        ...status,
+        reason: await Text.pick({
+          zh: `沙箱启动失败：${status.reason ?? ""}。请重试初始化。`,
+          en: `Sandbox startup failed: ${status.reason ?? ""}. Retry setup.`,
+        }),
         errorCode: ErrorCode.CATALOG.SANDBOX_UNAVAILABLE.code,
       }
     return status
@@ -207,6 +214,7 @@ export namespace PermissionExecution {
   }
 
   async function installOnce(progress?: (step: string) => void) {
+    if ((await mode()) === "off") return
     const current = await sandbox().status()
     const status =
       current.status === "on"
@@ -220,6 +228,7 @@ export namespace PermissionExecution {
   }
 
   export async function reset(): Promise<Info> {
+    if ((await mode()) === "off") return current()
     const status = await sandbox().reset()
     log.info("reset finished", { status: status.status })
     startupFailure = undefined
@@ -250,16 +259,18 @@ export namespace PermissionExecution {
     if ((await mode()) === "off") return
     if ((await current()).status !== "on") return
     const config = (await Config.get()).sandbox
-    return sandbox().prepare({
+    const execution = sandbox()
+    const tmp = execution.tmp() ?? os.tmpdir()
+    return execution.prepare({
       command: input.command,
       shell: input.shell,
       cwd: input.cwd,
       env: input.env,
-      tmp: os.tmpdir(),
+      tmp,
       policy: policy({
         workspace: input.workspace,
         home: os.homedir(),
-        tmp: os.tmpdir(),
+        tmp,
         writable: input.writable,
         ruleset: input.ctx.ruleset,
         config,

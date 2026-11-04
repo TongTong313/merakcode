@@ -20,6 +20,14 @@ import { configureConnections } from "../fixture/agent-connections"
 
 const FIXTURE = path.join(import.meta.dirname, "fixture", "adapter.ts")
 
+test("a group member cannot submit its draft as the root official plan", async () => {
+  const result = await delegate({
+    permissionLevel: "fullTakeover",
+    scenario: { planSubmission: { id: "member-plan", content: "# Member draft", expectedRevision: 0 } },
+  })
+  expect(result.error).toBeInstanceOf(Error)
+})
+
 /** A user message and the leader's reply to it; returns the reply's id, which a tool call belongs to */
 async function turn(sessionID: string, directory: string) {
   const user = await Session.updateInfo({

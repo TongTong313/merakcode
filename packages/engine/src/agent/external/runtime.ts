@@ -16,6 +16,8 @@ import {
   type Task,
   type TextDelta,
   type Verdict,
+  type PlanSubmission,
+  type PlanReceipt,
 } from "@merakcode/sdk/adapter"
 import { Log } from "@merakcode/log/logger"
 import { Process } from "@merakcode/util/process"
@@ -109,6 +111,7 @@ type MemberHost = {
   step(step: Step): void | Promise<void>
   permission(request: Permission, operation?: OperationContext): Promise<Verdict>
   question(questions: Question[]): Promise<Answer[]>
+  submitPlan?(input: PlanSubmission): Promise<PlanReceipt>
 }
 
 type RunInput = Parameters<typeof runMember>[0]
@@ -253,6 +256,7 @@ export async function runMember(input: {
           "abort",
           () => {
             if (!entry.admitted) return
+            operationOutcome ??= "stopped"
             if (capabilities?.control?.cancellation !== "operation") {
               executionContext?.controller.abort()
               return
@@ -329,6 +333,14 @@ export async function runMember(input: {
         if (!accepting) throw new Error("The external task has ended")
         return { answers: await input.host.question(params.questions) }
       },
+      "plan/submit": async (value: unknown) => {
+        if (!verified || !accepting) throw new Error("The external task is not accepting plan submissions")
+        if (!input.host.submitPlan) throw new Error("Only a root conversation can submit an official plan")
+        const submission = z
+          .object({ id: z.string().min(1), content: z.string(), expectedRevision: z.number().int().nonnegative() })
+          .parse(value)
+        return input.host.submitPlan(submission)
+      },
     },
   })
   // Stopping tells the adapter first, so it can stop its CLI cleanly; one that is still there after the grace period
@@ -382,7 +394,7 @@ export async function runMember(input: {
     if (input.task.permissionLevel !== "fullTakeover" && !supportsPerOperationControl(info.capabilities))
       throw new ExternalAdapterError({
         message: await Text.pick({
-          zh: "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择完全接管。",
+          zh: "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择全面接管。",
           en: "This adapter cannot intercept every actual operation and cannot support the selected permission level. Upgrade it or explicitly select full takeover.",
         }),
       })

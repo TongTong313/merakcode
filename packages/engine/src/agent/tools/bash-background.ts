@@ -15,6 +15,7 @@ import { Redact } from "../../infra/security/redact"
 import { Checkout } from "../../infra/project/checkout"
 import { Instance } from "../../infra/project/instance"
 import { SessionPlan } from "../session/plan"
+import { Text } from "../prompt/text"
 
 const log = Log.create({ service: "bash-background" })
 
@@ -68,12 +69,14 @@ export function looksLikePrompt(text: string): boolean {
 
 export namespace BashJobStore {
   const jobs = new Map<string, BashJob>()
-  const procs = new Map<string, ChildProcess>()
+  const procs = new Map<string, { proc: ChildProcess; stop?: () => Promise<void>; unblock?: () => void }>()
   const timeoutTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const stallTimers = new Map<string, ReturnType<typeof setInterval>>()
   const releases = new Map<string, () => void>()
+  const stopping = new Set<string>()
 
   function releaseCheckout(id: string) {
+    procs.get(id)?.unblock?.()
     releases.get(id)?.()
     releases.delete(id)
   }
@@ -88,25 +91,42 @@ export namespace BashJobStore {
 
   export function clear() {
     for (const id of jobs.keys()) clearTimers(id)
-    for (const proc of procs.values()) {
+    for (const { proc, stop } of procs.values()) {
+      if (stop) {
+        void stop().catch((error) => log.warn("cleanup stop unconfirmed", { error }))
+        continue
+      }
       if (!proc.killed) proc.kill()
     }
     jobs.clear()
-    procs.clear()
+    stopping.clear()
     for (const id of releases.keys()) releaseCheckout(id)
+    procs.clear()
   }
 
   export async function stop(id: string): Promise<boolean> {
     const job = jobs.get(id)
     if (!job || job.status !== "running") return false
-    const proc = procs.get(id)
-    if (proc) {
-      // Kills the process tree: SIGTERM/SIGKILL to the group on Linux and macOS, taskkill /T on Windows
-      await Shell.killTree(proc)
+    stopping.add(id)
+    const owned = procs.get(id)
+    if (owned) {
+      try {
+        if (owned.stop) await owned.stop()
+        else if (!(await Shell.killTree(owned.proc))) throw new Error("Process tree termination is not confirmed")
+      } catch (error) {
+        log.warn("background stop unconfirmed", { id, error })
+        const message = await Text.pick({
+          zh: "操作尚未确认停止。该对话暂不派发新操作。",
+          en: "Operation cancellation is not confirmed. New work for this conversation is blocked.",
+        })
+        if (job.sessionID) owned.unblock ??= ModeOperations.block(await Session.rootID(job.sessionID), message)
+        throw new ModeOperations.PendingError({ message })
+      }
     }
     job.status = "stopped"
     job.endedAt = Date.now()
     clearTimers(id)
+    releaseCheckout(id)
     return true
   }
   function clearTimers(id: string) {
@@ -127,7 +147,7 @@ export namespace BashJobStore {
         id,
         `\n\n<bash_metadata>\nBackground bash job terminated after exceeding timeout ${timeoutMs} ms\n</bash_metadata>`,
       )
-      void stop(id)
+      void stop(id).catch((error) => log.warn("background timeout stop unconfirmed", { error }))
     }, timeoutMs)
     timer.unref?.()
     timeoutTimers.set(id, timer)
@@ -177,6 +197,7 @@ export namespace BashJobStore {
     description: string
     cwd: string
     proc: ChildProcess
+    stop?: () => Promise<void>
     timeoutMs?: number
     sessionID?: string
     messageID?: string
@@ -219,9 +240,7 @@ export namespace BashJobStore {
     }
     jobs.set(id, job)
     releases.set(id, release)
-    procs.set(id, params.proc)
-    // A stop acknowledgement can precede inherited pipes closing, especially after the parent has exited.
-    params.proc.once("close", () => releaseCheckout(id))
+    procs.set(id, { proc: params.proc, stop: params.stop })
     startTimeout(id, params.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS)
     startStallWatchdog(id)
     return job
@@ -240,8 +259,10 @@ export namespace BashJobStore {
     const job = jobs.get(id)
     if (!job) return
     job.exitCode = exitCode
-    job.status = status
+    job.status = stopping.has(id) ? "stopped" : status
+    stopping.delete(id)
     job.endedAt = Date.now()
+    releaseCheckout(id)
     procs.delete(id)
     clearTimers(id)
     // Only jobs started by a real tool call carry this context; jobs built in unit tests have none
@@ -377,6 +398,7 @@ export const BashBackgroundTool = Tool.define(
             description: params.description,
             cwd,
             proc,
+            stop: started.stop,
             timeoutMs: params.timeout,
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
@@ -384,7 +406,7 @@ export const BashBackgroundTool = Tool.define(
             planExecutionID: plan.status === "executing" ? plan.execution?.id : undefined,
           })
         } catch (error) {
-          await Shell.killTree(proc)
+          await started.stop()
           finish("", null)
           unregister()
           throw error
@@ -394,11 +416,10 @@ export const BashBackgroundTool = Tool.define(
         jobController.signal.addEventListener(
           "abort",
           () => {
-            void BashJobStore.stop(job.id)
+            void BashJobStore.stop(job.id).catch((error) => log.warn("background cancellation unconfirmed", { error }))
           },
           { once: true },
         )
-        proc.once("close", unregister)
 
         log.info("starting background job", { id: job.id, command: params.command })
 
@@ -407,7 +428,14 @@ export const BashBackgroundTool = Tool.define(
         proc.stderr?.on("data", append)
         let failed = false
 
-        proc.once("close", (code) => {
+        proc.once("close", async (code) => {
+          try {
+            await started.stop()
+          } catch (error) {
+            log.warn("background completion unconfirmed", { error })
+            return
+          }
+          unregister()
           // Operations the sandbox blocked go into the job log, so the agent sees them in the completion notice
           const violations = finish("", code)
           if (violations) BashJobStore.append(job.id, violations)
@@ -416,7 +444,7 @@ export const BashBackgroundTool = Tool.define(
             return !failed && code === 0 ? "completed" : "failed"
           })()
           BashJobStore.finish(job.id, code, status)
-          log.info("background job ended", { id: job.id, code, status })
+          log.info("background job ended", { id: job.id, code, status: job.status })
         })
 
         proc.once("error", (err) => {

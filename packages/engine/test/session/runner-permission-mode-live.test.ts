@@ -479,7 +479,7 @@ test("a command waiting only because the sandbox is not ready runs once the sand
       const asked = Promise.withResolvers<void>()
       const unsub = Bus.subscribe(PermissionNext.Event.Asked, () => asked.resolve())
       const running = Promise.resolve(
-        executeTool(tools.bash, { command: "git status", description: "Read repository state" }),
+        executeTool(tools.bash, { command: "pwd", description: "Read current directory" }),
       )
       running.catch(() => {})
       await asked.promise

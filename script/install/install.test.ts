@@ -34,7 +34,9 @@ const shells =
 test.each(shells)(
   "%s installs, reinstalls and upgrades a local release and rejects corrupt downloads",
   async (shell) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "merakcode install test "))
+    const root = await mkdtemp(
+      path.join(os.tmpdir(), process.platform === "win32" ? "merakcode 安装 test " : "merakcode install test "),
+    )
     const windows = process.platform === "win32"
     const platform = `${windows ? "windows" : process.platform}-${process.arch}`
     const assets = new Map<string, Buffer>()

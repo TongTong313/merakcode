@@ -4,6 +4,7 @@ import { Session } from "../session"
 import { Message } from "../session/message"
 import { SessionPlan } from "../session/plan"
 import { Text } from "../prompt/text"
+import { PermissionNext } from "../permission/next"
 
 function result(plan: { path: string; revision: number }) {
   return {
@@ -32,27 +33,48 @@ async function submit(
     })
   const previous = submission && (await SessionPlan.submission(ctx.sessionID, submission))
   if (previous) return result(previous)
-  const current = await SessionPlan.get(ctx.sessionID)
-  await ctx.ask({
-    permission: "plan_generate",
-    checks: [
-      { permission: "plan_generate", pattern: current.path, grants: [{ scope: "file", pattern: current.path }] },
-    ],
-    metadata: { planPath: current.path, expectedRevision: params.expectedRevision, update: current.revision > 0 },
-  })
   const userMessageID = ctx.messages.findLast(
     (message) => message.info.role === "user" && Message.userSourceTexts(message).some((text) => text.trim()),
   )?.info.id
-  const plan = await SessionPlan.save({
-    sessionID: ctx.sessionID,
-    content: params.content,
-    source: "agent",
-    abort: ctx.abort,
-    userMessageID,
-    expectedRevision: params.expectedRevision,
-    submission,
-  })
-  return result(plan)
+  for (;;) {
+    ctx.abort.throwIfAborted()
+    const current = await SessionPlan.get(ctx.sessionID)
+    const request = {
+      permission: "plan_generate",
+      checks: [
+        {
+          permission: "plan_generate",
+          pattern: current.path,
+          grants: [{ scope: "file" as const, pattern: current.path }],
+        },
+      ],
+      metadata: { planPath: current.path, expectedRevision: params.expectedRevision, update: current.revision > 0 },
+    }
+    const admission = await ctx.ask(request)
+    try {
+      const plan = await SessionPlan.save({
+        sessionID: ctx.sessionID,
+        content: params.content,
+        source: "agent",
+        abort: ctx.abort,
+        userMessageID,
+        expectedRevision: params.expectedRevision,
+        submission,
+        checkAdmission: admission
+          ? () =>
+              PermissionNext.isCurrent(admission, {
+                ...request,
+                sessionID: ctx.sessionID,
+                tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
+              })
+          : undefined,
+      })
+      return result(plan)
+    } catch (error) {
+      if (error instanceof SessionPlan.AdmissionExpiredError) continue
+      throw error
+    }
+  }
 }
 
 export const PlanGenerateTool = Tool.define("plan_generate", {

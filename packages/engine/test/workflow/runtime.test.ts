@@ -414,7 +414,7 @@ describe("WorkflowRuntime", () => {
 
       expect(captured.kind).toBe("ask")
       expect(captured.permission).toEqual(callerRuleset)
-      expect(captured.edit).toBe("allow")
+      expect(captured.edit).toBe("ask")
       expect(captured.externalDirectory).toBe("ask")
       expect(captured.workflowRun).toBe("deny")
       expect(captured.subagent).toBe("deny")
@@ -600,7 +600,7 @@ describe("WorkflowRuntime", () => {
       expect(captured.tools?.bash).toBe(false)
       expect(captured.permission?.some((rule) => rule.permission === "edit" && rule.action === "deny")).toBe(true)
       expect(captured.permission?.some((rule) => rule.permission === "bash" && rule.action === "deny")).toBe(true)
-      expect(captured.read).toBe("allow")
+      expect(captured.read).toBe("ask")
       expect(captured.edit).toBe("deny")
       expect(captured.bash).toBe("deny")
     } finally {

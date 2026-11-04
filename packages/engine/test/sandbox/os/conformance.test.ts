@@ -7,6 +7,8 @@ import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import http from "node:http"
 import type { AddressInfo } from "node:net"
+import { Paths } from "@merakcode/util/paths"
+import { WindowsSandbox } from "../../../src/infra/sandbox/windows"
 import os from "node:os"
 import path from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -87,10 +89,10 @@ describe.skipIf(status.status !== "on")(`sandbox conformance (${status.backend})
       network: { allow: ["allowed.test"], deny: ["denied.test"], blockPorts: [enginePort] },
     })
 
-  async function run(command: string, options: { onStart?: (pid: number) => void } = {}) {
+  async function run(command: string, options: { onStart?: (pid: number) => void; shell?: string } = {}) {
     const prepared = await sandbox.prepare({
       command,
-      shell,
+      shell: options.shell ?? shell,
       cwd: work,
       env: process.env,
       policy: policy(),
@@ -283,6 +285,37 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
     )
     expect(result.stdout.toString()).toContain("ok")
   })
+
+  test.skipIf(!windows)("13 helper launch failures invalidate readiness without confusing child exit 125", async () => {
+    const child = await run(
+      node("exit125.js", 'process.stderr.write("[MRK-5003] sandbox helper: child output");process.exit(125)'),
+    )
+    expect(child.code).toBe(125)
+    expect((await backend.status()).status).toBe("on")
+    const failed = await run("echo never", { shell: path.join(work, "missing-shell.exe") })
+    expect(failed.code).toBe(125)
+    expect((await backend.status()).status).toBe("failed")
+  })
+
+  test.skipIf(!windows).each([true, false])(
+    "Windows refreshes readiness after credentials change, initially valid=%s",
+    async (valid) => {
+      const copy = mkdtempSync(path.join(os.tmpdir(), "sandbox-status-change-"))
+      try {
+        const original = readFileSync(path.join(Paths.data, "sandbox/password.bin"))
+        writeFileSync(path.join(copy, "state.json"), readFileSync(path.join(Paths.data, "sandbox/state.json")))
+        writeFileSync(path.join(copy, "password.bin"), valid ? original : "invalid-copied-credential")
+        const state = JSON.parse(readFileSync(path.join(copy, "state.json"), "utf8")) as { sid: string }
+        execFileSync("icacls", [copy, "/grant", `*${state.sid}:(OI)(CI)RX`, "/c", "/q"], { windowsHide: true })
+        const isolated = WindowsSandbox.create(SandboxPolicy.base(os.homedir()), { root: copy })
+        expect((await isolated.status()).status).toBe(valid ? "on" : "failed")
+        writeFileSync(path.join(copy, "password.bin"), valid ? "invalid-copied-credential" : original)
+        expect((await isolated.status()).status).toBe(valid ? "failed" : "on")
+      } finally {
+        rmSync(copy, { recursive: true, force: true, maxRetries: 5 })
+      }
+    },
+  )
 })
 
 import { SandboxPolicy } from "../../../src/agent/permission/sandbox-policy"

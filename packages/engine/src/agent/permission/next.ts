@@ -343,7 +343,11 @@ export namespace PermissionNext {
     const { PermissionExecution } = await import("./execution")
     const permissionLevel = SessionStore.find(input.root ?? input.sessionID)?.permissionLevel ?? PermissionLevel.DEFAULT
     const sandboxReady =
-      !input.executionID &&
+      // External tool names are untrusted; only the host plan entry creates plan_generate checks.
+      (!input.executionID ||
+        (input.permission === "plan_generate" &&
+          checks.length > 0 &&
+          checks.every((check) => check.permission === "plan_generate"))) &&
       !input.metadata.pluginTool &&
       input.permission !== "mcp" &&
       input.permission !== "lsp" &&

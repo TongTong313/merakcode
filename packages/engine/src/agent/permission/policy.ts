@@ -105,7 +105,7 @@ export namespace PermissionPolicy {
     child?: boolean
     grants?: PermissionNext.Ruleset
   }): PermissionNext.Ruleset {
-    const mode = input.session.permissionLevel ?? "ask"
+    const mode = input.permissionLevel ?? input.session.permissionLevel ?? "ask"
     const user = PermissionNext.merge(input.agent.permission, input.grants ?? [], input.session.permission ?? [])
     const child = Boolean(input.session.parentID) || input.child === true
     return PermissionNext.merge(

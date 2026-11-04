@@ -124,7 +124,7 @@ SDK 里只有 `packages/sdk/openapi.json` 和 `packages/sdk/js/src/client/gen/` 
 - 要协作群成员的用例用假 CLI（`packages/engine/test/collaboration/fixture/` 里的假 Claude Code、Codex、OpenCode）或假适配器，不要启动真的 CLI。
 - 端到端用例会起真实进程，比较慢：通过 SDK 驱动引擎的是 `cd apps/cli && pnpm test:e2e`；桌面端先在 `apps/desktop/main` 和 `apps/desktop/renderer` 里各跑一次 `pnpm build`，再在 `apps/desktop/main` 里跑 `pnpm test:e2e`。
 - 测试默认关掉沙箱（测试的 preload 里设了 `MERAKCODE_SANDBOX_MODE=off`），否则在没初始化沙箱的 Windows 上会卡在审批。要测沙箱相关的逻辑，在用例里显式打开。
-- 沙箱的一致性测试是 `cd packages/engine && pnpm test:sandbox test/sandbox/os/conformance.test.ts`。沙箱没开时这组用例会跳过；CI 在三个系统上设了 `MERAKCODE_SANDBOX_REQUIRED=1`，跳过就算失败。Windows 上要先运行一次 `pnpm dev sandbox setup`（会弹一次管理员确认）。
+- 本地真实沙箱验收运行根目录的 `pnpm test:sandbox:verify`。该命令复用已有账户。账户未就绪时，命令失败并说明原因。该命令不自动初始化，也不请求管理员权限。Windows 首次使用时，只运行一次 `pnpm dev sandbox setup`。普通单元测试和桌面端到端测试禁止沙箱初始化及重置。Windows 最多同时执行两个测试文件。
 - 修 Bug 先写一个能复现的失败用例，再改代码。
 
 ## 代码约定
@@ -337,7 +337,7 @@ Changes to these rules (`script/check-deps.ts`) and to the files that load the e
 - Tests that need collaboration members use fake CLIs (the fake Claude Code, Codex and OpenCode in `packages/engine/test/collaboration/fixture/`) or a fake adapter, never a real CLI.
 - End-to-end tests start real processes and are slow: the engine driven through the SDK uses `cd apps/cli && pnpm test:e2e`; for the desktop app run `pnpm build` in both `apps/desktop/main` and `apps/desktop/renderer`, then `pnpm test:e2e` in `apps/desktop/main`.
 - Tests turn the sandbox off by default (the test preload sets `MERAKCODE_SANDBOX_MODE=off`); otherwise they would stop at an approval on a Windows machine without sandbox setup. Turn it on explicitly in tests that are about the sandbox.
-- The sandbox conformance tests are `cd packages/engine && pnpm test:sandbox test/sandbox/os/conformance.test.ts`. They skip when the sandbox is off; CI sets `MERAKCODE_SANDBOX_REQUIRED=1` on all three systems so a skip counts as a failure. On Windows, run `pnpm dev sandbox setup` once first (it asks for administrator approval once).
+- Run `pnpm test:sandbox:verify` at the repository root for local real-sandbox acceptance. It reuses the initialized account and fails with a reason when unavailable. It never starts setup or elevation. On Windows, run `pnpm dev sandbox setup` once before the first verification. Ordinary unit and desktop end-to-end tests prohibit sandbox setup and reset. Regular Windows tests use at most two worker processes. CI initializes its dedicated sandbox once and requires conformance to run.
 - When fixing a bug, write a failing test that reproduces it before changing the code.
 
 ## Conventions

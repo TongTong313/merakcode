@@ -357,7 +357,7 @@
   "cli.failed": "Failed",
   "cli.agent.location": "Location",
   "cli.agent.descriptionPrompt": "Description",
-  "cli.run.option.permissionLevel": "Permission level: ask (default), autoApprove, or fullTakeover",
+  "cli.run.option.permissionLevel": "Permission level: ask (Ask every time, default), autoApprove (Ask only for risky actions), or fullTakeover (Full takeover)",
   "cli.run.fullTakeover.title": "⚠ Full takeover:",
   "cli.run.fullTakeover.notice": "No operation approvals. When needed, use the current account to access files and networks outside the sandbox."
 }

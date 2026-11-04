@@ -224,6 +224,13 @@ test("fullTakeover preserves agent restrictions and prevents nested subagents", 
       const child = await Session.create({ parentID: root.id })
       const agent = (await Agent.get("build"))!
       const restricted = { ...agent, profile: { ...agent.profile!, restrictedRules: PermissionPolicy.deny("edit") } }
+      expect(
+        PermissionNext.evaluate(
+          "read",
+          "README.md",
+          PermissionPolicy.execution({ agent: restricted, session: child, permissionLevel: "fullTakeover" }),
+        ).action,
+      ).toBe("allow")
       const rules = async () =>
         PermissionPolicy.execution({ agent: restricted, session: { ...child, permissionLevel: "fullTakeover" } })
       for (const permission of ["edit", "subagent"])
