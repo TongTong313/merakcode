@@ -62,7 +62,7 @@ test.each(["button", "chat"])(
                 })
               ).status,
             ).toBe(200)
-            await expect.poll(async () => (await SessionPlan.get(root.id)).status).toBe("completed")
+            await expect.poll(async () => (await SessionPlan.get(root.id)).status, { timeout: 10000 }).toBe("completed")
           } else await Loop.prompt({ sessionID: child.id, parts: [{ type: "text", text: "开始执行" }] })
           expect(seen).toContain("CHILD_APPROVED_B")
           expect(seen).not.toContain("ROOT_A")

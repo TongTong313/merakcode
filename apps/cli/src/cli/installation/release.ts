@@ -131,7 +131,7 @@ export namespace Release {
       const temp = `${file}.${process.pid}.tmp`
       if (process.platform === "win32") {
         const target = path.join(layout.home, "versions", version, "bin", `${name}.cmd`)
-        await fs.writeFile(temp, `@echo off\r\n"${target}" %*\r\n`)
+        await fs.writeFile(temp, `@echo off\r\n@chcp 65001 >nul\r\n"${target}" %*\r\n`)
       } else {
         await fs.rm(temp, { force: true })
         await fs.symlink(path.join(layout.home, "versions", version, "bin", name), temp)

@@ -106,7 +106,7 @@ function cli(argv: string[]): Promise<void>
 function connect(options: { lines: AsyncIterable<string>; send: (line: string) => void; handlers: Record<string, (params: any) => unknown>; noise?: (line: string) => void; }): { request<T>(method: string, params?: unknown): Promise<T>; notify(method: string, params?: unknown): void; closed: Promise<void>; }
 class ConnectionClosed extends Error { constructor(); }
 type Definition = { cancelOperation?(id: string): { stopped: boolean; } | Promise<{ stopped: boolean; }>; permissionLevelChanged?(mode: PermissionLevel): void | Promise<void>; inspect(product: Product): Info | Promise<Info>; models?(product: Product, signal: AbortSignal): ModelList | Promise<ModelList>; run(task: Task & { product: Product; signal: AbortSignal; }, host: Host): Promise<Result>; }
-type Host = { sessionStarted(input: { sessionId: string; }): Promise<void>; textDelta(input: TextDelta): void; step(step: Step): void; permission(request: Permission): Promise<Verdict>; operationStart(input: OperationStart): Promise<OperationAdmission>; operationFinish(input: OperationFinish): Promise<void>; question(questions: Question[]): Promise<Answer[]>; }
+type Host = { sessionStarted(input: { sessionId: string; }): Promise<void>; textDelta(input: TextDelta): void; step(step: Step): void; permission(request: Permission): Promise<Verdict>; operationStart(input: OperationStart): Promise<OperationAdmission>; operationFinish(input: OperationFinish): Promise<void>; question(questions: Question[]): Promise<Answer[]>; submitPlan(input: PlanSubmission): Promise<PlanReceipt>; }
 type Info = { name: string; capabilities?: Capabilities; version?: string; path?: string; recommended?: string; upgrade?: string; unavailable?: string; }
 type ModelList = { models: (ProductModel & { title: string; })[]; allowCustomID: boolean; }
 type OperationAdmission = { allow: true; signal: AbortSignal; } | { allow: false; message: string; }
@@ -116,6 +116,8 @@ function parseOperationFinish(input: unknown): OperationFinish
 function parseOperationStart(input: unknown): OperationStart
 type Permission = { kind: "write"; paths: string[]; } | { kind: "command"; command: string; } | { kind: "network"; host: string; url?: string; } | { kind: "read"; paths: string[]; } | { kind: "tool"; name: string; detail?: string; }
 type PermissionLevel = "ask" | "autoApprove" | "fullTakeover"
+type PlanReceipt = { revision: number; }
+type PlanSubmission = { id: string; content: string; expectedRevision: number; }
 type Product = { id: string; title: string; command?: string; args?: string[]; resumeArgs?: string[]; sessionLine?: string; }
 type ProductModel = { id: string; providerID?: string; }
 const PROTOCOL: 3

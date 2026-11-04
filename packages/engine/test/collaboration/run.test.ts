@@ -168,6 +168,30 @@ test("a product run with node gets MerakCode's own Node, so it runs on a machine
   }
 }, 60_000)
 
+test("an adapter submits a plan through the SDK host protocol", async () => {
+  await using tmp = await tmpdir()
+  const fixture = path.join(import.meta.dirname, "fixture", "adapter.ts")
+  const input = { id: "plan-call", content: "# Review this", expectedRevision: 0 }
+  let received: typeof input | undefined
+  const result = await runMember({
+    launch: [process.execPath, ...process.execArgv, fixture, JSON.stringify({ planSubmission: input })],
+    product: { id: "fixture", title: "Fixture" },
+    task: { prompt: "Create a plan", cwd: tmp.path, permissionLevel: "fullTakeover" },
+    abort: new AbortController().signal,
+    host: {
+      step: () => {},
+      permission: async () => ({ allow: true }),
+      question: async () => [],
+      submitPlan: async (submission) => {
+        received = submission
+        return { revision: 1 }
+      },
+    },
+  })
+  expect(received).toEqual(input)
+  expect(JSON.parse(result.text)).toEqual({ revision: 1 })
+}, 30000)
+
 test("overriding only the command of a built-in product keeps the rest of it, its adapter included", async () => {
   const { Instance } = await import("../../src/infra/project/instance")
   const { configuredProducts } = await import("../../src/agent/external/catalog")

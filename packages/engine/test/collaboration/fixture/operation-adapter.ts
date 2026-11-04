@@ -5,6 +5,7 @@ import type { ChildProcess } from "node:child_process"
 
 const active = new Map<string, { child: ChildProcess; closed: Promise<number | null> }>()
 let unconfirmed = false
+let finishBeforeCancelReceipt: PromiseWithResolvers<void> | undefined
 
 adapter({
   cancelOperation: async (id) => {
@@ -13,6 +14,10 @@ adapter({
     if (!operation) return { stopped: true }
     await stop(operation.child)
     await operation.closed
+    if (finishBeforeCancelReceipt) {
+      await finishBeforeCancelReceipt.promise
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
     return { stopped: true }
   },
   inspect: () => ({
@@ -35,6 +40,7 @@ adapter({
   }),
   async run(task, host) {
     unconfirmed = task.prompt === "hold-unconfirmed"
+    finishBeforeCancelReceipt = task.prompt === "hold-completed" ? Promise.withResolvers<void>() : undefined
     await fs.writeFile(path.join(task.cwd, "task-received"), "RECEIVED")
     const decision = await host.operationStart({
       id: "write-once",
@@ -75,6 +81,7 @@ adapter({
               ? "completed"
               : "failed",
     })
+    finishBeforeCancelReceipt?.resolve()
     await fs.writeFile(path.join(task.cwd, "finished"), "FINISHED")
     return { text: code === 0 ? "DONE" : "FAILED" }
   },

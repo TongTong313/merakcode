@@ -1,1 +1,0 @@
-Submit the single current session plan for human review after saving it with plan_write or plan_edit. Stop the planning turn and show the plan review card. This does not switch the session mode or start implementation. The user can view or edit the plan, request changes, or start execution. There is no review timeout. Never implement before the user explicitly starts execution.

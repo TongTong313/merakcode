@@ -14,6 +14,8 @@ const server = http.createServer((req, res) => {
     JSON.stringify({ auth: req.headers.authorization ?? null, client: process.env.MERAKCODE_CLIENT, pid: process.pid }),
   )
 })
+const occupied = process.env.FAKE_PORT_RACE === "1" ? http.createServer() : undefined
+if (occupied) await new Promise((resolve) => occupied.listen(port, "127.0.0.1", resolve))
 server.listen(port, "127.0.0.1", () => {
   console.log(`MerakCode server listening on http://127.0.0.1:${server.address().port}`)
   const file = process.env.FAKE_CRASH_FILE

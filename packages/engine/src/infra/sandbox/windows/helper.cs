@@ -65,6 +65,7 @@ static class Helper
 
     static int Main(string[] args)
     {
+        Console.OutputEncoding = new UTF8Encoding(false);
         try
         {
             if (args.Length == 2 && args[0] == "protect") return Protect(args[1]);
@@ -138,6 +139,7 @@ static class Helper
 
         Process child = Process.Start(info);
         if (!AssignProcessToJobObject(job, child.Handle)) throw new Win32Exception("AssignProcessToJobObject");
+        File.WriteAllText(request + ".started", "started");
         Stream stdout = Console.OpenStandardOutput();
         Stream stderr = Console.OpenStandardError();
         Thread outThread = new Thread(() => Copy(child.StandardOutput.BaseStream, stdout));

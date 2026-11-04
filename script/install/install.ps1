@@ -66,7 +66,11 @@ try {
   if (Test-Path $target) { Remove-Item -Recurse -Force $target }
   Move-Item (Join-Path $work $name) $target
   # The command forwards to the current version; `merak upgrade` rewrites it the same way
-  Set-Content -Path (Join-Path $bin "merak.cmd") -Value "@echo off`r`n`"$target\bin\merak.cmd`" %*" -Encoding ASCII -NoNewline
+  [System.IO.File]::WriteAllText(
+    (Join-Path $bin "merak.cmd"),
+    "@echo off`r`n@chcp 65001 >nul`r`n`"$target\bin\merak.cmd`" %*`r`n",
+    (New-Object System.Text.UTF8Encoding($false))
+  )
 } finally {
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 }

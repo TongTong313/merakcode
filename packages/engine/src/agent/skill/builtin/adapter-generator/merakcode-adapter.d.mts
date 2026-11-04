@@ -166,6 +166,14 @@ export type OperationAdmission =
       allow: false
       message: string
     }
+export type PlanSubmission = {
+  id: string
+  content: string
+  expectedRevision: number
+}
+export type PlanReceipt = {
+  revision: number
+}
 export declare function parseOperationStart(input: unknown): OperationStart
 export declare function parseOperationFinish(input: unknown): OperationFinish
 export type Question = {
@@ -209,6 +217,7 @@ export type Host = {
   operationStart(input: OperationStart): Promise<OperationAdmission>
   operationFinish(input: OperationFinish): Promise<void>
   question(questions: Question[]): Promise<Answer[]>
+  submitPlan(input: PlanSubmission): Promise<PlanReceipt>
 }
 export type Definition = {
   /** Confirm true only after the named native operation has actually stopped. */

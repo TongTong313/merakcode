@@ -10,6 +10,20 @@ const node =
       ? { text: `RAN ${prompt.match(/#(\d+)/)?.[1] ?? ""} ${toolResults.at(-1)?.trim()}` }
       : { tool: "bash", args: { command: `node -e "${code}"`, description: "run node" } }
 
+test("permission choices show the requested names and safety descriptions", async ({ kit }, info) => {
+  await kit.modeButton().click()
+  for (const [label, description] of [
+    ["每次询问", "智能体全量操作询问用户，安全性最高"],
+    ["仅询问危险行为", "智能体自动审批非危险行为，仅危险行为询问用户，安全性中等"],
+    ["全面接管", "将控制权完全交给 MerakCode，所有操作均允许，安全性最低"],
+  ] as const) {
+    const option = kit.page.getByRole("option", { name: new RegExp(label) })
+    await expect(option).toBeVisible()
+    await expect(option).toContainText(description)
+  }
+  await kit.page.screenshot({ path: info.outputPath("permission-choices.png") })
+})
+
 test.describe("command approval", () => {
   test.use({ script: { reply: node("console.log(40+2)") } })
 
@@ -47,7 +61,7 @@ test.describe("full takeover", () => {
   test.use({ script: { reply: node("console.log(7*6)") } })
 
   test("full takeover runs a command without safety approval", async ({ kit }) => {
-    await kit.mode(/完全接管|Full takeover/)
+    await kit.mode(/全面接管|Full takeover/)
     await kit.send("跑一下 #4")
     await expect(kit.text(/RAN 4 42/)).toBeVisible({ timeout: 60_000 })
   })
@@ -64,7 +78,7 @@ test.describe("draft task scope", () => {
   })
 
   test("full takeover preserves an explicit draft task scope", async ({ kit }) => {
-    await kit.mode(/完全接管|Full takeover/)
+    await kit.mode(/全面接管|Full takeover/)
     await kit.send("只出稿，不要修改项目。")
     await expect(kit.text(/READONLY/)).toBeVisible({ timeout: 60_000 })
     await expect(access(path.join(kit.project, "blocked.txt"))).rejects.toThrow()

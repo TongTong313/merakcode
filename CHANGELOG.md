@@ -8,11 +8,25 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
-- Replace conversation modes with Ask (`ask`, the default), Auto approve (`autoApprove`) and Full takeover (`fullTakeover`). Ask and Auto approve require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
+- Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
+
+- Replace conversation modes with Ask every time (`ask`, the default), Ask only for risky actions (`autoApprove`) and Full takeover (`fullTakeover`). The first two levels require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
 
 - After a turn finishes, reasoning and tool steps collapse into a single timing line, keeping the final reply and that turn's changed files. Copy takes only the final reply while folded, and the whole turn once expanded.
 
 ### Fixed
+
+- Restore controlled Git history queries in draft-only tasks while blocking unsafe arguments, external programs and injected Git configuration.
+
+- Use the backend's private temporary directory for both sandbox permissions and command environment, avoiding authorization of the entire system temporary directory.
+
+- Keep repeated desktop quit requests inside the asynchronous cleanup and let the engine bind its initial port atomically, avoiding startup conflicts between concurrent clients.
+
+- Keep unisolated external tools on per-operation approval even when they copy an official tool name. Bind external plan saves to the running user turn, refresh Windows sandbox readiness after credential changes, and confirm command descendants have stopped before reporting cancellation.
+
+- Respect disabled sandbox operations in tests and system policy. Ordinary tests cannot initialize or reset the Windows account. Noninteractive sandbox verification reuses existing setup, and Windows test workers use bounded concurrency.
+
+- Keep long plans scrollable beneath a fixed action toolbar. Recheck official-plan authorization before saving, preserve cancellation outcomes for external operations, verify the Windows sandbox account at startup, and preserve Chinese paths in installation commands. External root conversations can submit official plans through the SDK adapter host.
 
 - Preserve task limits across child tasks, imported history, queued delegations and workflow notifications. Revalidate root permissions before dispatch and restore only idle child tasks owned by the same root conversation. Visual tooltips no longer intercept panel controls.
 
@@ -28,11 +42,25 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
-- 权限级别改为询问（`ask`，默认）、自动审批（`autoApprove`）和完全接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。完全接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
+- 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
+
+- 权限级别改为每次询问（`ask`，默认）、仅询问危险行为（`autoApprove`）和全面接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。全面接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
 
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 只出稿任务可以执行受控 Git 历史查询。危险参数、外部程序和注入的 Git 配置继续受限。
+
+- 沙箱权限和命令环境统一使用后端专用临时目录，避免给整个系统临时目录授权。
+
+- 桌面重复退出请求会等待关闭清理。引擎直接绑定初始端口，避免并发客户端抢占预选端口。
+
+- 外部工具冒用官方工具名时仍逐次审批。外部计划保存绑定当前用户轮次。Windows 沙箱在凭据变化后重新探测。命令确认子进程全部退出后才报告停止。
+
+- 测试环境和系统策略禁止沙箱操作时，常规测试不能初始化或重置 Windows 账户。非交互沙箱验收复用已有初始化结果。Windows 测试限制并发数量。
+
+- 长计划可在固定操作栏下滚动。官方计划保存前重新检查权限。外部操作保留取消结果。Windows 启动时验证沙箱账户。安装命令保留中文路径。外部根对话可通过 SDK 适配器提交官方计划。
 
 - 子任务、导入历史、排队委派和工作流通知保留原任务限制。实际派发前重新检查根对话权限。只恢复当前根对话中空闲的子任务。纯显示提示框不再拦截面板操作。
 

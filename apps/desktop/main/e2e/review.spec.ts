@@ -3,7 +3,7 @@ import path from "node:path"
 import { test, expect, type Kit } from "./fixture"
 
 test.beforeEach(async ({ kit }) => {
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
 })
 
 // Review agent changes independently of Git, including exact line feedback, full-screen navigation, and undo.
@@ -400,7 +400,7 @@ test("a selected turn cannot leak into another conversation", async ({ kit }) =>
   await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
   await kit.page.getByRole("button", { name: "新对话", exact: true }).click()
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
   await kit.send("other conversation")
   await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
   await expect(kit.panel().getByRole("region", { name: "other.txt" })).toBeVisible({ timeout: 10000 })

@@ -20,6 +20,7 @@
     "hooks:install": "node --import ./script/node/register.mjs script/install-hooks.ts",
     "test": "echo 'do not run tests from root' && exit 1",
     "test:script": "vitest run --config script/vitest.config.ts",
+    "test:sandbox:verify": "node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts verify",
     "format": "prettier --ignore-unknown --write .",
     "format:check": "prettier --ignore-unknown --check .",
     "check:deps": "node --import ./script/node/register.mjs script/check-deps.ts",

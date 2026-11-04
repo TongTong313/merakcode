@@ -45,7 +45,7 @@ async function createGroup(page: Page, member: { product: string; name: string; 
     .filter({ visible: true })
     .first()
     .click()
-  await page.getByRole("option", { name: /完全接管|Full takeover/ }).click()
+  await page.getByRole("option", { name: /全面接管|Full takeover/ }).click()
 }
 
 test.describe("group chat", () => {
@@ -557,7 +557,7 @@ test.describe("a controlled external member that needs approval", () => {
   }) => {
     const { page } = kit
     await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/自动审批|Auto approve/)
+    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
     await kit.send("@小明 查资料")
     await approveDelegation(kit)
     const card = kit.approval()
@@ -615,7 +615,7 @@ test.describe("a controlled external member allowed a website for the conversati
   test("its unisolated next page asks again without a conversation grant", async ({ kit }) => {
     const { page } = kit
     await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/自动审批|Auto approve/)
+    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
     await kit.send("@小明 查资料")
     await approveDelegation(kit)
     const card = kit.approval()
@@ -636,7 +636,7 @@ test.describe("a controlled external member refused with a reason", () => {
   test("gets the reason the user wrote", async ({ kit }) => {
     const { page } = kit
     await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/自动审批|Auto approve/)
+    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
     await kit.send("@小明 查资料")
     await approveDelegation(kit)
     const card = kit.approval()
@@ -679,7 +679,7 @@ test.describe("a controlled external member refused with a reason", () => {
     try {
       await createGroup(page, { product: "Controlled CLI", name: "小明" })
       await started.promise
-      await kit.mode(/自动审批|Auto approve/)
+      await kit.mode(/仅询问危险行为|Ask only for risky actions/)
       await kit.send("@小明 查资料")
       await approveDelegation(kit)
       const card = kit.approval()
@@ -714,7 +714,7 @@ test.describe("a controlled external member always allowed a website", () => {
   test("offers no always grant and leaves the project permission file unchanged", async ({ kit }) => {
     const { page } = kit
     await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/自动审批|Auto approve/)
+    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
     await kit.send("@小明 查资料")
     await approveDelegation(kit)
     const card = kit.approval()

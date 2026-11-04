@@ -27,7 +27,8 @@ export function SandboxControl(props: {
   }
   const options = (): Option<"install">[] => {
     const status = props.status
-    if (!status || props.busy || status.status === "on" || status.status === "starting") return []
+    if (!status || props.busy || status.status === "on" || status.status === "starting" || status.status === "off")
+      return []
     return [
       {
         value: "install",
@@ -93,7 +94,8 @@ export function SandboxField(props: { directory: string; disabled?: boolean; per
     }
   }
   createEffect(() => {
-    if (bridge?.os !== "windows" || !status()?.installable || props.disabled) return
+    if (bridge?.os !== "windows" || status()?.status !== "unsupported" || !status()?.installable || props.disabled)
+      return
     void (async () => {
       const key = "sandbox-setup-attempted-v3"
       if (await storage.get(key, false)) return

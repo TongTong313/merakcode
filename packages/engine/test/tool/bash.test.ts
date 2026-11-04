@@ -298,9 +298,9 @@ describe("tool.bash permissions", () => {
       fn: async () => {
         const bash = await BashTool.init()
         const { ctx: testCtx, requests } = permissionCtx()
-        const result = await bash.execute({ command: "echo no-card && git status -s", description: "Echo" }, testCtx)
+        const result = await bash.execute({ command: "echo no-card && pwd", description: "Echo" }, testCtx)
         expect(requests).toHaveLength(1)
-        expect(requests[0]?.patterns).toEqual(["echo no-card", "git status -s"])
+        expect(requests[0]?.patterns).toEqual(["echo no-card", "pwd"])
         expect(result.metadata.exit).toBe(0)
         expect(result.metadata.output).toContain("no-card")
       },

@@ -24,6 +24,7 @@ import { Instance } from "../../infra/project/instance"
 export namespace SessionPlan {
   const log = Log.create({ service: "session.plan" })
   export const ConflictError = PlanConflictError
+  export class AdmissionExpiredError extends Error {}
   export const RangeError = PlanReadRangeError
   export const PausedError = PlanExecutionPausedError
   export const Candidate = z
@@ -225,6 +226,7 @@ export namespace SessionPlan {
       abort?: AbortSignal
       submission?: Submission
       strict?: boolean
+      checkAdmission?: () => Promise<boolean>
     },
   ) {
     input = { ...input, sessionID: await Session.rootID(input.sessionID) }
@@ -253,6 +255,7 @@ export namespace SessionPlan {
       })
     await fs.mkdir(path.dirname(previous.path), { recursive: true })
     await validatePath(previous.path)
+    if (input.checkAdmission && !(await input.checkAdmission())) throw new AdmissionExpiredError()
     input.abort?.throwIfAborted()
     await Atomic.write(previous.path, input.content)
     const revision = previous.revision + 1

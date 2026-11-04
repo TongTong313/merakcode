@@ -42,7 +42,7 @@ test("S04.06 P/MM registered command template failure remains a command error an
     const before = kit.modelRequests()
     const result = await fetch(`${kit.url}/session/${session.id}/command`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-merakcode-directory": kit.project },
+      headers: { "Content-Type": "application/json", "x-merakcode-directory": encodeURIComponent(kit.project) },
       body: JSON.stringify({
         command: "command:broken",
         arguments: "S04_BROKEN",

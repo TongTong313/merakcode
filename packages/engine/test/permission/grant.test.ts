@@ -66,7 +66,7 @@ test("a multi-segment command shows one approval listing only the segments that 
       id: "permission_multi",
       sessionID: main.id,
       checks: [
-        command("git status", "readonly", "git status"),
+        command("pwd", "readonly", "pwd"),
         command("npm install", "normal", "npm install"),
         command("rm -rf dist", "delete", "rm"),
       ],

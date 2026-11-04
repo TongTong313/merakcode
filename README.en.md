@@ -147,7 +147,7 @@ merak run "Explain how src/index.ts starts up"
 | Command                                              | What it does                                                                                                                                                                             |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `merak run "<task>"`                                 | Run one task and print the result. `-c` continues the last session, `-m` picks the model, `-f` attaches files, `--format json` prints the raw events; the task can also come from a pipe |
-| `merak run --permission-level fullTakeover "<task>"` | Run it in auto mode; see below                                                                                                                                                           |
+| `merak run --permission-level fullTakeover "<task>"` | Run at the Full takeover level; see below                                                                                                                                                |
 | `merak provider login`                               | Connect a model provider; `list` shows the connected ones, `logout` removes one, `relay` adds a relay                                                                                    |
 | `merak serve --port 4096`                            | Start only the engine, for the SDK or other programs                                                                                                                                     |
 | `merak upgrade` (or `update`)                        | Upgrade. `--check` only looks for a new version, `--yes` skips the question                                                                                                              |
@@ -182,17 +182,17 @@ Editors that speak [ACP](https://agentclientprotocol.com) can use MerakCode as t
 
 ## Permissions and the sandbox
 
-New conversations default to Ask. Child tasks, group members and background work follow the root conversation's latest permission level.
+New conversations default to Ask every time. Child tasks, group members and background work follow the root conversation's latest permission level.
 
-| Permission level             | Required isolation is ready                                                                                                           | Required isolation is unavailable                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Ask `ask`                    | Ask before each operation; scoped conversation grants may apply                                                                       | Ask each time; allow once or reject                        |
-| Auto approve `autoApprove`   | Allow controlled project reads and edits, provably read-only commands and dedicated plan writes; ask for dangerous or unknown actions | Preserve the selection and ask each time                   |
-| Full takeover `fullTakeover` | Skip safety approvals; isolate compatible controlled commands and use the current account when needed                                 | Skip safety approvals and report current-account execution |
+| Permission level                         | Required isolation is ready                                                                                                           | Required isolation is unavailable                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Ask every time `ask`                     | Ask before each operation; scoped conversation grants may apply                                                                       | Ask each time; allow once or reject                        |
+| Ask only for risky actions `autoApprove` | Allow controlled project reads and edits, provably read-only commands and dedicated plan writes; ask for dangerous or unknown actions | Preserve the selection and ask each time                   |
+| Full takeover `fullTakeover`             | Skip safety approvals; isolate compatible controlled commands and use the current account when needed                                 | Skip safety approvals and report current-account execution |
 
 Full takeover still respects the user's task scope, input validation and concurrency protection. A failed command is never automatically replayed with the current account.
 
-The product prepares isolation. On Windows, the first interactive desktop setup requests system administrator approval once. Cancellation leaves Ask and Auto approve on per-operation approval. Retry from sandbox status, or diagnose and repair with `merak sandbox status` and `merak sandbox setup`.
+The product prepares isolation. On Windows, the first interactive desktop setup requests system administrator approval once. Cancellation leaves Ask every time and Ask only for risky actions on per-operation approval. Retry from sandbox status, or diagnose and repair with `merak sandbox status` and `merak sandbox setup`.
 
 Every level supports official plans. The model saves Markdown with `plan_generate` and edits it with `plan_edit`. Draft-only requests do not authorize project changes. Human saves need no agent approval. The Plan tab renders full Markdown; Edit plan opens the existing editor.
 

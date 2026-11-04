@@ -4,6 +4,69 @@ import { Instance } from "../../src/infra/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { GlobalBus } from "../../src/infra/bus/global"
 
+test("disabled test isolation never probes or changes the real sandbox account", async () => {
+  const previous = process.env.MERAKCODE_SANDBOX_MODE
+  process.env.MERAKCODE_SANDBOX_MODE = "off"
+  const called: string[] = []
+  PermissionExecution.useBackendForTest({
+    status: async () => {
+      called.push("status")
+      return { status: "unsupported", installable: true }
+    },
+    setup: async () => {
+      called.push("setup")
+      return { status: "on" }
+    },
+    reset: async () => {
+      called.push("reset")
+      return { status: "unsupported", installable: true }
+    },
+    wrap: async () => {
+      throw new Error("No command expected")
+    },
+  })
+  try {
+    for (const status of [
+      await PermissionExecution.current(),
+      await PermissionExecution.install(),
+      await PermissionExecution.reset(),
+    ])
+      expect(status.status).toBe("off")
+    expect(called).toEqual([])
+  } finally {
+    PermissionExecution.useBackendForTest(undefined)
+    if (previous === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
+    else process.env.MERAKCODE_SANDBOX_MODE = previous
+  }
+})
+
+test.each(["zh-CN", "en-US"])("backend startup failures include a localized repair hint in %s", async (locale) => {
+  const previousLocale = process.env.MERAKCODE_LOCALE
+  const previousMode = process.env.MERAKCODE_SANDBOX_MODE
+  process.env.MERAKCODE_LOCALE = locale
+  process.env.MERAKCODE_SANDBOX_MODE = "preferred"
+  PermissionExecution.useBackendForTest({
+    status: async () => ({ status: "failed", reason: "Account launch failed" }),
+    wrap: async () => {
+      throw new Error("No command expected")
+    },
+  })
+  try {
+    expect(await PermissionExecution.current()).toMatchObject({
+      status: "failed",
+      errorCode: "MRK-5003",
+      reason: locale === "zh-CN" ? expect.stringContaining("请重试初始化") : expect.stringContaining("Retry setup"),
+    })
+    expect(await PermissionExecution.ready()).toBe(false)
+  } finally {
+    PermissionExecution.useBackendForTest(undefined)
+    if (previousLocale === undefined) delete process.env.MERAKCODE_LOCALE
+    else process.env.MERAKCODE_LOCALE = previousLocale
+    if (previousMode === undefined) delete process.env.MERAKCODE_SANDBOX_MODE
+    else process.env.MERAKCODE_SANDBOX_MODE = previousMode
+  }
+})
+
 test("sandbox initialization broadcasts its real state to every window", async () => {
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"

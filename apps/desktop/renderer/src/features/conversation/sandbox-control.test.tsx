@@ -17,7 +17,7 @@ const http = vi.hoisted(() => ({
 test("auto approval explains per-operation asking while isolation is unavailable", async () => {
   setLocale("zh")
   const host = mount(() => <SandboxField directory="/degraded-auto" permissionLevel="autoApprove" />)
-  await expect.poll(() => host.textContent).toContain("自动审批 · 当前逐次询问")
+  await expect.poll(() => host.textContent).toContain("仅询问危险行为 · 当前逐次询问")
 })
 vi.mock("undici", () => ({
   Agent: class {
@@ -232,7 +232,7 @@ test("usage, the model and the permission mode use the same hint above the contr
     expect(modelButton?.getAttribute("aria-label")).toBe("配置模型，Claude")
     expect(await hint(modelButton)).toBe("配置模型")
     const modeButton = [...host.querySelectorAll("button")].find((item) => item.textContent?.includes("询问"))
-    expect(modeButton?.getAttribute("aria-label")).toBe("权限级别，询问")
+    expect(modeButton?.getAttribute("aria-label")).toBe("权限级别，每次询问")
     expect(await hint(modeButton)).toBe("选择权限级别")
   } finally {
     vi.useRealTimers()
@@ -365,7 +365,7 @@ test("an unavailable sandbox shows why and offers a retry", () => {
   expect(options.some((item) => item.includes("开启"))).toBe(false)
 })
 
-test("a configured but stopped sandbox offers retry without an off switch", () => {
+test("system-disabled sandbox operations offer no setup or retry", () => {
   setLocale("zh")
   const host = mount(() => (
     <SandboxControl status={{ status: "off", backend: "windows-account" }} busy={false} onInstall={() => {}} />
@@ -375,7 +375,7 @@ test("a configured but stopped sandbox offers retry without an off switch", () =
   expect(button?.getAttribute("aria-label")).toBe("沙箱状态，未启动")
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
-  expect(options.some((item) => item.includes("重试启动"))).toBe(true)
+  expect(options).toEqual([])
   expect(options.some((item) => item.includes("设置并启动"))).toBe(false)
   expect(options.some((item) => item.includes("关闭"))).toBe(false)
 })

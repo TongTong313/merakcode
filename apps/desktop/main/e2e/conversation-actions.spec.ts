@@ -22,7 +22,7 @@ test.use({
 })
 
 test.beforeEach(async ({ kit }) => {
-  await kit.mode(/完全接管|Full takeover/)
+  await kit.mode(/全面接管|Full takeover/)
   current = kit
   count = 0
 })

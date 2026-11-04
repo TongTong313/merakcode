@@ -1,7 +1,7 @@
 import type { Policy } from "./policy"
 
 export type Status = {
-  status: "on" | "off" | "unsupported"
+  status: "on" | "off" | "unsupported" | "failed"
   backend?: "windows-account" | "landlock" | "seatbelt"
   /** Why it is not on, in plain English */
   reason?: string
@@ -33,5 +33,5 @@ export interface Backend {
     policy: Policy
     /** Loopback port of the sandbox proxy, the only one Linux lets a command connect to */
     proxyPort: number
-  }): Promise<Launch & { cleanup?(): void }>
+  }): Promise<Launch & { cleanup?(output?: string, exitCode?: number | null): void }>
 }

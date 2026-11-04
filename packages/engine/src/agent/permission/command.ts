@@ -23,6 +23,8 @@ export namespace CommandAnalysis {
   }
 
   export type Result = {
+    /** A standalone local Git history query, executed with restricted arguments and configuration. */
+    git?: string[]
     segments: Segment[]
     tags: Tag[]
     /** The whole command certainly does not modify files, so it can run in parallel with editing tools */
@@ -32,9 +34,8 @@ export namespace CommandAnalysis {
   }
 
   /**
-   * Commands that certainly do not modify the file system. Keys are prefixes from BashArity.prefix, so subcommands
-   * such as `git status` are included. Commands that both read and write under one name (git branch, git config, sed,
-   * awk, etc.) are excluded; anything uncertain counts as a write. Only these commands run in read-only mode.
+   * Commands that certainly do not modify the file system. Git is excluded because configuration can execute
+   * external programs, including inspection commands. Anything uncertain counts as a write.
    */
   const READ_ONLY = new Set([
     // Inspect files and directories
@@ -98,19 +99,6 @@ export namespace CommandAnalysis {
     "sha1sum",
     "sha256sum",
     "cksum",
-    // Read-only git subcommands
-    "git status",
-    "git diff",
-    "git log",
-    "git show",
-    "git blame",
-    "git ls-files",
-    "git ls-remote",
-    "git rev-parse",
-    "git describe",
-    "git shortlog",
-    "git whatchanged",
-    "git cat-file",
     // Read-only package manager subcommands
     "npm view",
     "npm list",
@@ -254,9 +242,6 @@ export namespace CommandAnalysis {
     bun: ["--cwd", "-c", "--config"],
   }
 
-  /** git options that set config, which can name programs git runs (core.pager, alias.x=!cmd, ...) */
-  const GIT_CONFIG = /^(-c|--config-env|--exec-path=)/
-
   /** Whether an argument sets an option: a long one as --name or --name=value, a short one alone or in a cluster */
   function sets(args: string[], short: string, long: string[] = []) {
     return args.some(
@@ -273,7 +258,7 @@ export namespace CommandAnalysis {
 
   /**
    * Arguments that make a command on the read-only list write files or run other programs (sort -o out, rg --pre cmd,
-   * git diff --output=f); such a call counts as a normal command
+   * sort -o out); such a call counts as a normal command
    */
   const UNSAFE_ARGS: Record<string, (args: string[]) => boolean> = {
     rg: (args) => sets(args, "", ["--pre"]),
@@ -285,12 +270,6 @@ export namespace CommandAnalysis {
     file: (args) => sets(args, "C", ["--compile"]),
     date: (args) => sets(args, "s", ["--set"]),
     hostname: (args) => sets(args, "F", ["--file"]) || positionals(args).length > 0,
-    "git diff": (args) => sets(args, "", ["--output"]),
-    "git log": (args) => sets(args, "", ["--output"]),
-    "git show": (args) => sets(args, "", ["--output"]),
-    "git whatchanged": (args) => sets(args, "", ["--output"]),
-    "git shortlog": (args) => sets(args, "", ["--output"]),
-    "git ls-remote": (args) => sets(args, "u", ["--upload-pack"]),
   }
 
   const SEVERITY: PermissionPolicy.CommandLevel[] = ["readonly", "normal", "delete", "risky", "forbidden"]
@@ -364,15 +343,13 @@ export namespace CommandAnalysis {
   function subcommand(words: string[]) {
     const values = GLOBAL_VALUES[words[0] ?? ""]
     const all = words.map((_, index) => index)
-    if (!values) return { at: all, configured: false }
+    if (!values) return { at: all }
     let index = 1
-    let configured = false
     while (index < words.length && words[index]!.startsWith("-")) {
       const word = words[index]!
-      if (words[0] === "git" && GIT_CONFIG.test(word)) configured = true
       index += values.includes(word) ? 2 : 1
     }
-    return { at: [0, ...all.slice(index)], configured }
+    return { at: [0, ...all.slice(index)] }
   }
 
   // tree-sitter only needs the wasm file path (it reads the file itself), so resolving through the package is enough
@@ -458,12 +435,7 @@ export namespace CommandAnalysis {
   }
 
   /** Level of a command whose words are unquoted, with wrappers and the tool's options before its subcommand removed */
-  function level(
-    words: string[],
-    prefix: string,
-    redirected: boolean,
-    configured: boolean,
-  ): PermissionPolicy.CommandLevel {
+  function level(words: string[], prefix: string, redirected: boolean): PermissionPolicy.CommandLevel {
     const head = words[0] ?? ""
     if (forbidden(words)) return "forbidden"
     if (PRIVILEGE.has(head) || PUBLISH.has(prefix)) return "risky"
@@ -473,7 +445,7 @@ export namespace CommandAnalysis {
     if (head === "find" && words.includes("-delete")) return "delete"
     if (head === "find" && words.some((word) => FIND_WRITE.has(word))) return "normal"
     const args = words.slice(prefix.split(" ").length)
-    if (READ_ONLY.has(prefix) && !redirected && !configured && !UNSAFE_ARGS[prefix]?.(args)) return "readonly"
+    if (READ_ONLY.has(prefix) && !redirected && !UNSAFE_ARGS[prefix]?.(args)) return "readonly"
     return "normal"
   }
 
@@ -493,7 +465,7 @@ export namespace CommandAnalysis {
     const raw = sub.at.map((index) => tokens[wrapped.start + index]!)
     const arity = BashArity.prefix(effective).length
     const prefix = effective.slice(0, arity).join(" ")
-    const own = rest.length ? level(effective, prefix, redirected, sub.configured) : redirected ? "normal" : "readonly"
+    const own = rest.length ? level(effective, prefix, redirected) : redirected ? "normal" : "readonly"
     const script = wrapped.script ?? scriptOf(rest)
     // The grant prefix keeps the words as written, up to the end of the subcommand (`env git -C . push`)
     const end = arity ? wrapped.start + sub.at[arity - 1]! + 1 : BashArity.prefix(tokens).length
@@ -586,16 +558,52 @@ export namespace CommandAnalysis {
   /** Command lines inside command lines (sh -c "sh -c ...") are followed this deep; deeper ones count as normal */
   const MAX_DEPTH = 4
 
+  const GIT_LOG_OPTIONS = new Set([
+    "--oneline",
+    "--stat",
+    "--name-only",
+    "--name-status",
+    "--all",
+    "--graph",
+    "--reverse",
+    "-p",
+  ])
+
+  function gitInspection(root: Node, command: string) {
+    const node = root.namedChildren[0]
+    if (root.hasError || root.namedChildCount !== 1 || node?.type !== "command" || node.text !== command.trim()) return
+    if (node.namedChildren.some((child) => !child || !TOKEN_TYPES.has(child.type))) return
+    const words = node.namedChildren.map((child) => shellWord(child!.text))
+    if (words.some((word) => !word.known) || words[0]?.value !== "git") return
+    const args = words.slice(1).map((word) => word.value)
+    const [name = "", ...options] = args
+    if (name !== "log") return
+    for (let index = 0; index < options.length; index++) {
+      const option = options[index]!
+      if (GIT_LOG_OPTIONS.has(option)) continue
+      if (/^-\d+$/.test(option)) continue
+      if (["-n", "--max-count"].includes(option) && /^\d+$/.test(options[index + 1] ?? "")) {
+        index++
+        continue
+      }
+      if (/^--max-count=\d+$/.test(option)) continue
+      if (option === "--") continue
+      if (!option.startsWith("-") && /^[\w./~-]+$/.test(option)) continue
+      return
+    }
+    return args
+  }
+
   export async function analyze(
     command: string,
-    input: { cwd: string; workspace: string[]; home: string },
+    input: { cwd: string; workspace: string[]; home: string; controlledGit?: boolean },
   ): Promise<Result> {
     return analyzeAt(command, input, 0)
   }
 
   async function analyzeAt(
     command: string,
-    input: { cwd: string; workspace: string[]; home: string },
+    input: { cwd: string; workspace: string[]; home: string; controlledGit?: boolean },
     depth: number,
   ): Promise<Result> {
     const tree = await parser().then((p) => p.parse(command))
@@ -604,6 +612,7 @@ export namespace CommandAnalysis {
     const tags = new Set<Tag>()
     const paths = new Set<string>()
     const redirected = redirects(tree.rootNode)
+    const git = input.controlledGit && depth === 0 ? gitInspection(tree.rootNode, command) : undefined
     for (const node of tree.rootNode.descendantsOfType("command")) {
       if (!node) continue
       const own = redirected.get(node.id)
@@ -658,6 +667,7 @@ export namespace CommandAnalysis {
       for (const segment of segments) segment.level = "forbidden"
       tags.add("forbidden")
     }
+    if (git && segments.length === 1) segments[0]!.level = "readonly"
     // Standalone redirects and redirects on skipped commands (cd) still write files.
     // Parser errors cannot establish that a command is read-only.
     const fileRedirects = tree.rootNode.descendantsOfType("file_redirect")
@@ -672,6 +682,7 @@ export namespace CommandAnalysis {
       if (target && outside(target, input)) tags.add("external-path")
     }
     return {
+      ...(git ? { git } : {}),
       segments,
       tags: [...tags],
       readOnly: segments.every((segment) => segment.level === "readonly"),

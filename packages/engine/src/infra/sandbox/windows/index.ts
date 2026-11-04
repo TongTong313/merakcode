@@ -33,6 +33,7 @@ export namespace WindowsSandbox {
 
   const system = process.env.SystemRoot ?? "C:\\Windows"
   const powershell = path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+  const probes = new Map<string, { signature: string; retryAt: number; pending: Promise<Status> }>()
 
   /** The C# compiler of .NET Framework 4, part of every supported Windows */
   export function compiler() {
@@ -83,6 +84,8 @@ export namespace WindowsSandbox {
       }
     }
     const save = (state: State) => writeFileSync(file.state, JSON.stringify(state, null, 2))
+    const signature = () =>
+      createHash("sha256").update(readFileSync(file.state)).update(readFileSync(file.password)).digest("hex")
 
     async function helper() {
       const hash = createHash("sha256").update(source).digest("hex").slice(0, 12)
@@ -165,7 +168,49 @@ export namespace WindowsSandbox {
           installable: true,
           reason: "The sandbox needs a one-time setup with administrator approval",
         }
-      return { status: "on", backend: "windows-account", degraded: ["loopback-not-restricted"] }
+      const version = signature()
+      const cached = probes.get(root)
+      if (cached?.signature === version && Date.now() < cached.retryAt) return cached.pending
+      const pending = (async (): Promise<Status> => {
+        const request = path.join(file.requests, `probe-${randomUUID()}`)
+        try {
+          const exe = await helper()
+          mkdirSync(file.requests, { recursive: true })
+          mkdirSync(file.tmp, { recursive: true })
+          writeFileSync(
+            request,
+            WindowsCommand.request({
+              user: ACCOUNT,
+              password: file.password,
+              cwd: file.tmp,
+              file: path.join(system, "System32", "whoami.exe"),
+              args: "",
+              env: { SystemRoot: system, TEMP: file.tmp, TMP: file.tmp },
+            }),
+          )
+          const { stdout } = await run(exe, ["run", request], { windowsHide: true, timeout: 5000 })
+          if (!stdout.trim().toLowerCase().endsWith(ACCOUNT)) throw new Error("The sandbox account identity changed")
+          return { status: "on", backend: "windows-account", degraded: ["loopback-not-restricted"] }
+        } catch (error) {
+          return {
+            status: "failed",
+            backend: "windows-account",
+            reason: `The sandbox account could not start a process: ${error instanceof Error ? error.message : String(error)}`,
+          }
+        } finally {
+          rmSync(request, { force: true })
+          rmSync(request + ".started", { force: true })
+        }
+      })()
+      const entry = { signature: version, retryAt: Infinity, pending }
+      probes.set(root, entry)
+      void pending.then((result) => {
+        if (probes.get(root) !== entry) return
+        // Share concurrent probes, but never retain a successful login as permanent readiness.
+        if (result.status === "on") probes.delete(root)
+        else entry.retryAt = Date.now() + 30_000
+      })
+      return pending
     }
 
     return {
@@ -173,8 +218,7 @@ export namespace WindowsSandbox {
       tmp: () => file.tmp,
 
       async warm() {
-        if (!load() || !existsSync(file.password) || !compiler()) return
-        await helper()
+        await status()
       },
 
       async setup(progress = () => {}) {
@@ -215,6 +259,7 @@ export namespace WindowsSandbox {
         })
         const state: State = { sid: result.sid, granted: [] }
         save(state)
+        probes.delete(root)
 
         progress("Letting the sandbox read your user folder. This can take a few minutes the first time.")
         await grant(state, home, "/grant", RIGHTS.read)
@@ -230,6 +275,7 @@ export namespace WindowsSandbox {
       },
 
       async reset() {
+        probes.delete(root)
         const state = load()
         // Before the account is deleted: afterwards its SID can no longer be resolved
         if (state)
@@ -269,7 +315,20 @@ export namespace WindowsSandbox {
           file: exe,
           args: ["run", request],
           env: ChildEnv.build({}),
-          cleanup: () => rmSync(request, { force: true }),
+          cleanup: (output = "", exitCode?: number | null) => {
+            if (exitCode === 125 && !existsSync(request + ".started"))
+              probes.set(root, {
+                signature: signature(),
+                retryAt: Date.now() + 30_000,
+                pending: Promise.resolve({
+                  status: "failed",
+                  backend: "windows-account",
+                  reason: `The sandbox could not start the command: ${output.trim()}`,
+                }),
+              })
+            rmSync(request, { force: true })
+            rmSync(request + ".started", { force: true })
+          },
         }
       },
     }

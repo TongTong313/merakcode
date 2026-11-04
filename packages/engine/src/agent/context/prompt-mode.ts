@@ -8,9 +8,6 @@ export namespace PromptMode {
   export interface Input {
     sessionID?: string
     agent?: string
-    permissionLevel?: PermissionLevel.Value
-    kind?: PermissionLevel.Value
-    permissionMode?: "readonly" | "ask"
   }
   export async function resolve(input: Input) {
     const config = await Config.get()

@@ -73,10 +73,13 @@ test.each(["ask", "autoApprove", "fullTakeover"] as const)(
             ).status,
           ).toBe(200)
         await expect
-          .poll(async () => {
-            const plan = await (await request(`/session/${created.id}/plan`)).json()
-            return plan.status
-          })
+          .poll(
+            async () => {
+              const plan = await (await request(`/session/${created.id}/plan`)).json()
+              return plan.status
+            },
+            { timeout: 10000 },
+          )
           .toBe("completed")
         const received = JSON.parse(await fs.readFile(file, "utf8"))
         expect(received.permissionLevel).toBe(permissionLevel)

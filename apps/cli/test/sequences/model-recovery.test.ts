@@ -16,7 +16,7 @@ test("S02.06 P/M selected model endpoint refuses connections then same model com
     const request = async (text: string) => {
       const result = await fetch(`${kit.url}/session/${session.id}/message`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-merakcode-directory": kit.project },
+        headers: { "Content-Type": "application/json", "x-merakcode-directory": encodeURIComponent(kit.project) },
         signal: AbortSignal.timeout(100_000),
         body: JSON.stringify({
           agent: "build",

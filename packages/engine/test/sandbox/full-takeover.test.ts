@@ -235,7 +235,7 @@ test("fullTakeover chooses isolation before launch and never replays an arbitrar
         try {
           const tool = await BashTool.init()
           expect(
-            (await tool.execute({ command: "git status", description: "Inspect the project" }, ctx)).metadata.exit,
+            (await tool.execute({ command: "pwd", description: "Inspect the project directory" }, ctx)).metadata.exit,
           ).toBe(0)
           expect(
             (
@@ -257,7 +257,7 @@ test("fullTakeover chooses isolation before launch and never replays an arbitrar
             (await tool.execute({ command: "whoami", description: "Read the current account identity" }, ctx)).metadata
               .exit,
           ).toBe(0)
-          expect(isolated).toEqual(["git status"])
+          expect(isolated).toEqual(["pwd"])
           expect(approvals).toBe(0)
           expect(await fs.readFile(path.join(tmp.path, "effect.txt"), "utf8")).toBe("x")
         } finally {

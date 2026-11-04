@@ -357,7 +357,7 @@
   "cli.failed": "失败",
   "cli.agent.location": "保存位置",
   "cli.agent.descriptionPrompt": "描述",
-  "cli.run.option.permissionLevel": "权限级别：ask（询问，默认）、autoApprove（自动审批）、fullTakeover（完全接管）",
-  "cli.run.fullTakeover.title": "⚠ 完全接管：",
+  "cli.run.option.permissionLevel": "权限级别：ask（每次询问，默认）、autoApprove（仅询问危险行为）、fullTakeover（全面接管）",
+  "cli.run.fullTakeover.title": "⚠ 全面接管：",
   "cli.run.fullTakeover.notice": "不再请求操作审批。需要时将使用当前账户访问沙箱外的文件和网络。"
 }
