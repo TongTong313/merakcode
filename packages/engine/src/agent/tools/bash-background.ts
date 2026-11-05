@@ -41,6 +41,7 @@ export type BashJob = {
   messageID?: string
   callID?: string
   planExecutionID?: string
+  pausedForPlan?: boolean
 }
 
 const MAX_LOG_BYTES = 500_000
@@ -69,7 +70,10 @@ export function looksLikePrompt(text: string): boolean {
 
 export namespace BashJobStore {
   const jobs = new Map<string, BashJob>()
-  const procs = new Map<string, { proc: ChildProcess; stop?: () => Promise<void>; unblock?: () => void }>()
+  const procs = new Map<
+    string,
+    { proc: ChildProcess; stop?: () => Promise<void>; unblock?: () => void; settled: PromiseWithResolvers<void> }
+  >()
   const timeoutTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const stallTimers = new Map<string, ReturnType<typeof setInterval>>()
   const releases = new Map<string, () => void>()
@@ -104,9 +108,10 @@ export namespace BashJobStore {
     procs.clear()
   }
 
-  export async function stop(id: string): Promise<boolean> {
+  export async function stop(id: string, pausedForPlan = false): Promise<boolean> {
     const job = jobs.get(id)
     if (!job || job.status !== "running") return false
+    job.pausedForPlan ||= pausedForPlan
     stopping.add(id)
     const owned = procs.get(id)
     if (owned) {
@@ -127,7 +132,13 @@ export namespace BashJobStore {
     job.endedAt = Date.now()
     clearTimers(id)
     releaseCheckout(id)
+    owned?.settled.resolve()
     return true
+  }
+
+  /** A failed stop request can still receive a confirmed terminal result later. */
+  export async function waitForStop(id: string) {
+    if (jobs.get(id)?.status === "running") await procs.get(id)?.settled.promise
   }
   function clearTimers(id: string) {
     const timeout = timeoutTimers.get(id)
@@ -240,7 +251,7 @@ export namespace BashJobStore {
     }
     jobs.set(id, job)
     releases.set(id, release)
-    procs.set(id, { proc: params.proc, stop: params.stop })
+    procs.set(id, { proc: params.proc, stop: params.stop, settled: Promise.withResolvers<void>() })
     startTimeout(id, params.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS)
     startStallWatchdog(id)
     return job
@@ -263,6 +274,7 @@ export namespace BashJobStore {
     stopping.delete(id)
     job.endedAt = Date.now()
     releaseCheckout(id)
+    procs.get(id)?.settled.resolve()
     procs.delete(id)
     clearTimers(id)
     // Only jobs started by a real tool call carry this context; jobs built in unit tests have none
@@ -295,6 +307,7 @@ async function notifyAgent(job: BashJob) {
         ...part,
         state: {
           ...part.state,
+          output: job.pausedForPlan ? `${part.state.output}\n${buildJobSummary(job)}` : part.state.output,
           metadata: {
             ...part.state.metadata,
             status: job.status,
@@ -308,6 +321,8 @@ async function notifyAgent(job: BashJob) {
     log.warn("update part metadata failed", { id: job.id, error: String(e) })
   }
 
+  if (job.pausedForPlan) return
+
   // Dynamic import breaks the bash-background → ToolRegistry → Loop import cycle
   try {
     const { Loop } = await import("../loop/index")
@@ -319,7 +334,14 @@ async function notifyAgent(job: BashJob) {
     await LoopExecution.run(undefined, () =>
       Loop.promptGenerated({
         sessionID,
-        parts: [{ type: "text", text, synthetic: true, metadata: { taskOriginMessageID: job.messageID } }],
+        parts: [
+          {
+            type: "text",
+            text,
+            synthetic: true,
+            metadata: { taskOriginMessageID: job.messageID, planExecutionID: job.planExecutionID },
+          },
+        ],
       }),
     )
   } catch (e) {
@@ -372,7 +394,14 @@ export const BashBackgroundTool = Tool.define(
         const plan = await SessionPlan.get(ctx.sessionID)
         const jobController = new AbortController()
         const jobCallID = `background:${randomUUID()}`
-        const unregister = ModeOperations.register(ctx.sessionID, jobCallID, "bash_background", jobController)
+        const unregister = ModeOperations.register(
+          ctx.sessionID,
+          jobCallID,
+          "bash_background",
+          jobController,
+          undefined,
+          plan.status === "executing" ? plan.execution?.id : undefined,
+        )
         ModeOperations.inherit(ctx.sessionID, ctx.callID, jobCallID)
         let started: Awaited<ReturnType<typeof spawnCommand>>
         try {
@@ -403,7 +432,7 @@ export const BashBackgroundTool = Tool.define(
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
             callID: ctx.callID,
-            planExecutionID: plan.status === "executing" ? plan.execution?.id : undefined,
+            planExecutionID: ctx.planExecution && plan.status === "executing" ? plan.execution?.id : undefined,
           })
         } catch (error) {
           await started.stop()
@@ -427,6 +456,12 @@ export const BashBackgroundTool = Tool.define(
         proc.stdout?.on("data", append)
         proc.stderr?.on("data", append)
         let failed = false
+
+        proc.once("exit", () => {
+          if (!job.pausedForPlan) return
+          // A descendant may hold the output pipes open after its parent exits, so close cannot drive this retry.
+          void started.stop().catch((error) => log.warn("background pause receipt unconfirmed", { error }))
+        })
 
         proc.once("close", async (code) => {
           try {

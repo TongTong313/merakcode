@@ -37,7 +37,15 @@ adapter({
   },
   async run(task, host) {
     if (["plan-input", "plan-capacity"].includes(process.argv[2] ?? "")) {
-      fs.writeFileSync(process.argv[2] === "plan-capacity" ? process.argv[4]! : process.argv[3]!, JSON.stringify(task))
+      const verdict =
+        process.argv[5] === "verify-paused"
+          ? await host.permission({ kind: "write", paths: ["paused-write.txt"] }).catch(() => ({ allow: false }))
+          : undefined
+      if (verdict?.allow) fs.writeFileSync(`${task.cwd}/paused-write.txt`, "CHANGED")
+      fs.writeFileSync(
+        process.argv[2] === "plan-capacity" ? process.argv[4]! : process.argv[3]!,
+        JSON.stringify({ ...task, writeAllowed: verdict?.allow }),
+      )
       return { text: "Plan received" }
     }
     if (process.argv[2] === "plan-gate") {

@@ -72,7 +72,7 @@ describe("all three valid forms of client-level headers", () => {
 
   test("the directory option wins over a directory header passed by the caller", async () => {
     const result = await sent({
-      headers: new Headers({ ...ORIGINAL, "X-Merak-Code-Directory": "/stale" }),
+      headers: new Headers({ ...ORIGINAL, "X-MERAKCODE-DIRECTORY": "/stale" }),
       directory: "/repo/work",
     })
     expect(result.get("x-merakcode-directory")).toBe("/repo/work")

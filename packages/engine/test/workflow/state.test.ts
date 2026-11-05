@@ -479,3 +479,32 @@ describe("WorkflowState", () => {
     })
   })
 })
+
+test("workflow cancellation waits for the runtime's real settlement", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const done = Promise.withResolvers<void>()
+      const abort = new AbortController()
+      const unregister = WorkflowState.registerRun("wait-session", "wait-run", { abort, done: done.promise })
+      let returned = false
+      const cancelling = WorkflowState.cancelRun("wait-session", "wait-run").then(() => {
+        returned = true
+      })
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(abort.signal.aborted).toBe(true)
+        expect(returned).toBe(false)
+        expect(WorkflowState.hasActive()).toBe(true)
+        done.resolve()
+        await cancelling
+        expect(returned).toBe(true)
+      } finally {
+        done.resolve()
+        await cancelling
+        unregister()
+      }
+    },
+  })
+})

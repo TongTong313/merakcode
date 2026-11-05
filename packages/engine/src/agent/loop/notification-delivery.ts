@@ -58,6 +58,7 @@ export namespace SessionNotificationDelivery {
     const current = state().entries[sessionID] ?? {}
     state().entries[sessionID] = current
     if (current.running) return
+    if (await Loop.planPaused(sessionID)) return
     const pending = await SessionNotification.list(sessionID)
     if (pending.length === 0) {
       delete state().entries[sessionID]

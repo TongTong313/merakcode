@@ -4,3 +4,10 @@ export function startsSessionPlan(text: string) {
     text.trim(),
   )
 }
+
+/** Only an explicit whole instruction resumes paused execution; mentions and partial retries do not. */
+export function resumesSessionPlan(text: string) {
+  return /^(?:继续执行(?:当前任务|当前计划|原计划)?|恢复执行(?:当前任务|当前计划|原计划)?|(?:resume|continue)(?: (?:the )?(?:current )?(?:task|plan|execution))?)[。.!！\s]*$/i.test(
+    text.trim(),
+  )
+}

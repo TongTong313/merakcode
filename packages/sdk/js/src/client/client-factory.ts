@@ -59,7 +59,8 @@ function nodeFetch() {
   return (unbounded ??= import(/* @vite-ignore */ name).then(({ Agent, fetch: send }) => {
     const dispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 })
     return async (input, init) => {
-      const request = new Request(input, init)
+      // The generated client retains its Request; an extra clone can lose its abort link during garbage collection.
+      const request = input instanceof Request && init === undefined ? input : new Request(input, init)
       return send(request.url, {
         method: request.method,
         headers: [...request.headers],

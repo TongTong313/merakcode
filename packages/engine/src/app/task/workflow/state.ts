@@ -197,6 +197,7 @@ export namespace WorkflowState {
     // notifyCancelled is a closure on control, so deleting the entry does not affect it; the delete must come after
     // abort.
     control.abort.abort()
+    await control.done
     delete runs[runId]
     if (Object.keys(runs).length === 0) delete current[sessionID]
     await control.notifyCancelled?.()

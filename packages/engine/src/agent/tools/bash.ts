@@ -62,7 +62,26 @@ export async function prepareBashCommand(
     : Instance.directory
 
   const scope = PermissionPolicy.scope()
+  const environment = await Plugin.trigger(
+    "shell.env",
+    { cwd, sessionID: ctx.sessionID, callID: ctx.callID },
+    { env: {} },
+  )
+  const shellEnv = Object.freeze({ ...environment.env }) as Record<string, string>
   const analysis = await CommandAnalysis.analyze(params.command, { cwd, ...scope, controlledGit: true })
+  // Environment hooks can replace executables or inject code into otherwise read-only programs.
+  if (
+    !analysis.git &&
+    (Object.keys(shellEnv).length > 0 ||
+      (process.env.RIPGREP_CONFIG_PATH && analysis.segments.some((segment) => segment.program === "rg")) ||
+      Object.entries(process.env).some(
+        ([key, value]) =>
+          value && /^(NODE_OPTIONS|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|BASH_ENV|ENV|BASH_FUNC_.*)$/i.test(key),
+      ))
+  ) {
+    analysis.segments.push({ text: params.command, tokens: [params.command], prefix: params.command, level: "normal" })
+    analysis.readOnly = false
+  }
   const prefix = analysis.segments[0]?.prefix ?? params.command
   // Credential paths are asked about even for read-only commands; outside paths too when the command only reads
   const reads = analysis.paths.flatMap((file) => {
@@ -96,12 +115,9 @@ export async function prepareBashCommand(
   const admission = await ctx.ask(request)
   const sandbox = await escalate(params, cwd, prefix, ctx)
 
-  // Same shell.env input as @opencode-ai/plugin@1.16.2, including session and call ids, so plugins can inject a
-  // different environment per session
-  const shellEnv = await Plugin.trigger("shell.env", { cwd, sessionID: ctx.sessionID, callID: ctx.callID }, { env: {} })
   return {
     cwd,
-    shellEnv: shellEnv.env as Record<string, string>,
+    shellEnv,
     readOnly: analysis.readOnly,
     sandbox: {
       ...sandbox,

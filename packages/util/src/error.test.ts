@@ -37,7 +37,6 @@ test("readableErrorText: handles a retry { message } wrapper and a top-level gat
     "api key invalid",
   )
   expect(readableErrorText({})).toBe("")
-  expect(readableErrorText({})).not.toBe("[object Object]")
 })
 
 test("NamedError.isInstance: recognizes plain objects by name; rejects null and non-objects", () => {

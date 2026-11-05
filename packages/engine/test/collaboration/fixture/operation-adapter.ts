@@ -53,11 +53,13 @@ adapter({
       process.execPath,
       [
         "-e",
-        process.argv[2] === "stopped" || task.prompt.startsWith("hold")
-          ? "require('node:fs').writeFileSync('effect.txt',String(process.pid));setInterval(()=>{},1000)"
-          : process.argv[2] === "failed"
-            ? "process.exit(7)"
-            : "require('node:fs').writeFileSync('effect.txt','CHANGED')",
+        task.prompt.startsWith("hold-tick")
+          ? "const fs=require('fs');fs.writeFileSync('effect.txt',String(process.pid));setInterval(()=>fs.writeFileSync('heartbeat.txt',String(Date.now())),20)"
+          : process.argv[2] === "stopped" || task.prompt.startsWith("hold")
+            ? "require('node:fs').writeFileSync('effect.txt',String(process.pid));setInterval(()=>{},1000)"
+            : process.argv[2] === "failed"
+              ? "process.exit(7)"
+              : "require('node:fs').writeFileSync('effect.txt','CHANGED')",
       ],
       { cwd: task.cwd, stdio: "ignore", windowsHide: true },
     )

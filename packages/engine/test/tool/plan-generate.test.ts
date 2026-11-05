@@ -106,6 +106,7 @@ test.each(["executing", "paused"] as const)(
           const ctx: Tool.Context = {
             sessionID,
             messageID: "msg_read",
+            planExecution: true,
             callID: "call_read",
             agent: "build",
             permissionLevel: "fullTakeover",

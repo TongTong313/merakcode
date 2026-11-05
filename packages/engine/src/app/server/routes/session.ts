@@ -32,6 +32,7 @@ import { Instance } from "../../../infra/project/instance"
 import { Identifier } from "@merakcode/util/id"
 
 const log = Log.create({ service: "server" })
+const PlanStartInput = lazy(() => Loop.PromptInput.pick({ model: true, variant: true }))
 
 export const SessionRoutes = lazy(() =>
   new Hono()
@@ -179,15 +180,32 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Execute the latest saved plan",
         operationId: "session.planStart",
+        requestBody: {
+          required: false,
+          content: { "application/json": { schema: resolver(PlanStartInput()) } },
+        },
         responses: {
           200: {
             description: "Execution plan",
             content: { "application/json": { schema: resolver(SessionPlan.Info) } },
           },
-          ...errors(404, 409),
+          ...errors(400, 404, 409),
         },
       }),
       async (c) => {
+        const body = await c.req.text()
+        let selection: z.infer<ReturnType<typeof PlanStartInput>> | undefined
+        if (body) {
+          let value: unknown
+          try {
+            value = JSON.parse(body)
+          } catch {
+            reject([{ message: "Malformed JSON in request body" }])
+          }
+          const parsed = PlanStartInput().safeParse(value)
+          if (!parsed.success) reject(parsed.error.issues)
+          selection = parsed.data
+        }
         const sessionID = await Session.rootID(c.req.param("sessionID"))
         const previous = await SessionPlan.get(sessionID)
         if (previous.status === "executing" || previous.buttonLocked) return c.json(previous)
@@ -198,7 +216,7 @@ export const SessionRoutes = lazy(() =>
               en: "Save a plan before starting execution.",
             }),
           })
-        void Loop.Request.startPlan(sessionID).catch((error) => {
+        void Loop.Request.startPlan(sessionID, selection).catch((error) => {
           if (error?.name === "AbortError") return
           log.error("plan execution failed", { sessionID, error })
           void Bus.publish(Session.Event.Error, {

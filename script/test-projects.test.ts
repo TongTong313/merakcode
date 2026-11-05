@@ -24,6 +24,6 @@ test("engine test projects enforce the configured worker budget", async () => {
   expect(config.projects.map((project) => project.name)).toEqual(["engine", "sandbox"])
   for (const project of config.projects) expect(project.workers, project.name).toBe(config.workers)
   if (process.platform !== "win32") return
-  expect(config.workers).toBeLessThanOrEqual(4)
+  expect(config.workers).toBeLessThanOrEqual(2)
   expect(config.workers).toBeLessThanOrEqual(Math.max(1, availableParallelism() / 2))
 })

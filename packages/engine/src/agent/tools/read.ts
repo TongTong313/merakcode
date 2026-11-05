@@ -358,7 +358,7 @@ export const ReadTool = Tool.define("read", {
 
     ctx.abort.throwIfAborted()
 
-    const executionContent = await SessionPlan.contentForTool(ctx.sessionID, filepath)
+    const executionContent = await SessionPlan.contentForTool(ctx.sessionID, filepath, ctx.planExecution)
     let { output, preview, truncated } =
       executionContent !== undefined || fileSize < STREAM_THRESHOLD_BYTES
         ? formatTextContent(

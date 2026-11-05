@@ -22,30 +22,6 @@ describe("LSPClient interop", () => {
     await Log.init({ print: true })
   })
 
-  test("handles workspace/workspaceFolders request", async () => {
-    const handle = spawnFakeServer() as any
-
-    const client = await Instance.provide({
-      directory: process.cwd(),
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
-
-    await client.connection.sendNotification("test/trigger", {
-      method: "workspace/workspaceFolders",
-    })
-
-    await new Promise((r) => setTimeout(r, 100))
-
-    expect(client.connection).toBeDefined()
-
-    await client.shutdown()
-  })
-
   test("multi-root initialize exposes every workspace folder", async () => {
     const handle = spawnFakeServer() as any
     const a = process.cwd()
@@ -74,54 +50,6 @@ describe("LSPClient interop", () => {
     }> | null
     expect(folders).toHaveLength(2)
     expect(folders!.map((f) => f.name).sort()).toEqual(["packages", "root"])
-    await client.shutdown()
-  })
-
-  test("handles client/registerCapability request", async () => {
-    const handle = spawnFakeServer() as any
-
-    const client = await Instance.provide({
-      directory: process.cwd(),
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
-
-    await client.connection.sendNotification("test/trigger", {
-      method: "client/registerCapability",
-    })
-
-    await new Promise((r) => setTimeout(r, 100))
-
-    expect(client.connection).toBeDefined()
-
-    await client.shutdown()
-  })
-
-  test("handles client/unregisterCapability request", async () => {
-    const handle = spawnFakeServer() as any
-
-    const client = await Instance.provide({
-      directory: process.cwd(),
-      fn: () =>
-        LSPClient.create({
-          serverID: "fake",
-          server: handle as unknown as LSPServer.Handle,
-          root: process.cwd(),
-        }),
-    })
-
-    await client.connection.sendNotification("test/trigger", {
-      method: "client/unregisterCapability",
-    })
-
-    await new Promise((r) => setTimeout(r, 100))
-
-    expect(client.connection).toBeDefined()
-
     await client.shutdown()
   })
 

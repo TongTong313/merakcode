@@ -150,8 +150,26 @@ test("keeps a background command protected after its foreground turn finishes", 
   }
 }, 120_000)
 
-test("protects a background workflow even after its cancellation has been acknowledged", async () => {
-  const workflowEnv = await sandbox(model.url)
+test("protects a background workflow while cancellation remains unconfirmed", async () => {
+  const releaseChild = Promise.withResolvers<void>()
+  let childStarted = false
+  const workflowModel = await fakeModel(async (turn) => {
+    if (turn.prompt.includes("CANCEL_TARGET_WAIT")) {
+      childStarted = true
+      await releaseChild.promise
+      return { text: "Released" }
+    }
+    return turn.results.length
+      ? { text: "workflow started" }
+      : {
+          tool: "workflow_run",
+          args: {
+            script:
+              'export const meta = { name: "waiting", description: "Wait until the engine stops" }; try { await agent("CANCEL_TARGET_WAIT", { label: "cancel target" }) } catch { await log("CANCEL_RECEIVED"); await new Promise(() => {}) }',
+          },
+        }
+  })
+  const workflowEnv = await sandbox(workflowModel.url)
   const workflowGit = (...args: string[]) =>
     execFileSync("git", ["-c", "user.name=Branch Test", "-c", "user.email=branch@example.test", ...args], {
       cwd: workflowEnv.project,
@@ -168,22 +186,13 @@ test("protects a background workflow even after its cancellation has been acknow
     executablePath: engine,
     env: workflowEnv.env,
   })
-  reply = (turn) =>
-    turn.results.length
-      ? { text: "workflow started" }
-      : {
-          tool: "workflow_run",
-          args: {
-            script:
-              'export const meta = { name: "waiting", description: "Wait until the engine stops" }; await new Promise(() => {})',
-          },
-        }
   try {
     const session = await workflowMerak.session()
     for await (const event of session.run("Start the waiting workflow and finish this turn", {
       permissionLevel: "fullTakeover",
     }))
       void event
+    await expect.poll(() => childStarted, { timeout: 10000 }).toBe(true)
     const { client } = workflowMerak
     const workflowParts = (
       await client.session.messages({ sessionID: session.id }, { throwOnError: true })
@@ -198,15 +207,48 @@ test("protects a background workflow even after its cancellation has been acknow
     const runs = (await client.workflow.list({ sessionID: session.id }, { throwOnError: true })).data
     expect(runs).toHaveLength(1)
     expect(runs[0]!.status).toBe("running")
-    await client.workflow.cancel({ sessionID: session.id, runId: runs[0]!.runId }, { throwOnError: true })
-    const before = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
-    const result = await client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout })
-    expect(result.response.status).toBe(409)
-    expect((await client.vcs.get({}, { throwOnError: true })).data.branch).toBe("main")
+    expect(runs[0]!.logs.some((entry) => entry.message === "CANCEL_RECEIVED")).toBe(false)
+    const abort = new AbortController()
+    let acknowledged = false
+    const cancelling = client.workflow
+      .cancel(
+        { sessionID: session.id, runId: runs[0]!.runId },
+        {
+          throwOnError: true,
+          signal: abort.signal,
+        },
+      )
+      .then((result) => {
+        acknowledged = true
+        return result
+      })
+    cancelling.catch(() => {})
+    try {
+      await expect
+        .poll(
+          async () => {
+            const current = (
+              await client.workflow.get({ sessionID: session.id, runId: runs[0]!.runId }, { throwOnError: true })
+            ).data
+            return current?.logs.some((entry) => entry.message === "CANCEL_RECEIVED")
+          },
+          { timeout: 10000 },
+        )
+        .toBe(true)
+      const before = (await client.vcs.branchOptions({}, { throwOnError: true })).data.current!
+      const result = await client.vcs.switchBranch({ branch: "dev", expectedCheckout: before.checkout })
+      expect(result.response.status).toBe(409)
+      expect((await client.vcs.get({}, { throwOnError: true })).data.branch).toBe("main")
+      expect(acknowledged).toBe(false)
+    } finally {
+      abort.abort()
+      await expect(cancelling).rejects.toBeInstanceOf(Error)
+    }
   } finally {
-    reply = () => ({ text: "OK" })
+    releaseChild.resolve()
     await workflowMerak.close()
     await workflowEnv[Symbol.asyncDispose]()
+    await workflowModel.close()
   }
 }, 120_000)
 

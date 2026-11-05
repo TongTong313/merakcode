@@ -114,6 +114,7 @@ test.each(["file", "directory", "directory-link", "hardlink", "child"])(
         const grep = await GrepTool.init()
         const ctx = {
           sessionID: session.id,
+          planExecution: true,
           messageID: "",
           agent: "build",
           permissionLevel: "fullTakeover" as const,
@@ -191,6 +192,7 @@ test("legacy plans migrate independently while retaining human protection and th
       expect(migrated.execution?.content).toBe("APPROVED_A")
       const ctx = {
         sessionID: session.id,
+        planExecution: true,
         messageID: "",
         agent: "build",
         permissionLevel: "fullTakeover" as const,
@@ -228,6 +230,7 @@ test("execution reads and compaction restore never expose later editable plan co
       const read = await ReadTool.init()
       const ctx = {
         sessionID: session.id,
+        planExecution: true,
         messageID: "",
         agent: "build",
         permissionLevel: "fullTakeover" as const,
@@ -247,6 +250,7 @@ test("execution reads and compaction restore never expose later editable plan co
       const parts = await SessionCompactionRestore.attachments({
         sessionID: session.id,
         messageID: "restore",
+        planExecution: true,
         messages: [],
         model: { id: "gpt-4", providerID: "openai", api: { id: "gpt-4" } } as Provider.Model,
         agent: "build",
@@ -255,6 +259,16 @@ test("execution reads and compaction restore never expose later editable plan co
       expect(parts.map((p) => p.text).join("\n")).not.toContain("UNAPPROVED_B")
       expect((await read.execute({ filePath: a.path }, ctx)).output).not.toContain("UNAPPROVED_B")
       expect((await SessionPlan.get(session.id)).content).toBe("UNAPPROVED_B")
+      const discussion = await SessionCompactionRestore.attachments({
+        sessionID: session.id,
+        messageID: "restore-discussion",
+        messages: [],
+        planExecution: false,
+        model: { id: "gpt-4", providerID: "openai", api: { id: "gpt-4" } } as Provider.Model,
+        agent: "build",
+      })
+      expect(discussion.map((part) => part.text).join("\n")).toContain("UNAPPROVED_B")
+      expect(discussion.map((part) => part.text).join("\n")).not.toContain("APPROVED_A")
       await SessionPlan.setStatus(session.id, "completed")
       expect((await read.execute({ filePath: a.path }, ctx)).output).toContain("UNAPPROVED_B")
     },

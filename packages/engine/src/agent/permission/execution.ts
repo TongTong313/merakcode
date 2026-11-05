@@ -168,6 +168,7 @@ export namespace PermissionExecution {
           "tcp-matched-by-port",
           "udp-not-restricted",
           "unix-socket-not-restricted",
+          "ambient-world-writable",
         ].includes(reason)
       )
         return checks.some(

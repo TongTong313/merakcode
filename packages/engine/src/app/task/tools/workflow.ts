@@ -193,6 +193,7 @@ async function notifyCompleted(input: {
     model: input.model,
     metadata: {
       taskOriginMessageID: input.messageID,
+      planExecutionID: final.planExecutionID,
       runId: final.runId,
       workflowName: final.workflowName,
       status: final.status,
@@ -264,8 +265,10 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
         }).catch(() => undefined)
       }
       if (ctx.abort.aborted) abort.abort()
+      const settled = Promise.withResolvers<void>()
       const control = {
         abort,
+        done: settled.promise,
         async notifyCancelled() {
           // On a user cancel, deliver the aborted notification right away instead of waiting for the runtime's
           // async catch. The run is first saved as aborted (runs already in a final state are left alone), then
@@ -282,7 +285,7 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
         },
       }
       const plan = await SessionPlan.get(ctx.sessionID)
-      const planExecutionID = plan.status === "executing" ? plan.execution?.id : undefined
+      const planExecutionID = ctx.planExecution && plan.status === "executing" ? plan.execution?.id : undefined
       const initial: WorkflowRunMetadata = {
         planExecutionID,
         status: "running",
@@ -342,28 +345,30 @@ export const WorkflowRunTool = Tool.define<typeof parameters, WorkflowRunMetadat
             unregister()
           }
         },
-      }).catch(async (error) => {
-        await Instance.provide({
-          directory,
-          fn: async () => {
-            unregister()
-            const current = await WorkflowState.readRun(ctx.sessionID, runId).catch(() => undefined)
-            if (current?.status === "failed" || current?.status === "aborted") {
-              await finishWorkflow(current)
-              return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            const failed = await WorkflowState.writeRun(ctx.sessionID, ctx.messageID, {
-              ...initial,
-              status: "failed",
-              updatedAt: Date.now(),
-              completedAt: Date.now(),
-              error: message,
-            })
-            await finishWorkflow(failed)
-          },
-        })
       })
+        .catch(async (error) => {
+          await Instance.provide({
+            directory,
+            fn: async () => {
+              unregister()
+              const current = await WorkflowState.readRun(ctx.sessionID, runId).catch(() => undefined)
+              if (current?.status === "failed" || current?.status === "aborted") {
+                await finishWorkflow(current)
+                return
+              }
+              const message = error instanceof Error ? error.message : String(error)
+              const failed = await WorkflowState.writeRun(ctx.sessionID, ctx.messageID, {
+                ...initial,
+                status: "failed",
+                updatedAt: Date.now(),
+                completedAt: Date.now(),
+                error: message,
+              })
+              await finishWorkflow(failed)
+            },
+          })
+        })
+        .finally(() => settled.resolve())
 
       return {
         title: script.name,

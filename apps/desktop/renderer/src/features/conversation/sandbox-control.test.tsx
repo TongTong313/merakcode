@@ -376,8 +376,6 @@ test("system-disabled sandbox operations offer no setup or retry", () => {
   expect(button?.querySelector(".lucide-shield")).toBeTruthy()
   const options = open(host)
   expect(options).toEqual([])
-  expect(options.some((item) => item.includes("设置并启动"))).toBe(false)
-  expect(options.some((item) => item.includes("关闭"))).toBe(false)
 })
 
 test("a running sandbox reports its state and offers no off switch", () => {

@@ -16,6 +16,22 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Reject runtime-supplied command arguments, package-manager side effects, indirect file reads and system changes in draft-only tasks. Apply sensitive-file approval to input redirects, file aliases and option values while preserving ordinary literal file reads.
+
+- Reject shell argument expansion and shell-state changes in draft-only tasks while preserving quoted literal arguments.
+
+- Keep SDK cancellation effective during long requests and response bodies after garbage collection.
+
+- Reject shell-variable assignments and unknown `printf` formats in draft-only tasks. Release obsolete plan button locks after chat reruns, including saved sessions, while preserving paused execution snapshots.
+
+- Reject search commands that launch external programs or inherit executable search configuration in draft-only tasks. Preserve execution outcomes across queued discussions so completed or failed plans can be started again.
+
+- Reject abbreviated output options and unknown sorting options in draft-only commands. Let paused plan discussions finish after read-only tools, use the latest editable document for discussion, and preserve the fixed snapshot for execution and resume.
+
+- Treat shell environment overrides as executable input in draft-only tasks. Keep Windows write grants scoped to each command's allowed directories and reject internal grant identifiers supplied by command environments. Hide helper windows and suppress interactive error dialogs. Report ambient writable-directory limits and keep affected commands on per-operation approval.
+
+- Confirm foreground commands, background commands, workflows and external operations have stopped before reporting a plan capacity pause. Preserve unconfirmed stops until their real receipts arrive, prevent automatic resume, and let chat and desktop buttons resume the same snapshot with the selected model. Validate current and rejected legacy adapter protocols in packaged CLI smoke tests.
+
 - Restore controlled Git history queries in draft-only tasks while blocking unsafe arguments, external programs and injected Git configuration.
 
 - Use the backend's private temporary directory for both sandbox permissions and command environment, avoiding authorization of the entire system temporary directory.
@@ -49,6 +65,22 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 只出稿任务拒绝动态命令参数、包管理器副作用、间接文件读取和系统修改。输入重定向、文件别名和选项值统一检查敏感文件审批。普通文件读取继续可用。
+
+- 在只出稿任务中拒绝参数展开和 Shell 状态修改，保留引号包裹的普通文本参数。
+
+- SDK 长请求在垃圾回收后仍能取消，等待响应正文时也适用。
+
+- 只出稿任务拒绝修改 Shell 变量及未知格式的 `printf` 命令。聊天重跑后解除过期的计划按钮锁定，已保存会话也适用，暂停执行继续保留原快照。
+
+- 只出稿任务拒绝调用外部程序的搜索命令及可执行的搜索配置。排队讨论保留原执行结果，已完成或失败的计划可以再次启动。
+
+- 只出稿命令拒绝输出参数缩写和未知排序参数。暂停后的计划讨论可在只读工具返回后完成。讨论使用最新编辑稿，执行和恢复继续使用固定快照。
+
+- 只出稿任务把 Shell 环境覆盖按可执行输入处理。Windows 命令只携带获准目录的写入标识，命令环境不能覆盖内部授权标识。辅助进程隐藏窗口并关闭交互错误弹窗。系统中所有人可写目录的限制会明确显示，相关命令继续逐次审批。
+
+- 计划容量暂停会等待前台命令、后台命令、工作流和外部操作确认停止。未确认停止时继续阻止新操作，真实回执到达后更新状态。暂停后不自动恢复。聊天和桌面按钮使用所选模型恢复同一快照。CLI 发布包自检验证当前协议并拒绝旧协议。
 
 - 只出稿任务可以执行受控 Git 历史查询。危险参数、外部程序和注入的 Git 配置继续受限。
 

@@ -45,7 +45,11 @@ export async function spawnOwnedCommand(input: {
     input.signal?.throwIfAborted()
     let stopped: Promise<void> | undefined
     const stopTree = terminate
-    const stop = () => (stopped ??= stopTree())
+    const stop = () =>
+      (stopped ??= stopTree().catch((error) => {
+        stopped = undefined
+        throw error
+      }))
     proc.stdin.end(
       JSON.stringify({
         file: input.file,

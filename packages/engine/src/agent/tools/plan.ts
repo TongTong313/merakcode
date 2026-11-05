@@ -128,8 +128,7 @@ export const PlanReadChunkTool = Tool.define("plan_read_chunk", {
     })
     const chunk = await SessionPlan.chunk(ctx.sessionID, {
       ...params,
-      executionID:
-        params.executionID ?? (["executing", "paused"].includes(plan.status) ? plan.execution?.id : undefined),
+      executionID: params.executionID ?? (ctx.planExecution ? plan.execution?.id : undefined),
     })
     return { title: "Plan range", output: JSON.stringify(chunk), metadata: { ...chunk, truncated: false } }
   },

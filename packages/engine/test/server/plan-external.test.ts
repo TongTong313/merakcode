@@ -113,64 +113,88 @@ test.each(["ask", "autoApprove", "fullTakeover"] as const)(
   30000,
 )
 
-test("an external capacity shrink pauses a restored execution and resumes the same snapshot", async () => {
-  await using tmp = await tmpdir()
-  const capacity = path.join(tmp.path, "capacity")
-  const received = path.join(tmp.path, "received")
-  await fs.writeFile(capacity, "10000")
-  await configureConnections({
-    "resume-plan": {
-      command: process.execPath,
-      adapter: "member",
-      args: [
-        ...Runtime.execArgv(),
-        path.join(import.meta.dirname, "fixture/external-adapter.ts"),
-        "plan-capacity",
-        capacity,
-        received,
-      ],
-    },
-  })
-  const request = (url: string, method = "GET", body?: unknown) =>
-    Server.App().request(`${url}?directory=${encodeURIComponent(tmp.path)}`, {
-      method,
-      headers: { "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+test.each([
+  "继续执行当前任务",
+  "不要继续执行",
+  "解释一下恢复执行",
+  "“继续执行”是什么意思？",
+  "只重试第二步，不要恢复执行",
+  "讨论最新修改的计划，不要恢复执行",
+])(
+  "a paused external execution preserves explicit intent for %s",
+  async (text) => {
+    await using tmp = await tmpdir()
+    const capacity = path.join(tmp.path, "capacity")
+    const received = path.join(tmp.path, "received")
+    await fs.writeFile(capacity, "10000")
+    await configureConnections({
+      "resume-plan": {
+        command: process.execPath,
+        adapter: "member",
+        args: [
+          ...Runtime.execArgv(),
+          path.join(import.meta.dirname, "fixture/external-adapter.ts"),
+          "plan-capacity",
+          capacity,
+          received,
+          text === "继续执行当前任务" ? "normal" : "verify-paused",
+        ],
+      },
     })
-  try {
-    const session = await (
-      await request("/session", "POST", {
-        title: "External resume",
-        target: { kind: "external", productID: "resume-plan" },
+    const request = (url: string, method = "GET", body?: unknown) =>
+      Server.App().request(`${url}?directory=${encodeURIComponent(tmp.path)}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
       })
-    ).json()
-    await request(`/session/${session.id}/permission-level`, "POST", {
-      permissionLevel: "fullTakeover",
-      expectedRevision: 0,
-    })
-    const content = "SNAPSHOT_A_" + "x".repeat(104000)
-    await request(`/session/${session.id}/plan`, "PUT", { content, expectedRevision: 0 })
-    const started = await Instance.provide({
-      directory: tmp.path,
-      fn: () => SessionPlan.start(session.id, "button", 1),
-    })
-    await request(`/session/${session.id}/plan`, "PUT", { content: "LATEST_HUMAN_B", expectedRevision: 1 })
-    const paused = await (
-      await request(`/session/${session.id}/message`, "POST", { parts: [{ type: "text", text: "继续执行当前任务" }] })
-    ).json()
-    expect(paused.info.error).toMatchObject({ name: "PlanCapacityError", code: "MRK-4013" })
-    const getPlan = async () => await (await request(`/session/${session.id}/plan`)).json()
-    expect(await getPlan()).toMatchObject({ status: "paused", execution: { id: started.execution!.id, content } })
-    await expect(fs.stat(received)).rejects.toMatchObject({ code: "ENOENT" })
-    await fs.writeFile(capacity, "200000")
-    await (
-      await request(`/session/${session.id}/message`, "POST", { parts: [{ type: "text", text: "继续执行当前任务" }] })
-    ).json()
-    expect(await getPlan()).toMatchObject({ status: "completed", execution: { id: started.execution!.id, content } })
-    const task = JSON.parse(await fs.readFile(received, "utf8"))
-    expect(task.plan).toMatchObject({ executionID: started.execution!.id, content })
-    expect(task.prompt).not.toContain("LATEST_HUMAN_B")
-  } finally {
-    await Instance.disposeAll()
-  }
-}, 20000)
+    try {
+      const session = await (
+        await request("/session", "POST", {
+          title: "External resume",
+          target: { kind: "external", productID: "resume-plan" },
+        })
+      ).json()
+      await request(`/session/${session.id}/permission-level`, "POST", {
+        permissionLevel: "fullTakeover",
+        expectedRevision: 0,
+      })
+      const content = "SNAPSHOT_A_" + "x".repeat(104000)
+      await request(`/session/${session.id}/plan`, "PUT", { content, expectedRevision: 0 })
+      const started = await Instance.provide({
+        directory: tmp.path,
+        fn: () => SessionPlan.start(session.id, "button", 1),
+      })
+      await request(`/session/${session.id}/plan`, "PUT", { content: "LATEST_HUMAN_B", expectedRevision: 1 })
+      const paused = await (
+        await request(`/session/${session.id}/message`, "POST", { parts: [{ type: "text", text: "继续执行当前任务" }] })
+      ).json()
+      expect(paused.info.error).toMatchObject({ name: "PlanCapacityError", code: "MRK-4013" })
+      const getPlan = async () => await (await request(`/session/${session.id}/plan`)).json()
+      expect(await getPlan()).toMatchObject({ status: "paused", execution: { id: started.execution!.id, content } })
+      await expect(fs.stat(received)).rejects.toMatchObject({ code: "ENOENT" })
+      await fs.writeFile(capacity, "200000")
+      await (await request(`/session/${session.id}/message`, "POST", { parts: [{ type: "text", text }] })).json()
+      if (text !== "继续执行当前任务") {
+        const unchanged = await getPlan()
+        expect(unchanged.status).toBe("paused")
+        expect(unchanged.execution.id).toBe(started.execution!.id)
+        expect(unchanged.execution.content).toBe(content)
+        const discussion = JSON.parse(await fs.readFile(received, "utf8"))
+        expect(discussion.scope).toBe("draft")
+        expect(discussion.writeAllowed).toBe(false)
+        if (text === "只重试第二步，不要恢复执行" || text === "讨论最新修改的计划，不要恢复执行")
+          expect(discussion.plan?.content).toBe("LATEST_HUMAN_B")
+        else expect(discussion.plan).toBeUndefined()
+        await expect(fs.stat(path.join(tmp.path, "paused-write.txt"))).rejects.toMatchObject({ code: "ENOENT" })
+        return
+      }
+      expect(await getPlan()).toMatchObject({ status: "completed", execution: { id: started.execution!.id, content } })
+      const task = JSON.parse(await fs.readFile(received, "utf8"))
+      expect(task.plan).toMatchObject({ executionID: started.execution!.id, content })
+      expect(task.prompt).not.toContain("LATEST_HUMAN_B")
+    } finally {
+      await Instance.disposeAll()
+    }
+  },
+  20000,
+)

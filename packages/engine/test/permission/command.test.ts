@@ -11,6 +11,125 @@ const analyze = (command: string) => CommandAnalysis.analyze(command, { cwd: roo
 const levels = async (command: string) => (await analyze(command)).segments.map((s) => s.level)
 
 describe("levels", () => {
+  test("system mutations, environment disclosure and network redirects never claim read-only admission", async () => {
+    for (const command of [
+      "date 010100002030",
+      "date -- 010100002030",
+      "printenv API_KEY",
+      "env",
+      "cat < /dev/tcp/127.0.0.1/12345",
+      "cat < /dev/udp/127.0.0.1/12345",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    for (const command of ["date", "date -u +%s", "date --date=tomorrow +%F", "env cat input.txt"])
+      expect((await analyze(command)).readOnly, command).toBe(true)
+    expect((await analyze("cat < /dev/tcp/127.0.0.1/12345")).tags).toContain("network")
+  })
+
+  test("shell-state changes cannot establish read-only execution", async () => {
+    for (const command of [
+      "for PATH in ./bin; do sort input.txt; done",
+      "declare -i PATH; sort input.txt",
+      "unset PATH; sort input.txt",
+      "((PATH++)); sort input.txt",
+      "sort() { cat input.txt; }; sort input.txt",
+      "[[ $((PATH=0)) == 0 ]]; sort input.txt",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+  })
+
+  test("input data expansions require admission while quoted here-documents remain literal", async () => {
+    for (const command of [
+      "cat <<EOF\n${PATH:=./bin}\nEOF\nsort input.txt",
+      "cat <<EOF\n${API_KEY}\nEOF",
+      'cat <<< "${API_KEY}"',
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    expect((await analyze("cat <<'EOF'\n${API_KEY}\nEOF")).readOnly).toBe(true)
+  })
+
+  test("unsupported shell argument syntax never disappears from admission", async () => {
+    for (const command of [
+      "sort $'-o' effect input",
+      "uniq {1..2}",
+      "uniq $(printf 'input output')",
+      "uniq <(cat input)",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+  })
+
+  test("shell argument expansion cannot establish read-only execution", async () => {
+    for (const command of [
+      "printf [-]v PATH ./bin; sort input.txt",
+      "sort [-]o effect input",
+      "uniq *.txt",
+      "uniq ?.txt",
+      "uniq {input,output}",
+      "uniq -- *.txt",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    for (const command of ["uniq '*.txt'", 'uniq "?.txt"', "uniq \\*.txt", "uniq '{input,output}'"])
+      expect((await analyze(command)).readOnly, command).toBe(true)
+  })
+
+  test("printf permits text output but never shell variable assignment or unknown formats", async () => {
+    for (const command of [
+      "printf -v PATH ./bin; sort input.txt",
+      "printf -vPATH ./bin; sort input.txt",
+      "command 'printf' '-v' PATH ./bin",
+      "p'rintf' '%n' PATH",
+      "printf -- '%n' PATH",
+      "printf '%10n' PATH",
+      "printf '%%%n' PATH",
+      "printf '%(unknown)' value",
+      "printf -unknown value",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    for (const command of [
+      "printf hello",
+      "printf '%s\\n' '%n'",
+      "printf '%%n'",
+      "printf '%b' '\\n'",
+      "command printf '%q' argument",
+      "printf -- '-v %s' PATH",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(true)
+  })
+
+  test("search programs and unknown search options require normal admission", async () => {
+    for (const command of [
+      "rg --hostname-bin=program x",
+      "rg --hostname-bin program x",
+      "rg --pre=program x",
+      "rg --search-zip x",
+      "rg -z x",
+      "rg --unknown x",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    for (const command of [
+      "rg --line-number --context 2 --glob '*.ts' x input.txt",
+      "rg -n --fixed-strings --no-heading x input.txt",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(true)
+  })
+
+  test("abbreviated write options and unknown sorting options are never read-only", async () => {
+    for (const command of [
+      "sort --out=effect input.txt",
+      "sort --out effect input.txt",
+      "sort --compress-p=program input.txt",
+      "sort --unknown input.txt",
+      "tree --out=effect",
+      "file --comp",
+      "date --se=2026-01-01",
+      "command time --out=effect cat input.txt",
+      "command time --unknown cat input.txt",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
+    for (const command of ["sort --numeric-sort --reverse input.txt", "command time -f '%E' cat input.txt"])
+      expect((await analyze(command)).readOnly, command).toBe(true)
+  })
+
   test("allowlisted read-only commands are readonly unless output is redirected", async () => {
     expect(await levels("ls -la && git status")).toEqual(["readonly", "normal"])
     expect(await levels("echo hi > out.txt")).toEqual(["normal"])
@@ -40,7 +159,7 @@ describe("levels", () => {
   test("normal: build, test, install dependencies", async () => {
     expect(await levels("npm test")).toEqual(["normal"])
     expect(await levels("pnpm install")).toEqual(["normal"])
-    expect(await levels("cd src && node build.js")).toEqual(["normal"])
+    expect(await levels("cd src && node build.js")).toEqual(["normal", "normal"])
   })
 })
 
@@ -149,16 +268,32 @@ describe("commands inside other commands", () => {
     expect((await analyze('sh -c "git push origin"')).segments.map((s) => s.text)).toContain("git push origin")
   })
 
-  test("printing the environment and looking a command up stay read-only", async () => {
-    for (const command of ["env", "printenv", "env FOO=1 ls", "command -v git"])
+  test("command lookup stays read-only while environment changes need normal admission", async () => {
+    for (const command of ["command -v git", "command -V git"])
       expect(await levels(command), command).not.toContain("normal")
-    expect((await analyze("env FOO=1 ls")).readOnly).toBe(true)
+    for (const command of [
+      "env FOO=1 ls",
+      "PATH=./bin cat README.md",
+      "env PATH=./bin cat README.md",
+      "env -C ./bin cat README.md",
+      "LD_PRELOAD=./payload.so cat README.md",
+      "export NODE_OPTIONS=--require=./payload.cjs; npm list",
+    ])
+      expect((await analyze(command)).readOnly, command).toBe(false)
   })
 
   test("read-only commands with options that write files or run programs count as normal", async () => {
     for (const command of [
       "sort -o out.txt a.txt",
       "sort -uo out.txt a.txt",
+      "sort -T . -S 1K input.txt",
+      "sort --files0-from=inputs",
+      "wc --files0-from=inputs",
+      "file -f inputs",
+      "sha256sum --check inputs",
+      "npm list",
+      "npm --logs-dir=./logs list",
+      "pip --log=./pip.log show example",
       "rg --pre sh x",
       "git diff --output=x",
       "git log --output=x",

@@ -18,6 +18,7 @@ export namespace ModeOperations {
     sandboxed?: boolean
     approved?: PermissionNext.Check[]
     rules?: () => Promise<PermissionNext.Ruleset>
+    planExecutionID?: string
     done: Promise<void>
     stopping?: string
   }
@@ -49,11 +50,12 @@ export namespace ModeOperations {
     tool: string,
     controller: AbortController,
     rules?: () => Promise<PermissionNext.Ruleset>,
+    planExecutionID?: string,
   ) {
     assertAvailable(sessionID)
     const settled = Promise.withResolvers<void>()
     const key = `${sessionID}:${callID}`
-    active.set(key, { sessionID, tool, controller, checks: [], rules, done: settled.promise })
+    active.set(key, { sessionID, tool, controller, checks: [], rules, planExecutionID, done: settled.promise })
     return () => {
       active.delete(key)
       settled.resolve()
@@ -83,6 +85,7 @@ export namespace ModeOperations {
         approved: source.approved,
         rules: source.rules,
         sandboxed: source.sandboxed,
+        planExecutionID: source.planExecutionID ?? target.planExecutionID,
       })
   }
 
@@ -94,6 +97,21 @@ export namespace ModeOperations {
       session = SessionStore.find(session.parentID)
     }
     return session?.id ?? sessionID
+  }
+
+  /** Stops only calls admitted under this execution, and waits for their actual settlement. */
+  export async function stopPlan(rootID: string, executionID: string) {
+    const affected = [...active.entries()].filter(
+      ([, operation]) =>
+        rootOf(operation.sessionID) === rootID &&
+        operation.planExecutionID === executionID &&
+        !orchestration.has(operation.tool),
+    )
+    for (const [, operation] of affected)
+      operation.controller.abort(new Error("Operation interrupted by plan capacity pause"))
+    for (const [key, operation] of affected)
+      await PermissionNext.abortTool(operation.sessionID, key.slice(operation.sessionID.length + 1))
+    await Promise.all(affected.map(([, operation]) => operation.done))
   }
 
   export async function reconcile(rootID: string, mode: PermissionLevel.Value, revision: number) {

@@ -7,6 +7,7 @@ import { openPlanInCode, showTab } from "../../state/ui"
 import { Markdown } from "../../ui/markdown"
 import { toast } from "../../ui/toast"
 import { buffersFor } from "../code/state"
+import { choice } from "../../state/models"
 
 export function usePlan(sessionID: () => string | undefined, directory: () => string) {
   const [plan, { mutate, refetch }] = createResource(sessionID, (sessionID) =>
@@ -35,7 +36,14 @@ export function PlanCard(props: { sessionID: string; directory: string; plan?: S
     try {
       if (action === "start") {
         if (!(await buffersFor(props.directory).savePlan(props.sessionID))) throw new Error(t("plan.saveFirst"))
-        await call(client(props.directory).session.planStart({ sessionID: props.sessionID }))
+        const selected = choice(props.sessionID, props.directory)
+        await call(
+          client(props.directory).session.planStart({
+            sessionID: props.sessionID,
+            model: selected.model,
+            variant: selected.variant,
+          }),
+        )
       } else {
         await call(client(props.directory).session.planRevise({ sessionID: props.sessionID }))
         document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus()
@@ -115,7 +123,14 @@ export function PlanPanel(props: { sessionID: string; directory: string }) {
           return
         }
         if (!(await buffersFor(props.directory).savePlan(props.sessionID))) throw new Error(t("plan.saveFirst"))
-        await call(client(props.directory).session.planStart({ sessionID: props.sessionID }))
+        const selected = choice(props.sessionID, props.directory)
+        await call(
+          client(props.directory).session.planStart({
+            sessionID: props.sessionID,
+            model: selected.model,
+            variant: selected.variant,
+          }),
+        )
       } else {
         const candidate = resource.plan()?.candidate
         if (!candidate) return

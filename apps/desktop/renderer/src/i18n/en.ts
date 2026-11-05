@@ -539,6 +539,8 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.sandbox.limit.tcp-matched-by-port": "TCP is limited by port only.",
   "settings.sandbox.limit.udp-not-restricted": "UDP (for example DNS) is not restricted.",
   "settings.sandbox.limit.unix-socket-not-restricted": "Unix sockets are not restricted.",
+  "settings.sandbox.limit.ambient-world-writable":
+    "Commands can still write to directories writable by Everyone. Commands that cannot be proven read-only require approval each time.",
   "settings.providers": "Providers",
   "settings.providers.desc": "API keys are stored only on this computer",
   "settings.provider.connected": "Connected",

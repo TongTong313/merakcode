@@ -1,4 +1,5 @@
 import path from "path"
+import { existsSync, statSync } from "node:fs"
 import { createRequire } from "node:module"
 import { Language, type Tree } from "web-tree-sitter"
 import { lazy } from "@merakcode/util/lazy"
@@ -19,6 +20,8 @@ export namespace CommandAnalysis {
     text: string
     tokens: string[]
     prefix: string
+    /** Executable after resolving shell quoting and wrappers; prefix remains the displayed grant scope. */
+    program?: string
     level: PermissionPolicy.CommandLevel
   }
 
@@ -34,8 +37,8 @@ export namespace CommandAnalysis {
   }
 
   /**
-   * Commands that certainly do not modify the file system. Git is excluded because configuration can execute
-   * external programs, including inspection commands. Anything uncertain counts as a write.
+   * Commands that certainly do not modify the file system. Git can execute configured programs; package managers
+   * can write logs and caches even during queries. Anything uncertain counts as a write.
    */
   const READ_ONLY = new Set([
     // Inspect files and directories
@@ -60,7 +63,6 @@ export namespace CommandAnalysis {
     "rg",
     "egrep",
     "fgrep",
-    "ag",
     "sort",
     "uniq",
     "cut",
@@ -85,8 +87,6 @@ export namespace CommandAnalysis {
     "where",
     "whereis",
     "type",
-    "env",
-    "printenv",
     "id",
     "groups",
     "ps",
@@ -99,12 +99,6 @@ export namespace CommandAnalysis {
     "sha1sum",
     "sha256sum",
     "cksum",
-    // Read-only package manager subcommands
-    "npm view",
-    "npm list",
-    "npm ls",
-    "pip show",
-    "pip list",
   ])
 
   /** find options that modify files or run commands */
@@ -246,10 +240,166 @@ export namespace CommandAnalysis {
   function sets(args: string[], short: string, long: string[] = []) {
     return args.some(
       (arg) =>
-        long.some((name) => arg === name || arg.startsWith(name + "=")) ||
+        (arg.startsWith("--") && arg.length > 2 && long.some((name) => name.startsWith(arg.split("=")[0]!))) ||
         (!!short && !arg.startsWith("--") && new RegExp(`^-[a-zA-Z0-9]*[${short}]`).test(arg)),
     )
   }
+
+  // Only known non-writing long options may keep sort read-only; unknown options require normal admission.
+  const SORT_READ_OPTIONS = new Set([
+    "--ignore-leading-blanks",
+    "--check",
+    "--dictionary-order",
+    "--ignore-case",
+    "--general-numeric-sort",
+    "--ignore-nonprinting",
+    "--key",
+    "--month-sort",
+    "--merge",
+    "--human-numeric-sort",
+    "--numeric-sort",
+    "--random-sort",
+    "--random-source",
+    "--reverse",
+    "--stable",
+    "--buffer-size",
+    "--field-separator",
+    "--parallel",
+    "--unique",
+    "--version-sort",
+    "--zero-terminated",
+    "--batch-size",
+    "--help",
+    "--version",
+    "--debug",
+    "--sort",
+  ])
+
+  // Keep common search options read-only; external processors and unknown long options need normal admission.
+  const RG_READ_OPTIONS = new Set([
+    "--regexp",
+    "--file",
+    "--glob",
+    "--iglob",
+    "--type",
+    "--type-not",
+    "--type-add",
+    "--type-clear",
+    "--ignore-case",
+    "--case-sensitive",
+    "--smart-case",
+    "--fixed-strings",
+    "--word-regexp",
+    "--line-regexp",
+    "--line-number",
+    "--no-line-number",
+    "--column",
+    "--heading",
+    "--no-heading",
+    "--with-filename",
+    "--no-filename",
+    "--context",
+    "--before-context",
+    "--after-context",
+    "--context-separator",
+    "--no-context-separator",
+    "--count",
+    "--count-matches",
+    "--files",
+    "--files-with-matches",
+    "--files-without-match",
+    "--quiet",
+    "--hidden",
+    "--no-ignore",
+    "--no-ignore-vcs",
+    "--no-ignore-parent",
+    "--ignore-file",
+    "--follow",
+    "--max-count",
+    "--max-depth",
+    "--max-filesize",
+    "--max-columns",
+    "--max-columns-preview",
+    "--threads",
+    "--encoding",
+    "--text",
+    "--binary",
+    "--null",
+    "--null-data",
+    "--multiline",
+    "--multiline-dotall",
+    "--pcre2",
+    "--auto-hybrid-regex",
+    "--engine",
+    "--regex-size-limit",
+    "--dfa-size-limit",
+    "--replace",
+    "--only-matching",
+    "--invert-match",
+    "--passthru",
+    "--json",
+    "--stats",
+    "--sort",
+    "--sortr",
+    "--color",
+    "--colors",
+    "--hyperlink-format",
+    "--trim",
+    "--crlf",
+    "--no-config",
+    "--no-messages",
+    "--line-buffered",
+    "--block-buffered",
+    "--debug",
+    "--trace",
+    "--help",
+    "--version",
+    "--type-list",
+  ])
+
+  const RG_VALUES = [
+    "-e",
+    "--regexp",
+    "-f",
+    "--file",
+    "-g",
+    "--glob",
+    "--iglob",
+    "-t",
+    "--type",
+    "-T",
+    "--type-not",
+    "--type-add",
+    "--type-clear",
+    "-A",
+    "--after-context",
+    "-B",
+    "--before-context",
+    "-C",
+    "--context",
+    "--context-separator",
+    "--ignore-file",
+    "-m",
+    "--max-count",
+    "--max-depth",
+    "--max-filesize",
+    "-M",
+    "--max-columns",
+    "-j",
+    "--threads",
+    "-E",
+    "--encoding",
+    "--engine",
+    "--regex-size-limit",
+    "--dfa-size-limit",
+    "-r",
+    "--replace",
+    "--sort",
+    "--sortr",
+    "--color",
+    "--colors",
+    "--hyperlink-format",
+  ]
 
   /** Positional arguments, skipping the value after each option in `values` */
   function positionals(args: string[], values: string[] = []) {
@@ -261,14 +411,51 @@ export namespace CommandAnalysis {
    * sort -o out); such a call counts as a normal command
    */
   const UNSAFE_ARGS: Record<string, (args: string[]) => boolean> = {
-    rg: (args) => sets(args, "", ["--pre"]),
-    ag: (args) => sets(args, "", ["--pager"]),
-    sort: (args) => sets(args, "o", ["--output", "--compress-program"]),
+    printf: (args) => {
+      const format = args[0] === "--" ? args[1] : args[0]
+      // Shell printf can assign variables through -v and %n. Only known text-output formats are read-only.
+      return (
+        format === undefined ||
+        (args[0] !== "--" && format.startsWith("-")) ||
+        format.replace(/%%|%[sbq]/g, "").includes("%")
+      )
+    },
+    rg: (args) =>
+      sets(args, "fz", ["--file", "--pre", "--hostname-bin", "--search-zip"]) ||
+      args.some((arg) => arg.startsWith("--") && arg !== "--" && !RG_READ_OPTIONS.has(arg.split("=")[0]!)) ||
+      positionals(args, RG_VALUES).length <= (sets(args, "e", ["--regexp"]) ? 0 : 1),
+    grep: (args) => sets(args, "rRfd", ["--recursive", "--dereference-recursive", "--file", "--directories"]),
+    egrep: (args) => sets(args, "rRfd", ["--recursive", "--dereference-recursive", "--file", "--directories"]),
+    fgrep: (args) => sets(args, "rRfd", ["--recursive", "--dereference-recursive", "--file", "--directories"]),
+    sort: (args) =>
+      sets(args, "oT", ["--output", "--compress-program"]) ||
+      args.some((arg) => arg.startsWith("--") && arg !== "--" && !SORT_READ_OPTIONS.has(arg.split("=")[0]!)),
     uniq: (args) => positionals(args, ["-f", "-s", "-w"]).length > 1,
     tree: (args) => sets(args, "oR", ["--output"]),
     xxd: (args) => sets(args, "r", ["--revert"]) || positionals(args, ["-c", "-g", "-l", "-o", "-s", "-n"]).length > 1,
-    file: (args) => sets(args, "C", ["--compile"]),
-    date: (args) => sets(args, "s", ["--set"]),
+    file: (args) =>
+      sets(args, "CfmzZ", ["--compile", "--files-from", "--magic-file", "--uncompress", "--uncompress-noreport"]),
+    jq: (args) => sets(args, "f", ["--from-file"]),
+    wc: (args) => sets(args, "", ["--files0-from"]),
+    diff: (args) => sets(args, "r", ["--recursive"]),
+    md5sum: (args) => sets(args, "c", ["--check"]),
+    sha1sum: (args) => sets(args, "c", ["--check"]),
+    sha256sum: (args) => sets(args, "c", ["--check"]),
+    cksum: (args) => sets(args, "c", ["--check"]),
+    date: (args) => {
+      for (let index = 0; index < args.length; index++) {
+        const arg = args[index]!
+        if (arg.startsWith("+") || /^-[uR]+$/.test(arg)) continue
+        if (["--utc", "--universal", "--rfc-email", "--help", "--version"].includes(arg)) continue
+        if (/^--(date|reference)=/.test(arg)) continue
+        if (["-d", "--date", "-r", "--reference"].includes(arg) && args[index + 1] !== undefined) {
+          index++
+          continue
+        }
+        return true
+      }
+      return false
+    },
     hostname: (args) => sets(args, "F", ["--file"]) || positionals(args).length > 0,
   }
 
@@ -291,6 +478,8 @@ export namespace CommandAnalysis {
       const wrapper = WRAPPERS[words[start] ?? ""]
       if (!wrapper) return { start, privileged, writes }
       privileged ||= !!wrapper.privileged
+      // xargs supplies additional arguments at runtime, including options that can make a read command write.
+      writes ||= words[start] === "xargs"
       let index = start + 1
       let positional = wrapper.positional ?? 0
       while (index < words.length) {
@@ -310,10 +499,12 @@ export namespace CommandAnalysis {
           }
         if (wrapper.output?.some((name) => word === name || word.startsWith(name + "="))) writes = true
         if (word.startsWith("-") && word.length > 1) {
+          if (wrapper.assignments || !wrapper.values.includes(word.split("=")[0]!)) writes = true
           index += wrapper.values.includes(word) ? 2 : 1
           continue
         }
         if (wrapper.assignments && /^[A-Za-z_]\w*=/.test(word)) {
+          writes = true
           index++
           continue
         }
@@ -324,6 +515,7 @@ export namespace CommandAnalysis {
         }
         break
       }
+      if (words[start] === "env" && index === words.length) writes = true
       start = index
     }
   }
@@ -403,6 +595,8 @@ export namespace CommandAnalysis {
         continue
       }
       if (quote !== "'" && (char === "$" || char === "`")) known = false
+      // Unquoted glob and brace expansions can change both argument values and argument count.
+      if (!quote && ["*", "?", "[", "{"].includes(char)) known = false
       value += char
     }
     return { value, known: known && !quote }
@@ -481,6 +675,7 @@ export namespace CommandAnalysis {
       /** The subcommand as matched against the lists (`git push` for `env git -C . push origin`) */
       name: prefix,
       effective,
+      literalFrom: words.indexOf("--", wrapped.start + 1),
       privileged: wrapped.privileged,
       script,
       inner: changed
@@ -497,12 +692,13 @@ export namespace CommandAnalysis {
   }
 
   /**
-   * Path-like arguments: absolute, starting with ~, relative with ../, or named like a credential file (.env,
-   * id_rsa, ...) wherever it is. Returns the absolute path, or undefined when the argument does not look like a path.
+   * Explicit paths and existing file operands, including --option=file. Existing ordinary names must be checked
+   * too: they can be symbolic or hard links to credentials.
    */
-  function pathOf(token: string, input: { cwd: string; home: string }) {
-    const value = /^[a-z]:\\/i.test(token) ? token : unquote(token)
-    if (!value || value.startsWith("-") || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return
+  function pathOf(token: string, input: { cwd: string; home: string }, optionValue = false) {
+    const word = /^[a-z]:\\/i.test(token) ? token : unquote(token)
+    const value = optionValue && word.startsWith("--") && word.includes("=") ? word.slice(word.indexOf("=") + 1) : word
+    if (!value || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return
     const expanded = value === "~" ? input.home : value.startsWith("~/") ? path.join(input.home, value.slice(2)) : value
     const looksLikePath =
       path.isAbsolute(expanded) ||
@@ -510,8 +706,9 @@ export namespace CommandAnalysis {
       value.split(/[\\/]/).includes("..") ||
       PermissionPolicy.sensitiveName(expanded)
     // Devices such as /dev/null do not count
-    if (!looksLikePath || expanded.startsWith("/dev/")) return
-    return path.resolve(input.cwd, expanded)
+    const target = path.resolve(input.cwd, expanded)
+    if ((!looksLikePath && !existsSync(target)) || expanded.startsWith("/dev/")) return
+    return target
   }
 
   function outside(token: string, input: { cwd: string; workspace: string[]; home: string }) {
@@ -523,9 +720,9 @@ export namespace CommandAnalysis {
 
   /** Output redirects that write files; descriptor copies such as `2>&1` and writes to /dev/null do not count */
   function writes(redirect: Node) {
-    if (!redirect.text.includes(">")) return false
+    if (redirect.type !== "file_redirect" || !redirect.children.some((child) => child?.type.includes(">"))) return false
     if (/>&\s*-?\d*$/.test(redirect.text)) return false
-    return redirect.lastChild?.text !== "/dev/null"
+    return unquote(redirect.childForFieldName("destination")?.text ?? "") !== "/dev/null"
   }
 
   /**
@@ -611,6 +808,12 @@ export namespace CommandAnalysis {
     const segments: Segment[] = []
     const tags = new Set<Tag>()
     const paths = new Set<string>()
+    const addPath = (target: string) => {
+      paths.add(target)
+      const check = PermissionPolicy.file({ op: "read", path: target, ...input })
+      if (check.permission === "external_read") tags.add("external-path")
+      if (check.permission === "sensitive_read") tags.add("sensitive-path")
+    }
     const redirected = redirects(tree.rootNode)
     const git = input.controlledGit && depth === 0 ? gitInspection(tree.rootNode, command) : undefined
     for (const node of tree.rootNode.descendantsOfType("command")) {
@@ -622,9 +825,28 @@ export namespace CommandAnalysis {
         const child = node.child(i)
         if (child && TOKEN_TYPES.has(child.type)) tokens.push(child.text)
       }
-      if (!tokens.length || tokens[0] === "cd") continue
+      const unsupported = node.namedChildren.some(
+        (child) =>
+          child && !TOKEN_TYPES.has(child.type) && !["file_redirect", "herestring_redirect"].includes(child.type),
+      )
+      if (!tokens.length) continue
+      // A lone literal cd only changes the disposable shell's directory; a compound command changes later targets.
+      if (
+        tokens[0] === "cd" &&
+        !unsupported &&
+        node.parent?.type === "program" &&
+        tree.rootNode.namedChildCount === 1 &&
+        tokens.every((token) => shellWord(token).known)
+      )
+        continue
       const found = classify(tokens, own?.write ?? false)
-      const segment: Segment = { text, tokens, prefix: found.prefix, level: found.level }
+      const segment: Segment = {
+        text,
+        tokens,
+        prefix: found.prefix,
+        program: found.effective[0],
+        level: unsupported ? worst(found.level, "normal") : found.level,
+      }
       segments.push(segment)
       if (found.inner) segments.push(found.inner)
       if (found.script !== undefined && depth < MAX_DEPTH) {
@@ -635,12 +857,16 @@ export namespace CommandAnalysis {
         for (const file of nested.paths) paths.add(file)
         segment.level = worst(segment.level, ...nested.segments.map((item) => item.level))
       }
-      for (const token of tokens.slice(1)) {
-        const target = pathOf(token, input)
+      for (let index = 1; index < tokens.length; index++) {
+        const target = pathOf(tokens[index]!, input, found.literalFrom < 0 || index < found.literalFrom)
         if (!target) continue
-        paths.add(target)
-        if (!inside(input.workspace, target)) tags.add("external-path")
-        if (PermissionPolicy.sensitive(target, input.home)) tags.add("sensitive-path")
+        addPath(target)
+        // Directory searches discover files after admission, including credentials not named by the command.
+        if (
+          ["rg", "diff"].includes(found.effective[0] ?? "") &&
+          statSync(target, { throwIfNoEntry: false })?.isDirectory()
+        )
+          segment.level = worst(segment.level, "normal")
       }
       const prefix = found.name
       if (segment.level === "forbidden") tags.add("forbidden")
@@ -669,17 +895,45 @@ export namespace CommandAnalysis {
     }
     if (git && segments.length === 1) segments[0]!.level = "readonly"
     // Standalone redirects and redirects on skipped commands (cd) still write files.
-    // Parser errors cannot establish that a command is read-only.
+    // Parser errors and shell-state changes cannot establish that a command is read-only.
     const fileRedirects = tree.rootNode.descendantsOfType("file_redirect")
+    const networkRedirect = fileRedirects.some((redirect) =>
+      /^\/dev\/(tcp|udp)\//.test(unquote(redirect?.childForFieldName("destination")?.text ?? "")),
+    )
+    if (networkRedirect) tags.add("network")
     if (
-      (tree.rootNode.hasError || fileRedirects.some((redirect) => redirect && writes(redirect))) &&
+      (tree.rootNode.hasError ||
+        networkRedirect ||
+        tree.rootNode.descendantsOfType([
+          "variable_assignment",
+          "for_statement",
+          "c_style_for_statement",
+          "function_definition",
+          "declaration_command",
+          "unset_command",
+          "arithmetic_expansion",
+          "simple_expansion",
+          "expansion",
+        ]).length > 0 ||
+        tree.rootNode.descendantsOfType("compound_statement").some((node) => node?.firstChild?.text === "((") ||
+        fileRedirects.some(
+          (redirect) =>
+            redirect && (writes(redirect) || !shellWord(redirect.childForFieldName("destination")?.text ?? "").known),
+        )) &&
       segments.every((segment) => segment.level === "readonly")
     )
       segments.push({ text: command, tokens: [command], prefix: command, level: "normal" })
-    // Redirects to files outside the workspace
+    // Literal input files need the same credential and outside-workspace checks as ordinary command arguments.
     for (const redirect of fileRedirects) {
-      const target = redirect && writes(redirect) ? redirect.lastChild?.text : undefined
-      if (target && outside(target, input)) tags.add("external-path")
+      const destination = redirect?.childForFieldName("destination")?.text
+      if (!redirect || !destination || /[<>]&\s*-?\d*$/.test(redirect.text)) continue
+      if (writes(redirect)) {
+        if (outside(destination, input)) tags.add("external-path")
+        continue
+      }
+      const target = pathOf(destination, input)
+      if (!target) continue
+      addPath(target)
     }
     return {
       ...(git ? { git } : {}),

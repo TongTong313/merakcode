@@ -9905,7 +9905,13 @@ export type SessionPlanReviseResponses = {
 export type SessionPlanReviseResponse = SessionPlanReviseResponses[keyof SessionPlanReviseResponses]
 
 export type SessionPlanStartData = {
-  body?: never
+  body?: {
+    model?: {
+      modelID: string
+      providerID: string
+    }
+    variant?: string
+  }
   path: {
     sessionID: string
   }
@@ -9917,13 +9923,9 @@ export type SessionPlanStartData = {
 
 export type SessionPlanStartErrors = {
   /**
-   * Validation Error
+   * Bad request
    */
-  400: {
-    data: unknown
-    error: Array<unknown>
-    success: false
-  }
+  400: ErrorResponse
   /**
    * Not found
    */

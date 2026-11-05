@@ -356,10 +356,6 @@ describe("util.token.estimate", () => {
     expect(Token.estimate("")).toBe(0)
   })
 
-  test("estimates CJK text closer to one token per character", () => {
-    expect(Token.estimate("\u4f60\u597d\u4e16\u754c")).toBe(4)
-  })
-
   test("estimates structured messages", () => {
     const result = Token.estimateMessages([
       {

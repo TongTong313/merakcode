@@ -6,6 +6,8 @@
 import { test, expect } from "vitest"
 import path from "path"
 import fs from "node:fs/promises"
+import { createServer, type AddressInfo } from "node:net"
+import { once } from "node:events"
 import { fileURLToPath } from "node:url"
 import { Instance } from "@merakcode/engine/infra/project/instance"
 import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
@@ -731,15 +733,19 @@ test("switching to auto re-evaluates pending approvals and releases the ones now
   })
 })
 
-test("a same-mode prompt preserves an active command already approved once", async () => {
-  await withAutoTools(async ({ session, tools, tmp }) => {
+test("a same-mode prompt preserves an active command already approved once", async ({ signal }) => {
+  await withAutoTools(async ({ session, tools }) => {
+    await using ready = createServer((socket) => socket.end())
+    ready.listen(0, "127.0.0.1")
+    await once(ready, "listening", { signal })
     await selectPermissionLevel({ sessionID: session.id, permissionLevel: "autoApprove" })
     const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
       void PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
     })
     const controller = new AbortController()
     let finished = false
-    const code = "require('node:fs').writeFileSync('same-mode-ready.txt', 'ready'); setInterval(() => {}, 1000)"
+    const code = `require('node:net').connect(${(ready.address() as AddressInfo).port}, '127.0.0.1'); setInterval(() => {}, 1000)`
+    const started = once(ready, "connection", { signal })
     const running = Promise.resolve(
       executeTool(
         tools.bash,
@@ -750,7 +756,12 @@ test("a same-mode prompt preserves an active command already approved once", asy
       finished = true
     })
     try {
-      await expect.poll(() => Filesystem.isFile(path.join(tmp, "same-mode-ready.txt"))).toBe(true)
+      await Promise.race([
+        started,
+        running.then(() => {
+          throw new Error("Command exited before reporting readiness")
+        }),
+      ])
       await Loop.prompt({
         sessionID: session.id,
         permissionLevel: "autoApprove",

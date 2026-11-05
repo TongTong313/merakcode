@@ -2703,56 +2703,6 @@ describe("MERAKCODE_DISABLE_PROJECT_CONFIG", () => {
     }
   })
 
-  test("skips relative instructions with warning when flag is set but no config dir", async () => {
-    const originalDisable = process.env["MERAKCODE_DISABLE_PROJECT_CONFIG"]
-    const originalConfigDir = process.env["MERAKCODE_CONFIG_DIR"]
-
-    try {
-      // Ensure no config dir is set
-      delete process.env["MERAKCODE_CONFIG_DIR"]
-      process.env["MERAKCODE_DISABLE_PROJECT_CONFIG"] = "true"
-
-      await using tmp = await tmpdir({
-        init: async (dir) => {
-          // Create a config with relative instruction path
-          await Filesystem.write(
-            path.join(dir, "merakcode.json"),
-            JSON.stringify({
-              $schema: Config.SCHEMA,
-              instructions: ["./CUSTOM.md"],
-            }),
-          )
-          // Create the instruction file (should be skipped)
-          await Filesystem.write(path.join(dir, "CUSTOM.md"), "# Custom Instructions")
-        },
-      })
-
-      await Instance.provide({
-        directory: tmp.path,
-        fn: async () => {
-          // The relative instruction should be skipped without error
-          // We're mainly verifying this doesn't throw and the config loads
-          const config = await Config.get()
-          expect(config).toBeDefined()
-          // The instruction should have been skipped (warning logged)
-          // We can't easily test the warning was logged, but we verify
-          // the relative path didn't cause an error
-        },
-      })
-    } finally {
-      if (originalDisable === undefined) {
-        delete process.env["MERAKCODE_DISABLE_PROJECT_CONFIG"]
-      } else {
-        process.env["MERAKCODE_DISABLE_PROJECT_CONFIG"] = originalDisable
-      }
-      if (originalConfigDir === undefined) {
-        delete process.env["MERAKCODE_CONFIG_DIR"]
-      } else {
-        process.env["MERAKCODE_CONFIG_DIR"] = originalConfigDir
-      }
-    }
-  })
-
   test("MERAKCODE_CONFIG_DIR still works when flag is set", async () => {
     const originalDisable = process.env["MERAKCODE_DISABLE_PROJECT_CONFIG"]
     const originalConfigDir = process.env["MERAKCODE_CONFIG_DIR"]

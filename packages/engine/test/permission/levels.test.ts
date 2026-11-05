@@ -143,6 +143,7 @@ test.each([
   "tcp-matched-by-port",
   "udp-not-restricted",
   "unix-socket-not-restricted",
+  "ambient-world-writable",
 ])("%s disables dependent grants while ordinary reads keep isolation", async (degraded) => {
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
@@ -154,6 +155,7 @@ test.each([
   })
   try {
     expect(await PermissionExecution.ready([{ permission: "network", pattern: "localhost", grants: [] }])).toBe(false)
+    expect(await PermissionExecution.ready([{ permission: "bash", pattern: "node script.js", grants: [] }])).toBe(false)
     expect(await PermissionExecution.ready([{ permission: "read", pattern: "README.md", grants: [] }])).toBe(true)
   } finally {
     PermissionExecution.useBackendForTest(undefined)

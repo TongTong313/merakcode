@@ -1,6 +1,7 @@
 import { permissionLevelOf, permissionLevelNow } from "../permission/permission-level"
-import { startsSessionPlan } from "@merakcode/util/session-plan"
+import { startsSessionPlan, resumesSessionPlan } from "@merakcode/util/session-plan"
 import { ModeOperations } from "../permission/operations"
+import { Lock } from "../../infra/concurrency/lock"
 import { SessionPlan } from "../session/plan"
 import { SessionStore } from "../session/store"
 import path from "path"
@@ -107,7 +108,7 @@ export namespace Loop {
     // Request dispatch also calls the native loop; read its live binding when invoked, after both modules load.
     command: (input) => LoopRequest.command(input),
     prompt: (input) => LoopRequest.prompt(input),
-    startPlan: (sessionID) => LoopRequest.startPlan(sessionID),
+    startPlan: (sessionID, selection) => LoopRequest.startPlan(sessionID, selection),
     cancel: (sessionID) => LoopRequest.cancel(sessionID),
   }
   /** Process-local busy/retry state and the existing session status events. */
@@ -456,15 +457,104 @@ export namespace Loop {
   }
   const planStarts = Instance.state(() => new Map<string, { promise: Promise<Message.FullMsg>; settled: boolean }>())
   const planSources = Instance.state(() => new Map<string, "button" | "chat">())
+  const planPauses = Instance.state(() => new Map<string, Promise<void>>())
+
+  export async function planPaused(sessionID: string) {
+    const rootID = await Session.rootID(sessionID)
+    return planPauses().has(rootID) || (await SessionPlan.get(rootID)).status === "paused"
+  }
+
+  async function planWorkflows(rootID: string) {
+    const sessions = [rootID, ...(await Session.descendants(rootID)).map((session) => session.id)]
+    return (
+      await Promise.all(
+        sessions.map(async (sessionID) => (await workflows.list(sessionID)).map((run) => ({ ...run, sessionID }))),
+      )
+    ).flat()
+  }
+
+  async function waitForPlanPause(pending: Promise<void>, error: InstanceType<typeof Message.PlanCapacityError>) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        pending,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            void Text.pick({
+              zh: "计划容量不足。仍有操作尚未确认停止，该对话暂不派发新操作。",
+              en: "The plan exceeds capacity. An operation has not confirmed stopping; new work for this conversation is blocked.",
+            }).then((message) => reject(new Message.PlanCapacityError({ ...error.data, message })), reject)
+          }, 3000)
+        }),
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
+  function pausePlan(rootID: string, executionID: string, error: InstanceType<typeof Message.PlanCapacityError>) {
+    const current = planPauses().get(rootID)
+    if (current) return waitForPlanPause(current, error)
+    const unblock = ModeOperations.block(rootID, error.data.message)
+    const pending = (async () => {
+      const { BashJobStore } = await import("../tools/bash-background")
+      const stopped: string[] = []
+      const stoppedRuns: string[] = []
+      const jobs = (
+        await Promise.all(
+          BashJobStore.running().map(async (job) =>
+            job.planExecutionID === executionID && job.sessionID && (await Session.rootID(job.sessionID)) === rootID
+              ? job
+              : undefined,
+          ),
+        )
+      ).filter((job) => job !== undefined)
+      const runs = (await planWorkflows(rootID)).filter(
+        (run) => run.planExecutionID === executionID && run.status === "running",
+      )
+      await Promise.all([
+        ...jobs.map(async (job) => {
+          try {
+            await BashJobStore.stop(job.id, true)
+          } catch (error) {
+            log.warn("plan background stop unconfirmed", { rootID, error })
+          }
+          await BashJobStore.waitForStop(job.id)
+          if (job.status === "stopped" && job.pausedForPlan) stopped.push(job.id)
+        }),
+        ...runs.map(async (run) => {
+          await workflows.cancel(run.sessionID, run.runId)
+          const result = (await workflows.list(run.sessionID)).find((item) => item.runId === run.runId)
+          if (result?.status === "aborted") stoppedRuns.push(run.runId)
+        }),
+        ModeOperations.stopPlan(rootID, executionID),
+      ])
+      await SessionPlan.pause(rootID, executionID, stopped, stoppedRuns)
+    })()
+    planPauses().set(rootID, pending)
+    void pending.then(
+      () => {
+        if (planPauses().get(rootID) === pending) planPauses().delete(rootID)
+        unblock()
+      },
+      (error) => log.warn("plan pause unconfirmed", { rootID, error }),
+    )
+    return waitForPlanPause(pending, error)
+  }
   async function planWorkStatus(sessionID: string, executionID: string) {
     try {
-      const [runs, { BashJobStore }] = await Promise.all([
-        workflows.list(sessionID),
-        import("../tools/bash-background"),
-      ])
-      const statuses = runs.filter((run) => run.planExecutionID === executionID).map((run) => run.status)
+      const [runs, { BashJobStore }] = await Promise.all([planWorkflows(sessionID), import("../tools/bash-background")])
+      const interrupted = await SessionPlan.interruptedWork(sessionID, executionID)
+      const statuses = runs
+        .filter((run) => run.planExecutionID === executionID && !interrupted?.workflows.includes(run.runId))
+        .map((run) => run.status)
       for (const job of BashJobStore.list())
-        if (job.planExecutionID === executionID && job.sessionID && (await Session.rootID(job.sessionID)) === sessionID)
+        if (
+          job.planExecutionID === executionID &&
+          !interrupted?.jobs.includes(job.id) &&
+          job.sessionID &&
+          (await Session.rootID(job.sessionID)) === sessionID
+        )
           statuses.push(job.status)
       if (statuses.includes("running")) return "running"
       if (statuses.includes("failed")) return "failed"
@@ -486,12 +576,13 @@ export namespace Loop {
       .trim()
     if (!startsSessionPlan(text)) return promptInternal(input, options)
     input = { ...input, sessionID: await Session.rootID(input.sessionID) }
+    using _ = await Lock.write(`plan-start:${input.sessionID}`)
     const starts = planStarts()
     const known = starts.get(input.sessionID)
     if (known) {
       if (!known.settled) return known.promise
       const plan = await SessionPlan.get(input.sessionID)
-      if (["executing", "paused"].includes(plan.status)) return known.promise
+      if (plan.status === "executing") return known.promise
     }
     input = { ...input, messageID: input.messageID ?? Identifier.ascending("message") }
     planSources().set(input.messageID!, options?.planSource ?? "chat")
@@ -514,9 +605,10 @@ export namespace Loop {
   export const promptWhenIdle = fn(PromptInput, async (input) =>
     Message.native(await admittedPrompt(publicPromptInput(input), { requireIdle: true })),
   )
-  export async function startPlan(sessionID: string) {
+  export async function startPlan(sessionID: string, selection: Pick<PromptInput, "model" | "variant"> = {}) {
     return admittedPrompt(
       {
+        ...selection,
         sessionID: await Session.rootID(sessionID),
         parts: [{ type: "text", text: "Execute the latest saved session plan." }],
       },
@@ -524,7 +616,14 @@ export namespace Loop {
     )
   }
   // Engine-generated memory/dream prompts keep synthetic; not exposed through HTTP or the SDK.
-  export const promptGenerated = fn(PromptInput, async (input) => Message.native(await promptInternal(input)))
+  export const promptGenerated = fn(PromptInput, async (input) =>
+    Message.native(
+      await promptInternal({
+        ...input,
+        noReply: input.noReply || (await planPaused(input.sessionID)),
+      }),
+    ),
+  )
   /**
    * Persists a whole-turn refusal as an assistant message without going through loop().
    * The reason and wording belong to the refusing plugin (`message`); the engine only uses a neutral fallback when
@@ -946,6 +1045,7 @@ export namespace Loop {
     const startText = requested.info.role === "user" ? Message.userSourceTexts(requested).join("\n").trim() : ""
     if (!session.parentID && startText) await SessionPlan.beginTurn(sessionID, targetUserID)
     const startingPlan = !session.parentID && startsSessionPlan(startText)
+    let executionRequestDispatched = false
     let planCompactionAttempted = false
     const discoveredSkillNames = new Set<string>()
     const consumedSkillDiscoveryTriggerIDs = new Set<string>()
@@ -1248,6 +1348,7 @@ export namespace Loop {
             type: "text",
             text: "Summarize the subagent tool output above and continue with your task.",
             synthetic: true,
+            metadata: { taskOriginMessageID: lastUserInfo.id },
           } satisfies Message.TextPart)
         }
 
@@ -1385,8 +1486,17 @@ export namespace Loop {
         (error: unknown) => ({ ok: false as const, error }),
       )
       const planForRequest = await SessionPlan.get(await Session.rootID(sessionID))
+      const inheritedExecution = await SessionPlan.executionForMessage(sessionID, lastUserInfo.id)
+      const planInput = SessionPlan.inputForTask(
+        planForRequest,
+        lastUserMessage ? Message.userSourceTexts(lastUserMessage).join("\n") : "",
+        startingPlan,
+        inheritedExecution,
+      )
+      const planExecution = startingPlan || !!planInput?.executionID
       const view = await SessionContextView.build({
         includePlan: startingPlan,
+        planExecution,
         preparedTools: preparation.ok ? preparation.value : undefined,
         includeToolStats: preparation.ok,
         messages: msgs,
@@ -1420,6 +1530,7 @@ export namespace Loop {
           precise: true,
           reestimate: async () => {
             const reestimated = await SessionContextView.build({
+              planExecution,
               preparedTools: preparation.ok ? preparation.value : undefined,
               includeToolStats: preparation.ok,
               messages: await Message.filterCompacted(Message.stream(sessionID)),
@@ -1482,6 +1593,7 @@ export namespace Loop {
       const resolvedTools = await (
         preparation.ok
           ? resolveTools({
+              planExecution,
               prepared: preparation.value,
               agent,
               session,
@@ -1575,16 +1687,30 @@ export namespace Loop {
         model,
         toolChoice: format.type === "json_schema" ? "required" : undefined,
         beforeRequest: async (request) => {
-          const content =
-            planForRequest.execution && ["executing", "paused"].includes(planForRequest.status)
-              ? planForRequest.execution.content
-              : planForRequest.content
+          const rootID = await Session.rootID(sessionID)
+          const resumingPlan =
+            !session.parentID &&
+            planForRequest.status === "paused" &&
+            resumesSessionPlan(
+              Message.userSourceTexts(await Message.get({ sessionID, messageID: lastUserInfo.id })).join("\n"),
+            )
+          if (
+            planPauses().has(rootID) ||
+            ((executionRequestDispatched || (planExecution && !startingPlan && !resumingPlan)) &&
+              (await planPaused(sessionID)))
+          )
+            throw new SessionPlan.PausedError({
+              message: await Text.pick({
+                zh: "计划执行已暂停。请明确恢复执行后再继续原任务。",
+                en: "Plan execution is paused. Explicitly resume execution to continue the original task.",
+              }),
+            })
+          const content = planInput?.content ?? ""
           if (!content.trim()) {
             if (startingPlan)
               await SessionPlan.start(sessionID, planSources().get(targetUserID) ?? "chat", planForRequest.revision)
             return
           }
-          if (!startingPlan && !["executing", "paused"].includes(planForRequest.status)) return
           const capacity = await SessionCompaction.capacity(model)
           try {
             await PlanCapacity.assert({
@@ -1593,8 +1719,12 @@ export namespace Loop {
               availableTokens: capacity.usable,
             })
           } catch (error) {
-            if (Message.PlanCapacityError.isInstance(error) && planForRequest.execution)
-              await SessionPlan.setStatus(await Session.rootID(sessionID), "paused")
+            if (Message.PlanCapacityError.isInstance(error) && planInput?.executionID) {
+              const rootID = await Session.rootID(sessionID)
+              const paused = pausePlan(rootID, planInput.executionID, error)
+              if (rootID === sessionID) await paused
+              else void paused.catch((error) => log.warn("plan pause unconfirmed", { rootID, error }))
+            }
             if (
               Message.PlanCapacityError.isInstance(error) &&
               !planCompactionAttempted &&
@@ -1607,8 +1737,10 @@ export namespace Loop {
             }
             throw error
           }
-          if (startingPlan || planForRequest.status === "paused")
+          if (startingPlan || resumingPlan)
             await SessionPlan.start(sessionID, planSources().get(targetUserID) ?? "chat", planForRequest.revision)
+          if (planInput) await SessionPlan.assertInputCurrent(rootID, planInput)
+          executionRequestDispatched ||= planExecution
         },
       })
       if (compactPlanRequest) {
@@ -1808,6 +1940,24 @@ export namespace Loop {
     const abort = controller.signal
     let unbind = () => {}
     let completed: { callback: TurnCallback; result: Message.FullMsg } | undefined
+    let turn: { messageID: string; result?: Message.FullMsg; failed?: boolean } | undefined
+    let execution: { id: string; failed: boolean } | undefined
+
+    async function recordPlanTurn() {
+      if (!turn || !(await SessionPlan.executionForMessage(sessionID, turn.messageID))) return
+      const rootID = await Session.rootID(sessionID)
+      if (rootID !== sessionID && resume(rootID)) return
+      const plan = await SessionPlan.get(rootID)
+      if (plan.status !== "executing" || !plan.execution || planPauses().has(rootID)) return
+      execution = {
+        id: plan.execution.id,
+        failed: await SessionPlan.recordExecutionFailure(
+          rootID,
+          plan.execution.id,
+          !abort.aborted && (!!turn.failed || !!(turn.result?.info.role === "assistant" && turn.result.info.error)),
+        ),
+      }
+    }
 
     try {
       unbind = bindExecution(self.callbacks[0]?.scope, sessionID, controller, self)
@@ -1872,6 +2022,7 @@ export namespace Loop {
         self.activeCallback = self.callbacks.shift()
         unbind()
         unbind = bindExecution(self.activeCallback?.scope, sessionID, controller, self)
+        turn = { messageID: targetUser.info.id }
         const result = await LoopExecution.run(self.activeCallback?.scope, () =>
           runTurn({
             sessionID,
@@ -1881,6 +2032,8 @@ export namespace Loop {
             maxTurns,
           }),
         )
+        turn.result = result
+        await recordPlanTurn()
         if (
           !SessionStore.find(sessionID)?.parentID &&
           result.info.role === "assistant" &&
@@ -1897,6 +2050,7 @@ export namespace Loop {
         }
       }
     } catch (error) {
+      if (turn) turn.failed = true
       log.error("processSessionTurns error", { sessionID, error })
       self.activeCallback?.reject(error)
       self.activeCallback = undefined
@@ -1913,25 +2067,23 @@ export namespace Loop {
     } finally {
       unbind()
       try {
+        await recordPlanTurn()
         const rootID = await Session.rootID(sessionID)
         const plan = rootID === sessionID || !resume(rootID) ? await SessionPlan.get(rootID) : undefined
-        const work = plan?.execution ? await planWorkStatus(rootID, plan.execution.id) : "running"
-        // Background work keeps this execution's fixed plan until its completion notification resumes the loop.
+        const work = execution ? await planWorkStatus(rootID, execution.id) : "running"
+        // A later discussion cannot erase an execution result; background work still retains its fixed snapshot.
         if (
+          execution &&
           plan?.status === "executing" &&
-          plan.execution &&
-          work !== "running" &&
-          (rootID === sessionID || !resume(rootID))
+          plan.execution?.id === execution.id &&
+          !planPauses().has(rootID) &&
+          work !== "running"
         )
           await SessionPlan.setStatus(
             rootID,
-            abort.aborted
-              ? "stopped"
-              : completed?.result.info.role === "assistant" && completed.result.info.error
-                ? "failed"
-                : work,
+            abort.aborted ? "stopped" : execution.failed ? "failed" : work,
             undefined,
-            plan.execution.id,
+            execution.id,
           )
       } catch (error) {
         log.warn("plan completion deferred", { sessionID, error })
@@ -2040,6 +2192,7 @@ export namespace Loop {
         "Do NOT reply with plain text.",
       ].join(" "),
       synthetic: true,
+      metadata: { taskOriginMessageID: input.lastUserInfo.id },
     } satisfies Message.TextPart)
     return retryUserInfo.id
   }
@@ -2407,6 +2560,9 @@ export namespace Loop {
         taskOriginMessageIDs: notifications.flatMap((item) =>
           typeof item.metadata?.taskOriginMessageID === "string" ? [item.metadata.taskOriginMessageID] : [],
         ),
+        planExecutionIDs: notifications.flatMap((item) =>
+          typeof item.metadata?.planExecutionID === "string" ? [item.metadata.planExecutionID] : [],
+        ),
       },
     } satisfies Message.TextPart)
     await SessionNotification.markDelivered(input.sessionID, notificationIDs, info.id)
@@ -2577,6 +2733,7 @@ export namespace Loop {
      * query and many MCP candidates can take hundreds of milliseconds per run. Defaults to 1 for tests.
      */
     prepared?: Awaited<ReturnType<typeof prepareTools>>
+    planExecution?: boolean
     step?: number
   }) {
     using _ = log.time("resolveTools")
@@ -2622,10 +2779,11 @@ export namespace Loop {
      * The tool wrapper calls dispose() in finally to clean up toolAborts and avoid leaks in long sessions.
      * dispose() is idempotent and safe to call after an abort.
      */
-    function registerToolAbort(
+    async function registerToolAbort(
       callID: string | undefined,
       toolID: string,
-    ): { signal: AbortSignal | undefined; dispose: () => void } {
+    ): Promise<{ signal: AbortSignal | undefined; dispose: () => void }> {
+      const activePlan = await SessionPlan.get(input.session.id)
       const sessionState = state()[input.session.id]
       if (!callID) return { signal: undefined, dispose: () => {} }
       const childAbort = new AbortController()
@@ -2636,6 +2794,7 @@ export namespace Loop {
         toolID,
         childAbort,
         async () => (await liveExecution()).ruleset,
+        input.planExecution && activePlan.status === "executing" ? activePlan.execution?.id : undefined,
       )
       const cascadeAbort = () => childAbort.abort()
       sessionState?.abort.signal.addEventListener("abort", cascadeAbort, { once: true })
@@ -2659,6 +2818,7 @@ export namespace Loop {
         abort: abortSignal ?? options.abortSignal!,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
+        planExecution: input.planExecution,
         extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck, planRevision: planSnapshot?.revision },
         agent: input.agent.id,
         get permissionLevel() {
@@ -2738,7 +2898,7 @@ export namespace Loop {
           const live = await liveExecution()
           if (!PermissionLevel.allowsTool(permissionLevelNow(input.session.id, live.permissionLevel), item.id))
             throw new PermissionNext.DeniedError([{ permission: item.id, pattern: "*", action: "deny" }])
-          const abort = registerToolAbort(options.toolCallId, item.id)
+          const abort = await registerToolAbort(options.toolCallId, item.id)
           const signal =
             abort.signal && options.abortSignal
               ? AbortSignal.any([abort.signal, options.abortSignal])
@@ -2790,7 +2950,7 @@ export namespace Loop {
         const live = await liveExecution()
         if (!PermissionLevel.allowsTool(permissionLevelNow(input.session.id, live.permissionLevel), key))
           throw new PermissionNext.DeniedError([{ permission: key, pattern: "*", action: "deny" }])
-        const abort = registerToolAbort(opts.toolCallId, key)
+        const abort = await registerToolAbort(opts.toolCallId, key)
         const signal =
           abort.signal && opts.abortSignal
             ? AbortSignal.any([abort.signal, opts.abortSignal])

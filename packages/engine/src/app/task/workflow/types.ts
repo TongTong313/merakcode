@@ -120,6 +120,7 @@ export const WorkflowRunRecord = WorkflowRunMetadata.extend({
 export type WorkflowRunRecord = z.infer<typeof WorkflowRunRecord>
 export type WorkflowRunControl = {
   abort: AbortController
+  done?: Promise<void>
   /**
    * Delivers the aborted notice right away when the user cancels.
    *

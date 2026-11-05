@@ -22,6 +22,7 @@ import { MemoryRecall } from "../memory/recall"
 import { truncateSections } from "../memory/session-memory/template"
 import { LoopStatus } from "../loop/status"
 import { SessionCompactionRestore } from "../session/compaction-restore"
+import { SessionPlan } from "../session/plan"
 import { scanActivatedTools } from "../tools/tool-search"
 import { Text } from "../prompt/text"
 
@@ -238,6 +239,7 @@ export namespace SessionCompaction {
     // toModelMessages. Re-injecting todos, plan, recent files and skills lost to compaction gives the model a clear
     // signal that work remains. Each category handles its own errors: failures are logged and never block.
     const restored = await SessionCompactionRestore.attachments({
+      planExecution: await SessionPlan.executionForMessage(input.sessionID, userInfo.id),
       sessionID: input.sessionID,
       messageID: continueMsg.id,
       messages: input.messages,
@@ -254,6 +256,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "text",
       synthetic: true,
+      metadata: { taskOriginMessageID: userInfo.id },
       text: [
         "You were just auto-compacted due to context limit. Continue completing the unfinished task directly based on the summary above.",
         '- Do not stop to ask the user, do not restate the summary, and do not preface with phrases like "I\'ll continue".',
