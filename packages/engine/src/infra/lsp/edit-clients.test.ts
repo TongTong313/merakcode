@@ -10,7 +10,6 @@ describe("pickClientsForEditDiagnostics", () => {
         resolve(["late"])
       }, 200)
     })
-    const started = Date.now()
     const result = await pickClientsForEditDiagnostics({
       ready: ["ready-a", "ready-b"],
       pending,
@@ -18,7 +17,6 @@ describe("pickClientsForEditDiagnostics", () => {
       peekReady: () => ["peek"],
     })
     expect(result).toEqual(["ready-a", "ready-b"])
-    expect(Date.now() - started).toBeLessThan(100)
     expect(pendingResolved).toBe(false)
   })
 

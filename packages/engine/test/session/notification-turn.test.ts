@@ -64,7 +64,7 @@ test("notification to an idle session starts a turn, reaches the model, and is a
     }
   }) as unknown as typeof LLM.stream
 
-  await using tmp = await tmpdir({ git: true })
+  await using tmp = await tmpdir({ git: true, dispose: () => Instance.disposeAll() })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {

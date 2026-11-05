@@ -5081,6 +5081,11 @@ export class Session2 extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      model?: {
+        modelID: string
+        providerID: string
+      }
+      variant?: string
     },
     options?: Options<never, ThrowOnError>,
   ): RequestResult<SessionPlanStartResponses, SessionPlanStartErrors, ThrowOnError> {
@@ -5091,6 +5096,8 @@ export class Session2 extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "body", key: "model" },
+            { in: "body", key: "variant" },
           ],
         },
       ],
@@ -5099,6 +5106,11 @@ export class Session2 extends HeyApiClient {
       url: "/session/{sessionID}/plan/start",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

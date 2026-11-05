@@ -105,7 +105,7 @@ export const GrepTool = Tool.define("grep", {
     }
 
     const plan = SessionStore.find(ctx.sessionID) ? await SessionPlan.get(ctx.sessionID) : undefined
-    const execution = plan?.status === "executing" ? plan.execution : undefined
+    const execution = ctx.planExecution && plan?.status === "executing" ? plan.execution : undefined
     const fixedPaths = new Set<string>()
     if (execution) {
       for (const root of roots) {

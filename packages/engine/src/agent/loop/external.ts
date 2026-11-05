@@ -21,7 +21,7 @@ import { Lock } from "@merakcode/engine/infra/concurrency/lock"
 import { permissionLevelNow } from "../permission/permission-level"
 import { SessionPlan } from "../session/plan"
 import { TaskScope } from "../permission/scope"
-import { startsSessionPlan } from "@merakcode/util/session-plan"
+import { startsSessionPlan, resumesSessionPlan } from "@merakcode/util/session-plan"
 import { PlanGenerateTool } from "../tools/plan"
 import { PermissionNext } from "../permission/next"
 import { PermissionPolicy } from "../permission/policy"
@@ -235,8 +235,15 @@ export namespace ExternalSession {
           if (!session.parentID) await SessionPlan.beginTurn(session.id, user.id)
           const plan = await SessionPlan.get(session.id)
           const startingPlan = startsSessionPlan(currentText)
-          const planInput = SessionPlan.inputForTask(plan, currentText, startingPlan)
-          planExecutionID = planInput?.executionID
+          const resumingPlan = plan.status === "paused" && resumesSessionPlan(currentText)
+          const pausedDiscussion = plan.status === "paused" && !startingPlan && !resumingPlan
+          const planInput = SessionPlan.inputForTask(
+            plan,
+            currentText,
+            startingPlan,
+            await SessionPlan.executionForMessage(session.id, user.id),
+          )
+          planExecutionID = pausedDiscussion ? undefined : planInput?.executionID
           if (startingPlan && !planInput?.content.trim())
             throw new SessionPlan.ConflictError({
               message: await Text.pick({
@@ -274,14 +281,14 @@ export namespace ExternalSession {
                   : currentText,
                 cwd: Instance.directory,
                 permissionLevel: permissionLevelNow(session.id),
-                scope: await TaskScope.current(session.id, user.id),
+                scope: pausedDiscussion ? "draft" : await TaskScope.current(session.id, user.id),
                 plan: planInput,
                 model: selected.model,
                 resume: binding?.productID === selected.id ? binding.resumeID : undefined,
               },
               abort: signal,
               beforeTask: async (task) => {
-                if (!startingPlan && plan.status !== "paused") return
+                if (!startingPlan && !resumingPlan) return
                 const started = await SessionPlan.start(session.id, options?.planSource ?? "chat", plan.revision)
                 planExecutionID = started.execution?.id
                 if (task.plan) task.plan.executionID = planExecutionID

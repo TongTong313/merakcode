@@ -13762,26 +13762,32 @@
           { "in": "query", "name": "directory", "schema": { "type": "string" } },
           { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "model": {
+                    "properties": { "modelID": { "type": "string" }, "providerID": { "type": "string" } },
+                    "required": ["modelID", "providerID"],
+                    "type": "object"
+                  },
+                  "variant": { "type": "string" }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPlan" } } },
             "description": "Execution plan"
           },
           "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {},
-                    "error": { "items": {}, "type": "array" },
-                    "success": { "enum": [false], "type": "boolean" }
-                  },
-                  "required": ["data", "error", "success"],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
           },
           "404": {
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },

@@ -51,6 +51,7 @@ export namespace SessionCompactionRestore {
     model: Provider.Model
     /** Agent active when compaction ran; used for the ReadTool pre-read context */
     agent: string
+    planExecution?: boolean
   }): Promise<Message.TextPart[]> {
     // Each call gets a monotonically increasing part id, so toModelMessages keeps the order
     // todos, plan, recent files, skills.
@@ -74,14 +75,19 @@ export namespace SessionCompactionRestore {
     }
 
     try {
-      const text = await restorePlan(input.sessionID)
+      const text = await restorePlan(input.sessionID, input.planExecution === true)
       if (text) parts.push(make(text))
     } catch (e) {
       log.error("restore plan failed", { error: e })
     }
 
     try {
-      for (const text of await restoreRecentFiles(input.sessionID, input.model, input.agent)) {
+      for (const text of await restoreRecentFiles(
+        input.sessionID,
+        input.model,
+        input.agent,
+        input.planExecution === true,
+      )) {
         parts.push(make(text))
       }
     } catch (e) {
@@ -121,14 +127,15 @@ export namespace SessionCompactionRestore {
   }
 
   /** Restores the plan file, only when plan mode is enabled and the file exists */
-  async function restorePlan(sessionID: string): Promise<string | undefined> {
+  async function restorePlan(sessionID: string, execution: boolean): Promise<string | undefined> {
     if (!Flag.MERAKCODE_PLAN_MODE) return undefined
     const plan = await SessionPlan.get(await Session.rootID(sessionID))
-    const content = plan.status === "executing" ? (plan.execution?.content ?? "") : plan.content
+    const fixed = execution && ["executing", "paused"].includes(plan.status)
+    const content = fixed ? (plan.execution?.content ?? "") : plan.content
     if (!content.trim()) return undefined
     return [
       "<system-reminder>",
-      plan.status === "executing"
+      fixed
         ? "Continue the fixed execution plan:"
         : "Current editable plan; await user authorization before execution:",
       content,
@@ -141,7 +148,12 @@ export namespace SessionCompactionRestore {
    * Takes the newest MAX_RECENT_FILES by FileTime read time, within the total and per-file token budgets.
    * Skips the instruction files that InstructionPrompt.system() injects every turn.
    */
-  async function restoreRecentFiles(sessionID: string, model: Provider.Model, agent: string): Promise<string[]> {
+  async function restoreRecentFiles(
+    sessionID: string,
+    model: Provider.Model,
+    agent: string,
+    execution: boolean,
+  ): Promise<string[]> {
     const readMap = FileTime.state().read[sessionID]
     if (!readMap) return []
 
@@ -166,6 +178,7 @@ export namespace SessionCompactionRestore {
       // checks, with an empty ruleset and a no-op ask.
       const readCtx: Tool.Context = {
         sessionID,
+        planExecution: execution,
         abort: new AbortController().signal,
         agent,
         permissionLevel: PermissionLevel.DEFAULT,

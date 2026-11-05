@@ -1,9 +1,5 @@
 // Simple JSON-RPC 2.0 LSP-like fake server over stdio
-// Implements a minimal LSP handshake and triggers a request upon notification
-
-const net = require("net")
-
-let nextId = 1
+// Implements initialization, workspace folders and diagnostic notifications
 
 function encode(message) {
   const json = JSON.stringify(message)
@@ -41,12 +37,6 @@ function send(msg) {
   process.stdout.write(encode(msg))
 }
 
-function sendRequest(method, params) {
-  const id = nextId++
-  send({ jsonrpc: "2.0", id, method, params })
-  return id
-}
-
 function handle(raw) {
   let data
   try {
@@ -71,11 +61,6 @@ function handle(raw) {
     return
   }
   if (data.method === "workspace/didChangeConfiguration") {
-    return
-  }
-  if (data.method === "test/trigger") {
-    const method = data.params && data.params.method
-    if (method) sendRequest(method, {})
     return
   }
   // Push a diagnostic to the client as is (params are the publishDiagnostics params)

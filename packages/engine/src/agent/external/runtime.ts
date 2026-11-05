@@ -240,14 +240,21 @@ export async function runMember(input: {
         const controller = new AbortController()
         const id = `${operationPrefix}${operation.id}`
         const finish = executionContext
-          ? ModeOperations.register(executionContext.sessionID, id, "external_operation", controller, async () => {
-              const owner = SessionStore.find(rootID!)
-              const config = await Config.get()
-              return PermissionPolicy.ruleset(
-                owner?.permissionLevel ?? "ask",
-                PermissionNext.merge(PermissionNext.fromUserConfig(config.permission ?? {}), owner?.permission ?? []),
-              )
-            })
+          ? ModeOperations.register(
+              executionContext.sessionID,
+              id,
+              "external_operation",
+              controller,
+              async () => {
+                const owner = SessionStore.find(rootID!)
+                const config = await Config.get()
+                return PermissionPolicy.ruleset(
+                  owner?.permissionLevel ?? "ask",
+                  PermissionNext.merge(PermissionNext.fromUserConfig(config.permission ?? {}), owner?.permission ?? []),
+                )
+              },
+              input.task.plan?.executionID,
+            )
           : () => {}
         const decision = Promise.withResolvers<Verdict>()
         const entry = { signature, controller, finish, admitted: false, decision: decision.promise }
@@ -355,6 +362,7 @@ export async function runMember(input: {
     }
   }
   let unregisterOpaque = () => {}
+  let unregisterPlan = () => {}
   const unsubscribeMode =
     rootID && Instance.has()
       ? Bus.subscribe(Session.Event.Updated, (event) => {
@@ -383,6 +391,15 @@ export async function runMember(input: {
       ]),
     )
     verified = true
+    if (executionContext && input.task.plan?.executionID)
+      unregisterPlan = ModeOperations.register(
+        executionContext.sessionID,
+        `external-plan:${randomUUID()}`,
+        "external_plan",
+        executionContext.controller,
+        undefined,
+        input.task.plan.executionID,
+      )
     capabilities = info.capabilities
     const owner = rootID ? SessionStore.find(rootID) : undefined
     if (owner)
@@ -457,7 +474,8 @@ export async function runMember(input: {
     for (;;) {
       const revision = rootID ? SessionStore.find(rootID)?.permissionRevision : undefined
       await input.beforeTask?.(input.task)
-      if (input.task.plan && rootID) await SessionPlan.assertInputCurrent(rootID, input.task.plan)
+      if (input.task.plan && rootID)
+        await SessionPlan.assertInputCurrent(rootID, input.task.plan, { allowPaused: input.task.scope === "draft" })
       input.abort.throwIfAborted()
       const owner = rootID ? SessionStore.find(rootID) : undefined
       if (owner?.permissionRevision !== revision) continue
@@ -498,6 +516,7 @@ export async function runMember(input: {
     // adapter that is gone before it stopped it.
     await close()
     unregisterOpaque()
+    unregisterPlan()
     for (const id of operations.keys()) finishOperation(id)
     await writes
   }

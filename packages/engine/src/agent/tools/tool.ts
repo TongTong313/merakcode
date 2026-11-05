@@ -24,6 +24,8 @@ export namespace Tool {
     kind?: PermissionLevel.Value
     abort: AbortSignal
     callID?: string
+    /** This turn continues a fixed plan execution rather than discussing the editable document. */
+    planExecution?: boolean
     extra?: { [key: string]: any }
     messages: Message.FullMsg[]
     /** Permission rules in effect for this call (agent and session permissions merged, in priority order) */

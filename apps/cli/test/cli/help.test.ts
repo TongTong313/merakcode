@@ -33,6 +33,7 @@ test("help output names the merak command", async () => {
   expect(stdout).toContain("merak completion")
   expect(stdout).toContain("merak serve")
   expect(stdout).not.toContain("merakcode completion")
+  expect(stdout).not.toContain("merakcode serve")
 })
 
 test("merak without a command prints the help and exits without starting an engine", async () => {

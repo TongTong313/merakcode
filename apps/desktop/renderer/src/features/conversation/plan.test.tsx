@@ -3,8 +3,15 @@ import { expect, test, vi } from "vitest"
 import { PlanCard, PlanPanel } from "./plan"
 import { setLocale } from "../../i18n"
 import { ui, setUi } from "../../state/ui"
+import { choose } from "../../state/models"
+import { setState } from "../../state/store"
+import type { ProviderListResponses } from "@merakcode/sdk/client"
 
-const http = vi.hoisted(() => ({ plan: undefined as unknown, requests: [] as string[] }))
+const http = vi.hoisted(() => ({
+  plan: undefined as unknown,
+  requests: [] as string[],
+  posts: [] as { url: string; body: unknown }[],
+}))
 
 test("a paused plan explains that resuming keeps the original snapshot", async () => {
   setLocale("zh")
@@ -63,7 +70,8 @@ test.each(["queued", "executing"])("the %s plan opens progress without dispatchi
 })
 vi.mock("undici", () => ({
   Agent: class {},
-  fetch: async (url: string) => {
+  fetch: async (url: string, init?: { body?: ArrayBuffer }) => {
+    if (init?.body) http.posts.push({ url, body: JSON.parse(new TextDecoder().decode(init.body)) })
     http.requests.push(url)
     return new Response(
       JSON.stringify(
@@ -134,5 +142,44 @@ test("the plan tab shows full Markdown and records only an explicit human edit v
     dispose()
     host.remove()
     http.plan = undefined
+  }
+})
+
+test("resuming a plan sends the model and variant currently selected in the composer", async () => {
+  setLocale("zh")
+  const id = "ses_resume_selection"
+  http.posts.length = 0
+  setState("providers", {
+    all: [{ id: "fixture", name: "Fixture", env: [], models: { large: { id: "large", name: "Large" } } }],
+    connected: ["fixture"],
+    default: { fixture: "large" },
+  } as unknown as ProviderListResponses[200])
+  choose(id, "/project", { model: { providerID: "fixture", modelID: "large" }, variant: "reasoning" })
+  http.plan = {
+    sessionID: id,
+    path: "/plan.md",
+    content: "LATEST_B",
+    revision: 2,
+    humanRevision: 2,
+    source: "human",
+    status: "paused",
+  }
+  const host = document.createElement("div")
+  document.body.append(host)
+  const dispose = render(() => <PlanPanel sessionID={id} directory="/project" />, host)
+  try {
+    await vi.waitFor(() => expect(host.textContent).toContain("恢复原执行"))
+    ;[...host.querySelectorAll("button")].find((button) => button.textContent === "恢复原执行")!.click()
+    await vi.waitFor(() =>
+      expect(http.posts.find((item) => item.url.includes("/plan/start"))?.body).toEqual({
+        model: { providerID: "fixture", modelID: "large" },
+        variant: "reasoning",
+      }),
+    )
+  } finally {
+    dispose()
+    host.remove()
+    http.plan = undefined
+    setState("providers", undefined)
   }
 })

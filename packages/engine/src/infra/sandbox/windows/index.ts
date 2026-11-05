@@ -22,6 +22,7 @@ import { Paths } from "@merakcode/util/paths"
 import type { Backend, Status } from "../backend"
 import type { BasePolicy } from "../policy"
 import { WindowsCommand } from "./command"
+import { Lock } from "../../concurrency/lock"
 
 const run = promisify(execFile)
 
@@ -34,6 +35,12 @@ export namespace WindowsSandbox {
   const system = process.env.SystemRoot ?? "C:\\Windows"
   const powershell = path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
   const probes = new Map<string, { signature: string; retryAt: number; pending: Promise<Status> }>()
+  const restriction = () =>
+    `S-1-5-21-${randomInt(1, 0xffffffff)}-${randomInt(1, 0xffffffff)}-${randomInt(1, 0xffffffff)}-${randomInt(1, 0xffffffff)}`
+  function directoryRestriction(target: string) {
+    const hash = createHash("sha256").update(path.resolve(target).toLowerCase()).digest()
+    return `S-1-5-21-${hash.readUInt32LE(0)}-${hash.readUInt32LE(4)}-${hash.readUInt32LE(8)}-${hash.readUInt32LE(12)}`
+  }
 
   /** The C# compiler of .NET Framework 4, part of every supported Windows */
   export function compiler() {
@@ -71,8 +78,8 @@ export namespace WindowsSandbox {
       state: path.join(root, "state.json"),
       password: path.join(root, "password.bin"),
       requests: path.join(root, "requests"),
-      tmp: path.join(root, "tmp"),
-      appdata: path.join(root, "appdata"),
+      tmp: path.join(root, "tmp", "restricted"),
+      appdata: path.join(root, "appdata", "restricted"),
       bin: path.join(root, "bin"),
     }
 
@@ -90,6 +97,7 @@ export namespace WindowsSandbox {
     async function helper() {
       const hash = createHash("sha256").update(source).digest("hex").slice(0, 12)
       const exe = path.join(file.bin, `helper-${hash}.exe`)
+      using _ = await Lock.write(`windows-sandbox-helper:${exe}`)
       if (existsSync(exe)) return exe
       const csc = compiler()
       if (!csc) throw new Error("The C# compiler that ships with Windows (csc.exe) is missing")
@@ -113,10 +121,18 @@ export namespace WindowsSandbox {
       if (!stat) return
       const rule = `${kind} *${state.sid}:${stat.isDirectory() ? rights.dir : rights.file}`
       if (state.granted.some((entry) => entry.path === target && entry.rule === rule)) return
-      await run("icacls", [target, kind, rule.slice(kind.length + 1), "/c", "/q"], {
-        windowsHide: true,
-        maxBuffer: 64 * 1024 * 1024,
-      })
+      try {
+        await run("icacls", [target, kind, rule.slice(kind.length + 1), "/c", "/q"], {
+          windowsHide: true,
+          maxBuffer: 64 * 1024 * 1024,
+        })
+      } catch (error) {
+        // Native Windows tools use the system code page; their raw stderr is retained in the cause.
+        const code = error && typeof error === "object" && "code" in error ? error.code : "unknown"
+        throw new Error(`Windows sandbox file permissions could not be updated for ${target} (icacls exit ${code})`, {
+          cause: error,
+        })
+      }
       state.granted.push({ path: target, rule })
       save(state)
     }
@@ -172,9 +188,12 @@ export namespace WindowsSandbox {
       const cached = probes.get(root)
       if (cached?.signature === version && Date.now() < cached.retryAt) return cached.pending
       const pending = (async (): Promise<Status> => {
+        using _ = await Lock.write(`windows-sandbox-prepare:${root}`)
         const request = path.join(file.requests, `probe-${randomUUID()}`)
         try {
           const exe = await helper()
+          const state = load()!
+          await grant(state, exe, "/grant", RIGHTS.read)
           mkdirSync(file.requests, { recursive: true })
           mkdirSync(file.tmp, { recursive: true })
           writeFileSync(
@@ -183,14 +202,26 @@ export namespace WindowsSandbox {
               user: ACCOUNT,
               password: file.password,
               cwd: file.tmp,
-              file: path.join(system, "System32", "whoami.exe"),
-              args: "",
-              env: { SystemRoot: system, TEMP: file.tmp, TMP: file.tmp },
+              file: path.join(system, "System32", "cmd.exe"),
+              args: "/d /c exit 0",
+              env: {
+                SystemRoot: system,
+                TEMP: file.tmp,
+                TMP: file.tmp,
+                MERAKCODE_SANDBOX_WRITE_SIDS: restriction(),
+                MERAKCODE_SANDBOX_PROBE: "1",
+              },
             }),
           )
+          writeFileSync(request + ".started", "")
+          await run("icacls", [request + ".started", "/grant", `*${state.sid}:M`, "/c", "/q"], { windowsHide: true })
           const { stdout } = await run(exe, ["run", request], { windowsHide: true, timeout: 5000 })
-          if (!stdout.trim().toLowerCase().endsWith(ACCOUNT)) throw new Error("The sandbox account identity changed")
-          return { status: "on", backend: "windows-account", degraded: ["loopback-not-restricted"] }
+          if (stdout.trim() !== state.sid) throw new Error("The sandbox account identity changed")
+          return {
+            status: "on",
+            backend: "windows-account",
+            degraded: ["loopback-not-restricted", "ambient-world-writable"],
+          }
         } catch (error) {
           return {
             status: "failed",
@@ -280,9 +311,16 @@ export namespace WindowsSandbox {
         // Before the account is deleted: afterwards its SID can no longer be resolved
         if (state)
           for (const entry of [...state.granted].reverse())
-            await run("icacls", [entry.path, "/remove", `*${state.sid}`, "/c", "/q"], { windowsHide: true }).catch(
-              () => {},
-            )
+            if (entry.rule.startsWith("restricted:")) {
+              if (existsSync(entry.path))
+                await run(await helper(), ["revoke", entry.rule.slice("restricted:".length), entry.path], {
+                  windowsHide: true,
+                  timeout: 5000,
+                })
+            } else
+              await run("icacls", [entry.path, "/remove", `*${state.sid}`, "/c", "/q"], { windowsHide: true }).catch(
+                () => {},
+              )
         mkdirSync(root, { recursive: true })
         const result = path.join(root, `reset-${randomUUID()}.json`)
         await elevated(resetScript, ["-User", ACCOUNT, "-Rule", RULE, "-Result", result])
@@ -291,15 +329,39 @@ export namespace WindowsSandbox {
       },
 
       async wrap(input) {
+        using _ = await Lock.write(`windows-sandbox-prepare:${root}`)
         const state = load()
         if (!state) throw new Error("The sandbox has not been set up")
         const exe = await helper()
+        await grant(state, exe, "/grant", RIGHTS.read)
+        for (const target of [file.tmp, file.appdata]) {
+          mkdirSync(target, { recursive: true })
+          await grant(state, target, "/grant", RIGHTS.write)
+        }
+        const sids = [restriction()]
         for (const dir of input.policy.write.allow) await grant(state, dir, "/grant", RIGHTS.write)
+        for (const target of new Set([...input.policy.write.allow, file.tmp, file.appdata])) {
+          const stat = statSync(target, { throwIfNoEntry: false })
+          if (!stat) continue
+          const sid = directoryRestriction(target)
+          await run(exe, ["grant", sid, target], { windowsHide: true, timeout: 5000 })
+          sids.push(sid)
+          const rule = `restricted:${sid}`
+          if (!state.granted.some((entry) => entry.path === target && entry.rule === rule)) {
+            state.granted.push({ path: target, rule })
+            save(state)
+          }
+        }
         for (const target of input.policy.write.protect) await grant(state, target, "/deny", RIGHTS.denyWrite)
         for (const target of [...input.policy.read.deny, ...base.readDeny])
           await grant(state, target, "/deny", RIGHTS.denyRead)
         mkdirSync(file.requests, { recursive: true })
         const request = path.join(file.requests, randomUUID())
+        const env = Object.fromEntries(
+          Object.entries(input.env).filter(
+            ([key]) => !["MERAKCODE_SANDBOX_WRITE_SIDS", "MERAKCODE_SANDBOX_PROBE"].includes(key.toUpperCase()),
+          ),
+        )
         writeFileSync(
           request,
           WindowsCommand.request({
@@ -308,15 +370,20 @@ export namespace WindowsSandbox {
             cwd: input.cwd,
             file: input.shell,
             args: WindowsCommand.line(input.shell, input.command),
-            env: { ...input.env, LOCALAPPDATA: file.appdata },
+            env: { ...env, LOCALAPPDATA: file.appdata, MERAKCODE_SANDBOX_WRITE_SIDS: sids.join(",") },
           }),
         )
+        writeFileSync(request + ".started", "")
+        await run("icacls", [request + ".started", "/grant", `*${state.sid}:M`, "/c", "/q"], { windowsHide: true })
         return {
           file: exe,
           args: ["run", request],
           env: ChildEnv.build({}),
           cleanup: (output = "", exitCode?: number | null) => {
-            if (exitCode === 125 && !existsSync(request + ".started"))
+            if (
+              exitCode === 125 &&
+              (!existsSync(request + ".started") || readFileSync(request + ".started", "utf8") !== "started")
+            )
               probes.set(root, {
                 signature: signature(),
                 retryAt: Date.now() + 30_000,

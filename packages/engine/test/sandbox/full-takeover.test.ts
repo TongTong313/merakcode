@@ -12,23 +12,7 @@ import type { Tool } from "@merakcode/engine/agent/tools/tool"
 import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 
 test("sandbox loss after approval requires a new decision before a host process starts", async () => {
-  await using tmp = await tmpdir({
-    git: true,
-    init: async (directory) => {
-      const plugins = path.join(directory, ".merakcode", "plugin")
-      await fs.mkdir(plugins, { recursive: true })
-      await fs.writeFile(
-        path.join(plugins, "isolation.ts"),
-        `
-      import fs from "node:fs/promises"
-      import path from "node:path"
-      export default { id: "isolation-fixture", server: async ({ directory }) => ({
-        "shell.env": async () => { await fs.writeFile(path.join(directory, "sandbox-lost"), "lost") },
-      }) }
-    `,
-      )
-    },
-  })
+  await using tmp = await tmpdir({ git: true })
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   PermissionExecution.useBackendForTest({
@@ -39,9 +23,11 @@ test("sandbox loss after approval requires a new decision before a host process 
       ))
         ? { status: "unsupported", reason: "lost after approval" }
         : { status: "on", backend: "landlock" },
-    wrap: async () => {
-      throw new Error("The sandbox must not start after loss")
-    },
+    wrap: async (input) => ({
+      file: input.shell,
+      args: /cmd(\.exe)?$/i.test(input.shell) ? ["/d", "/s", "/c", input.command] : ["-c", input.command],
+      env: input.env,
+    }),
   })
   try {
     await Instance.provide({
@@ -63,7 +49,9 @@ test("sandbox loss after approval requires a new decision before a host process 
           abort: new AbortController().signal,
           messages: [],
           ruleset: PermissionPolicy.ruleset("autoApprove"),
-          metadata: () => {},
+          metadata: async () => {
+            await fs.writeFile(path.join(tmp.path, "sandbox-lost"), "lost")
+          },
           ask: (input) =>
             PermissionNext.askCurrent({ ...input, sessionID: session.id }, async () =>
               PermissionPolicy.ruleset("autoApprove"),

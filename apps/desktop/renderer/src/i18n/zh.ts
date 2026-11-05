@@ -520,6 +520,7 @@ export const zh = {
   "settings.sandbox.limit.tcp-matched-by-port": "TCP 只按端口限制。",
   "settings.sandbox.limit.udp-not-restricted": "UDP（比如 DNS 查询）不受限制。",
   "settings.sandbox.limit.unix-socket-not-restricted": "Unix 套接字不受限制。",
+  "settings.sandbox.limit.ambient-world-writable": "命令仍能写入所有人可写的目录。无法证明只读的命令需要逐次确认。",
   "settings.providers": "供应商",
   "settings.providers.desc": "API 密钥只保存在这台电脑上",
   "settings.provider.connected": "已连接",

@@ -287,7 +287,7 @@ async function runAdapter(
     await onProgress(structuredClone(progress))
   }
   let running!: ReturnType<typeof runExternal>
-  const plan = SessionPlan.inputForTask(await SessionPlan.get(ctx.sessionID), prompt)
+  const plan = SessionPlan.inputForTask(await SessionPlan.get(ctx.sessionID), prompt, false, ctx.planExecution)
   const scope = await TaskScope.current(ctx.sessionID, ctx.messageID)
   await withProduct(product.id, (state) => {
     ctx.abort.throwIfAborted()

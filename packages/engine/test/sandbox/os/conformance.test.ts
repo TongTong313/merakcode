@@ -9,6 +9,7 @@ import http from "node:http"
 import type { AddressInfo } from "node:net"
 import { Paths } from "@merakcode/util/paths"
 import { WindowsSandbox } from "../../../src/infra/sandbox/windows"
+import { WindowsCommand } from "../../../src/infra/sandbox/windows/command"
 import os from "node:os"
 import path from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -89,35 +90,63 @@ describe.skipIf(status.status !== "on")(`sandbox conformance (${status.backend})
       network: { allow: ["allowed.test"], deny: ["denied.test"], blockPorts: [enginePort] },
     })
 
-  async function run(command: string, options: { onStart?: (pid: number) => void; shell?: string } = {}) {
+  async function prepareRun(
+    command: string,
+    options: {
+      onStart?: (pid: number) => void
+      shell?: string
+      policy?: ReturnType<typeof policy>
+      env?: NodeJS.ProcessEnv
+      timeout?: number
+    } = {},
+  ) {
     const prepared = await sandbox.prepare({
       command,
       shell: options.shell ?? shell,
       cwd: work,
-      env: process.env,
-      policy: policy(),
+      env: options.env ?? process.env,
+      policy: options.policy ?? policy(),
       tmp,
       ask: async () => false,
     })
-    return new Promise<{ code: number | null; stdout: Buffer; stderr: Buffer; report: string }>((resolve) => {
-      const child = spawn(prepared.file, prepared.args, {
-        cwd: work,
-        env: prepared.env,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        detached: !windows,
+    return () =>
+      new Promise<{ code: number | null; stdout: Buffer; stderr: Buffer; report: string }>((resolve, reject) => {
+        const child = spawn(prepared.file, prepared.args, {
+          cwd: work,
+          env: prepared.env,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+          detached: !windows,
+        })
+        options.onStart?.(child.pid!)
+        const stdout: Buffer[] = []
+        const stderr: Buffer[] = []
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          if (windows) child.kill()
+          else if (child.pid) process.kill(-child.pid, "SIGKILL")
+        }, options.timeout ?? 5000)
+        child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk))
+        child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk))
+        child.on("error", (error) => {
+          clearTimeout(timer)
+          prepared.finish(String(error), null)
+          reject(error)
+        })
+        child.on("close", (code) => {
+          clearTimeout(timer)
+          const out = Buffer.concat(stdout)
+          const err = Buffer.concat(stderr)
+          const report = prepared.finish(out.toString() + err.toString(), code)
+          if (timedOut) reject(new Error(`Sandbox command exceeded its ${options.timeout ?? 5000} ms limit`))
+          else resolve({ code, stdout: out, stderr: err, report })
+        })
       })
-      options.onStart?.(child.pid!)
-      const stdout: Buffer[] = []
-      const stderr: Buffer[] = []
-      child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk))
-      child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk))
-      child.on("close", (code) => {
-        const out = Buffer.concat(stdout)
-        const err = Buffer.concat(stderr)
-        resolve({ code, stdout: out, stderr: err, report: prepared.finish(out.toString() + err.toString(), code) })
-      })
-    })
+  }
+
+  async function run(command: string, options?: Parameters<typeof prepareRun>[1]) {
+    return (await prepareRun(command, options))()
   }
 
   /** Writes a Node script into the workspace and returns the command that runs it */
@@ -138,6 +167,190 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
     const result = await run(node("w.js", `require("fs").writeFileSync("inside.txt", "x")`))
     expect(result.code, result.stderr.toString()).toBe(0)
     expect(existsSync(path.join(work, "inside.txt"))).toBe(true)
+  })
+
+  test.skipIf(!windows)("command failures never request an interactive system error dialog", async () => {
+    const source = path.join(work, "error-mode.cs")
+    const executable = path.join(work, "error-mode.exe")
+    writeFileSync(
+      source,
+      `using System; using System.Runtime.InteropServices;
+class Probe {
+  [DllImport("kernel32.dll")] static extern uint GetErrorMode();
+  static void Main() { Console.WriteLine(GetErrorMode()); }
+}`,
+    )
+    execFileSync(WindowsSandbox.compiler()!, ["/nologo", `/out:${executable}`, source], { windowsHide: true })
+    const result = await run(`"${executable}"`)
+    expect(result.code, result.stderr.toString()).toBe(0)
+    expect(Number(result.stdout.toString().trim()) & 0x8003).toBe(0x8003)
+  })
+
+  test("workspace grants never authorize another command", async () => {
+    const a = path.join(work, "workspace-a")
+    const b = path.join(work, "workspace-b")
+    mkdirSync(a)
+    mkdirSync(b)
+    const marker = path.join(a, "sentinel.txt")
+    const write = node("cross-workspace.js", `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'changed')`)
+    const scoped = (directory: string) => ({ ...policy(), write: { allow: [directory, tmp], protect: [] } })
+    const own = await run(write, { policy: scoped(a) })
+    expect(own.code, own.stderr.toString()).toBe(0)
+    writeFileSync(marker, "keep")
+    const denied = await run(write, { policy: scoped(b) })
+    expect(denied.code, denied.stderr.toString()).not.toBe(0)
+    expect(readFileSync(marker, "utf8")).toBe("keep")
+  })
+
+  test.skipIf(!windows)("command environment cannot replace internal directory grants", async () => {
+    const a = path.join(work, "env-workspace-a"),
+      b = path.join(work, "env-workspace-b")
+    mkdirSync(a)
+    mkdirSync(b)
+    const marker = path.join(a, "sentinel.txt")
+    const command = node("reserved-env.js", `require('fs').writeFileSync(${JSON.stringify(marker)},'CHANGED')`)
+    const scoped = (directory: string) => ({ ...policy(), write: { allow: [directory, tmp], protect: [] } })
+    expect((await run(command, { policy: scoped(a) })).code).toBe(0)
+    const powershell = path.join(process.env.SystemRoot!, "System32/WindowsPowerShell/v1.0/powershell.exe")
+    const sid = execFileSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-Command",
+        "(Get-Acl -LiteralPath $env:MERAKCODE_TEST_ACL_PATH).Access | Where-Object { -not $_.IsInherited -and $_.IdentityReference -is [System.Security.Principal.SecurityIdentifier] -and $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value }",
+      ],
+      {
+        windowsHide: true,
+        timeout: 5000,
+        encoding: "utf8",
+        env: WindowsCommand.powershellEnv({ ...process.env, MERAKCODE_TEST_ACL_PATH: a }),
+      },
+    ).trim()
+    expect(sid).toMatch(/^S-1-5-21-\d+-\d+-\d+-\d+$/)
+    writeFileSync(marker, "KEEP")
+    const denied = await run(command, {
+      policy: scoped(b),
+      env: {
+        ...process.env,
+        MERAKCODE_SANDBOX_WRITE_SIDS: "untrusted",
+        merakcode_sandbox_write_sids: sid,
+        MERAKCODE_SANDBOX_PROBE: "1",
+      },
+    })
+    expect(denied.code, denied.stderr.toString()).not.toBe(0)
+    expect(readFileSync(marker, "utf8")).toBe("KEEP")
+    expect(denied.stdout.toString()).not.toMatch(/^S-1-/)
+  })
+
+  test("concurrent commands keep separate write grants and cancellation", async () => {
+    const a = path.join(work, "concurrent-a")
+    const b = path.join(work, "concurrent-b")
+    mkdirSync(a)
+    mkdirSync(b)
+    const readyA = path.join(a, "ready")
+    const readyB = path.join(b, "ready")
+    const cross = path.join(a, "cross")
+    const release = path.join(b, "release")
+    const done = path.join(b, "done")
+    const scoped = (directory: string) => ({ ...policy(), write: { allow: [directory, tmp], protect: [] } })
+    let pidA = 0
+    let pidB = 0
+    const startedA = Promise.withResolvers<void>()
+    const startedB = Promise.withResolvers<void>()
+    const launchFirst = await prepareRun(
+      node(
+        "concurrent-a.js",
+        `require('fs').writeFileSync(${JSON.stringify(readyA)},'ready');setInterval(()=>{},1000)`,
+      ),
+      {
+        policy: scoped(a),
+        onStart: (pid) => {
+          pidA = pid
+          startedA.resolve()
+        },
+      },
+    )
+    const launchSecond = await prepareRun(
+      node(
+        "concurrent-b.js",
+        `const f=require('fs');try{f.writeFileSync(${JSON.stringify(cross)},'wrong');console.log('CROSS_WRITE')}catch(e){console.log(e.code)}f.writeFileSync(${JSON.stringify(readyB)},'ready');const timer=setInterval(()=>{if(f.existsSync(${JSON.stringify(release)})){f.writeFileSync(${JSON.stringify(done)},'done');clearInterval(timer)}},10)`,
+      ),
+      {
+        policy: scoped(b),
+        onStart: (pid) => {
+          pidB = pid
+          startedB.resolve()
+        },
+      },
+    )
+    const first = launchFirst()
+    const second = launchSecond()
+    first.catch(() => {})
+    second.catch(() => {})
+    try {
+      await Promise.race([
+        Promise.all([startedA.promise, startedB.promise]),
+        Promise.all([first, second]).then(() => {
+          throw new Error("The concurrent commands exited before launch")
+        }),
+      ])
+      await Promise.all([
+        expect.poll(() => existsSync(readyA), { timeout: 3000 }).toBe(true),
+        expect.poll(() => existsSync(readyB), { timeout: 3000 }).toBe(true),
+      ])
+      if (windows) process.kill(pidA)
+      else process.kill(-pidA, "SIGKILL")
+      await first
+      expect(existsSync(cross)).toBe(false)
+      writeFileSync(release, "release")
+      const result = await second
+      expect(result.code, result.stderr.toString()).toBe(0)
+      expect(result.stdout.toString()).toMatch(/EACCES|EPERM/)
+      expect(readFileSync(done, "utf8")).toBe("done")
+    } finally {
+      for (const pid of [pidA, pidB]) {
+        if (!pid) continue
+        try {
+          process.kill(windows ? pid : -pid, "SIGKILL")
+        } catch {}
+      }
+      await Promise.allSettled([first, second])
+    }
+  })
+
+  test.skipIf(!windows)("ambient writable directories remain an explicit isolation limitation", async () => {
+    const directory = path.join(outside, "world-writable")
+    mkdirSync(directory)
+    execFileSync("icacls", [directory, "/grant", "*S-1-1-0:(OI)(CI)M", "/c", "/q"], { windowsHide: true })
+    const target = path.join(directory, "ambient.txt")
+    const result = await run(node("ambient.js", `require('fs').writeFileSync(${JSON.stringify(target)},'written')`))
+    expect(result.code, result.stderr.toString()).toBe(0)
+    expect(readFileSync(target, "utf8")).toBe("written")
+    expect(status.degraded).toContain("ambient-world-writable")
+  })
+
+  test("the test watchdog ends a hanging process tree", async () => {
+    const pidFile = path.join(work, "watchdog.pid")
+    await expect(
+      run(
+        node(
+          "watchdog.js",
+          `const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});require('fs').writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000)`,
+        ),
+        { timeout: 2500 },
+      ),
+    ).rejects.toThrow("2500 ms limit")
+    const pid = Number(readFileSync(pidFile, "utf8"))
+    await expect
+      .poll(() => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch (error) {
+          return (error as NodeJS.ErrnoException).code === "EPERM"
+        }
+      })
+      .toBe(false)
   })
 
   test("2 cannot write outside the allowed folders", async () => {
@@ -242,7 +455,7 @@ http.get({ host: proxy.hostname, port: proxy.port, path: ${JSON.stringify(url)},
       ),
       { onStart: (pid) => (launched = pid) },
     )
-    for (let i = 0; i < 100 && !existsSync(pidFile); i++) await sleep(100)
+    for (let i = 0; i < 40 && !existsSync(pidFile); i++) await sleep(100)
     const grandchild = Number(readFileSync(pidFile, "utf8"))
     if (windows) process.kill(launched)
     else process.kill(-launched, "SIGKILL")

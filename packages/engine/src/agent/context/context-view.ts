@@ -47,6 +47,7 @@ export namespace SessionContextView {
     child?: boolean
     preparedTools?: Awaited<ReturnType<typeof prepareTools>>
     includePlan?: boolean
+    planExecution?: boolean
   }
 
   export type View = {
@@ -202,6 +203,7 @@ export namespace SessionContextView {
       input.sessionID,
       user ? Message.userSourceTexts(user).join("\n") : "",
       input.includePlan,
+      input.planExecution ?? (await SessionPlan.executionForMessage(input.sessionID, input.user.id)),
     )
     const modeContext =
       `Current permission level: ${currentMode}. ` +

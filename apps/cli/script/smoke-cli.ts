@@ -6,6 +6,7 @@ import { Filesystem } from "@merakcode/util/filesystem"
 import { Process } from "@merakcode/util/process"
 import { Project } from "@merakcode/util/project"
 import z from "zod"
+import { PROTOCOL } from "@merakcode/sdk/adapter"
 
 // Smoke gate for the release package: minimal checks on the build.ts output (the bin/merak launcher).
 // Makes sure statically and dynamically imported chunks resolve after bundling, --help/--version of each command
@@ -270,26 +271,40 @@ const adapters = [
     path.join(skillFolder, `example-${name}.mts`),
   ]),
 ]
-for (const [label, script] of adapters) {
-  const node = path.join(packageRoot, "node", process.platform === "win32" ? "node.exe" : path.join("bin", "node"))
-  const child = Process.spawn([node, "--disable-warning=ExperimentalWarning", script], {
-    stdin: "pipe",
-    stdout: "pipe",
-  })
-  child.stdin?.end(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { protocol: 1, product: { id: "smoke", title: label } },
-    }) + "\n",
-  )
-  const timer = setTimeout(() => stop(child), DEFAULT_TIMEOUT)
-  const out = await new Response(child.stdout).text()
-  clearTimeout(timer)
-  const answer = out.split("\n").find((line) => line.includes('"id":1'))
-  if (answer?.includes('"protocol":1')) ok(label)
-  else fail(label, out.trim() || `no answer (exit code ${await child.exited.catch(() => -1)})`)
+for (const [adapter, script] of adapters) {
+  for (const protocol of [PROTOCOL, 1, 2]) {
+    const label = `${adapter} protocol ${protocol}`
+    const node = path.join(packageRoot, "node", process.platform === "win32" ? "node.exe" : path.join("bin", "node"))
+    const child = Process.spawn([node, "--disable-warning=ExperimentalWarning", script], {
+      stdin: "pipe",
+      stdout: "pipe",
+    })
+    child.stdin?.end(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocol, product: { id: "smoke", title: label } },
+      }) + "\n",
+    )
+    const timer = setTimeout(() => stop(child), DEFAULT_TIMEOUT)
+    const out = await new Response(child.stdout).text()
+    clearTimeout(timer)
+    const answers = out.split("\n").flatMap((line) => {
+      try {
+        return [JSON.parse(line)]
+      } catch {
+        return []
+      }
+    })
+    const answer = answers.find((reply) => reply?.id === 1 && reply.jsonrpc === "2.0")
+    const valid =
+      protocol === PROTOCOL
+        ? answer?.result?.protocol === PROTOCOL && !answer.error
+        : answer?.error?.code === -32000 && /Unsupported adapter protocol/.test(answer.error.message)
+    if (valid && (await child.exited) === 0) ok(label)
+    else fail(label, out.trim() || `no answer (exit code ${await child.exited.catch(() => -1)})`)
+  }
 }
 
 if (process.env.MERAKCODE_SMOKE_MODEL === "1") {

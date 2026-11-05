@@ -188,7 +188,7 @@ describe("bash read-only classification (decides whether to take the write barri
     return readOnly
   }
 
-  test.each(["ls -la", "cat foo.txt", "grep -rn pattern .", "echo hello", "git log --oneline -n 5"])(
+  test.each(["ls -la", "cat foo.txt", "grep -n pattern foo.txt", "echo hello", "git log --oneline -n 5"])(
     "read-only: %s",
     async (command) => {
       expect(await check(command)).toBe(true)
@@ -196,6 +196,7 @@ describe("bash read-only classification (decides whether to take the write barri
   )
 
   test.each([
+    "grep -rn pattern .",
     "git status",
     "git diff --stat",
     "git status && git diff",
@@ -216,7 +217,7 @@ describe("bash read-only classification (decides whether to take the write barri
     "echo $(rm -rf foo)",
     // git subcommands that both read and write are not allowlisted
     "git symbolic-ref HEAD refs/heads/main",
-  ])("write: %s", async (command) => {
+  ])("requires write barrier: %s", async (command) => {
     expect(await check(command)).toBe(false)
   })
 })

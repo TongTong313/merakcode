@@ -93,12 +93,6 @@ describe("ConfigMarkdown: normal template", () => {
 describe("ConfigMarkdown: frontmatter parsing", async () => {
   const parsed = await ConfigMarkdown.parse(import.meta.dirname + "/fixtures/frontmatter.md")
 
-  test("should parse without throwing", () => {
-    expect(parsed).toBeDefined()
-    expect(parsed.data).toBeDefined()
-    expect(parsed.content).toBeDefined()
-  })
-
   test("should extract description field", () => {
     expect(parsed.data.description).toBe("This is a description wrapped in quotes")
   })

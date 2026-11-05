@@ -40,16 +40,4 @@ describe("needsReasoningEndBackfill", () => {
     expect(needsReasoningEndBackfill(text)).toBe(false)
     expect(needsReasoningEndBackfill(stepStart)).toBe(false)
   })
-
-  test("a backfilled end keeps the duration bounded", () => {
-    const start = Date.now() - 3_000
-    const part = reasoning({ start }) as Message.ReasoningPart
-    expect(needsReasoningEndBackfill(part)).toBe(true)
-    // Same as the end-of-turn backfill: end = Date.now()
-    const patched: Message.ReasoningPart = { ...part, time: { ...part.time, end: Date.now() } }
-    const sec = Math.round((patched.time.end! - patched.time.start) / 1000)
-    expect(sec).toBeGreaterThanOrEqual(2)
-    expect(sec).toBeLessThan(60)
-    expect(needsReasoningEndBackfill(patched)).toBe(false)
-  })
 })

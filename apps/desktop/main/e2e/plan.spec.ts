@@ -2,7 +2,11 @@ import { test, expect } from "./fixture"
 
 test.use({
   script: {
-    reply: ({ prompt, toolResults, system }) => {
+    reply: async ({ prompt, toolResults, system, closed }) => {
+      if (prompt === "按原计划再做一遍") {
+        await closed
+        return { text: "CANCELLED_RERUN" }
+      }
       if (/execute|执行/i.test(prompt))
         return {
           text: [system, prompt, ...toolResults].join("\n").includes("HUMAN_APPROVED_PLAN")
@@ -74,4 +78,21 @@ test("a generated plan opens for review and starts execution without a second co
   expect(kit.modelRequests().some((request) => request.prompt.includes("HUMAN_APPROVED_PLAN"))).toBe(true)
   await expect(kit.page.locator(".plan-card")).toHaveCount(1)
   await expect(kit.page.locator(".plan-card").getByRole("button", { name: /开始执行|Start execution/ })).toBeDisabled()
+  await kit.send("按原计划再做一遍")
+  await expect.poll(() => kit.modelRequests().some((request) => request.prompt === "按原计划再做一遍")).toBe(true)
+  await kit.page.getByRole("button", { name: /^(停止|Stop)$/ }).click()
+  const retry = kit.page.locator(".plan-card").getByRole("button", { name: /开始执行|Start execution/ })
+  await expect(retry).toBeEnabled()
+  const previous = kit.modelRequests().length
+  await retry.click()
+  await expect
+    .poll(() =>
+      kit
+        .modelRequests()
+        .slice(previous)
+        .some((request) => request.prompt.includes("Execute the latest saved session plan")),
+    )
+    .toBe(true)
+  await expect(retry).toBeDisabled()
+  await expect(kit.page.getByText("PLAN_EXECUTED_HUMAN", { exact: true }).filter({ visible: true })).toHaveCount(2)
 })

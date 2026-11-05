@@ -2,15 +2,6 @@ import { describe, expect, test } from "vitest"
 import { RuleWatch } from "./watch"
 
 describe("RuleWatch", () => {
-  test("empty flushGlobal returns false", async () => {
-    expect(await RuleWatch.__testingFlushGlobal()).toBe(false)
-  })
-
-  test("queued flushGlobal returns true", async () => {
-    RuleWatch.__testingQueueGlobal()
-    expect(await RuleWatch.__testingFlushGlobal()).toBe(true)
-  })
-
   test("empty flushProject returns false", async () => {
     expect(await RuleWatch.__testingFlushProject("missing")).toBe(false)
   })

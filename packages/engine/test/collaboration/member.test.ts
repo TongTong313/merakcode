@@ -167,6 +167,7 @@ async function delegate(input: {
             {
               sessionID: current.id,
               messageID: current.messageID,
+              planExecution: input.plan !== undefined,
               callID: Identifier.ascending("part"),
               agent: "build",
               permissionLevel: input.permissionLevel,

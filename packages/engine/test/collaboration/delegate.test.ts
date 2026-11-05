@@ -984,14 +984,17 @@ test("resuming a busy child cannot replace its active draft source", async () =>
         })
         let second: Promise<unknown> | undefined
         try {
-          await expect.poll(() => model.turns.length > 0 || !!firstError).toBe(true)
+          await Promise.race([
+            started.promise,
+            first.then(() => {
+              throw new Error("Draft child ended before the controlled model request")
+            }),
+          ])
           expect(firstError).toBeUndefined()
           expect(model.turns.some((turn) => turn.prompt.includes("FIRST_CHILD"))).toBe(true)
-          await started.promise
           const child = (await Session.children(session.id))[0]!
           const secondID = await turn(session.id, "开始实施另一个任务。", tmp.path, modelID)
-          let settled = false,
-            failure: unknown
+          let failure: unknown
           second = tool
             .execute(
               { description: "Resume child", prompt: "SECOND_CHILD", subagent_type: "general", task_id: child.id },
@@ -1000,12 +1003,6 @@ test("resuming a busy child cannot replace its active draft source", async () =>
             .catch((error) => {
               failure = error
             })
-            .finally(() => {
-              settled = true
-            })
-          await expect
-            .poll(async () => settled || (await Session.get(child.id)).taskOrigin?.messageID !== firstID)
-            .toBe(true)
           await second
           release.resolve()
           await first

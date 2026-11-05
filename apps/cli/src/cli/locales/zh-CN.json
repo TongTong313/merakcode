@@ -49,6 +49,7 @@
   "cli.sandbox.limit.tcp-matched-by-port": "TCP 只按端口限制，命令可能连到别的主机上同一个端口号。",
   "cli.sandbox.limit.udp-not-restricted": "UDP 流量（比如 DNS 查询）不受限制。",
   "cli.sandbox.limit.unix-socket-not-restricted": "Unix 套接字不受限制。",
+  "cli.sandbox.limit.ambient-world-writable": "命令仍能写入系统中允许所有人写入的目录。无法证明只读的命令需要逐次确认。",
   "cli.sandbox.settingUp": "正在初始化沙箱。Windows 会弹出管理员确认，第一次可能要几分钟。",
   "cli.sandbox.resetting": "正在重置沙箱。Windows 会弹出管理员确认。",
   "cli.doctor.describe": "检查安装、配置、引擎、模型和沙箱，告诉你哪里有问题",

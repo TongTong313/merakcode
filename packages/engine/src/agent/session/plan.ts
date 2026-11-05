@@ -12,6 +12,7 @@ import { SessionStore } from "./store"
 import { Bus } from "../../infra/bus"
 import { BusEvent } from "../../infra/bus/bus-event"
 import { Message } from "./message"
+import { startsSessionPlan, resumesSessionPlan } from "@merakcode/util/session-plan"
 import { Text } from "../prompt/text"
 import { Global } from "../../infra/global"
 import { Log } from "@merakcode/log/logger"
@@ -81,6 +82,8 @@ export namespace SessionPlan {
   export type Info = z.infer<typeof Info>
   type Submission = { messageID: string; callID: string; signature: string }
   type Record = Info & {
+    failedExecutionID?: string
+    interrupted?: { executionID: string; jobs: string[]; workflows: string[] }
     submissions?: { [key: string]: { signature: string; revision: number } }
     successfulButton?: { hash: string; executionID: string }
     idleTurns?: number
@@ -164,6 +167,16 @@ export namespace SessionPlan {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
+    // Older records retained a button success after a later execution of the same document superseded it.
+    if (
+      saved?.successfulButton &&
+      saved.execution &&
+      saved.successfulButton.executionID !== saved.execution.id &&
+      saved.successfulButton.hash === contentHash(saved.execution.content)
+    ) {
+      delete saved.successfulButton
+      await Storage.write(["session_plan", sessionID], saved)
+    }
     if (saved?.content === content) return { ...saved, path: file }
     const revision = (saved?.revision ?? 0) + (content || saved ? 1 : 0)
     const result: Record = {
@@ -309,6 +322,47 @@ export namespace SessionPlan {
     return /计划|方案|第[一二三四五六七八九十\d]+步|精简|\bplan\b|\bstep\s+\d+\b/i.test(text)
   }
 
+  /** Resolve execution intent from trusted message origins, including children and background notifications. */
+  export async function executionForMessage(
+    sessionID: string,
+    messageID: string,
+    seen = new Set<string>(),
+  ): Promise<boolean> {
+    const key = `${sessionID}:${messageID}`
+    if (!messageID || seen.has(key)) return false
+    seen.add(key)
+    const origin = SessionStore.find(sessionID)?.taskOrigin
+    if (origin && origin.sessionID !== sessionID) return executionForMessage(origin.sessionID, origin.messageID, seen)
+    const message = await Message.get({ sessionID, messageID }).catch(() => undefined)
+    if (!message) return false
+    if (message.info.role === "assistant") return executionForMessage(sessionID, message.info.parentID, seen)
+    const texts = Message.userSourceTexts(message)
+    if (texts.length) return texts.some((text) => startsSessionPlan(text) || resumesSessionPlan(text))
+    const metadata = message.parts.flatMap((part) =>
+      part.type === "text" && part.synthetic && part.metadata ? [part.metadata] : [],
+    )
+    const executionIDs = metadata
+      .flatMap((value) => [
+        value.planExecutionID,
+        ...(Array.isArray(value.planExecutionIDs) ? value.planExecutionIDs : []),
+      ])
+      .filter((value): value is string => typeof value === "string")
+    if (executionIDs.length) {
+      const plan = await get(sessionID)
+      return (
+        !!plan.execution && ["executing", "paused"].includes(plan.status) && executionIDs.includes(plan.execution.id)
+      )
+    }
+    const origins = metadata
+      .flatMap((value) => [
+        value.taskOriginMessageID,
+        ...(Array.isArray(value.taskOriginMessageIDs) ? value.taskOriginMessageIDs : []),
+      ])
+      .filter((value): value is string => typeof value === "string" && value < messageID)
+    for (const source of new Set(origins)) if (await executionForMessage(sessionID, source, seen)) return true
+    return false
+  }
+
   export async function completeTurn(sessionID: string, userMessageID: string) {
     using _ = await Lock.write(`plan:${sessionID}`)
     const plan = await current(sessionID)
@@ -331,11 +385,11 @@ export namespace SessionPlan {
     return Info.parse(plan)
   }
 
-  export async function context(sessionID: string, text: string, full = false) {
+  export async function context(sessionID: string, text: string, full = false, execution = false) {
     sessionID = await Session.rootID(sessionID)
     using _ = await Lock.write(`plan:${sessionID}`)
     const plan = await current(sessionID)
-    if (plan.execution && ["executing", "paused"].includes(plan.status))
+    if (inputForTask(plan, text, full, execution)?.executionID && plan.execution)
       return `Execution plan ${plan.execution.id} (immutable snapshot):\n${plan.execution.content}`
     if (!plan.content) return ""
     const reference = `Official plan at ${plan.path}, revision ${plan.revision}. Use plan_read_chunk to read all ranges when needed.`
@@ -372,8 +426,12 @@ export namespace SessionPlan {
     }
   }
 
-  export function inputForTask(plan: Info, text = "", required = false) {
-    if (plan.execution && ["executing", "paused"].includes(plan.status))
+  export function inputForTask(plan: Info, text = "", required = false, execution = false) {
+    if (
+      plan.execution &&
+      ["executing", "paused"].includes(plan.status) &&
+      (execution || required || startsSessionPlan(text) || resumesSessionPlan(text))
+    )
       return {
         content: plan.execution.content,
         revision: plan.execution.revision ?? plan.revision,
@@ -383,11 +441,16 @@ export namespace SessionPlan {
       return { content: plan.content, revision: plan.revision, executionID: undefined }
   }
 
-  export async function assertInputCurrent(sessionID: string, input: { revision: number; executionID?: string }) {
+  export async function assertInputCurrent(
+    sessionID: string,
+    input: { revision: number; executionID?: string },
+    options: { allowPaused?: boolean } = {},
+  ) {
     const plan = await get(sessionID)
     const matches = input.executionID
-      ? plan.status === "executing" && plan.execution?.id === input.executionID
-      : plan.revision === input.revision && !["executing", "paused"].includes(plan.status)
+      ? (plan.status === "executing" || (options.allowPaused && plan.status === "paused")) &&
+        plan.execution?.id === input.executionID
+      : plan.revision === input.revision
     if (matches) return
     throw new ConflictError({
       message: await Text.pick({
@@ -503,11 +566,11 @@ export namespace SessionPlan {
     )
   }
 
-  /** Tool reads use the fixed execution view; the plan API exposes the editable human document. */
-  export async function contentForTool(sessionID: string, filePath: string) {
+  /** Execution tools use the fixed snapshot; discussion tools and the plan API use the editable document. */
+  export async function contentForTool(sessionID: string, filePath: string, execution = false) {
     if (!(await isFile(sessionID, filePath))) return undefined
     const plan = await get(await Session.rootID(sessionID))
-    return ["executing", "paused"].includes(plan.status) ? plan.execution?.content : plan.content
+    return execution && ["executing", "paused"].includes(plan.status) ? plan.execution?.content : plan.content
   }
 
   export async function start(sessionID: string, source: "button" | "chat" = "chat", expectedRevision?: number) {
@@ -534,6 +597,9 @@ export namespace SessionPlan {
         message: await Text.pick({ zh: "请先保存计划再开始执行。", en: "Save a plan before starting execution." }),
       })
     result.status = "executing"
+    delete result.failedExecutionID
+    // An explicit rerun supersedes the successful button execution of this same document.
+    if (result.successfulButton?.hash === contentHash(result.content)) delete result.successfulButton
     result.execution = {
       id: randomUUID(),
       content: result.content,
@@ -545,6 +611,19 @@ export namespace SessionPlan {
     await Storage.write(["session_plan_execution", sessionID, result.execution.id], result.execution)
     notify(result)
     return result
+  }
+
+  /** Retain a foreground failure across later background notification turns without changing the public state. */
+  export async function recordExecutionFailure(sessionID: string, executionID: string, failed: boolean) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const record = await current(sessionID)
+    if (record.execution?.id !== executionID) return false
+    if (failed && record.failedExecutionID !== executionID) {
+      record.failedExecutionID = executionID
+      await Storage.write(["session_plan", sessionID], record)
+    }
+    return record.failedExecutionID === executionID
   }
 
   export async function setStatus(
@@ -565,5 +644,28 @@ export namespace SessionPlan {
     await Storage.write(["session_plan", sessionID], result)
     notify(result)
     return result
+  }
+
+  export async function interruptedWork(sessionID: string, executionID: string) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const record = await current(sessionID)
+    return record.interrupted?.executionID === executionID ? record.interrupted : undefined
+  }
+
+  export async function pause(sessionID: string, executionID: string, jobs: string[], workflows: string[] = []) {
+    sessionID = await Session.rootID(sessionID)
+    using _ = await Lock.write(`plan:${sessionID}`)
+    const record = await current(sessionID)
+    if (record.execution?.id !== executionID || !["executing", "paused"].includes(record.status)) return
+    const previous = record.interrupted?.executionID === executionID ? record.interrupted : undefined
+    record.interrupted = {
+      executionID,
+      jobs: [...new Set([...(previous?.jobs ?? []), ...jobs])],
+      workflows: [...new Set([...(previous?.workflows ?? []), ...workflows])],
+    }
+    record.status = "paused"
+    await Storage.write(["session_plan", sessionID], record)
+    notify(record)
   }
 }

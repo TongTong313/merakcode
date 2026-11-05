@@ -2095,9 +2095,11 @@ Returns: `SessionPlan`
 
 Execute the latest saved plan.
 
-| Parameter   | Type     | Required | Description |
-| ----------- | -------- | -------- | ----------- |
-| `sessionID` | `string` | yes      |             |
+| Parameter   | Type                                      | Required | Description |
+| ----------- | ----------------------------------------- | -------- | ----------- |
+| `sessionID` | `string`                                  | yes      |             |
+| `model`     | `{ modelID: string; providerID: string }` | no       |             |
+| `variant`   | `string`                                  | no       |             |
 
 Returns: `SessionPlan`
 

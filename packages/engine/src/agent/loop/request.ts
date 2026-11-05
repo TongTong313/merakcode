@@ -39,15 +39,15 @@ export namespace LoopRequest {
     })
   }
 
-  export function startPlan(sessionID: string) {
+  export function startPlan(sessionID: string, selection: Pick<Loop.PromptInput, "model" | "variant"> = {}) {
     return local("prompt", sessionID, async () => {
       const session = await SessionTarget.assertCanSend(sessionID)
       if (session.target?.kind === "external")
         return ExternalSession.prompt(
-          { sessionID, parts: [{ type: "text", text: "Execute the latest saved session plan." }] },
+          { ...selection, sessionID, parts: [{ type: "text", text: "Execute the latest saved session plan." }] },
           { planSource: "button" },
         )
-      return Loop.startPlan(sessionID)
+      return Loop.startPlan(sessionID, selection)
     })
   }
 

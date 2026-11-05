@@ -49,6 +49,7 @@
   "cli.sandbox.limit.tcp-matched-by-port": "TCP is limited by port only, so a command could reach the proxy's port number on another host.",
   "cli.sandbox.limit.udp-not-restricted": "UDP traffic (for example DNS) is not restricted.",
   "cli.sandbox.limit.unix-socket-not-restricted": "Unix sockets are not restricted.",
+  "cli.sandbox.limit.ambient-world-writable": "Commands can still write to directories that grant write access to Everyone. Commands that cannot be proven read-only require approval each time.",
   "cli.sandbox.settingUp": "Setting up the sandbox. Windows will ask for administrator approval, and the first time can take a few minutes.",
   "cli.sandbox.resetting": "Resetting the sandbox. Windows will ask for administrator approval.",
   "cli.doctor.describe": "Check the install, config, engine, models and sandbox, and say what is wrong",
