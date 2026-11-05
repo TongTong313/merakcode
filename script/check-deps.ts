@@ -2,14 +2,16 @@
  * Dependency boundaries: product surfaces talk to the engine through the SDK. Only the CLI's engine-host
  * commands (serve, generate, debug) load the engine, and only through its single entry `@merakcode/engine/host`.
  * Clients send requests through the SDK's typed client and read none of the engine's files, apart from the config
- * settings needed before it starts. References are read from the syntax tree, so comments and strings that only
- * mention a module do not count.
+ * settings needed before it starts. Inside the engine, source files never import each other in a cycle, and every
+ * package the engine imports is listed in its own package.json. References are read from the syntax tree, so comments
+ * and strings that only mention a module do not count.
  *
  * Usage: pnpm check:deps
  */
 
 import { execFileSync } from "node:child_process"
 import { existsSync } from "node:fs"
+import { isBuiltin } from "node:module"
 import path from "node:path"
 import { parseSync } from "oxc-parser"
 import { Filesystem } from "@merakcode/util/filesystem"
@@ -46,36 +48,6 @@ const HOSTS = /^apps\/cli\/src\/cli\/cmd\/(serve|generate|debug\/host)\.ts$/
 const TESTS = /\.test\.[cm]?[jt]sx?$/
 
 const rules: Rule[] = [
-  {
-    name: "agent-does-not-import-app",
-    from: /^packages\/engine\/src\/agent\//,
-    except: [TESTS],
-    to: /^(packages\/engine\/src\/app\/|@merakcode\/engine\/app\/)/,
-  },
-  {
-    name: "session-records-do-not-import-loop",
-    from: /^packages\/engine\/src\/agent\/session\//,
-    except: [TESTS],
-    to: /^(packages\/engine\/src\/agent\/loop|@merakcode\/engine\/(?:src\/)?agent\/loop)(\/|$)/,
-  },
-  {
-    name: "permission-does-not-import-loop",
-    from: /^packages\/engine\/src\/agent\/permission\//,
-    except: [TESTS],
-    to: /^(packages\/engine\/src\/agent\/loop|@merakcode\/engine\/(?:src\/)?agent\/loop)(\/|$)/,
-  },
-  {
-    name: "engine-infra-only",
-    from: /^packages\/engine\/src\/infra\//,
-    except: [TESTS],
-    to: /^(packages\/engine\/src\/(?!infra\/)|@merakcode\/engine(?:$|\/(?!infra\/)))/,
-  },
-  {
-    name: "server-does-not-import-host",
-    from: /^packages\/engine\/src\/app\/server\//,
-    except: [TESTS],
-    to: /^(packages\/engine\/src\/app\/host\/|@merakcode\/engine\/app\/host\/)/,
-  },
   {
     name: "engine-only-from-cli",
     from: /^(apps|packages)\//,
@@ -123,7 +95,6 @@ const rules: Rule[] = [
     name: "literal-loads-only",
     from: /^(apps|packages)\/(.+\/)?src\//,
     except: [
-      /^packages\/engine\//,
       TESTS,
       // undici by a variable name, so web bundles leave it out
       "packages/sdk/js/src/client/client-factory.ts",
@@ -160,14 +131,15 @@ const rules: Rule[] = [
     to: /^@merakcode\/util\/config-peek$/,
     uses: /^@merakcode\/util\/paths#(globalConfigFile|Paths\.(data|worktrees))$/,
   },
-  {
-    // Provider list adapters stay inside the catalog. Session, UI and billing code see Provider.Model only.
-    name: "catalog-adapters-private",
-    from: /^packages\/engine\/src\//,
-    except: ["packages/engine/src/agent/model/catalog.ts", /^packages\/engine\/src\/agent\/model\/catalog\//, TESTS],
-    to: /^packages\/engine\/src\/agent\/model\/catalog\/(deepseek|alibaba|openrouter|anthropic|openai|google|zhipu|moonshot|relay|config)\.ts$/,
-  },
 ]
+
+/**
+ * The engine's shipped sources: their relative references may not form a cycle (type-only and lazy ones count too),
+ * and they import only packages under dependencies. The rest of packages/engine may also use devDependencies.
+ * A package the root lists resolves from every workspace, so neither the compiler nor knip catches an unlisted one.
+ */
+const ENGINE_SOURCES = /^packages\/engine\/src\//
+const ENGINE_MANIFEST = "packages/engine/package.json"
 
 type Node = { type: string; start: number; [key: string]: unknown }
 
@@ -388,6 +360,52 @@ function scope(rule: Rule, imports: Map<string, Reference[]>) {
   return seen
 }
 
+/** One violation for each relative reference that closes a cycle among the engine's non-test sources */
+function cycles(imports: Map<string, Reference[]>): Violation[] {
+  const bound = (file: string) => ENGINE_SOURCES.test(file) && !TESTS.test(file)
+  const state = new Map<string, "open" | "done">()
+  const found: Violation[] = []
+  const walk = (file: string) => {
+    state.set(file, "open")
+    for (const reference of imports.get(file)!) {
+      if (!("module" in reference) || !reference.module.startsWith(".")) continue
+      const next = source(imports, resolve(file, reference.module))
+      if (!next || !bound(next)) continue
+      if (state.get(next) === "open")
+        found.push({ rule: "engine-no-cycles", file, line: reference.line, target: reference.module })
+      if (!state.has(next)) walk(next)
+    }
+    state.set(file, "done")
+  }
+  for (const file of imports.keys()) if (bound(file) && !state.has(file)) walk(file)
+  return found
+}
+
+/** The package a bare module name installs: `@scope/name` or `name`, without a subpath */
+function packageOf(module: string) {
+  const parts = module.split("/")
+  return module.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!
+}
+
+/** One violation for each package an engine file imports without packages/engine/package.json listing it */
+function unlisted(files: { path: string; text: string }[], imports: Map<string, Reference[]>): Violation[] {
+  const manifest = files.find((file) => file.path === ENGINE_MANIFEST)
+  const pkg = (manifest ? JSON.parse(manifest.text) : {}) as Record<string, Record<string, string> | undefined>
+  const listed = (names: string[]) => new Set(names.flatMap((section) => Object.keys(pkg[section] ?? {})))
+  const shipped = listed(sections.filter((section) => section !== "devDependencies"))
+  const all = listed(sections)
+  return [...imports].flatMap(([file, references]) => {
+    if (!file.startsWith("packages/engine/") || file === ENGINE_MANIFEST) return []
+    const allowed = ENGINE_SOURCES.test(file) && !TESTS.test(file) ? shipped : all
+    return references.flatMap((reference) => {
+      if (!("module" in reference)) return []
+      const { module } = reference
+      if (/^[.#]/.test(module) || isBuiltin(module) || allowed.has(packageOf(module))) return []
+      return [{ rule: "engine-listed-dependencies", file, line: reference.line, target: module }]
+    })
+  })
+}
+
 export function violations(files: { path: string; text: string }[]): Violation[] {
   const imports = new Map(files.map((file) => [file.path, targets(file)]))
   const scopes = rules.map((rule) => ({ rule, files: scope(rule, imports) }))
@@ -397,7 +415,7 @@ export function violations(files: { path: string; text: string }[]): Violation[]
     const target = resolve(file, reference.module)
     return rule.to.test(reference.module.startsWith(".") ? (source(imports, target) ?? target) : target)
   }
-  return files.flatMap((file) =>
+  const bounded = files.flatMap((file) =>
     imports.get(file.path)!.flatMap((reference) =>
       scopes
         .filter(
@@ -414,6 +432,7 @@ export function violations(files: { path: string; text: string }[]): Violation[]
         })),
     ),
   )
+  return [...bounded, ...cycles(imports), ...unlisted(files, imports)]
 }
 
 async function main() {

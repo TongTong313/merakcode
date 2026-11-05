@@ -1,28 +1,16 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": ["packages/sdk/js/src/client/gen/**"],
-  "ignoreBinaries": ["icacls", "merak"],
+  "ignoreBinaries": ["merak"],
   "workspaces": {
     ".": {
-      "entry": ["script/*.ts", "script/sandbox-spike/**/*.ts"]
+      "entry": ["script/*.ts"]
     },
     "apps/cli": {
       "entry": ["script/*.ts", "test/**/fixture/**", "test/**/*.fixture.ts"]
     },
     "apps/desktop/main": {
       "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "test/fixture/**", "e2e/fake-*.ts"]
-    },
-    "packages/engine": {
-      "entry": [
-        "script/*.ts",
-        "vitest.*.config.ts",
-        "src/**/*-fixture.ts",
-        "src/agent/skill/builtin/adapter-generator/*.{mjs,mts}",
-        "test/**/fixture/**",
-        "test/**/fixtures/**",
-        "test/**/*-fixture.ts"
-      ],
-      "ignoreDependencies": ["tree-sitter-bash"]
     },
     "packages/sdk/js": {
       "entry": ["script/*.ts", "examples/*.ts", "test/fixture/**"]

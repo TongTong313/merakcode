@@ -1,0 +1,1333 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Go 入门指南：写给熟悉 Python、学过 C/C++ 的 MerakCode 开发者</title>
+    <style>
+      :root {
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --code: #f6f8fa;
+        --warn: #fff8c5;
+        --note: #ddf4ff;
+      }
+      body {
+        font:
+          15px/1.7 -apple-system,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        color: var(--fg);
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 26px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+      h2 {
+        font-size: 20px;
+        margin-top: 44px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 6px;
+      }
+      h3 {
+        font-size: 16px;
+        margin-top: 24px;
+      }
+      code {
+        font:
+          13px/1.5 Consolas,
+          "Cascadia Code",
+          monospace;
+        background: var(--code);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+      pre {
+        background: var(--code);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px 14px;
+        overflow-x: auto;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+      }
+      .box {
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 12px 0;
+      }
+      .warn {
+        background: var(--warn);
+        border: 1px solid #d4a72c;
+      }
+      .note {
+        background: var(--note);
+        border: 1px solid #54aeff;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 6px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--code);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .toc {
+        columns: 2;
+      }
+      .toc a,
+      a {
+        color: #0969da;
+        text-decoration: none;
+      }
+      details {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 12px;
+        margin: 12px 0;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: #0969da;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Go 入门指南：写给熟悉 Python、学过 C/C++ 的 MerakCode 开发者</h1>
+
+    <div class="box note">
+      <p><b>这份指南的目标</b>：让你能读懂、能审查 AI 写的 Go 代码，也能自己改一些小功能。</p>
+      <p>
+        每一节都先讲 Go 和 Python 哪里不一样，再给一个和 MerakCode 有关的小例子。用得上 C/C++ 经验的地方，会单独标出来。
+      </p>
+      <p>示例代码里的注释用中文，是为了方便你读。仓库里的代码注释要用英文。</p>
+    </div>
+
+    <h2>一句话认识 Go</h2>
+    <p>
+      Go 的写法比 C 简单，运行起来接近 C 的速度，又和 Python 一样有垃圾回收。它编译成一个可以直接运行的文件，不需要像
+      Python 那样另外装解释器。
+    </p>
+    <ul>
+      <li>
+        和 Python 比：Go 有静态类型，类型错误在编译时就报出来，相当于强制开启了 mypy。Go 没有异常，错误是普通的返回值。
+      </li>
+      <li>和 C 比：Go 有指针和结构体，语法很像 C。但 Go 不能做指针运算，也不用手动释放内存，没有头文件。</li>
+      <li>
+        和 C++ 比：Go 没有类继承、函数重载、构造和析构函数，也没有异常。这些功能都用更简单的办法代替，后面会讲到。
+      </li>
+    </ul>
+
+    <h2>目录</h2>
+    <ul class="toc">
+      <li><a href="#how">0. 怎么学</a></li>
+      <li><a href="#setup">1. 安装和工具</a></li>
+      <li><a href="#hello">2. 第一个程序</a></li>
+      <li><a href="#compare">3. Python 和 Go 对照</a></li>
+      <li><a href="#basics">4. 基本语法</a></li>
+      <li><a href="#errors">5. 错误处理</a></li>
+      <li><a href="#interfaces">6. 接口和泛型</a></li>
+      <li><a href="#concurrency">7. 并发</a></li>
+      <li><a href="#testing">8. 测试</a></li>
+      <li><a href="#stdlib">9. 常用标准库</a></li>
+      <li><a href="#pitfalls">10. 常见的坑</a></li>
+      <li><a href="#review">11. 审查 AI 写的 Go 代码</a></li>
+      <li><a href="#practice">12. 练习</a></li>
+      <li><a href="#resources">13. 学习资源</a></li>
+    </ul>
+
+    <h2 id="how">0. 怎么学</h2>
+    <p>建议按下面的顺序学。前面的内容是后面的基础。</p>
+    <ol>
+      <li>第 1 到 4 节：安装、第一个程序、基本语法。学完能读懂大部分代码。</li>
+      <li>第 5 到 6 节：错误处理和接口。这是 Go 和 Python 差别最大的地方。</li>
+      <li>第 7 节：并发。引擎里用得最多，也最容易出错。</li>
+      <li>第 8 到 9 节：测试和常用标准库。</li>
+      <li>第 10 到 11 节：常见的坑，以及审查 AI 代码时看什么。</li>
+      <li>第 12 节：练习。练习都在临时目录里做，不放进仓库。</li>
+    </ol>
+    <p>配合官方的交互教程 Tour of Go 一起学，效果更好。地址见第 13 节。</p>
+
+    <h2 id="setup">1. 安装和工具</h2>
+    <ol>
+      <li>从 <code>go.dev/dl</code> 下载并安装最新的稳定版。</li>
+      <li>重新打开终端，运行 <code>go version</code>，确认安装成功。</li>
+      <li>
+        在 Cursor 里安装 Go 扩展（扩展名 <code>golang.go</code>）。它会安装 gopls。gopls 是 Go
+        官方的语言服务器，提供补全、跳转和错误提示，作用和 Python 的 Pylance 类似。
+      </li>
+    </ol>
+
+    <h3>常用命令</h3>
+    <table>
+      <tr>
+        <th>命令</th>
+        <th>作用</th>
+        <th>对应的 Python 习惯</th>
+      </tr>
+      <tr>
+        <td><code>go mod init 模块路径</code></td>
+        <td>新建一个模块，生成 <code>go.mod</code></td>
+        <td><code>uv init</code>，或者手写 <code>pyproject.toml</code></td>
+      </tr>
+      <tr>
+        <td><code>go run ./cmd/merak</code></td>
+        <td>编译并直接运行</td>
+        <td><code>python main.py</code></td>
+      </tr>
+      <tr>
+        <td><code>go build ./...</code></td>
+        <td>编译成可执行文件。<code>./...</code> 表示当前目录和所有子目录</td>
+        <td>Python 不需要这一步。它和 C 用 gcc 编出可执行文件是一回事</td>
+      </tr>
+      <tr>
+        <td><code>go test ./...</code></td>
+        <td>运行所有测试</td>
+        <td><code>pytest</code></td>
+      </tr>
+      <tr>
+        <td><code>gofmt -w .</code></td>
+        <td>格式化所有文件</td>
+        <td><code>ruff format</code> 或 <code>black</code></td>
+      </tr>
+      <tr>
+        <td><code>go vet ./...</code></td>
+        <td>找出能编译、但很可能有错的代码</td>
+        <td><code>ruff check</code> 或 pylint</td>
+      </tr>
+      <tr>
+        <td><code>go get 模块@版本</code></td>
+        <td>加一个依赖</td>
+        <td><code>pip install</code> 或 <code>uv add</code></td>
+      </tr>
+      <tr>
+        <td><code>go mod tidy</code></td>
+        <td>删掉没用的依赖，补上缺的依赖</td>
+        <td>没有直接对应</td>
+      </tr>
+      <tr>
+        <td><code>go doc fmt.Println</code></td>
+        <td>在终端里查文档</td>
+        <td><code>help(print)</code> 或 <code>pydoc</code></td>
+      </tr>
+    </table>
+
+    <h2 id="hello">2. 第一个程序</h2>
+    <ol>
+      <li>新建一个临时目录，比如 <code>D:\code\go-practice\hello</code>。</li>
+      <li>在这个目录里运行 <code>go mod init example.com/hello</code>。</li>
+      <li>新建 <code>main.go</code>，内容如下。</li>
+      <li>运行 <code>go run .</code>。</li>
+    </ol>
+    <pre><code>package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("hello, merak")
+}</code></pre>
+    <ul>
+      <li><code>package main</code>：这个文件属于 main 包。main 包会编译成一个可以运行的程序。</li>
+      <li>
+        <code>import "fmt"</code>：引入标准库的 fmt 包，它负责格式化输出，相当于 Python 的
+        <code>print</code> 加字符串格式化。
+      </li>
+      <li>
+        <code>func main()</code>：程序从这里开始运行，和 C 的 <code>main</code> 一样。Python 里对应
+        <code>if __name__ == "__main__":</code>。
+      </li>
+      <li>代码块用大括号，不靠缩进。缩进统一用制表符，由 gofmt 自动处理。语句结尾不写分号。</li>
+    </ul>
+
+    <h2 id="compare">3. Python 和 Go 对照</h2>
+    <p>先看这张表，有个整体印象。后面几节会逐项展开。</p>
+    <table>
+      <tr>
+        <th>Python</th>
+        <th>Go</th>
+        <th>说明</th>
+      </tr>
+      <tr>
+        <td><code>x = 1</code>，以后可以改成字符串</td>
+        <td><code>x := 1</code>，以后只能是整数</td>
+        <td>Go 是静态类型。<code>:=</code> 声明变量并自动推断类型</td>
+      </tr>
+      <tr>
+        <td>类型注解可写可不写</td>
+        <td>类型必须确定，可以自动推断</td>
+        <td>类型错误在编译时报出</td>
+      </tr>
+      <tr>
+        <td>靠缩进分代码块</td>
+        <td>靠大括号分代码块</td>
+        <td>格式由 gofmt 统一</td>
+      </tr>
+      <tr>
+        <td><code>None</code></td>
+        <td><code>nil</code> 和零值</td>
+        <td>零值见第 4 节</td>
+      </tr>
+      <tr>
+        <td><code>list</code></td>
+        <td>切片 <code>[]T</code></td>
+        <td>元素类型必须一致</td>
+      </tr>
+      <tr>
+        <td><code>dict</code></td>
+        <td><code>map[K]V</code></td>
+        <td>遍历顺序是随机的，见第 10 节</td>
+      </tr>
+      <tr>
+        <td>返回 tuple 实现多个返回值</td>
+        <td>函数本身支持多个返回值</td>
+        <td>最后一个通常是 <code>error</code></td>
+      </tr>
+      <tr>
+        <td><code>class</code> 加 <code>__init__</code></td>
+        <td><code>struct</code> 加 <code>NewXxx</code> 函数</td>
+        <td>Go 没有构造函数</td>
+      </tr>
+      <tr>
+        <td>方法里的 <code>self</code></td>
+        <td>方法的“接收者”</td>
+        <td>见第 4 节</td>
+      </tr>
+      <tr>
+        <td>继承</td>
+        <td>组合（把一个结构体嵌进另一个）</td>
+        <td>Go 没有继承</td>
+      </tr>
+      <tr>
+        <td>鸭子类型、<code>typing.Protocol</code></td>
+        <td><code>interface</code></td>
+        <td>方法对得上就算实现，而且编译时检查</td>
+      </tr>
+      <tr>
+        <td><code>raise</code>、<code>try...except</code></td>
+        <td>函数多返回一个 <code>error</code></td>
+        <td>每次调用后都要检查</td>
+      </tr>
+      <tr>
+        <td><code>raise ... from err</code></td>
+        <td><code>fmt.Errorf("...: %w", err)</code></td>
+        <td>都是把原来的错误包在新错误里</td>
+      </tr>
+      <tr>
+        <td><code>with</code>、<code>finally</code></td>
+        <td><code>defer</code></td>
+        <td>函数返回前执行，常用来关闭文件</td>
+      </tr>
+      <tr>
+        <td><code>asyncio</code>、<code>threading</code></td>
+        <td>goroutine 加 channel</td>
+        <td>没有 GIL，能真正同时用多个 CPU 核</td>
+      </tr>
+      <tr>
+        <td><code>asyncio.gather</code></td>
+        <td>goroutine 加 <code>sync.WaitGroup</code></td>
+        <td>见第 7 节</td>
+      </tr>
+      <tr>
+        <td>任务取消、<code>asyncio.wait_for</code> 超时</td>
+        <td><code>context.Context</code></td>
+        <td>见第 7 节</td>
+      </tr>
+      <tr>
+        <td><code>queue.Queue</code></td>
+        <td>channel</td>
+        <td>见第 7 节</td>
+      </tr>
+      <tr>
+        <td>名字前加 <code>_</code> 表示私有，只是约定</td>
+        <td>名字首字母小写就是私有，编译器强制</td>
+        <td>见第 4 节</td>
+      </tr>
+      <tr>
+        <td>模块是一个 <code>.py</code> 文件</td>
+        <td>包是一个目录</td>
+        <td>同一目录的文件属于同一个包</td>
+      </tr>
+      <tr>
+        <td><code>pyproject.toml</code>、<code>requirements.txt</code></td>
+        <td><code>go.mod</code></td>
+        <td>依赖写在 <code>go.mod</code> 里</td>
+      </tr>
+      <tr>
+        <td><code>enum.Enum</code></td>
+        <td><code>const</code> 加 <code>iota</code></td>
+        <td>见第 4 节</td>
+      </tr>
+      <tr>
+        <td><code>json.loads</code> 得到 dict</td>
+        <td><code>json.Unmarshal</code> 得到结构体</td>
+        <td>见第 9 节</td>
+      </tr>
+      <tr>
+        <td><code>TypeVar</code> 泛型</td>
+        <td><code>[T any]</code></td>
+        <td>见第 6 节</td>
+      </tr>
+      <tr>
+        <td>默认参数、关键字参数</td>
+        <td>没有</td>
+        <td>参数多时，传一个选项结构体</td>
+      </tr>
+      <tr>
+        <td>列表推导式</td>
+        <td>没有</td>
+        <td>直接写 for 循环</td>
+      </tr>
+      <tr>
+        <td>pytest</td>
+        <td><code>go test</code> 和 testing 包</td>
+        <td>见第 8 节</td>
+      </tr>
+    </table>
+
+    <h3>C/C++ 经验哪些能直接用，哪些要改</h3>
+    <table>
+      <tr>
+        <th>能直接用</th>
+        <th>要改掉的习惯</th>
+      </tr>
+      <tr>
+        <td>指针语法：<code>&amp;x</code> 取地址，<code>*p</code> 取值</td>
+        <td>不能做指针运算</td>
+      </tr>
+      <tr>
+        <td>结构体的思路</td>
+        <td>不用 <code>malloc</code>、<code>free</code>、<code>new</code>、<code>delete</code>，内存由垃圾回收管理</td>
+      </tr>
+      <tr>
+        <td>值和指针的区别：传值会复制</td>
+        <td>函数可以返回局部变量的地址，这在 Go 里是安全的。编译器会把它放到堆上</td>
+      </tr>
+      <tr>
+        <td>静态类型、编译、链接的概念</td>
+        <td>没有头文件，也没有宏</td>
+      </tr>
+      <tr>
+        <td><code>switch</code>、<code>for</code> 的基本写法</td>
+        <td>数字类型之间不会自动转换，必须写 <code>float64(n)</code></td>
+      </tr>
+      <tr>
+        <td>C++ 的 RAII 思路：资源用完就释放</td>
+        <td>Go 没有析构函数，用 <code>defer</code> 来释放</td>
+      </tr>
+    </table>
+
+    <h2 id="basics">4. 基本语法</h2>
+
+    <h3>4.1 变量和零值</h3>
+    <p>
+      零值指变量声明了但没赋值时的默认值。Go 里每种类型都有零值。所以普通的字符串、数字不会是 None，空字符串就是
+      <code>""</code>。这一点和 C 不同：C 的局部变量不初始化时，里面是随机值。
+    </p>
+    <pre><code>var name string     // 零值是 ""
+var count int       // 零值是 0
+var done bool       // 零值是 false
+model := "deepseek" // 自动推断为 string
+const maxSteps = 50</code></pre>
+    <table>
+      <tr>
+        <th>类型</th>
+        <th>零值</th>
+      </tr>
+      <tr>
+        <td>数字</td>
+        <td><code>0</code></td>
+      </tr>
+      <tr>
+        <td><code>string</code></td>
+        <td><code>""</code></td>
+      </tr>
+      <tr>
+        <td><code>bool</code></td>
+        <td><code>false</code></td>
+      </tr>
+      <tr>
+        <td>指针、切片、map、接口、函数、channel</td>
+        <td><code>nil</code></td>
+      </tr>
+      <tr>
+        <td>结构体</td>
+        <td>每个字段取各自的零值</td>
+      </tr>
+    </table>
+
+    <h3>4.2 函数和多个返回值</h3>
+    <p>
+      Python 返回多个值时，其实返回的是一个 tuple。Go 的函数本身就能返回多个值。最常见的写法是：最后一个返回值是
+      <code>error</code>。
+    </p>
+    <pre><code>func divide(a, b float64) (float64, error) {
+	if b == 0 {
+		return 0, errors.New("divide by zero")
+	}
+	return a / b, nil
+}
+
+result, err := divide(6, 3)
+if err != nil {
+	return err
+}
+fmt.Println(result)</code></pre>
+    <p>Go 没有默认参数和关键字参数。参数多的时候，习惯传一个结构体：</p>
+    <pre><code>type RunOptions struct {
+	Dir     string
+	Timeout time.Duration
+}
+
+func Run(command string, options RunOptions) error { ... }
+
+Run("git status", RunOptions{Timeout: 3 * time.Second}) // 没写的字段取零值</code></pre>
+
+    <h3>4.3 切片和 map</h3>
+    <p>
+      切片相当于 Python 的 list，但元素类型必须一致。用 C 的话说，切片是“指向一块数组的指针，加上长度和容量”。map 相当于
+      dict。
+    </p>
+    <pre><code>tools := []string{"read", "write"}
+tools = append(tools, "bash") // append 返回新切片，要重新赋值
+for i, tool := range tools {  // 相当于 Python 的 for i, tool in enumerate(tools)
+	fmt.Println(i, tool)
+}
+
+prices := map[string]float64{"deepseek": 1.5}
+prices["qwen"] = 2
+price, ok := prices["kimi"] // 找不到时不报错：ok 是 false，price 是零值 0
+if !ok {
+	fmt.Println("no price")
+}
+fmt.Println(price)</code></pre>
+    <p>Python 的 <code>d["kimi"]</code> 找不到会抛 KeyError。Go 不会，所以要用 <code>ok</code> 判断有没有找到。</p>
+
+    <h3>4.4 结构体和方法</h3>
+    <p>
+      Go 用结构体加方法代替 class。方法就是带“接收者”的函数。接收者写在 <code>func</code> 和方法名之间，作用相当于
+      Python 的 <code>self</code>。
+    </p>
+    <pre><code>type Session struct {
+	ID       string
+	Messages []string
+}
+
+// 相当于 __init__：Go 没有构造函数，习惯写一个 NewXxx 函数
+func NewSession(id string) *Session {
+	return &amp;Session{ID: id} // 返回局部变量的地址，在 Go 里是安全的
+}
+
+// 指针接收者 *Session：方法里能修改 s
+func (s *Session) Add(message string) {
+	s.Messages = append(s.Messages, message)
+}
+
+// 值接收者 Session：拿到的是一份复制，只适合只读
+func (s Session) Count() int {
+	return len(s.Messages)
+}
+
+s := NewSession("abc")
+s.Add("hi")
+fmt.Println(s.Count()) // 1</code></pre>
+    <p>
+      怎么选接收者：方法要修改结构体，或者结构体比较大，就用指针接收者。拿不准时用指针接收者。同一个类型的方法最好统一用一种。
+    </p>
+    <p>Python 里对象赋值传的是引用。Go 里结构体赋值和传参都会复制一份，这一点和 C 一样。想共享同一份数据，就传指针。</p>
+
+    <h3>4.5 指针</h3>
+    <ul>
+      <li>语法和 C 一样：<code>&amp;x</code> 取得 x 的地址，<code>*p</code> 取出指针指向的值。</li>
+      <li>和 C 不同的地方：不能做指针运算；不用手动释放内存；可以放心返回局部变量的地址。</li>
+      <li>
+        用指针的三个常见原因：要修改原来的值；结构体太大，不想复制；要表示“可能没有值”。指针可以是
+        <code>nil</code>，作用类似 Python 的 <code>Optional[X]</code>。
+      </li>
+    </ul>
+
+    <h3>4.6 谁能用这个名字</h3>
+    <ul>
+      <li>首字母大写的名字，其他包可以用，比如 <code>Session</code>、<code>NewSession</code>。</li>
+      <li>首字母小写的名字，只能在本包里用，比如 <code>session</code>、<code>newID</code>。</li>
+      <li>这和 Python 的 <code>_name</code> 约定不同：Go 是编译器强制的，别的包用了会编译失败。</li>
+      <li>结构体字段也一样。<code>encoding/json</code> 只能读写首字母大写的字段。</li>
+    </ul>
+
+    <h3>4.7 控制流</h3>
+    <pre><code>// if 可以先执行一句，再判断；条件不加括号
+if err := save(s); err != nil {
+	return err
+}
+
+// Go 只有 for 一种循环，没有 while
+for i := 0; i &lt; 3; i++ { // 和 C 一样
+}
+for i := range 3 { // Go 1.22 起可以 range 一个整数，相当于 Python 的 range(3)
+	fmt.Println(i)
+}
+for !done { // 相当于 while not done
+}
+for { // 相当于 while True
+	break
+}
+
+// switch 不需要 break，也不会自动往下执行（和 C 不同）
+switch level {
+case "read":
+	fmt.Println("read only")
+case "edit", "full":
+	fmt.Println("can write")
+default:
+	fmt.Println("unknown")
+}</code></pre>
+
+    <h3>4.8 用 const 和 iota 代替 Enum</h3>
+    <pre><code>type Level int
+
+const (
+	ReadOnly Level = iota // 0
+	Edit                  // 1
+	Full                  // 2
+)</code></pre>
+    <p>写法和 C 的 <code>enum</code> 很像。iota 在一组 const 里从 0 开始，每行加 1。</p>
+
+    <h2 id="errors">5. 错误处理</h2>
+    <p>
+      Go 没有异常，也没有 try/except。出错时，函数把错误当作一个普通的返回值交回来，调用方每次都检查。C
+      语言靠返回错误码，思路相近，但 Go 的 error 能带上说明文字和原来的错误。
+    </p>
+    <ul>
+      <li>
+        看到 <code>if err != nil</code> 很多，是正常的。它让每个出错的地方都清清楚楚，不会有“不知道从哪里抛出来的异常”。
+      </li>
+      <li>
+        往上返回错误时，用 <code>fmt.Errorf("做什么: %w", err)</code> 加上说明。<code>%w</code>
+        会把原来的错误包在里面，作用相当于 Python 的 <code>raise NewError(...) from err</code>。
+      </li>
+      <li>
+        判断是不是某种错误，用 <code>errors.Is</code>，相当于
+        <code>except FileNotFoundError</code>。要取出某种错误类型，用 <code>errors.As</code>。不要比较错误信息的文字。
+      </li>
+      <li>
+        <code>panic</code> 相当于一个没人捕获的异常，只用于程序本身的 bug，比如不可能出现的状态。正常的失败都用 error。
+      </li>
+    </ul>
+    <pre><code>var ErrNotFound = errors.New("session not found")
+
+func Load(id string) (*Session, error) {
+	data, err := os.ReadFile(filepath.Join("sessions", id+".json"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load session %s: %w", id, err)
+	}
+	var s Session
+	if err := json.Unmarshal(data, &amp;s); err != nil {
+		return nil, fmt.Errorf("parse session %s: %w", id, err)
+	}
+	return &amp;s, nil
+}
+
+s, err := Load("abc")
+if errors.Is(err, ErrNotFound) {
+	// 当作新会话处理
+}</code></pre>
+
+    <h3>5.1 defer</h3>
+    <p>
+      <code>defer</code> 后面的调用，会在当前函数返回前执行。它常用来关闭文件、释放锁。作用相当于 Python 的
+      <code>with</code> 和 <code>finally</code>，也相当于 C++ 里析构函数做的事。
+    </p>
+    <pre><code>f, err := os.Open(path) // Python：with open(path) as f:
+if err != nil {
+	return err
+}
+defer f.Close() // 不管后面从哪里 return，都会关闭文件</code></pre>
+
+    <h2 id="interfaces">6. 接口和泛型</h2>
+
+    <h3>6.1 接口：编译时检查的鸭子类型</h3>
+    <p>
+      Python 的鸭子类型是“有这个方法就能用”，但要到运行时才知道对不对。Go
+      的接口也是“方法对得上就算实现”，不用写继承或声明，而且编译时就检查。它最接近 Python 的
+      <code>typing.Protocol</code>。
+    </p>
+    <p>所以测试时可以随手写一个假实现，不需要 mock 库。</p>
+    <pre><code>type Model interface {
+	Reply(ctx context.Context, prompt string) (string, error)
+}
+
+// 测试用的假模型：有 Reply 方法，就自动实现了 Model
+type fakeModel struct{ reply string }
+
+func (m fakeModel) Reply(ctx context.Context, prompt string) (string, error) {
+	return m.reply, nil
+}
+
+func Ask(ctx context.Context, model Model, question string) (string, error) {
+	return model.Reply(ctx, question)
+}
+
+answer, err := Ask(context.Background(), fakeModel{reply: "hi"}, "hello")</code></pre>
+    <p>Go 的习惯有两条：接口要小，一两个方法最好；接口由使用它的包来定义，不由实现它的包定义。</p>
+
+    <h3>6.2 用接口和类型分支表示“几种之一”</h3>
+    <p>
+      Python 里可能写 <code>Event = Union[TextEvent, ToolEvent]</code>，再用 <code>isinstance</code> 或
+      <code>match</code> 区分。Go 里的写法如下：
+    </p>
+    <pre><code>type Event interface{ isEvent() }
+
+type TextEvent struct{ Text string }
+type ToolEvent struct{ Name string }
+
+func (TextEvent) isEvent() {}
+func (ToolEvent) isEvent() {}
+
+func show(event Event) {
+	switch e := event.(type) { // 相当于一串 isinstance 判断
+	case TextEvent:
+		fmt.Println("text:", e.Text)
+	case ToolEvent:
+		fmt.Println("tool:", e.Name)
+	}
+}</code></pre>
+    <p><code>isEvent</code> 是首字母小写的方法，别的包里的类型无法实现它。这样就保证了 Event 只有本包定义的这几种。</p>
+
+    <h3>6.3 泛型</h3>
+    <pre><code>func Map[T, U any](items []T, f func(T) U) []U {
+	out := make([]U, 0, len(items))
+	for _, item := range items {
+		out = append(out, f(item))
+	}
+	return out
+}
+
+names := Map([]int{1, 2}, func(n int) string { return fmt.Sprint(n) })</code></pre>
+    <p>
+      这相当于 Python 里用 <code>TypeVar</code> 写的泛型函数，也类似 C++ 的模板，但简单得多。Go
+      社区习惯少用泛型，只在真的要对多种类型写同一段逻辑时才用。标准库的 <code>slices</code> 和
+      <code>maps</code> 包已经提供了常用的泛型函数，比如 <code>slices.Contains</code>、<code>slices.Sort</code>。
+    </p>
+
+    <h2 id="concurrency">7. 并发</h2>
+    <p>
+      先说和 Python 最大的不同。Python 有 GIL，多线程不能同时用多个 CPU 核跑 Python 代码；要并发等待网络，通常用
+      asyncio，而 asyncio 要求函数写成 <code>async def</code>，调用时还要 <code>await</code>。Go 没有这两个限制：
+    </p>
+    <ul>
+      <li>Go 的函数直接调用、直接等待，不区分同步函数和异步函数。</li>
+      <li>goroutine 能分布在多个 CPU 核上同时运行。</li>
+    </ul>
+    <p>先记住四个词：</p>
+    <ul>
+      <li>
+        <b>goroutine</b>：Go 的轻量级任务。在函数调用前加 <code>go</code>，这个函数就会和当前代码同时运行。它像 asyncio
+        的 task 一样便宜，开几千个也没问题；又像线程一样能真正并行。
+      </li>
+      <li>
+        <b>channel</b>：goroutine 之间传数据的管道，相当于 Python 的 <code>queue.Queue</code>。一端写入，另一端读出。
+      </li>
+      <li>
+        <b>context</b>：在一组任务之间传递“取消”和“超时”的对象。Python 里没有完全对应的东西，作用接近 asyncio
+        的任务取消加 <code>asyncio.wait_for</code> 的超时。
+      </li>
+      <li><b>select</b>：同时等待多个 channel，哪个先有数据就处理哪个。</li>
+    </ul>
+
+    <h3>7.1 同时运行多个任务，等全部完成</h3>
+    <p>这相当于 <code>asyncio.gather</code>。比如协作群里几个成员同时干活：</p>
+    <pre><code>var wg sync.WaitGroup
+results := make([]string, len(members))
+for i, member := range members {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		results[i] = member.Run(ctx) // 每个 goroutine 只写自己那一格，互不干扰
+	}()
+}
+wg.Wait() // 等所有 goroutine 都调用了 Done</code></pre>
+
+    <h3>7.2 用 channel 逐行传出子进程的输出</h3>
+    <p>
+      引擎经常要运行一个命令，再把输出一行一行交给别的部分。下面的函数做的就是这件事，Python 里要用
+      <code>subprocess.Popen</code> 加线程或 asyncio 才能做到。ctx 被取消时，它会停下来，子进程也会被结束。
+    </p>
+    <pre><code>func streamLines(ctx context.Context, name string, args ...string) (&lt;-chan string, error) {
+	cmd := exec.CommandContext(ctx, name, args...) // ctx 取消时会结束子进程
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	lines := make(chan string)
+	go func() {
+		defer close(lines)  // 写入的一方负责关闭 channel
+		defer cmd.Wait()    // 释放子进程资源；示例忽略了它的错误，正式代码要处理
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			select {
+			case lines &lt;- scanner.Text():
+			case &lt;-ctx.Done(): // 读的一方不要了，就退出，避免 goroutine 一直卡住
+				return
+			}
+		}
+	}()
+	return lines, nil
+}
+
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+lines, err := streamLines(ctx, "git", "log", "--oneline")
+if err != nil {
+	return err
+}
+for line := range lines { // channel 关闭后循环结束
+	fmt.Println(line)
+}</code></pre>
+
+    <h3>7.3 互斥锁</h3>
+    <p>
+      多个 goroutine 读写同一份数据时，要用锁保护，相当于 Python 的 <code>threading.Lock</code>。Python 的 GIL
+      会掩盖一部分这类问题，Go 不会，所以更要注意。
+    </p>
+    <pre><code>type Counter struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (c *Counter) Add() {
+	c.mu.Lock()         // Python：with self.lock:
+	defer c.mu.Unlock()
+	c.n++
+}</code></pre>
+
+    <h3>7.4 并发的 5 条规则</h3>
+    <ol>
+      <li>每个 goroutine 都要有退出的办法：要么任务做完，要么 ctx 被取消。</li>
+      <li>channel 由写入的一方关闭，读的一方不要关闭。</li>
+      <li>会阻塞或者运行时间长的函数，第一个参数是 <code>ctx context.Context</code>。</li>
+      <li>不要把 ctx 存进结构体，每次调用时传进去。</li>
+      <li>能用“一个 goroutine 独占一份数据”解决的，就不要用锁。</li>
+    </ol>
+    <p class="muted">
+      <code>go test -race</code> 能找出数据竞争，也就是多个 goroutine 同时读写同一份数据而没有加锁。但它需要 cgo，在
+      Windows 上要装 C 编译器，所以以后放在 Linux 的 CI 里跑。
+    </p>
+
+    <h2 id="testing">8. 测试</h2>
+    <ul>
+      <li>测试文件以 <code>_test.go</code> 结尾，和被测的代码放在同一个目录。</li>
+      <li>测试函数的名字以 <code>Test</code> 开头，参数是 <code>t *testing.T</code>。</li>
+      <li>
+        Go 没有 pytest 那样的 <code>assert</code> 关键字，要自己写 if 判断：<code>t.Errorf</code>
+        记录失败，测试继续往下跑；<code>t.Fatalf</code> 记录失败，并立刻结束这个测试。
+      </li>
+      <li>
+        <code>t.Run</code> 开一个子测试。<code>t.TempDir()</code> 给一个临时目录，测试结束后自动删除，相当于 pytest 的
+        <code>tmp_path</code>。
+      </li>
+    </ul>
+
+    <h3>8.1 表格形式的测试</h3>
+    <p>
+      Go 最常见的测试写法：把多组输入和期望结果写成一张表，循环跑一遍。作用相当于 pytest 的
+      <code>@pytest.mark.parametrize</code>。
+    </p>
+    <pre><code>func TestDivide(t *testing.T) {
+	tests := []struct {
+		name    string
+		a, b    float64
+		want    float64
+		wantErr bool
+	}{
+		{name: "normal", a: 6, b: 3, want: 2},
+		{name: "zero", a: 1, b: 0, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := divide(test.a, test.b)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("divide() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if got != test.want {
+				t.Errorf("divide() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}</code></pre>
+
+    <h3>8.2 常用命令</h3>
+    <table>
+      <tr>
+        <th>命令</th>
+        <th>作用</th>
+        <th>对应的 pytest 用法</th>
+      </tr>
+      <tr>
+        <td><code>go test ./...</code></td>
+        <td>跑所有测试</td>
+        <td><code>pytest</code></td>
+      </tr>
+      <tr>
+        <td><code>go test -v ./internal/cli</code></td>
+        <td>跑一个包的测试，并显示每个测试的名字</td>
+        <td><code>pytest -v tests/test_cli.py</code></td>
+      </tr>
+      <tr>
+        <td><code>go test -run TestRun/version ./...</code></td>
+        <td>只跑名字匹配的测试和子测试</td>
+        <td><code>pytest -k version</code></td>
+      </tr>
+      <tr>
+        <td><code>go test -count=1 ./...</code></td>
+        <td>不用缓存，强制重新跑</td>
+        <td>pytest 默认不缓存结果</td>
+      </tr>
+    </table>
+    <p>用本地的假服务器测试网络请求，见第 12 节的练习 2。</p>
+
+    <h2 id="stdlib">9. 常用标准库</h2>
+    <p>
+      Go 的标准库很全，引擎的大部分功能用标准库就能做。很多 Python 里要装第三方库的事，比如 HTTP 请求，Go
+      用标准库就够了。
+    </p>
+    <table>
+      <tr>
+        <th>Go 包</th>
+        <th>对应的 Python</th>
+        <th>MerakCode 里的用途</th>
+      </tr>
+      <tr>
+        <td><code>context</code></td>
+        <td>asyncio 的取消和超时</td>
+        <td>用户点停止、请求超时</td>
+      </tr>
+      <tr>
+        <td><code>net/http</code></td>
+        <td><code>requests</code>、<code>httpx</code>，以及 <code>http.server</code></td>
+        <td>请求模型服务商的接口；做本机的协议服务器</td>
+      </tr>
+      <tr>
+        <td><code>net/http/httptest</code></td>
+        <td>测试里用的本地假服务器</td>
+        <td>测试里起一个假的模型服务器</td>
+      </tr>
+      <tr>
+        <td><code>encoding/json</code></td>
+        <td><code>json</code></td>
+        <td>读写 JSON</td>
+      </tr>
+      <tr>
+        <td><code>bufio</code></td>
+        <td>逐行迭代文件对象</td>
+        <td>逐行读取流式输出</td>
+      </tr>
+      <tr>
+        <td><code>os</code>、<code>os/exec</code></td>
+        <td><code>os</code>、<code>subprocess</code></td>
+        <td>读写文件、运行命令</td>
+      </tr>
+      <tr>
+        <td><code>path/filepath</code></td>
+        <td><code>pathlib</code>、<code>os.path</code></td>
+        <td>拼接路径，自动处理 Windows 的反斜杠</td>
+      </tr>
+      <tr>
+        <td><code>io</code></td>
+        <td>文件对象的 <code>read</code>、<code>write</code></td>
+        <td>Reader 和 Writer 两个基础接口，几乎所有输入输出都用它们</td>
+      </tr>
+      <tr>
+        <td><code>log/slog</code></td>
+        <td><code>logging</code></td>
+        <td>结构化日志，可以输出 JSON 格式</td>
+      </tr>
+      <tr>
+        <td><code>strings</code>、<code>bytes</code></td>
+        <td><code>str</code> 和 <code>bytes</code> 的方法</td>
+        <td>处理字符串和字节</td>
+      </tr>
+      <tr>
+        <td><code>time</code></td>
+        <td><code>time</code>、<code>datetime</code></td>
+        <td>时间和定时</td>
+      </tr>
+      <tr>
+        <td><code>sync</code></td>
+        <td><code>threading</code></td>
+        <td>WaitGroup 和 Mutex</td>
+      </tr>
+      <tr>
+        <td><code>slices</code>、<code>maps</code></td>
+        <td>内置函数 <code>sorted</code>、<code>in</code> 等</td>
+        <td>切片和 map 的常用操作</td>
+      </tr>
+      <tr>
+        <td><code>embed</code></td>
+        <td><code>importlib.resources</code></td>
+        <td>把文件编进程序里，比如提示词模板</td>
+      </tr>
+      <tr>
+        <td><code>testing</code></td>
+        <td><code>unittest</code>、pytest</td>
+        <td>写测试</td>
+      </tr>
+    </table>
+
+    <h3>9.1 JSON 和结构体标签</h3>
+    <p>
+      Python 的 <code>json.loads</code> 得到一个 dict，字段随便取。Go 一般先定义结构体，再把 JSON
+      解析进去。结构体字段后面反引号里的内容叫标签，<code>json:"name"</code> 告诉 encoding/json 这个字段在 JSON
+      里叫什么。这和 Python 的 pydantic 模型思路相近。
+    </p>
+    <pre><code>type ToolCall struct {
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`          // 先不解析，原样保留
+	Note  string          `json:"note,omitempty"` // 为空时不写进 JSON
+}
+
+var call ToolCall
+if err := json.Unmarshal(data, &amp;call); err != nil {
+	return err
+}
+out, err := json.Marshal(call)</code></pre>
+
+    <h3>9.2 带超时运行一个命令</h3>
+    <p>相当于 Python 的 <code>subprocess.run(..., timeout=3)</code>。</p>
+    <pre><code>ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
+out, err := exec.CommandContext(ctx, "git", "status", "--short").Output()
+if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	fmt.Println("timed out")
+}</code></pre>
+
+    <h2 id="pitfalls">10. 常见的坑</h2>
+    <p>下面这些是从 Python 转过来时最容易踩的，有几条也和 C 的习惯有关。</p>
+
+    <h3>10.1 len 算的是字节数，不是字数</h3>
+    <p>
+      Python 的 <code>len("你好")</code> 是 2。Go 的字符串是 UTF-8 字节，<code>len("你好")</code> 是
+      6，因为一个中文字通常占 3 个字节。
+    </p>
+    <pre><code>fmt.Println(len("你好"))                    // 6
+fmt.Println(utf8.RuneCountInString("你好")) // 2
+for i, r := range "你好" {                  // range 按字符遍历，i 是字节位置
+	fmt.Println(i, string(r))
+}</code></pre>
+    <p>截断模型输出、统计字数时要注意这一点。按字节截断，可能把一个中文字切成两半。</p>
+
+    <h3>10.2 切片的截取不复制数据</h3>
+    <p>
+      Python 的 <code>a[1:3]</code> 会复制出一个新列表。Go 的 <code>a[1:3]</code> 和
+      <code>a</code> 共用同一块内存，改一个，另一个也变。
+    </p>
+    <pre><code>a := []int{1, 2, 3, 4}
+b := a[1:3]
+b[0] = 99
+fmt.Println(a) // [1 99 3 4]
+
+c := slices.Clone(a[1:3]) // 要独立的副本，就复制一份</code></pre>
+    <p><code>append</code> 也有同样的问题：两个切片可能共用后面的空间。</p>
+
+    <h3>10.3 整数除法和溢出</h3>
+    <ul>
+      <li>
+        Python 3 的 <code>7 / 2</code> 是 3.5。Go 里两个整数相除，结果还是整数：<code>7 / 2</code> 是 3。和 C 一样。
+      </li>
+      <li>Python 的整数没有上限。Go 的 <code>int</code> 在 64 位系统上是 64 位，超出范围会绕回去，不会报错。</li>
+      <li>
+        数字类型之间不会自动转换。<code>int</code> 和 <code>float64</code> 相加之前，要先写 <code>float64(n)</code>。
+      </li>
+    </ul>
+
+    <h3>10.4 map 的遍历顺序是随机的</h3>
+    <p>Python 3.7 起，dict 按插入顺序遍历。Go 的 map 每次遍历的顺序都可能不同。需要固定顺序时，先把键取出来排序：</p>
+    <pre><code>keys := slices.Sorted(maps.Keys(prices))
+for _, key := range keys {
+	fmt.Println(key, prices[key])
+}</code></pre>
+
+    <h3>10.5 往 nil map 里写会崩溃</h3>
+    <pre><code>var m map[string]int
+m["a"] = 1 // panic：map 没有初始化
+
+m = map[string]int{} // 先初始化，或者用 make(map[string]int)
+m["a"] = 1</code></pre>
+
+    <h3>10.6 装了 nil 指针的接口不等于 nil</h3>
+    <pre><code>func find() error {
+	var p *MyError = nil
+	return p // 返回的接口里装着一个 nil 指针
+}
+
+fmt.Println(find() == nil) // false</code></pre>
+    <p>没有错误时，直接写 <code>return nil</code>，不要返回一个类型化的 nil 指针。</p>
+
+    <h3>10.7 := 可能新建了一个同名变量</h3>
+    <pre><code>var err error
+if cond {
+	_, err := os.Open("x") // 这里新建了一个 err，外面的 err 没变
+	_ = err
+}
+// 外面的 err 仍然是 nil</code></pre>
+    <p>想给外面的变量赋值，用 <code>=</code>，不要用 <code>:=</code>。</p>
+
+    <h3>10.8 其他几个坑</h3>
+    <ul>
+      <li>用 <code>_</code> 接住 err，就等于把错误丢掉了。审查代码时要留意 <code>x, _ := ...</code> 这种写法。</li>
+      <li>HTTP 响应的 <code>resp.Body</code> 必须关闭，一般紧跟着写 <code>defer resp.Body.Close()</code>。</li>
+      <li>
+        <code>bufio.Scanner</code> 默认一行最多 64KB。模型的流式输出可能更长，要用 <code>scanner.Buffer</code> 调大。
+      </li>
+      <li>JSON 解析到 <code>any</code> 里时，所有数字都变成 <code>float64</code>。</li>
+      <li>
+        格式化时间要用参考时间 <code>2006-01-02 15:04:05</code> 来写格式，比如
+        <code>time.Now().Format("2006-01-02")</code>。这和 Python 的 <code>%Y-%m-%d</code> 完全不同。
+      </li>
+      <li>没用到的 import 和变量会导致编译失败。</li>
+      <li>在循环里用 <code>+=</code> 拼接很多字符串会很慢，用 <code>strings.Builder</code>。</li>
+      <li>Go 1.22 起，for 循环的变量每一轮都是新的。网上旧文章说的“闭包捕获循环变量”问题，现在已经不会出现。</li>
+    </ul>
+
+    <h2 id="review">11. 审查 AI 写的 Go 代码</h2>
+    <p>AI 写完一段 Go 代码后，按这张清单逐项看。</p>
+    <table>
+      <tr>
+        <th>#</th>
+        <th>检查什么</th>
+        <th>为什么</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>每个返回的 <code>err</code> 都处理了，往上返回时用 <code>%w</code> 加了说明</td>
+        <td>漏掉的错误会让问题无声无息地出现</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>会阻塞的函数第一个参数是 ctx，而且函数里真的检查了 ctx</td>
+        <td>否则用户点了停止也停不下来</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>每个 goroutine 都有退出的办法</td>
+        <td>停不下来的 goroutine 会一直占用内存</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>文件、HTTP Body、子进程都用 defer 关闭或回收了</td>
+        <td>否则会泄漏资源</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>没有包级别的、会被修改的全局变量</td>
+        <td>全局状态让测试互相干扰，也难以理解</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>接口小，并且定义在使用它的包里</td>
+        <td>这样依赖方向清楚，测试也好写</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>首字母大写的名字都有注释</td>
+        <td>其他包会用到它们，要说清楚怎么用</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td>有测试，而且测试覆盖了出错的情况</td>
+        <td>只测成功的情况不够</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td>没有加新依赖；如果加了，有理由</td>
+        <td>项目规定优先用标准库</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td>gofmt 和 go vet 都通过</td>
+        <td><code>pnpm --dir apps/merak typecheck</code> 会检查这两项</td>
+      </tr>
+    </table>
+
+    <h2 id="practice">12. 练习</h2>
+    <p>
+      练习都在临时目录里做，比如 <code>D:\code\go-practice</code>，不要放进 MerakCode
+      仓库。每个练习都对应引擎里会用到的一种能力。建议先用 Python 写一遍思路，再用 Go 写，对比两者的差别。
+    </p>
+    <ol>
+      <li><b>命令行参数</b>：写一个程序，读取命令行参数，用 encoding/json 输出成 JSON。用到第 4 节和第 9 节。</li>
+      <li>
+        <b>流式读取模型输出</b>：写一个函数，读取服务器发来的流式事件（SSE）；再用 httptest
+        起一个假服务器来测试它。下面给了参考答案。
+      </li>
+      <li><b>带超时运行命令</b>：运行 <code>git status</code>，3 秒超时。用到第 9.2 节。</li>
+      <li>
+        <b>工具注册表</b>：定义一个 <code>Tool</code> 接口，有 <code>Name()</code> 和
+        <code>Run(ctx, input)</code> 两个方法；用 <code>map[string]Tool</code> 保存所有工具，按名字查找并调用。用到第 6
+        节。
+      </li>
+      <li>
+        <b>同时运行几个成员</b>：同时运行 3 个任务，只要有一个失败，就取消其他任务。用到第 7 节。提示：<code
+          >context.WithCancel</code
+        >
+        加 <code>sync.WaitGroup</code>。
+      </li>
+    </ol>
+
+    <details>
+      <summary>练习 2 的参考答案：读取 SSE 流，并用假服务器测试</summary>
+      <p>
+        SSE 是服务器向客户端持续推送数据的一种格式，每条数据以
+        <code>data: </code> 开头。多数模型服务商的流式接口都用这种格式。
+      </p>
+      <p><b>sse.go</b></p>
+      <pre><code>package sse
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+)
+
+// Read 发送 GET 请求，返回 SSE 流里每一条 data 的内容。
+func Read(ctx context.Context, url string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
+	}
+	var data []string
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // 单行最长 1MB
+	for scanner.Scan() {
+		if value, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
+			data = append(data, value)
+		}
+	}
+	return data, scanner.Err()
+}</code></pre>
+      <p><b>sse_test.go</b></p>
+      <pre><code>package sse
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+)
+
+func TestRead(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, word := range []string{"hello", "merak"} {
+			fmt.Fprintf(w, "data: %s\n\n", word)
+		}
+	}))
+	defer server.Close()
+
+	got, err := Read(context.Background(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"hello", "merak"}; !slices.Equal(got, want) {
+		t.Errorf("Read() = %q, want %q", got, want)
+	}
+}</code></pre>
+      <p>运行方法：</p>
+      <ol>
+        <li>新建目录 <code>D:\code\go-practice\sse</code>。</li>
+        <li>在里面运行 <code>go mod init example.com/sse</code>。</li>
+        <li>放入上面两个文件。</li>
+        <li>运行 <code>go test -v .</code>。</li>
+      </ol>
+    </details>
+
+    <h2 id="resources">13. 学习资源</h2>
+    <p>下面的地址来自我的已有知识。打不开时，用名字搜索。</p>
+    <table>
+      <tr>
+        <th>资源</th>
+        <th>地址</th>
+        <th>适合什么时候看</th>
+      </tr>
+      <tr>
+        <td>Tour of Go（官方交互教程，有中文版）</td>
+        <td><code>go.dev/tour</code></td>
+        <td>第一周，边看边在网页里运行代码</td>
+      </tr>
+      <tr>
+        <td>Go by Example</td>
+        <td><code>gobyexample.com</code></td>
+        <td>想知道某件事怎么写时，按主题查</td>
+      </tr>
+      <tr>
+        <td>Effective Go（官方）</td>
+        <td><code>go.dev/doc/effective_go</code></td>
+        <td>学完基础后，了解 Go 的写法习惯</td>
+      </tr>
+      <tr>
+        <td>Go 模块布局（官方）</td>
+        <td><code>go.dev/doc/modules/layout</code></td>
+        <td>设计目录结构之前</td>
+      </tr>
+      <tr>
+        <td>标准库文档</td>
+        <td><code>pkg.go.dev/std</code></td>
+        <td>查函数怎么用</td>
+      </tr>
+      <tr>
+        <td>Go 官方博客</td>
+        <td><code>go.dev/blog</code></td>
+        <td>想深入了解错误处理、context、并发模式</td>
+      </tr>
+      <tr>
+        <td>《Go 语言圣经》（中文译本）</td>
+        <td><code>gopl-zh.github.io</code></td>
+        <td>想系统读一本中文书时。原书作者之一 Kernighan 也是《C 程序设计语言》的作者，写法对学过 C 的人很友好</td>
+      </tr>
+      <tr>
+        <td>《100 Go Mistakes and How to Avoid Them》</td>
+        <td>书，作者 Teiva Harsanyi</td>
+        <td>写过一段时间以后，查漏补缺</td>
+      </tr>
+    </table>
+    <p>
+      和地基方案一起看：<a href="v1-go-foundation.html">MerakCode v1.0.0 地基方案</a>。附录 A 讲 Go 项目的目录怎么布局。
+    </p>
+  </body>
+</html>

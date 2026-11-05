@@ -4,77 +4,55 @@ import { violations } from "./check-deps"
 const host = 'const { EngineHost } = await import("@merakcode/engine/host")\n'
 
 describe("violations", () => {
-  test("permission policy helpers cannot import the execution loop", () => {
+  test("engine sources may not import each other in a cycle, even through type-only or lazy imports", () => {
     const found = violations([
-      { path: "packages/engine/src/agent/session/index.ts", text: 'import { flush } from "../permission/flush"' },
-      { path: "packages/engine/src/agent/permission/flush.ts", text: 'import { Loop } from "../loop/index"' },
+      { path: "packages/engine/src/a.ts", text: 'import { b } from "./b.ts"\n' },
+      { path: "packages/engine/src/b.ts", text: 'import type { C } from "./c/index.ts"\n' },
+      { path: "packages/engine/src/c/index.ts", text: 'export const a = await import("../a.ts")\n' },
+      { path: "packages/engine/src/d.ts", text: 'import { a } from "./a.ts"\n' },
     ])
-    expect(found.map((entry) => entry.rule)).toEqual(["permission-does-not-import-loop"])
-  })
-  test("session records cannot load the loop through extensionless package imports", () => {
-    const found = violations([
-      {
-        path: "packages/engine/src/agent/session/index.ts",
-        text: 'import { Loop } from "@merakcode/engine/agent/loop"',
-      },
-      { path: "packages/engine/src/agent/session/plan.ts", text: 'await import("../loop")' },
-    ])
-    expect(found.map((entry) => entry.rule)).toEqual([
-      "session-records-do-not-import-loop",
-      "session-records-do-not-import-loop",
-    ])
-  })
-  test("agent code cannot import application implementations through types or lazy loads", () => {
-    const found = violations([
-      {
-        path: "packages/engine/src/agent/plugin/index.ts",
-        text: 'import type { Server } from "../../app/server/server"',
-      },
-      { path: "packages/engine/src/agent/loop/index.ts", text: 'await import("@merakcode/engine/app/task/cron")' },
-      { path: "packages/engine/src/agent/session/index.ts", text: 'import { Loop } from "../loop/index"' },
-    ])
-    expect(found.map((entry) => entry.rule)).toEqual([
-      "agent-does-not-import-app",
-      "agent-does-not-import-app",
-      "session-records-do-not-import-loop",
-    ])
-  })
-  test("engine infrastructure cannot import agent or application code, including types and lazy loads", () => {
-    const found = violations([
-      {
-        path: "packages/engine/src/infra/sandbox/index.ts",
-        text: [
-          'import type { Scope } from "../../agent/permission/execution"',
-          'const server = await import("@merakcode/engine/app/server/server")',
-          'export { Config } from "../../config/config"',
-          'import { Policy } from "./policy"',
-          'import { ChildEnv } from "@merakcode/util/child-env"',
-        ].join("\n"),
-      },
-      {
-        path: "packages/engine/src/infra/sandbox/index.test.ts",
-        text: 'import { Policy } from "../../agent/permission/sandbox-policy"',
-      },
-      {
-        path: "packages/engine/src/agent/permission/execution.ts",
-        text: 'import { Sandbox } from "../../infra/sandbox/index"',
-      },
-    ])
-    expect(found.map((item) => [item.rule, item.line])).toEqual([
-      ["engine-infra-only", 1],
-      ["engine-infra-only", 2],
-      ["engine-infra-only", 3],
+    expect(found.map((item) => [item.rule, item.file, item.line, item.target])).toEqual([
+      ["engine-no-cycles", "packages/engine/src/c/index.ts", 1, "../a.ts"],
     ])
   })
 
-  test("server protocol modules cannot import the host lifecycle", () => {
+  test("the engine imports only packages its package.json lists, and devDependencies only outside src", () => {
+    const manifest = JSON.stringify({ dependencies: { zod: "catalog:" }, devDependencies: { vitest: "catalog:" } })
     const found = violations([
+      { path: "packages/engine/package.json", text: manifest },
       {
-        path: "packages/engine/src/app/server/server.ts",
-        text: 'import { serve } from "../host/serve"\n',
+        path: "packages/engine/src/a.ts",
+        text: [
+          'import z from "zod/v4"',
+          'import fs from "node:fs"',
+          'import path from "path"',
+          'import { ErrorCode } from "@merakcode/util/error-code"',
+          'import type { Plugin } from "@merakcode/sdk/plugin"',
+          'import { test } from "vitest"',
+          'import { self } from "@merakcode/engine"',
+        ].join("\n"),
       },
+      { path: "packages/engine/src/a.test.ts", text: 'import { test } from "vitest"\n' },
+      { path: "packages/engine/test/b.test.ts", text: 'import { test } from "vitest"\nimport { x } from "remeda"\n' },
+      { path: "packages/util/src/c.ts", text: 'import { x } from "remeda"\n' },
     ])
-    expect(found.map((item) => [item.rule, item.line])).toEqual([["server-does-not-import-host", 1]])
+    expect(found.map((item) => [item.rule, item.file, item.line, item.target])).toEqual([
+      ["engine-listed-dependencies", "packages/engine/src/a.ts", 4, "@merakcode/util/error-code"],
+      ["engine-listed-dependencies", "packages/engine/src/a.ts", 5, "@merakcode/sdk/plugin"],
+      ["engine-listed-dependencies", "packages/engine/src/a.ts", 6, "vitest"],
+      ["engine-listed-dependencies", "packages/engine/src/a.ts", 7, "@merakcode/engine"],
+      ["engine-listed-dependencies", "packages/engine/test/b.test.ts", 2, "remeda"],
+    ])
+  })
+
+  test("cycles through engine test files or outside the engine are not reported", () => {
+    const found = violations([
+      { path: "packages/engine/src/a.ts", text: 'import { helper } from "./a.test.ts"\n' },
+      { path: "packages/engine/src/a.test.ts", text: 'import { a } from "./a.ts"\n' },
+      { path: "packages/util/src/x.ts", text: 'import { y } from "./y.ts"\n' },
+      { path: "packages/util/src/y.ts", text: 'import { x } from "./x.ts"\n' },
+    ])
+    expect(found).toEqual([])
   })
 
   test("the desktop app may not import the engine at all", () => {
@@ -278,11 +256,13 @@ describe("violations", () => {
       { path: "apps/desktop/main/src/a.ts", text: computed },
       { path: "apps/desktop/main/e2e/fixture.ts", text: computed },
       { path: "packages/util/src/a.test.ts", text: computed },
+      { path: "packages/engine/src/plugin.ts", text: "await import(name)\n" },
     ])
     expect(found.map((item) => [item.file, item.line, item.target])).toEqual([
       ["apps/desktop/main/src/a.ts", 2, "computed import()"],
       ["apps/desktop/main/src/a.ts", 3, "computed require()"],
       ["apps/desktop/main/src/a.ts", 4, "computed import()"],
+      ["packages/engine/src/plugin.ts", 1, "computed import()"],
     ])
   })
 

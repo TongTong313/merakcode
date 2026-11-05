@@ -4,6 +4,14 @@
 
 欢迎提问题，也欢迎提代码。要改比较大的功能，先开一个 issue 说说想法，免得做完了才发现方向不对。
 
+## v1.0.0 重建
+
+`dev-v1.0.0` 分支从零重写引擎（`packages/engine`）。CLI、桌面端和 SDK 还在用 v0.3 引擎的协议，等新引擎的协议定下来再迁移。在这之前：
+
+- `pnpm typecheck` 不检查 `apps/cli`；`pnpm check` 不跑 `check:sdk` 和 `check:adapter-library`，`generate:sdk` 和 `generate:adapter-library` 也用不了。
+- 需要启动引擎的测试会失败：`apps/cli` 和 `packages/sdk/js` 的测试，以及桌面端的端到端测试。
+- `.github/workflows/ci.yml` 还是 v0.3 的流程，只在 PR 和推送到 `main` 时运行。
+
 ## 准备环境
 
 需要 Node.js 26.12 以上、pnpm 12 和 [ripgrep](https://github.com/BurntSushi/ripgrep)：
@@ -32,7 +40,6 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 | `pnpm test:script`                 | 根目录 `script/` 下脚本的测试                                                                                                         |
 | `pnpm format`                      | 格式化整个仓库                                                                                                                        |
 | `pnpm generate:sdk`                | 改了服务端接口后重新生成 SDK 客户端（`packages/sdk/openapi.json` 和 `packages/sdk/js/src/client/gen/`）                               |
-| `pnpm generate:schema`             | 改了配置项后重新生成 `schema/config.json`                                                                                             |
 | `pnpm generate:errors`             | 改了错误码后重新生成 `docs/errors.md`                                                                                                 |
 | `pnpm generate:adapter-library`    | 改了 `@merakcode/sdk/adapter` 或内置适配器后，重新生成技能 `adapter-generator` 带的单文件适配器开发库、它的类型声明和 TypeScript 示例 |
 | `pnpm generate:sdk-reference`      | 改了服务端接口后重新生成 `docs/sdk/reference.md`（先跑 `generate:sdk`）                                                               |
@@ -41,38 +48,33 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 
 `pnpm check` 依次运行下面这些脚本，每个也能单独跑（`pnpm <脚本>`）：
 
-| 脚本                    | 检查什么                                                        |
-| ----------------------- | --------------------------------------------------------------- |
-| `format:check`          | Prettier 格式                                                   |
-| `check:brand`           | 没有旧的产品名和没填的占位符                                    |
-| `check:comments`        | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定) |
-| `check:versions`        | 所有包的版本号一致                                              |
-| `check:schema`          | `schema/config.json` 是最新的                                   |
-| `check:errors`          | `docs/errors.md` 是最新的                                       |
-| `check:adapter-library` | 单文件适配器开发库、它的类型声明和适配器示例是最新的            |
-| `check:sdk`             | 在临时目录重新生成，确认 OpenAPI 和 SDK 客户端与服务端一致      |
-| `typecheck`             | 各个包的类型                                                    |
-| `check:deps`            | 依赖边界，见[边界规则](#边界规则)                               |
-| `check:css`             | 桌面端的 CSS 里没有 `!important`                                |
-| `check:api`             | SDK 公开接口和快照 `packages/sdk/js/api.md` 一致                |
-| `check:sdk-reference`   | `docs/sdk/reference.md` 是最新的                                |
-| `check:sdk-docs`        | SDK 手册提到了每个公开接口，里面的代码能编译                    |
-| `check:docs`            | 文档里写的 `merak` 命令都真的存在                               |
-| `check:unused`          | 没用到的文件、导出和依赖（knip）                                |
+| 脚本                  | 检查什么                                                        |
+| --------------------- | --------------------------------------------------------------- |
+| `format:check`        | Prettier 格式                                                   |
+| `check:brand`         | 没有旧的产品名和没填的占位符                                    |
+| `check:comments`      | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定) |
+| `check:versions`      | 所有包的版本号一致                                              |
+| `check:errors`        | `docs/errors.md` 是最新的                                       |
+| `typecheck`           | 各个包的类型（v1.0.0 重建期间不含 `apps/cli`）                  |
+| `check:deps`          | 依赖边界，见[边界规则](#边界规则)                               |
+| `check:css`           | 桌面端的 CSS 里没有 `!important`                                |
+| `check:api`           | SDK 公开接口和快照 `packages/sdk/js/api.md` 一致                |
+| `check:sdk-reference` | `docs/sdk/reference.md` 是最新的                                |
+| `check:sdk-docs`      | SDK 手册提到了每个公开接口，里面的代码能编译                    |
+| `check:docs`          | 文档里写的 `merak` 命令都真的存在                               |
+| `check:unused`        | 没用到的文件、导出和依赖（knip）                                |
 
 `pnpm check` 不跑测试。CI 在 Windows、macOS、Linux 上分别运行 `pnpm test:script`、每个包的测试、沙箱一致性测试、CLI 与 SDK npm 包消费测试、桌面生产目录包冒烟和端到端测试（见 `.github/workflows/ci.yml`）。非桌面任务跳过 Electron 下载；系统沙箱一致性用例只在完成初始化的独立任务里运行一次。
 
 `pnpm check:sdk` 在临时目录生成 OpenAPI 和 SDK 客户端，比较文件内容及增删；忽略换行差异，生成前稳定 schema 顺序。生成出来的文件不要手改，改了源头再跑对应的 `generate` 命令。
 
-常规门禁使用本地假模型和本地 HTTP fixture。性能阈值与外部网络隔离只在 Actions 的 **Manual regression** 工作流中手动运行，三个系统各跑一遍，不阻塞 PR 或发布。选择 `external-network` 时，必须提供宿主机可达的外部 TCP 目标 `http://host:port`；目标不可达会失败，不会被记为隔离成功。本地入口是 `apps/cli` 的 `pnpm test:perf` 和 `packages/engine` 的 `pnpm test:sandbox:external`（设置 `MERAKCODE_SANDBOX_EXTERNAL_TARGET`，Windows 先初始化沙箱）。
+常规门禁使用本地假模型和本地 HTTP fixture。性能阈值与外部网络隔离只在 Actions 的 **Manual regression** 工作流中手动运行，三个系统各跑一遍，不阻塞 PR 或发布。选择 `external-network` 时，必须提供宿主机可达的外部 TCP 目标 `http://host:port`；目标不可达会失败，不会被记为隔离成功。本地入口是 `apps/cli` 的 `pnpm test:perf`。
 
 ## 代码是怎么组织的
 
 | 目录                            | 内容                                                                                                                                                  |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine/src/agent`     | 智能体 loop、持续会话、模型、记忆、工具、提示词、权限、技能和外部 Agent 接入                                                                          |
-| `packages/engine/src/infra`     | 沙箱、配置源解析、工作区、存储、进程和共享锁等基础机制                                                                                                |
-| `packages/engine/src/app`       | 引擎服务编排：项目启动、持久任务、HTTP/WebSocket 协议和 host 启停                                                                                     |
+| `packages/engine`               | 引擎，v1.0.0 正在从零重写，入口是 `src/index.ts`                                                                                                      |
 | `packages/sdk/js`               | SDK：生成的接口客户端、启动引擎进程、高层 API、把事件整理成会话状态（store）、插件类型、成员适配器开发库（`adapter`）、错误类型（`errors`）、会话导出 |
 | `packages/util`、`packages/log` | 共用的基础代码、错误码目录、日志                                                                                                                      |
 | `apps/cli`                      | `merak` 这个程序：各个命令，以及 `merak serve`（桌面端内置的引擎就是它）                                                                              |
@@ -100,17 +102,18 @@ SDK 里只有 `packages/sdk/openapi.json` 和 `packages/sdk/js/src/client/gen/` 
 
 ## 边界规则
 
-引擎内部依赖方向为 app → agent → infra；infra 只引用 infra，agent 不引用 app，持续会话记录不引用 loop。字段 schema 由各模块定义，app 静态组合并装配运行接口。产品业务代码只能通过 SDK 调用引擎。`pnpm check:deps` 会检查下面几条，违反了直接报错：
+产品业务代码只能通过 SDK 调用引擎。`pnpm check:deps` 会检查下面几条，违反了直接报错：
 
 1. 只有 `apps/cli` 能引用引擎，桌面端、以后新加的应用和其他包都不行。它们也不能引用 `apps/cli`，否则就能借 CLI 的命令把引擎带进自己的进程。
 2. `apps/cli` 引用引擎时只能用 `@merakcode/engine/host` 这一个入口。
 3. 只有 `serve`、`generate` 和 `debug` 这几个命令能加载引擎，具体就是 `serve.ts`、`generate.ts` 和 `debug/host.ts` 这三个文件；`run`、`acp` 和其他命令一律走 SDK。这三个文件只能由 `apps/cli/src/index.ts` 注册命令时引用（`debug` 的子命令可以用 `debug/host.ts`）。
 4. `apps/cli/src/index.ts` 启动时加载的模块不能间接带进引擎（用动态 `import()` 按需加载可以）。
 5. 客户端代码（各个应用的 `src`）请求引擎只能用 SDK 生成的方法或 SDK 的 `connectPty`：不能自己用 `fetch`、`WebSocket`、`EventSource`、`XMLHttpRequest`，也不能引用 `http`、`https`、`http2`（带不带 `node:` 都算）、`undici`、`ws` 这些模块。访问第三方服务的几个文件在 `script/check-deps.ts` 里单独列出。
-6. 发布出去的代码（各个应用和包的 `src`）加载模块时，模块名必须写成字符串字面量，不能在运行时拼出来。例外有两个：SDK 按名字懒加载 undici（免得网页打包把它带进去），以及整个引擎（它要在运行时按路径加载插件、服务商的包和自定义工具）。
-7. 引擎里各家服务商的模型目录适配器（`packages/engine/src/agent/model/catalog/` 下以服务商命名的文件，加上 `relay.ts` 和 `config.ts`）只能由 `agent/model/catalog.ts` 和 `catalog/` 目录里的文件引用，引擎的其他代码只通过 `Provider.Model` 看到模型。
+6. 发布出去的代码（各个应用和包的 `src`）加载模块时，模块名必须写成字符串字面量，不能在运行时拼出来。例外只有一个：SDK 按名字懒加载 undici（免得网页打包把它带进去）。
+7. 引擎 `packages/engine/src` 里的文件之间不能循环引用，只引用类型的 `import` 和动态 `import()` 也算。
+8. 引擎只能引用自己 `package.json` 里登记的包（Node 内置模块除外），`src` 里不能用 `devDependencies`。根目录登记的包在每个子包里都能解析到，编译器和 knip 都发现不了这类遗漏，所以由这条规则检查。
 
-引用是从语法树里认出来的：`import`、`export ... from`、`require`、`createRequire`、`resolve`、类型里的 `import()`，以及 `package.json` 里的依赖别名、本地路径和 `imports` 都算；注释和普通字符串不算。测试文件（`*.test.*`）不受第 5 到 7 条和下一段的限制。
+引用是从语法树里认出来的：`import`、`export ... from`、`require`、`createRequire`、`resolve`、类型里的 `import()`，以及 `package.json` 里的依赖别名、本地路径和 `imports` 都算；注释和普通字符串不算。测试文件（`*.test.*`）不受第 5 到 7 条和下一段的限制，在第 8 条里可以用 `devDependencies`。
 
 客户端直接读引擎的文件只有两种例外。语言设置要在引擎启动之前就用上，所以 `i18n.ts` 可以通过 `@merakcode/util/config-peek` 读全局配置文件里的这一项；`doctor` 要检查配置文件能不能解析，`bug-report` 要把配置文件原样附进报告。其他配置一律通过 SDK 问引擎；客户端和 SDK 也不能用 `@merakcode/util/paths` 里的 `globalConfigFile`，不能碰 `Paths.data`、`Paths.worktrees` 这些引擎的数据目录。
 
@@ -120,22 +123,22 @@ SDK 里只有 `packages/sdk/openapi.json` 和 `packages/sdk/js/src/client/gen/` 
 
 - 测试用 Vitest，每个包在自己的目录里跑：`cd packages/engine && pnpm test`；只跑一个文件就把路径加在后面。根目录的 `pnpm test` 不跑任何测试；根目录 `script/` 下的脚本用 `pnpm test:script` 测。
 - 测真实行为，尽量不用 mock。需要临时目录就用测试夹具里的 `tmpdir()`，用完自动清理。
-- 要模型回复的用例用本地的假模型（比如 `packages/sdk/js/test/fixture/model.ts`，按脚本吐出回复），不要连真的模型服务。唯一的例外是 `packages/engine/test/live`：它调用真实的模型接口，要先配好对应的 API 密钥，不在 `pnpm test` 里，只有手动运行 `cd packages/engine && pnpm test:live` 才会跑。
-- 要协作群成员的用例用假 CLI（`packages/engine/test/collaboration/fixture/` 里的假 Claude Code、Codex、OpenCode）或假适配器，不要启动真的 CLI。
+- 要模型回复的用例用本地的假模型（比如 `packages/sdk/js/test/fixture/model.ts`，按脚本吐出回复），不要连真的模型服务。
+- 要协作群成员的用例用假 CLI 或假适配器，不要启动真的 CLI。
 - 端到端用例会起真实进程，比较慢：通过 SDK 驱动引擎的是 `cd apps/cli && pnpm test:e2e`；桌面端先在 `apps/desktop/main` 和 `apps/desktop/renderer` 里各跑一次 `pnpm build`，再在 `apps/desktop/main` 里跑 `pnpm test:e2e`。
-- 测试默认关掉沙箱（测试的 preload 里设了 `MERAKCODE_SANDBOX_MODE=off`），否则在没初始化沙箱的 Windows 上会卡在审批。要测沙箱相关的逻辑，在用例里显式打开。
-- 本地真实沙箱验收运行根目录的 `pnpm test:sandbox:verify`。该命令复用已有账户。账户未就绪时，命令失败并说明原因。该命令不自动初始化，也不请求管理员权限。Windows 首次使用时，只运行一次 `pnpm dev sandbox setup`。普通单元测试和桌面端到端测试禁止沙箱初始化及重置。Windows 最多同时执行两个测试文件。
+- Windows 最多同时执行两个测试文件。
 - 修 Bug 先写一个能复现的失败用例，再改代码。
 
 ## 代码约定
 
 - TypeScript + ESM，Prettier 格式化（不写分号，每行最长 120 字符）。
-- 输入用 Zod 校验；工具实现 `Tool.Info` 接口。
+- 输入用 Zod 校验。
+- 引擎源码直接用 Node 运行，不经过 tsx 这类加载器。所以只用可擦除的 TypeScript 语法（tsconfig 打开了 `erasableSyntaxOnly`，不能写 `namespace`、`enum` 和构造函数参数属性），相对路径的 `import` 写上 `.ts` 后缀，类型用 `import type` 引入。提示词和工具说明写在 `.ts` 文件里。`packages/engine/test/node-runtime.test.ts` 会用不带加载器的 Node 加载每个源码文件。
 - 多用提前 `return`，少用 `else`；多用 `const`，少用 `let`；函数保持短小。
 - 不留注释掉的代码和用不到的代码。用不到的变量和导入编译器会报（`packages/sdk/js` 除外），用不到的文件、导出和依赖由 knip 报（`pnpm check:unused`）；注释掉的代码没有工具查，要自己注意。
 - 代码注释、日志消息和测试标题用英文。注释只写代码本身看不出来的东西（约束、原因、坑），不要复述代码在做什么。
 - `pnpm check:comments` 会查 JS/TS 文件里的注释、`log.info(...)` 这类日志调用的消息和 `describe`、`test`、`it` 的标题，以及 `.sh`、`.ps1`、`.yml` 文件里的 `#` 注释；`locales/` 和 `i18n/` 目录、生成的 `gen/` 目录和 `.d.ts` 文件不查。确实要用中文的那一行，在它上一行加 `// i18n-allow`。
-- 给用户看的文字要有中英两份：命令行写在 `apps/cli/src/cli/locales/{zh-CN,en-US}.json`（两边的键必须一致，而且每个键都要用到），桌面端写在 `apps/desktop/renderer/src/i18n/{zh,en}.ts`，引擎里用 `Text.pick({ zh, en })`。给模型看的提示词和工具说明只写英文。
+- 给用户看的文字要有中英两份：命令行写在 `apps/cli/src/cli/locales/{zh-CN,en-US}.json`（两边的键必须一致，而且每个键都要用到），桌面端写在 `apps/desktop/renderer/src/i18n/{zh,en}.ts`。给模型看的提示词和工具说明只写英文。
 - 桌面端界面用纯 CSS 和设计变量，不要写 `!important`。
 
 ## 加依赖
@@ -149,7 +152,7 @@ SDK 里只有 `packages/sdk/openapi.json` 和 `packages/sdk/js/src/client/gen/` 
 ## 错误码和日志
 
 - 用户可能看到的错误都要有错误码，格式是 `MRK-xxxx`，统一登记在 `packages/util/src/error-code.ts`。千位数字要和 `domain` 对应（对照表在文件开头的注释里），`title`（出了什么事）和 `hint`（用户该怎么办）都要有中英两份，`packages/util` 的测试会查这几条。改完跑 `pnpm generate:errors` 更新 `docs/errors.md`。错误码一旦发布就不要改含义，不用了就留着。
-- 打日志：引擎和命令行用 `@merakcode/log/logger` 的 `Log.create({ service: "名字" })`；桌面端主进程用 `apps/desktop/main/src/log.ts` 的 `Log.create("名字")`；桌面端界面用 `apps/desktop/renderer/src/lib/bridge.ts` 的 `log()`，由主进程写进日志；SDK 默认不打日志，只交给调用方传入的 `logger`。都不要用 `console.*` 记诊断信息。日志里不能出现密钥、口令和对话内容。
+- 打日志：命令行用 `@merakcode/log/logger` 的 `Log.create({ service: "名字" })`；桌面端主进程用 `apps/desktop/main/src/log.ts` 的 `Log.create("名字")`；桌面端界面用 `apps/desktop/renderer/src/lib/bridge.ts` 的 `log()`，由主进程写进日志；SDK 默认不打日志，只交给调用方传入的 `logger`。都不要用 `console.*` 记诊断信息。日志里不能出现密钥、口令和对话内容。
 - 日志写在 `~/.merakcode/logs` 下（设了 `MERAKCODE_HOME` 就在那个目录的 `logs` 下）：正式版在 `production/`，从源码运行在 `development/`，再按组件分目录，比如 `cli/`、`server/`、`desktop/`。每个进程一个 NDJSON 文件，超过 20 MB 就轮转，连当前文件最多留 5 个。`merak logs` 能列出来，`merak bug-report` 会打包并去掉敏感信息。
 
 ## 提交说明
@@ -176,7 +179,7 @@ type(scope): summary
 
 ## 提交 PR
 
-1. 从 `main` 新建分支。
+1. 从 `main` 新建分支；v1.0.0 的改动从 `dev-v1.0.0` 新建。
 2. 改完跑 `pnpm check` 和你改到的包的测试。
 3. PR 标题按上面的提交说明格式写。PR 里写清楚改了什么、为什么改、怎么验证的。改了界面就附截图。
 4. 用户能感觉到的改动，在 `CHANGELOG.md` 的 `Unreleased` 下面中英文各写一行：英文写在英文小节（比如 `### Fixed`），中文写在对应的中文小节（比如 `### 修复`；`Added` 对应 `新增`，以此类推）。
@@ -217,6 +220,14 @@ type(scope): summary
 
 Questions and code are both welcome. For bigger changes, open an issue first to talk about the idea, so nobody builds the wrong thing.
 
+## v1.0.0 rebuild
+
+The `dev-v1.0.0` branch rewrites the engine (`packages/engine`) from scratch. The CLI, the desktop app and the SDK still speak the v0.3 engine's protocol and move over once the new engine's protocol is settled. Until then:
+
+- `pnpm typecheck` leaves out `apps/cli`; `pnpm check` skips `check:sdk` and `check:adapter-library`, and `generate:sdk` and `generate:adapter-library` don't work either.
+- Tests that start an engine fail: those of `apps/cli` and `packages/sdk/js`, and the desktop end-to-end tests.
+- `.github/workflows/ci.yml` still describes v0.3 and runs only on pull requests and pushes to `main`.
+
 ## Setup
 
 You need Node.js 26.12 or newer, pnpm 12 and [ripgrep](https://github.com/BurntSushi/ripgrep):
@@ -245,7 +256,6 @@ All from the repo root:
 | `pnpm test:script`                 | Tests for the scripts in the root `script/` folder                                                                                                                                   |
 | `pnpm format`                      | Format the whole repo                                                                                                                                                                |
 | `pnpm generate:sdk`                | Regenerate the SDK client (`packages/sdk/openapi.json` and `packages/sdk/js/src/client/gen/`) after changing a server route                                                          |
-| `pnpm generate:schema`             | Regenerate `schema/config.json` after changing config options                                                                                                                        |
 | `pnpm generate:errors`             | Regenerate `docs/errors.md` after changing error codes                                                                                                                               |
 | `pnpm generate:adapter-library`    | Regenerate the single-file adapter library, its types and the TypeScript examples the `adapter-generator` skill ships, after changing `@merakcode/sdk/adapter` or a built-in adapter |
 | `pnpm generate:sdk-reference`      | Regenerate `docs/sdk/reference.md` after changing a server route (run `generate:sdk` first)                                                                                          |
@@ -254,38 +264,33 @@ All from the repo root:
 
 `pnpm check` runs these scripts in order; each can also run on its own (`pnpm <script>`):
 
-| Script                  | What it checks                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `format:check`          | Prettier formatting                                                                         |
-| `check:brand`           | No old product names or unfilled placeholders                                               |
-| `check:comments`        | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)   |
-| `check:versions`        | Every package has the same version                                                          |
-| `check:schema`          | `schema/config.json` is up to date                                                          |
-| `check:errors`          | `docs/errors.md` is up to date                                                              |
-| `check:adapter-library` | The single-file adapter library, its types and the adapter examples are up to date          |
-| `check:sdk`             | OpenAPI and the generated SDK client match the server, regenerated in a temporary directory |
-| `typecheck`             | Types in every package                                                                      |
-| `check:deps`            | Dependency boundaries; see [Boundary rules](#boundary-rules)                                |
-| `check:css`             | No `!important` in the desktop CSS                                                          |
-| `check:api`             | The SDK API matches the snapshot in `packages/sdk/js/api.md`                                |
-| `check:sdk-reference`   | `docs/sdk/reference.md` is up to date                                                       |
-| `check:sdk-docs`        | The SDK guide mentions every public export and its code compiles                            |
-| `check:docs`            | Every `merak` command in the docs exists                                                    |
-| `check:unused`          | Unused files, exports and dependencies (knip)                                               |
+| Script                | What it checks                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `format:check`        | Prettier formatting                                                                       |
+| `check:brand`         | No old product names or unfilled placeholders                                             |
+| `check:comments`      | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions) |
+| `check:versions`      | Every package has the same version                                                        |
+| `check:errors`        | `docs/errors.md` is up to date                                                            |
+| `typecheck`           | Types in every package (without `apps/cli` during the v1.0.0 rebuild)                     |
+| `check:deps`          | Dependency boundaries; see [Boundary rules](#boundary-rules)                              |
+| `check:css`           | No `!important` in the desktop CSS                                                        |
+| `check:api`           | The SDK API matches the snapshot in `packages/sdk/js/api.md`                              |
+| `check:sdk-reference` | `docs/sdk/reference.md` is up to date                                                     |
+| `check:sdk-docs`      | The SDK guide mentions every public export and its code compiles                          |
+| `check:docs`          | Every `merak` command in the docs exists                                                  |
+| `check:unused`        | Unused files, exports and dependencies (knip)                                             |
 
 `pnpm check` runs no tests. CI runs repository scripts, every package's tests, sandbox conformance, CLI and SDK npm consumer checks, production desktop directory smoke tests and end-to-end tests on Windows, macOS and Linux (see `.github/workflows/ci.yml`). Non-desktop jobs skip downloading Electron; OS conformance runs once in its initialized, dedicated job.
 
 `pnpm check:sdk` regenerates OpenAPI and the SDK client in a temporary directory and compares content, added files and deleted files. It ignores line-ending differences and stabilizes schema order before generation. Don't edit generated files by hand; change the source and run the matching `generate` command.
 
-Regular gates use local fake models and HTTP fixtures. Timing thresholds and external network isolation run only through the manually dispatched **Manual regression** workflow, on all three systems, outside PR and release gates. For `external-network`, supply a reachable external TCP control endpoint as `http://host:port`; an unreachable endpoint fails rather than counting as successful isolation. Local entry points are `pnpm test:perf` in `apps/cli` and `pnpm test:sandbox:external` in `packages/engine` (set `MERAKCODE_SANDBOX_EXTERNAL_TARGET`; initialize the Windows sandbox first).
+Regular gates use local fake models and HTTP fixtures. Timing thresholds and external network isolation run only through the manually dispatched **Manual regression** workflow, on all three systems, outside PR and release gates. For `external-network`, supply a reachable external TCP control endpoint as `http://host:port`; an unreachable endpoint fails rather than counting as successful isolation. The local entry point is `pnpm test:perf` in `apps/cli`.
 
 ## How the code is organized
 
 | Directory                       | What's in it                                                                                                                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/engine/src/agent`     | Agent loop, persistent sessions, models, memory, tools, prompts, permissions, skills and external agents                                                                             |
-| `packages/engine/src/infra`     | Sandbox, config source parsing, workspaces, storage, processes and shared locks                                                                                                      |
-| `packages/engine/src/app`       | Engine service composition: project startup, persistent tasks, HTTP/WebSocket protocol and host lifecycle                                                                            |
+| `packages/engine`               | The engine, being rewritten from scratch for v1.0.0; its entry is `src/index.ts`                                                                                                     |
 | `packages/sdk/js`               | The SDK: generated API client, engine process launcher, high-level API, event store, plugin types, the member adapter library (`adapter`), error types (`errors`), transcript export |
 | `packages/util`, `packages/log` | Shared helpers, the error code catalog, logging                                                                                                                                      |
 | `apps/cli`                      | The `merak` program: its commands and `merak serve` (the engine the desktop app ships)                                                                                               |
@@ -313,17 +318,18 @@ So the CLI source depends on the SDK, and the SDK at runtime depends on the CLI'
 
 ## Boundary rules
 
-Engine dependencies flow from app to agent to infra; infra imports only infra, agent never imports app, and persistent session records never import loop. Modules define their own field schemas; app statically composes them and binds runtime interfaces. Product code calls the engine only through the SDK. `pnpm check:deps` enforces these rules and fails on any violation:
+Product code calls the engine only through the SDK. `pnpm check:deps` enforces these rules and fails on any violation:
 
 1. Only `apps/cli` may import the engine; the desktop app, apps added later and the other packages may not. They may not import `apps/cli` either, or they could pull the engine into their own process through the CLI's commands.
 2. `apps/cli` may only import the engine through `@merakcode/engine/host`.
 3. Only the `serve`, `generate` and `debug` commands load the engine, in exactly three files: `serve.ts`, `generate.ts` and `debug/host.ts`. `run`, `acp` and everything else go through the SDK. Those three files are imported only by `apps/cli/src/index.ts` to register the commands (the `debug` subcommands may use `debug/host.ts`).
 4. Modules loaded at startup by `apps/cli/src/index.ts` must not pull in the engine, even indirectly (a dynamic `import()` on demand is fine).
 5. Client code (each app's `src`) sends requests to the engine only through SDK-generated methods or SDK `connectPty`: never with its own `fetch`, `WebSocket`, `EventSource` or `XMLHttpRequest`, and never by importing `http`, `https`, `http2` (with or without `node:`), `undici` or `ws`. The few files that talk to third-party servers are listed in `script/check-deps.ts`.
-6. Shipped code (the `src` of each app and package) names the modules it loads with string literals, never with names built at runtime. There are two exceptions: the SDK loads undici by name (so web bundles leave it out), and the whole engine is exempt (it loads plugins, provider packages and custom tools by path at runtime).
-7. The engine's per-provider model catalog adapters (the files named after providers in `packages/engine/src/agent/model/catalog/`, plus `relay.ts` and `config.ts`) may only be imported by `agent/model/catalog.ts` and the files in `catalog/`; the rest of the engine sees models only as `Provider.Model`.
+6. Shipped code (the `src` of each app and package) names the modules it loads with string literals, never with names built at runtime. The one exception: the SDK loads undici by name (so web bundles leave it out).
+7. Files in the engine's `packages/engine/src` never import each other in a cycle; type-only imports and dynamic `import()` count too.
+8. The engine imports only packages listed in its own `package.json` (Node built-ins aside), and never `devDependencies` from `src`. A package the root lists resolves from every workspace, so neither the compiler nor knip notices a missing entry; this rule does.
 
-References are read from the syntax tree: `import`, `export ... from`, `require`, `createRequire`, `resolve`, `import()` in types, and dependency aliases, local paths and `imports` in `package.json` all count; comments and plain strings do not. Test files (`*.test.*`) are exempt from rules 5 to 7 and from the next paragraph.
+References are read from the syntax tree: `import`, `export ... from`, `require`, `createRequire`, `resolve`, `import()` in types, and dependency aliases, local paths and `imports` in `package.json` all count; comments and plain strings do not. Test files (`*.test.*`) are exempt from rules 5 to 7 and from the next paragraph, and may use `devDependencies` under rule 8.
 
 Clients read the engine's files directly in two cases only. The language setting is needed before the engine starts, so `i18n.ts` reads that key from the global config file through `@merakcode/util/config-peek`; `doctor` checks that config files parse, and `bug-report` attaches them as they are. Everything else comes from the engine through the SDK; clients and the SDK may not use `globalConfigFile` from `@merakcode/util/paths`, nor touch the engine's data directories such as `Paths.data` and `Paths.worktrees`.
 
@@ -333,22 +339,22 @@ Changes to these rules (`script/check-deps.ts`) and to the files that load the e
 
 - Tests use Vitest and run per package: `cd packages/engine && pnpm test`; add a file path to run just that file. `pnpm test` at the root runs no tests; the scripts in the root `script/` folder are tested with `pnpm test:script`.
 - Test real behavior and avoid mocks. For temporary directories use the `tmpdir()` fixture; it cleans up after itself.
-- Tests that need model replies use a local fake model (such as `packages/sdk/js/test/fixture/model.ts`, which replies from a script), never a real provider. The one exception is `packages/engine/test/live`: it calls real model APIs and needs their API keys, is not part of `pnpm test`, and runs only when you run `cd packages/engine && pnpm test:live` yourself.
-- Tests that need collaboration members use fake CLIs (the fake Claude Code, Codex and OpenCode in `packages/engine/test/collaboration/fixture/`) or a fake adapter, never a real CLI.
+- Tests that need model replies use a local fake model (such as `packages/sdk/js/test/fixture/model.ts`, which replies from a script), never a real provider.
+- Tests that need collaboration members use fake CLIs or a fake adapter, never a real CLI.
 - End-to-end tests start real processes and are slow: the engine driven through the SDK uses `cd apps/cli && pnpm test:e2e`; for the desktop app run `pnpm build` in both `apps/desktop/main` and `apps/desktop/renderer`, then `pnpm test:e2e` in `apps/desktop/main`.
-- Tests turn the sandbox off by default (the test preload sets `MERAKCODE_SANDBOX_MODE=off`); otherwise they would stop at an approval on a Windows machine without sandbox setup. Turn it on explicitly in tests that are about the sandbox.
-- Run `pnpm test:sandbox:verify` at the repository root for local real-sandbox acceptance. It reuses the initialized account and fails with a reason when unavailable. It never starts setup or elevation. On Windows, run `pnpm dev sandbox setup` once before the first verification. Ordinary unit and desktop end-to-end tests prohibit sandbox setup and reset. Regular Windows tests use at most two worker processes. CI initializes its dedicated sandbox once and requires conformance to run.
+- Windows runs at most two test files at a time.
 - When fixing a bug, write a failing test that reproduces it before changing the code.
 
 ## Conventions
 
 - TypeScript and ESM, formatted with Prettier (no semicolons, 120 columns).
-- Validate inputs with Zod; tools implement the `Tool.Info` interface.
+- Validate inputs with Zod.
+- The engine's sources run on plain Node, with no loader such as tsx. So use only erasable TypeScript (the tsconfig enables `erasableSyntaxOnly`: no `namespace`, `enum` or constructor parameter properties), end relative imports in `.ts`, and import types with `import type`. Prompts and tool descriptions live in `.ts` files. `packages/engine/test/node-runtime.test.ts` loads every source file on Node without a loader.
 - Prefer early returns over `else`, `const` over `let`, and short functions.
 - No commented-out or unused code. The compiler reports unused variables and imports (except in `packages/sdk/js`), and knip reports unused files, exports and dependencies (`pnpm check:unused`); nothing checks for commented-out code, so watch for it yourself.
 - Code comments, log messages and test titles are in English. Comments only say what the code can't: constraints, reasons, gotchas. Don't narrate what the code does.
 - `pnpm check:comments` checks comments in JS and TS files, the messages of log calls such as `log.info(...)`, the titles of `describe`, `test` and `it`, and `#` comments in `.sh`, `.ps1` and `.yml` files; it skips `locales/` and `i18n/` folders, generated `gen/` folders and `.d.ts` files. When a line really needs Chinese, put `// i18n-allow` on the line before it.
-- Text shown to users needs Chinese and English: the command line uses `apps/cli/src/cli/locales/{zh-CN,en-US}.json` (both files need the same keys, and every key must be used), the desktop app uses `apps/desktop/renderer/src/i18n/{zh,en}.ts`, and the engine uses `Text.pick({ zh, en })`. Prompts and tool descriptions for the model are English only.
+- Text shown to users needs Chinese and English: the command line uses `apps/cli/src/cli/locales/{zh-CN,en-US}.json` (both files need the same keys, and every key must be used), and the desktop app uses `apps/desktop/renderer/src/i18n/{zh,en}.ts`. Prompts and tool descriptions for the model are English only.
 - The desktop UI uses plain CSS with design tokens. No `!important`.
 
 ## Adding dependencies
@@ -362,7 +368,7 @@ Changes to these rules (`script/check-deps.ts`) and to the files that load the e
 ## Error codes and logs
 
 - Every error a user might see needs a code of the form `MRK-xxxx`, registered in `packages/util/src/error-code.ts`. The thousands digit must match its `domain` (the comment at the top of the file has the table), and both `title` (what happened) and `hint` (what the user should do) need Chinese and English; the tests in `packages/util` check this. Then run `pnpm generate:errors` to update `docs/errors.md`. Once a code is released, don't change its meaning; if it is no longer used, leave it in place.
-- Logging: the engine and the command line use `Log.create({ service: "name" })` from `@merakcode/log/logger`; the desktop main process uses `Log.create("name")` from `apps/desktop/main/src/log.ts`; the desktop UI uses `log()` from `apps/desktop/renderer/src/lib/bridge.ts`, which the main process writes to its log; the SDK logs nothing by default and only hands entries to a `logger` the caller passes. None of them use `console.*` for diagnostics. Logs must never contain keys, passwords or conversation content.
+- Logging: the command line uses `Log.create({ service: "name" })` from `@merakcode/log/logger`; the desktop main process uses `Log.create("name")` from `apps/desktop/main/src/log.ts`; the desktop UI uses `log()` from `apps/desktop/renderer/src/lib/bridge.ts`, which the main process writes to its log; the SDK logs nothing by default and only hands entries to a `logger` the caller passes. None of them use `console.*` for diagnostics. Logs must never contain keys, passwords or conversation content.
 - Logs go under `~/.merakcode/logs` (or `logs` under `MERAKCODE_HOME` when that is set): `production/` for releases and `development/` when running from source, then one folder per component, such as `cli/`, `server/` and `desktop/`. Each process writes one NDJSON file, rotated at 20 MB, keeping at most 5 files including the current one. `merak logs` lists them and `merak bug-report` zips them with sensitive data removed.
 
 ## Commit messages
@@ -389,7 +395,7 @@ After `pnpm hooks:install`, git uses the two hooks in `script/hooks`: `pre-commi
 
 ## Pull requests
 
-1. Branch off `main`.
+1. Branch off `main`; for v1.0.0 work, branch off `dev-v1.0.0`.
 2. Run `pnpm check` and the tests of the packages you touched.
 3. Title the pull request in the commit message format above. Say what changed, why, and how you checked it. Add screenshots for UI changes.
 4. For changes users will notice, add a line under `Unreleased` in `CHANGELOG.md` in both English and Chinese: the English line under the English heading (such as `### Fixed`) and the Chinese line under its Chinese counterpart (such as `### 修复`; `新增` for `Added`, and so on).

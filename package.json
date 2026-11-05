@@ -11,16 +11,13 @@
   },
   "scripts": {
     "dev": "pnpm --dir apps/cli dev",
-    "typecheck": "turbo typecheck",
+    "typecheck": "turbo typecheck --filter=!merakcode",
     "generate:sdk": "node --import ./script/node/register.mjs packages/sdk/js/script/generate.ts",
     "check:sdk": "node --import ./script/node/register.mjs packages/sdk/js/script/generate.ts --check",
-    "generate:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json",
-    "check:schema": "node --import ./script/node/register.mjs packages/engine/script/schema.ts schema/config.json --check",
     "sync:project": "node --import ./script/node/register.mjs script/sync-project.ts",
     "hooks:install": "node --import ./script/node/register.mjs script/install-hooks.ts",
     "test": "echo 'do not run tests from root' && exit 1",
     "test:script": "vitest run --config script/vitest.config.ts",
-    "test:sandbox:verify": "node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts verify",
     "format": "prettier --ignore-unknown --write .",
     "format:check": "prettier --ignore-unknown --check .",
     "check:deps": "node --import ./script/node/register.mjs script/check-deps.ts",
@@ -39,7 +36,7 @@
     "check:comments": "node --import ./script/node/register.mjs script/check-comments.ts",
     "release:version": "node --import ./script/node/register.mjs script/release/version.ts",
     "check:versions": "node --import ./script/node/register.mjs script/release/version.ts --check",
-    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:schema && pnpm check:errors && pnpm check:adapter-library && pnpm check:sdk && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
+    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:errors && pnpm typecheck && pnpm check:deps && pnpm check:css && pnpm check:api && pnpm check:sdk-reference && pnpm check:sdk-docs && pnpm check:docs && pnpm check:unused"
   },
   "devDependencies": {
     "@merakcode/util": "workspace:*",

@@ -7,11 +7,8 @@ packages:
 # Shared dependency versions; packages refer to them as catalog:
 catalog:
   "@agentclientprotocol/sdk": "1.9.0"
-  "@ai-sdk/openai": "4.0.96"
-  "@ai-sdk/openai-compatible": "3.0.71"
   "@hono/node-server": "2.1.5"
   "@kobalte/core": "0.13.14"
-  "@lydell/node-pty": "1.1.0"
   "@modelcontextprotocol/sdk": "1.32.1"
   "@playwright/test": "1.64.1"
   "@solidjs/router": "1.0.0"
@@ -19,15 +16,11 @@ catalog:
   "@types/cross-spawn": "6.0.6"
   "@types/node": "26.6.5"
   "@types/semver": "7.8.0"
-  ai: "7.0.143"
   cross-spawn: "7.0.6"
   diff: "9.0.0"
   esbuild: "0.28.2"
-  fuzzysort: "4.0.2"
   gray-matter: "4.0.3"
   hono: "4.13.13"
-  hono-openapi: "1.5.0"
-  ignore: "7.0.12"
   jsonc-parser: "3.3.1"
   marked: "18.1.1"
   open: "11.0.4"
@@ -35,7 +28,6 @@ catalog:
   shiki: "4.5.0"
   solid-js: "1.9.12"
   typescript: "7.0.2"
-  ulid: "3.0.2"
   undici: "8.12.2"
   vite: "8.3.4"
   vite-plugin-solid: "2.11.14"
@@ -48,9 +40,6 @@ allowBuilds:
   electron: true
   esbuild: true
   tree-sitter: true
-  tree-sitter-bash: true
-  web-tree-sitter: true
-  "@parcel/watcher": false
   "@tailwindcss/oxide": false
   electron-winstaller: false
   msgpackr-extract: false
@@ -63,7 +52,6 @@ overrides:
 
 patchedDependencies:
   "ghostty-web@0.4.0": patches/ghostty-web@0.4.0.patch
-  "@lydell/node-pty@1.1.0": patches/@lydell%2Fnode-pty@1.1.0.patch
 
 # New dependencies get exact versions, no ^
 savePrefix: ""
