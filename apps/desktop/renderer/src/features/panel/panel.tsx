@@ -6,19 +6,7 @@ import TerminalIcon from "lucide-solid/icons/square-terminal"
 import Plus from "lucide-solid/icons/plus"
 import Maximize2 from "lucide-solid/icons/maximize-2"
 import X from "lucide-solid/icons/x"
-import {
-  createEffect,
-  createResource,
-  createSignal,
-  For,
-  Match,
-  on,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-  untrack,
-} from "solid-js"
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, untrack } from "solid-js"
 
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
@@ -123,6 +111,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   const controller = panels()!
   let element!: HTMLElement
   let strip!: HTMLDivElement
+  const [stripElement, setStripElement] = createSignal<HTMLDivElement>()
   const active = () => panels()?.state.tabs.find((tab) => tab.id === panels()?.state.selected)
   createEffect(
     on(
@@ -203,7 +192,12 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
     tab.kind === "file" &&
     (buffersFor(directoryOf(tab)).tabs.find((file) => file.path === tab.path)?.dirty ?? tab.view?.dirty === true)
   const hasDraft = (tab: PanelTab) => {
-    if (tab.kind === "git") return typeof tab.view?.commit === "string" && !!tab.view.commit.trim()
+    if (tab.kind === "git")
+      return (
+        (typeof tab.view?.commit === "string" && !!tab.view.commit.trim()) ||
+        (Array.isArray(tab.view?.commitAlternatives) &&
+          tab.view.commitAlternatives.some((value) => typeof value === "string" && !!value.trim()))
+      )
     if (tab.kind !== "review") return false
     const value = tab.id === active()?.id ? { comments: review.comments, drafts: draftSnapshot() } : tab.view
     return (
@@ -234,9 +228,9 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
           owner.view(tab.id).dirty === true ||
           (lastFileReference && tab.path && !!(await readDraft(fileDirectory, tab.path))))
       if (((fileDirty && lastFileReference) || hasDraft(tab)) && !discard) return void setClosing(tab)
-      if (tab.kind === "terminal") await stopTerminal(tab, directory, sessionID)
+      if (tab.kind === "terminal") await stopTerminal(tab, directory)
       if (tab.kind === "browser" && bridge && !(await bridge.browserClose(tab.id))) return
-      if (tab.kind === "browser") releaseBrowserState(tab.id)
+      if (tab.kind === "browser") await releaseBrowserState(tab.id)
       if (tab.kind === "file" && tab.path) {
         const remaining = await releaseFile(fileDirectory, tab.path, ownerID)
         if (!remaining.length) await buffersFor(fileDirectory).close(tab.path)
@@ -274,9 +268,11 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
     window.addEventListener("pointermove", move)
     window.addEventListener("pointerup", up, { once: true })
   }
-  onMount(() => {
-    const observer = new ResizeObserver(() => setOverflow(strip.scrollWidth > strip.clientWidth + 1))
-    observer.observe(strip)
+  createEffect(() => {
+    const current = stripElement()
+    if (!current) return
+    const observer = new ResizeObserver(() => setOverflow(current.scrollWidth > current.clientWidth + 1))
+    observer.observe(current)
     onCleanup(() => observer.disconnect())
   })
   createEffect(() => {
@@ -334,7 +330,16 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
       </Show>
       <Show when={!ui.maximized}>
         <div class="panel-tabs">
-          <div ref={strip} role="tablist" aria-label={t("panel.tabs")} class="row" onKeyDown={key}>
+          <div
+            ref={(node) => {
+              strip = node
+              setStripElement(node)
+            }}
+            role="tablist"
+            aria-label={t("panel.tabs")}
+            class="row"
+            onKeyDown={key}
+          >
             <For each={panels()?.state.tabs ?? []}>
               {(tab) => {
                 const Icon = icons[tab.kind]
@@ -455,7 +460,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
             fallback={
               <div class="panel-chooser">
                 <p>{t("panel.choose")}</p>
-                <For each={["file", "review", "plan", "git", "terminal", "browser"] as const}>
+                <For each={controller.available()}>
                   {(kind) => {
                     const Icon = icons[kind]
                     return (
@@ -515,7 +520,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
                   setWorking(true)
                   try {
                     const buffer = buffersFor(directoryOf(tab))
-                    if (tab.path) await buffer.open(tab.path)
+                    if (tab.path) await buffer.open(tab.path, tab.planSessionID)
                     await buffer.save(false, tab.path)
                     setWorking(false)
                     if (!dirty(tab)) await remove(tab, false, true)

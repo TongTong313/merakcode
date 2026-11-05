@@ -96,6 +96,7 @@ export function CloseEditor() {
           (tab) =>
             tab.view?.dirty ||
             (typeof tab.view?.commit === "string" && tab.view.commit.trim()) ||
+            (Array.isArray(tab.view?.commitAlternatives) && tab.view.commitAlternatives.length > 0) ||
             (tab.kind === "review" && JSON.stringify(tab.view?.drafts ?? {}) !== "{}"),
         )
         if (unsaved) setRequested(true)

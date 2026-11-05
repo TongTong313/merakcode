@@ -30,7 +30,7 @@ test("review drafts in another tab keep branch switching blocked until explicitl
     .click()
   await kit.panel().getByRole("textbox", { name: "评论", exact: true }).fill("keep feedback in tab A")
   await kit.panel().getByRole("button", { name: "添加", exact: true }).click()
-  await kit.openPanel("review", true)
+  await kit.openPanel("browser", true)
   await expect(kit.panel().getByText(/1 条评论待发送/)).toHaveCount(0)
   await kit.openPanel("git")
   await kit

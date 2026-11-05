@@ -130,6 +130,8 @@ export interface DesktopBridge {
 
   /** Settings and other persisted data live in the app data directory, so they survive backend port changes */
   storageGet(bucket: string, key: string): Promise<string | null>
+  storageEntries(bucket: string): Promise<[string, string][]>
+  storageBuckets(): Promise<string[]>
   storageSet(bucket: string, key: string, value: string): Promise<void>
   storageRemove(bucket: string, key: string): Promise<void>
   log(

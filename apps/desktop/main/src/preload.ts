@@ -103,6 +103,8 @@ const bridge: DesktopBridge = {
   },
 
   storageGet: call("storageGet"),
+  storageEntries: call("storageEntries"),
+  storageBuckets: call("storageBuckets"),
   storageSet: call("storageSet"),
   storageRemove: call("storageRemove"),
   log: call("log"),

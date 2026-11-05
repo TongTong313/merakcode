@@ -1820,13 +1820,14 @@ export class File_ extends HeyApiClient {
   /**
    * Write file
    *
-   * Write content to a file. Supports optional checksum for optimistic locking.
+   * Write content to a file. Supports optional checksum and expected checkout for optimistic locking.
    */
   public write<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       checksum?: string
       content: string
+      expectedCheckout?: string | null
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1839,6 +1840,7 @@ export class File_ extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "checksum" },
             { in: "body", key: "content" },
+            { in: "body", key: "expectedCheckout" },
             { in: "body", key: "path" },
           ],
         },

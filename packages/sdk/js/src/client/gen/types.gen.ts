@@ -6071,6 +6071,7 @@ export type FileWriteData = {
   body: {
     checksum?: string
     content: string
+    expectedCheckout?: string | null
     path: string
   }
   path?: never
@@ -6090,6 +6091,7 @@ export type FileWriteErrors = {
    */
   409:
     | CheckoutBlockedError
+    | CheckoutStaleError
     | {
         currentChecksum: string
         error: string
@@ -8239,6 +8241,10 @@ export type PtyUpdateErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
 }
 
 export type PtyUpdateError = PtyUpdateErrors[keyof PtyUpdateErrors]

@@ -6,6 +6,26 @@ import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Process } from "@merakcode/util/process"
 
+test("an exited terminal reports not found through SDK updates", async () => {
+  await using root = await tmpdir({ git: true })
+  const server = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+  const client = createMerakCodeClient({ baseUrl: server.url.href, directory: root.path })
+  try {
+    const created = await client.pty.create({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => process.exit(0), 200)"],
+    })
+    expect(created.error).toBeUndefined()
+    const ptyID = created.data!.id
+    await expect.poll(async () => (await client.pty.get({ ptyID })).response?.status, { timeout: 10_000 }).toBe(404)
+    const update = await client.pty.update({ ptyID })
+    expect(update.response?.status).toBe(404)
+    expect(update.error).toBeDefined()
+  } finally {
+    await server.stop(true)
+  }
+})
+
 test("removing a terminal waits for its detached descendants to stop through the SDK", async () => {
   await using root = await tmpdir({ git: true })
   const script = path.join(root.path, "family.mjs")

@@ -31,11 +31,22 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
   let disposed = false
   const owner = panels()!
   const [error, setError] = createSignal<string>()
+  const ended = () => !!props.tab.view?.ended
+  const detach = () => {
+    socket?.close()
+    socket = undefined
+    term?.dispose()
+    term = undefined
+    fit = undefined
+  }
+  createEffect(() => {
+    if (ended()) detach()
+  })
   /** Keys typed before the terminal is ready (typing right after opening it) */
   const early: string[] = []
 
   const earlyKey = (event: KeyboardEvent) => {
-    if (term || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
+    if (ended() || term || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
     if (event.key.length === 1) early.push(event.key)
     else if (event.key === "Enter") early.push("\r")
     else if (event.key === "Backspace") early.pop()
@@ -52,13 +63,15 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
     })
   })
 
-  onMount(() => {
+  const start = () => {
+    setError(undefined)
     void (async () => {
-      const [{ mod, wasm }, { ptyID: id, directory }] = await Promise.all([
+      const [{ mod, wasm }, address] = await Promise.all([
         load(),
         terminalFor(props.tab, props.directory, owner, props.sessionID),
       ])
-      if (disposed) return
+      if (disposed || ended() || !address) return
+      const { ptyID: id, directory } = address
       const c = client(directory)
 
       const instance = new mod.Terminal({
@@ -101,19 +114,25 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
     })().catch((error: unknown) => {
       if (!disposed) setError(String(error))
     })
-  })
+  }
+  onMount(start)
 
   onCleanup(() => {
     disposed = true
-    socket?.close()
-    term?.dispose()
+    detach()
   })
 
   return (
     <section class="terminal-panel" role="region" aria-label={t("terminal.label")}>
-      <Show when={error()}>
+      <Show when={ended()}>
+        <p role="status">{t("panel.terminalEnded")}</p>
+      </Show>
+      <Show when={error() && !ended()}>
         <p role="alert">
-          {t("panel.terminalEnded")} {error()}
+          {error()}
+          <button class="button secondary" onClick={start}>
+            {t("panel.retry")}
+          </button>
         </p>
       </Show>
       <div

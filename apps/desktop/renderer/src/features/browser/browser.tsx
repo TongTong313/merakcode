@@ -10,7 +10,6 @@ import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
 import { overlays } from "../../ui/overlay"
 import { toast } from "../../ui/toast"
-import { panels } from "../panel/workspace"
 import type { PanelTab } from "../panel/state"
 import { browserState } from "./state"
 import { send } from "../conversation/send"
@@ -29,14 +28,10 @@ function normalize(input: string) {
  * resizes and hides when the tab is switched away or an overlay opens.
  */
 export function Browser(props: { sessionID?: string; directory: string; tab: PanelTab }) {
-  const owner = panels()
   const { page, logs, setLogs } = browserState(props.tab)
   let disposed = false
   onCleanup(() => {
     disposed = true
-  })
-  createEffect(() => {
-    void owner?.patch(props.tab.id, { url: page.url, title: page.title })
   })
   let viewport!: HTMLDivElement
   const [address, setAddress] = createSignal(page.url)

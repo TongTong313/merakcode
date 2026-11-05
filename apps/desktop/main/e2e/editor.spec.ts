@@ -89,6 +89,7 @@ test("closing an unsaved file can be cancelled and saving closes the unified fil
   await expect(editor).toContainText("saved on close")
   await kit.panel().getByRole("button", { name: "关闭 notes.txt", exact: true }).click()
   await dialog.getByRole("button", { name: "保存并关闭", exact: true }).click()
+  await expect(dialog).toBeHidden()
   await expect(kit.panel().getByRole("tab")).toHaveCount(0)
   expect(await readFile(path.join(kit.project, "notes.txt"), "utf8")).toContain("saved on close")
 })

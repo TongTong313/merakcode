@@ -1,6 +1,8 @@
 import { createStore } from "solid-js/store"
 import { storage } from "../lib/bridge"
 import { openPanel, panels, togglePanels } from "../features/panel/workspace"
+import { t } from "../i18n"
+import { toast } from "../ui/toast"
 
 export type SettingsSection =
   | "general"
@@ -59,7 +61,9 @@ export function saveLayout() {
 /** Opens a file in the side panel's code tab (from the review or a file-edit card) */
 export function openInCode(path: string) {
   setUi({ panel: true, maximized: false })
-  void openPanel({ kind: "file", path: path.replace(/\\/g, "/") })
+  void openPanel({ kind: "file", path: path.replace(/\\/g, "/") }).catch((error: unknown) =>
+    toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+  )
   saveLayout()
 }
 
@@ -71,6 +75,8 @@ export function togglePanel() {
 /** Opens the one editable session plan in the existing code editor. */
 export function openPlanInCode(sessionID: string) {
   setUi({ panel: true, maximized: false })
-  void openPanel({ kind: "file", path: `Plan-${sessionID}.md`, planSessionID: sessionID })
+  void openPanel({ kind: "file", path: `Plan-${sessionID}.md`, planSessionID: sessionID }).catch((error: unknown) =>
+    toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+  )
   saveLayout()
 }

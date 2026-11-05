@@ -238,6 +238,7 @@ export const en: Record<keyof typeof zh, string> = {
   "panel.allTabs": "All tabs",
   "panel.choose": "Choose a panel",
   "panel.openFile": "Open file",
+  "panel.recoveredCommits": "Choose a recovered commit message",
   "panel.closeTab": "Close {name}",
   "panel.saveClose": "Save and close",
   "panel.stopping": "Stopping terminal…",
@@ -829,6 +830,8 @@ export const en: Record<keyof typeof zh, string> = {
   "code.missing": "This file was deleted and is now read-only.",
   "code.closeDirtyTitle": "Discard unsaved edits in this file?",
   "code.closeDirtyDetail": "Unsaved changes in {path} will be discarded.",
+  "code.saveCurrentBranch": "Save to the current branch",
+  "code.recoveredDrafts": "Recover another file draft",
   "code.branchConflict": "The checkout changed. Unsaved edits are preserved; review the disk version before saving.",
   "review.discardDraft": "Clear comment draft",
   "review.draftStale":

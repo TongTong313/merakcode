@@ -98,7 +98,8 @@ for (const changeScope of [false, true]) {
       if (changeScope) await full.getByRole("radio", { name: "整个对话", exact: true }).click()
       else {
         await full.getByRole("button", { name: "返回对话" }).click()
-        await kit.openPanel("review", true)
+        await kit.openPanel("browser", true)
+        await kit.panel().getByRole("tab", { name: "审阅", exact: true }).click()
         await kit.panel().getByRole("button", { name: "铺满" }).click()
       }
       full = kit.page.getByRole("main", { name: "审阅", exact: true })
@@ -164,7 +165,7 @@ for (const hiding of [false, true]) {
       await kit.panel().getByRole("button", { name: "发给智能体" }).click()
       await entered.promise
       if (hiding) await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
-      else await kit.openPanel("review", true)
+      else await kit.openPanel("browser", true)
       release.resolve()
       await expect(kit.text("收到评论：带文件")).toBeVisible()
       if (hiding) await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
@@ -199,7 +200,7 @@ test("side review places the file list beside a full-height review column", asyn
   await kit.page.screenshot({ path: test.info().outputPath("review-layout.png") })
 })
 
-test("two review tabs restore their own viewed and expanded state", async ({ kit }) => {
+test("message navigation reuses the review tab and restores viewed and expanded state", async ({ kit }) => {
   current = kit
   await prepare(kit)
   await kit.send("edit math")
@@ -208,14 +209,14 @@ test("two review tabs restore their own viewed and expanded state", async ({ kit
   const first = kit.panel().getByRole("tab", { name: "审阅", exact: true })
   const math = kit.panel().getByRole("region", { name: "src/math.js", exact: true })
   await math.getByRole("checkbox", { name: "已看", exact: true }).check()
-  await kit.openPanel("review", true)
-  const second = kit.panel().getByRole("tab", { name: "审阅 · 2", exact: true })
-  await expect(math.getByRole("checkbox", { name: "已看", exact: true })).not.toBeChecked()
-  await first.click()
+  await kit.openPanel("browser", true)
+  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+  await expect(kit.panel().getByRole("tab", { name: /^审阅/ })).toHaveCount(1)
+  await expect(first).toHaveAttribute("aria-selected", "true")
   await expect(math.getByRole("checkbox", { name: "已看", exact: true })).toBeChecked()
   await kit.page.reload()
   await expect(math.getByRole("checkbox", { name: "已看", exact: true })).toBeChecked()
-  await second.click()
+  await math.getByRole("checkbox", { name: "已看", exact: true }).uncheck()
   await expect(math.getByRole("checkbox", { name: "已看", exact: true })).not.toBeChecked()
   await expect(math.getByRole("group")).not.toHaveCount(0)
 })

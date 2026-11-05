@@ -1,7 +1,7 @@
 import ArrowUpFromLine from "lucide-solid/icons/arrow-up-from-line"
 import GitCommitHorizontal from "lucide-solid/icons/git-commit-horizontal"
 import Sparkles from "lucide-solid/icons/sparkles"
-import { createSignal, onCleanup, type JSX } from "solid-js"
+import { createSignal, onCleanup, Show, For, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { call, client } from "../../state/client"
 import { branchOf, refreshVcs, state } from "../../state/store"
@@ -31,6 +31,10 @@ export function Commit(props: {
   const owner = panels()
   const stored = owner?.view(props.instanceID ?? "").commit
   const [message, updateMessage] = createSignal(typeof stored === "string" ? stored : "")
+  const alternatives = () => {
+    const value = owner?.view(props.instanceID ?? "").commitAlternatives
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && !!item.trim()) : []
+  }
   let disposed = false
   let localRevision = 0
   onCleanup(() => {
@@ -138,6 +142,28 @@ export function Commit(props: {
         {" · "}
         {t("review.untrackedCount", { count: info()?.untracked ?? 0 })}
       </p>
+      <Show when={alternatives().length}>
+        <select
+          class="input"
+          aria-label={t("panel.recoveredCommits")}
+          value=""
+          onChange={(event) => {
+            const selected = alternatives()[Number(event.currentTarget.value)]
+            if (selected === undefined || !props.instanceID) return
+            const remaining = [...new Set([...alternatives().filter((value) => value !== selected), message()])].filter(
+              (value) => value.trim(),
+            )
+            void owner?.patchView(props.instanceID, { commitAlternatives: remaining })
+            setMessage(selected)
+            event.currentTarget.value = ""
+          }}
+        >
+          <option value="" disabled>
+            {t("panel.recoveredCommits")}
+          </option>
+          <For each={alternatives()}>{(value, index) => <option value={index()}>{value}</option>}</For>
+        </select>
+      </Show>
       <div class="commit-input">
         <textarea
           class="input"

@@ -1,6 +1,48 @@
 import { expect, test, vi } from "vitest"
-import { flushDrafts, readDraft, writeDraft } from "./draft"
+import { flushDrafts, readDraft, restoreDraftProtection, writeDraft } from "./draft"
+import { unsavedReason } from "../../state/git"
 import { persistent } from "../../lib/persistence"
+import { encodeDir } from "../../lib/route"
+
+test("canonical directory spelling recovers a legacy draft before removing its old copy", async () => {
+  const bucket = `draft-${encodeDir("D:/legacy-draft-tree")}`
+  await persistent.set(
+    bucket,
+    "notes.txt",
+    JSON.stringify({ version: 1, content: "keep alias draft", saved: "original" }),
+  )
+  expect(await readDraft("D:\\legacy-draft-tree", "notes.txt")).toMatchObject({ content: "keep alias draft" })
+  await writeDraft("D:\\legacy-draft-tree", "notes.txt")
+  expect(await persistent.entries(bucket)).toEqual([])
+})
+
+test("draft guards remain until the last draft is removed and never block another worktree", async () => {
+  await writeDraft("/guard-tree", "first.txt", { content: "one", saved: "" })
+  await writeDraft("/guard-tree", "second.txt", { content: "two", saved: "" })
+  await restoreDraftProtection("/guard-tree")
+  expect(unsavedReason("/guard-tree")).toBeTruthy()
+  await restoreDraftProtection("/other-guard-tree")
+  expect(unsavedReason("/other-guard-tree")).toBeUndefined()
+  await writeDraft("/guard-tree", "first.txt")
+  await restoreDraftProtection("/guard-tree")
+  expect(unsavedReason("/guard-tree")).toBeTruthy()
+  await writeDraft("/guard-tree", "second.txt")
+  await restoreDraftProtection("/guard-tree")
+  expect(unsavedReason("/guard-tree")).toBeUndefined()
+})
+
+test("path aliases restore all distinct legacy drafts without merging worktrees", async () => {
+  const bucket = `draft-${encodeDir("/alias-drafts")}`
+  await persistent.set(bucket, "src/../notes.txt", JSON.stringify({ version: 1, content: "first", saved: "original" }))
+  await persistent.set(bucket, "notes.txt", JSON.stringify({ version: 1, content: "second", saved: "original" }))
+  const draft = await readDraft("/alias-drafts", "./notes.txt")
+  expect(draft?.content).toBe("second")
+  expect(draft).toMatchObject({ alternatives: [{ content: "first" }] })
+  expect(await readDraft("/other-tree", "notes.txt")).toBeUndefined()
+  expect(await readDraft("/alias-drafts", "/alias-drafts/notes.txt")).toEqual(draft)
+  await writeDraft("/alias-drafts", "src/../notes.txt")
+  expect(await persistent.entries(bucket)).toEqual([])
+})
 
 test("an edit arriving as storage acknowledges the preceding edit remains durable", async () => {
   const gate = Promise.withResolvers<void>()

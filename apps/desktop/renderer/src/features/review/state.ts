@@ -118,8 +118,8 @@ export function openReview(view: { scope?: ReviewScope; messageID?: string; file
       kind: "review",
       view: {
         scope: view.scope ?? "turn",
-        ...(view.messageID ? { messageID: view.messageID } : {}),
-        ...(view.file ? { focus: view.file } : {}),
+        messageID: view.messageID,
+        focus: view.file,
       },
     },
     true,

@@ -24,7 +24,7 @@ test.beforeEach(({ kit }) => {
   current = kit
 })
 
-test("a delayed generated message cannot replace a draft edited after switching Git tabs", async ({ kit }) => {
+test("a delayed generated message cannot replace a draft edited after switching away from Git", async ({ kit }) => {
   await writeFile(path.join(kit.project, "manual.txt"), "staged\n")
   kit.git("add", "manual.txt")
   await kit.openPanel("git", true)
@@ -41,8 +41,8 @@ test("a delayed generated message cannot replace a draft edited after switching 
   try {
     await kit.panel().getByRole("button", { name: "AI 写", exact: true }).click()
     await entered.promise
-    await kit.openPanel("git", true)
-    const second = kit.panel().getByRole("tab", { name: "Git 管理 · 2", exact: true })
+    await kit.openPanel("browser", true)
+    const second = kit.panel().getByRole("tab", { name: "浏览器", exact: true })
     await first.click()
     await kit.panel().getByRole("textbox", { name: "提交信息" }).fill("latest handwritten message")
     release.resolve()

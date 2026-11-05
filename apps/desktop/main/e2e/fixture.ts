@@ -67,7 +67,8 @@ export type Kit = {
   settings: (section?: RegExp) => Promise<void>
   /** Right-hand side panel */
   panel: () => Locator
-  openPanel: (kind: "file" | "review" | "git" | "browser" | "terminal", fresh?: boolean) => Promise<void>
+  openPanel: (kind: "file" | "review" | "plan" | "git" | "browser" | "terminal", fresh?: boolean) => Promise<void>
+  restart: (crash?: boolean) => Promise<void>
   /** Runs git in the project directory */
   git: (...args: string[]) => string
 }
@@ -252,26 +253,28 @@ export const test = base.extend<{
           entry[0] !== "ELECTRON_RUN_AS_NODE" && !/_API_KEY$/i.test(entry[0]) && entry[1] !== undefined,
       ),
     )
-    const app = await _electron.launch({
-      executablePath: electron,
-      args: [
-        main,
-        ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
-        `--user-data-dir=${path.join(root, "electron")}`,
-        `merakcode://open-project?directory=${encodeURIComponent(project)}`,
-      ],
-      env: {
-        ...env,
-        MERAKCODE_HOME: root,
-        MERAKCODE_DISABLE_AUTOUPDATE: "1",
-        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
-        MERAKCODE_SANDBOX_MODE: "off",
-        MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
-        MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
-      },
-      timeout: 60_000,
-    })
-    const page = await app.firstWindow()
+    const launch = () =>
+      _electron.launch({
+        executablePath: electron,
+        args: [
+          main,
+          ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
+          `--user-data-dir=${path.join(root, "electron")}`,
+          `merakcode://open-project?directory=${encodeURIComponent(project)}`,
+        ],
+        env: {
+          ...env,
+          MERAKCODE_HOME: root,
+          MERAKCODE_DISABLE_AUTOUPDATE: "1",
+          MERAKCODE_DISABLE_CATALOG_FETCH: "1",
+          MERAKCODE_SANDBOX_MODE: "off",
+          MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
+          MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
+        },
+        timeout: 60_000,
+      })
+    let app = await launch()
+    let page = await app.firstWindow()
     const output: string[] = []
     page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
     page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
@@ -325,7 +328,14 @@ export const test = base.extend<{
     const panel = () => page.getByRole("complementary", { name: /^(右侧面板|Side panel)$/ })
     const openPanel: Kit["openPanel"] = async (kind, fresh = false) => {
       if (!(await panel().isVisible())) await page.getByRole("button", { name: "右侧面板", exact: true }).click()
-      const names = { file: "打开文件", review: "审阅", git: "Git 管理", browser: "浏览器", terminal: "终端" }
+      const names = {
+        file: "打开文件",
+        review: "审阅",
+        plan: "计划",
+        git: "Git 管理",
+        browser: "浏览器",
+        terminal: "终端",
+      }
       const known = panel()
         .getByRole("tab", { name: kind === "file" ? /^notes\.txt/ : new RegExp(`^${names[kind]}`) })
         .last()
@@ -337,12 +347,43 @@ export const test = base.extend<{
       await panel().getByRole("button", { name: names[kind], exact: true }).click()
     }
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
-    const tracing = app.context().tracing
+    let tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
-    const appProcess = app.process()
+    let appProcess = app.process()
     await use({
-      app,
-      page,
+      get app() {
+        return app
+      },
+      get page() {
+        return page
+      },
+      restart: async (crash = false) => {
+        await tracing.stop()
+        if (crash) {
+          const exited = new Promise<void>((resolve) => appProcess.once("exit", () => resolve()))
+          await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
+          await exited
+        } else {
+          const closing = app.close()
+          const dialog = page.getByRole("dialog", { name: /^(关闭窗口？|Close window\?)$/ })
+          if (
+            await dialog.waitFor({ timeout: 3000 }).then(
+              () => true,
+              () => false,
+            )
+          )
+            await dialog.getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ }).click()
+          await closing
+        }
+        app = await launch()
+        appProcess = app.process()
+        page = await app.firstWindow()
+        page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
+        page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
+        tracing = app.context().tracing
+        await tracing.start({ screenshots: true, snapshots: true, sources: true })
+        await input().waitFor({ timeout: 120_000 })
+      },
       project,
       root,
       requests: fake.count,

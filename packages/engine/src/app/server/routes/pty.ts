@@ -117,13 +117,14 @@ export const PtyRoutes = lazy(() =>
               },
             },
           },
-          ...errors(400),
+          ...errors(400, 404),
         },
       }),
       validator("param", z.object({ ptyID: z.string() })),
       validator("json", Pty.UpdateInput),
       async (c) => {
         const info = await Pty.update(c.req.valid("param").ptyID, c.req.valid("json"))
+        if (!info) throw new Storage.NotFoundError({ message: "Session not found" })
         return c.json(info)
       },
     )

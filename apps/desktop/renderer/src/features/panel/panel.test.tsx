@@ -4,7 +4,7 @@ import { setLocale, t } from "../../i18n"
 import { openPanel, selectPanels } from "./workspace"
 import { Panel } from "./panel"
 
-test("the empty editor offers panel choices and creates distinct tabs", async () => {
+test("the chooser hides each open singleton and restores it after closing", async () => {
   setLocale("en")
   window.requestIdleCallback = (callback) =>
     window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 0)
@@ -18,11 +18,21 @@ test("the empty editor offers panel choices and creates distinct tabs", async ()
     expect(host.querySelectorAll('[role="tab"]')).toHaveLength(0)
     const add = host.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!
     expect(add).not.toBeNull()
-    host.querySelector<HTMLButtonElement>('[data-panel-kind="git"]')!.click()
-    await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(1))
-    add.click()
-    host.querySelector<HTMLButtonElement>('[data-panel-kind="git"]')!.click()
-    await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(2))
+    for (const kind of ["git", "review", "plan"]) {
+      host.querySelector<HTMLButtonElement>(`[data-panel-kind="${kind}"]`)!.click()
+      await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(1))
+      add.click()
+      expect(host.querySelector(`[data-panel-kind="${kind}"]`)).toBeNull()
+      for (const other of ["git", "review", "plan"].filter((value) => value !== kind))
+        expect(host.querySelector(`[data-panel-kind="${other}"]`)).not.toBeNull()
+      host
+        .querySelector<HTMLButtonElement>(
+          `[aria-label="${t("panel.closeTab", { name: t(`panel.${kind}` as "panel.git") })}"]`,
+        )!
+        .click()
+      await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(0))
+      expect(host.querySelector(`[data-panel-kind="${kind}"]`)).not.toBeNull()
+    }
   } finally {
     dispose()
     host.remove()

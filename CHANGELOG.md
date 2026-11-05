@@ -18,6 +18,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Keep one Review, Git and Plan tab per conversation. Preserve legacy comments, commit messages and file drafts during tab migration. Recover interrupted first-message transfers into their original conversation after reload or restart. Restore file and review draft protection for sleeping conversations, verify checkout identity before file saves, persist background browser navigation, restore tab overflow after fullscreen review, and release naturally exited terminals.
+
 - Reject runtime-supplied command arguments, package-manager side effects, indirect file reads and system changes in draft-only tasks. Apply sensitive-file approval to input redirects, file aliases and option values while preserving ordinary literal file reads.
 
 - Reject shell argument expansion and shell-state changes in draft-only tasks while preserving quoted literal arguments.
@@ -69,6 +71,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 每个对话只保留一个审阅、Git 和计划标签。旧标签迁移保留评论、提交文案和文件草稿。首次发送迁移中断后，重载或重启仍恢复到原目标对话。未打开的对话也恢复文件和审阅草稿的分支保护。文件保存前校验工作目录。后台浏览器保存最新地址。审阅铺满返回后恢复标签收纳。终端自然退出后停止心跳。
 
 - 只出稿任务拒绝动态命令参数、包管理器副作用、间接文件读取和系统修改。输入重定向、文件别名和选项值统一检查敏感文件审批。普通文件读取继续可用。
 

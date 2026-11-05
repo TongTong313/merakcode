@@ -279,12 +279,20 @@ export namespace Pty {
 
   export async function update(id: string, input: UpdateInput) {
     const session = state().get(id)
-    if (!session || session.closing) return
+    if (!session) return
+    if (session.closing) {
+      await session.closing
+      return
+    }
     if (input.owner) {
       using _owner = input.owner.sessionID ? await Lock.read(`terminal-owner:${input.owner.sessionID}`) : undefined
       using _tab = await Lock.write(`terminal-tab:${input.owner.tabID}`)
       if (input.owner.sessionID) await Session.get(input.owner.sessionID)
-      if (state().get(id) !== session || session.closing) return
+      if (state().get(id) !== session) return
+      if (session.closing) {
+        await session.closing
+        return
+      }
       if (closedTabs().has(input.owner.tabID)) {
         await remove(id)
         throw new ClosedError({ message: await Text.pick({ zh: "终端标签已关闭", en: "The terminal tab is closed" }) })

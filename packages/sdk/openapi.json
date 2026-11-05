@@ -8670,7 +8670,7 @@
         ]
       },
       "put": {
-        "description": "Write content to a file. Supports optional checksum for optimistic locking.",
+        "description": "Write content to a file. Supports optional checksum and expected checkout for optimistic locking.",
         "operationId": "file.write",
         "parameters": [{ "in": "query", "name": "directory", "schema": { "type": "string" } }],
         "requestBody": {
@@ -8680,6 +8680,7 @@
                 "properties": {
                   "checksum": { "type": "string" },
                   "content": { "type": "string" },
+                  "expectedCheckout": { "type": ["string", "null"] },
                   "path": { "type": "string" }
                 },
                 "required": ["content", "path"],
@@ -8713,6 +8714,7 @@
                 "schema": {
                   "anyOf": [
                     { "$ref": "#/components/schemas/CheckoutBlockedError" },
+                    { "$ref": "#/components/schemas/CheckoutStaleError" },
                     {
                       "additionalProperties": false,
                       "properties": { "currentChecksum": { "type": "string" }, "error": { "type": "string" } },
@@ -11619,6 +11621,10 @@
           "400": {
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
             "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
           }
         },
         "summary": "Update PTY session",

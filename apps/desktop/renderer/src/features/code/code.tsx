@@ -278,6 +278,23 @@ export function CodeView(props: {
             {t("code.branchConflict")}
           </p>
         </Show>
+        <Show when={tabs().find((tab) => tab.path === active())?.alternatives?.length}>
+          <select
+            aria-label={t("code.recoveredDrafts")}
+            value=""
+            onChange={(event) => {
+              buffer.selectDraft(active()!, Number(event.currentTarget.value))
+              event.currentTarget.value = ""
+            }}
+          >
+            <option value="" disabled>
+              {t("code.recoveredDrafts")}
+            </option>
+            <For each={tabs().find((tab) => tab.path === active())?.alternatives}>
+              {(draft, index) => <option value={index()}>{draft.content.slice(0, 100)}</option>}
+            </For>
+          </select>
+        </Show>
         <Show when={tabs().find((tab) => tab.path === active())?.missing}>
           <p class="branch-notice" role="status">
             {t("code.missing")}
@@ -297,9 +314,7 @@ export function CodeView(props: {
           classList={{ hidden: !active() || !!tabs().find((tab) => tab.path === active())?.binary }}
         />
       </div>
-      <Show when={panels()?.state.tree}>
-        <FileTree directory={props.directory} active={props.path} status={props.status} />
-      </Show>
+      <FileTree directory={props.directory} active={props.path} status={props.status} />
     </div>
   )
 }
@@ -313,7 +328,11 @@ export function FileTree(props: { directory: string; active?: string; status?: R
         depth={0}
         status={props.status ?? {}}
         active={props.active}
-        onOpen={(path) => void openPanel({ kind: "file", fileDirectory: props.directory, path })}
+        onOpen={(path) =>
+          void openPanel({ kind: "file", fileDirectory: props.directory, path }).catch((error: unknown) =>
+            toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+          )
+        }
       />
     </div>
   )

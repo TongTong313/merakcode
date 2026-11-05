@@ -1,23 +1,56 @@
 import { encodeDir, relative } from "../../lib/route"
 import { createSignal } from "solid-js"
+import z from "zod"
 import { persistent } from "../../lib/persistence"
 import { releaseFile, retainFile } from "../code/references"
 import { buffersFor } from "../code/state"
 import { flushDrafts } from "../code/draft"
-import { releaseBrowserState } from "../browser/state"
+import {
+  flushBrowserOwners,
+  releaseBrowserState,
+  restoreBrowserOwners,
+  retainBrowserState,
+  writeBrowserOwner,
+} from "../browser/state"
+import type { BrowserState } from "../../desktop/bridge-contract"
 import { promoteTerminal, stopTerminal } from "../terminal/resource"
 import { bridge } from "../../lib/bridge"
+import { resolveDirectory } from "../../state/git"
 import { createPanels, type Panels, type PanelTab } from "./state"
 import { releaseReview } from "../review/state"
 import { releaseReviewDrafts } from "../review/compose"
 
 type Context = { directory: string; sessionID?: string }
-type Transfer = { source: Panels; sourceContext: Context; target: Context; snapshot?: unknown; running?: Promise<void> }
+const snapshotSchema = z
+  .object({
+    version: z.literal(1),
+    tabs: z.array(
+      z
+        .object({ id: z.string(), kind: z.string(), url: z.string().optional(), title: z.string().optional() })
+        .passthrough(),
+    ),
+  })
+  .passthrough()
+type Transfer = {
+  source: Panels
+  sourceContext: Context
+  target: Context
+  snapshot?: z.infer<typeof snapshotSchema>
+  recorded?: boolean
+  running?: Promise<void>
+}
+const transferSchema = z.object({
+  version: z.literal(1),
+  sourceContext: z.object({ directory: z.string() }),
+  target: z.object({ directory: z.string(), sessionID: z.string() }),
+  snapshot: snapshotSchema,
+})
 const ownerOf = (value: Context) => value.sessionID ?? `new:${value.directory}`
 const bucketOf = (value: Context) => `panels-${encodeDir(ownerOf(value))}`
 const cache = new Map<string, Panels>()
 const failed = new Set<Panels>()
 const transfers = new Map<string, Transfer>()
+let transfersRestored = false
 const [currentPanels, setPanels] = createSignal<Panels>()
 export const panels = currentPanels
 let context: Context | undefined
@@ -42,16 +75,25 @@ async function loadPanels(target: Context) {
     cache.set(owner, known)
     return known
   }
-  const result: Panels = await createPanels(
+  const raw = await persistent.get(bucketOf(target), "layout")
+  const directories = new Set<string>()
+  try {
+    for (const tab of JSON.parse(raw ?? "null")?.tabs ?? [])
+      if (tab.kind === "file")
+        directories.add(typeof tab.fileDirectory === "string" ? tab.fileDirectory : target.directory)
+  } catch {}
+  await Promise.all([...directories].map(resolveDirectory))
+  let result: Panels | undefined
+  result = await createPanels(
     owner,
     {
-      get: () => persistent.get(bucketOf(target), "layout"),
+      get: async () => raw,
       set: async (_key, value) => {
         try {
           await persistent.set(bucketOf(target), "layout", value)
-          failed.delete(result)
+          if (result) failed.delete(result)
         } catch (error) {
-          failed.add(result)
+          if (result) failed.add(result)
           throw error
         }
       },
@@ -74,10 +116,64 @@ async function loadPanels(target: Context) {
   return result
 }
 
+async function persistBrowser(target: Context, update: BrowserState, active: () => boolean) {
+  if (!active()) return
+  if (!transfersRestored) await restoreTransfers()
+  const owner = await loadPanels(target)
+  if (!active()) return
+  const tab = owner.state.tabs.find((tab) => tab.id === update.id && tab.kind === "browser")
+  if (!tab) return
+  const transfer = [...transfers.values()].find(
+    (value) =>
+      (ownerOf(value.sourceContext) === ownerOf(target) || ownerOf(value.target) === ownerOf(target)) &&
+      value.snapshot?.tabs.some((tab) => tab.id === update.id && tab.kind === "browser"),
+  )
+  if (transfer?.snapshot)
+    await recordTransfer(transfer, {
+      ...transfer.snapshot,
+      tabs: transfer.snapshot.tabs.map((tab) =>
+        tab.id === update.id ? { ...tab, url: update.url, title: update.title } : tab,
+      ),
+    })
+  if (active() && (tab.url !== update.url || tab.title !== update.title))
+    await owner.patch(tab.id, { url: update.url, title: update.title })
+}
+
+restoreBrowserOwners((update, active) =>
+  enqueue(async () => {
+    const raw = await persistent.get("browser-owners", update.id)
+    if (!raw || !active()) return
+    const target = JSON.parse(raw) as Context
+    if (
+      typeof target.directory !== "string" ||
+      (target.sessionID !== undefined && typeof target.sessionID !== "string")
+    )
+      return
+    await persistBrowser(target, update, active)
+  }),
+)
+
+async function retainBrowser(target: Context, id: string) {
+  retainBrowserState(id, (update, active) => enqueue(() => persistBrowser(target, update, active)))
+  await writeBrowserOwner(id, JSON.stringify(target))
+}
+
 async function retainFiles(target: Context, state: Panels) {
-  for (const tab of state.state.tabs)
+  for (const tab of state.state.tabs) {
     if (tab.kind === "file" && tab.path)
       await retainFile(tab.fileDirectory ?? target.directory, tab.path, ownerOf(target))
+    if (tab.kind === "browser") await retainBrowser(target, tab.id)
+  }
+}
+
+async function recordTransfer(transfer: Transfer, snapshot = transfer.snapshot!) {
+  await persistent.set(
+    "panel-transfers",
+    transfer.target.sessionID!,
+    JSON.stringify({ version: 1, sourceContext: transfer.sourceContext, target: transfer.target, snapshot }),
+  )
+  transfer.snapshot = snapshot
+  transfer.recorded = true
 }
 
 function complete(transfer: Transfer): Promise<void> {
@@ -98,8 +194,15 @@ function complete(transfer: Transfer): Promise<void> {
         })),
       }),
     )
+    if (!transfer.recorded) await recordTransfer(transfer)
     const destination = await loadPanels(transfer.target)
     await destination.adopt(transfer.snapshot)
+    for (const tab of transfer.snapshot!.tabs) {
+      if (tab.kind !== "browser") continue
+      const existing = destination.state.tabs.find((item) => item.id === tab.id)
+      if (existing && (existing.url !== tab.url || existing.title !== tab.title))
+        await destination.patch(tab.id, { url: tab.url, title: tab.title })
+    }
     await retainFiles(transfer.target, destination)
     for (const tab of destination.state.tabs)
       if (tab.kind === "terminal") promoteTerminal(tab.id, destination, transfer.target.sessionID)
@@ -111,6 +214,7 @@ function complete(transfer: Transfer): Promise<void> {
           ownerOf(transfer.sourceContext),
         )
     await source.retire()
+    await persistent.remove("panel-transfers", transfer.target.sessionID!)
     cache.delete(ownerOf(transfer.sourceContext))
     source.transfer(false)
     transfers.delete(transfer.target.sessionID!)
@@ -125,20 +229,40 @@ function complete(transfer: Transfer): Promise<void> {
   return running
 }
 
+async function restoreTransfers() {
+  for (const [, raw] of await persistent.entries("panel-transfers")) {
+    const stored = transferSchema.parse(JSON.parse(raw))
+    if (transfers.has(stored.target.sessionID)) continue
+    transfers.set(stored.target.sessionID, {
+      ...stored,
+      source: await loadPanels(stored.sourceContext),
+      recorded: true,
+    })
+  }
+  transfersRestored = true
+}
+
 async function flush() {
+  await restoreTransfers()
+  await flushBrowserOwners()
   for (const state of new Set([...cache.values(), ...failed])) await state.flush()
   for (const transfer of [...transfers.values()]) await complete(transfer)
 }
 
 export async function flushPanels() {
-  await queue
-  await flush()
+  for (;;) {
+    const result = enqueue(flush)
+    const current = queue
+    await result
+    if (queue === current) return
+  }
 }
 
 /** A successful first submission explicitly promotes the draft editor; merely visiting an old chat never does. */
 export function promotePanels(directory: string, target: Context) {
   return enqueue(async () => {
     if (!target.sessionID) return
+    await flush()
     let transfer = transfers.get(target.sessionID)
     if (!transfer) {
       const sourceContext = { directory }
@@ -175,10 +299,12 @@ export async function openPanel(input: Omit<PanelTab, "id">, reuse = false) {
   if (!result || !target) return
   if (input.kind === "file" && input.path) {
     const directory = input.fileDirectory ?? target.directory
+    await resolveDirectory(directory)
     input = { ...input, fileDirectory: directory, path: relative(directory, input.path) }
   }
   if (input.kind === "terminal") input = { ...input, ptyDirectory: input.ptyDirectory ?? target.directory }
   const id = result.open(input, reuse)
+  if (id && input.kind === "browser") await retainBrowser(target, id)
   if (id && input.kind === "file" && input.path) {
     const tab = result.state.tabs.find((tab) => tab.id === id)!
     await retainFile(tab.fileDirectory ?? target.directory, tab.path!, ownerOf(target))
@@ -196,9 +322,9 @@ export function releasePanels(target: Context, deleted = false) {
     const failures: unknown[] = []
     for (const tab of state.state.tabs) {
       try {
-        if (tab.kind === "terminal") await stopTerminal(tab, target.directory, target.sessionID)
+        if (tab.kind === "terminal") await stopTerminal(tab, target.directory)
         if (tab.kind === "browser" && bridge && !(await bridge.browserClose(tab.id))) throw new Error("MRK-7013")
-        if (tab.kind === "browser") releaseBrowserState(tab.id)
+        if (tab.kind === "browser") await releaseBrowserState(tab.id)
       } catch (error) {
         failures.push(error)
       }

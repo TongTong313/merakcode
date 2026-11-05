@@ -2,6 +2,62 @@ import { createServer } from "node:http"
 import { test, expect } from "./fixture"
 import type { DesktopBridge } from "../../renderer/src/desktop/bridge-contract"
 
+for (const reload of [false, true])
+  test(`a background redirect survives application restart${reload ? " after renderer reload" : ""}`, async ({
+    kit,
+  }) => {
+    const release = Promise.withResolvers<void>()
+    let oldLoads = 0
+    const server = createServer((request, response) => {
+      if (request.url === "/wait") {
+        void release.promise.then(() => response.end("ready"))
+        return
+      }
+      response.setHeader("content-type", "text/html")
+      response.end(
+        request.url === "/old"
+          ? `<title>Old page</title>${oldLoads++ === 0 ? '<script>fetch("/wait").then(() => location.replace("/new"))</script>' : ""}`
+          : "<title>Final page</title>Final address",
+      )
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    try {
+      await kit.send("browser owner")
+      await expect.poll(() => new URL(kit.page.url()).pathname).toMatch(/\/session\/ses_/)
+      const owner = new URL(kit.page.url()).pathname
+      await kit.openPanel("browser")
+      await kit.panel().getByRole("textbox", { name: "地址" }).fill(`${base}/old`)
+      await kit.panel().getByRole("textbox", { name: "地址" }).press("Enter")
+      await expect(kit.panel().getByRole("tab", { name: "Old page", exact: true })).toBeVisible()
+      await kit.page
+        .getByRole("navigation", { name: "对话" })
+        .getByRole("button", { name: "新对话", exact: true })
+        .click()
+      await kit.send("other browser conversation")
+      await expect.poll(() => new URL(kit.page.url()).pathname).toMatch(/\/session\/ses_/)
+      await expect.poll(() => new URL(kit.page.url()).pathname).not.toBe(owner)
+      if (reload) await kit.page.reload()
+      release.resolve()
+      await expect
+        .poll(() =>
+          kit.app.evaluate(
+            ({ webContents }, url) => webContents.getAllWebContents().some((item) => item.getURL() === url),
+            `${base}/new`,
+          ),
+        )
+        .toBe(true)
+      await kit.restart()
+      await kit.page.locator(`a[href="${owner}"]`).click()
+      await expect(kit.panel().getByRole("textbox", { name: "地址" })).toHaveValue(`${base}/new`)
+      await expect(kit.panel().getByRole("tab", { name: "Final page", exact: true })).toBeVisible()
+    } finally {
+      release.resolve()
+      server.closeAllConnections()
+      server.close()
+    }
+  })
+
 test("an unfinished browser response does not block another page", async ({ kit }) => {
   const entered = Promise.withResolvers<void>()
   let fast = 0

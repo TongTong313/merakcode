@@ -621,13 +621,14 @@ Returns: `FileContent`
 
 Write file.
 
-Write content to a file. Supports optional checksum for optimistic locking.
+Write content to a file. Supports optional checksum and expected checkout for optimistic locking.
 
-| Parameter  | Type     | Required | Description |
-| ---------- | -------- | -------- | ----------- |
-| `checksum` | `string` | no       |             |
-| `content`  | `string` | yes      |             |
-| `path`     | `string` | yes      |             |
+| Parameter          | Type             | Required | Description |
+| ------------------ | ---------------- | -------- | ----------- |
+| `checksum`         | `string`         | no       |             |
+| `content`          | `string`         | yes      |             |
+| `expectedCheckout` | `string \| null` | no       |             |
+| `path`             | `string`         | yes      |             |
 
 Returns: `{ checksum: string; ok: boolean }`
 

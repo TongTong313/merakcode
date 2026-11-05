@@ -227,7 +227,8 @@ export const FileRoutes = lazy(() =>
       "/file/content",
       describeRoute({
         summary: "Write file",
-        description: "Write content to a file. Supports optional checksum for optimistic locking.",
+        description:
+          "Write content to a file. Supports optional checksum and expected checkout for optimistic locking.",
         operationId: "file.write",
         responses: {
           200: {
@@ -240,7 +241,11 @@ export const FileRoutes = lazy(() =>
             content: {
               "application/json": {
                 schema: resolver(
-                  z.union([Checkout.BlockedError.Schema, z.object({ error: z.string(), currentChecksum: z.string() })]),
+                  z.union([
+                    Checkout.BlockedError.Schema,
+                    Checkout.StaleError.Schema,
+                    z.object({ error: z.string(), currentChecksum: z.string() }),
+                  ]),
                 ),
               },
             },
@@ -253,19 +258,19 @@ export const FileRoutes = lazy(() =>
           path: z.string(),
           content: z.string(),
           checksum: z.string().optional(),
+          expectedCheckout: z.string().nullable().optional(),
         }),
       ),
       async (c) => {
-        const { path, content, checksum } = c.req.valid("json")
+        const { path, content, checksum, expectedCheckout } = c.req.valid("json")
         const abs = resolveInWorkspace(path)
         if (!abs) {
           return c.json({ error: "path outside project" }, 400)
         }
         using _file = await Lock.write(`file-write:${process.platform === "win32" ? abs.toLowerCase() : abs}`)
         const folder = Workspace.resolveFolder(Instance.workspace, abs)
-        using _ = defer(
-          Checkout.hold(folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree),
-        )
+        const directory = folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree
+        using _ = defer(Checkout.hold(directory))
         if (checksum) {
           const current = await Filesystem.readText(abs).catch(() => "")
           const currentChecksum = createHash("sha1").update(current).digest("hex")
@@ -273,6 +278,7 @@ export const FileRoutes = lazy(() =>
             return c.json({ error: "conflict", currentChecksum }, 409)
           }
         }
+        if (expectedCheckout !== undefined) await Checkout.assert(expectedCheckout, directory)
         await Filesystem.write(abs, content)
         return c.json({ ok: true, checksum: createHash("sha1").update(content).digest("hex") })
       },

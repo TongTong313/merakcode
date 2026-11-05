@@ -229,6 +229,8 @@ export namespace Ipc {
 
       storageGet: (_ctx, bucket, key) =>
         typeof bucket === "string" && typeof key === "string" ? deps.storage.get(bucket, key) : null,
+      storageEntries: (_ctx, bucket) => (typeof bucket === "string" ? deps.storage.entries(bucket) : []),
+      storageBuckets: () => deps.storage.buckets(),
       storageSet: (_ctx, bucket, key, value) => {
         if (typeof bucket === "string" && typeof key === "string" && typeof value === "string")
           deps.storage.set(bucket, key, value)

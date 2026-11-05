@@ -4,14 +4,26 @@ import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { sameDir } from "../../lib/route"
 import { call, client } from "../../state/client"
-import { checkoutOf, gitDirectory, onCheckoutChange, refreshBranches, registerDirty, switching } from "../../state/git"
-import { readDraft, writeDraft } from "./draft"
+import {
+  checkoutOf,
+  gitDirectory,
+  identityOf,
+  onCheckoutChange,
+  refreshBranches,
+  registerDirty,
+  switching,
+} from "../../state/git"
+import { planDrafts, readDraft, writeDraft, type Draft } from "./draft"
+import { fileAddress } from "./identity"
 import { toast } from "../../ui/toast"
 import { listen } from "../../state/store"
 
 type Tab = {
   path: string
   planSessionID?: string
+  planRootSessionID?: string
+  identity?: Draft["identity"]
+  alternatives?: Draft["alternatives"]
   checksum?: string
   saved: string
   dirty: boolean
@@ -32,7 +44,7 @@ export function buffersFor(directory: string) {
   const known = buffers.get(key)
   if (known) return known
   for (const [directory, buffer] of buffers) if (sameDir(gitDirectory(directory), key)) return buffer
-  const created = createBuffers(directory)
+  const created = createBuffers(key)
   buffers.set(key, created)
   return created
 }
@@ -49,6 +61,20 @@ export function releaseBuffers(directory: string) {
 }
 
 function createBuffers(directory: string) {
+  const identity = (): Draft["identity"] => {
+    const value = identityOf(directory)
+    return value ? { directory: gitDirectory(directory), branch: value.branch, head: value.head } : value
+  }
+  const matchesBranch = (saved: Draft["identity"]) => {
+    const current = identity()
+    if (saved === undefined || current === undefined) return false
+    if (saved === null || current === null) return saved === current
+    return (
+      sameDir(saved.directory, current.directory) &&
+      saved.branch === current.branch &&
+      (saved.branch !== null || saved.head === current.head)
+    )
+  }
   let closed = false
   const [tabs, setTabs] = createStore<Tab[]>([])
   const [errors, setErrors] = createStore<Record<string, string | undefined>>({})
@@ -62,13 +88,19 @@ function createBuffers(directory: string) {
     registerDirty(directory, `editor:${directory}`, [...dirty.values()].filter(Boolean).length)
   }
 
-  const read = async (path: string, planSessionID?: string): Promise<FileContent> => {
-    if (!planSessionID) return call(client(directory).file.read({ path }))
-    const plan = await call(client(directory).session.planGet({ sessionID: planSessionID }))
-    return { type: "text" as const, content: plan.content, checksum: String(plan.revision) }
+  const read = async (path: string, planSessionID?: string): Promise<FileContent & { planRootSessionID?: string }> => {
+    if (!planSessionID) return call(client(gitDirectory(directory)).file.read({ path }))
+    const plan = await call(client(gitDirectory(directory)).session.planGet({ sessionID: planSessionID }))
+    return {
+      type: "text" as const,
+      content: plan.content,
+      checksum: String(plan.revision),
+      planRootSessionID: plan.sessionID,
+    }
   }
 
   const open = async (path: string, planSessionID?: string) => {
+    path = fileAddress(gitDirectory(directory), path, planSessionID).path
     if (closed) return
     setErrors(path, undefined)
     if (tabs.some((tab) => tab.path === path)) return
@@ -88,7 +120,7 @@ function createBuffers(directory: string) {
         retry = true
         return
       }
-      const draft = await readDraft(directory, path)
+      const draft = await readDraft(gitDirectory(directory), path)
       const binary = content.type === "binary" || content.encoding === "base64"
       const preview =
         content.encoding === "base64" && content.mimeType?.startsWith("image/")
@@ -107,12 +139,22 @@ function createBuffers(directory: string) {
       model?.onDidChangeContent(() => {
         const tab = tabs.find((item) => item.path === path)
         if (!tab) return
-        setTabs((item) => item.path === path, "dirty", model.getValue() !== tab.saved)
+        setTabs((item) => item.path === path, "dirty", model.getValue() !== tab.saved || !!tab.alternatives?.length)
         sync()
         void writeDraft(
-          directory,
+          gitDirectory(directory),
           path,
-          tab.dirty ? { content: model.getValue(), saved: tab.saved, checksum: tab.checksum } : undefined,
+          tab.dirty
+            ? {
+                content: model.getValue(),
+                saved: tab.saved,
+                checksum: tab.checksum,
+                identity: tab.identity,
+                planSessionID: tab.planSessionID,
+                planRootSessionID: tab.planRootSessionID,
+                alternatives: tab.alternatives,
+              }
+            : undefined,
         ).catch(() => toast({ kind: "error", title: t("panel.persistError") }))
       })
       setTabs((list) => [
@@ -120,10 +162,14 @@ function createBuffers(directory: string) {
         {
           path,
           planSessionID,
+          planRootSessionID: content.planRootSessionID,
+          identity: draft ? draft.identity : identity(),
+          alternatives: draft?.alternatives,
           checksum: draft?.checksum ?? content.checksum,
           saved: draft?.saved ?? content.content,
           dirty: !binary && !!draft,
-          conflict: !!draft && draft.checksum !== content.checksum,
+          conflict:
+            !!draft && (draft.checksum !== content.checksum || (!planSessionID && !matchesBranch(draft.identity))),
           original: content.baselines?.head ?? content.content,
           missing: content.missing,
           binary,
@@ -189,6 +235,7 @@ function createBuffers(directory: string) {
         setTabs((item) => item.path === tab.path, {
           checksum: fresh.checksum,
           saved: fresh.content,
+          identity: identity(),
           binary: fresh.type === "binary",
           conflict: false,
           original: fresh.baselines?.head ?? fresh.content,
@@ -201,21 +248,42 @@ function createBuffers(directory: string) {
     )
   }
 
-  const saveFile = async (force = false, path?: string) => {
+  const saveFile = async (force = false, path?: string, confirmedCheckout?: string | null) => {
     if (closed || switching(directory)) return
     const tab = tabs.find((item) => item.path === path)
     if (!tab?.model || !tab.dirty || tab.binary || tab.missing) return
+    if (!tab.planSessionID) {
+      const options = await refreshBranches(directory)
+      if (!options) return
+      if (!matchesBranch(tab.identity)) {
+        const current = checkoutOf(directory) ?? null
+        if (confirmedCheckout === undefined || confirmedCheckout !== current) {
+          setTabs((item) => item.path === tab.path, "conflict", true)
+          toast({
+            kind: "error",
+            title: t("code.branchConflict"),
+            action: {
+              label: t("code.saveCurrentBranch"),
+              run: () => void save(force, path, current),
+            },
+          })
+          return
+        }
+        setTabs((item) => item.path === tab.path, "identity", identity())
+      }
+    }
     const token = checkoutOf(directory)
     const content = tab.model.getValue()
     const result = tab.planSessionID
-      ? await client(directory).session.planSave({
+      ? await client(gitDirectory(directory)).session.planSave({
           sessionID: tab.planSessionID,
           content,
           expectedRevision: Number(tab.checksum ?? 0),
         })
-      : await client(directory).file.write({
+      : await client(gitDirectory(directory)).file.write({
           path: tab.path,
           content,
+          expectedCheckout: token ?? null,
           ...(force || !tab.checksum ? {} : { checksum: tab.checksum }),
         })
     if (result.response?.status === 409) {
@@ -231,24 +299,35 @@ function createBuffers(directory: string) {
     const checksum = "revision" in result.data! ? String(result.data.revision) : result.data!.checksum
     setTabs((item) => item.path === tab.path, {
       saved: content,
-      dirty: tab.model.getValue() !== content,
+      dirty: tab.model.getValue() !== content || !!tab.alternatives?.length,
       checksum,
       conflict: false,
     })
     await writeDraft(
-      directory,
+      gitDirectory(directory),
       tab.path,
-      tab.dirty ? { content: tab.model.getValue(), saved: content, checksum } : undefined,
+      tab.dirty
+        ? {
+            content: tab.model.getValue(),
+            saved: content,
+            checksum,
+            identity: tab.identity,
+            planSessionID: tab.planSessionID,
+            planRootSessionID: tab.planRootSessionID,
+            alternatives: tab.alternatives,
+          }
+        : undefined,
     )
     sync()
   }
 
-  const save = (force = false, path?: string) => {
+  const save = (force = false, path?: string, confirmedCheckout?: string | null) => {
     if (!path) return Promise.resolve()
+    path = fileAddress(gitDirectory(directory), path).path
     const request = (saving.get(path) ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        await saveFile(force, path)
+        await saveFile(force, path, confirmedCheckout)
       })
     saving.set(path, request)
     void request
@@ -260,10 +339,11 @@ function createBuffers(directory: string) {
   }
 
   const close = async (path: string) => {
+    path = fileAddress(gitDirectory(directory), path).path
     epochs.set(path, (epochs.get(path) ?? 0) + 1)
     pending.delete(path)
     await saving.get(path)
-    await writeDraft(directory, path)
+    await writeDraft(gitDirectory(directory), path)
     const tab = tabs.find((item) => item.path === path)
     setTabs((list) => list.filter((item) => item.path !== path))
     tab?.model?.dispose()
@@ -280,11 +360,13 @@ function createBuffers(directory: string) {
     return true
   }
   const retain = (path: string, id: string) => {
+    path = fileAddress(gitDirectory(directory), path).path
     const references = views.get(path) ?? new Set<string>()
     references.add(id)
     views.set(path, references)
   }
   const suspend = async (path: string, id: string) => {
+    path = fileAddress(gitDirectory(directory), path).path
     views.get(path)?.delete(id)
     await pending.get(path)
     await saving.get(path)
@@ -292,19 +374,60 @@ function createBuffers(directory: string) {
     const tab = tabs.find((item) => item.path === path)
     if (!tab) return
     if (tab.dirty && tab.model)
-      await writeDraft(directory, path, { content: tab.model.getValue(), saved: tab.saved, checksum: tab.checksum })
+      await writeDraft(gitDirectory(directory), path, {
+        content: tab.model.getValue(),
+        saved: tab.saved,
+        checksum: tab.checksum,
+        identity: tab.identity,
+        planSessionID: tab.planSessionID,
+        planRootSessionID: tab.planRootSessionID,
+        alternatives: tab.alternatives,
+      })
     if (views.get(path)?.size || tabs.find((item) => item.path === path)?.model !== tab.model) return
     setTabs((list) => list.filter((item) => item.path !== path))
     tab.model?.dispose()
   }
   const savePlan = async (sessionID: string) => {
-    const plan = await call(client(directory).session.planGet({ sessionID }))
-    const tab = tabs.find((item) => item.planSessionID === plan.sessionID)
-    if (!tab?.dirty) return true
-    await save(false, tab.path)
-    return !tab.dirty
+    const plan = await call(client(gitDirectory(directory)).session.planGet({ sessionID }))
+    const ids = [sessionID, plan.sessionID]
+    for (const draft of await planDrafts(directory)) {
+      const root =
+        draft.root ??
+        (await call(client(gitDirectory(directory)).session.planGet({ sessionID: draft.sessionID }))).sessionID
+      if (!ids.includes(draft.sessionID) && root !== plan.sessionID) continue
+      await open(draft.path, draft.sessionID)
+      if (!tabs.some((tab) => tab.path === draft.path && tab.planSessionID === draft.sessionID)) return false
+    }
+    const pending = tabs.filter(
+      (item) =>
+        item.dirty &&
+        ((item.planSessionID && ids.includes(item.planSessionID)) || item.planRootSessionID === plan.sessionID),
+    )
+    for (const tab of pending) await save(false, tab.path)
+    return pending.every((tab) => !tab.dirty)
   }
-  return { tabs, errors, open, save, savePlan, close, reload, release, suspend, retain }
+  const selectDraft = (path: string, index: number) => {
+    const tab = tabs.find((item) => item.path === fileAddress(gitDirectory(directory), path).path)
+    const draft = tab?.alternatives?.[index]
+    if (!tab?.model || !draft) return
+    const alternatives = tab.alternatives!.filter((_, i) => i !== index)
+    if (tab.model.getValue() !== tab.saved)
+      alternatives.push({
+        content: tab.model.getValue(),
+        saved: tab.saved,
+        checksum: tab.checksum,
+        identity: tab.identity,
+        planSessionID: tab.planSessionID,
+        planRootSessionID: tab.planRootSessionID,
+      })
+    setTabs((item) => item.path === tab.path, { ...draft, alternatives, conflict: true, dirty: true })
+    tab.model.setValue(draft.content)
+    void writeDraft(gitDirectory(directory), tab.path, { ...draft, alternatives }).catch(() =>
+      toast({ kind: "error", title: t("panel.persistError") }),
+    )
+    sync()
+  }
+  return { tabs, errors, open, save, savePlan, close, reload, release, suspend, retain, selectDraft }
 }
 
 onCheckoutChange((directory, change) => {
@@ -315,5 +438,11 @@ onCheckoutChange((directory, change) => {
 listen((_directory, event) => {
   if (event.type !== "session.plan.updated") return
   for (const buffer of buffers.values())
-    if (buffer.tabs.some((tab) => tab.planSessionID === event.properties.sessionID)) void buffer.reload()
+    if (
+      buffer.tabs.some(
+        (tab) =>
+          tab.planSessionID === event.properties.sessionID || tab.planRootSessionID === event.properties.sessionID,
+      )
+    )
+      void buffer.reload()
 })

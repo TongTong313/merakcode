@@ -1,6 +1,77 @@
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { fileOwners } from "../code/references"
 import { openPanel, panels, promotePanels, selectPanels } from "./workspace"
+import { persistent } from "../../lib/persistence"
+import { encodeDir } from "../../lib/route"
+import { refreshBranches, switchReason, unsavedReason } from "../../state/git"
+
+const directoryReplies = new Map<string, { root: string; fail?: boolean }>()
+vi.mock("undici", () => ({
+  Agent: class {},
+  fetch: async (_input: string, init?: { headers?: HeadersInit }) => {
+    const directory = decodeURIComponent(new Headers(init?.headers).get("x-merakcode-directory")!)
+    const reply = directoryReplies.get(directory)
+    if (reply?.fail) {
+      reply.fail = false
+      return new Response("unavailable", { status: 503 })
+    }
+    return new Response(JSON.stringify({ directory: reply?.root ?? directory, branches: [], current: null }), {
+      headers: { "content-type": "application/json" },
+    })
+  },
+}))
+
+test("branch controls stay blocked when a sleeping subdirectory draft cannot be resolved", async () => {
+  const root = "/draft-lookup-root"
+  const directory = `${root}/sub`
+  const bucket = `draft-${encodeDir(directory)}`
+  const raw = JSON.stringify({ version: 1, content: "keep draft", saved: "original" })
+  await persistent.set(bucket, "notes.txt", raw)
+  directoryReplies.set(directory, { root, fail: true })
+  expect(await refreshBranches(root)).toBeUndefined()
+  expect(switchReason(root)).toBeTruthy()
+  expect(await persistent.get(bucket, "notes.txt")).toBe(raw)
+  expect(await refreshBranches(root)).toMatchObject({ directory: root })
+  expect(unsavedReason(root)).toBeTruthy()
+})
+
+test("a failed directory lookup leaves a legacy file layout untouched until a successful retry", async () => {
+  const directory = "/retry-root/sub"
+  const sessionID = crypto.randomUUID()
+  const bucket = `panels-${encodeDir(sessionID)}`
+  const raw = JSON.stringify({
+    version: 1,
+    tabs: [{ id: "file", kind: "file", fileDirectory: directory, path: "notes.txt" }],
+  })
+  await persistent.set(bucket, "layout", raw)
+  directoryReplies.set(directory, { root: "/retry-root", fail: true })
+  await expect(selectPanels({ directory, sessionID })).rejects.toThrow()
+  expect(await persistent.get(bucket, "layout")).toBe(raw)
+  const restored = await selectPanels({ directory, sessionID })
+  expect(restored.state.tabs[0]).toMatchObject({ fileDirectory: "/retry-root", path: "sub/notes.txt" })
+})
+
+test("selecting a legacy conversation durably merges singleton tabs before exposing it", async () => {
+  const sessionID = crypto.randomUUID()
+  const bucket = `panels-${encodeDir(sessionID)}`
+  await persistent.set(
+    bucket,
+    "layout",
+    JSON.stringify({
+      version: 1,
+      selected: "b",
+      tabs: [
+        { id: "a", kind: "git", view: { commit: "first" } },
+        { id: "b", kind: "git", view: { commit: "second" } },
+      ],
+    }),
+  )
+  const restored = await selectPanels({ directory: "/legacy-ui", sessionID })
+  expect(restored.state.tabs).toHaveLength(1)
+  expect(restored.state.selected).toBe("b")
+  expect(JSON.parse((await persistent.get(bucket, "layout"))!).tabs).toEqual(restored.state.tabs)
+  expect(restored.view("b")).toMatchObject({ commit: "second", commitAlternatives: ["first"] })
+})
 
 test("visiting an existing conversation never adopts the new-conversation editor", async () => {
   const directory = `/workspace/${crypto.randomUUID()}`

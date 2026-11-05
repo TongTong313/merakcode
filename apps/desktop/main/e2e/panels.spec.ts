@@ -40,6 +40,30 @@ test("browser: opens a local page and shows its title and console errors", async
   }
 })
 
+test("an exited shell keeps a closable tab without further heartbeats", async ({ kit }) => {
+  await kit.page.clock.install()
+  await kit.openPanel("terminal", true)
+  await kit.page.locator(".terminal-host textarea").focus()
+  await kit.page.keyboard.type("exit")
+  await kit.page.keyboard.press("Enter")
+  await expect(kit.page.getByRole("status").filter({ hasText: "终端已结束" })).toBeVisible()
+  await kit.openPanel("browser", true)
+  const updates: string[] = []
+  kit.page.on("request", (request) => {
+    if (request.method() === "PUT" && new URL(request.url()).pathname.startsWith("/pty/")) updates.push(request.url())
+  })
+  await kit.page.clock.fastForward(60_000)
+  expect(updates).toEqual([])
+  const tab = kit.panel().getByRole("tab", { name: /^终端/ })
+  await tab.click()
+  await expect(kit.page.getByRole("status").filter({ hasText: "终端已结束" })).toBeVisible()
+  await kit
+    .panel()
+    .getByRole("button", { name: /^关闭 终端/ })
+    .click()
+  await expect(tab).toHaveCount(0)
+})
+
 test("terminal: opens with Ctrl+J and runs commands in the project directory", async ({ kit }) => {
   await kit.page.keyboard.press("ControlOrMeta+J")
   const terminal = kit.page.getByRole("region", { name: "终端" })

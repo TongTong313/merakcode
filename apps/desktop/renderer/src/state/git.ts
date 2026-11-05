@@ -4,6 +4,8 @@ import { createStore } from "solid-js/store"
 import { t } from "../i18n"
 import { sameDir } from "../lib/route"
 import { call, client } from "./client"
+import { restoreDraftProtection } from "../features/code/draft"
+import { restoreReviewProtection } from "../features/review/protection"
 
 type Checkout = NonNullable<VcsBranchOptions["current"]>
 type Entry = { options?: VcsBranchOptions; loading: boolean; switching: boolean; error?: GitOperationError }
@@ -53,6 +55,14 @@ export const gitDirectory = (directory: string) => aliases[directory] ?? directo
 export const gitState = (directory: string) => entries[gitDirectory(directory)]
 export const checkoutOf = (directory: string) => identities[gitDirectory(directory)]?.checkout
 export const identityOf = (directory: string) => identities[gitDirectory(directory)]
+
+/** Resolve the checkout root without recursively restoring editor drafts. */
+export async function resolveDirectory(directory: string) {
+  if (aliases[directory]) return aliases[directory]
+  const options = await call(client(directory).vcs.branchOptions())
+  associate(directory, options.directory)
+  return options.directory
+}
 
 /** Editor buffers and comment drafts outlive their views, and register their own unsaved work. */
 export function registerDirty(directory: string, owner: string, count: number) {
@@ -144,6 +154,11 @@ export async function refreshBranches(directory: string) {
       return refreshBranches(directory)
     associate(directory, options.directory)
     const target = gitDirectory(directory)
+    await restoreDraftProtection(directory)
+    if (target !== directory) await restoreDraftProtection(target)
+    await restoreReviewProtection(target)
+    if (requests.get(key) !== request || (requests.get(target) ?? 0) > request) return
+    if ((revisions.get(key) ?? 0) !== revision) return refreshBranches(directory)
     updateCheckout(target, options.current)
     setEntries(target, (previous) => ({
       ...previous,
@@ -163,6 +178,9 @@ export const switching = (directory: string) => !!gitState(directory)?.switching
 export function switchReason(directory: string) {
   const local = unsavedReason(directory)
   if (local) return local
+  const entry = gitState(directory)
+  if (entry?.error) return entry.error.message
+  if (!entry?.options || entry.loading) return t("git.loading")
   const blocked = gitState(directory)?.options?.blocked
   if (blocked) return t(`git.blocked.${blocked.reason}`)
 }

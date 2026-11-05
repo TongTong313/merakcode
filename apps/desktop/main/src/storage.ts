@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 /**
@@ -17,14 +17,17 @@ export class Storage {
     return path.join(this.dir, `${safe}.json`)
   }
 
-  private load(bucket: string) {
+  private load(bucket: string, strict = false) {
     const cached = this.cache.get(bucket)
-    if (cached) return cached
+    if (cached && !strict) return cached
     const data = (() => {
       try {
         const parsed = JSON.parse(readFileSync(this.file(bucket), "utf8"))
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, string>) : {}
-      } catch {
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, string>
+        if (strict) throw new Error("Invalid storage bucket")
+        return {}
+      } catch (error) {
+        if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error
         return {}
       }
     })()
@@ -33,27 +36,42 @@ export class Storage {
     return data
   }
 
-  private save(bucket: string) {
+  private save(bucket: string, data: Record<string, string>) {
     mkdirSync(this.dir, { recursive: true })
     const target = this.file(bucket)
     const temp = `${target}.${process.pid}.tmp`
-    writeFileSync(temp, JSON.stringify(this.load(bucket)))
+    writeFileSync(temp, JSON.stringify(data))
     renameSync(temp, target)
+    this.cache.set(bucket, data)
   }
 
   get(bucket: string, key: string) {
     return this.load(bucket)[key] ?? null
   }
 
+  entries(bucket: string) {
+    return Object.entries(this.load(bucket, true))
+  }
+
+  buckets() {
+    try {
+      return readdirSync(this.dir)
+        .filter((name) => name.endsWith(".json"))
+        .map((name) => name.slice(0, -5))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return []
+      throw error
+    }
+  }
+
   set(bucket: string, key: string, value: string) {
-    this.load(bucket)[key] = value
-    this.save(bucket)
+    this.save(bucket, { ...this.load(bucket), [key]: value })
   }
 
   remove(bucket: string, key: string) {
-    const data = this.load(bucket)
+    const data = { ...this.load(bucket) }
     if (!(key in data)) return
     delete data[key]
-    this.save(bucket)
+    this.save(bucket, data)
   }
 }
