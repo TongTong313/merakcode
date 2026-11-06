@@ -17,6 +17,11 @@ type Resource = {
 const resources = new Map<string, Resource>()
 let timer: ReturnType<typeof setInterval> | undefined
 
+/** Live and retrying terminals must keep the same writable layout as background browser events. */
+export function hasTerminals(panels: Panels) {
+  return [...resources.values()].some((resource) => resource.panels === panels)
+}
+
 function release(id: string, resource?: Resource) {
   if (resource && resources.get(id) !== resource) return
   resources.delete(id)

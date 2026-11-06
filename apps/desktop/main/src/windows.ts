@@ -75,7 +75,9 @@ export class Windows {
   private async releaseWindows(windows: BrowserWindow[]) {
     for (const win of windows) {
       if (win.isDestroyed()) continue
+      this.options.log("info", "window browser closing", { window: win.id })
       if (this.options.prepareWindow && !(await this.options.prepareWindow(win))) {
+        this.options.log("info", "window browser close rejected", { window: win.id })
         this.send(win, "closeRejected")
         return false
       }
@@ -89,8 +91,18 @@ export class Windows {
             if (known) return known.promise
             const pending = Promise.withResolvers<boolean>()
             this.releasing.set(win, pending)
+            const started = Date.now()
+            this.options.log("info", "window resources closing", { window: win.id, phase })
             this.send(win, "closeResources", phase)
-            return pending.promise
+            return pending.promise.then((accepted) => {
+              this.options.log("info", "window resources closed", {
+                window: win.id,
+                phase,
+                accepted,
+                elapsed: Date.now() - started,
+              })
+              return accepted
+            })
           }),
         )
       ).every(Boolean)
@@ -106,8 +118,13 @@ export class Windows {
     if (known) return known.promise
     const pending = Promise.withResolvers<boolean>()
     this.closing.set(win, pending)
+    const started = Date.now()
+    this.options.log("info", "window close requested", { window: win.id })
     this.send(win, "closeRequested")
-    return pending.promise
+    return pending.promise.then((accepted) => {
+      this.options.log("info", "window close answered", { window: win.id, accepted, elapsed: Date.now() - started })
+      return accepted
+    })
   }
 
   async prepareClose() {

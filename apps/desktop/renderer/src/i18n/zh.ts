@@ -235,6 +235,7 @@ export const zh = {
   "panel.stopping": "正在停止终端…",
   "panel.terminalEnded": "此终端已结束，请新建终端继续。",
   "panel.persistError": "MRK-4018：无法保留编辑区状态，请保持窗口打开并重试。",
+  "panel.restoreError": "MRK-4019：无法读取编辑区状态，请保持窗口打开，检查存储文件及读取权限后重试。",
   "browser.limit": "MRK-7012：请先关闭一个浏览器标签，再打开新页面。",
   "panel.closeDraftTitle": "关闭含有草稿的面板？",
   "panel.closeDraftDetail": "是否放弃此面板中的草稿并关闭？",
@@ -389,6 +390,7 @@ export const zh = {
   "browser.clear": "清空",
 
   "terminal.label": "终端",
+  "terminal.input": "终端输入",
   "terminal.close": "收起终端",
   "terminal.tab": "终端 {n}",
   "terminal.new": "新终端",

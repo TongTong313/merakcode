@@ -84,6 +84,7 @@ what to do.
 | MRK-4016    | 子任务不属于当前对话 | The child task belongs to another conversation   | 请使用当前根对话中的子任务编号，或创建新子任务。<br>Use a child task ID from the current root conversation, or create a new child task.         |
 | MRK-4017    | 子任务正在运行       | The child task is running                        | 请等待当前子任务结束，再恢复这个子任务。<br>Wait for the current child task to finish before resuming it.                                       |
 | MRK-4018    | 无法保留编辑区状态   | Could not preserve editor state                  | 保持窗口打开，检查可用磁盘空间后重试。<br>Keep the window open, check available disk space, then retry.                                         |
+| MRK-4019    | 无法读取编辑区状态   | Could not read editor state                      | 保持窗口打开，检查存储文件及读取权限后重试。<br>Keep the window open, check storage files and read permissions, then retry.                     |
 
 ## 5xxx 工具、权限与沙箱 · Tools, permissions and sandbox
 

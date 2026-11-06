@@ -23,6 +23,17 @@ export namespace ErrorCode {
   }
 
   export const CATALOG = {
+    EDITOR_STATE_READ_FAILED: {
+      code: "MRK-4019",
+      domain: "session",
+      status: 500,
+      retryable: true,
+      title: { zh: "无法读取编辑区状态", en: "Could not read editor state" },
+      hint: {
+        zh: "保持窗口打开，检查存储文件及读取权限后重试。",
+        en: "Keep the window open, check storage files and read permissions, then retry.",
+      },
+    },
     FILE_PANEL_LOAD_FAILED: {
       code: "MRK-7014",
       domain: "workspace",

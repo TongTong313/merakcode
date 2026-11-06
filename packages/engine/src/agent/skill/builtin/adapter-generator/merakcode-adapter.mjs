@@ -20129,6 +20129,17 @@ function date4(params) {
 var ErrorCode
 ;((ErrorCode2) => {
   ErrorCode2.CATALOG = {
+    EDITOR_STATE_READ_FAILED: {
+      code: "MRK-4019",
+      domain: "session",
+      status: 500,
+      retryable: true,
+      title: { zh: "\u65E0\u6CD5\u8BFB\u53D6\u7F16\u8F91\u533A\u72B6\u6001", en: "Could not read editor state" },
+      hint: {
+        zh: "\u4FDD\u6301\u7A97\u53E3\u6253\u5F00\uFF0C\u68C0\u67E5\u5B58\u50A8\u6587\u4EF6\u53CA\u8BFB\u53D6\u6743\u9650\u540E\u91CD\u8BD5\u3002",
+        en: "Keep the window open, check storage files and read permissions, then retry.",
+      },
+    },
     FILE_PANEL_LOAD_FAILED: {
       code: "MRK-7014",
       domain: "workspace",

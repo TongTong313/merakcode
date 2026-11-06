@@ -25,12 +25,16 @@ const colors = () =>
 /** The shell in one tab: attaches to (or creates) a terminal process, shows its output and forwards keys */
 export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: string }) {
   let host!: HTMLDivElement
+  let viewport!: HTMLDivElement
+  let input!: HTMLTextAreaElement
   let term: Term | undefined
   let socket: PtyConnection | undefined
   let fit: FitAddon | undefined
+  let composition: ReturnType<typeof Promise.withResolvers<void>> | undefined
   let disposed = false
   const owner = panels()!
   const [error, setError] = createSignal<string>()
+  const [ready, setReady] = createSignal(false)
   const ended = () => !!props.tab.view?.ended
   const detach = () => {
     socket?.close()
@@ -39,18 +43,22 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
     term = undefined
     fit = undefined
   }
-  createEffect(() => {
-    if (ended()) detach()
-  })
   /** Keys typed before the terminal is ready (typing right after opening it) */
   const early: string[] = []
+  const finishComposition = () => {
+    composition?.resolve()
+    composition = undefined
+  }
+  createEffect(() => {
+    if (!ended()) return
+    finishComposition()
+    detach()
+  })
 
   const earlyKey = (event: KeyboardEvent) => {
-    if (ended() || term || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
-    if (event.key.length === 1) early.push(event.key)
-    else if (event.key === "Enter") early.push("\r")
-    else if (event.key === "Backspace") early.pop()
-    else return
+    if (event.isComposing || event.key !== "Enter") return
+    early.push(input.value, "\r")
+    input.value = ""
     event.preventDefault()
   }
 
@@ -59,7 +67,7 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
     queueMicrotask(() => {
       fit?.fit()
       if (term) term.focus()
-      else host.focus()
+      else input?.focus()
     })
   })
 
@@ -70,9 +78,12 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
         load(),
         terminalFor(props.tab, props.directory, owner, props.sessionID),
       ])
+      await composition?.promise
       if (disposed || ended() || !address) return
       const { ptyID: id, directory } = address
       const c = client(directory)
+      const focused = viewport.contains(document.activeElement)
+      early.push(input.value)
 
       const instance = new mod.Terminal({
         cursorBlink: true,
@@ -85,7 +96,14 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
       })
       fit = new mod.FitAddon()
       instance.loadAddon(fit)
-      instance.open(host)
+      // Ghostty schedules focus while opening; let the caller choose focus after initialization instead.
+      const focus = instance.focus
+      instance.focus = () => {}
+      try {
+        instance.open(host)
+      } finally {
+        instance.focus = focus
+      }
       fit.fit()
       fit.observeResize?.()
 
@@ -110,7 +128,8 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
       instance.onData((data) => connection.send(data))
       instance.onResize(({ cols, rows }) => void c.pty.update({ ptyID: id, size: { cols, rows } }))
       term = instance
-      instance.focus()
+      setReady(true)
+      if (focused) instance.focus()
     })().catch((error: unknown) => {
       if (!disposed) setError(String(error))
     })
@@ -119,6 +138,7 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
 
   onCleanup(() => {
     disposed = true
+    finishComposition()
     detach()
   })
 
@@ -135,13 +155,20 @@ export function Terminal(props: { directory: string; tab: PanelTab; sessionID?: 
           </button>
         </p>
       </Show>
-      <div
-        class="terminal-host"
-        ref={host}
-        tabIndex={0}
-        onKeyDown={earlyKey}
-        onClick={() => (term ? term.focus() : host.focus())}
-      />
+      <div class="terminal-host" ref={viewport} onClick={() => (term ? term.focus() : input?.focus())}>
+        <div class="terminal-surface" ref={host} />
+        <Show when={!ready() && !ended()}>
+          <textarea
+            ref={input}
+            class="terminal-startup-input"
+            aria-label={t("terminal.input")}
+            spellcheck={false}
+            onKeyDown={earlyKey}
+            onCompositionStart={() => (composition ??= Promise.withResolvers<void>())}
+            onCompositionEnd={finishComposition}
+          />
+        </Show>
+      </div>
     </section>
   )
 }

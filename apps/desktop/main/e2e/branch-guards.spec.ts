@@ -131,21 +131,14 @@ test("unsaved editor contents survive closing the code panel and still block bra
   try {
     await kit.openPanel("git")
     const picker = panel.getByRole("button", { name: /^当前分支/ })
-    const nextRead = async (act: () => Promise<unknown>) => {
-      const before = held.length
-      await act()
-      await expect.poll(() => held.length).toBeGreaterThan(before)
-    }
-    // Observe each request before starting the next interaction, including the menu's own refresh.
-    await nextRead(() => picker.hover())
-    await nextRead(() => picker.focus())
-    await nextRead(() => picker.click())
+    await picker.hover()
+    await expect.poll(() => held.length).toBe(1)
+    await picker.focus()
+    await picker.click()
     await expect(kit.page.getByText("请先保存或明确放弃未保存的文件编辑", { exact: true })).toBeVisible()
-    const older = held.slice()
-    await nextRead(() => home.dispatchEvent("pointerenter"))
-    for (const response of older) response.release()
-    await Promise.all(older.map((response) => response.done))
-    // A checkout update can require another read; only the intended overlapping requests stay gated.
+    await home.dispatchEvent("pointerenter")
+    // Both branch controls share the pending lookup and preserve the same unsaved-file protection.
+    expect(held).toHaveLength(1)
     capture = false
     for (const response of held) response.release()
     await Promise.all(held.map((response) => response.done))

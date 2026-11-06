@@ -254,18 +254,24 @@ function main() {
   let quitting = false
   app.on("before-quit", (event) => {
     if (quitting) {
+      log.info("quit already pending")
       event.preventDefault()
       return
     }
     quitting = true
     event.preventDefault()
+    const started = Date.now()
+    log.info("quit requested")
     void windows.prepareClose().then(async (accepted) => {
+      log.info("quit windows prepared", { accepted, elapsed: Date.now() - started })
       if (!accepted) {
         quitting = false
         return
       }
       tray.destroy()
+      log.info("quit backend stopping", { elapsed: Date.now() - started })
       await Promise.allSettled([backend.stop()])
+      log.info("quit logs closing", { elapsed: Date.now() - started })
       await Log.close()
       app.exit(0)
     })

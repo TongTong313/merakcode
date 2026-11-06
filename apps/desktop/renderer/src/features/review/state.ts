@@ -175,8 +175,12 @@ async function load(input: ReviewKey) {
       if (!currentContext(input)) return
       await refreshVcs(input.directory)
     }
-    if (!controller.signal.aborted && result.checkout === (checkoutOf(input.directory) ?? null))
-      show({ ...input, checkout: result.checkout }, result)
+    if (controller.signal.aborted || result.checkout !== (checkoutOf(input.directory) ?? null)) return
+    if (lists[key]?.stale) {
+      setLists(key, "loading", false)
+      return
+    }
+    show({ ...input, checkout: result.checkout }, result)
   } catch (error) {
     if (!controller.signal.aborted) setLists(key, { loading: false, error: error as Error })
   } finally {
@@ -522,6 +526,7 @@ export function useReview(
     const targets: { file: string; hunks?: string[] }[] =
       files ?? current?.files.map((file) => ({ file: file.file })) ?? []
     const target = input()
+    let changed = false
     setWorking(true)
     try {
       const result = await call(
@@ -535,14 +540,16 @@ export function useReview(
           })),
         }),
       ).catch(failed)
-      if (disposed || !result || !currentContext(target) || keyOf(target) !== key()) return
+      if (!result) return
+      changed = true
+      if (disposed || !currentContext(target) || keyOf(target) !== key()) return
       if (result.checkout !== (target.checkout ?? null)) {
         await refreshVcs(target.directory)
         return
       }
       show(target, result)
-      stale(target.directory)
     } finally {
+      if (changed) stale(target.directory)
       setWorking(false)
     }
   }
@@ -551,12 +558,15 @@ export function useReview(
     const target = input()
     const current = list()?.result
     if (!current || working() || list()?.loading || !currentContext(target)) return
+    let changed = false
     setWorking(true)
     try {
       const result = await call(
         client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
       ).catch(failed)
-      if (disposed || !result || !currentContext(target) || keyOf(target) !== key()) return
+      if (!result) return
+      changed = true
+      if (disposed || !currentContext(target) || keyOf(target) !== key()) return
       if (result.checkout !== (target.checkout ?? null)) {
         await refreshVcs(target.directory)
         return
@@ -564,6 +574,7 @@ export function useReview(
       show(target, result)
       toast({ kind: "info", title: t("review.undone") })
     } finally {
+      if (changed) stale(target.directory)
       setWorking(false)
     }
   }

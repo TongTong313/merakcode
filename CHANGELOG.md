@@ -18,6 +18,16 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Keep Git review navigation current when accepting or undoing a review after switching tabs. Discard list responses invalidated while loading, and refresh the original conversation after a background decision completes.
+
+- Keep requested branch switches effective when background refreshes overlap, including directory aliases. Preserve lookup errors and retries when a directory is resolved during a pending refresh.
+
+- Preserve Unicode commands and unfinished native input composition while a terminal starts. Keep the conversation input focused when the user has returned to editing it.
+
+- Record desktop quit stages and retain production smoke failure evidence before browser inspection. Distinguish abnormal process exits from timeouts and include the close request in the original exit deadline.
+
+- Keep background browser addresses when a sleeping conversation's terminal exits after visiting many other chats. Report unreadable editor state with a localized error code and allow retry after storage is repaired.
+
 - Keep one Review, Git and Plan tab per conversation. Preserve legacy comments, commit messages and file drafts during tab migration. Recover interrupted first-message transfers into their original conversation after reload or restart. Restore file and review draft protection for sleeping conversations, verify checkout identity before file saves, persist background browser navigation, restore tab overflow after fullscreen review, and release naturally exited terminals.
 
 - Reject runtime-supplied command arguments, package-manager side effects, indirect file reads and system changes in draft-only tasks. Apply sensitive-file approval to input redirects, file aliases and option values while preserving ordinary literal file reads.
@@ -71,6 +81,16 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 接受或撤销审阅后切换标签，Git 待审入口仍保持正确。读取期间已失效的列表不再覆盖缓存。后台操作完成后刷新原聊天。
+
+- 后台刷新不再取消用户发起的分支切换，并覆盖目录别名。目录解析与刷新并发时，保留读取错误和重试能力。
+
+- 保留终端启动期间输入的中文命令和未完成的输入法组合。用户返回聊天输入框后，终端启动不再抢走焦点。
+
+- 记录桌面退出阶段，并在浏览器取证前保存生产包失败记录。区分异常退出和超时，将关闭请求计入原有退出期限。
+
+- 切换多个聊天后，后台终端退出仍保留浏览器的最新地址。编辑区状态无法读取时显示双语错误码，修复存储后可以重试。
 
 - 每个对话只保留一个审阅、Git 和计划标签。旧标签迁移保留评论、提交文案和文件草稿。首次发送迁移中断后，重载或重启仍恢复到原目标对话。未打开的对话也恢复文件和审阅草稿的分支保护。文件保存前校验工作目录。后台浏览器保存最新地址。审阅铺满返回后恢复标签收纳。终端自然退出后停止心跳。
 

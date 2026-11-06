@@ -244,6 +244,8 @@ export const en: Record<keyof typeof zh, string> = {
   "panel.stopping": "Stopping terminal…",
   "panel.terminalEnded": "This terminal has ended. Open a new terminal to continue.",
   "panel.persistError": "MRK-4018: Could not preserve editor state. Keep this window open and retry.",
+  "panel.restoreError":
+    "MRK-4019: Could not read editor state. Keep this window open, check storage files and read permissions, then retry.",
   "browser.limit": "MRK-7012: Close an existing browser tab before opening another page.",
   "panel.closeDraftTitle": "Close unsaved panel?",
   "panel.closeDraftDetail": "Discard the draft in this panel and close it?",
@@ -400,6 +402,7 @@ export const en: Record<keyof typeof zh, string> = {
   "browser.clear": "Clear",
 
   "terminal.label": "Terminal",
+  "terminal.input": "Terminal input",
   "terminal.close": "Hide terminal",
   "terminal.tab": "Terminal {n}",
   "terminal.new": "New terminal",

@@ -13,7 +13,7 @@ import {
   writeBrowserOwner,
 } from "../browser/state"
 import type { BrowserState } from "../../desktop/bridge-contract"
-import { promoteTerminal, stopTerminal } from "../terminal/resource"
+import { hasTerminals, promoteTerminal, stopTerminal } from "../terminal/resource"
 import { bridge } from "../../lib/bridge"
 import { resolveDirectory } from "../../state/git"
 import { createPanels, type Panels, type PanelTab } from "./state"
@@ -107,6 +107,7 @@ async function loadPanels(target: Context) {
       key === owner ||
       state === panels() ||
       failed.has(state) ||
+      hasTerminals(state) ||
       [...transfers.values()].some((transfer) => transfer.source === state || ownerOf(transfer.target) === key)
     )
       continue

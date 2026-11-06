@@ -297,29 +297,102 @@ test("a comment on a hunk is sent to the agent with the file, lines and comment"
   await expect(kit.text("收到评论：带文件")).toBeVisible({ timeout: 60_000 })
 })
 
-test("Git staging preserves pending review and accepting removes only review navigation", async ({ kit }) => {
-  current = kit
-  await prepare(kit)
-  kit.git("add", ".")
-  kit.git("commit", "--quiet", "-m", "math")
-  await kit.send("Update math")
-  await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
-  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
-  const panel = kit.panel()
-  await kit.openPanel("git")
-  const unstaged = panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "src/new.js" })
-  await expect(unstaged.getByRole("button", { name: "查看待审改动 src/new.js" })).toBeVisible()
-  await unstaged.getByRole("button", { name: "暂存 src/new.js", exact: true }).click()
-  await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
-  const staged = panel.locator('[data-group="staged"] .git-file').filter({ hasText: "src/new.js" })
-  await staged.getByRole("button", { name: "查看待审改动 src/new.js" }).click()
-  await expect(panel.getByRole("tab", { name: /^审阅/, selected: true })).toBeVisible()
-  await panel.getByRole("region", { name: "src/new.js" }).getByRole("button", { name: "接受文件" }).click()
-  await kit.openPanel("git")
-  await expect(staged).toBeVisible()
-  await expect(staged.getByRole("button", { name: /查看待审改动/ })).toHaveCount(0)
-  await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
-})
+for (const action of ["immediate", "accept", "undo"])
+  test(
+    action === "undo"
+      ? "a late Git review snapshot cannot hide a file restored by undo after leaving review"
+      : action === "accept"
+        ? "a late Git review snapshot cannot restore a file accepted after leaving review"
+        : "Git staging preserves pending review and accepting removes only review navigation",
+    async ({ kit }) => {
+      const delayed = action !== "immediate"
+      const undo = action === "undo"
+      current = kit
+      const loaded = delayed ? await kit.page.reload() : undefined
+      const authorization = loaded ? (await loaded.request().allHeaders()).authorization : undefined
+      if (delayed) {
+        expect(authorization).toBeTruthy()
+        await kit.mode(/全面接管|Full takeover/)
+      }
+      await prepare(kit)
+      kit.git("add", ".")
+      kit.git("commit", "--quiet", "-m", "math")
+      await kit.send("Update math")
+      await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
+      await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+      const panel = kit.panel()
+      await kit.openPanel("git")
+      const unstaged = panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "src/new.js" })
+      await expect(unstaged.getByRole("button", { name: "查看待审改动 src/new.js" })).toBeVisible()
+      await unstaged.getByRole("button", { name: "暂存 src/new.js", exact: true }).click()
+      await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
+      const staged = panel.locator('[data-group="staged"] .git-file').filter({ hasText: "src/new.js" })
+      await staged.getByRole("button", { name: "查看待审改动 src/new.js" }).click()
+      await expect(panel.getByRole("tab", { name: /^审阅/, selected: true })).toBeVisible()
+      if (undo) {
+        await panel.getByRole("region", { name: "src/new.js" }).getByRole("button", { name: "接受文件" }).click()
+        await expect(panel.getByRole("region", { name: "src/new.js" })).toHaveCount(0)
+      }
+      const decision = Promise.withResolvers<void>()
+      const releaseDecision = Promise.withResolvers<void>()
+      const snapshot = Promise.withResolvers<void>()
+      const releaseSnapshot = Promise.withResolvers<void>()
+      let capture = false
+      const pattern = /\/review(?:\/undo)?(?:\?|$)/
+      if (delayed)
+        await kit.page.route(pattern, async (route) => {
+          if (route.request().method() === "POST") {
+            decision.resolve()
+            await releaseDecision.promise
+            return route.continue()
+          }
+          if (!capture) return route.continue()
+          capture = false
+          const response = await route.fetch({
+            headers: { ...route.request().headers(), authorization: authorization! },
+          })
+          expect((await response.json()).files.some((file: { file: string }) => file.file === "src/new.js")).toBe(!undo)
+          snapshot.resolve()
+          await releaseSnapshot.promise
+          await route.fulfill({ response })
+        })
+      try {
+        if (undo) await panel.getByRole("button", { name: "撤销", exact: true }).click()
+        else await panel.getByRole("region", { name: "src/new.js" }).getByRole("button", { name: "接受文件" }).click()
+        if (delayed) {
+          await decision.promise
+          capture = true
+        }
+        await kit.openPanel("git")
+        if (delayed) {
+          await snapshot.promise
+          const accepted = kit.page.waitForResponse(
+            (response) => pattern.test(new URL(response.url()).pathname) && response.request().method() === "POST",
+          )
+          const refreshed = kit.page.waitForRequest((request) => new URL(request.url()).pathname === "/vcs")
+          releaseDecision.resolve()
+          expect((await accepted).status()).toBe(200)
+          expect((await (await refreshed).response())?.status()).toBe(200)
+          const delivered = kit.page.waitForResponse(
+            (response) => pattern.test(new URL(response.url()).pathname) && response.request().method() === "GET",
+          )
+          releaseSnapshot.resolve()
+          await (await delivered).finished()
+          await kit.page.evaluate(
+            () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+          )
+        }
+        await expect(staged).toBeVisible()
+        await expect(staged.getByRole("button", { name: /查看待审改动/ })).toHaveCount(undo ? 1 : 0)
+        await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("src/new.js")
+      } finally {
+        capture = false
+        releaseDecision.resolve()
+        releaseSnapshot.resolve()
+        if (delayed) await kit.page.unroute(pattern)
+      }
+    },
+  )
 
 test("many changed files start collapsed, and opening one loads its hunks", async ({ kit }) => {
   current = kit
