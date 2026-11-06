@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
-    "@merakcode/sdk": "workspace:*",
     "@solidjs/router": "catalog:",
     "diff": "catalog:",
     "dompurify": "3.4.17",

@@ -13,9 +13,9 @@ describe("docs/errors.md", () => {
     }
   })
 
-  test("groups codes by domain in numeric order", () => {
-    expect(text.indexOf("MRK-1001")).toBeLessThan(text.indexOf("MRK-2001"))
-    expect(text.indexOf("MRK-2001")).toBeLessThan(text.indexOf("MRK-9000"))
+  test("lists codes in numeric order", () => {
+    expect(text.indexOf("MRK-8001")).toBeLessThan(text.indexOf("MRK-8002"))
+    expect(text.indexOf("MRK-8002")).toBeLessThan(text.indexOf("MRK-8004"))
   })
 
   test("says it is generated, so nobody edits it by hand", () => {

@@ -1,10 +1,17 @@
 import { describe, expect, test } from "vitest"
+import http from "node:http"
 import net from "node:net"
 import { Network } from "./network"
-import { Http } from "./http"
 
 // Node's fetch (undici) puts the real reason in cause; the shapes below were observed in practice
 const socket = (message: string, code: string) => Object.assign(new Error(message), { code })
+
+async function listen(server: net.Server, port = 0) {
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve))
+  return (server.address() as net.AddressInfo).port
+}
+
+const close = (server: net.Server) => new Promise((resolve) => server.close(resolve))
 
 describe("Network.failure", () => {
   test("a connection dropped midway (terminated by a socket close or ECONNRESET) is reset", () => {
@@ -44,25 +51,19 @@ describe("Network.failure", () => {
 
   test("real network: a closed port is unreachable and a response cut off midway is reset", async () => {
     const closed = net.createServer()
-    await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve))
-    const port = (closed.address() as net.AddressInfo).port
-    await new Promise((resolve) => closed.close(resolve))
+    const port = await listen(closed)
+    await close(closed)
     expect(Network.failure(await fetch(`http://127.0.0.1:${port}/`).catch((e) => e))).toBe("unreachable")
 
-    await using server: Http.Server = await Http.serve({
-      fetch: () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              controller.enqueue(new TextEncoder().encode("Hello,"))
-              setTimeout(() => void server.stop(true), 25)
-            },
-          }),
-        ),
+    const server = http.createServer((_request, response) => {
+      response.write("Hello,")
+      setTimeout(() => response.socket?.destroy(), 25)
     })
-    const dropped = await fetch(server.url)
+    const open = await listen(server)
+    const dropped = await fetch(`http://127.0.0.1:${open}/`)
       .then((response) => response.text())
       .catch((e) => e)
+    await close(server)
     expect(Network.failure(dropped)).toBe("reset")
   })
 })
@@ -71,7 +72,8 @@ describe("Network.freePort", () => {
   test("returns an unused port that can be listened on right away", async () => {
     const port = await Network.freePort()
     expect(port).toBeGreaterThan(0)
-    await using server = await Http.serve({ port, fetch: () => new Response("ok") })
-    expect(server.port).toBe(port)
+    const server = net.createServer()
+    expect(await listen(server, port)).toBe(port)
+    await close(server)
   })
 })

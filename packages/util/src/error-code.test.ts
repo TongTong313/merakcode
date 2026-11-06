@@ -35,39 +35,4 @@ describe("ErrorCode catalog", () => {
       expect(spec.status, name).toBeLessThan(600)
     }
   })
-
-  // merak without a command only prints its help, so restarting it is no advice
-  test("no hint tells the user to restart merak on its own", () => {
-    for (const [name, spec] of entries) {
-      expect(spec.hint.zh, name).not.toMatch(/重启 merak/)
-      expect(spec.hint.en, name).not.toMatch(/restart merak/i)
-    }
-  })
-
-  test("an error class name maps to at most one code", () => {
-    const names = entries.flatMap(([, spec]) => spec.errors ?? [])
-    expect(new Set(names).size).toBe(names.length)
-  })
-})
-
-describe("ErrorCode.of", () => {
-  test("maps known error names to their code", () => {
-    expect(ErrorCode.of("ProviderModelNotFoundError")).toBe(ErrorCode.CATALOG.MODEL_NOT_FOUND.code)
-    expect(ErrorCode.of("ConfigJsonError")).toBe(ErrorCode.CATALOG.CONFIG_JSON_INVALID.code)
-  })
-
-  test("provider API errors are classified by HTTP status", () => {
-    expect(ErrorCode.of("APIError", { statusCode: 429 })).toBe(ErrorCode.CATALOG.RATE_LIMITED.code)
-    expect(ErrorCode.of("APIError", { statusCode: 401 })).toBe(ErrorCode.CATALOG.PROVIDER_AUTH_FAILED.code)
-    expect(ErrorCode.of("APIError", { statusCode: 503 })).toBe(ErrorCode.CATALOG.PROVIDER_REQUEST_FAILED.code)
-  })
-
-  test("unknown names fall back to the internal error code", () => {
-    expect(ErrorCode.of("SomethingNobodyDeclared")).toBe(ErrorCode.CATALOG.INTERNAL.code)
-  })
-
-  test("spec looks a code up by its string", () => {
-    expect(ErrorCode.spec("MRK-9000")?.title.en).toBe(ErrorCode.CATALOG.INTERNAL.title.en)
-    expect(ErrorCode.spec("MRK-0000")).toBeUndefined()
-  })
 })

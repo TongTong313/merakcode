@@ -34,6 +34,3 @@ apps/desktop/main/.package
 
 # Maintainer-only terms for pnpm check:brand
 script/check-brand.private
-
-# Code blocks extracted from the SDK guide by pnpm check:sdk-docs
-packages/sdk/js/examples/.doc

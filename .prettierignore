@@ -1,7 +1,3 @@
 pnpm-lock.yaml
-# 由 pnpm generate:schema 生成
-schema/config.json
-# 由 pnpm check:api --write 生成
-packages/sdk/js/api.md
 # 桌面端到端测试的运行结果（已在 apps/desktop/main/.gitignore 里忽略；prettier 只读根目录的 .gitignore）
 apps/desktop/main/e2e/.results
