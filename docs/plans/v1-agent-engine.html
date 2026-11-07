@@ -553,8 +553,8 @@
       <li><a href="#protocol">11. 协议与 SDK</a></li>
       <li><a href="#storage">12. 存储宿主与产品形态</a></li>
       <li><a href="#cloud">13. 云端</a></li>
-      <li><a href="#desktop">14. 桌面端要新增的界面</a></li>
-      <li><a href="#roadmap">15. 实施路线：5 个阶段、32 个切片</a></li>
+      <li><a href="#desktop">14. 桌面端：复用现有界面，新增群视图</a></li>
+      <li><a href="#roadmap">15. 实施路线：5 个阶段、32 个引擎切片和 10 个桌面端切片</a></li>
       <li><a href="#tdd">16. 测试怎么做</a></li>
       <li><a href="#yagni">17. 防止过度设计的清单</a></li>
     </ul>
@@ -603,8 +603,8 @@
     <ul>
       <li>云端服务本身的代码。它在单独的仓库里；本文只定本地引擎和云端之间的接口以及云端的概念模型。</li>
       <li>
-        桌面端界面的改造方案。界面复用现有桌面端，要新增群聊、任务看板、收件箱、审核四类视图，第 14
-        节列出它们从哪些事件算出来；界面设计另写。
+        桌面端的重新设计。桌面端复用现有代码，只换数据来源并新增群相关的视图，见第 14 节的复用地图和第 15 节的 D
+        切片；新视图沿用现有的设计令牌和组件。
       </li>
       <li>网页端和手机端。它们是云端的客户端。</li>
       <li>插件、技能、斜杠命令、LSP、定时任务。工具池和提示词组装为它们留了位置，排在阶段 4 之后。MCP 在阶段 4 做。</li>
@@ -1145,9 +1145,10 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
         不用 cgo，<code>CGO_ENABLED=0</code> 一台机器编出 6 个平台。<code>go test -race</code> 只在 Linux CI 上跑。
       </li>
       <li>
-        标准库优先。第三方依赖只有三个：<code>modernc.org/sqlite</code>（命令行宿主）、<code>anthropic-sdk-go</code>（Anthropic
-        客户端，类型不出 <code>model/anthropic</code> 包）、<code>zalando/go-keyring</code>（云端令牌，阶段 5
-        核实是否需要 cgo）。
+        标准库优先。第三方依赖只有四个：<code>modernc.org/sqlite</code>（命令行宿主）、<code>anthropic-sdk-go</code>（Anthropic
+        客户端，类型不出 <code>model/anthropic</code> 包）、<code>creack/pty</code>（终端面板的伪终端，纯 Go，只在 Unix
+        编译；Windows 用 <code>golang.org/x/sys/windows</code> 直接调 ConPTY，见 D4。它们替代 v0.3.1 的 node-pty
+        原生模块和它的补丁）、<code>zalando/go-keyring</code>（云端令牌，阶段 5 核实是否需要 cgo）。
       </li>
       <li>gofmt 格式化；<code>pnpm --dir merak typecheck</code> 跑 gofmt 检查和三个系统的 <code>go vet</code>。</li>
       <li>
@@ -5535,8 +5536,103 @@ type Null struct{}</code></pre>
         结束）、开发模式跑过一轮真实使用再公开。
       </li>
     </ul>
-    <h2 id="desktop">14. 桌面端要新增的界面</h2>
-    <p>前端复用现有桌面端。本节只列新增视图和它们从哪些事件算出来，界面设计另写。</p>
+    <h2 id="desktop">14. 桌面端：复用现有界面，新增群视图</h2>
+    <p>
+      桌面端不重写。复用的基线是 <code>dev-v0.3.1</code>（当前工作区里的 <code>apps/desktop</code>
+      就是它的最新提交）：Electron 主进程、SolidJS 界面、组件库、样式、中英文案、55 个组件测试和 28
+      个端到端用例全部保留；要换的只是数据从哪来：主进程改为启动 Go 引擎并当存储宿主，界面进程从 REST 客户端换成协议
+      SDK，界面状态由 SDK 的折叠函数从事件算出来。新增的只有协作群相关的视图。实施步骤是第 15 节里编号 D1 到 D10
+      的切片。功能上的要求是：v0.3.1 桌面端已有的能力一项不少，每个 D 切片的“做完以后”都以 v0.3.1 为对照。
+    </p>
+
+    <h3 id="desktop-reuse">14.1 复用地图</h3>
+    <table>
+      <tr>
+        <th style="width: 40%">现有部分</th>
+        <th style="width: 48%">怎么处理</th>
+        <th>切片</th>
+      </tr>
+      <tr>
+        <td>主进程：窗口、托盘、菜单、系统通知、自动更新、文件对话框、浏览器面板、设置与本地存储</td>
+        <td>原样复用</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>主进程：<code>engine.ts</code>、<code>backend.ts</code>、<code>auth.ts</code></td>
+        <td>
+          改：找到并启动 <code>merak</code> 二进制，从数据目录的 <code>engine.json</code>
+          读端口和令牌，连上后当存储宿主。令牌仍由主进程注入到窗口发出的请求和 WebSocket 握手头里，界面进程不碰令牌
+        </td>
+        <td>D1</td>
+      </tr>
+      <tr>
+        <td>打包：<code>script/package.ts</code></td>
+        <td>改：<code>extraResources</code> 改为带对应平台的 Go 二进制，不再带 Node 和 JS 包</td>
+        <td>D1</td>
+      </tr>
+      <tr>
+        <td>界面：<code>state/client.ts</code>、<code>state/store.ts</code></td>
+        <td>换：协议 SDK 的 WebSocket 客户端和会话折叠函数；旧的 REST 调用包装删除</td>
+        <td>D2</td>
+      </tr>
+      <tr>
+        <td>
+          界面：单聊部分的
+          conversation（消息列表、输入框、工具显示、审批、模型选择、附件、建议、回合折叠、发送）、shell（侧栏、框架、启动页、通知）、onboarding、palette、update，settings
+          的外观、更新、服务商和模型页
+        </td>
+        <td>组件保留，换数据源和事件类型</td>
+        <td>D2、D5</td>
+      </tr>
+      <tr>
+        <td>界面：review（diff、文件树、评论）、code（编辑器）、git（源代码管理面板）</td>
+        <td>组件保留；协议新增只读的文件和仓库方法作为数据源</td>
+        <td>D3</td>
+      </tr>
+      <tr>
+        <td>界面：terminal</td>
+        <td>组件保留；接协议的终端通道（11.1 节的二进制帧）</td>
+        <td>D4</td>
+      </tr>
+      <tr>
+        <td>界面：browser</td>
+        <td>原样复用，它只和主进程说话</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>
+          界面：协作群部分的 conversation（建群、群状态、群待办、成员列、成员头像、座位气泡）、settings
+          的协作和产品接入页、<code>state/agent-connections.ts</code>
+        </td>
+        <td>按新的群、任务、Leader 模型重建；复用建群流程、成员头像、座位气泡、产品探测表单这些组件</td>
+        <td>D6</td>
+      </tr>
+      <tr>
+        <td>界面：plan（v0.3.1 的官方计划）</td>
+        <td>删除，新引擎没有对应机制</td>
+        <td>D2</td>
+      </tr>
+      <tr>
+        <td>e2e：夹具里的 OpenAI 兼容假模型服务器、假 Claude 二进制、28 个 spec</td>
+        <td>复用：夹具改为启动真实的 <code>merak serve</code> 并把模型指向假服务器；spec 随切片逐个恢复</td>
+        <td>D1 到 D8</td>
+      </tr>
+      <tr>
+        <td>i18n：<code>zh.ts</code>、<code>en.ts</code></td>
+        <td>复用，新键随切片加，键一致性测试照旧</td>
+        <td>全部</td>
+      </tr>
+    </table>
+    <p>
+      切换期间桌面端不能处在半编译状态。D2 做完时三个开关一起打开：根目录
+      <code>pnpm typecheck</code> 重新包含桌面端，<code>knip.json</code> 里对桌面端的 ignore 去掉，CI 的 test-ts
+      加上渲染进程、新增 Linux 上的 e2e-desktop（先 <code>go build</code> 出引擎，再构建主进程和界面，再跑
+      Playwright）；AGENTS.md
+      里“桌面端不编译”的那条删除。在那之前，依赖旧协议的文件要么改好，要么删掉，不留注释掉的代码。
+    </p>
+
+    <h3 id="desktop-views">14.2 新增的视图</h3>
+    <p>只列新增视图和它们从哪些事件算出来。视觉上沿用现有的设计令牌、组件和布局。</p>
     <table>
       <tr>
         <th style="width: 14%">视图</th>
@@ -5594,7 +5690,7 @@ export function applyToBoard(board: Board, e: Event): Board   // task.*, phase.c
 export type Inbox = { todo: Notice[]; info: Notice[]; lastSeq: number }
 export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // notice.sent minus answered ones</code></pre>
 
-    <h2 id="roadmap">15. 实施路线：5 个阶段、32 个切片</h2>
+    <h2 id="roadmap">15. 实施路线：5 个阶段、32 个引擎切片和 10 个桌面端切片</h2>
     <p>
       每个切片从入口（命令行或协议）一直切到引擎底层，做完就多一个用户看得见的能力。切片内部按 TDD
       推进：<strong>一次只写一个会失败的测试，让它通过，再写下一个</strong>，不把一个切片的测试全写完再写实现。每个切片列的是“按顺序逐个实现的行为”，每一行是一轮红、绿、整理。
@@ -5611,6 +5707,12 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         做完本地协作群能用，阶段 4 是主动性和安全，阶段 5 是云端。
       </li>
       <li>每个切片开始前，执行模型先列出要动的公开接口和要测的行为清单，确认后再动手。</li>
+      <li>
+        桌面端切片编号 D1 到
+        D10，穿插在各阶段里，每片开头写明依赖的引擎切片。它们的规则一样：先写会失败的测试（渲染进程用 vitest
+        和引擎测试产出的黄金事件日志当夹具，主进程用 vitest，整条链路用 Playwright
+        对真实引擎），再写最少的实现。引擎切片和桌面端切片可以由两个人或两个执行模型并行做，桌面端切片做到它依赖的引擎切片完成为止。
+      </li>
     </ul>
 
     <h3 id="phase-1">阶段 1：地基与单聊内核，命令行能用</h3>
@@ -5911,8 +6013,186 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </ol>
     <p>
       只实现：<code>platform/log</code> 完整版、<code>internal/diagnose</code>、命令和协议方法、SDK
-      方法。不做：桌面端按钮本身（桌面端方案里做）。
+      方法。不做：桌面端按钮本身（D5）。
     </p>
+
+    <p class="file">D1 主进程：启动 Go 引擎，当存储宿主，打包进安装包</p>
+    <p>
+      做完以后：桌面端启动时拉起 <code>merak serve</code>（开发时用 <code>merak/</code> 里编出来的二进制，安装包里是
+      <code>resources/merak/</code>
+      下对应平台的二进制），主进程连上去并被接受为存储宿主；关窗口进托盘后引擎和群继续跑；彻底退出时引擎按 2.5
+      节的顺序退出；安装包不再带 Node。
+    </p>
+    <p class="muted">依赖：S9 存储宿主、S11 退出序列。</p>
+    <ol>
+      <li>
+        <code>engine.ts</code>：安装包和源码两种布局都能找到 <code>merak</code> 二进制；缺文件时 <code>missing()</code>
+        把它列出来。
+      </li>
+      <li>
+        <code>backend.ts</code>：启动 serve 后从数据目录的 <code>engine.json</code>
+        读到端口和令牌；已经有引擎在跑时直接连，不再启动；引擎意外退出后重启并沿用端口，重试用完进入 failed。
+      </li>
+      <li>
+        宿主：主进程用 SDK 的 <code>SqliteStore</code> 连上，<code>hello</code> 里声明 <code>store: true</code>
+        得到 accepted；被 declined 时（命令行先占了宿主）以普通客户端继续工作。
+      </li>
+      <li>托盘：关窗口不退出，事件继续落盘。e2e 的 background.spec 复用。</li>
+      <li>
+        退出：彻底退出时让引擎优雅退出，收到 <code>engine.shutdown</code> 后再关数据库；10 秒没退出就强杀。e2e 的
+        shutdown.spec 复用。
+      </li>
+      <li>
+        打包：<code>script/package.ts</code> 的 <code>extraResources</code> 改为
+        <code>merak/dist</code> 里对应平台的二进制；安装后的 <code>merak --version</code> 等于产品版本。CI 的 go-build
+        之后加一个桌面端打包冒烟（Linux）。
+      </li>
+    </ol>
+    <p>
+      只实现：<code>engine.ts</code>、<code>backend.ts</code>、<code>auth.ts</code> 的最小改动、<code>SqliteStore</code>
+      接线、<code>package.ts</code>、打包冒烟。不做：界面进程的任何改动、引擎单独自动更新。
+    </p>
+
+    <p class="file">D2 界面进程切到新 SDK，单聊闭环，桌面端重新进入检查和 CI</p>
+    <p>
+      做完以后：桌面端能开项目、新建对话、和真实模型流式对话、审批、回答问题、切模型、看历史，引擎重启后自动重连；<code
+        >pnpm typecheck</code
+      >
+      重新包含桌面端，knip 的 ignore 去掉，渲染进程测试和 Linux 上的 e2e 进 CI。
+    </p>
+    <p class="muted">依赖：D1、S7 模型目录、S10 预算和重建事件。</p>
+    <ol>
+      <li>
+        客户端层：<code>state/client.ts</code> 换成 SDK 的 WebSocket 客户端，一条连接多路复用；旧的 REST 调用包装删除。
+      </li>
+      <li>
+        状态层：<code>state/store.ts</code> 用 SDK 的会话折叠替代旧的
+        applyEvent；用引擎测试产出的黄金事件日志当夹具，折叠出的消息列表和 Go 侧的快照一致。
+      </li>
+      <li>
+        消息流：<code>message.delta</code> 边到边显示，<code>message.completed</code> 替换成全文；<code>turn.*</code>
+        驱动状态条；<code>tool.called</code> 和 <code>tool.completed</code> 复用现有的工具卡片。
+      </li>
+      <li>
+        审批与提问：<code>permission.requested</code> 弹现有的审批卡，回答走 <code>permission.reply</code>；问题同理。
+      </li>
+      <li>
+        历史与重连：打开旧会话用 <code>events.read</code> 从快照之后补；收到 <code>events.lagged</code> 从上次的 seq
+        补读；引擎重启后自动重连，reconnect 测试复用。
+      </li>
+      <li>
+        模型与配置：模型选择器用 <code>model.list</code>；设置页的服务商表单用 <code>config.get</code> 和
+        <code>config.set</code>，中转站逻辑保留。
+      </li>
+      <li>
+        窗口标记：<code>session.rebuilt</code> 显示“这里重建过”；<code>session.budget</code>
+        在对话头部显示本次请求的预算分配。
+      </li>
+      <li>
+        工程开关：根目录 typecheck 的过滤去掉，knip 的 ignore 去掉，CI 的 test-ts 加渲染进程，新增 e2e-desktop；e2e
+        夹具启动真实的
+        <code>merak serve</code
+        >，模型指向夹具里现有的假服务器；chat、composer、permission、tools、conversations、connect 这些 spec
+        跑通；AGENTS.md 里“桌面端不编译”那条删除。
+      </li>
+    </ol>
+    <p>
+      只实现：客户端层、状态层、单聊部分的 conversation、settings 的服务商和模型页、shell、onboarding、palette、新的
+      i18n 键。删除：依赖 v0.3.1 协作协议的界面文件（建群、群状态、群待办、成员列、成员头像、座位气泡、settings
+      的协作和产品接入页、<code>state/agent-connections.ts</code>）和 plan；D6 到 D8 按新模型重建协作群界面时从 git
+      历史里取回可复用的组件。不做：review、code、git、terminal（D3、D4）、协作群。
+    </p>
+
+    <p class="file">D3 审核、代码、git 面板复用；协议加只读的文件和仓库方法</p>
+    <p>做完以后：对话里的改动审核（diff、文件树、评论）、代码查看器、源代码管理面板都能用，数据从新引擎来。</p>
+    <p class="muted">依赖：D2、S19 的 <code>platform.Git</code>。</p>
+    <ol>
+      <li>
+        引擎：协议方法 <code>file.read</code>、<code>file.list</code>
+        走和工具一样的路径限制；<code>repo.status</code>、<code>repo.diff</code>、<code>repo.branches</code>、<code
+          >repo.checkout</code
+        >
+        是 <code>platform.Git</code> 的薄封装，表格测试在临时仓库里跑。
+      </li>
+      <li>基线：<code>session.created</code> 记下会话开始时的提交，审核的 diff 是工作区相对这个提交的改动。</li>
+      <li>review：diff 来源换成 <code>repo.diff</code>；文件树、选区、评论组件原样复用，评论发回对话复用输入框。</li>
+      <li>code：编辑器用 <code>file.read</code> 打开文件。</li>
+      <li>
+        git：源代码管理面板用 <code>repo.status</code> 和 <code>repo.branches</code>，切分支走
+        <code>repo.checkout</code>。
+      </li>
+      <li>e2e：review、git、branch 几个 spec 跑通；worktree.spec 留到 D6，因为 worktree 现在属于认领。</li>
+    </ol>
+    <p>
+      只实现：六个协议方法和 SDK
+      对应方法、基线提交、三个面板的数据源替换。不做：从界面暂存和提交（用终端或让智能体做）、文件改动推送（S24 之后由
+      <code>repo.changed</code> 事件驱动刷新）。
+    </p>
+
+    <p class="file">D4 终端面板</p>
+    <p>
+      做完以后：终端面板和 v0.3.1 完全一样：每个目录一组标签页，一个标签一个
+      shell；收起面板不杀进程，重新打开时回放输出；关闭标签才结束进程；在终端就绪前敲的键不丢；拖动改高度并记住。变化只在引擎里：v0.3.1
+      用的 node-pty 原生模块和它的补丁换成 Go 实现。
+    </p>
+    <p class="muted">依赖：D2。</p>
+    <p>
+      v0.3.1 的实现要点，Go 侧逐条保留：shell 的选择（Windows 优先 Git Bash，按 <code>git.exe</code> 的位置或
+      <code>MERAKCODE_GIT_BASH_PATH</code> 找，找不到用 <code>COMSPEC</code>；macOS 用 <code>/bin/zsh</code>；Linux 用
+      <code>$SHELL</code>，没有就找 bash）；sh 系的 shell 加 <code>-l</code> 当登录
+      shell；环境变量继承引擎的，去掉引擎自己的令牌等敏感项，加上 <code>TERM=xterm-256color</code> 和
+      <code>MERAKCODE_TERMINAL=1</code>，Windows 上把 locale 设成 UTF-8；每个终端 2 MB
+      的输出环形缓冲，带累计字节数做光标；附着时从客户端给的光标回放，再发一条带当前光标的控制消息；一个终端可以有多个订阅者；标题和大小可改；项目关闭或引擎退出时终端进程一起结束。
+    </p>
+    <ol>
+      <li>
+        <code>platform/pty</code>（Unix 用 <code>creack/pty</code>，Windows 用 <code>golang.org/x/sys/windows</code>
+        调 ConPTY）：起一个交互 shell，写一行，读到回显；改大小；关闭。v0.3.1 为 node-pty
+        写的四个绕过逻辑变成测试用例：子进程退出后宿主进程能自己退出；退出后再 kill、write、resize
+        不报错；刚启动就写入并 kill 不会让引擎崩溃；输出管道报错不会让引擎崩溃。表格测试在 CI 的三个系统上跑。
+      </li>
+      <li>
+        <code>engine/terminal</code>：shell 选择和环境变量按上面的规则；2 MB 环形缓冲和光标；按光标回放；多订阅者；事件
+        <code>terminal.created</code
+        >、<code>terminal.updated</code>、<code>terminal.exited</code>、<code>terminal.deleted</code>；项目关闭时全部结束。v0.3.1
+        的“复用 WebSocket 对象不会串输出”和“终端在请求结束后退出不会抛到外面”两个用例照搬。
+      </li>
+      <li>
+        协议：<code>terminal.list</code>、<code>terminal.create</code>（命令、参数、目录、标题、大小）、<code>terminal.get</code>、<code>terminal.update</code>（标题、大小）、<code>terminal.remove</code>；附着走
+        11.1 节说的单独 WebSocket，地址带终端 id 和光标。帧的约定：输出是二进制帧（原始字节，界面侧流式解码
+        UTF-8），输入是文本帧，控制消息是 JSON 文本帧（目前只有光标）。
+      </li>
+      <li>
+        SDK：<code>connectTerminal</code> 在连接建立前把输入排队，建立后按原顺序发出；v0.3.1 的两个 SDK 测试（onOpen
+        里再发输入不乱序；建立前的输入不丢并且能收到输出）照搬。
+      </li>
+      <li>
+        界面：features/terminal 原样复用，只把 <code>pty.*</code> 调用和 <code>connectPty</code> 换成新名字；e2e
+        的终端用例跑通。
+      </li>
+    </ol>
+    <p>
+      只实现：pty 封装、<code>engine/terminal</code>、五个协议方法和附着通道、SDK
+      方法、面板接线。不做：终端会话跨引擎重启持久化（v0.3.1 也没有）、智能体用终端跑命令。
+    </p>
+
+    <p class="file">D5 设置页收尾与诊断</p>
+    <p>
+      做完以后：错误提示的标题和建议来自 JSON 目录生成的
+      TypeScript；设置页有“导出诊断包”按钮；关于页同时显示桌面端和引擎的版本。
+    </p>
+    <p class="muted">依赖：S14 错误码 JSON、S16 诊断包。</p>
+    <ol>
+      <li>错误码：<code>state/error.ts</code> 用生成的目录渲染 <code>MRK-xxxx</code> 的标题和建议，现有测试复用。</li>
+      <li>诊断：按钮调 <code>diagnostics.bundle</code>，SDK 取回 blob，主进程的文件对话框保存 zip。</li>
+      <li>版本：<code>hello</code> 返回的引擎版本显示在关于页；更新检查和自动更新原样复用。</li>
+    </ol>
+    <p>只实现：错误码渲染、诊断导出、版本显示。不做：权限模式选择器（D9）、记忆界面。</p>
+
+    <div class="box note">
+      阶段 2 结束时桌面端的标准：单聊功能和 v0.3.1 持平（协作群除外）；<code>pnpm check</code> 覆盖桌面端；CI
+      跑渲染进程测试和 Linux 上的 e2e；安装包只含 Go 引擎。
+    </div>
 
     <h3 id="phase-3">阶段 3：纳管外部产品，本地协作群能用</h3>
 
@@ -6057,8 +6337,77 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </ol>
     <p>
       只实现：两个折叠（SDK）、通知事件和路由表的第一版、阶段状态机、<code>set_task_leader</code>
-      和线程交接。不做：界面本身、多人在线状态。
+      和线程交接。不做：界面本身（D7）、多人在线状态。
     </p>
+
+    <p class="file">D6 协作群：建群、成员与档案、群聊</p>
+    <p>
+      做完以后：从侧栏建一个本地群，把本机探测到的产品和内置档案拉进来当成员，在群聊里说话、@
+      成员、在任务讨论串里发言，看到 Leader 的回复和成员的进度摘要。
+    </p>
+    <p class="muted">依赖：D2、S18 第一个协作群、S20 人的发言和快速通道、S22 更多成员。</p>
+    <ol>
+      <li>
+        建群：复用原来建群流程的组件（选目录、选成员），数据改成 <code>group.create</code>（kind 为 local）加
+        <code>group.addMember</code>；成员来源是 <code>member.catalog</code> 和 <code>profile.list</code>。
+      </li>
+      <li>
+        成员与档案视图：复用产品接入页的探测和连通测试表单、协作页的角色模板表单，数据改成 <code>profile.save</code> 和
+        <code>member.register</code>；能力清单驱动按钮，不能中途接收消息的成员“发消息”灰掉并提示会作为新任务派发。
+      </li>
+      <li>
+        群聊：复用消息列表渲染 <code>human.said</code>、Leader 的 <code>message.completed</code>、合并后的进度摘要和
+        <code>notice.sent</code>；输入框复用，@ 成员和任务讨论串通过
+        <code>group.say</code> 的参数表达；成员列复用座位气泡显示忙闲和当前任务。
+      </li>
+      <li>侧栏：群和单聊并列；群的未读数来自发给我的 <code>notice.sent</code>。</li>
+      <li>e2e：group 和 agents 两个 spec 改成新流程，假 Claude 二进制复用为 claude-code 成员。</li>
+    </ol>
+    <p>只实现：建群、成员与档案、群聊、侧栏。不做：看板、收件箱、审核（D7、D8）、云端群。</p>
+
+    <p class="file">D7 任务看板与收件箱</p>
+    <p>
+      做完以后：每个群有任务看板（按状态分列，按顶层任务看阶段，点开卡片看报告和实时过程）和收件箱（要我做的、告诉我的）；系统通知和托盘角标来自收件箱。
+    </p>
+    <p class="muted">依赖：D6、S23 看板和收件箱的折叠、通知路由。</p>
+    <ol>
+      <li>
+        看板：SDK
+        的看板折叠渲染成列；卡片上的操作只有建任务、取消、指派成员（<code>task.assign</code>）；状态由引擎管，不做拖拽。
+      </li>
+      <li>
+        卡片详情：报告按结构化字段渲染；过程是可展开的附件，用 <code>events.read</code> 读该认领的会话；产物列表。
+      </li>
+      <li>收件箱：SDK 的收件箱折叠；待办项点开跳到审批、问题或审核；信息项的已读状态存在主进程的本地存储里。</li>
+      <li>通知：复用 shell 的通知模块把 <code>notice.sent</code> 变成系统通知和托盘角标，notify.spec 复用。</li>
+      <li>建任务表单：标题、描述、验收标准、要不要审核、指定成员或 Leader，发 <code>task.create</code>。</li>
+    </ol>
+    <p>只实现：两个视图、卡片详情、表单、通知接线。不做：拖拽改状态、多人在线状态、产物预览。</p>
+
+    <p class="file">D8 审核任务产物</p>
+    <p>
+      做完以后：收件箱里的审核项打开一个以报告为主的审核页，有报告、工作区相对起点的
+      diff、产物、检查结果；一键通过，写意见返工，或者“方向不对”打回规划。
+    </p>
+    <p class="muted">依赖：D7、S19 worktree、S21 产物发布、S23 阶段。</p>
+    <ol>
+      <li>
+        审核页：报告在上；diff 复用 review 的 diff、文件树、评论组件，数据源是
+        <code>repo.diff</code>，基线是任务卡的起点提交；产物从 blob 取。
+      </li>
+      <li>
+        决定：通过、返工（带意见）、打回规划对应
+        <code>task.review</code> 的三种结果；返工意见送到原认领，界面上能看到成员收到了。
+      </li>
+      <li>集成任务在看板上有冲突标记，审核页列出冲突文件。</li>
+      <li>e2e：review.spec 扩成任务审核流程。</li>
+    </ol>
+    <p>只实现：审核页和三种决定。不做：行内评论逐条回传给成员（先整段意见）、产物预览。</p>
+
+    <div class="box note">
+      阶段 3 结束时桌面端的标准：本地协作群从建群到交付全程可以在界面里完成，审核以报告为主、过程可展开；v0.3.1
+      的协作群界面文件全部被新实现替代或删除。
+    </div>
 
     <h3 id="phase-4">阶段 4：主动性、安全、扩展</h3>
 
@@ -6160,6 +6509,25 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </ol>
     <p>只实现：安装命令、复用池、两项限制、哨兵的八条规则。不做：按成员的预算、用模型判断“是否在原地打转”。</p>
 
+    <p class="file">D9 权限模式、沙箱状态、上下文与花费</p>
+    <p>
+      做完以后：设置里能选三档权限模式并看到风险提示；对话和群里能看到沙箱状态（可用、不可用、已关闭）；每条会话有“上下文花在哪了”，每个群有按任务和成员汇总的
+      token 和费用；限流和哨兵的提醒进收件箱。
+    </p>
+    <p class="muted">依赖：D7、S25 沙箱、S26 仅询问危险行为模式、S29 限流与哨兵。</p>
+    <ol>
+      <li>
+        权限模式选择器：复用权限级别组件和接管确认对话框；选全面接管时弹风险提示；经 <code>config.set</code> 生效。
+      </li>
+      <li>沙箱状态：复用沙箱控制组件（含 Windows 的一次性初始化入口）显示三种状态。</li>
+      <li>
+        上下文与花费视图：<code>session.budget</code> 画成分段条；<code>turn.finished</code>
+        的用量按任务和成员汇总成表。
+      </li>
+      <li><code>group.throttled</code> 和 <code>sentinel.flagged</code> 进收件箱并发系统通知。</li>
+    </ol>
+    <p>只实现：选择器、沙箱状态、花费视图、两类通知。不做：权限规则编辑界面、按成员设预算。</p>
+
     <h3 id="phase-5">阶段 5：云端</h3>
 
     <p class="file">S30 设备链接与云端群</p>
@@ -6193,6 +6561,24 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       </li>
     </ol>
     <p>只实现：remote 适配器（经 Go 协议客户端）、手动填地址和令牌。不做：自动发现。</p>
+
+    <p class="file">D10 云端登录与云端群</p>
+    <p>
+      做完以后：设置里登录云端账号；建群时可以选云端；云端群的群聊、看板、收件箱和本地群用同一套界面；局域网里另一台
+      MerakCode 的成员能拉进本地群。
+    </p>
+    <p class="muted">依赖：D7、S30 设备链接、S31 远程成员。</p>
+    <ol>
+      <li>
+        登录：协议方法
+        <code>cloud.login</code>、<code>cloud.logout</code>（令牌只在引擎里）；设置页显示账号和本设备的在线状态。
+      </li>
+      <li>建群：kind 可选 cloud；没登录时灰掉并提示；云端群的事件经本机引擎转发，界面不区分本地群和云端群。</li>
+      <li>远程成员：加成员时可以填另一台 <code>merak serve</code> 的地址和令牌，列出对方的成员。</li>
+    </ol>
+    <p>
+      只实现：登录、建群选项、远程成员表单。不做：网页端、手机端、把成员分享给别人的界面（放在云端仓库的网页端里）。
+    </p>
 
     <p>
       阶段 2 结束后、与阶段 3 并行：云端服务仓库起步，只做设备链接协议的服务端和 SQLite 宿主（13.4 节）。阶段 5
