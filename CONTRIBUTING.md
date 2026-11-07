@@ -6,15 +6,17 @@
 
 ## v1.0.0 重建
 
-`dev-v1.0.0` 分支重建整体架构。引擎、`merak` 命令行（`apps/cli`）和 SDK（`packages/sdk`）都已删除，新的引擎和协议还没有定。在这之前：
+`dev-v1.0.0` 分支重建整体架构。旧引擎、`merak` 命令行（`apps/cli`）和 SDK（`packages/sdk`）都已删除。新的引擎、命令行和协议用 Go 写，放在根目录的 `merak/`。设计见 `docs/plans/v1-agent-engine.html`。重建期间：
 
-- 仓库里只有桌面端（`apps/desktop`）和共用的 `packages/util`、`packages/log`。
+- 仓库里有 Go 程序 `merak/`、桌面端（`apps/desktop`）和共用的 `packages/util`、`packages/log`。
 - 桌面端还在用 v0.3 SDK 的协议类型，所以编译不了。`pnpm typecheck` 不检查桌面端，`pnpm check:unused` 不报告桌面端的问题，桌面端的测试也不跑。
-- `.github/workflows/` 里的工作流和下面的"发布"一节还是 v0.3 的流程。`ci.yml` 只在 PR 和推送到 `main` 时运行，`release.yml` 只在打 tag 时运行，`regression.yml` 只能手动运行。
+- `ci.yml` 已经覆盖当前仓库。`release.yml`、`regression.yml` 和下面的"发布"一节还是 v0.3 的流程。`ci.yml` 只在 PR 和推送到 `main` 时运行，`release.yml` 只在打 tag 时运行，`regression.yml` 只能手动运行。
 
 ## 准备环境
 
 需要 Node.js 26.12 以上和 pnpm 12：
+
+- `merak/` 用 Go 写，PATH 上要有 `merak/go.mod` 里写的 Go 版本。
 
 ```sh
 git clone https://github.com/TongTong313/merakcode.git
@@ -29,39 +31,42 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 
 都在仓库根目录运行：
 
-| 命令                         | 作用                                               |
-| ---------------------------- | -------------------------------------------------- |
-| `pnpm check`                 | 提交 PR 前要过的静态检查（不跑测试），见下面的说明 |
-| `pnpm test:script`           | 根目录 `script/` 下脚本的测试                      |
-| `pnpm format`                | 格式化整个仓库                                     |
-| `pnpm generate:errors`       | 改了错误码后重新生成 `docs/errors.md`              |
-| `pnpm release:version x.y.z` | 把所有包的版本号改成同一个（维护者发版用）         |
+| 命令                         | 作用                                                           |
+| ---------------------------- | -------------------------------------------------------------- |
+| `pnpm check`                 | 提交 PR 前要过的静态检查（不跑测试），见下面的说明             |
+| `pnpm test:script`           | 根目录 `script/` 下脚本的测试                                  |
+| `pnpm format`                | 格式化整个仓库                                                 |
+| `pnpm --dir merak build`     | 不用 cgo，把 `merak` 编译成 6 个平台的程序，放在 `merak/dist/` |
+| `pnpm generate:errors`       | 改了错误码后重新生成 `docs/errors.md`                          |
+| `pnpm release:version x.y.z` | 把所有包的版本号改成同一个（维护者发版用）                     |
 
 `pnpm check` 依次运行下面这些脚本，每个也能单独跑（`pnpm <脚本>`）：
 
-| 脚本             | 检查什么                                                                    |
-| ---------------- | --------------------------------------------------------------------------- |
-| `format:check`   | Prettier 格式                                                               |
-| `check:brand`    | 没有旧的产品名和没填的占位符                                                |
-| `check:comments` | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定)             |
-| `check:versions` | 所有包的版本号一致                                                          |
-| `check:errors`   | `docs/errors.md` 是最新的                                                   |
-| `typecheck`      | 各个包的类型（v1.0.0 重建期间不含桌面端）                                   |
-| `check:css`      | 桌面端的 CSS 里没有 `!important`                                            |
-| `check:unused`   | 没用到的文件、导出和依赖（knip；v1.0.0 重建期间读桌面端代码，但不报告问题） |
+| 脚本             | 检查什么                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `format:check`   | Prettier 格式                                                                                            |
+| `check:brand`    | 没有旧的产品名和没填的占位符                                                                             |
+| `check:comments` | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定)                                          |
+| `check:versions` | 所有包的版本号一致                                                                                       |
+| `check:errors`   | `docs/errors.md` 是最新的                                                                                |
+| `typecheck`      | 各个包的类型；`merak` 跑 gofmt 和 Linux、macOS、Windows 三个系统的 `go vet`（v1.0.0 重建期间不含桌面端） |
+| `check:css`      | 桌面端的 CSS 里没有 `!important`                                                                         |
+| `check:unused`   | 没用到的文件、导出和依赖（knip；v1.0.0 重建期间读桌面端代码，但不报告问题）                              |
 
 `pnpm check` 不跑测试。生成出来的文件（比如 `docs/errors.md`）不要手改，改了源头再跑对应的 `generate` 命令。
 
 ## 代码是怎么组织的
 
-| 目录                            | 内容                                 |
-| ------------------------------- | ------------------------------------ |
-| `packages/util`、`packages/log` | 共用的基础代码、错误码目录、日志     |
-| `apps/desktop/main`             | 桌面端主进程（Electron）             |
-| `apps/desktop/renderer`         | 桌面端界面（SolidJS + Vite，纯 CSS） |
+| 目录                            | 内容                                                                                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merak`                         | `merak` 程序的 Go 模块（命令行、引擎、协议服务端），按 Go 的布局放在根目录。`engine/`、`protocol/` 是公开包，入口是 `cmd/merak`，其他包在 `internal/` 下 |
+| `packages/util`、`packages/log` | 共用的基础代码、错误码目录、日志                                                                                                                         |
+| `apps/desktop/main`             | 桌面端主进程（Electron）                                                                                                                                 |
+| `apps/desktop/renderer`         | 桌面端界面（SolidJS + Vite，纯 CSS）                                                                                                                     |
 
 ## 测试
 
+- Go 的测试在 `merak` 里用 `go test ./...` 跑，也可以用 `pnpm --dir merak test`。临时目录用 `t.TempDir()`。
 - 测试用 Vitest，每个包在自己的目录里跑：`cd packages/util && pnpm test`；只跑一个文件就把路径加在后面。根目录的 `pnpm test` 不跑任何测试；根目录 `script/` 下的脚本用 `pnpm test:script` 测。
 - 测真实行为，尽量不用 mock。需要临时目录就用测试夹具里的 `tmpdir()`，用完自动清理。
 - 要模型回复的用例用本地的假模型，不要连真的模型服务。
@@ -70,12 +75,13 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 
 ## 代码约定
 
+- `merak` 的 Go 代码用 gofmt 格式化，不用 cgo。`engine/`、`protocol/` 之外的包都放在 `internal/` 下。优先用标准库，加 Go 依赖前先说明理由。模型服务商 SDK 的类型不出它自己的包。日志走 `log/slog`，不记密钥和对话内容。引擎不输出给用户看的文字，只发事件和错误码。
 - TypeScript + ESM，Prettier 格式化（不写分号，每行最长 120 字符）。
 - 输入用 Zod 校验。
 - 多用提前 `return`，少用 `else`；多用 `const`，少用 `let`；函数保持短小。
 - 不留注释掉的代码和用不到的代码。用不到的变量和导入编译器会报，用不到的文件、导出和依赖由 knip 报（`pnpm check:unused`）；注释掉的代码没有工具查，要自己注意。
 - 代码注释、日志消息和测试标题用英文。注释只写代码本身看不出来的东西（约束、原因、坑），不要复述代码在做什么。
-- `pnpm check:comments` 会查 JS/TS 文件里的注释、`log.info(...)` 这类日志调用的消息和 `describe`、`test`、`it` 的标题，以及 `.sh`、`.ps1`、`.yml` 文件里的 `#` 注释；`locales/` 和 `i18n/` 目录、生成的 `gen/` 目录和 `.d.ts` 文件不查。确实要用中文的那一行，在它上一行加 `// i18n-allow`。
+- `pnpm check:comments` 会查 JS/TS 文件里的注释、`log.info(...)` 这类日志调用的消息和 `describe`、`test`、`it` 的标题，以及 `.sh`、`.ps1`、`.yml` 文件里的 `#` 注释，以及 Go 文件里的注释和 `t.Run` 的标题；`locales/` 和 `i18n/` 目录、生成的 `gen/` 目录和 `.d.ts` 文件不查。确实要用中文的那一行，在它上一行加 `// i18n-allow`。
 - 给用户看的文字要有中英两份，桌面端写在 `apps/desktop/renderer/src/i18n/{zh,en}.ts`。给模型看的提示词和工具说明只写英文。
 - 桌面端界面用纯 CSS 和设计变量，不要写 `!important`。
 
@@ -160,15 +166,17 @@ Questions and code are both welcome. For bigger changes, open an issue first to 
 
 ## v1.0.0 rebuild
 
-The `dev-v1.0.0` branch rebuilds the whole architecture. The engine, the `merak` command line (`apps/cli`) and the SDK (`packages/sdk`) are deleted, and the new engine and its protocol are not settled yet. Until then:
+The `dev-v1.0.0` branch rebuilds the whole architecture. The old engine, the `merak` command line (`apps/cli`) and the SDK (`packages/sdk`) are deleted. The new engine, command line and protocol are written in Go in the root `merak/` directory; the design is `docs/plans/v1-agent-engine.html`. During the rebuild:
 
-- The repository holds only the desktop app (`apps/desktop`) and the shared `packages/util` and `packages/log`.
+- The repository holds the Go program `merak/`, the desktop app (`apps/desktop`) and the shared `packages/util` and `packages/log`.
 - The desktop app still uses the v0.3 SDK's protocol types, so it does not compile. `pnpm typecheck` leaves it out, `pnpm check:unused` reports none of its issues, and its tests don't run.
-- The workflows in `.github/workflows/` and the "Releasing" section below still describe v0.3. `ci.yml` runs only on pull requests and pushes to `main`, `release.yml` only on tags, and `regression.yml` only by hand.
+- `ci.yml` covers the current repository; `release.yml`, `regression.yml` and the "Releasing" section below still describe v0.3. `ci.yml` runs only on pull requests and pushes to `main`, `release.yml` only on tags, and `regression.yml` only by hand.
 
 ## Setup
 
 You need Node.js 26.12 or newer and pnpm 12:
+
+- `merak/` is written in Go. Put the Go version named in `merak/go.mod` on PATH.
 
 ```sh
 git clone https://github.com/TongTong313/merakcode.git
@@ -183,39 +191,42 @@ For running, debugging and packaging from source, see ["Develop from source" in 
 
 All from the repo root:
 
-| Command                      | What it does                                            |
-| ---------------------------- | ------------------------------------------------------- |
-| `pnpm check`                 | The static checks a PR must pass (no tests), see below  |
-| `pnpm test:script`           | Tests for the scripts in the root `script/` folder      |
-| `pnpm format`                | Format the whole repo                                   |
-| `pnpm generate:errors`       | Regenerate `docs/errors.md` after changing error codes  |
-| `pnpm release:version x.y.z` | Set every package to the same version (for maintainers) |
+| Command                      | What it does                                                             |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `pnpm check`                 | The static checks a PR must pass (no tests), see below                   |
+| `pnpm test:script`           | Tests for the scripts in the root `script/` folder                       |
+| `pnpm format`                | Format the whole repo                                                    |
+| `pnpm --dir merak build`     | Build `merak` for all 6 release platforms without cgo into `merak/dist/` |
+| `pnpm generate:errors`       | Regenerate `docs/errors.md` after changing error codes                   |
+| `pnpm release:version x.y.z` | Set every package to the same version (for maintainers)                  |
 
 `pnpm check` runs these scripts in order; each can also run on its own (`pnpm <script>`):
 
-| Script           | What it checks                                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `format:check`   | Prettier formatting                                                                                                           |
-| `check:brand`    | No old product names or unfilled placeholders                                                                                 |
-| `check:comments` | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)                                     |
-| `check:versions` | Every package has the same version                                                                                            |
-| `check:errors`   | `docs/errors.md` is up to date                                                                                                |
-| `typecheck`      | Types in every package (without the desktop app during the v1.0.0 rebuild)                                                    |
-| `check:css`      | No `!important` in the desktop CSS                                                                                            |
-| `check:unused`   | Unused files, exports and dependencies (knip; reads the desktop app but reports none of its issues during the v1.0.0 rebuild) |
+| Script           | What it checks                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `format:check`   | Prettier formatting                                                                                                                      |
+| `check:brand`    | No old product names or unfilled placeholders                                                                                            |
+| `check:comments` | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)                                                |
+| `check:versions` | Every package has the same version                                                                                                       |
+| `check:errors`   | `docs/errors.md` is up to date                                                                                                           |
+| `typecheck`      | Each package's types; `merak` runs gofmt and `go vet` for Linux, macOS and Windows (excluding the desktop app during the v1.0.0 rebuild) |
+| `check:css`      | No `!important` in the desktop CSS                                                                                                       |
+| `check:unused`   | Unused files, exports and dependencies (knip; reads the desktop app but reports none of its issues during the v1.0.0 rebuild)            |
 
 `pnpm check` runs no tests. Don't edit generated files such as `docs/errors.md` by hand; change the source and run the matching `generate` command.
 
 ## How the code is organized
 
-| Directory                       | What's in it                                    |
-| ------------------------------- | ----------------------------------------------- |
-| `packages/util`, `packages/log` | Shared helpers, the error code catalog, logging |
-| `apps/desktop/main`             | Desktop main process (Electron)                 |
-| `apps/desktop/renderer`         | Desktop UI (SolidJS + Vite, plain CSS)          |
+| Directory                       | What's in it                                                                                                                                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `merak`                         | The Go module of the `merak` program (command line, engine and protocol server), at the root following Go's layout. `engine/` and `protocol/` are public; `cmd/merak` is the entry; everything else is under `internal/` |
+| `packages/util`, `packages/log` | Shared helpers, the error code catalog, logging                                                                                                                                                                          |
+| `apps/desktop/main`             | Desktop main process (Electron)                                                                                                                                                                                          |
+| `apps/desktop/renderer`         | Desktop UI (SolidJS + Vite, plain CSS)                                                                                                                                                                                   |
 
 ## Tests
 
+- Run Go tests inside `merak` with `go test ./...`, or use `pnpm --dir merak test`. Use `t.TempDir()` for temporary directories.
 - Tests use Vitest and run per package: `cd packages/util && pnpm test`; add a file path to run just that file. `pnpm test` at the root runs no tests; the scripts in the root `script/` folder are tested with `pnpm test:script`.
 - Test real behavior and avoid mocks. For temporary directories use the `tmpdir()` fixture; it cleans up after itself.
 - Tests that need model replies use a local fake model, never a real provider.
@@ -224,12 +235,13 @@ All from the repo root:
 
 ## Conventions
 
+- Go code in `merak` uses gofmt and no cgo. `engine/` and `protocol/` are public; every other package is under `internal/`. Prefer the standard library and explain the reason before adding a Go dependency. Provider SDK types stay inside the provider's package. Log through `log/slog`, without keys or conversation content. The engine emits events and error codes, not text meant for users.
 - TypeScript and ESM, formatted with Prettier (no semicolons, 120 columns).
 - Validate inputs with Zod.
 - Prefer early returns over `else`, `const` over `let`, and short functions.
 - No commented-out or unused code. The compiler reports unused variables and imports, and knip reports unused files, exports and dependencies (`pnpm check:unused`); nothing checks for commented-out code, so watch for it yourself.
 - Code comments, log messages and test titles are in English. Comments only say what the code can't: constraints, reasons, gotchas. Don't narrate what the code does.
-- `pnpm check:comments` checks comments in JS and TS files, the messages of log calls such as `log.info(...)`, the titles of `describe`, `test` and `it`, and `#` comments in `.sh`, `.ps1` and `.yml` files; it skips `locales/` and `i18n/` folders, generated `gen/` folders and `.d.ts` files. When a line really needs Chinese, put `// i18n-allow` on the line before it.
+- `pnpm check:comments` checks comments in JS and TS files, the messages of log calls such as `log.info(...)`, the titles of `describe`, `test` and `it`, `#` comments in `.sh`, `.ps1` and `.yml` files, and comments and `t.Run` titles in Go files; it skips `locales/` and `i18n/` folders, generated `gen/` folders and `.d.ts` files. When a line really needs Chinese, put `// i18n-allow` on the line before it.
 - Text shown to users needs Chinese and English; the desktop app keeps it in `apps/desktop/renderer/src/i18n/{zh,en}.ts`. Prompts and tool descriptions for the model are English only.
 - The desktop UI uses plain CSS with design tokens. No `!important`.
 

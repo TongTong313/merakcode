@@ -18,7 +18,7 @@ export namespace Version {
     return PATTERN.test(version)
   }
 
-  /** package.json files of the workspace: the root, apps/*, apps/x/*, packages/*, packages/x/* */
+  /** package.json files of the workspace: the root, merak, apps/*, apps/x/*, packages/*, packages/x/* */
   function files(root: string) {
     const children = (dir: string) =>
       existsSync(dir)
@@ -30,7 +30,9 @@ export namespace Version {
       const first = children(path.join(root, group))
       return [...first, ...first.flatMap(children)]
     })
-    return [root, ...dirs].map((dir) => path.join(dir, "package.json")).filter((file) => existsSync(file))
+    return [root, path.join(root, "merak"), ...dirs]
+      .map((dir) => path.join(dir, "package.json"))
+      .filter((file) => existsSync(file))
   }
 
   const read = (file: string) => (JSON.parse(readFileSync(file, "utf8")) as { version?: string }).version ?? ""

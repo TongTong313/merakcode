@@ -1,24 +1,36 @@
 # MerakCode development notes
 
-Monorepo for MerakCode, an AI coding tool built around an Electron desktop app. Node.js 26.12+, pnpm 12, TypeScript (ESM). This file lists what is easiest to get wrong; [CONTRIBUTING.md](CONTRIBUTING.md#contributing) is the full guide.
+Monorepo for MerakCode, an AI coding tool built around an Electron desktop app. Node.js 26.12+, pnpm 12, TypeScript (ESM); the `merak` engine is Go. This file lists what is easiest to get wrong; [CONTRIBUTING.md](CONTRIBUTING.md#contributing) is the full guide.
 
 ## v1.0.0 rebuild
 
 The `dev-v1.0.0` branch rebuilds the whole architecture. The user designs the architecture and each module: implement what the user has decided, and ask when a design question is still open.
 
-- The v0.3 engine, the `merak` command line (`apps/cli`) and the SDK (`packages/sdk`) are deleted. The user plans to write the new engine in Go.
+- The v0.3 engine, the `merak` command line (`apps/cli`) and the SDK (`packages/sdk`) are deleted. The new engine, command line and protocol are written in Go in `merak/`; the design is `docs/plans/v1-agent-engine.html`. Implement the slice the user asks for, in the order its section lists, test first.
 - Don't read, search or copy the v0.3 engine, command line or SDK (the `v0.3.0` tag, other branches, or other clones of this repository) unless the user asks. Work from the user's design and from tests.
-- The desktop app still uses the v0.3 SDK's protocol types, so it does not compile; it moves to the new protocol once that exists. Until then `pnpm typecheck` leaves it out, knip reads it but reports none of its issues (`ignore` in `knip.json`), its tests don't run, and the workflows in `.github/workflows/` still describe v0.3.
+- The desktop app still uses the v0.3 SDK's protocol types, so it does not compile; it moves to the new protocol once that exists. Until then `pnpm typecheck` leaves it out, knip reads it but reports none of its issues (`ignore` in `knip.json`), its tests don't run, and `release.yml` and `regression.yml` still describe v0.3 (`ci.yml` covers the current repository).
 
 ## Layout
 
+- `merak` — the Go module of the `merak` program (command line, engine and protocol server). It sits at the repository root because it follows Go's layout, not the `apps/` and `packages/` split. `engine/` and `protocol/` are its public packages (the cloud service imports them); `cmd/merak` is the entry; everything else is under `internal/`. The module root package reads the product version from the `package.json` next to it, which only wraps the Go commands for pnpm and turbo.
 - `packages/util`, `packages/log` — shared helpers, the error code catalog, logging.
 - `apps/desktop/main` — Electron main process.
 - `apps/desktop/renderer` — desktop UI (SolidJS + Vite, plain CSS with design tokens; no `!important`).
 
+## Go code
+
+- Use the Go version named in `merak/go.mod`. Run Go commands inside `merak`, or through its scripts: `pnpm --dir merak test` runs `go test ./...`, `typecheck` runs gofmt and then `go vet ./...` for Linux, macOS and Windows, and `build` builds every release platform into `dist/`.
+- No cgo: everything builds with `CGO_ENABLED=0`, so one machine builds every platform. `go test -race` needs cgo and runs only in CI on Linux.
+- `engine/` and `protocol/` are public packages; every other package is under `internal/`. Go itself rejects import cycles. Dependencies point one way: `cli` → `server`/`protocol` → `engine` → `platform`; `engine.New` is the only place that imports every engine package.
+- Standard library first. Add a module to `go.mod` only for a reason the user agrees with. Provider SDK types never leave the provider's package: the rest of the engine sees only `model.Message` and `model.Part`.
+- Format with gofmt; `pnpm --dir merak typecheck` fails on unformatted files.
+- Tests are table-driven when cases share a shape, use `t.TempDir()` for temporary directories, and test real behavior without mocks: the fake model is a real `model.Provider`, the memory store is a real `store.Store`.
+- Comments and `t.Run` titles are in English; `check:comments` checks Go files too.
+- Logging goes through `log/slog` configured by `internal/platform/log`; never log keys, tokens, environment values or conversation content. The engine prints no text meant for users: it emits events and `MRK-xxxx` error codes, and the clients render them. The command line has its own `zh`/`en` text table.
+
 ## Commands
 
-- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:errors`, `typecheck`, `check:css` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). Run it before finishing a change. It runs no tests; run `pnpm test:script` and the tests of the packages you changed as well.
+- `pnpm check` at the root runs `format:check`, `check:brand`, `check:comments`, `check:versions`, `check:errors`, `typecheck`, `check:css` and `check:unused`, in that order ([what each one checks](CONTRIBUTING.md#commands)). `typecheck` includes the Go checks of `merak`. Run it before finishing a change. It runs no tests; run `pnpm test:script` and the tests of the packages you changed as well.
 - Tests run per package: `cd <package> && pnpm test [file]`. `pnpm test` at the root only fails; the root `script/` folder is tested with `pnpm test:script`.
 - Never edit generated files; regenerate them. After error codes: `pnpm generate:errors`.
 

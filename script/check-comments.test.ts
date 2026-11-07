@@ -48,4 +48,20 @@ describe("issues", () => {
     expect(kinds("a.sh", 'echo "中文"\n# 注释\nls # 尾注释\n')).toEqual(["2:comment", "3:comment"])
     expect(kinds("a.yml", "# 说明\nname: ci\n")).toEqual(["1:comment"])
   })
+
+  test("comments and t.Run titles in Go; strings, raw strings and runes start no comment", () => {
+    const text = [
+      "package a",
+      "// 中文注释",
+      'var s = "// 不是注释"',
+      "var r = `/* 也不是 */`",
+      "var c = '\"'",
+      "/* 块注释 */",
+      'func TestA(t *testing.T) { t.Run("中文标题", func(t *testing.T) {}) }',
+      'func TestB(t *testing.T) { t.Run("english", func(t *testing.T) {}) }',
+      "// i18n-allow",
+      "// 允许的中文",
+    ].join("\n")
+    expect(kinds("a.go", text)).toEqual(["2:comment", "6:comment", "7:test"])
+  })
 })

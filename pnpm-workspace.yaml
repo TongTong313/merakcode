@@ -1,4 +1,5 @@
 packages:
+  - merak
   - apps/desktop/*
   - packages/*
 

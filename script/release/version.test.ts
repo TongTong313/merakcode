@@ -23,6 +23,7 @@ function workspace(versions: Record<string, string>) {
 
 const layout = {
   "": "0.1.0",
+  merak: "0.1.0",
   "apps/cli": "0.1.0",
   "apps/desktop/main": "0.1.0",
   "packages/util": "0.1.0",
@@ -50,6 +51,7 @@ describe("Version.set", () => {
     expect(changed.map((file) => path.relative(root, file).replaceAll("\\", "/")).sort()).toEqual(
       [
         "package.json",
+        "merak/package.json",
         "apps/cli/package.json",
         "apps/desktop/main/package.json",
         "packages/util/package.json",

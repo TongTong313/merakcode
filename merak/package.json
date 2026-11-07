@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "version": "0.3.0",
+  "name": "@merakcode/merak",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "typecheck": "node script/check.ts",
+    "test": "go test ./...",
+    "build": "node script/build.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TongTong313/merakcode.git",
+    "directory": "merak"
+  },
+  "homepage": "https://github.com/TongTong313/merakcode",
+  "bugs": {
+    "url": "https://github.com/TongTong313/merakcode/issues"
+  }
+}

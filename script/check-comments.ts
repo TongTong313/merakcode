@@ -16,6 +16,7 @@ const LOG = new Set(["debug", "info", "warn", "error"])
 const TESTS = new Set(["describe", "test", "it"])
 const SCRIPT = /\.(m|c)?(t|j)sx?$/
 const HASH = /\.(sh|ps1|ya?ml)$/
+const GO = /\.go$/
 
 type Node = { type: string; start: number; end: number; [key: string]: unknown }
 
@@ -25,6 +26,57 @@ function hashComments(text: string): Issue[] {
     const comment = at < 0 ? "" : line.slice(at)
     return CJK.test(comment) ? [{ line: index + 1, kind: "comment" as const, text: comment.trim() }] : []
   })
+}
+
+/**
+ * Comments and t.Run titles in Go. Interpreted strings, raw strings and runes are skipped whole, so `//` inside one
+ * starts no comment.
+ */
+function goIssues(text: string): Issue[] {
+  const starts = [0, ...[...text.matchAll(/\n/g)].map((match) => match.index! + 1)]
+  const line = (offset: number) => starts.findLastIndex((start) => start <= offset) + 1
+  const end = (from: number, close: string) => {
+    const at = text.indexOf(close, from)
+    return at < 0 ? text.length : at + close.length
+  }
+  const comments: { start: number; text: string }[] = []
+  const literals: { start: number; text: string }[] = []
+  let i = 0
+  while (i < text.length) {
+    const pair = text.slice(i, i + 2)
+    const quote = text[i]!
+    if (pair === "//" || pair === "/*") {
+      const stop = pair === "//" ? end(i, "\n") : end(i + 2, "*/")
+      comments.push({ start: i, text: text.slice(i, stop) })
+      i = stop
+    } else if (quote === "`") {
+      const stop = end(i + 1, "`")
+      literals.push({ start: i, text: text.slice(i, stop) })
+      i = stop
+    } else if (quote === '"' || quote === "'") {
+      let stop = i + 1
+      while (stop < text.length && text[stop] !== quote && text[stop] !== "\n") stop += text[stop] === "\\" ? 2 : 1
+      literals.push({ start: i, text: text.slice(i, stop + 1) })
+      i = stop + 1
+    } else i++
+  }
+  const allowed = new Set(
+    comments
+      .filter((comment) => comment.text.includes("i18n-allow"))
+      .map((comment) => line(comment.start + comment.text.trimEnd().length - 1) + 1),
+  )
+  const found = new Map<number, Issue>()
+  for (const literal of literals) {
+    const at = line(literal.start)
+    if (CJK.test(literal.text) && /\bt\.Run\(\s*$/.test(text.slice(starts[at - 1]!, literal.start)))
+      found.set(at, { line: at, kind: "test", text: literal.text })
+  }
+  for (const comment of comments) {
+    const at = line(comment.start)
+    if (CJK.test(comment.text) && !found.has(at))
+      found.set(at, { line: at, kind: "comment", text: comment.text.replace(/^\/[/*]|\*\/$/g, "").trim() })
+  }
+  return [...found.values()].filter((issue) => !allowed.has(issue.line)).sort((a, b) => a.line - b.line)
 }
 
 /** Name of what is being called: log.info → ["log", "info"], test.skip → ["test", "skip"] */
@@ -40,6 +92,7 @@ function callee(node: Node | undefined): string[] {
 }
 
 export function issues(file: string, text: string): Issue[] {
+  if (GO.test(file)) return goIssues(text)
   if (HASH.test(file)) return hashComments(text)
   const starts = [0, ...[...text.matchAll(/\n/g)].map((match) => match.index! + 1)]
   const line = (offset: number) => {
@@ -96,7 +149,7 @@ export function files(root: string) {
     .split("\n")
     .filter(Boolean)
     .filter((file) => existsSync(path.join(root, file)))
-    .filter((file) => SCRIPT.test(file) || HASH.test(file))
+    .filter((file) => SCRIPT.test(file) || HASH.test(file) || GO.test(file))
     .filter((file) => !/(^|\/)(locales|i18n)\//.test(file) && !file.includes("/gen/") && !file.endsWith(".d.ts"))
 }
 

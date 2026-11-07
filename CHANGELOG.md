@@ -6,6 +6,10 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- Add the Go `merak --version` command, builds for six platforms, and Go checks in the workspace and CI.
+
 ### Changed
 
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
@@ -55,6 +59,10 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Background notifications no longer overwrite human plan edits. Cancel decisions from an old mode no longer apply after a switch. Queued external tasks start under the current mode. A broken session import returns an input error.
 
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
+
+### 新增
+
+- 新增 Go 版 `merak --version` 命令。构建支持六个平台。工作区和 CI 增加 Go 检查。
 
 ### 变更
 
