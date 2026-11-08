@@ -25,6 +25,7 @@ export type Options = {
   logs: string
   /** Why the local service last failed to start */
   error: () => string | undefined
+  quitting: () => boolean
   icon?: string
   log: (level: "info" | "warn" | "error", message: string, extra?: Record<string, unknown>) => void
 }
@@ -280,7 +281,12 @@ export class Windows {
     win.on("move", later)
     win.on("maximize", save)
     win.on("unmaximize", save)
-    win.on("close", save)
+    win.on("close", (event) => {
+      save()
+      if (this.options.quitting()) return
+      event.preventDefault()
+      win.hide()
+    })
     win.on("closed", () => {
       clearTimeout(timer.current)
       this.list.delete(win)

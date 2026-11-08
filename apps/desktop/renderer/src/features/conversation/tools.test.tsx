@@ -1,7 +1,7 @@
 import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, expect, test } from "vitest"
-import type { ToolPart } from "@merakcode/sdk/client"
+import type { ToolView } from "@merakcode/sdk"
 import "../../styles/tokens.css"
 import "../../styles/base.css"
 import "../../styles/app.css"
@@ -26,63 +26,30 @@ function mount(node: () => JSX.Element) {
   return host
 }
 
-/** A finished shell command, as the conversation renders it */
+/** A finished shell command, as the conversation renders it. */
 function bash(
   command: string,
   fields: { output?: string; exit?: number; start?: number; end?: number } = {},
-): ToolPart {
+): ToolView {
+  const parts = fields.output ? [{ text: fields.output }] : []
   return {
-    id: "tool-1",
-    sessionID: "session-1",
-    messageID: "message-1",
-    type: "tool",
-    callID: "call-1",
-    tool: "bash",
-    state: {
-      status: "completed",
-      input: { command },
-      output: fields.output ?? "",
-      title: "",
-      metadata: { output: fields.output ?? "", exit: fields.exit },
-      time: { start: fields.start ?? 0, end: fields.end ?? 2500 },
-    },
+    id: "call-1",
+    name: "bash",
+    input: { command },
+    status: "completed",
+    parts,
+    startedAt: new Date(fields.start ?? 0).toISOString(),
+    endedAt: new Date(fields.end ?? 2500).toISOString(),
+    result: { callId: "call-1", name: "bash", parts, exitCode: fields.exit },
   }
 }
 
-/** A command still running, with whatever it has printed so far */
-function running(command: string, output: string): ToolPart {
-  return {
-    id: "tool-1",
-    sessionID: "session-1",
-    messageID: "message-1",
-    type: "tool",
-    callID: "call-1",
-    tool: "bash",
-    state: {
-      status: "running",
-      input: { command },
-      metadata: { output },
-      time: { start: 0 },
-    },
-  }
+function running(command: string, output: string): ToolView {
+  return { id: "call-1", name: "bash", input: { command }, status: "running", parts: [{ text: output }] }
 }
 
-/** A command the shell rejected */
-function failed(command: string, error: string): ToolPart {
-  return {
-    id: "tool-1",
-    sessionID: "session-1",
-    messageID: "message-1",
-    type: "tool",
-    callID: "call-1",
-    tool: "bash",
-    state: {
-      status: "error",
-      input: { command },
-      error,
-      time: { start: 0, end: 1000 },
-    },
-  }
+function failed(command: string, error: string): ToolView {
+  return { id: "call-1", name: "bash", input: { command }, status: "error", parts: [{ text: error }] }
 }
 
 /** The block under the title that holds stdout or the error */

@@ -1,4 +1,4 @@
-import type { ReviewFile, ReviewFileDetail } from "@merakcode/sdk/client"
+import type { ReviewFile, ReviewFileDetail } from "./data"
 import { describe, expect, test } from "vitest"
 import { autoExpand, budget, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue } from "./cache"
 
@@ -13,11 +13,11 @@ const file = (name: string, lines = 2, extra: Partial<ReviewFile> = {}): ReviewF
 })
 
 describe("review cache keys", () => {
-  test("each conversation, turn and checkout is its own list", () => {
+  test("each conversation and checkout is its own list", () => {
     const base = { directory: "/repo", scope: "session" as const }
     expect(keyOf({ ...base, checkout: "one" })).not.toBe(keyOf({ ...base, checkout: "two" }))
-    expect(keyOf({ directory: "/repo", scope: "turn", sessionID: "s", messageID: "m1" })).not.toBe(
-      keyOf({ directory: "/repo", scope: "turn", sessionID: "s", messageID: "m2" }),
+    expect(keyOf({ directory: "/repo", scope: "session", sessionID: "first" })).not.toBe(
+      keyOf({ directory: "/repo", scope: "session", sessionID: "second" }),
     )
   })
 

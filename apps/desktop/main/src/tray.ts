@@ -1,4 +1,4 @@
-import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from "electron"
+import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from "electron"
 import type { AppLocale, TrayState } from "../../renderer/src/desktop/bridge-contract"
 
 /** System tray: recent sessions, new session, settings, quit */
@@ -37,6 +37,8 @@ const text = {
 export class AppTray {
   private tray?: Tray
   private state: TrayState
+  private image?: NativeImage
+  private badge?: NativeImage
 
   constructor(private options: Options) {
     this.state = options.state ?? { recent: [], more: [], hasNotifications: false }
@@ -45,7 +47,9 @@ export class AppTray {
   start() {
     const image = nativeImage.createFromPath(this.options.icon)
     if (image.isEmpty()) return
-    this.tray = new Tray(image.resize({ width: process.platform === "darwin" ? 18 : 16, quality: "best" }))
+    this.image = image.resize({ width: process.platform === "darwin" ? 18 : 16, quality: "best" })
+    this.badge = badged(this.image)
+    this.tray = new Tray(this.image)
     this.tray.setToolTip("MerakCode")
     // On macOS a click opens the menu; on Windows and Linux a left click opens the window and a right click the menu
     if (process.platform !== "darwin") this.tray.on("click", () => this.options.open())
@@ -59,6 +63,7 @@ export class AppTray {
 
   render() {
     if (!this.tray) return
+    this.tray.setImage(this.state.hasNotifications ? this.badge! : this.image!)
     const t = text[this.options.locale()]
     const session = (item: TrayState["recent"][number]): MenuItemConstructorOptions => ({
       label: `${item.unseen ? "● " : ""}${item.title}`,
@@ -84,4 +89,21 @@ export class AppTray {
     this.tray?.destroy()
     this.tray = undefined
   }
+}
+
+function badged(image: NativeImage): NativeImage {
+  const { width, height } = image.getSize()
+  const pixels = image.toBitmap({ scaleFactor: 1 })
+  const center = width - 4
+  for (let y = 0; y < 7; y++) {
+    for (let x = width - 7; x < width; x++) {
+      const distance = Math.hypot(x - center, y - 3)
+      if (distance > 3) continue
+      const offset = (y * width + x) * 4
+      // Neutral colors work with both RGB and BGR byte orders.
+      pixels.fill(distance <= 2 ? 255 : 0, offset, offset + 3)
+      pixels[offset + 3] = 255
+    }
+  }
+  return nativeImage.createFromBitmap(pixels, { width, height, scaleFactor: 1 })
 }

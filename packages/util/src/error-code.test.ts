@@ -17,8 +17,8 @@ describe("ErrorCode catalog", () => {
       config: 3,
       session: 4,
       tool: 5,
-      extension: 6,
-      workspace: 7,
+      task: 6,
+      host: 7,
       update: 8,
       internal: 9,
     }

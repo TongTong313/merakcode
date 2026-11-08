@@ -2,7 +2,7 @@
  * Rules for the review cache (see state.ts), kept pure so they can be tested: which list a request belongs to, which
  * details are still valid, when files open on their own, what to prefetch and how much of a file to render.
  */
-import type { ReviewFile, ReviewFileDetail, ReviewScope } from "@merakcode/sdk/client"
+import type { ReviewFile, ReviewFileDetail, ReviewScope } from "./data"
 
 /** What identifies one review list */
 export type ReviewKey = {
@@ -11,10 +11,18 @@ export type ReviewKey = {
   sessionID?: string
   messageID?: string
   checkout?: string | null
+  base?: string
 }
 
 export const keyOf = (input: ReviewKey) =>
-  [input.directory, input.scope, input.sessionID ?? "", input.messageID ?? "", input.checkout ?? ""].join("\u0000")
+  [
+    input.directory,
+    input.scope,
+    input.sessionID ?? "",
+    input.messageID ?? "",
+    input.checkout ?? "",
+    input.base ?? "",
+  ].join("\u0000")
 
 /**
  * Details stay valid while the file content version is the same

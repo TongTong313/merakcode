@@ -1,0 +1,12 @@
+[
+  "session.created",
+  "turn.started",
+  "message.sent",
+  "tool.called",
+  "permission.requested",
+  "permission.replied",
+  "tool.completed",
+  "message.delta",
+  "message.completed",
+  "turn.finished"
+]

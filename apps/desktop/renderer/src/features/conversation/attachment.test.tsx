@@ -1,10 +1,25 @@
-import { createServer } from "node:http"
+import { writeFile } from "node:fs/promises"
+import path from "node:path"
+import { engineFixture } from "../../test/engine"
+import { client } from "../../state/client"
 import { render } from "solid-js/web"
-import { afterEach, beforeEach, expect, test, vi } from "vitest"
+import { afterAll, beforeAll, afterEach, beforeEach, expect, test, vi } from "vitest"
 import { setLocale } from "../../i18n"
 import { AttachmentPreview } from "./attachment"
 import { fileUrl } from "./suggest"
 
+let engine: Awaited<ReturnType<typeof engineFixture>>
+beforeAll(async () => {
+  engine = await engineFixture()
+  location.href = engine.url
+})
+afterAll(async () => {
+  try {
+    await (await client()).close()
+  } finally {
+    await engine.close()
+  }
+})
 let cleanup = () => {}
 beforeEach(() => setLocale("zh"))
 afterEach(() => {
@@ -53,26 +68,17 @@ test("clicking a thumbnail opens the full image and closes it", async () => {
   await vi.waitFor(() => expect(document.querySelector("[role=dialog]")).toBeNull())
 })
 
-test("a local image is read through the engine and shown", async () => {
-  const content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
-  const requests: string[] = []
-  const served = Promise.withResolvers<void>()
-  const server = createServer((request, response) => {
-    requests.push(request.url ?? "")
-    response.writeHead(200, { "content-type": "application/json" })
-    response.end(JSON.stringify({ type: "text", content, encoding: "base64", mimeType: "image/png" }), served.resolve)
-  })
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const address = server.address()
-  if (!address || typeof address === "string") throw new Error("Attachment fixture did not listen")
-  location.href = `http://127.0.0.1:${address.port}`
+test("a local image is read through the real engine and shown", async () => {
+  const content = png.split(",")[1]!
+  const file = path.join(engine.project, "local image.png")
+  await writeFile(file, Buffer.from(content, "base64"))
   const host = document.createElement("div")
   document.body.appendChild(host)
   const dispose = render(
     () => (
       <AttachmentPreview
-        part={{ mime: "text/plain", filename: "本地 图.png", url: fileUrl("C:/Users/me/本地 图.png") }}
-        directory={`/attachment-file-${address.port}`}
+        part={{ mime: "text/plain", filename: "local image.png", url: fileUrl(file) }}
+        directory={engine.project}
       />
     ),
     host,
@@ -80,36 +86,19 @@ test("a local image is read through the engine and shown", async () => {
   cleanup = () => {
     dispose()
     host.remove()
-    server.closeAllConnections()
-    server.close()
   }
-  // The SDK loads its Node transport lazily. Observe the real HTTP boundary before checking the DOM transition.
-  await served.promise
-  await vi.waitFor(() =>
-    expect(host.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${content}`),
-  )
-  expect(new URL(requests[0]!, "http://127.0.0.1").searchParams.get("path")).toBe("C:/Users/me/本地 图.png")
+  await expect.poll(() => host.querySelector("img")?.getAttribute("src"), { timeout: 5000 }).toBe(png)
 })
 
 test("an image that cannot be read keeps the paperclip", async () => {
-  const requests: string[] = []
-  const served = Promise.withResolvers<void>()
-  const server = createServer((request, response) => {
-    requests.push(request.url ?? "")
-    response.writeHead(500, { "content-type": "application/json" })
-    response.end(JSON.stringify({ data: { message: "not found" } }), served.resolve)
-  })
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const address = server.address()
-  if (!address || typeof address === "string") throw new Error("Attachment fixture did not listen")
-  location.href = `http://127.0.0.1:${address.port}`
+  const file = path.join(engine.project, "missing.png")
   const host = document.createElement("div")
   document.body.appendChild(host)
   const dispose = render(
     () => (
       <AttachmentPreview
-        part={{ mime: "image/png", filename: "missing.png", url: fileUrl("C:/Users/me/missing.png") }}
-        directory={`/attachment-missing-${address.port}`}
+        part={{ mime: "image/png", filename: "missing.png", url: fileUrl(file) }}
+        directory={engine.project}
       />
     ),
     host,
@@ -117,11 +106,8 @@ test("an image that cannot be read keeps the paperclip", async () => {
   cleanup = () => {
     dispose()
     host.remove()
-    server.closeAllConnections()
-    server.close()
   }
-  await served.promise
-  expect(requests).toHaveLength(1)
+  await expect((await client()).file.read({ directory: engine.project, path: file })).rejects.toThrow("MRK-5001")
   expect(host.querySelector("img")).toBeNull()
   expect(host.querySelector("svg")).not.toBeNull()
   expect(host.textContent).toContain("missing.png")

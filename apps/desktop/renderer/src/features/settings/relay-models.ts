@@ -1,60 +1,47 @@
-import type { Config, ProviderRelayDiscoverResponses } from "@merakcode/sdk/client"
+import type { CatalogModel, ConfigModel } from "@merakcode/sdk"
 
-type Found = Extract<ProviderRelayDiscoverResponses[200], { models: unknown }>["models"][number]
-export type Endpoint = NonNullable<Found["endpoint"]>
-type ConfigModel = NonNullable<NonNullable<Config["provider"]>[string]["models"]>[string]
-
-/** One editable row of the relay dialog. Empty windows and absent capabilities mean "not stated". */
-export type RelayRow = Pick<Found, "id" | "contextFrom" | "outputFrom" | "input" | "reasoning" | "toolcall"> & {
+export type Endpoint = "anthropic" | "openai"
+export type RelayRow = {
+  id: string
   context: string
   output: string
-  endpoint: Endpoint
+  contextFrom?: "relay" | "catalog"
+  outputFrom?: "relay" | "catalog"
   selected: boolean
 }
 
-export function rowOf(model: Found): RelayRow {
+export function rowOf(model: CatalogModel): RelayRow {
+  const context = !model.unknown?.includes("window")
+  const output = !model.unknown?.includes("maxOutput")
+  const source = model.source === "live" ? "relay" : "catalog"
   return {
     id: model.id,
-    context: model.context === undefined ? "" : String(model.context),
-    output: model.output === undefined ? "" : String(model.output),
-    contextFrom: model.contextFrom,
-    outputFrom: model.outputFrom,
-    endpoint: model.endpoint ?? "openai-chat",
-    input: model.input,
-    reasoning: model.reasoning,
-    toolcall: model.toolcall,
+    context: context ? String(model.window) : "",
+    output: output ? String(model.maxOutput) : "",
+    contextFrom: context ? source : undefined,
+    outputFrom: output ? source : undefined,
     selected: true,
   }
 }
 
-/** A model typed by hand: only the protocol is guessed from its name. */
 export function manualRow(id: string): RelayRow {
-  const name = id.toLowerCase()
-  const endpoint: Endpoint = name.includes("claude")
-    ? "anthropic"
-    : name.includes("gpt") || name.includes("codex")
-      ? "openai-responses"
-      : "openai-chat"
-  return { id, context: "", output: "", endpoint, selected: true }
+  return { id, context: "", output: "", selected: true }
 }
 
-const window = (value: string) => (value.trim() === "" ? undefined : Number(value))
+const limit = (value: string) => (value.trim() === "" ? undefined : Number(value))
 
 export function windowsValid(row: RelayRow) {
-  return [row.context, row.output].every((value) => {
-    const number = window(value)
-    return number === undefined || (Number.isFinite(number) && number > 0)
-  })
+  const context = limit(row.context)
+  const output = limit(row.output)
+  if (![context, output].every((value) => value === undefined || (Number.isSafeInteger(value) && value > 0)))
+    return false
+  return context === undefined || output === undefined || output <= context
 }
 
-/** Saves only what the station, the catalog or the user stated, so the engine can fill the rest. */
-export function modelConfig(row: RelayRow, npm: string): ConfigModel {
-  const context = window(row.context)
-  const output = window(row.output)
-  const model: ConfigModel = { name: row.id, provider: { npm } }
-  if (context !== undefined || output !== undefined) model.limit = { context, output }
-  if (row.reasoning !== undefined) model.reasoning = row.reasoning
-  if (row.toolcall !== undefined) model.tool_call = row.toolcall
-  if (row.input) model.modalities = { input: row.input }
-  return model
+export function modelConfig(row: RelayRow): ConfigModel {
+  return {
+    name: row.id,
+    ...(row.context.trim() ? { window: Number(row.context) } : {}),
+    ...(row.output.trim() ? { maxOutput: Number(row.output) } : {}),
+  }
 }

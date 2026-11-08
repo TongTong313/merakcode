@@ -1,17 +1,14 @@
-import type { GitChangeFile, GitChangesResult } from "@merakcode/sdk/client"
+import type { GitState } from "@merakcode/sdk"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { t } from "../../i18n"
+import { client } from "../../state/client"
+import { checkoutOf, gitDirectory, updateCheckout } from "../../state/git"
+import { listen } from "../../state/store"
 import { sameDir } from "../../lib/route"
-import { call, client } from "../../state/client"
-import { checkoutOf, gitDirectory } from "../../state/git"
-import { listen, refreshVcs } from "../../state/store"
-import { toast } from "../../ui/toast"
 
-type Entry = { data?: GitChangesResult; error?: Error; loading: boolean; working: boolean }
+type Entry = { data?: GitState; error?: Error; loading: boolean }
 const [entries, setEntries] = createStore<Record<string, Entry>>({})
 const requests = new Map<string, number>()
-
 export function useGitChanges(directory: () => string) {
   const key = () => gitDirectory(directory())
   const entry = () => entries[key()]
@@ -20,98 +17,46 @@ export function useGitChanges(directory: () => string) {
     const target = gitDirectory(dir)
     const request = (requests.get(target) ?? 0) + 1
     requests.set(target, request)
-    setEntries(target, (previous) => ({
-      ...previous,
-      working: previous?.working ?? false,
-      loading: true,
-      error: undefined,
-    }))
+    setEntries(target, (previous) => ({ ...previous, loading: true, error: undefined }))
     try {
-      const result = await call(client(dir).vcs.changes.get())
+      const result = await (await client()).repo.status({ directory: dir })
       if (requests.get(target) !== request) return
-      if (result.checkout !== (checkoutOf(dir) ?? null)) await refreshVcs(dir)
-      if (requests.get(target) !== request || result.checkout !== (checkoutOf(dir) ?? null)) return
-      setEntries(gitDirectory(dir), (previous) => ({ ...previous, data: result, loading: false, error: undefined }))
+      setEntries(target, { data: result, loading: false, error: undefined })
+      updateCheckout(dir, {
+        branch: result.branch || null,
+        head: result.head || null,
+        checkout: `${result.branch}:${result.head}`,
+      })
     } catch (error) {
       if (requests.get(target) === request) setEntries(target, { loading: false, error: error as Error })
-    } finally {
-      if (requests.get(target) === request) setEntries(target, "loading", false)
     }
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   let pending = false
-  const backgroundRefresh = () => {
-    // Let an in-flight refresh publish before replaying background invalidations.
-    if (entry()?.working || entry()?.loading) {
+  const reload = () => {
+    if (entry()?.loading) {
       pending = true
       return
     }
     pending = false
     void refresh()
   }
-  const schedule = () => {
-    clearTimeout(timer)
-    timer = setTimeout(backgroundRefresh, 250)
-  }
-  createEffect(on([directory, () => checkoutOf(directory())], backgroundRefresh))
+  createEffect(on([directory, () => checkoutOf(directory())], reload))
   createEffect(
     on(
-      () => entry()?.working || entry()?.loading,
-      (busy) => {
-        if (!busy && pending) backgroundRefresh()
+      () => entry()?.loading,
+      (loading) => {
+        if (!loading && pending) reload()
       },
     ),
   )
   onCleanup(
     listen((dir, event) => {
-      if (!sameDir(gitDirectory(dir), key())) return
-      if (
-        [
-          "vcs.changes.updated",
-          "vcs.head.updated",
-          "file.watcher.updated",
-          "review.updated",
-          "message.part.updated",
-        ].includes(event.type)
-      )
-        schedule()
+      if (!sameDir(dir, directory()) || !["turn.finished", "repo.changed", "file.changed"].includes(event.type)) return
+      clearTimeout(timer)
+      timer = setTimeout(reload, 250)
     }),
   )
-  window.addEventListener("focus", schedule)
-  onCleanup(() => {
-    clearTimeout(timer)
-    window.removeEventListener("focus", schedule)
-  })
-  const change = async (action: "stage" | "unstage", files: GitChangeFile[]) => {
-    const current = entry()?.data
-    if (!current || entry()?.working || !files.length) return
-    const dir = directory()
-    const target = key()
-    setEntries(target, "working", true)
-    try {
-      await call(client(dir).vcs.changes[action]({ expectedCheckout: current.checkout, files }))
-    } catch (error) {
-      toast({
-        kind: (error as { status?: number }).status === 409 ? "info" : "error",
-        title: (error as { status?: number }).status === 409 ? t("git.stale") : (error as Error).message,
-        error,
-      })
-    } finally {
-      try {
-        await refreshVcs(dir)
-        if (sameDir(directory(), dir)) await refresh()
-      } finally {
-        setEntries(target, "working", false)
-      }
-    }
-  }
-  return {
-    data: () => entry()?.data,
-    loading: () => !!entry()?.loading,
-    error: () => entry()?.error,
-    working: () => !!entry()?.working,
-    setWorking: (value: boolean) => setEntries(key(), "working", value),
-    refresh,
-    change,
-  }
+  onCleanup(() => clearTimeout(timer))
+  return { data: () => entry()?.data, error: () => entry()?.error, loading: () => !!entry()?.loading, refresh }
 }

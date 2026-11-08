@@ -1,4 +1,4 @@
-import type { ReviewFile } from "@merakcode/sdk/client"
+import type { ReviewFile } from "./data"
 import CircleCheck from "lucide-solid/icons/circle-check"
 import FileCode from "lucide-solid/icons/file-code"
 import { createSignal, For, Show } from "solid-js"

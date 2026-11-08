@@ -1,0 +1,6 @@
+data: {"id":"deepseek-fixture","choices":[{"index":0,"delta":{"reasoning_content":"Check the input."},"finish_reason":null}]}
+
+data: {"id":"deepseek-fixture","choices":[{"index":0,"delta":{"content":"Ready."},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":8,"prompt_cache_hit_tokens":6,"prompt_cache_miss_tokens":14}}
+
+data: [DONE]
+

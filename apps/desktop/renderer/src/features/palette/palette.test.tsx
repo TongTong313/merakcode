@@ -11,7 +11,7 @@ let cleanup = () => {}
 afterEach(() => {
   cleanup()
   cleanup = () => {}
-  setUi({ palette: false, newTeam: false })
+  setUi({ palette: false, settings: undefined })
   setState("folders", [])
 })
 
@@ -37,16 +37,10 @@ function open() {
 const option = (label: string) =>
   [...document.querySelectorAll<HTMLElement>("[role=option]")].find((item) => item.textContent?.includes(label))!
 
-test("with no project open, New team does nothing, so no dialog pops up once a project opens", () => {
+test("opens settings from the command palette", () => {
   setState("folders", [])
   open()
-  option("新建协作群").click()
-  expect(ui.newTeam).toBe(false)
-})
-
-test("with a project open, New team opens the dialog", () => {
-  setState("folders", [{ directory: "d:/work/alpha" }])
-  open()
-  option("新建协作群").click()
-  expect(ui.newTeam).toBe(true)
+  option("设置").click()
+  expect(ui.settings).toBe("general")
+  expect(ui.palette).toBe(false)
 })

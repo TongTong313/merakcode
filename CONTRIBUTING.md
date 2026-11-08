@@ -9,7 +9,7 @@
 `dev-v1.0.0` 分支重建整体架构。旧引擎、`merak` 命令行（`apps/cli`）和 SDK（`packages/sdk`）都已删除。新的引擎、命令行和协议用 Go 写，放在根目录的 `merak/`。设计见 `docs/plans/v1-agent-engine.html`。重建期间：
 
 - 仓库里有 Go 程序 `merak/`、桌面端（`apps/desktop`）和共用的 `packages/util`、`packages/log`。
-- 桌面端还在用 v0.3 SDK 的协议类型，所以编译不了。`pnpm typecheck` 不检查桌面端，`pnpm check:unused` 不报告桌面端的问题，桌面端的测试也不跑。
+- 桌面端已经使用新的 Go 协议和 SDK。`pnpm typecheck` 和 `pnpm check:unused` 检查桌面端。CI 运行主进程、渲染进程测试和已迁移的 Linux 桌面端端到端测试。
 - `ci.yml` 已经覆盖当前仓库。`release.yml`、`regression.yml` 和下面的"发布"一节还是 v0.3 的流程。`ci.yml` 只在 PR 和推送到 `main` 时运行，`release.yml` 只在打 tag 时运行，`regression.yml` 只能手动运行。
 
 ## 准备环境
@@ -37,21 +37,21 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 | `pnpm test:script`           | 根目录 `script/` 下脚本的测试                                  |
 | `pnpm format`                | 格式化整个仓库                                                 |
 | `pnpm --dir merak build`     | 不用 cgo，把 `merak` 编译成 6 个平台的程序，放在 `merak/dist/` |
-| `pnpm generate:errors`       | 改了错误码后重新生成 `docs/errors.md`                          |
+| `pnpm generate:errors`       | 改了错误码后重新生成 Go、TypeScript 目录和文档                 |
 | `pnpm release:version x.y.z` | 把所有包的版本号改成同一个（维护者发版用）                     |
 
 `pnpm check` 依次运行下面这些脚本，每个也能单独跑（`pnpm <脚本>`）：
 
-| 脚本             | 检查什么                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| `format:check`   | Prettier 格式                                                                                            |
-| `check:brand`    | 没有旧的产品名和没填的占位符                                                                             |
-| `check:comments` | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定)                                          |
-| `check:versions` | 所有包的版本号一致                                                                                       |
-| `check:errors`   | `docs/errors.md` 是最新的                                                                                |
-| `typecheck`      | 各个包的类型；`merak` 跑 gofmt 和 Linux、macOS、Windows 三个系统的 `go vet`（v1.0.0 重建期间不含桌面端） |
-| `check:css`      | 桌面端的 CSS 里没有 `!important`                                                                         |
-| `check:unused`   | 没用到的文件、导出和依赖（knip；v1.0.0 重建期间读桌面端代码，但不报告问题）                              |
+| 脚本             | 检查什么                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `format:check`   | Prettier 格式                                                                           |
+| `check:brand`    | 没有旧的产品名和没填的占位符                                                            |
+| `check:comments` | 代码注释、日志消息和测试标题里没有中文，见[代码约定](#代码约定)                         |
+| `check:versions` | 所有包的版本号一致                                                                      |
+| `check:errors`   | Go、TypeScript 错误码目录和文档是最新的                                                 |
+| `typecheck`      | 各个包的类型，包含桌面端；`merak` 跑 gofmt 和 Linux、macOS、Windows 三个系统的 `go vet` |
+| `check:css`      | 桌面端的 CSS 里没有 `!important`                                                        |
+| `check:unused`   | 没用到的文件、导出和依赖，包含桌面端（knip）                                            |
 
 `pnpm check` 不跑测试。生成出来的文件（比如 `docs/errors.md`）不要手改，改了源头再跑对应的 `generate` 命令。
 
@@ -95,7 +95,7 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 
 ## 错误码和日志
 
-- 用户可能看到的错误都要有错误码，格式是 `MRK-xxxx`，统一登记在 `packages/util/src/error-code.ts`。千位数字要和 `domain` 对应（对照表在文件开头的注释里），`title`（出了什么事）和 `hint`（用户该怎么办）都要有中英两份，`packages/util` 的测试会查这几条。改完跑 `pnpm generate:errors` 更新 `docs/errors.md`。错误码一旦发布就不要改含义，不用了就留着。
+- 用户可能看到的错误都要有错误码，格式是 `MRK-xxxx`，统一登记在 `packages/util/errors.json`。千位数字要和 `domain` 对应（对照表在 JSON 的 `domains` 字段里），`title`（出了什么事）和 `hint`（用户该怎么办）都要有中英两份，`packages/util` 的测试会查这几条。改完跑 `pnpm generate:errors` 更新 Go、TypeScript 目录和 `docs/errors.md`。错误码一旦发布就不要改含义，不用了就留着。
 - 打日志：桌面端主进程用 `apps/desktop/main/src/log.ts` 的 `Log.create("名字")`；桌面端界面用 `apps/desktop/renderer/src/lib/bridge.ts` 的 `log()`，由主进程写进日志。都不要用 `console.*` 记诊断信息。日志里不能出现密钥、口令和对话内容。
 - 日志写在 `~/.merakcode/logs` 下（设了 `MERAKCODE_HOME` 就在那个目录的 `logs` 下）：正式版在 `production/`，从源码运行在 `development/`，再按组件分目录，比如 `desktop/`。每个进程一个 NDJSON 文件，超过 20 MB 就轮转，连当前文件最多留 5 个。
 
@@ -169,7 +169,7 @@ Questions and code are both welcome. For bigger changes, open an issue first to 
 The `dev-v1.0.0` branch rebuilds the whole architecture. The old engine, the `merak` command line (`apps/cli`) and the SDK (`packages/sdk`) are deleted. The new engine, command line and protocol are written in Go in the root `merak/` directory; the design is `docs/plans/v1-agent-engine.html`. During the rebuild:
 
 - The repository holds the Go program `merak/`, the desktop app (`apps/desktop`) and the shared `packages/util` and `packages/log`.
-- The desktop app still uses the v0.3 SDK's protocol types, so it does not compile. `pnpm typecheck` leaves it out, `pnpm check:unused` reports none of its issues, and its tests don't run.
+- The desktop app uses the new Go protocol and SDK. Both `pnpm typecheck` and `pnpm check:unused` include it. CI runs main-process and renderer tests and the migrated desktop end-to-end tests on Linux.
 - `ci.yml` covers the current repository; `release.yml`, `regression.yml` and the "Releasing" section below still describe v0.3. `ci.yml` runs only on pull requests and pushes to `main`, `release.yml` only on tags, and `regression.yml` only by hand.
 
 ## Setup
@@ -197,21 +197,21 @@ All from the repo root:
 | `pnpm test:script`           | Tests for the scripts in the root `script/` folder                       |
 | `pnpm format`                | Format the whole repo                                                    |
 | `pnpm --dir merak build`     | Build `merak` for all 6 release platforms without cgo into `merak/dist/` |
-| `pnpm generate:errors`       | Regenerate `docs/errors.md` after changing error codes                   |
+| `pnpm generate:errors`       | Regenerate Go, TypeScript and docs after changing error codes            |
 | `pnpm release:version x.y.z` | Set every package to the same version (for maintainers)                  |
 
 `pnpm check` runs these scripts in order; each can also run on its own (`pnpm <script>`):
 
-| Script           | What it checks                                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `format:check`   | Prettier formatting                                                                                                                      |
-| `check:brand`    | No old product names or unfilled placeholders                                                                                            |
-| `check:comments` | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)                                                |
-| `check:versions` | Every package has the same version                                                                                                       |
-| `check:errors`   | `docs/errors.md` is up to date                                                                                                           |
-| `typecheck`      | Each package's types; `merak` runs gofmt and `go vet` for Linux, macOS and Windows (excluding the desktop app during the v1.0.0 rebuild) |
-| `check:css`      | No `!important` in the desktop CSS                                                                                                       |
-| `check:unused`   | Unused files, exports and dependencies (knip; reads the desktop app but reports none of its issues during the v1.0.0 rebuild)            |
+| Script           | What it checks                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `format:check`   | Prettier formatting                                                                                   |
+| `check:brand`    | No old product names or unfilled placeholders                                                         |
+| `check:comments` | No Chinese in code comments, log messages or test titles; see [Conventions](#conventions)             |
+| `check:versions` | Every package has the same version                                                                    |
+| `check:errors`   | Go and TypeScript error catalogs and docs are up to date                                              |
+| `typecheck`      | Each package's types, including desktop; `merak` runs gofmt and `go vet` for Linux, macOS and Windows |
+| `check:css`      | No `!important` in the desktop CSS                                                                    |
+| `check:unused`   | Unused files, exports and dependencies, including desktop (knip)                                      |
 
 `pnpm check` runs no tests. Don't edit generated files such as `docs/errors.md` by hand; change the source and run the matching `generate` command.
 
@@ -255,7 +255,7 @@ All from the repo root:
 
 ## Error codes and logs
 
-- Every error a user might see needs a code of the form `MRK-xxxx`, registered in `packages/util/src/error-code.ts`. The thousands digit must match its `domain` (the comment at the top of the file has the table), and both `title` (what happened) and `hint` (what the user should do) need Chinese and English; the tests in `packages/util` check this. Then run `pnpm generate:errors` to update `docs/errors.md`. Once a code is released, don't change its meaning; if it is no longer used, leave it in place.
+- Every error a user might see needs a code of the form `MRK-xxxx`, registered in `packages/util/errors.json`. The thousands digit must match its `domain` (the JSON `domains` field has the table), and both `title` (what happened) and `hint` (what the user should do) need Chinese and English; the tests in `packages/util` check this. Then run `pnpm generate:errors` to update both language catalogs and `docs/errors.md`. Once a code is released, don't change its meaning; if it is no longer used, leave it in place.
 - Logging: the desktop main process uses `Log.create("name")` from `apps/desktop/main/src/log.ts`; the desktop UI uses `log()` from `apps/desktop/renderer/src/lib/bridge.ts`, which the main process writes to its log. Neither uses `console.*` for diagnostics. Logs must never contain keys, passwords or conversation content.
 - Logs go under `~/.merakcode/logs` (or `logs` under `MERAKCODE_HOME` when that is set): `production/` for releases and `development/` when running from source, then one folder per component, such as `desktop/`. Each process writes one NDJSON file, rotated at 20 MB, keeping at most 5 files including the current one.
 

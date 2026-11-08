@@ -1,13 +1,11 @@
 /** Launch the production app without relying on the Node inspector, which the release fuses disable. */
 import { chromium, expect } from "@playwright/test"
 import { spawn } from "node:child_process"
-import { cp, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { createRequire } from "node:module"
-import { seedCatalog } from "../../../../script/node/seed-catalog"
 
 const release = path.resolve(import.meta.dirname, "../release")
 const directory =
@@ -66,9 +64,6 @@ const model = createServer(async (request, response) => {
 let child: ReturnType<typeof spawn> | undefined
 let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined
 try {
-  await seedCatalog(root)
-  const require = createRequire(import.meta.url)
-  await cp(path.dirname(require.resolve("zod")), path.join(root, "node_modules/zod"), { recursive: true })
   const project = path.join(root, "project")
   await mkdir(project)
   await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve))
@@ -76,12 +71,14 @@ try {
   await writeFile(
     path.join(root, "merakcode.json"),
     JSON.stringify({
-      model: "alibaba-cn/qwen-plus",
-      small_model: "alibaba-cn/qwen-plus",
-      enabled_providers: ["alibaba-cn"],
-      provider: { "alibaba-cn": { options: { apiKey: "smoke", baseURL: `http://127.0.0.1:${port}/v1` } } },
-      memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
-      lsp: false,
+      model: "openai/e2e",
+      providers: {
+        openai: {
+          apiKey: "smoke",
+          baseURL: `http://127.0.0.1:${port}/v1`,
+          models: { e2e: { window: 32000, maxOutput: 1024 } },
+        },
+      },
       locale: "en-US",
     }),
   )
@@ -112,9 +109,20 @@ try {
   )
   const endpoint = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => finish(new Error("Packaged app did not open its browser endpoint")), 60_000)
+    // Windows GUI executables may not forward Chromium's stderr to their parent.
+    const poll = setInterval(() => {
+      void readFile(path.join(root, "electron", "DevToolsActivePort"), "utf8")
+        .then((body) => {
+          const [port, route] = body.trim().split(/\r?\n/)
+          if (port && /^\d+$/.test(port) && route?.startsWith("/devtools/browser/"))
+            finish(`ws://127.0.0.1:${port}${route}`)
+        })
+        .catch(() => undefined)
+    }, 100)
     let output = ""
     function finish(value: string | Error) {
       clearTimeout(timer)
+      clearInterval(poll)
       child!.stdout!.off("data", collect)
       child!.stderr!.off("data", collect)
       child!.off("error", failed)
@@ -181,7 +189,7 @@ try {
     await input.waitFor({ timeout: 120_000 })
     await installKeyProbe()
   }
-  // Exercise cold-start Enter; the negative control isolates the title-versus-reply oracle through Send.
+  // Exercise cold-start Enter; the negative control must fail on a model error.
   const methods = failMain ? (["button"] as const) : (["keyboard", "button"] as const)
   for (const [index, method] of methods.entries()) {
     if (index)
@@ -201,10 +209,6 @@ try {
     phase = `${method}:session`
     await expect(page).not.toHaveURL(initialURL, { timeout: 30_000 })
     phase = `${method}:reply`
-    if (failMain)
-      await expect(page.getByRole("navigation").getByText("PACKAGED_SMOKE_OK", { exact: true })).toBeVisible({
-        timeout: 30_000,
-      })
     const log = page.getByRole("log", { name: /^(消息记录|Messages)$/ })
     const reply = log
       .getByText(method === "button" ? "PACKAGED_SMOKE_OK" : "PACKAGED_SMOKE_ENTER_OK", { exact: true })
@@ -214,7 +218,7 @@ try {
     await reply.or(error).first().waitFor({ timeout: 60_000 })
     if (await error.isVisible()) throw new Error(`Main reply failed during ${phase}`)
     await expect(reply).toBeVisible()
-    await expect.poll(() => mainPrompts.has(prompt)).toBe(true)
+    await expect.poll(() => [...mainPrompts].some((value) => value.includes(prompt))).toBe(true)
     await expect(page.getByRole("button", { name: /^(停止|Stop)$/, exact: true })).toHaveCount(0)
   }
   phase = "shutdown"

@@ -3,7 +3,7 @@ import Bot from "lucide-solid/icons/bot"
 import Columns2 from "lucide-solid/icons/columns-2"
 import Minimize2 from "lucide-solid/icons/minimize-2"
 import Rows2 from "lucide-solid/icons/rows-2"
-import type { ReviewFile } from "@merakcode/sdk/client"
+import type { ReviewFile } from "./data"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { session } from "../../state/store"
@@ -15,11 +15,11 @@ import { CommentDrafts } from "./compose"
 import { present } from "./present"
 import { ReviewToolbar } from "./toolbar"
 import { ReviewTree } from "./tree"
-import { BulkActions, LastDecision, ReviewFiles } from "./review"
+import { ReviewFiles } from "./review"
 import { beginComment, commentsOf, review, setReview, useReview } from "./state"
 
 /**
- * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments on the right. Keys: J / K next / previous hunk, A accept, R reject, C comment, ] next file.
+ * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments on the right. Keys: J / K next / previous hunk, C comment, ] next file.
  */
 export function ReviewFull(props: { sessionID?: string; directory: string }) {
   const data = useReview(
@@ -84,10 +84,6 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
       const key = event.key.toLowerCase()
       if (key === "j") move(1)
       else if (key === "k") move(-1)
-      else if (key === "a" && current?.id && data.data()?.actions.accept)
-        void data.decide("accept", [{ file: current.file.file, hunks: [current.id] }])
-      else if (key === "r" && current?.id && data.data()?.actions.reject)
-        void data.decide("reject", [{ file: current.file.file, hunks: [current.id] }])
       else if (key === "c" && current?.id && props.sessionID) {
         const hunk = data.detail(current.file).detail?.hunks.find((hunk) => hunk.id === current.id)
         const index = hunk?.lines.findIndex((line) => line.kind !== "context") ?? -1
@@ -135,7 +131,6 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
             value={review.style}
             onChange={(style) => setReview("style", style)}
           />
-          <BulkActions data={data} />
           <button class="icon-button" aria-label={t("panel.restore")} onClick={() => setUi("maximized", false)}>
             <Minimize2 class="icon icon-sm" />
           </button>
@@ -150,14 +145,7 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
               <kbd>K</kbd>
               {t("review.keys.next")}
             </span>
-            <span>
-              <kbd>A</kbd>
-              {t("review.accept")}
-            </span>
-            <span>
-              <kbd>R</kbd>
-              {t("review.reject")}
-            </span>
+
             <span>
               <kbd>C</kbd>
               {t("review.comment")}
@@ -176,9 +164,6 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
             style={review.style}
             active={active()}
           />
-          <div class="review-foot">
-            <LastDecision data={data} />
-          </div>
         </section>
         <aside class="review-side" aria-label={t("review.comments")}>
           <div class="side-head">{t("review.comments")}</div>

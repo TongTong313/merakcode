@@ -1,10 +1,9 @@
 import { describe, expect, test } from "vitest"
-import { MerakCodeError } from "@merakcode/sdk/errors"
 import { details, summary } from "./error"
 
 describe("error summary", () => {
   test("shows the code and request id of an engine error", () => {
-    const error = new MerakCodeError({ code: "MRK-1011", message: "session not found", requestID: "req_1" })
+    const error = Object.assign(new Error(), { code: "MRK-1011", message: "session not found", requestID: "req_1" })
     expect(summary(error)).toBe("MRK-1011 · req_1")
   })
 
@@ -20,7 +19,7 @@ describe("error summary", () => {
 
 describe("error details for bug reports", () => {
   test("lists code, message, request id, status, version and platform, one per line", () => {
-    const error = new MerakCodeError({
+    const error = Object.assign(new Error(), {
       code: "MRK-1011",
       message: "session not found",
       requestID: "req_1",
@@ -45,4 +44,10 @@ describe("error details for bug reports", () => {
     )
     expect(text).toBe("code: MRK-2006\nmessage: bad gateway\nversion: 1.2.3\nplatform: linux\ntime: t")
   })
+})
+
+test("the new SDK's coded Error is recognized in summaries and copied details", () => {
+  const error = new Error("MRK-1001")
+  expect(summary(error)).toBe("MRK-1001")
+  expect(details(error, { version: "1", platform: "win32", time: "now" })).toContain("code: MRK-1001")
 })

@@ -1,6 +1,6 @@
-export type PickerDelta = { include?: string[]; exclude?: string[] }
+export type PickerDelta = { include?: string[] | null; exclude?: string[] | null }
 
-function without(list: string[] | undefined, id: string) {
+function without(list: string[] | null | undefined, id: string) {
   return (list ?? []).filter((item) => item !== id)
 }
 

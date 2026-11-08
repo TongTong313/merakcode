@@ -1,63 +1,37 @@
 import { Route, Router } from "@solidjs/router"
 import { render } from "solid-js/web"
-import { afterEach, expect, test, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, expect, test } from "vitest"
 import { setLocale } from "../../i18n"
+import { client } from "../../state/client"
+import { engineFixture } from "../../test/engine"
 import { Compose } from "./compose"
 
-const requests = vi.hoisted(() => [] as { url: string; method: string }[])
-vi.mock("undici", () => ({
-  Agent: class {},
-  fetch: async (url: string, init?: { method?: string }) => {
-    requests.push({ url: String(url), method: init?.method ?? "GET" })
-    const capabilities = {
-      modelSelection: true,
-      modelDiscovery: false,
-      textStreaming: true,
-      resume: true,
-      permission: "merak",
-      questions: true,
-    }
-    const body = String(url).includes("/agent-connection/product")
-      ? [
-          {
-            id: "merak",
-            title: "MerakCode",
-            connected: true,
-            enabled: true,
-            builtin: true,
-            source: "builtin",
-            revision: 0,
-            capabilities,
-          },
-          {
-            id: "claude",
-            title: "Claude Code",
-            connected: true,
-            enabled: true,
-            builtin: true,
-            source: "builtin",
-            revision: 0,
-            capabilities,
-          },
-        ]
-      : []
-    return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })
-  },
-}))
 let cleanup = () => {}
+let engine: Awaited<ReturnType<typeof engineFixture>>
+beforeAll(async () => {
+  engine = await engineFixture()
+  location.href = engine.url
+  setLocale("en")
+})
 afterEach(() => {
   cleanup()
   window.history.replaceState({}, "", "/")
 })
+afterAll(async () => {
+  try {
+    await (await client()).close()
+  } finally {
+    await engine.close()
+  }
+})
 
-test("a new conversation selects its product without creating a session", async () => {
-  setLocale("zh")
+function mount() {
   const host = document.createElement("div")
   document.body.appendChild(host)
   const dispose = render(
     () => (
       <Router>
-        <Route path="/" component={() => <Compose directory="/target-selection" />} />
+        <Route path="/" component={() => <Compose directory={engine.project} />} />
       </Router>
     ),
     host,
@@ -66,17 +40,14 @@ test("a new conversation selects its product without creating a session", async 
     dispose()
     host.remove()
   }
-  await vi.waitFor(() => expect(host.querySelector('button[aria-label="对话对象"]')).not.toBeNull())
-  const picker = host.querySelector<HTMLButtonElement>('button[aria-label="对话对象"]')!
-  await vi.waitFor(() => expect(picker.disabled).toBe(false))
-  expect(picker.textContent).toContain("MerakCode")
-  picker.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
-  const claude = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
-    option.textContent?.includes("Claude Code"),
-  )!
-  expect(claude).toBeDefined()
-  claude.dispatchEvent(new PointerEvent("pointerup", { button: 0, bubbles: true, pointerType: "mouse" }))
-  claude.click()
-  expect(picker.textContent).toContain("Claude Code")
-  expect(requests.filter((request) => request.method === "POST" && request.url.endsWith("/session"))).toEqual([])
+  return host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')!
+}
+
+test("retains an unsent draft across remounts without creating a conversation", async () => {
+  const input = mount()
+  input.value = "Keep this draft"
+  input.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  cleanup()
+  expect(mount().value).toBe("Keep this draft")
+  expect(await (await client()).session.list()).toEqual([])
 })

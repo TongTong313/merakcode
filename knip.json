@@ -1,13 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["apps/desktop/**"],
   "ignoreBinaries": ["go"],
   "workspaces": {
     ".": {
       "entry": ["script/*.ts"]
     },
     "apps/desktop/main": {
-      "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "test/fixture/**", "e2e/fake-*.ts"]
+      "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "e2e/fake-*.ts"]
     },
     "merak": {
       "entry": ["script/*.ts"]

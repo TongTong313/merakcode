@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
+import { z } from "zod"
 import type { AppLocale, DesktopBridge, FileFilter, Theme, TrayState } from "../../renderer/src/desktop/bridge-contract"
 import { IPC } from "../../renderer/src/desktop/bridge-contract"
 import type { Backend } from "./backend"
@@ -9,6 +10,7 @@ import { Log } from "./log"
 import type { Settings } from "./settings"
 import type { Storage } from "./storage"
 import { System } from "./system"
+import { exportDiagnostics } from "./diagnostics"
 import type { Updater } from "./updater"
 import type { Windows } from "./windows"
 
@@ -159,6 +161,17 @@ export namespace Ipc {
         await shell.openPath(deps.logs)
         return deps.logs
       },
+      exportDiagnostics: ({ win }) =>
+        exportDiagnostics({
+          client: deps.backend.client,
+          choose: async (name) => {
+            const result = await dialog.showSaveDialog(win, {
+              defaultPath: name,
+              filters: [{ name: "ZIP", extensions: ["zip"] }],
+            })
+            return result.canceled ? undefined : result.filePath
+          },
+        }),
       openDirectoryPicker: async ({ win }, raw) => {
         const opts = options(raw)
         const result = await dialog.showOpenDialog(win, {
@@ -215,6 +228,15 @@ export namespace Ipc {
         if (typeof bucket === "string" && typeof key === "string" && typeof value === "string")
           deps.storage.set(bucket, key, value)
       },
+      getReadNotices: () => readNotices(deps.storage),
+      markNoticesRead: (_ctx, ids) => {
+        const parsed = noticeIDs.safeParse(ids)
+        if (!parsed.success) throw new Error("MRK-1001")
+        const next = [...new Set([...readNotices(deps.storage), ...parsed.data])]
+        deps.storage.set("ui", "group-notices-read", JSON.stringify(next))
+        deps.windows.broadcast("readNotices", next)
+        return next
+      },
       storageRemove: (_ctx, bucket, key) => {
         if (typeof bucket === "string" && typeof key === "string") deps.storage.remove(bucket, key)
       },
@@ -259,6 +281,16 @@ export namespace Ipc {
         ? { os: deps.os, version: deps.version, serverUrl: deps.backend.endpoint!.url }
         : undefined
     })
+  }
+}
+
+const noticeIDs = z.array(z.string().min(1))
+
+function readNotices(storage: Storage): string[] {
+  try {
+    return noticeIDs.parse(JSON.parse(storage.get("ui", "group-notices-read") ?? "[]"))
+  } catch {
+    return []
   }
 }
 

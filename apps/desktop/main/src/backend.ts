@@ -1,16 +1,17 @@
 import { EventEmitter } from "node:events"
-import { startEngine, type Engine } from "@merakcode/sdk/process"
+import { spawn, type ChildProcess } from "node:child_process"
+import { mkdir, readFile } from "node:fs/promises"
+import { homedir } from "node:os"
+import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
+import { z } from "zod"
+import { connect, PROTOCOL_VERSION } from "@merakcode/sdk"
+import { SqliteStore } from "@merakcode/sdk/store"
+import metadata from "../package.json" with { type: "json" }
 
 /**
- * Lifecycle of the local backend (the engine's `serve` child process): started through the SDK, awaited until it
- * listens, and restarted after an unexpected exit.
- *
- * - Listens on 127.0.0.1 only, on a port assigned when binding. Restarts reuse it so open windows keep their address
- *   and the UI event stream simply reconnects. Only when the port is taken is a new one picked, and windows reload.
- * - Each start gets a new random token from the SDK. It stays in the main process, which adds it to window requests
- *   (see auth.ts).
- * - The SDK starts the backend over an IPC channel: when the main process exits or crashes, the channel closes and the
- *   backend shuts itself down, so no orphan process is left behind.
+ * Connects to the local Go engine, starting it only when needed. The main process hosts storage over the SDK and
+ * retains the token for authenticated window requests. Storage stays open until graceful shutdown completes.
  */
 export type Endpoint = { url: string; origin: string; port: number; headers: Record<string, string> }
 export type State = "starting" | "ready" | "restarting" | "failed" | "stopped"
@@ -28,6 +29,30 @@ export type Options = {
   delays?: number[]
   /** After running this long without problems, the restart count resets */
   stable?: number
+  /** Additional serve flags, including a scripted model for integration tests */
+  serve?: string[]
+}
+
+type Client = Awaited<ReturnType<typeof connect>>
+type Running = { client: Client; close: () => Promise<void> }
+const connectionSchema = z.object({
+  endpoint: z.url().refine((url) => /^ws:\/\/127\.0\.0\.1:\d+\/rpc$/.test(url)),
+  token: z.string().min(1),
+  pid: z.number().int().positive(),
+  protocol: z.literal(PROTOCOL_VERSION),
+})
+
+function dataDirectory(env: NodeJS.ProcessEnv) {
+  if (env.MERAKCODE_HOME) return env.MERAKCODE_HOME
+  if (process.platform === "win32")
+    return path.join(env.APPDATA || path.join(homedir(), "AppData", "Roaming"), "MerakCode")
+  if (process.platform === "darwin") return path.join(homedir(), "Library", "Application Support", "MerakCode")
+  return path.join(
+    env.XDG_DATA_HOME && path.isAbsolute(env.XDG_DATA_HOME)
+      ? env.XDG_DATA_HOME
+      : path.join(homedir(), ".local", "share"),
+    "merakcode",
+  )
 }
 
 export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]; exit: [number | null] }> {
@@ -35,7 +60,10 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
   endpoint?: Endpoint
   /** Why the last start failed, including the last lines of child output; cleared on success, shown in the UI */
   error?: string
-  private engine?: Engine
+  private engine?: Running
+  get client() {
+    return this.engine?.client
+  }
   private port = 0
   private attempt = 0
   private stopping = false
@@ -122,24 +150,121 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
 
   private async spawn(): Promise<Endpoint> {
     this.options.log("info", "backend starting", { port: this.port, attempt: this.attempt })
-    const engine = await startEngine({
-      cwd: this.options.cwd,
-      executablePath: this.options.executable,
-      env: { ...this.options.env(), MERAKCODE_CLIENT: "desktop" },
-      serve: ["--hostname", "127.0.0.1", "--port", String(this.port)],
-      timeout: this.options.timeout,
-    }).catch((error: Error) => {
-      this.options.log("error", "backend start failed", { error: error.message })
-      this.error = error.message
-      // Another program may have taken the port: pick a new one next time
-      this.port = 0
+    const env = { ...process.env, ...this.options.env() }
+    const home = dataDirectory(env)
+    await mkdir(home, { recursive: true })
+    const storage = new SqliteStore(path.join(home, "merak.db"))
+    let child: ChildProcess | undefined
+    let childExit: Promise<number | null> | undefined
+    let childError: Error | undefined
+    let info: z.infer<typeof connectionSchema> | undefined
+    const attach = async () => {
+      try {
+        info = connectionSchema.parse(JSON.parse(await readFile(path.join(home, "engine.json"), "utf8")))
+        return await connect({ ...info, store: storage, client: { name: "desktop", version: metadata.version } })
+      } catch {
+        return undefined
+      }
+    }
+    let client: Client | undefined
+    try {
+      client = await attach()
+      if (!client) {
+        const [command, ...prefix] = this.options.executable
+        if (!command) throw new Error("MRK-1001")
+        child = spawn(
+          command,
+          [...prefix, "serve", "--store", "remote", "--port", String(this.port), ...(this.options.serve ?? [])],
+          {
+            cwd: this.options.cwd,
+            env,
+            windowsHide: true,
+            stdio: "ignore",
+          },
+        )
+        childExit = new Promise((resolve) => {
+          child!.once("error", (error) => {
+            childError = error
+            resolve(null)
+          })
+          child!.once("exit", resolve)
+        })
+        const deadline = Date.now() + (this.options.timeout ?? 10000)
+        while (!client && Date.now() < deadline) {
+          if (childError) throw childError
+          if (child.exitCode !== null || child.signalCode !== null) throw new Error("MRK-1001")
+          client = await attach()
+          if (!client) await delay(25)
+        }
+      }
+      if (!client || !info) throw new Error("MRK-1001")
+    } catch (error) {
+      child?.kill()
+      await childExit
+      storage.close()
+      this.options.log("error", "backend start failed", { code: "MRK-1001" })
+      this.error = "MRK-1001"
       throw error
-    })
+    }
+    const connected = client
+    const pid = info.pid
+    let released = false
+    const release = () => {
+      if (!released) {
+        released = true
+        storage.close()
+      }
+    }
+    let closing: Promise<void> | undefined
+    const engine: Running = {
+      client: connected,
+      close: () =>
+        (closing ??= (async () => {
+          let timer: NodeJS.Timeout | undefined
+          const graceful = connected.engine
+            .stop()
+            .then(async () => {
+              await connected.closed
+              await childExit
+            })
+            .then(
+              () => true,
+              () => false,
+            )
+          const finished = await Promise.race([
+            graceful,
+            new Promise<false>((resolve) => {
+              timer = setTimeout(() => resolve(false), 10000)
+            }),
+          ])
+          clearTimeout(timer)
+          if (!finished) {
+            try {
+              if (child) child.kill()
+              else process.kill(pid)
+            } catch {
+              /* The engine may have already exited. */
+            }
+            await childExit
+          }
+          await connected.close()
+          release()
+        })()),
+    }
     this.engine = engine
-    void engine.exited.then((code) => this.exited(engine, code))
-    const { origin, port } = new URL(engine.url)
+    void (childExit ?? connected.closed.then(() => null))
+      .then(async (code) => {
+        await connected.closed
+        release()
+        this.exited(engine, code)
+      })
+      .catch((error: Error) => {
+        this.error = error.message
+      })
+    const address = new URL(info.endpoint)
+    const { origin, port } = new URL(`http://${address.host}`)
     this.port = Number(port)
-    this.endpoint = { url: origin, origin, port: Number(port), headers: engine.headers }
+    this.endpoint = { url: origin, origin, port: Number(port), headers: { authorization: `Bearer ${info.token}` } }
     this.error = undefined
     this.ready = Date.now()
     this.set("ready")
@@ -147,7 +272,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     return this.endpoint
   }
 
-  private exited(engine: Engine, code: number | null) {
+  private exited(engine: Running, code: number | null) {
     this.emit("exit", code)
     // Deliberate stops (stop, manual restart) are not unexpected exits
     if (this.engine !== engine) return
@@ -171,7 +296,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     }, delays[this.attempt])
   }
 
-  /** Closes the channel so the backend can shut down, then kills it if it does not (SDK close) */
+  /** Waits for the engine shutdown and storage acknowledgement before closing the database. */
   private async kill() {
     const engine = this.engine
     this.engine = undefined

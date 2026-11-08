@@ -1,0 +1,31 @@
+[
+  {
+    "role": "user",
+    "parts": [
+      { "text": "Read notes.txt and report invalid input." },
+      {
+        "image": {
+          "mime": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhS8AAAAASUVORK5CYII="
+        }
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "parts": [
+      { "reasoning": { "text": "Check the requested file.", "provider": "fixture" } },
+      { "text": "Reading." },
+      { "toolCall": { "id": "read-one", "name": "read_file", "input": { "path": "notes.txt" } } },
+      { "toolCall": { "id": "read-two", "name": "read_file", "input": {} } }
+    ]
+  },
+  {
+    "role": "tool",
+    "parts": [
+      { "toolResult": { "callId": "read-one", "parts": [{ "text": "Shared fixture content." }] } },
+      { "toolResult": { "callId": "read-two", "parts": [{ "text": "path is required" }], "isError": true } }
+    ]
+  },
+  { "role": "assistant", "parts": [{ "text": "Done." }] }
+]

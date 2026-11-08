@@ -1,104 +1,159 @@
-import type { CollaborationGroupSummary, CollaborationRoleTemplate } from "@merakcode/sdk/client"
-import { createEffect, createSignal, on, Show } from "solid-js"
-import { locale, t } from "../../i18n"
-import { call, client } from "../../state/client"
+import type { GroupGroup, ProfileProfile, WorkerProductInfo } from "@merakcode/sdk"
+import { createEffect, createSignal, For, on, Show } from "solid-js"
+import { t } from "../../i18n"
+import { bridge } from "../../lib/bridge"
+import { client } from "../../state/client"
+import { choice } from "../../state/models"
+import { localHuman } from "../../state/groups"
 import { Dialog } from "../../ui/dialog"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
-import { copyGroup } from "./group-copy"
-import { MemberList, type Product, type Seat } from "./members"
-import { agentConnections, loadConnections, loadRoleTemplates, roleTemplates } from "../../state/agent-connections"
 
-const leaderDraft = (): Seat => ({
-  id: "leader",
-  name: t("group.defaultLeader"),
-  role: "",
-  duty: t("group.defaultDuty"),
-  product: "merak",
-  leader: true,
-  availability: { state: "online" },
-})
-
-/** New group: a name and its members, kept locally and sent in one request */
 export function GroupCreate(props: {
   directory: string
   open: boolean
   onClose: () => void
-  onCreated: (sessionID: string) => void
-  /** Test seam: skip the SDK list/product calls and use these instead */
-  products?: Product[]
-  groups?: CollaborationGroupSummary[]
-  roleTemplates?: CollaborationRoleTemplate[]
+  onCreated: (group: GroupGroup) => void
 }) {
-  const [title, setTitle] = createSignal("")
-  const [seats, setSeats] = createSignal<Seat[]>([])
-  const products = () => props.products ?? agentConnections()
-  const [groups, setGroups] = createSignal<CollaborationGroupSummary[]>([])
-  const [copied, setCopied] = createSignal<{ from: string; skipped: string[] }>()
+  const [name, setName] = createSignal("")
+  const [directory, setDirectory] = createSignal(props.directory)
+  const [profiles, setProfiles] = createSignal<ProfileProfile[]>([])
+  const [products, setProducts] = createSignal<WorkerProductInfo[]>([])
+  const [leader, setLeader] = createSignal("builtin-leader")
+  const [workers, setWorkers] = createSignal<string[]>([])
   const [busy, setBusy] = createSignal(false)
-  let added = 0
-  let copyField: HTMLDivElement | undefined
-
+  const [loading, setLoading] = createSignal(true)
+  const [created, setCreated] = createSignal<GroupGroup>()
+  const added = new Set<string>()
+  const fail = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
   createEffect(
     on(
       () => props.open,
       (open) => {
         if (!open) return
-        setTitle("")
-        setSeats([leaderDraft()])
-        setCopied(undefined)
-        if (props.products && props.groups) {
-          setGroups(props.groups)
-          return
-        }
-        // Products may have changed since the last time: none are offered until they are checked again
-        const failed = (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }) })
-        void loadConnections().catch(failed)
-        void loadRoleTemplates().catch(failed)
-        void call(client(props.directory).collaboration.list()).then(setGroups).catch(failed)
+        setCreated(undefined)
+        setLeader("builtin-leader")
+        added.clear()
+        setName("")
+        setDirectory(props.directory)
+        setWorkers([])
+        setLoading(true)
+        void client()
+          .then(async (connection) => {
+            const [list, catalog] = await Promise.all([
+              connection.profile.list({ human: localHuman }),
+              connection.member.catalog(),
+            ])
+            setProfiles(list ?? [])
+            setProducts(catalog ?? [])
+          })
+          .catch(fail)
+          .finally(() => setLoading(false))
       },
     ),
   )
-
-  /** Fills the form from an existing group; it is still edited and created as usual */
-  const copy = (sessionID: string) => {
-    const group = groups().find((item) => item.sessionID === sessionID)
-    if (!group) return
-    const result = copyGroup(group, products())
-    setTitle(result.title)
-    setSeats(result.seats)
-    setCopied({ from: sessionID, skipped: result.skipped })
+  const choices = () => [
+    ...profiles().filter((profile) => profile.role === "worker"),
+    ...products()
+      .filter((product) => product.kind !== "builtin" && product.available)
+      .map((product): ProfileProfile => ({
+        id: `product:${product.kind}`,
+        name: product.name,
+        role: "worker",
+        summary: "Implement and verify assigned work.",
+        duties: "",
+        model: { provider: "", model: "" },
+        toolPool: "worker.default",
+        product: { kind: product.kind, binary: product.binary ?? "" },
+      })),
+  ]
+  const selectedLeader = () => profiles().find((profile) => profile.id === leader())
+  const model = () => choice(undefined, directory()).model
+  const ready = () =>
+    !!directory().trim() &&
+    !!selectedLeader() &&
+    !!(selectedLeader()?.model.provider || model()) &&
+    !loading() &&
+    !busy()
+  const save = async (profile: ProfileProfile) => {
+    if (!profile.id.startsWith("builtin-") && !profile.id.startsWith("product:")) return profile
+    const selected = model()
+    return (await client()).profile.save({
+      human: localHuman,
+      profile: {
+        ...profile,
+        id: "",
+        model: profile.product
+          ? profile.model
+          : { provider: selected?.providerID ?? "", model: selected?.modelID ?? "" },
+      },
+    })
   }
-
-  /** Back to the blank draft from when the dialog opened */
-  const clear = () => {
-    setTitle("")
-    setSeats([leaderDraft()])
-    setCopied(undefined)
-    queueMicrotask(() => copyField?.querySelector<HTMLButtonElement>("button[aria-haspopup]")?.focus())
-  }
-
   const create = async () => {
-    const [leader, ...rest] = seats()
-    if (!leader) return
+    if (!ready()) return
     setBusy(true)
     try {
-      const created = await call(
-        client(props.directory).collaboration.create({
-          title: title().trim() || undefined,
-          leader: { name: leader.name, role: leader.role, duty: leader.duty },
-          seats: rest.map((seat) => ({ name: seat.name, role: seat.role, duty: seat.duty, product: seat.product })),
-        }),
-      )
-      props.onCreated(created.sessionID)
+      const connection = await client()
+      if (!created()) {
+        const profile = await save(selectedLeader()!)
+        const id = crypto.randomUUID()
+        setCreated(
+          await connection.group.create({
+            id: "",
+            kind: "local",
+            name: name().trim() || t("group.title"),
+            project: { directory: directory().trim() },
+            defaultLeader: id,
+            members: [
+              { id: localHuman, group: "", kind: "human", name: t("group.you"), role: "owner", status: "idle" },
+              {
+                id,
+                group: "",
+                kind: "agent",
+                name: profile.name,
+                agentRole: "leader",
+                profile: profile.id,
+                owner: localHuman,
+                status: "idle",
+              },
+            ],
+            profiles: [],
+          }),
+        )
+      }
+      for (const id of workers()) {
+        if (added.has(id)) continue
+        const draft = choices().find((profile) => profile.id === id)
+        if (!draft) continue
+        const profile = await save(draft)
+        await connection.group.addMember({
+          group: created()!.id,
+          member: {
+            id: crypto.randomUUID(),
+            group: created()!.id,
+            kind: "agent",
+            name: profile.name,
+            agentRole: "worker",
+            profile: profile.id,
+            owner: localHuman,
+            status: "idle",
+          },
+        })
+        added.add(id)
+      }
+      props.onCreated(created()!)
       props.onClose()
     } catch (error) {
-      toast({ kind: "error", title: t("error.request", { message: (error as Error).message }) })
+      fail(error)
     } finally {
       setBusy(false)
     }
   }
-
+  const pick = async () => {
+    const value = await bridge?.openDirectoryPicker({ title: t("sidebar.openProject") })
+    const picked = Array.isArray(value) ? value[0] : value
+    if (picked) setDirectory(picked)
+  }
   return (
     <Dialog
       open={props.open}
@@ -108,74 +163,73 @@ export function GroupCreate(props: {
       class="group-create"
       footer={
         <>
-          <button class="button secondary" onClick={props.onClose}>
+          <button class="button secondary" disabled={busy()} onClick={props.onClose}>
             {t("common.cancel")}
           </button>
-          <button class="button primary" disabled={busy()} onClick={() => void create()}>
+          <button class="button primary" disabled={!ready()} onClick={() => void create()}>
             {t("group.create")}
           </button>
         </>
       }
     >
       <div class="dialog-body form">
-        {/* Offered once the products are in, since they decide which members can be copied */}
-        <Show when={groups().length && products().length}>
-          <div class="field" ref={copyField}>
-            <span>{t("group.copyFrom")}</span>
-            <div class="row">
-              <Select
-                class="chip outlined"
-                label={t("group.copyFrom")}
-                placeholder={t("group.copyFromPlaceholder")}
-                value={copied()?.from}
-                onChange={copy}
-                options={groups().map((group) => ({
-                  value: group.sessionID,
-                  label: group.title,
-                  description: group.directory,
-                }))}
-              />
-              <Show when={copied()}>
-                <button type="button" class="button ghost sm" title={t("group.copyClearTitle")} onClick={clear}>
-                  {t("group.copyClear")}
-                </button>
-              </Show>
-            </div>
-          </div>
-          <Show when={copied()?.skipped.length}>
-            <p class="subtle group-copy-skipped" role="status">
-              {t("group.copySkipped", { names: copied()!.skipped.join(locale() === "zh" ? "、" : ", ") })}
-            </p>
-          </Show>
-        </Show>
         <label class="field">
           <span>{t("group.name")}</span>
           <input
             class="input"
-            placeholder={t("group.namePlaceholder")}
-            value={title()}
-            onInput={(event) => setTitle(event.currentTarget.value)}
+            aria-label={t("group.name")}
+            disabled={busy() || !!created()}
+            value={name()}
+            onInput={(event) => setName(event.currentTarget.value)}
           />
         </label>
-        <MemberList
-          seats={seats()}
-          products={products()}
-          roleTemplates={props.roleTemplates ?? roleTemplates()}
-          onSave={(seat, draft) =>
-            setSeats((list) =>
-              list.map((item) =>
-                item.id === seat.id ? { ...item, name: draft.name, role: draft.role, duty: draft.duty } : item,
-              ),
-            )
-          }
-          onAdd={(draft) =>
-            setSeats((list) => [
-              ...list,
-              { ...draft, id: `new-${++added}`, leader: false, availability: { state: "online" } },
-            ])
-          }
-          onRemove={(seat) => setSeats((list) => list.filter((item) => item.id !== seat.id))}
+        <label class="field">
+          <span>{t("group.directory")}</span>
+          <input
+            class="input"
+            aria-label={t("group.directory")}
+            disabled={busy() || !!created()}
+            value={directory()}
+            onInput={(event) => setDirectory(event.currentTarget.value)}
+          />
+        </label>
+        <button class="button secondary" disabled={busy() || !!created()} onClick={() => void pick().catch(fail)}>
+          {t("sidebar.openProject")}
+        </button>
+        <Show when={loading()}>
+          <p role="status">{t("group.checking")}</p>
+        </Show>
+        <Select
+          label={t("group.leader")}
+          disabled={busy() || !!created()}
+          value={leader()}
+          options={profiles()
+            .filter((profile) => profile.role === "leader" && !profile.product)
+            .map((profile) => ({ value: profile.id, label: profile.name }))}
+          onChange={setLeader}
         />
+        <For each={choices()}>
+          {(profile) => (
+            <label class="row">
+              <input
+                type="checkbox"
+                disabled={busy() || !!created()}
+                aria-label={t("group.selectProfile", { name: profile.name })}
+                checked={workers().includes(profile.id)}
+                onChange={(event) =>
+                  setWorkers((items) =>
+                    event.currentTarget.checked ? [...items, profile.id] : items.filter((id) => id !== profile.id),
+                  )
+                }
+              />
+              <span>{profile.name}</span>
+              <span class="subtle">{profile.summary}</span>
+            </label>
+          )}
+        </For>
+        <Show when={!loading() && !selectedLeader()?.model.provider && !model()}>
+          <p role="status">{t("group.modelRequired")}</p>
+        </Show>
       </div>
     </Dialog>
   )

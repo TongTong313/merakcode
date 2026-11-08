@@ -1,31 +1,19 @@
 import path from "node:path"
-import { createServer, request, type Server } from "node:http"
-import { startEngine, type Engine } from "@merakcode/sdk/process"
 import { readFile, writeFile } from "node:fs/promises"
-import { createMerakCode, type MerakCode, type MerakCodeSession } from "@merakcode/sdk"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest"
 import { render } from "solid-js/web"
-import { engine, sandbox, type Sandbox } from "../../../../../../packages/sdk/js/test/fixture/engine"
-import { fakeModel, type Reply, type Turn } from "../../../../../../packages/sdk/js/test/fixture/model"
+import { engineFixture } from "../../test/engine"
+import { client } from "../../state/client"
 import { setLocale, t } from "../../i18n"
-import { ensureSession, reload, refreshVcs, openFolder } from "../../state/store"
+import { ensureSession, setState } from "../../state/store"
+import { refreshBranches } from "../../state/git"
 import { ReviewPanel } from "./review"
 import { ReviewFull } from "./full"
 import { SourceControl } from "../git/source-control"
-import { clearComments, openReview, setReview, useReview } from "./state"
+import { clearComments, commentsOf, review, setReview, useReview } from "./state"
 
-let env: Sandbox
-let merak: MerakCode
-let backend: Engine
-let proxy: Server
-let session: MerakCodeSession
-let model: Awaited<ReturnType<typeof fakeModel>>
-let script: (turn: Turn) => Reply = () => ({ text: "Done" })
-const traffic: string[] = []
-let reviewGate: Promise<void> | undefined
-let releaseReview = () => {}
-let promptGate: Promise<void> | undefined
-let releasePrompt = () => {}
+let env: Awaited<ReturnType<typeof engineFixture>>
+let session: { id: string }
 let host: HTMLDivElement
 let dispose = () => {}
 let loadError = () => ""
@@ -38,79 +26,48 @@ beforeAll(async () => {
   vi.stubGlobal("requestIdleCallback", (callback: IdleRequestCallback) =>
     window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0),
   )
-  model = await fakeModel((turn) => script(turn))
-  env = await sandbox(model.url)
-  backend = await startEngine({ cwd: env.project, executablePath: engine, env: env.env })
-  merak = await createMerakCode({ cwd: env.project, url: backend.url, headers: backend.headers })
-  // The desktop host authenticates renderer traffic; this real HTTP proxy supplies the same transport boundary.
-  proxy = createServer(async (incoming, outgoing) => {
-    traffic.push(incoming.url ?? "")
-    if (incoming.url?.startsWith("/review?") && reviewGate) await reviewGate
-    if (incoming.url?.includes("/prompt_async") && promptGate) await promptGate
-    const target = request(
-      new URL(incoming.url ?? "/", backend.url),
-      {
-        method: incoming.method,
-        headers: { ...incoming.headers, ...backend.headers },
-      },
-      (response) => {
-        outgoing.writeHead(response.statusCode ?? 500, response.headers)
-        response.pipe(outgoing)
-      },
-    )
-    target.on("error", (error) => outgoing.destroy(error))
-    incoming.pipe(target)
-  })
-  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve))
-  const address = proxy.address()
-  if (!address || typeof address === "string") throw new Error("Renderer transport did not listen")
-  location.href = `http://127.0.0.1:${address.port}`
+  env = await engineFixture()
+  location.href = env.url
   setLocale("zh")
 }, 120_000)
 
 afterAll(async () => {
-  await merak?.close()
-  if (proxy) await new Promise<void>((resolve) => proxy.close(() => resolve()))
-  await backend?.close()
-  await model?.close()
-  await env?.[Symbol.asyncDispose]()
-  vi.unstubAllGlobals()
+  try {
+    await (await client()).close()
+  } finally {
+    await env?.close()
+    vi.unstubAllGlobals()
+  }
 })
 
-async function edit(content: string, name = file) {
-  const steps: Reply[] = [
-    { tool: "read", args: { filePath: path.join(env.project, name) } },
-    { tool: "write", args: { filePath: path.join(env.project, name), content } },
-    { text: "Done" },
-  ]
-  script = (turn) => steps[turn.results.length]!
-  for await (const event of session.run("Update the file", { permissionLevel: "fullTakeover" }))
-    if (event.type === "error") throw event.error
-  await ensureSession(session.id, env.project)
-  await reload(session.id)
+async function newSession() {
+  const connection = await client()
+  const created = await connection.session.create({ provider: "fake", model: "test", workdir: env.project })
+  setState("sessions", (await connection.session.list()) ?? [])
+  await ensureSession(created.session)
+  return { id: created.session }
 }
-
+async function edit(content: string, name = file) {
+  await writeFile(path.join(env.project, name), content)
+}
 beforeEach(async () => {
-  setReview({ scope: "session", commenting: undefined, selecting: undefined, messageID: undefined })
+  setReview({ scope: "session", comments: {}, commenting: undefined, selecting: undefined, messageID: undefined })
   await writeFile(path.join(env.project, file), original)
-  session = await merak.session()
+  await writeFile(path.join(env.project, "other.txt"), original)
+  await env.git("add", ".")
+  await env.git("commit", "--allow-empty", "-m", "Review fixture")
+  session = await newSession()
   await edit(edited)
-  await refreshVcs(env.project)
+  await refreshBranches(env.project)
 })
-
 afterEach(() => {
-  releaseReview()
-  reviewGate = undefined
-  releasePrompt()
-  promptGate = undefined
   window.getSelection()?.removeAllRanges()
   host?.querySelectorAll<HTMLButtonElement>("[data-discard-draft]").forEach((button) => button.click())
   dispose()
   host?.remove()
-  clearComments(session.id)
+  if (session) clearComments(session.id)
   setReview({ commenting: undefined, selecting: undefined, messageID: undefined })
 })
-
 async function mount(style: "unified" | "split" = "unified", directory = env.project) {
   dispose()
   host?.remove()
@@ -128,7 +85,7 @@ async function mount(style: "unified" | "split" = "unified", directory = env.pro
   await eventually(() => host.querySelectorAll(".line-comment-add").length, { timeout: 5000 })
     .toBeGreaterThan(0)
     .catch((error: Error) => {
-      throw new Error(`${host.textContent}\n${loadError()}\n${JSON.stringify(traffic)}`, { cause: error })
+      throw new Error(`${host.textContent}\n${loadError()}`, { cause: error })
     })
   return host
 }
@@ -186,11 +143,8 @@ test("feedback can be relocated after its entire file leaves pending review", as
   await mount()
   await comment()
   input("Keep feedback after accepting its file")
-  const accept = [...host.querySelectorAll<HTMLButtonElement>(`[data-file="${file}"] button`)].find(
-    (item) => item.textContent?.trim() === t("review.acceptFile"),
-  )!
-  await eventually(() => accept.disabled).toBe(false)
-  accept.click()
+  await writeFile(path.join(env.project, file), original)
+  await mount()
   await eventually(() => host.querySelector(`[data-file="${file}"]`)).toBeNull()
   expect(box().value).toBe("Keep feedback after accepting its file")
   await comment(1, "other.txt")
@@ -275,16 +229,11 @@ test("closing the editor leaves a draft that can be resumed after remount", asyn
   await eventually(() => box()?.value).toBe("Resume this feedback")
 })
 
-test("review writes remain disabled while the real list request is outstanding", async () => {
+test("review exposes comments without accepting or rejecting file changes", async () => {
   await mount()
-  reviewGate = new Promise<void>((resolve) => {
-    releaseReview = resolve
-  })
-  await mount()
-  expect(button(t("review.rejectFile")).disabled).toBe(true)
-  releaseReview()
-  reviewGate = undefined
-  await eventually(() => button(t("review.rejectFile")).disabled).toBe(false)
+  expect(button(t("review.acceptFile"))).toBeUndefined()
+  expect(button(t("review.rejectFile"))).toBeUndefined()
+  expect(host.querySelectorAll(".line-comment-add").length).toBeGreaterThan(0)
 })
 
 test("replacing selected code preserves feedback until the user relocates it", async () => {
@@ -303,20 +252,17 @@ test("replacing selected code preserves feedback until the user relocates it", a
   expect(host.querySelector(".comment-excerpt")?.textContent).toBe("+replacement")
 })
 
-test("identical code in another turn does not inherit the earlier turn's active draft", async () => {
-  await edit("a\nintermediate\nb\n")
-  await edit(edited)
-  const users = (await session.messages()).filter((message) => message.info.role === "user")
-  openReview({ scope: "turn", messageID: users[0]!.info.id })
+test("another conversation does not inherit the first conversation's active draft", async () => {
   await mount()
   await comment()
-  input("Feedback for the earlier turn")
-  openReview({ scope: "turn", messageID: users.at(-1)!.info.id })
-  await eventually(() => box()).toBeNull()
-  expect(host.querySelectorAll(".selected-code")).toHaveLength(0)
-  expect(host.querySelector(".review-draft")?.textContent).toContain("Feedback for the earlier turn")
-  openReview({ scope: "turn", messageID: users[0]!.info.id })
-  await eventually(() => box()?.value).toBe("Feedback for the earlier turn")
+  input("Feedback for the first conversation")
+  const first = session
+  session = await newSession()
+  await mount()
+  expect(box()).toBeNull()
+  session = first
+  await mount()
+  await eventually(() => box()?.value).toBe("Feedback for the first conversation")
 })
 
 test("directory spelling changes preserve an active draft and its saved feedback", async () => {
@@ -331,7 +277,9 @@ test("directory spelling changes preserve an active draft and its saved feedback
 
 test("mixed selection reports independently correct old and new coordinates", async () => {
   await writeFile(path.join(env.project, file), "a\nremoved\nb\n")
-  session = await merak.session()
+  await env.git("add", file)
+  await env.git("commit", "-m", "Coordinate fixture")
+  session = await newSession()
   await edit(`${Array.from({ length: 18 }, (_, index) => `intro ${index + 1}\n`).join("")}a\nreplacement\nb\n`)
   await mount()
   const first = host.querySelector(".line.del .code")!
@@ -360,20 +308,16 @@ test("saved feedback survives an external branch change and can be relocated", a
     ["add", file],
     ["commit", "-m", "feedback baseline"],
   ])
-    expect((await merak.client.vcs.run({ args }, { throwOnError: true })).data.exitCode).toBe(0)
-  await refreshVcs(env.project)
+    await env.git(...args)
+  await refreshBranches(env.project)
   await mount()
   await comment()
   input("Saved feedback across branches")
   save()
-  const result = await merak.client.vcs.run(
-    { args: ["switch", "-c", `feedback-${crypto.randomUUID()}`] },
-    { throwOnError: true },
-  )
-  expect(result.data.exitCode).toBe(0)
+  await env.git("switch", "-c", `feedback-${crypto.randomUUID()}`)
   await eventually(
     async () => {
-      await refreshVcs(env.project)
+      await refreshBranches(env.project)
       return host.textContent
     },
     { timeout: 5000 },
@@ -405,21 +349,14 @@ test("editing saved feedback preserves an independent draft on the same code", a
   await eventually(() => box()?.value).toBe("Independent draft B")
 })
 
-test("the Git page fetches pending navigation without requesting review file details", async () => {
+test("the Git page displays changed files and navigates to review", async () => {
   await writeFile(path.join(env.project, file), `${edited}manual delta\n`)
-  await openFolder(env.project)
-  traffic.length = 0
   host = document.createElement("div")
   document.body.append(host)
   dispose = render(() => <SourceControl sessionID={session.id} directory={env.project} folder={env.project} />, host)
   await eventually(() => !!host.querySelector(`button[aria-label="${t("git.reviewFile", { file })}"]`)).toBe(true)
-  await new Promise<void>((resolve) => requestIdleCallback(() => resolve()))
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  const detailRequests = traffic.filter((value) => {
-    const url = new URL(value, merak.url)
-    return url.pathname === "/review/file" && url.searchParams.get("sessionID") === session.id
-  })
-  expect(detailRequests).toEqual([])
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${t("git.reviewFile", { file })}"]`)!.click()
+  expect(review.focus).toBe(file)
 })
 
 test("editing relocated feedback does not consume a newer draft at its old location", async () => {
@@ -428,16 +365,13 @@ test("editing relocated feedback does not consume a newer draft at its old locat
   await mount()
   await comment()
   input("Saved relocated feedback")
-  const accept = [...host.querySelectorAll<HTMLButtonElement>(`[data-file="${file}"] button`)].find(
-    (item) => item.textContent?.trim() === t("review.acceptFile"),
-  )!
-  await eventually(() => accept.disabled).toBe(false)
-  accept.click()
+  await writeFile(path.join(env.project, file), original)
+  await mount()
   await eventually(() => host.querySelector(`[data-file="${file}"]`)).toBeNull()
   await comment(1, "other.txt")
   save()
-  await eventually(() => button(t("review.undo")).disabled, { timeout: 5000 }).toBe(false)
-  button(t("review.undo")).click()
+  await writeFile(path.join(env.project, file), edited)
+  await mount()
   await comment()
   input("A newer independent source draft")
   box().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
@@ -454,16 +388,13 @@ test("resuming a relocated draft does not delete a new draft at its source", asy
   await mount()
   await comment()
   input("Relocated draft B")
-  const accept = [...host.querySelectorAll<HTMLButtonElement>(`[data-file="${file}"] button`)].find(
-    (item) => item.textContent?.trim() === t("review.acceptFile"),
-  )!
-  await eventually(() => accept.disabled).toBe(false)
-  accept.click()
+  await writeFile(path.join(env.project, file), original)
+  await mount()
   await eventually(() => host.querySelector(`[data-file="${file}"]`)).toBeNull()
   await comment(1, "other.txt")
   box().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
-  await eventually(() => button(t("review.undo")).disabled, { timeout: 5000 }).toBe(false)
-  button(t("review.undo")).click()
+  await writeFile(path.join(env.project, file), edited)
+  await mount()
   await comment()
   input("New source draft C")
   box().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
@@ -475,35 +406,19 @@ test("resuming a relocated draft does not delete a new draft at its source", asy
   expect(host.querySelector(".review-draft")?.textContent).toContain("New source draft C")
 })
 
-test("feedback relocated during submission stays pending when the earlier send succeeds", async () => {
-  await writeFile(path.join(env.project, "other.txt"), original)
-  await edit(edited, "other.txt")
+test("clearing submitted feedback preserves a newer edit", async () => {
   await mount()
   await comment()
-  input("Feedback moves to the other file")
+  input("First feedback")
   save()
-  script = () => ({ text: "Feedback received" })
-  promptGate = new Promise<void>((resolve) => {
-    releasePrompt = resolve
-  })
-  const requests = () => traffic.filter((url) => url.includes("/prompt_async")).length
-  const before = requests()
-  button(t("review.send")).click()
-  await eventually(requests).toBeGreaterThan(before)
-  const accept = [...host.querySelectorAll<HTMLButtonElement>(`[data-file="${file}"] button`)].find(
-    (item) => item.textContent?.trim() === t("review.acceptFile"),
-  )!
-  await eventually(() => accept.disabled).toBe(false)
-  accept.click()
-  await eventually(() => host.querySelector(`[data-file="${file}"]`)).toBeNull()
+  const submitted = commentsOf(session.id).map((comment) => ({
+    ...comment,
+    rows: comment.rows.map((row) => ({ ...row })),
+  }))
   host.querySelector<HTMLButtonElement>(`.pending-comments button[aria-label="${t("review.editComment")}"]`)!.click()
-  await eventually(() => box()?.value).toBe("Feedback moves to the other file")
-  await comment(1, "other.txt")
+  await eventually(() => box()?.value).toBe("First feedback")
+  input("Newer feedback")
   save()
-  const feedback = () => host.querySelector('[data-file="other.txt"] .line-comment')?.textContent ?? ""
-  await eventually(feedback).toContain("Feedback moves to the other file")
-  releasePrompt()
-  await eventually(() => button(t("review.send"))?.disabled).not.toBe(true)
-  expect(feedback()).toContain("Feedback moves to the other file")
-  expect(host.querySelector(".pending-comments")?.textContent).toContain(t("review.pending", { count: 1 }))
+  clearComments(session.id, submitted, env.project)
+  expect(host.querySelector(".line-comment")?.textContent).toContain("Newer feedback")
 })

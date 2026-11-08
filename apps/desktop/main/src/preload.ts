@@ -12,7 +12,16 @@ type Init = Pick<DesktopBridge, "os" | "version" | "serverUrl">
 const init = ipcRenderer.sendSync(IPC.init) as Init | undefined
 
 const call = <K extends Invoke>(method: K) =>
-  ((...args: unknown[]) => ipcRenderer.invoke(IPC.invoke, method, ...args)) as unknown as DesktopBridge[K]
+  (async (...args: unknown[]) => {
+    try {
+      return await ipcRenderer.invoke(IPC.invoke, method, ...args)
+    } catch (error) {
+      // Electron prefixes invoke errors; keep the catalog code usable across the bridge.
+      const code = error instanceof Error ? /(?:^|: )(MRK-\d{4})$/.exec(error.message)?.[1] : undefined
+      if (code) throw new Error(code)
+      throw error
+    }
+  }) as unknown as DesktopBridge[K]
 
 const listeners = new Map<string, Set<(...args: unknown[]) => void>>()
 ipcRenderer.on(IPC.event, (_event, name: string, ...args: unknown[]) => {
@@ -54,6 +63,9 @@ const bridge: DesktopBridge = {
   onNavigateNewSession: on("navigateNewSession"),
   onOpenSettings: on("openSettings"),
   onClearNotifications: on("clearNotifications"),
+  getReadNotices: call("getReadNotices"),
+  markNoticesRead: call("markNoticesRead"),
+  onReadNotices: on("readNotices"),
   pushTrayState: (state) => void ipcRenderer.invoke(IPC.invoke, "pushTrayState", state).catch(() => {}),
   onFullscreenChange: on("fullscreen"),
   restoreWindowFocus: call("restoreWindowFocus"),
@@ -76,6 +88,7 @@ const bridge: DesktopBridge = {
   checkAppExists: call("checkAppExists"),
   showItemInFolder: call("showItemInFolder"),
   openLogDirectory: call("openLogDirectory"),
+  exportDiagnostics: call("exportDiagnostics"),
   openDirectoryPicker: call("openDirectoryPicker"),
   openFilePicker: call("openFilePicker"),
   saveTextFile: call("saveTextFile"),

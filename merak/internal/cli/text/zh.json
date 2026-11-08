@@ -1,0 +1,8 @@
+{
+  "thinking": "思考：",
+  "estimatedCost": "预估费用：%s %.6f\n",
+  "unknownCost": "费用：未知\n",
+  "allowWrite": "允许写入 %s 吗？[y/n] ",
+  "allowExec": "允许运行命令 %s 吗？[y/n] ",
+  "diagnosticSaved": "诊断包已保存到 %s\n"
+}

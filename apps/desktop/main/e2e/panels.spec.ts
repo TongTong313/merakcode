@@ -5,18 +5,17 @@ import { test, expect } from "./fixture"
 
 // Code and browser tabs in the side panel, and the bottom terminal
 
-test("code: opens a file from the tree and saves edits to disk with the native save shortcut", async ({ kit }) => {
+test("code: opens a working file without enabling edits", async ({ kit }) => {
   const panel = kit.panel()
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
   await panel.getByRole("tab", { name: "代码" }).click()
   await panel.getByRole("treeitem", { name: "notes.txt" }).click()
-  const editor = panel.getByRole("code")
+  const editor = panel.locator(".monaco-editor")
   await expect(editor).toContainText("hello from e2e")
   await editor.click()
   await kit.page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End")
   await kit.page.keyboard.type("edited")
-  await kit.page.keyboard.press("ControlOrMeta+S")
-  await expect.poll(() => readFile(path.join(kit.project, "notes.txt"), "utf8")).toBe("hello from e2e\nedited")
+  expect(await readFile(path.join(kit.project, "notes.txt"), "utf8")).toBe("hello from e2e\n")
 })
 
 test("browser: opens a local page and shows its title and console errors", async ({ kit }) => {
@@ -78,4 +77,57 @@ test("multiple terminals run independently, switching back works, and closing on
 
   await tabs.nth(1).getByRole("button", { name: /^关闭/ }).click()
   await expect(tabs).toHaveCount(1)
+})
+
+test("closing a project stops its terminal process and descendants", async ({ kit }) => {
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await kit.page.locator(".terminal-host:visible").click()
+  await kit.page.keyboard.type(
+    `node -e "require('fs').writeFileSync('term-pid.txt',String(process.pid));setInterval(()=>{},1000)"`,
+  )
+  await kit.page.keyboard.press("Enter")
+  const pidFile = path.join(kit.project, "term-pid.txt")
+  await expect.poll(() => readFile(pidFile, "utf8").catch(() => "")).toMatch(/^\d+$/)
+  const pid = Number(await readFile(pidFile, "utf8"))
+  await kit.page.getByRole("button", { name: "项目操作" }).click()
+  await kit.page.getByRole("menuitem", { name: "从列表移除" }).click()
+  await expect
+    .poll(
+      () => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      },
+      { timeout: 10000 },
+    )
+    .toBe(false)
+})
+
+test("hiding and reopening a terminal preserves its shell and remembered height", async ({ kit }) => {
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  const terminal = kit.page.getByRole("region", { name: "终端" })
+  const command = async (text: string) => {
+    await kit.page.locator(".terminal-host:visible").click()
+    await kit.page.keyboard.type(text)
+    await kit.page.keyboard.press("Enter")
+  }
+  await command("MERAK_REPLAY=kept")
+  const edge = await terminal.locator(".terminal-resize").boundingBox()
+  await kit.page.mouse.move(edge!.x + edge!.width / 2, edge!.y + 2)
+  await kit.page.mouse.down()
+  await kit.page.mouse.move(edge!.x + edge!.width / 2, edge!.y - 80, { steps: 5 })
+  await kit.page.mouse.up()
+  const height = await terminal.evaluate((element) => element.getBoundingClientRect().height)
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await expect(terminal).toHaveCount(0)
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await command(`printf '%s' "$MERAK_REPLAY" > replay.txt`)
+  await expect.poll(() => readFile(path.join(kit.project, "replay.txt"), "utf8").catch(() => "")).toBe("kept")
+  expect(await terminal.evaluate((element) => element.getBoundingClientRect().height)).toBe(height)
+  await kit.page.reload()
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  expect(await terminal.evaluate((element) => element.getBoundingClientRect().height)).toBe(height)
 })

@@ -1,0 +1,11 @@
+[
+  { "type": "session.created" },
+  { "type": "turn.started" },
+  { "type": "message.sent" },
+  { "type": "message.delta", "text": "Checking\u2028input" },
+  { "type": "message.completed", "text": "Checking\u2028input", "input": 13 },
+  { "type": "tool.called", "name": "read" },
+  { "type": "tool.completed", "name": "read", "cause": 6 },
+  { "type": "message.completed", "text": "Verified\u2028Unicode", "input": 12 },
+  { "type": "turn.finished" }
+]

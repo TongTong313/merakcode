@@ -1,4 +1,4 @@
-import type { ReviewFileDetail, ReviewLine, ReviewScope } from "@merakcode/sdk/client"
+import type { ReviewFileDetail, ReviewLine, ReviewScope } from "./data"
 import { t } from "../../i18n"
 
 export type SelectedLine = ReviewLine & { hunk: string; index: number }

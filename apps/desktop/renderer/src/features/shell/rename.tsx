@@ -1,20 +1,25 @@
-import type { Session } from "@merakcode/sdk/client"
 import { createEffect, createSignal } from "solid-js"
 import { t } from "../../i18n"
-import { call, client } from "../../state/client"
+import { renameSession, type SessionSummary } from "../../state/store"
 import { Dialog } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 
 /** Renames a conversation */
-export function Rename(props: { session: Session; open: boolean; onClose: () => void }) {
+export function Rename(props: { session: SessionSummary; open: boolean; onClose: () => void }) {
   const [title, setTitle] = createSignal("")
   createEffect(() => props.open && setTitle(props.session.title))
   const save = async () => {
     const value = title().trim()
     if (!value) return
-    await call(client(props.session.directory).session.update({ sessionID: props.session.id, title: value })).catch(
-      (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-    )
+    try {
+      await renameSession(props.session.id, value)
+    } catch (error) {
+      toast({
+        kind: "error",
+        title: t("error.request", { message: error instanceof Error ? error.message : String(error) }),
+      })
+      return
+    }
     props.onClose()
   }
   return (

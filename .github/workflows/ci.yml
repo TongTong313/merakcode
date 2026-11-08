@@ -66,6 +66,8 @@ jobs:
         package:
           - packages/util
           - packages/log
+          - packages/sdk
+          - apps/desktop/renderer
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -77,6 +79,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm test
         working-directory: ${{ matrix.package }}
@@ -131,11 +136,106 @@ jobs:
           actual=$(merak/dist/linux-x64/merak --version)
           test "$actual" = "$expected"
 
+  e2e-sdk:
+    name: SDK integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --dir packages/sdk test:e2e
+
+  e2e-desktop:
+    name: Desktop integration (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install-deps chromium
+        working-directory: apps/desktop/main
+      - run: go build -o dist/linux-x64/merak ./cmd/merak
+        working-directory: merak
+      - run: pnpm --dir apps/desktop/renderer run build
+      - run: pnpm --dir apps/desktop/main run build
+      - run: xvfb-run -a pnpm --dir apps/desktop/main test:e2e e2e/chat.spec.ts e2e/composer.spec.ts e2e/permission.spec.ts e2e/tools.spec.ts e2e/conversations.spec.ts e2e/connect.spec.ts e2e/reconnect.spec.ts e2e/review.spec.ts e2e/git.spec.ts e2e/branch.spec.ts e2e/panels.spec.ts e2e/about.spec.ts e2e/group.spec.ts e2e/agents.spec.ts e2e/worktree.spec.ts e2e/board.spec.ts e2e/notify.spec.ts
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: desktop-e2e-failures
+          path: apps/desktop/main/e2e/.results
+          include-hidden-files: true
+
+  desktop-package:
+    name: Desktop package smoke test
+    needs: go-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --dir apps/desktop/main run package --dir --target linux-x64
+      - name: Verify packaged Go engine
+        shell: bash
+        run: |
+          resources=apps/desktop/main/release/linux-unpacked/resources
+          expected=$(node -p "require('./package.json').version")
+          actual=$("$resources/merak/merak" --version)
+          test "$actual" = "$expected"
+          test ! -e "$resources/engine/node"
+          test -f "$resources/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/linux-x64.node"
+      - run: pnpm exec playwright install-deps chromium
+        working-directory: apps/desktop/main
+      - run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: desktop-package-failures
+          path: apps/desktop/main/release/smoke-*
+
   # The main ruleset requires this one check, so a pull request merges only when every job above succeeded. A failed,
   # cancelled or skipped job fails it; always() makes it report even then instead of being skipped itself.
   passed:
     name: CI passed
-    needs: [check, scripts, test-ts, go, go-build]
+    needs: [check, scripts, test-ts, go, go-build, e2e-sdk, e2e-desktop, desktop-package]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -1,58 +1,35 @@
 import { expect, test } from "vitest"
+import type { CatalogModel } from "@merakcode/sdk"
 import { manualRow, modelConfig, rowOf, windowsValid } from "./relay-models"
 
-test("a relay model with unknown windows starts with empty fields instead of guesses", () => {
-  const row = rowOf({ id: "local-model", name: "local-model", endpoint: "openai-chat" })
-  expect(row).toMatchObject({ id: "local-model", context: "", output: "", endpoint: "openai-chat", selected: true })
-  expect(row.contextFrom).toBeUndefined()
+const unknown: CatalogModel = {
+  id: "local-model",
+  provider: "draft",
+  window: 128000,
+  maxOutput: 8192,
+  price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  caps: { tools: false, vision: false, pdf: false },
+  thinking: null,
+  source: "live",
+  unknown: ["window", "maxOutput", "price", "thinking", "caps"],
+}
+
+test("unknown limits stay empty and are omitted when saving", () => {
+  const row = rowOf(unknown)
+  expect(row).toMatchObject({ id: "local-model", context: "", output: "", selected: true })
+  expect(modelConfig(row)).toEqual({ name: "local-model" })
 })
 
-test("a relay row is saved without made-up windows or capabilities", () => {
-  const row = rowOf({ id: "local-model", name: "local-model", endpoint: "openai-chat" })
-  expect(modelConfig(row, "@ai-sdk/openai-compatible")).toEqual({
-    name: "local-model",
-    provider: { npm: "@ai-sdk/openai-compatible" },
-  })
+test("published limits and edited output limits are saved", () => {
+  const row = rowOf({ ...unknown, window: 96000, maxOutput: 16000, unknown: ["price", "thinking", "caps"] })
+  expect(modelConfig({ ...row, output: "8000" })).toEqual({ name: "local-model", window: 96000, maxOutput: 8000 })
 })
 
-test("known windows and capabilities are saved as found", () => {
-  const row = rowOf({
-    id: "claude-opus-4-8",
-    name: "claude-opus-4-8",
-    context: 1_000_000,
-    output: 128000,
-    contextFrom: "catalog",
-    outputFrom: "catalog",
-    input: ["text", "image"],
-    reasoning: true,
-    toolcall: true,
-    endpoint: "anthropic",
-  })
-  expect(modelConfig({ ...row, output: "64000" }, "@ai-sdk/anthropic")).toEqual({
-    name: "claude-opus-4-8",
-    limit: { context: 1_000_000, output: 64000 },
-    reasoning: true,
-    tool_call: true,
-    modalities: { input: ["text", "image"] },
-    provider: { npm: "@ai-sdk/anthropic" },
-  })
+test.each(["0", "-1", "abc", "3.5", "Infinity"])("rejects invalid token limit %s", (context) => {
+  expect(windowsValid({ ...manualRow("local"), context })).toBe(false)
 })
 
-test("a manually added model only guesses its protocol", () => {
-  expect(manualRow("claude-private")).toEqual({
-    id: "claude-private",
-    context: "",
-    output: "",
-    endpoint: "anthropic",
-    selected: true,
-  })
-  expect(manualRow("gpt-local").endpoint).toBe("openai-responses")
-})
-
-test("an empty window is allowed but a typed window must be a positive number", () => {
-  const row = manualRow("local")
-  expect(windowsValid(row)).toBe(true)
-  expect(windowsValid({ ...row, context: "128000" })).toBe(true)
-  expect(windowsValid({ ...row, context: "abc" })).toBe(false)
-  expect(windowsValid({ ...row, output: "0" })).toBe(false)
+test("manual limits may be empty but output cannot exceed the context window", () => {
+  expect(windowsValid(manualRow("local"))).toBe(true)
+  expect(windowsValid({ ...manualRow("local"), context: "8000", output: "16000" })).toBe(false)
 })

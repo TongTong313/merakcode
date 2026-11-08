@@ -11,7 +11,7 @@ import { watchBundle } from "./build"
  * - UI (apps/desktop/renderer): served by the Vite dev server. The backend forwards UI requests to it
  *   (MERAKCODE_APP_DEV_URL), so saved changes show up in the window at once and keep its state.
  * - Main process and preload: rebuilt on change, then the app restarts.
- * - Backend: runs the apps/cli sources with Node from PATH (see src/engine.ts). It is not restarted when they change,
+ * - Backend: runs the Go binary built below (see src/engine.ts). It is not restarted when sources change,
  *   which would cut off a running conversation: Help › Restart Local Service starts it on the new sources, and windows
  *   reconnect on their own.
  * Arguments are passed on to Electron.
@@ -19,6 +19,18 @@ import { watchBundle } from "./build"
 const root = path.resolve(import.meta.dirname, "..")
 const renderer = path.resolve(root, "..", "renderer")
 const require = createRequire(import.meta.url)
+const repo = path.resolve(root, "../../..")
+const nativeTarget = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`
+const engineBuild = spawnSync(
+  "go",
+  ["build", "-o", path.join("dist", nativeTarget, process.platform === "win32" ? "merak.exe" : "merak"), "./cmd/merak"],
+  {
+    cwd: path.join(repo, "merak"),
+    env: { ...process.env, CGO_ENABLED: "0" },
+    stdio: "inherit",
+  },
+)
+if (engineBuild.status !== 0) throw engineBuild.error ?? new Error("Go engine build failed")
 
 // The electron package runs no install script here, so download the Electron binary on first use (ELECTRON_MIRROR
 // selects a mirror)

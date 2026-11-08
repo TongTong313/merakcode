@@ -1,729 +1,91 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
-import type { Page } from "@playwright/test"
-import { test, expect, type Kit } from "./fixture"
+import { test, expect } from "./fixture"
 
-/** Stand-in for a coding CLI: reads the prompt on stdin and prints only its final reply */
-const SEAT = [
-  `let prompt = ""`,
-  `for await (const chunk of process.stdin) prompt += chunk`,
-  `process.stdout.write(prompt.includes("做登录") ? ${JSON.stringify("登录入口已改到 src/auth/login.ts\n")} : "?")`,
-].join("\n")
-const fake = { command: process.execPath, title: "Fake CLI", args: ["--input-type=module", "-e", SEAT] }
-
-const LOADER = new URL("../../../../script/node/register.mjs", import.meta.url).href
-
-/** A product whose adapter is fake-member.ts, with this scenario */
-const member = (title: string, scenario: object) => ({
-  title,
-  adapter: "member",
-  command: process.execPath,
-  args: [
-    "--import",
-    LOADER,
-    "--disable-warning=ExperimentalWarning",
-    path.join(import.meta.dirname, "fake-member.ts"),
-    JSON.stringify(scenario),
-  ],
+let releaseLeader = () => {}
+test.use({
+  git: true,
+  script: {
+    reply: async ({ prompt, closed }) => {
+      if (prompt.includes("确认协作流程")) {
+        await Promise.race([new Promise<void>((resolve) => (releaseLeader = resolve)), closed])
+        return { tool: "say", args: { text: "协作流程已确认。" } }
+      }
+      return { tool: "say", args: { text: "群消息已收到。" } }
+    },
+  },
 })
 
-/** Creates a group with one member through the new-group dialog */
-async function createGroup(page: Page, member: { product: string; name: string; role?: string; duty?: string }) {
-  await page.getByRole("button", { name: "新建协作群" }).click()
-  const dialog = page.getByRole("dialog", { name: "新建协作群" })
-  await dialog.getByRole("button", { name: "添加成员" }).click()
-  await dialog.getByRole("button", { name: /^产品/ }).click()
-  await page.getByRole("option", { name: member.product }).click()
-  await dialog.getByRole("textbox", { name: "姓名" }).fill(member.name)
-  if (member.role) await dialog.getByRole("textbox", { name: "角色" }).fill(member.role)
-  if (member.duty) await dialog.getByRole("textbox", { name: "职责" }).fill(member.duty)
-  await dialog.getByRole("button", { name: "加入" }).click()
-  await dialog.getByRole("button", { name: "创建" }).click()
-  await page
-    .getByRole("button", { name: /^(权限级别|Permission level)/ })
-    .filter({ visible: true })
-    .first()
-    .click()
-  await page.getByRole("option", { name: /全面接管|Full takeover/ }).click()
-}
-
-test.describe("group chat", () => {
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          fake,
-          missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
-        },
-      },
-    },
-    script: {
-      reply: ({ toolResults }) =>
-        toolResults.length === 0
-          ? { tool: "delegate", args: { seat: "小红", task: "做登录", paths: ["src/auth/**"] } }
-          : { text: "都做完了" },
-    },
-  })
-
-  test("members stay in the member column and the leader's delegation reads as a chat", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Fake CLI", name: "小红", role: "产品经理" })
-
-    const members = page.getByRole("complementary", { name: "群成员" })
-    await expect(members.getByRole("button", { name: /小主/ })).toBeVisible()
-    await expect(members.getByRole("button", { name: /小红/ })).toBeVisible()
-    const log = page.getByRole("log", { name: "消息记录" })
-    await expect(log.getByText("你邀请 小红 加入了群聊")).toBeVisible()
-
-    await kit.send("@小红 做登录")
-    const xiaohong = log.getByRole("article", { name: "小红" })
-    await expect(xiaohong).toContainText("登录入口已改到 src/auth/login.ts", { timeout: 60_000 })
-    await expect(xiaohong).toContainText("Fake CLI · 产品经理")
-    await expect(log.getByRole("article", { name: "小主" })).toContainText("都做完了")
-    const order = await log.getByRole("article").evaluateAll((items) => items.map((item) => item.ariaLabel))
-    expect(order).toEqual(["你说", "小红", "小主"])
-
-    const mine = await log.getByText("@小红 做登录").boundingBox()
-    const theirs = await xiaohong.getByText("登录入口已改到 src/auth/login.ts").boundingBox()
-    expect(mine!.x).toBeGreaterThan(theirs!.x)
-    expect(await log.getByRole("textbox").count()).toBe(0)
-    expect(await log.getByRole("combobox").count()).toBe(0)
-
-    // The count shows once, on the top bar; the todo lines up with the messages and the composer
-    await expect(page.getByRole("button", { name: "2 位成员" })).toHaveText("2")
-    const input = page.getByRole("textbox", { name: "消息" }).filter({ visible: true }).first()
-    await expect(input).toHaveAttribute("placeholder", "发给群里，可以用 @ 点名成员")
-    // Wide enough that the messages are a centred column narrower than the chat area
-    await page.setViewportSize({ width: 1800, height: 900 })
-    const todo = await page.getByRole("button", { name: /待办/ }).boundingBox()
-    const composer = await input.boundingBox()
-    expect(Math.abs(todo!.x - composer!.x)).toBeLessThan(24)
-  })
-})
-
-test.describe("group members", () => {
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          fake,
-          missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
-        },
-      },
-    },
-  })
-
-  test("members are added, renamed and removed in the member column, and the chat notes each change", async ({
-    kit,
-  }) => {
-    const { page } = kit
-    await page.getByRole("button", { name: "新建协作群" }).click()
-    const dialog = page.getByRole("dialog", { name: "新建协作群" })
-    await dialog.getByRole("textbox", { name: "群名称" }).fill("登录支付")
-    await dialog.getByRole("button", { name: "创建" }).click()
-    await expect(page.getByText("在右侧添加 Claude Code、Codex 等成员，或直接交代任务")).toBeVisible()
-
-    const members = page.getByRole("complementary", { name: "群成员" })
-    // @ only names members; adding one is the member column's
-    await page.getByRole("textbox", { name: "消息" }).filter({ visible: true }).first().pressSequentially("@")
-    await expect(page.getByRole("option", { name: /添加成员/ })).toHaveCount(0)
-    await page.keyboard.press("Escape")
-    await members.getByRole("button", { name: "添加成员" }).click()
-    await members.getByRole("button", { name: /^产品/ }).click()
-    await page.getByRole("option", { name: /Fake CLI/ }).click()
-    await members.getByRole("textbox", { name: "姓名" }).fill("小红")
-    await members.getByRole("textbox", { name: "职责" }).fill("负责登录，不改支付")
-    await members.getByRole("button", { name: "加入" }).click()
-    const log = page.getByRole("log", { name: "消息记录" })
-    await expect(log.getByText("你邀请 小红 加入了群聊")).toBeVisible()
-    await expect(page.getByRole("button", { name: "2 位成员" })).toBeVisible()
-    // The sidebar row is marked as a group and lists its members under the title
+test("creates a local group and restores member activity and chat after reload", async ({ kit }, info) => {
+  await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+  const dialog = kit.page.getByRole("dialog")
+  await dialog.getByRole("textbox", { name: "群名称" }).fill("本地协作")
+  await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+  await dialog.getByRole("button", { name: "创建", exact: true }).click()
+  await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
+  await expect(kit.page.getByRole("link", { name: "本地协作" })).toBeVisible()
+  await kit.page.getByRole("button", { name: "向 Leader 发消息", exact: true }).click()
+  await kit.send("确认协作流程")
+  const leader = () => kit.page.getByRole("group", { name: "成员 Leader", exact: true })
+  try {
+    await expect(leader()).toContainText("忙碌")
+    await kit.page.reload()
+    await expect(leader()).toContainText("忙碌")
+    releaseLeader()
+    await expect(kit.text("协作流程已确认。")).toBeVisible()
+    await expect(leader()).toContainText("空闲")
+    await kit.page.reload()
     await expect(
-      page.getByRole("navigation", { name: "对话" }).getByRole("link", { name: /^登录支付 协作 小主、小红/ }),
-    ).toBeVisible()
-
-    await members.getByRole("button", { name: /小红/ }).click()
-    await members.getByRole("textbox", { name: "姓名" }).fill("小芳")
-    await members.getByRole("button", { name: "保存" }).click()
-    await expect(log.getByText("小红 改名为 小芳")).toBeVisible()
-
-    await members.getByRole("button", { name: "添加成员" }).click()
-    await members.getByRole("button", { name: /^产品/ }).click()
-    await expect(page.getByRole("option", { name: /Missing CLI/ })).toHaveAttribute("aria-disabled", "true")
-    await page.keyboard.press("Escape")
-    await members.getByRole("button", { name: "取消" }).click()
-
-    await members.getByRole("button", { name: /小芳/ }).click()
-    await members.getByRole("button", { name: "移出" }).click()
-    await page.getByRole("dialog", { name: "移出 小芳？" }).getByRole("button", { name: "移出" }).click()
-    await expect(log.getByText("小芳 已被移出群聊")).toBeVisible()
-    await expect(page.getByRole("button", { name: "1 位成员" })).toBeVisible()
-  })
+      kit.page.getByRole("log", { name: "群聊" }).getByText("协作流程已确认。", { exact: true }),
+    ).toHaveCount(1)
+    await expect(leader()).toContainText("空闲")
+    await kit.page.screenshot({ path: info.outputPath("group.png") })
+  } finally {
+    releaseLeader()
+  }
 })
 
-test.describe("a MerakCode member", () => {
+test.describe("worker progress", () => {
+  let releaseWorker = () => {}
   test.use({
     script: {
-      reply: ({ prompt, toolResults }) => {
-        if (prompt.startsWith("You are 小明 (MerakCode)"))
-          return toolResults.length === 0
-            ? { tool: "write", args: { filePath: "refund.md", content: "退款边界\n" } }
-            : { text: "退款边界写在 refund.md" }
-        return toolResults.length === 0
-          ? { tool: "delegate", args: { seat: "小明", task: "写退款边界" } }
-          : { text: "小明写好了" }
-      },
-    },
-  })
-
-  test("works in a child session of its own, which the chat links to", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "MerakCode", name: "小明", duty: "负责看退款边界" })
-
-    await kit.send("@小明 写退款边界")
-    const log = page.getByRole("log", { name: "消息记录" })
-    const xiaoming = log.getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText("退款边界写在 refund.md", { timeout: 60_000 })
-    await expect(log.getByRole("article", { name: "小主" })).toContainText("小明写好了")
-    expect(await readFile(path.join(kit.project, "refund.md"), "utf8")).toBe("退款边界\n")
-
-    await xiaoming.getByRole("button", { name: "查看过程" }).click()
-    await expect(page.getByRole("button", { name: "返回主对话" })).toBeVisible()
-  })
-})
-
-test.describe("stopping a MerakCode member", () => {
-  let entered = Promise.withResolvers<void>()
-  let released = Promise.withResolvers<void>()
-  let connectionClosed = false
-  test.beforeEach(() => {
-    entered = Promise.withResolvers<void>()
-    released = Promise.withResolvers<void>()
-    connectionClosed = false
-  })
-  test.afterEach(() => released.resolve())
-  test.use({
-    script: {
-      reply: async ({ prompt, toolResults, closed }) => {
-        if (prompt.startsWith("You are 小明 (MerakCode)")) {
-          if (toolResults.length) return { text: "写完了" }
-          entered.resolve()
-          void closed.then(() => {
-            connectionClosed = true
-          })
-          await released.promise
-          return { tool: "write", args: { filePath: "late.md", content: "late\n" } }
+      reply: async ({ tools, toolResults, closed }) => {
+        if (tools.includes("submit_report")) {
+          if (toolResults.length === 0) return { tool: "report_progress", args: { summary: "已检查第一项。" } }
+          if (toolResults.length === 1) return { tool: "report_progress", args: { summary: "已检查全部三项。" } }
+          await Promise.race([new Promise<void>((resolve) => (releaseWorker = resolve)), closed])
+          return { tool: "submit_report", args: { verdict: "done", summary: "三项检查全部通过。" } }
         }
-        return toolResults.length === 0 ? { tool: "delegate", args: { seat: "小明", task: "慢慢写" } } : { text: "好" }
+        return { tool: "say", args: { text: "成员进度已记录。" } }
       },
     },
   })
-
-  test("stopping the group stops the member's child session and cancels its todo item", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "MerakCode", name: "小明" })
-    await kit.send("@小明 慢慢写")
-    await entered.promise
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText("已运行")
-    await expect(page.getByRole("button", { name: /待办 0\/1/ })).toBeVisible()
-
-    await page.getByRole("button", { name: "停止" }).click()
-    await expect(xiaoming).toContainText("已停止")
-    await expect(xiaoming).toContainText("MerakCode")
-    await expect(page.getByRole("button", { name: /待办/ })).toHaveCount(0)
-    await expect.poll(() => connectionClosed).toBe(true)
-    released.resolve()
-    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0)
-    await expect(access(path.join(kit.project, "late.md"))).rejects.toThrow()
-  })
-})
-
-test.describe("a member at work", () => {
-  // It reports a step, then holds until the test lets it finish
-  const gate = path.join(os.tmpdir(), `merak-e2e-gate-${process.pid}`)
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          steps: member("Step CLI", { steps: [{ tool: "Bash", detail: "npm test", gate }], reply: "测试都过了" }),
-        },
-      },
-    },
-    script: {
-      reply: ({ toolResults }) =>
-        toolResults.length === 0 ? { tool: "delegate", args: { seat: "小红", task: "跑测试" } } : { text: "好" },
-    },
-  })
-
-  test("shows what the member is doing while it works, and keeps the steps after it is done", async ({ kit }) => {
-    const { page } = kit
-    await rm(gate, { force: true })
-    await createGroup(page, { product: "Step CLI", name: "小红" })
-    await kit.send("@小红 跑测试")
-    const xiaohong = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小红" })
-    await expect(xiaohong).toContainText("已运行")
-    await expect(xiaohong).toContainText("Bash npm test")
-    await writeFile(gate, "")
-    await expect(xiaohong).toContainText("测试都过了")
-    await expect(xiaohong.getByRole("button", { name: "1 步" })).toBeVisible()
-    await rm(gate, { force: true })
-  })
-})
-
-test.describe("external member text", () => {
-  const gate = path.join(os.tmpdir(), `merak-e2e-text-${process.pid}`)
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          streaming: {
-            ...member("Streaming CLI", { streaming: { gate, model: true } }),
-            model: { id: "fixture-requested" },
-          },
-        },
-      },
-    },
-    script: {
-      reply: ({ toolResults }) =>
-        toolResults.length === 0
-          ? { tool: "delegate", args: { seat: "小红", task: "Reply with the configured model" } }
-          : { text: "完成" },
-    },
-  })
-
-  test("streams member text before completion using the globally selected product model", async ({ kit }) => {
-    await rm(gate, { force: true })
+  test("combines claim progress and shows the worker's current task", async ({ kit }, info) => {
+    await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await dialog.getByRole("textbox", { name: "群名称" }).fill("进度协作")
+    await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+    await dialog.getByRole("button", { name: "创建", exact: true }).click()
+    await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
+    await kit.send("@Worker 检查三个验收条件")
+    const worker = () => kit.page.getByRole("group", { name: "成员 Worker", exact: true })
     try {
-      await createGroup(kit.page, { product: "Streaming CLI", name: "小红" })
-      await kit.send("@小红 reply")
-      const bubble = kit.page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小红" })
-      await expect(bubble).toContainText("External reply:", { timeout: 10_000 })
-      await writeFile(gate, "go")
-      await expect(bubble).toContainText("External reply: fixture-requested")
-      await expect(bubble).toContainText("fixture-selected")
+      await expect(worker()).toContainText("忙碌")
+      await expect(worker().getByRole("button", { name: "@Worker 检查三个验收条件", exact: true })).toBeVisible()
+      await expect(kit.text("已检查全部三项。")).toBeVisible()
+      await expect(kit.page.getByRole("log", { name: "群聊" })).not.toContainText("已检查第一项。")
+      await kit.page.reload()
+      await expect(worker()).toContainText("忙碌")
+      await expect(kit.text("已检查全部三项。")).toBeVisible()
+      await worker().getByRole("button", { name: "@Worker 检查三个验收条件", exact: true }).click()
+      await expect(kit.page.getByRole("combobox", { name: "讨论位置" })).not.toHaveValue("")
+      releaseWorker()
+      await expect(worker()).toContainText("空闲")
     } finally {
-      await writeFile(gate, "go")
+      releaseWorker()
+      if (info.status !== info.expectedStatus)
+        await info.attach("model-requests", {
+          body: JSON.stringify(kit.modelRequests()),
+          contentType: "application/json",
+        })
     }
-  })
-})
-
-test.describe("disabled group products", () => {
-  const gate = path.join(os.tmpdir(), `merak-e2e-offline-${process.pid}`)
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          offline: member("Offline CLI", { streaming: { gate } }),
-          online: member("Online CLI", { reply: "Online member completed" }),
-        },
-      },
-    },
-    script: {
-      reply: ({ prompt, toolResults }) =>
-        toolResults.length === 0
-          ? { tool: "delegate", args: { seat: prompt.includes("小蓝") ? "小蓝" : "小红", task: "Reply" } }
-          : { text: "群主继续" },
-    },
-  })
-
-  test("keeps a disabled member offline while another member can continue in the same group", async ({ kit }) => {
-    const { page } = kit
-    await rm(gate, { force: true })
-    try {
-      await createGroup(page, { product: "Offline CLI", name: "小红" })
-      const members = page.getByRole("complementary", { name: "群成员" })
-      await members.getByRole("button", { name: "添加成员" }).click()
-      await members.getByRole("button", { name: /^产品/ }).click()
-      await page.getByRole("option", { name: /Online CLI/ }).click()
-      await members.getByRole("textbox", { name: "姓名" }).fill("小蓝")
-      await members.getByRole("button", { name: "加入" }).click()
-      await kit.send("@小红 begin")
-      await expect(page.getByRole("article", { name: "小红" })).toContainText("External reply:")
-      await kit.settings(/智能体接入/)
-      await page.getByRole("region", { name: "智能体接入" }).getByRole("switch", { name: "启用 Offline CLI" }).click()
-      await page.getByRole("button", { name: "返回", exact: true }).click()
-      await expect(members.getByRole("button", { name: /小红/ })).toContainText("离线")
-      await expect(members.getByRole("button", { name: /小红/ })).toContainText("Offline CLI")
-      await expect(page.getByRole("dialog", { name: "对话产品已关闭" })).toHaveCount(0)
-      await expect(
-        page.getByRole("textbox", { name: "消息", exact: true }).filter({ visible: true }).first(),
-      ).toBeEnabled()
-      await kit.send("@小蓝 online task")
-      await expect(page.getByRole("article", { name: "小蓝" })).toContainText("Online member completed")
-      await kit.settings(/智能体接入/)
-      await page.getByRole("region", { name: "智能体接入" }).getByRole("switch", { name: "启用 Offline CLI" }).click()
-      await page.getByRole("button", { name: "返回", exact: true }).click()
-      await expect(members.getByRole("button", { name: /小红/ })).not.toContainText("离线")
-      await expect(members.getByRole("button", { name: /小红/ })).toContainText("Offline CLI")
-      await expect(page.getByRole("button", { name: "3 位成员" })).toBeVisible()
-    } finally {
-      await writeFile(gate, "go")
-    }
-  })
-})
-
-test.describe("the entry to a team", () => {
-  test("the native shortcut, sidebar and palette open the new-team dialog, which explains teams", async ({ kit }) => {
-    const { page } = kit
-    const dialog = page.getByRole("dialog", { name: "新建协作群" })
-    const entry = page.getByRole("button", { name: /^新建协作群/ })
-    await expect(entry).toContainText(process.platform === "darwin" ? "⌘ G" : "Ctrl G")
-
-    await page.keyboard.press("ControlOrMeta+G")
-    await expect(dialog).toContainText("让 MerakCode 当群主，拉上 Claude Code、Codex 等一起干活")
-    await page.keyboard.press("Escape")
-    await expect(dialog).toHaveCount(0)
-
-    await entry.click()
-    await expect(dialog).toBeVisible()
-    await page.keyboard.press("Escape")
-
-    await page.keyboard.press("ControlOrMeta+K")
-    await page.keyboard.type("协作")
-    await page.getByRole("option", { name: /新建协作群/ }).click()
-    await expect(dialog).toBeVisible()
-  })
-})
-
-test.describe("a backend restart in the middle of a member's work", () => {
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          // Its gate is never opened: it works until it is stopped
-          slow: member("Slow CLI", {
-            steps: [{ tool: "Bash", detail: "think", gate: path.join(os.tmpdir(), `merak-e2e-never-${process.pid}`) }],
-          }),
-        },
-      },
-    },
-    script: {
-      reply: ({ toolResults }) =>
-        toolResults.length === 0 ? { tool: "delegate", args: { seat: "小明", task: "慢慢想" } } : { text: "好" },
-    },
-  })
-
-  test("leaves the conversation idle and the member stopped, instead of running forever", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Slow CLI", name: "小明" })
-    await kit.send("@小明 慢慢想")
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText("Bash think")
-    await page.evaluate(() =>
-      (
-        window as unknown as { __MERAKCODE_DESKTOP__: { restartBackend: () => void } }
-      ).__MERAKCODE_DESKTOP__.restartBackend(),
-    )
-    // The engine went away mid-turn: the chat says so instead of running forever
-    await expect(xiaoming).toContainText("已停止", { timeout: 30_000 })
-    await expect(xiaoming).not.toContainText("已运行", { timeout: 30_000 })
-    const row = page.getByRole("navigation", { name: "对话" }).getByRole("link").first()
-    await expect(row).not.toContainText("运行中")
-    await expect(page.getByRole("button", { name: "停止" })).toHaveCount(0)
-  })
-})
-
-test.describe("copying a group", () => {
-  test.use({ config: { agentConnections: { products: { fake } } } })
-
-  test("a group from another project is copied with its members' names, roles and duties", async ({ kit }) => {
-    const { page } = kit
-    const other = path.join(kit.root, "other")
-    await mkdir(other, { recursive: true })
-    const status = await page.evaluate(
-      async ({ directory }) =>
-        (
-          await fetch(`/collaboration?directory=${encodeURIComponent(directory)}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              title: "登录小组",
-              leader: { name: "老大", duty: "带队" },
-              seats: [{ name: "小红", role: "产品经理", duty: "负责登录，不改支付", product: "fake" }],
-            }),
-          })
-        ).status,
-      { directory: other },
-    )
-    expect(status).toBe(200)
-
-    await page.getByRole("button", { name: "新建协作群" }).click()
-    const dialog = page.getByRole("dialog", { name: "新建协作群" })
-    await dialog.getByRole("button", { name: /^从已有群复制/ }).click()
-    await page.getByRole("option", { name: /登录小组/ }).click()
-    await expect(dialog.getByRole("textbox", { name: "群名称" })).toHaveValue("登录小组")
-    await dialog.getByRole("button", { name: "创建" }).click()
-
-    const members = page.getByRole("complementary", { name: "群成员" })
-    await expect(members.getByRole("button", { name: /老大/ })).toBeVisible()
-    await expect(members.getByRole("button", { name: /小红/ })).toContainText("Fake CLI · 产品经理")
-    await members.getByRole("button", { name: /小红/ }).click()
-    await expect(members.getByRole("textbox", { name: "职责" })).toHaveValue("负责登录，不改支付")
-    // The copy is a new group of this project, not the old conversation
-    await expect(page.getByRole("log", { name: "消息记录" }).getByText("你邀请 小红 加入了群聊")).toBeVisible()
-    await expect(
-      page.getByRole("navigation", { name: "对话" }).getByRole("link", { name: /^登录小组 协作 老大、小红/ }),
-    ).toBeVisible()
-  })
-})
-
-test.describe("collaboration settings", () => {
-  test.use({
-    config: {
-      agentConnections: {
-        products: {
-          fake,
-          missing: { command: "merak-e2e-missing-cli", title: "Missing CLI" },
-        },
-      },
-    },
-  })
-
-  test("the picker links to settings, where products are added and turned off for the next group", async ({ kit }) => {
-    const { page } = kit
-    const global = path.join(kit.root, "merakcode.json")
-    await page.getByRole("button", { name: "新建协作群" }).click()
-    const dialog = page.getByRole("dialog", { name: "新建协作群" })
-    await dialog.getByRole("button", { name: "添加成员" }).click()
-    await dialog.getByRole("button", { name: "部分产品不可用 · 查看原因" }).click()
-
-    const panel = page.getByRole("region", { name: "智能体接入" })
-    await expect(panel).toContainText("不可用 · merak-e2e-missing-cli 未安装")
-    await panel.getByRole("button", { name: "添加产品" }).click()
-    await panel.getByRole("textbox", { name: "ID", exact: true }).fill("echo")
-    await panel.getByRole("textbox", { name: "名称" }).fill("Echo CLI")
-    await panel.getByRole("textbox", { name: "命令" }).fill(process.execPath)
-    await panel.getByRole("button", { name: "保存" }).click()
-    await expect(panel).toContainText("Echo CLI")
-    await panel.getByRole("switch", { name: "启用 Fake CLI" }).click()
-    await expect(panel.getByRole("switch", { name: "启用 Fake CLI" })).toHaveAttribute("aria-checked", "false")
-    await expect
-      .poll(async () => JSON.parse(await readFile(global, "utf8")).agentConnections.products)
-      .toMatchObject({ echo: { command: process.execPath, title: "Echo CLI" }, fake: { enabled: false } })
-
-    await page.getByRole("button", { name: "返回" }).click()
-    await page.getByRole("button", { name: "新建协作群" }).click()
-    await dialog.getByRole("button", { name: "添加成员" }).click()
-    await dialog.getByRole("button", { name: /^产品/ }).click()
-    await expect(page.getByRole("option", { name: /Echo CLI/ })).toBeVisible()
-    await expect(page.getByRole("option", { name: /Fake CLI/ })).toHaveCount(0)
-  })
-
-  test("a product added in settings from a group's member column is offered there on return", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Fake CLI", name: "小红" })
-    const members = page.getByRole("complementary", { name: "群成员" })
-    await members.getByRole("button", { name: "添加成员" }).click()
-    await members.getByRole("button", { name: "部分产品不可用 · 查看原因" }).click()
-
-    const panel = page.getByRole("region", { name: "智能体接入" })
-    await panel.getByRole("button", { name: "添加产品" }).click()
-    await panel.getByRole("textbox", { name: "ID", exact: true }).fill("echo")
-    await panel.getByRole("textbox", { name: "名称" }).fill("Echo CLI")
-    await panel.getByRole("textbox", { name: "命令" }).fill(process.execPath)
-    await panel.getByRole("button", { name: "保存" }).click()
-    await expect(panel).toContainText("Echo CLI")
-    await page.getByRole("button", { name: "返回" }).click()
-
-    await members.getByRole("button", { name: /^产品/ }).click()
-    await expect(page.getByRole("option", { name: /Echo CLI/ })).toBeVisible()
-  })
-})
-
-/** Controlled protocol fixture; every task operation asks the host before it can finish. */
-function controlledMember(tools: unknown[]) {
-  return member("Controlled CLI", { tools })
-}
-
-async function approveDelegation(kit: Kit) {
-  await expect(kit.approval()).toBeVisible({ timeout: 60000 })
-  await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
-  await expect(kit.approval()).toContainText("example.com", { timeout: 60000 })
-}
-
-const delegateOnce = {
-  reply: ({ toolResults }: { toolResults: string[] }) =>
-    toolResults.length === 0 ? { tool: "delegate", args: { seat: "小明", task: "查资料" } } : { text: "好了" },
-}
-
-test.describe("a controlled external member that needs approval", () => {
-  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com" } }])
-  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
-
-  test("its request to reach a website is asked in the approval bar, named after it, and allowing it lets it go on", async ({
-    kit,
-  }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
-    await kit.send("@小明 查资料")
-    await approveDelegation(kit)
-    const card = kit.approval()
-    await expect(card).toBeVisible({ timeout: 60_000 })
-    await expect(card).toContainText("小明 · Controlled CLI 请求")
-    await expect(card).toContainText("example.com")
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText("等待你批准")
-    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
-    await expect(xiaoming).toContainText("WebFetch allowed", { timeout: 60_000 })
-  })
-})
-
-test.describe("a controlled external member that asks a question", () => {
-  const command = controlledMember([
-    {
-      name: "AskUserQuestion",
-      input: {
-        questions: [
-          {
-            question: "用哪个数据库？",
-            header: "数据库",
-            multiSelect: false,
-            options: [
-              { label: "PostgreSQL", description: "关系型" },
-              { label: "SQLite", description: "嵌入式" },
-            ],
-          },
-        ],
-      },
-    },
-  ])
-  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
-
-  test("its question opens MerakCode's question, named after it, and the answer reaches it", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.send("@小明 查资料")
-    const dialog = page.getByRole("region", { name: "提问" })
-    await expect(dialog).toBeVisible({ timeout: 60_000 })
-    await expect(dialog).toContainText("小明 · Controlled CLI 提问")
-    await dialog.getByRole("button", { name: /SQLite/ }).click()
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText('"用哪个数据库？":"SQLite"', { timeout: 60_000 })
-  })
-})
-
-test.describe("a controlled external member allowed a website for the conversation", () => {
-  const command = controlledMember([
-    { name: "WebFetch", input: { url: "https://example.com/a" } },
-    { name: "WebFetch", input: { url: "https://example.com/b" } },
-  ])
-  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
-
-  test("its unisolated next page asks again without a conversation grant", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
-    await kit.send("@小明 查资料")
-    await approveDelegation(kit)
-    const card = kit.approval()
-    await expect(card).toBeVisible({ timeout: 60_000 })
-    await expect(card.getByText(/本对话允许/)).toHaveCount(0)
-    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
-    await expect(card).toContainText("https://example.com/b")
-    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText('WebFetch allowed {"url":"https://example.com/b"}', { timeout: 60_000 })
-  })
-})
-
-test.describe("a controlled external member refused with a reason", () => {
-  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
-
-  test("gets the reason the user wrote", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
-    await kit.send("@小明 查资料")
-    await approveDelegation(kit)
-    const card = kit.approval()
-    await expect(card).toBeVisible({ timeout: 60_000 })
-    await card.getByText("拒绝并说明…").click()
-    await card.getByRole("textbox", { name: "拒绝原因" }).fill("先用本地资料")
-    await card.getByRole("button", { name: "拒绝", exact: true }).click()
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText(/WebFetch denied: .*先用本地资料/, { timeout: 60_000 })
-  })
-
-  test("retains the completed member and refusal reason when an earlier history response arrives late", async ({
-    kit,
-  }) => {
-    const { page } = kit
-    const loaded = await page.reload()
-    const authorization = (await loaded!.request().allHeaders()).authorization
-    expect(authorization).toBeTruthy()
-    const started = Promise.withResolvers<void>()
-    const released = Promise.withResolvers<void>()
-    let capture!: () => Promise<void>
-    await page.route(
-      "**/session/*/message?*",
-      async (route) => {
-        let response: Awaited<ReturnType<typeof route.fetch>>
-        capture = async () => {
-          response = await route.fetch({ headers: { ...route.request().headers(), authorization: authorization! } })
-          expect(response.status()).toBe(200)
-          const history = (await response.json()) as { parts: { tool?: string; state?: { status: string } }[] }[]
-          expect(history.flatMap((item) => item.parts).find((part) => part.tool === "delegate")?.state?.status).toBe(
-            "running",
-          )
-        }
-        started.resolve()
-        await released.promise
-        await route.fulfill({ response: response! })
-      },
-      { times: 1 },
-    )
-    try {
-      await createGroup(page, { product: "Controlled CLI", name: "小明" })
-      await started.promise
-      await kit.mode(/仅询问危险行为|Ask only for risky actions/)
-      await kit.send("@小明 查资料")
-      await approveDelegation(kit)
-      const card = kit.approval()
-      await expect(card).toBeVisible({ timeout: 60_000 })
-      await capture()
-      await card.getByText("拒绝并说明…").click()
-      await card.getByRole("textbox", { name: "拒绝原因" }).fill("先用本地资料")
-      await card.getByRole("button", { name: "拒绝", exact: true }).click()
-      const member = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-      await expect(member).toContainText(/WebFetch denied: .*先用本地资料/, { timeout: 60_000 })
-      await expect(kit.text("好了")).toBeVisible()
-      const finished = page.waitForResponse(
-        (response) => response.url().includes("/message?") && response.request().method() === "GET",
-      )
-      released.resolve()
-      await (await finished).finished()
-      await page.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-      )
-      await expect(member).toContainText(/WebFetch denied: .*先用本地资料/)
-      await expect(member).not.toContainText("已停止")
-    } finally {
-      released.resolve()
-    }
-  })
-})
-
-test.describe("a controlled external member always allowed a website", () => {
-  const command = controlledMember([{ name: "WebFetch", input: { url: "https://example.com/a" } }])
-  test.use({ config: { agentConnections: { products: { controlled: command } } }, script: delegateOnce })
-
-  test("offers no always grant and leaves the project permission file unchanged", async ({ kit }) => {
-    const { page } = kit
-    await createGroup(page, { product: "Controlled CLI", name: "小明" })
-    await kit.mode(/仅询问危险行为|Ask only for risky actions/)
-    await kit.send("@小明 查资料")
-    await approveDelegation(kit)
-    const card = kit.approval()
-    await expect(card).toBeVisible({ timeout: 60_000 })
-    await expect(card.getByText("总是允许", { exact: true })).toHaveCount(0)
-    await card.getByRole("button", { name: "允许这一次", exact: true }).click()
-    const xiaoming = page.getByRole("log", { name: "消息记录" }).getByRole("article", { name: "小明" })
-    await expect(xiaoming).toContainText("WebFetch allowed", { timeout: 60_000 })
-    const config = path.join(kit.project, ".merakcode", "merakcode.json")
-    expect(await readFile(config, "utf8").catch(() => "")).not.toContain("example.com")
   })
 })

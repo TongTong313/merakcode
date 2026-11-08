@@ -1,0 +1,65 @@
+package tool
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"time"
+
+	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+)
+
+type Bash struct{}
+
+func (Bash) Spec() Spec {
+	return Spec{
+		Name: "bash", Description: "Run a bash command in the working directory with a two-minute timeout. Requires permission.",
+		Effect: EffectExec,
+		Input:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","minLength":1},"background":{"type":"boolean"}},"required":["command"],"additionalProperties":false}`),
+	}
+}
+
+func (Bash) Run(ctx context.Context, call Call) (Result, error) {
+	var input struct {
+		Command    string `json:"command"`
+		Background bool   `json:"background"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(call.Input))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		return failure(err), nil
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return failure(errors.New("expected one JSON object")), nil
+	}
+	if input.Command == "" {
+		return failure(errors.New("command is required")), nil
+	}
+	if input.Background {
+		return call.Env.Jobs.start(ctx, call.Env.Workdir, input.Command)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	cmd, err := process.Shell(ctx, call.Env.Workdir, input.Command)
+	if err != nil {
+		return failure(err), nil
+	}
+	output, runErr := cmd.CombinedOutput()
+	exit := -1
+	if cmd.ProcessState != nil {
+		exit = cmd.ProcessState.ExitCode()
+	}
+	if ctx.Err() != nil {
+		exit = -1
+		output = append(output, "\nCommand timed out or was cancelled."...)
+	}
+	result := Result{Parts: []model.Part{{Text: string(output)}}, ExitCode: &exit}
+	if runErr != nil {
+		result.IsError = true
+		result.Code = "MRK-5001"
+	}
+	return result, nil
+}

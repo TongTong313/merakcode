@@ -69,6 +69,9 @@ export interface DesktopBridge {
   onNavigateNewSession(fn: () => void): () => void
   onOpenSettings(fn: (category: string) => void): () => void
   onClearNotifications(fn: () => void): () => void
+  getReadNotices(): Promise<string[]>
+  markNoticesRead(ids: string[]): Promise<string[]>
+  onReadNotices(fn: (ids: string[]) => void): () => void
   /** Recent sessions in the tray menu */
   pushTrayState(state: TrayState): void
   /** macOS fullscreen changes: the traffic-light buttons disappear and the layout reclaims their space */
@@ -99,6 +102,7 @@ export interface DesktopBridge {
   checkAppExists(app: string): Promise<boolean>
   showItemInFolder(path: string): Promise<void>
   openLogDirectory(): Promise<string>
+  exportDiagnostics(): Promise<boolean>
   openDirectoryPicker(opts?: { title?: string; multiple?: boolean }): Promise<string | string[] | null>
   openFilePicker(opts?: {
     title?: string

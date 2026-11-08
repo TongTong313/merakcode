@@ -1,3 +1,5 @@
+import { ErrorCode } from "@merakcode/util/error-code"
+
 /**
  * Error code and request id for the UI. Engine request failures are MerakCodeError (code, requestID); session
  * errors are plain { name, code, data } objects from the event stream.
@@ -9,7 +11,8 @@ const field = (value: unknown) => (typeof value === "string" || typeof value ===
 function read(error: unknown) {
   if (typeof error !== "object" || error === null) return
   const value = error as Coded
-  const code = field(value.code)
+  const code =
+    field(value.code) ?? (typeof value.message === "string" ? /^MRK-\d{4}$/.exec(value.message)?.[0] : undefined)
   if (!code?.startsWith("MRK-")) return
   return {
     code,
@@ -24,6 +27,12 @@ export function summary(error: unknown) {
   const value = read(error)
   if (!value) return
   return [value.code, value.request].filter(Boolean).join(" · ")
+}
+
+export function explain(error: unknown, language: "zh" | "en") {
+  const code = read(typeof error === "string" ? { message: error } : error)?.code
+  const spec = Object.values(ErrorCode.CATALOG).find((item) => item.code === code)
+  return spec ? { title: spec.title[language], hint: spec.hint[language] } : undefined
 }
 
 /** Text for "Copy details", meant to be pasted into a bug report */

@@ -26,7 +26,7 @@ test.describe("custom provider", () => {
     await dialog.getByRole("textbox", { name: "模型 ID" }).fill("e2e-local")
     await dialog.getByRole("button", { name: "添加" }).click()
     await expect(dialog).toBeHidden()
-    await expect.poll(async () => (await json(config)).provider?.local?.options?.baseURL).toBe(kit.modelURL)
+    await expect.poll(async () => (await json(config)).providers?.local?.baseURL).toBe(kit.modelURL)
 
     await kit.page.keyboard.press("Escape")
     await kit.page
@@ -40,7 +40,7 @@ test.describe("custom provider", () => {
 
     await kit.settings(/^模型与供应商$/)
     await panel.getByRole("button", { name: "删除 Local" }).click()
-    await expect.poll(async () => (await json(config)).provider?.local).toBeUndefined()
+    await expect.poll(async () => (await json(config)).providers?.local).toBeUndefined()
   })
 })
 
@@ -65,9 +65,9 @@ test("a relay group keeps the context length the station returned", async ({ kit
   await dialog.getByRole("button", { name: "添加" }).click()
   await expect(dialog).toBeHidden()
   await expect
-    .poll(async () => (await json(config)).provider?.["packy-standard"]?.models?.["e2e-relay"]?.limit?.context)
+    .poll(async () => (await json(config)).providers?.["packy-standard"]?.models?.["e2e-relay"]?.window)
     .toBe(11111)
-  expect(JSON.stringify((await json(config)).provider?.["packy-standard"])).not.toContain("sk-e2e")
+  expect((await json(config)).providers?.["packy-standard"]?.apiKey).toBe("sk-e2e")
 })
 
 test("the custom provider dialog keeps one fixed frame across modes and groups", async ({ kit }) => {
@@ -151,16 +151,4 @@ test("a long model list scrolls inside the custom provider dialog", async ({ kit
   expect(await titleOffset()).toBe(title)
   await expect(dialog.getByRole("heading", { name: "添加自定义供应商" })).toBeInViewport()
   await expect(dialog.getByRole("button", { name: "添加" })).toBeInViewport()
-})
-
-test.describe("invalid config", () => {
-  // A local MCP server without a command: the engine skips the entry and starts normally
-  test.use({ config: { mcp: { broken: { type: "local" } } } })
-
-  test("startup reports how many entries were skipped; settings show the file and entry", async ({ kit }) => {
-    await expect(kit.page.getByText(/配置里有 \d+ 处写法不对/)).toBeVisible()
-    await kit.settings()
-    const panel = kit.page.getByRole("region", { name: "通用" })
-    await expect(panel.getByText(/mcp\.broken/).first()).toBeVisible()
-  })
 })

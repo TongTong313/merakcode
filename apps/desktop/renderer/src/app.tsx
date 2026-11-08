@@ -6,7 +6,7 @@ import { bridge, log, mac } from "./lib/bridge"
 import { decodeDir, sessionPath } from "./lib/route"
 import { bootstrap, connect, openFolder, state } from "./state/store"
 import { restoreLayout, setUi, togglePanel, ui } from "./state/ui"
-import { toast, Toasts } from "./ui/toast"
+import { Toasts } from "./ui/toast"
 import { Compose } from "./features/conversation/compose"
 import { Conversation } from "./features/conversation/page"
 import { Onboarding } from "./features/onboarding/onboarding"
@@ -15,8 +15,10 @@ import { Settings } from "./features/settings/settings"
 import { Notify } from "./features/shell/notify"
 import { pickFolder, Sidebar } from "./features/shell/sidebar"
 import { Startup } from "./features/shell/startup"
+import { GroupConversation } from "./features/conversation/group-page"
+import { connectGroups, loadGroups } from "./state/groups"
 
-/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, G new team, "," settings, J terminal, B side panel */
+/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, "," settings, J terminal, B side panel */
 function Shortcuts() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -28,7 +30,6 @@ function Shortcuts() {
       const key = event.key.toLowerCase()
       if (key === "k") setUi("palette", !ui.palette)
       else if (key === "n" && directory()) navigate(sessionPath(directory()!))
-      else if (key === "g" && directory()) setUi("newTeam", true)
       else if (key === ",") setUi("settings", "general")
       else if (key === "j") setUi("terminal", !ui.terminal)
       else if (key === "b") togglePanel()
@@ -48,36 +49,19 @@ function Shortcuts() {
   return null
 }
 
-/** Invalid config entries: each new one is announced once; "View" opens settings to show the file and entry */
-function Warnings() {
-  const seen = new Set<string>()
-  createEffect(() => {
-    const fresh = state.warnings.filter((item) => !seen.has(`${item.path}|${item.item}|${item.reason}`))
-    if (!fresh.length) return
-    for (const item of fresh) seen.add(`${item.path}|${item.item}|${item.reason}`)
-    toast({
-      kind: "error",
-      title: t("config.warnings", { count: state.warnings.length }),
-      detail: `${fresh[0]!.item}：${fresh[0]!.reason}`,
-      action: { label: t("config.view"), run: () => setUi("settings", "general") },
-    })
-  })
-  return null
-}
-
 function Root(props: { children?: JSX.Element }) {
   const [ready, { refetch }] = createResource(async () => {
-    await Promise.all([bootstrap(), restoreLayout()])
+    await Promise.all([bootstrap(), restoreLayout(), loadGroups()])
     return true
   })
   onMount(() => onCleanup(connect()))
+  onMount(() => onCleanup(connectGroups()))
   createEffect(() => ready.error && log("error", "bootstrap failed", { error: String(ready.error) }))
   return (
     <>
       <Startup ready={ready} onRetry={() => void refetch()}>
         {props.children}
         <Shortcuts />
-        <Warnings />
         <Notify />
         <Palette />
         <Onboarding />
@@ -157,7 +141,23 @@ export function App() {
     <Router root={Root}>
       <Route path="/" component={Home} />
       <Route path="/:dir/session/:id?" component={Workspace} />
+      <Route path="/:dir/group/:id" component={GroupWorkspace} />
       <Route path="*" component={() => <Navigate href="/" />} />
     </Router>
+  )
+}
+
+function GroupWorkspace() {
+  const params = useParams()
+  const directory = () => decodeDir(params.dir ?? "")
+  return (
+    <Show when={directory()} fallback={<Navigate href="/" />}>
+      {(dir) => (
+        <div class="app">
+          <Sidebar directory={dir()} group={params.id} />
+          <GroupConversation id={params.id!} directory={dir()} />
+        </div>
+      )}
+    </Show>
   )
 }

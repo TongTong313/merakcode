@@ -1,0 +1,24 @@
+[
+  { "type": "message.delta", "payload": { "kind": "text", "text": "Checking" } },
+  {
+    "type": "message.completed",
+    "payload": {
+      "role": "assistant",
+      "parts": [
+        { "text": "Checking" },
+        { "toolCall": { "id": "call-1", "name": "Read", "input": { "file_path": "README.md" } } }
+      ],
+      "usage": { "input": 15, "output": 4, "cacheRead": 3, "cacheWrite": 0, "cost": 0, "costKnown": false }
+    }
+  },
+  { "type": "tool.called", "payload": { "id": "call-1", "name": "Read", "input": { "file_path": "README.md" } } },
+  { "type": "tool.completed", "payload": { "callId": "call-1", "name": "", "parts": [{ "text": "README content" }] } },
+  {
+    "type": "message.completed",
+    "payload": {
+      "role": "assistant",
+      "parts": [{ "text": "Checked README." }],
+      "usage": { "input": 18, "output": 3, "cacheRead": 0, "cacheWrite": 0, "cost": 0, "costKnown": false }
+    }
+  }
+]

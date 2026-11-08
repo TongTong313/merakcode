@@ -1,215 +1,92 @@
 import type * as Monaco from "monaco-editor"
 import { createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
-import { t } from "../../i18n"
+import { client } from "../../state/client"
+import { checkoutOf, gitDirectory, onCheckoutChange } from "../../state/git"
 import { sameDir } from "../../lib/route"
-import { call, client } from "../../state/client"
-import { checkoutOf, gitDirectory, onCheckoutChange, refreshBranches, registerDirty, switching } from "../../state/git"
+import { t } from "../../i18n"
 import { toast } from "../../ui/toast"
-import { listen } from "../../state/store"
 
-type Tab = {
-  path: string
-  planSessionID?: string
-  checksum?: string
-  saved: string
-  dirty: boolean
-  binary: boolean
-  conflict?: boolean
-  model?: Monaco.editor.ITextModel
-}
+type Tab = { path: string; binary: boolean; model?: Monaco.editor.ITextModel }
 const buffers = new Map<string, ReturnType<typeof createBuffers>>()
 let monaco: Promise<typeof import("../../lib/monaco")> | undefined
 export const loadMonaco = () => (monaco ??= import("../../lib/monaco"))
-
-/** Buffers belong to the checkout, independently of whether the code panel is mounted. */
 export function buffersFor(directory: string) {
   const key = gitDirectory(directory)
-  const known = buffers.get(key)
-  if (known) return known
-  for (const [directory, buffer] of buffers) if (sameDir(gitDirectory(directory), key)) return buffer
+  const existing = buffers.get(key)
+  if (existing) return existing
   const created = createBuffers(directory)
   buffers.set(key, created)
   return created
 }
-
-/** Closing a project releases clean models; dirty models require an explicit save or discard first. */
 export function releaseBuffers(directory: string) {
-  for (const [key, buffer] of buffers) {
-    if (!sameDir(gitDirectory(key), gitDirectory(directory))) continue
-    if (buffer.tabs.some((tab) => tab.dirty)) return false
-    buffer.release()
-    buffers.delete(key)
-  }
+  const key = gitDirectory(directory)
+  buffers.get(key)?.release()
+  buffers.delete(key)
   return true
 }
-
 function createBuffers(directory: string) {
-  let closed = false
   const [tabs, setTabs] = createStore<Tab[]>([])
   const [active, setActive] = createSignal<string>()
+  let closed = false
+  let epoch = 0
   const pending = new Map<string, Promise<void>>()
-  const sync = () => registerDirty(directory, `editor:${directory}`, tabs.filter((tab) => tab.dirty).length)
-
-  const read = async (path: string, planSessionID?: string) => {
-    if (!planSessionID) return call(client(directory).file.read({ path }))
-    const plan = await call(client(directory).session.planGet({ sessionID: planSessionID }))
-    return { type: "text" as const, content: plan.content, checksum: String(plan.revision) }
+  const close = (path: string) => {
+    tabs.find((tab) => tab.path === path)?.model?.dispose()
+    setTabs((list) => list.filter((tab) => tab.path !== path))
+    if (active() === path) setActive(tabs.at(-1)?.path)
   }
-
-  const open = async (path: string, planSessionID?: string) => {
+  const open = async (path: string): Promise<void> => {
     if (closed) return
     if (tabs.some((tab) => tab.path === path)) return void setActive(path)
-    const known = pending.get(path)
-    if (known) return known
+    if (pending.has(path)) return pending.get(path)
+    const generation = epoch
+    const token = checkoutOf(directory)
     let retry = false
     const request = (async () => {
-      if (checkoutOf(directory) === undefined) await refreshBranches(directory)
-      const token = checkoutOf(directory)
-      const content = await read(path, planSessionID).catch((error: Error) => {
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error })
-        return undefined
-      })
-      if (!content || closed) return
-      if (checkoutOf(directory) !== token) {
+      const content = await (await client()).file.read({ directory, path })
+      const { monaco: loaded } = await loadMonaco()
+      if (closed) return
+      if (epoch !== generation || checkoutOf(directory) !== token) {
         retry = true
         return
       }
       const binary = content.type === "binary"
-      const { monaco: loaded } = await loadMonaco()
-      if (checkoutOf(directory) !== token) {
-        retry = true
-        return
-      }
-      if (closed || tabs.some((tab) => tab.path === path)) return
       const uri = loaded.Uri.parse(
-        `merakcode://editor/${encodeURIComponent(gitDirectory(directory))}/${path.split(/[\\/]/).map(encodeURIComponent).join("/")}`,
+        `merakcode://editor/${encodeURIComponent(directory)}/${path.split(/[\\/]/).map(encodeURIComponent).join("/")}`,
       )
       const model = binary ? undefined : loaded.editor.createModel(content.content, undefined, uri)
-      model?.onDidChangeContent(() => {
-        const tab = tabs.find((item) => item.path === path)
-        if (!tab) return
-        setTabs((item) => item.path === path, "dirty", model.getValue() !== tab.saved)
-        sync()
-      })
-      setTabs((list) => [
-        ...list,
-        { path, planSessionID, checksum: content.checksum, saved: content.content, dirty: false, binary, model },
-      ])
+      setTabs((list) => [...list, { path, binary, model }])
       setActive(path)
     })()
     pending.set(path, request)
     try {
       await request
+    } catch (error) {
+      toast({ kind: "error", title: t("code.loadFailed"), error })
     } finally {
       pending.delete(path)
     }
-    if (retry && !closed) await open(path, planSessionID)
+    if (retry) await open(path)
   }
-
-  const reload = async (branchChanged = false) => {
-    const token = checkoutOf(directory)
-    await Promise.all(
-      tabs.map(async (tab) => {
-        const fresh = await read(tab.path, tab.planSessionID).catch(() => undefined)
-        if (closed || token !== checkoutOf(directory) || !tabs.some((item) => item.path === tab.path)) return
-        if (branchChanged && tab.dirty) {
-          const conflict = tab.conflict
-          setTabs((item) => item.path === tab.path, "conflict", true)
-          if (!conflict) toast({ kind: "info", title: t("code.branchConflict") })
-          return
-        }
-        if (fresh?.checksum === tab.checksum) return
-        if (tab.dirty || !fresh) {
-          const conflict = tab.conflict
-          setTabs((item) => item.path === tab.path, "conflict", true)
-          if (!conflict) toast({ kind: "info", title: t("code.branchConflict") })
-          return
-        }
-        // Update the saved baseline before setValue emits its content-change event.
-        setTabs((item) => item.path === tab.path, {
-          checksum: fresh.checksum,
-          saved: fresh.content,
-          binary: fresh.type === "binary",
-          conflict: false,
-        })
-        tab.model?.setValue(fresh.content)
-        setTabs((item) => item.path === tab.path, "dirty", false)
-        sync()
-      }),
-    )
+  const stop = onCheckoutChange((changed) => {
+    if (!sameDir(changed, directory)) return
+    epoch++
+    const paths = tabs.map((tab) => tab.path)
+    paths.forEach(close)
+    for (const path of paths) void open(path)
+  })
+  return {
+    tabs,
+    active,
+    setActive,
+    open,
+    close,
+    release: () => {
+      closed = true
+      stop()
+      tabs.forEach((tab) => tab.model?.dispose())
+      setTabs([])
+    },
   }
-
-  const save = async (force = false, target = active()) => {
-    if (closed || switching(directory)) return
-    const tab = tabs.find((item) => item.path === target)
-    if (!tab?.model) return
-    const token = checkoutOf(directory)
-    const content = tab.model.getValue()
-    const result = tab.planSessionID
-      ? await client(directory).session.planSave({
-          sessionID: tab.planSessionID,
-          content,
-          expectedRevision: Number(tab.checksum ?? 0),
-        })
-      : await client(directory).file.write({
-          path: tab.path,
-          content,
-          ...(force || !tab.checksum ? {} : { checksum: tab.checksum }),
-        })
-    if (result.response?.status === 409) {
-      toast({
-        kind: "error",
-        title: t("code.conflict"),
-        action: tab.planSessionID ? undefined : { label: t("code.overwrite"), run: () => void save(true) },
-      })
-      return
-    }
-    if (result.error) return toast({ kind: "error", title: t("error.request", { message: String(result.error) }) })
-    if (token !== checkoutOf(directory)) return
-    const fresh =
-      tab.planSessionID && result.data && "revision" in result.data
-        ? { checksum: String(result.data.revision) }
-        : await read(tab.path, tab.planSessionID).catch(() => undefined)
-    if (token !== checkoutOf(directory)) return
-    setTabs((item) => item.path === tab.path, {
-      saved: content,
-      dirty: tab.model.getValue() !== content,
-      checksum: fresh?.checksum,
-      conflict: false,
-    })
-    sync()
-  }
-
-  const close = (path: string) => {
-    const tab = tabs.find((item) => item.path === path)
-    tab?.model?.dispose()
-    setTabs((list) => list.filter((item) => item.path !== path))
-    if (active() === path) setActive(tabs.at(-1)?.path)
-    sync()
-  }
-  const release = () => {
-    closed = true
-    for (const tab of tabs) tab.model?.dispose()
-    registerDirty(directory, `editor:${directory}`, 0)
-  }
-  const savePlan = async (sessionID: string) => {
-    const plan = await call(client(directory).session.planGet({ sessionID }))
-    const tab = tabs.find((item) => item.planSessionID === plan.sessionID)
-    if (!tab?.dirty) return true
-    await save(false, tab.path)
-    return !tab.dirty
-  }
-  return { tabs, active, setActive, open, save, savePlan, close, reload, release }
 }
-
-onCheckoutChange((directory, change) => {
-  for (const [key, buffer] of buffers)
-    if (sameDir(gitDirectory(key), directory)) void buffer.reload(change.branchChanged)
-})
-
-listen((_directory, event) => {
-  if (event.type !== "session.plan.updated") return
-  for (const buffer of buffers.values())
-    if (buffer.tabs.some((tab) => tab.planSessionID === event.properties.sessionID)) void buffer.reload()
-})

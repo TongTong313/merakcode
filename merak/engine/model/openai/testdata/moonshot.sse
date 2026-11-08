@@ -1,0 +1,6 @@
+data: {"id":"moonshot-fixture","choices":[{"index":0,"delta":{"reasoning_content":"Check the input."}}]}
+
+data: {"id":"moonshot-fixture","choices":[{"index":0,"delta":{"content":"Ready."},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":8,"cached_tokens":6,"total_tokens":28}}
+
+data: [DONE]
+

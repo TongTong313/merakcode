@@ -1,16 +1,5 @@
-/**
- * Review data and actions, shared by the panel and the maximized view.
- *
- * Scopes: this turn / whole conversation (the agent's pending changes). The engine lists the
- * files with counts and a version each (review.get) and returns one file's hunks on request (review.file). Accept /
- * reject go by hunk id (review.decide) and return the new list. A stale version or hunk id returns 409, which shows a
- * notice and refetches the list. Comments live only in the UI and are sent to the agent together.
- *
- * Lists are cached per review and file details per version (see cache.ts): switching back to a scope shows it at
- * once while it refreshes, and a refresh only refetches the files that changed. Events only mark lists stale; the
- * review on screen refreshes itself, and fetches details in the background while idle.
- */
-import type { ReviewFile, ReviewFileDetail, ReviewResult, ReviewScope } from "@merakcode/sdk/client"
+/** Repository diffs, viewed files and comment drafts shared by the review views. */
+import { reviewData, type ReviewFile, type ReviewFileDetail, type ReviewResult, type ReviewScope } from "./data"
 import type { ThemedToken } from "shiki/core"
 import {
   batch,
@@ -28,11 +17,10 @@ import { t } from "../../i18n"
 import { storage } from "../../lib/bridge"
 import { sameDir } from "../../lib/route"
 import { tokenize } from "../../lib/tokens"
-import { call, client } from "../../state/client"
-import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, refreshBranches, identityOf } from "../../state/git"
-import { busy, listen, messagesOf, refreshVcs } from "../../state/store"
+import { client } from "../../state/client"
+import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, identityOf } from "../../state/git"
+import { busy, listen } from "../../state/store"
 import { showTab } from "../../state/ui"
-import { toast } from "../../ui/toast"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
 
 import { commentLocation, excerptOf, refreshTarget, type CommentTarget, type SelectedLine } from "./selection"
@@ -46,7 +34,7 @@ type Review = {
   messageID?: string
   /** File to scroll to */
   focus?: string
-  reveal?: { hunk: string; index: number; side: CommentTarget["side"] }
+  reveal?: { hunk: string; index: number; side: CommentTarget["side"]; directory: string; sessionID: string }
   /** Selected code and its review context. */
   commenting?: CommentTarget
   selecting?: CommentTarget
@@ -54,11 +42,7 @@ type Review = {
   style: "unified" | "split"
 }
 
-export const [review, setReview] = createStore<Review>({ scope: "turn", comments: {}, style: "split" })
-
-export function selectScope(scope: ReviewScope) {
-  setReview({ scope, messageID: undefined })
-}
+export const [review, setReview] = createStore<Review>({ scope: "session", comments: {}, style: "split" })
 
 let next = 1
 
@@ -72,39 +56,12 @@ export function openReview(view: { scope?: ReviewScope; messageID?: string; file
   showTab("review")
 }
 
-/** User message for the turn scope: the chosen one, or the last one */
-function turnOf(sessionID: string) {
-  const messages = messagesOf(sessionID)
-  return messages.some((message) => message.role === "user" && message.id === review.messageID)
-    ? review.messageID
-    : messages.findLast((message) => message.role === "user")?.id
-}
-
-export const scopeOptions = () =>
-  (["turn", "session"] as const).map((scope) => ({ value: scope, label: t(`review.scope.${scope}`) }))
-
 // Lists: one per review, refetched when stale
 
 type List = { input: ReviewKey; result?: ReviewResult; loading: boolean; stale: boolean; error?: Error }
 const [lists, setLists] = createStore<Record<string, List>>({})
 const controllers = new Map<string, AbortController>()
 const currentContext = (input: ReviewKey) => (checkoutOf(input.directory) ?? null) === (input.checkout ?? null)
-
-const params = (input: ReviewKey) => ({
-  scope: input.scope,
-  sessionID: input.sessionID!,
-  ...(input.messageID ? { messageID: input.messageID } : {}),
-})
-
-const empty = (input: ReviewKey): ReviewResult | undefined => {
-  if (!input.sessionID || (input.scope === "turn" && !input.messageID))
-    return {
-      scope: input.scope,
-      checkout: input.checkout ?? null,
-      actions: { accept: false, reject: false },
-      files: [],
-    }
-}
 
 /** Fetches a list; a newer request for the same review cancels this one */
 async function load(input: ReviewKey) {
@@ -114,15 +71,20 @@ async function load(input: ReviewKey) {
   controllers.set(key, controller)
   setLists(key, (current) => ({ ...current, input, loading: true, stale: false }))
   try {
-    const result =
-      empty(input) ?? (await call(client(input.directory).review.get(params(input), { signal: controller.signal })))
-    if (controller.signal.aborted) return
-    if (result.checkout !== (checkoutOf(input.directory) ?? null)) {
-      if (!currentContext(input)) return
-      await refreshVcs(input.directory)
+    const connection = await client()
+    const changes = await connection.repo.diff({
+      directory: input.directory,
+      session: input.base ? undefined : input.sessionID,
+      base: input.base ?? (input.sessionID ? undefined : (identityOf(input.directory)?.head ?? undefined)),
+    })
+    if (controller.signal.aborted || !currentContext(input)) return
+    const converted = reviewData(changes ?? [])
+    const result: ReviewResult = { scope: "session", checkout: input.checkout ?? null, files: converted.files }
+    show(input, result)
+    for (const file of result.files) {
+      const detail = cell(detailKey(key, file))
+      if (!detail.get().detail) detail.set({ detail: converted.details[file.file] })
     }
-    if (!controller.signal.aborted && result.checkout === (checkoutOf(input.directory) ?? null))
-      show({ ...input, checkout: result.checkout }, result)
   } catch (error) {
     if (!controller.signal.aborted) setLists(key, { loading: false, error: error as Error })
   } finally {
@@ -152,26 +114,8 @@ function show(input: ReviewKey, result: ReviewResult) {
   }
 }
 
-const statusTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; refs: boolean }>()
-
-/** Reloads git counts with the review, after a burst of file events has settled */
-function refreshStatus(directory: string, refs = false) {
-  const pending = statusTimers.get(directory)
-  if (pending) clearTimeout(pending.timer)
-  statusTimers.set(directory, {
-    refs: refs || !!pending?.refs,
-    timer: setTimeout(() => {
-      const refs = statusTimers.get(directory)?.refs
-      statusTimers.delete(directory)
-      void refreshVcs(directory)
-      if (refs) void refreshBranches(directory)
-    }, 1000),
-  })
-}
-
-/** Marks every list of a directory stale; the one on screen refreshes itself */
-function stale(directory: string, refs = false) {
-  refreshStatus(directory, refs)
+/** Marks the visible review stale after an operation completes. */
+function stale(directory: string) {
   for (const [key, list] of Object.entries(lists))
     if (sameDir(list.input.directory, directory)) setLists(key, "stale", true)
 }
@@ -199,19 +143,7 @@ function watch() {
     }
   })
   listen((directory, event) => {
-    if (event.type === "review.updated") return stale(directory)
-    if (event.type === "file.watcher.updated") {
-      const file = event.properties.file.replace(/\\/g, "/")
-      return stale(directory, file.includes("/refs/") || file.endsWith("/packed-refs"))
-    }
-    if (event.type !== "message.part.updated") return
-    const part = event.properties.part
-    if (
-      part.type === "tool" &&
-      part.state.status === "completed" &&
-      ["edit", "write", "multi_edit", "bash"].includes(part.tool)
-    )
-      stale(directory)
+    if (["tool.completed", "turn.finished", "repo.changed", "file.changed"].includes(event.type)) stale(directory)
   })
 }
 
@@ -222,7 +154,6 @@ type Detail = { detail?: ReviewFileDetail; error?: Error; tokens?: Tokens }
 type Cell = { get: Accessor<Detail>; set: Setter<Detail> }
 
 const details = new Map<string, Cell>()
-const inflight = new Map<string, Promise<ReviewFileDetail | undefined>>()
 const tokenizing = new Set<string>()
 const DETAILS = 400
 
@@ -246,40 +177,10 @@ function prune(list: string, files: ReviewFile[]) {
 }
 
 async function loadDetail(input: ReviewKey, file: ReviewFile) {
-  const key = detailKey(keyOf(input), file)
-  const target = cell(key)
-  const known = target.get().detail
+  const known = cell(detailKey(keyOf(input), file)).get().detail
   if (known) return known
-  const pending = inflight.get(key)
-  if (pending) return pending
-  target.set({})
-  const request = call(
-    client(input.directory).review.file({
-      ...params(input),
-      file: file.file,
-      version: file.version,
-      expectedCheckout: input.checkout ?? null,
-    }),
-  ).then(
-    (detail) => {
-      if (!currentContext(input) || details.get(key) !== target) return undefined
-      target.set({ detail })
-      return detail
-    },
-    (error: Error & { status?: number }) => {
-      if (!currentContext(input) || details.get(key) !== target) return undefined
-      if (error.status === 409) {
-        target.set({})
-        void load(input)
-        return undefined
-      }
-      target.set({ error })
-      return undefined
-    },
-  )
-  inflight.set(key, request)
-  void request.finally(() => inflight.delete(key))
-  return request
+  await load(input)
+  return cell(detailKey(keyOf(input), file)).get().detail
 }
 
 async function loadTokens(input: ReviewKey, file: ReviewFile, lang: string | undefined) {
@@ -336,19 +237,21 @@ function useReviewList(
   directory: () => string,
   visible: () => boolean,
   scopeOf: () => ReviewScope,
+  base: () => string | undefined,
 ) {
   watch()
   const input = createMemo(
     (): ReviewKey => {
       const scope = scopeOf()
       const id = sessionID()
-      const messageID = scope === "turn" && id ? turnOf(id) : undefined
+      const messageID = undefined
       return {
         directory: directory(),
         scope,
         sessionID: id,
         messageID,
         checkout: checkoutOf(directory()) ?? null,
+        base: base(),
       }
     },
     undefined,
@@ -368,8 +271,7 @@ function useReviewList(
       const target = untrack(input)
       const entry = untrack(() => lists[current])
       if (!entry || (!entry.result && !entry.error)) return void load(target)
-      // Coming back to a list shows it and refreshes it at once (edits made outside the app send no event);
-      // changes while it is on screen wait a moment
+      // Returning refreshes immediately; changes on screen wait briefly to combine events.
       const switched = !previous || previous[0] !== current || !previous[1]
       if (!outdated && !switched) return
       if (switched) return void load(target)
@@ -387,25 +289,14 @@ function useReviewList(
   return { input, key, list, refetch: () => load(input()) }
 }
 
-/** Git navigation needs only the pending file names, without loading review details. */
-export function usePendingReview(sessionID: () => string | undefined, directory: () => string) {
-  const { list, refetch } = useReviewList(
-    sessionID,
-    directory,
-    () => true,
-    () => "session",
-  )
-  return { files: () => list()?.result?.files.map((file) => file.file) ?? [], refetch }
-}
-
 /** Review details, presentation state and decisions are owned by the review view. */
 export function useReview(
   sessionID: () => string | undefined,
   directory: () => string,
   visible: () => boolean = () => true,
+  base: () => string | undefined = () => undefined,
 ) {
-  const { input, key, list, refetch } = useReviewList(sessionID, directory, visible, () => review.scope)
-  const [working, setWorking] = createSignal(false)
+  const { input, key, list, refetch } = useReviewList(sessionID, directory, visible, () => review.scope, base)
   createEffect(
     on([directory, visible], ([value, shown]) => {
       if (shown) setReview("directory", value)
@@ -424,68 +315,6 @@ export function useReview(
     }),
   )
 
-  const failed = (error: Error & { status?: number }) => {
-    if (error.status === 409) {
-      toast({ kind: "info", title: t("review.stale") })
-      void load(input())
-      return
-    }
-    toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
-  }
-
-  /** Accepts or rejects: no files means everything; a file without hunks means the whole file */
-  const decide = async (decision: "accept" | "reject", files?: { file: string; hunks?: string[] }[]) => {
-    const current = list()?.result
-    if (!current || working() || list()?.loading || !currentContext(input())) return
-    const targets: { file: string; hunks?: string[] }[] =
-      files ?? current?.files.map((file) => ({ file: file.file })) ?? []
-    const target = input()
-    setWorking(true)
-    try {
-      const result = await call(
-        client(target.directory).review.decide({
-          ...params(target),
-          decision,
-          expectedCheckout: current.checkout,
-          files: targets.map((file) => ({
-            ...file,
-            version: current.files.find((item) => item.file === file.file)!.version,
-          })),
-        }),
-      ).catch(failed)
-      if (!result || !currentContext(target) || keyOf(target) !== key()) return
-      if (result.checkout !== (target.checkout ?? null)) {
-        await refreshVcs(target.directory)
-        return
-      }
-      show(target, result)
-      stale(target.directory)
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const undo = async () => {
-    const target = input()
-    const current = list()?.result
-    if (!current || working() || list()?.loading || !currentContext(target)) return
-    setWorking(true)
-    try {
-      const result = await call(
-        client(target.directory).review.undo({ ...params(target), expectedCheckout: current.checkout }),
-      ).catch(failed)
-      if (!result || !currentContext(target) || keyOf(target) !== key()) return
-      if (result.checkout !== (target.checkout ?? null)) {
-        await refreshVcs(target.directory)
-        return
-      }
-      show(target, result)
-      toast({ kind: "info", title: t("review.undone") })
-    } finally {
-      setWorking(false)
-    }
-  }
-
   const auto = createMemo(() => autoExpand(list()?.result?.files ?? []))
   const fileState = (file: ReviewFile) => opened[openKey(key(), file.file)]
   const setFile = (file: ReviewFile, change: { open?: boolean; all?: boolean }) =>
@@ -498,9 +327,6 @@ export function useReview(
     loading: () => !list()?.result && !list()?.error,
     /** Showing a list while a newer one is fetched */
     refreshing: () => !!list()?.result && (!!list()?.loading || !!list()?.stale),
-    working,
-    decide,
-    undo,
     refetch,
     detail: (file: ReviewFile) => cell(detailKey(key(), file)).get(),
     loadDetail: (file: ReviewFile) => loadDetail(input(), file),
@@ -521,7 +347,7 @@ export function commentInView(target: CommentTarget, directory: string, sessionI
     target.sessionID === sessionID &&
     target.branch === identityOf(directory)?.branch &&
     target.scope === review.scope &&
-    target.messageID === (review.scope === "turn" && sessionID ? turnOf(sessionID) : undefined)
+    target.messageID === undefined
   )
 }
 
@@ -540,7 +366,7 @@ export function beginComment(
   compose = true,
 ) {
   if (!rows.length) return
-  const messageID = review.scope === "turn" ? turnOf(sessionID) : undefined
+  const messageID = undefined
   const context = gitDirectory(directory)
   const branch = identityOf(directory)?.branch
   const previous = review.commenting
@@ -603,7 +429,15 @@ export function revealComment(comment: Comment, edit = false) {
     scope: comment.scope,
     messageID: comment.messageID,
     focus: comment.file,
-    reveal: end ? { hunk: end.hunk, index: end.index, side: comment.side } : undefined,
+    reveal: end
+      ? {
+          hunk: end.hunk,
+          index: end.index,
+          side: comment.side,
+          directory: comment.directory,
+          sessionID: comment.sessionID,
+        }
+      : undefined,
     commenting: edit
       ? {
           ...comment,

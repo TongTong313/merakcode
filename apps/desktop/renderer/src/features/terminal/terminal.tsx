@@ -3,18 +3,47 @@ import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
 import { createEffect, For, onCleanup, onMount } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { connectPty, type PtyConnection } from "@merakcode/sdk/client"
+import { connectTerminal, type TerminalConnection } from "@merakcode/sdk"
 import { t } from "../../i18n"
 import { log } from "../../lib/bridge"
-import { call, client } from "../../state/client"
+import { client } from "../../state/client"
+import { toast } from "../../ui/toast"
 import { saveLayout, setUi, ui } from "../../state/ui"
 
 /**
  * One group of terminal tabs per directory, one shell process per tab. Collapsing the terminal area keeps the
  * processes alive and reopening resumes them (the server replays the output); only closing a tab ends its process.
  */
-type Tab = { key: number; ptyID?: string }
+type Tab = { key: number; terminalID?: string }
 const [groups, setGroups] = createStore<Record<string, { tabs: Tab[]; active: number; next: number }>>({})
+
+const starting = new Map<string, Promise<string | undefined>>()
+
+function prepare(directory: string, tab: Tab) {
+  const key = `${directory}\0${tab.key}`
+  const existing = starting.get(key)
+  if (existing) return existing
+  const pending = (async () => {
+    const connection = await client()
+    if (tab.terminalID) {
+      try {
+        return (await connection.terminal.get({ id: tab.terminalID })).id
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "MRK-5001") throw error
+      }
+    }
+    if (!groups[directory]?.tabs.some((item) => item.key === tab.key)) return
+    const created = await connection.terminal.create({ directory, size: { cols: 80, rows: 24 } })
+    if (!groups[directory]?.tabs.some((item) => item.key === tab.key)) {
+      await connection.terminal.remove({ id: created.id })
+      return
+    }
+    setGroups(directory, "tabs", (item) => item.key === tab.key, "terminalID", created.id)
+    return created.id
+  })().finally(() => starting.delete(key))
+  starting.set(key, pending)
+  return pending
+}
 
 function add(directory: string) {
   const group = groups[directory]
@@ -44,18 +73,20 @@ const colors = () =>
 function Shell(props: { directory: string; tab: Tab; active: boolean }) {
   let host!: HTMLDivElement
   let term: Term | undefined
-  let socket: PtyConnection | undefined
+  let socket: TerminalConnection | undefined
   let fit: FitAddon | undefined
   let disposed = false
   /** Keys typed before the terminal is ready (typing right after opening it) */
   const early: string[] = []
 
   const earlyKey = (event: KeyboardEvent) => {
-    if (term || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
-    if (event.key.length === 1) early.push(event.key)
-    else if (event.key === "Enter") early.push("\r")
+    if ((term && event.target !== host) || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
+    const data =
+      event.key.length === 1 ? event.key : event.key === "Enter" ? "\r" : event.key === "Backspace" ? "\x7f" : undefined
+    if (!data) return
+    if (socket) socket.send(data)
     else if (event.key === "Backspace") early.pop()
-    else return
+    else early.push(data)
     event.preventDefault()
   }
 
@@ -69,14 +100,11 @@ function Shell(props: { directory: string; tab: Tab; active: boolean }) {
     })
   })
 
-  onMount(async () => {
-    const c = client(props.directory)
-    const [{ mod, wasm }, id] = await Promise.all([
-      load(),
-      props.tab.ptyID ?? call(c.pty.create({ cwd: props.directory })).then((info) => info.id),
-    ])
+  const start = async () => {
+    const c = await client()
     if (disposed) return
-    setGroups(props.directory, "tabs", (tab) => tab.key === props.tab.key, "ptyID", id)
+    const [{ mod, wasm }, id] = await Promise.all([load(), prepare(props.directory, props.tab)])
+    if (disposed || !id) return
 
     const instance = new mod.Terminal({
       cursorBlink: true,
@@ -93,28 +121,33 @@ function Shell(props: { directory: string; tab: Tab; active: boolean }) {
     fit.fit()
     fit.observeResize?.()
 
-    const connection = connectPty({
-      baseUrl: location.origin,
-      ptyID: id,
-      directory: props.directory,
+    const decoder = new TextDecoder()
+    const connection = connectTerminal({
+      endpoint: location.origin,
+      id,
       cursor: 0,
       onData(data) {
-        // Binary frames starting with 0x00 carry control data (the output position) and are not displayed
-        if (typeof data === "string") instance.write(data)
+        instance.write(decoder.decode(data, { stream: true }))
       },
       onError() {
         log("warn", "terminal socket error")
       },
       onOpen() {
-        void c.pty.update({ ptyID: id, size: { cols: instance.cols, rows: instance.rows } })
+        void c.terminal.update({ id, size: { cols: instance.cols, rows: instance.rows } }).catch(failed)
       },
     })
     socket = connection
     for (const data of early.splice(0)) connection.send(data)
     instance.onData((data) => connection.send(data))
-    instance.onResize(({ cols, rows }) => void c.pty.update({ ptyID: id, size: { cols, rows } }))
+    instance.onResize(({ cols, rows }) => void c.terminal.update({ id, size: { cols, rows } }).catch(failed))
     term = instance
     if (props.active) instance.focus()
+  }
+  const failed = (error: unknown) => {
+    if (!disposed) toast({ kind: "error", title: t("terminal.label"), error })
+  }
+  onMount(() => {
+    void start().catch(failed)
   })
 
   onCleanup(() => {
@@ -143,9 +176,9 @@ export function Terminal(props: { directory: string }) {
   })
 
   const close = (tab: Tab) => {
-    if (tab.ptyID)
-      void client(props.directory)
-        .pty.remove({ ptyID: tab.ptyID })
+    if (tab.terminalID)
+      void client()
+        .then((c) => c.terminal.remove({ id: tab.terminalID! }))
         .catch(() => {})
     setGroups(
       props.directory,

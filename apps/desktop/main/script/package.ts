@@ -14,8 +14,7 @@ import { merge } from "./update-manifest"
  * Linux.
  *
  * Each installer contains the Electron main process (bundled into one file), the UI (renderer/dist →
- * resources/app-dist) and the same release bundle as the CLI (the engine with its own Node → resources/engine).
- * The engine bundle is built into apps/cli/dist.
+ * resources/app-dist) and a Go engine binary from merak/dist under resources/merak.
  *
  * Usage (in apps/desktop/main): pnpm package [--target windows-x64 ...] [--dir]
  *   Without --target, builds for the host platform. Installers can only be built on their own OS (dmg needs macOS,
@@ -25,7 +24,7 @@ import { merge } from "./update-manifest"
 const root = path.resolve(import.meta.dirname, "..")
 const repo = path.resolve(root, "../../..")
 const renderer = path.resolve(root, "..", "renderer")
-const cli = path.join(repo, "apps", "cli")
+const engineRoot = path.join(repo, "merak")
 const require = createRequire(import.meta.url)
 
 type Target = { os: "windows" | "darwin" | "linux"; arch: "x64" | "arm64" }
@@ -80,22 +79,27 @@ const bundled = await bundle({ minify: true })
 node(
   "script/build.ts",
   targets.flatMap((target) => ["--target", `${target.os}-${target.arch}`]),
-  cli,
+  engineRoot,
 )
 for (const target of targets) {
-  const dir = path.join(cli, "dist", `merakcode-${version}-${target.os}-${target.arch}`)
-  if (!existsSync(path.join(dir, "lib", "index.js"))) throw new Error(`engine was not built: ${dir}`)
+  const dir = path.join(engineRoot, "dist", `${target.os}-${target.arch}`)
+  if (!existsSync(path.join(dir, target.os === "windows" ? "merak.exe" : "merak")))
+    throw new Error(`engine was not built: ${dir}`)
 }
 
-// 3. App directory for electron-builder: only the bundled main process and a package.json without dependencies
+// 3. App directory for electron-builder, including the native storage runtime
 const stage = path.join(root, ".package")
 const app = path.join(stage, "app")
 await rm(stage, { recursive: true, force: true })
 await mkdir(app, { recursive: true })
 // Packages bundled into the window UI (its production dependencies) and into the main process (the files esbuild put
-// into main.js and preload.cjs: they are all devDependencies). The engine ships its own list under resources/engine/lib
+// into main.js and preload.cjs, plus the native SQLite package copied by build.ts.
 await writeFile(path.join(stage, "THIRD_PARTY_LICENSES.txt"), Licenses.collect([renderer], bundled))
 for (const file of ["main.js", "preload.cjs"]) await cp(path.join(root, "dist", file), path.join(app, file))
+await cp(path.join(root, "dist", "node_modules"), path.join(app, "node_modules"), { recursive: true })
+const sqlite = JSON.parse(await readFile(path.join(app, "node_modules/better-sqlite3/package.json"), "utf8")) as {
+  version: string
+}
 await writeFile(
   path.join(app, "package.json"),
   JSON.stringify(
@@ -109,6 +113,7 @@ await writeFile(
       homepage: Project.HOMEPAGE,
       type: "module",
       main: "main.js",
+      dependencies: { "better-sqlite3": sqlite.version },
       // Window app_id / WM_CLASS on Linux; must match the installed .desktop file name for the taskbar to group it
       desktopName: "merakcode-desktop.desktop",
     },
@@ -125,7 +130,7 @@ const release = path.join(root, "release")
 const signed = (target: Target) => target.os === "darwin" && !!process.env.CSC_LINK
 
 for (const target of targets) {
-  const engine = path.join(cli, "dist", `merakcode-${version}-${target.os}-${target.arch}`)
+  const engine = path.join(engineRoot, "dist", `${target.os}-${target.arch}`)
   await writeFile(path.join(stage, "build-info.json"), JSON.stringify({ signed: signed(target) }))
   const platform = { windows: Platform.WINDOWS, darwin: Platform.MAC, linux: Platform.LINUX }[target.os]
   const kinds = process.argv.includes("--dir")
@@ -145,12 +150,13 @@ for (const target of targets) {
       // The UI is only Chinese and English, so skip Chromium's other locales (saves over 40 MB)
       electronLanguages: ["zh-CN", "en-US"],
       directories: { output: path.join(root, "release"), buildResources: path.resolve(root, "..", "build") },
-      files: ["main.js", "preload.cjs", "package.json"],
+      files: ["main.js", "preload.cjs", "package.json", "node_modules/better-sqlite3/**/*"],
       asar: true,
+      asarUnpack: ["node_modules/better-sqlite3/prebuilds/*.node"],
       npmRebuild: false,
       nodeGypRebuild: false,
       extraResources: [
-        { from: engine, to: "engine" },
+        { from: engine, to: "merak" },
         { from: path.join(renderer, "dist"), to: "app-dist" },
         { from: path.resolve(root, "..", "build", "icon.png"), to: "icon.png" },
         { from: path.join(repo, "THIRD_PARTY_NOTICES.md"), to: "THIRD_PARTY_NOTICES.md" },
@@ -195,8 +201,8 @@ for (const target of targets) {
         maintainer: `${Project.AUTHOR} <${Project.EMAIL}>`,
       },
       deb: {
-        // electron-builder's default dependencies plus two missing on a clean Ubuntu: ALSA for Electron and
-        // libatomic1 for the engine's bundled Node. Ubuntu 24.04 renamed several libraries (t64 suffix); "new | old"
+        // electron-builder's default dependencies plus ALSA for Electron. Ubuntu 24.04 renamed several libraries
+        // (t64 suffix); "new | old"
         // makes apt pick the real library. With plain libasound2, apt may choose liboss4-salsa-asound2, which also
         // "provides" libasound2 but lacks symbols, and Electron fails to start.
         depends: [
@@ -210,7 +216,6 @@ for (const target of targets) {
           "libuuid1",
           "libsecret-1-0",
           "libasound2t64 | libasound2",
-          "libatomic1",
         ],
         // The UI defaults to Chinese, which shows as boxes on systems without CJK fonts (server or minimal installs);
         // apt installs recommended packages by default

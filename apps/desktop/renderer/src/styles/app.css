@@ -1454,6 +1454,76 @@
   flex-direction: column;
 }
 
+.member-column {
+  width: 220px;
+  flex: none;
+  padding: 16px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+.member-column h2 {
+  margin: 0 0 12px;
+  font-size: var(--text-md);
+}
+.member-seat {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.member-seat p {
+  margin: 0;
+}
+.member-seat[data-state="busy"] {
+  border-color: var(--accent);
+}
+.group-discussion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.group-discussion select {
+  min-width: 0;
+  flex: 1;
+}
+.group-message {
+  max-width: var(--content-width);
+  margin: 0 auto 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  overflow-wrap: anywhere;
+}
+.group-message[data-group-message="human"] {
+  background: var(--accent-soft);
+}
+.group-message[data-group-message="notice"] {
+  border-left: 2px solid var(--border-strong);
+}
+.profile-card {
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.profile-card .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 1000px) {
+  .member-column {
+    width: 180px;
+    padding: 12px;
+  }
+}
+
 /* Group chat: the user on the right, the leader and members on the left */
 .avatar {
   --hue: 230;
@@ -1846,4 +1916,156 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.task-board {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+}
+.task-review {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow-wrap: anywhere;
+}
+.task-review > section,
+.task-review > label {
+  display: block;
+  margin: 16px 0;
+}
+.task-review > label textarea {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  margin-top: 8px;
+}
+.task-review > button {
+  margin: 4px 8px 4px 0;
+}
+.task-review-diff {
+  display: grid;
+  grid-template-columns: minmax(140px, 22%) minmax(0, 1fr);
+  min-height: 180px;
+  max-height: 65vh;
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+}
+.task-review-diff > .review-tree-body {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.task-review-diff > .review-draft {
+  grid-column: 1 / -1;
+}
+.task-goals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+.task-goals h2 {
+  margin: 0 8px 0 0;
+  font-size: 14px;
+}
+.task-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 12px;
+  min-height: 300px;
+  padding: 16px 0;
+}
+.task-column {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+.task-column h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.task-card {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.task-create,
+.task-assign {
+  display: grid;
+  gap: 12px;
+}
+.task-create label,
+.task-assign label {
+  display: grid;
+  gap: 6px;
+}
+.task-create label.row {
+  display: flex;
+}
+.task-detail,
+.task-report {
+  overflow-wrap: anywhere;
+}
+.task-detail {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.task-report table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.task-report td,
+.task-report th {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.claim-process {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.claim-process > summary {
+  cursor: pointer;
+}
+.claim-process .messages {
+  max-height: 50vh;
+}
+.group-inbox {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 24px;
+  padding: 20px;
+}
+.group-inbox h2 {
+  font-size: 16px;
+}
+.inbox-notice {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.inbox-notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }

@@ -1,9 +1,10 @@
 import { build, context, type BuildOptions, type Metafile } from "esbuild"
-import { rm } from "node:fs/promises"
+import { cp, mkdir, rm } from "node:fs/promises"
+import { createRequire } from "node:module"
 import path from "node:path"
 
 /**
- * Bundles the main process into one ESM file (all dependencies included, so the installer has no node_modules) and
+ * Bundles the main process into one ESM file, copies the native SQLite runtime, and builds
  * the preload into CJS (a sandboxed preload must be CommonJS). Electron 44 ships Node 24.
  */
 const root = path.resolve(import.meta.dirname, "..")
@@ -15,7 +16,7 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
     bundle: true,
     platform: "node" as const,
     target: "node24",
-    external: ["electron"],
+    external: ["electron", "better-sqlite3"],
     sourcemap: "linked" as const,
     minify: options.minify,
     logLevel: "warning" as const,
@@ -50,7 +51,25 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
 export async function bundle(options: { minify?: boolean } = {}) {
   await rm(dist, { recursive: true, force: true })
   const results = await Promise.all(entries(options).map((entry) => build({ ...entry, metafile: true })))
-  return results.flatMap((result) => bundled(result.metafile))
+  const native = await nativeRuntime()
+  return [...results.flatMap((result) => bundled(result.metafile)), ...native]
+}
+
+async function nativeRuntime() {
+  const require = createRequire(import.meta.url)
+  const sdk = createRequire(require.resolve("@merakcode/sdk"))
+  const source = path.dirname(sdk.resolve("better-sqlite3/package.json"))
+  const destination = path.join(dist, "node_modules", "better-sqlite3")
+  await mkdir(destination, { recursive: true })
+  await Promise.all(
+    ["lib", "prebuilds", "package.json", "LICENSE"].map((name) =>
+      cp(path.join(source, name), path.join(destination, name), { recursive: true }),
+    ),
+  )
+  const sqlite = createRequire(path.join(source, "package.json"))
+  const addon = path.dirname(sqlite.resolve("node-addon-api/package.json"))
+  await cp(addon, path.join(dist, "node_modules", "node-addon-api"), { recursive: true })
+  return [path.join(source, "lib", "index.js"), path.join(addon, "index.js")]
 }
 
 /** Inputs that contributed bytes to an output (tree-shaken files are left out); esbuild lists them relative to root */
@@ -68,6 +87,7 @@ function bundled(metafile: Metafile) {
  */
 export async function watchBundle(rebuilt: () => void) {
   await rm(dist, { recursive: true, force: true })
+  await nativeRuntime()
   const first: Promise<boolean>[] = []
   const contexts = await Promise.all(
     entries({}).map((entry) => {

@@ -1,7 +1,7 @@
 import Paperclip from "lucide-solid/icons/paperclip"
 import { createResource, createSignal, Show } from "solid-js"
 import { t } from "../../i18n"
-import { call, client } from "../../state/client"
+import { client } from "../../state/client"
 import { Dialog } from "../../ui/dialog"
 import { filePath } from "./suggest"
 
@@ -36,15 +36,21 @@ export function AttachmentPreview(props: { part: AttachmentPart; directory: stri
   const [open, setOpen] = createSignal(false)
   const [broken, setBroken] = createSignal(false)
   const name = () => filename(props.part) || t("prompt.image")
-  const [loaded] = createResource(
-    () => (isImage(props.part) ? filePath(props.part.url) : undefined),
-    async (path) => {
-      const content = await call(client(props.directory).file.read({ path })).catch(() => undefined)
-      if (!content || content.encoding !== "base64" || !content.mimeType?.startsWith("image/")) return
-      return `data:${content.mimeType};base64,${content.content}`
+  const [local] = createResource(
+    () =>
+      isImage(props.part) && filePath(props.part.url)
+        ? { path: filePath(props.part.url)!, directory: props.directory }
+        : undefined,
+    async (params) => {
+      try {
+        const file = await (await client()).file.read(params)
+        if (file.type === "binary" && file.mime?.startsWith("image/")) return `data:${file.mime};base64,${file.content}`
+      } catch {
+        return undefined
+      }
     },
   )
-  const source = () => (isImage(props.part) ? (directSource(props.part.url) ?? loaded()) : undefined)
+  const source = () => (isImage(props.part) ? (directSource(props.part.url) ?? local()) : undefined)
   return (
     <>
       <Show

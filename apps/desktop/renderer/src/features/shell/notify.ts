@@ -1,48 +1,83 @@
 import { useNavigate } from "@solidjs/router"
-import { onCleanup } from "solid-js"
-import { rootOf } from "@merakcode/sdk/store"
-import { t } from "../../i18n"
+import { createEffect, onCleanup } from "solid-js"
+import { t, type Key } from "../../i18n"
 import { bridge } from "../../lib/bridge"
-import { sameDir, sessionPath } from "../../lib/route"
-import { listen, session, state } from "../../state/store"
+import { groupPath, sessionPath } from "../../lib/route"
+import { listen, session, sessionsOf, state } from "../../state/store"
+import { groups, groupView, localHuman, markNoticesRead, noticeRead } from "../../state/groups"
+import { noticeText } from "../group/notice"
 
-/**
- * Sidebar project that owns the event's directory (which may be a worktree); conversation routes are built from the
- * project directory
- */
-const folderOf = (directory: string) =>
-  state.folders.find(
-    (folder) =>
-      sameDir(folder.directory, directory) || folder.project?.sandboxes?.some((dir) => sameDir(dir, directory)),
-  )?.directory ?? directory
+const noticeTitles: Record<string, Key> = {
+  permission: "notify.approval",
+  question: "notify.question",
+  review: "task.status.review",
+  plan: "task.phase.planning",
+  blocked: "task.status.blocked",
+  info: "inbox.info",
+  receipt: "inbox.receipt",
+}
 
-/**
- * While the window is in the background, shows a system notification when a conversation finishes or needs a
- * permission or an answer; clicking it returns to that conversation
- */
+/** Background notifications navigate to the parent conversation for child requests. */
 export function Notify() {
   const navigate = useNavigate()
+  createEffect(() => {
+    const inboxes = groups().map((group) => {
+      const inbox = groupView(group.id)?.inbox
+      return {
+        id: group.id,
+        title: group.name,
+        href: `${groupPath(group.project.directory, group.id)}?view=inbox`,
+        unseen: !!inbox && (inbox.todo.length > 0 || inbox.info.some((notice) => !noticeRead(notice.id))),
+      }
+    })
+    const conversations = state.folders.flatMap((folder) =>
+      sessionsOf(folder).map((session) => ({
+        id: session.id,
+        title: session.title || t("sidebar.untitled"),
+        href: sessionPath(session.directory, session.id),
+      })),
+    )
+    const items = [...inboxes, ...conversations]
+    bridge?.pushTrayState({
+      recent: items.slice(0, 5),
+      more: items.slice(5, 25),
+      hasNotifications: inboxes.some((inbox) => inbox.unseen),
+    })
+  })
+  if (bridge)
+    onCleanup(
+      bridge.onClearNotifications(() => {
+        markNoticesRead(groups().flatMap((group) => groupView(group.id)?.inbox.info.map((notice) => notice.id) ?? []))
+      }),
+    )
   onCleanup(
     listen((directory, event) => {
       if (document.hasFocus() || typeof Notification === "undefined") return
-      const target =
-        event.type === "session.idle"
-          ? // A finished subagent session does not count; wait for the main conversation
-            session(event.properties.sessionID)?.parentID
-            ? undefined
-            : { id: event.properties.sessionID, title: t("notify.done") }
-          : event.type === "permission.asked"
-            ? {
-                id: event.properties.root ?? rootOf(state.sessions, event.properties.sessionID),
-                title: t("notify.approval"),
-              }
+      if (event.scope.group) {
+        if (event.type !== "notice.sent" || !event.payload.to?.includes(localHuman)) return
+        const group = groups().find((group) => group.id === event.scope.group)
+        if (!group) return
+        const key = noticeTitles[event.payload.kind] ?? "inbox.info"
+        const href = `${groupPath(group.project.directory, group.id)}?view=inbox&notice=${encodeURIComponent(event.id)}`
+        const notification = new Notification(t(key), { body: `${group.name}: ${noticeText(event.payload.text)}` })
+        notification.onclick = () => (bridge ? void bridge.focusAndNavigate(href) : navigate(href))
+        return
+      }
+      if (!event.scope.session) return
+      const current = session(event.scope.session)
+      const id = current?.parentID ?? event.scope.session
+      const title =
+        event.type === "turn.finished" && !current?.parentID
+          ? t("notify.done")
+          : event.type === "permission.requested"
+            ? t("notify.approval")
             : event.type === "question.asked"
-              ? { id: rootOf(state.sessions, event.properties.sessionID), title: t("notify.question") }
+              ? t("notify.question")
               : undefined
-      if (!target) return
-      const href = sessionPath(folderOf(directory), target.id)
-      const notification = new Notification(target.title, { body: session(target.id)?.title ?? "" })
-      // On desktop the main process brings the window to the front before navigating
+      if (!title) return
+      const parent = session(id)
+      const href = sessionPath(parent?.directory ?? directory, id)
+      const notification = new Notification(title, { body: parent?.title ?? "" })
       notification.onclick = () => (bridge ? void bridge.focusAndNavigate(href) : navigate(href))
     }),
   )

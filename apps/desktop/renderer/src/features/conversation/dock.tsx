@@ -1,263 +1,124 @@
-import type { PermissionRequest, QuestionRequest } from "@merakcode/sdk/client"
-import { permissionChoices, permissionKind, permissionTags, type PermissionChoice } from "./permission"
+import type { EngineEvent } from "@merakcode/sdk"
 import MessageCircleQuestion from "lucide-solid/icons/message-circle-question-mark"
 import ShieldAlert from "lucide-solid/icons/shield-alert"
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { t, type Key } from "../../i18n"
-import { relative } from "../../lib/route"
-import { call, client } from "../../state/client"
-import { session, setPermissionLevel } from "../../state/store"
+import { createEffect, createSignal, For, on, Show } from "solid-js"
+import { t } from "../../i18n"
+import { client } from "../../state/client"
 import { toast } from "../../ui/toast"
-import { SandboxField } from "./sandbox-control"
 
-const directoryOf = (sessionID: string, fallback: string) => session(sessionID)?.directory ?? fallback
-
-/** Permission request title: what the agent wants to do */
-function title(request: PermissionRequest) {
-  const kind = permissionKind(request.permission)
-  if (kind === "plan") return t(request.metadata?.update ? "approval.planUpdate" : "approval.planGenerate")
-  if (kind === "tool") return t("approval.tool", { name: request.permission })
-  return t(`approval.${kind}` as Key)
-}
-
-/** Permission request subject: a command, file, URL and so on */
-function subject(request: PermissionRequest, directory: string) {
-  const meta = request.metadata ?? {}
-  if (typeof meta.planPath === "string")
-    return `${relative(directory, meta.planPath)}\n${t("approval.planRevision", { current: Number(meta.expectedRevision ?? 0), next: Number(meta.expectedRevision ?? 0) + 1 })}`
-  if (typeof meta.command === "string") return meta.command
-  if (typeof meta.filepath === "string") return relative(directory, meta.filepath)
-  if (typeof meta.url === "string") return meta.url
-  return request.patterns.join("\n")
-}
-
-/** The agent asks for permission; options can also be picked with number keys */
-export function Approval(props: {
-  request: PermissionRequest
-  more: number
-  directory: string
-  /** The group member that asks: its name, product and role */
-  from?: string
-}) {
-  const [reason, setReason] = createSignal<string>()
-  const [busy, setBusy] = createSignal(false)
-  const choices = () => permissionChoices(props.request)
-  const label = (choice: PermissionChoice) => t(choice.label.key as Key, choice.label.vars)
-
-  const reply = async (choice: PermissionChoice, message?: string) => {
-    if (busy()) return
-    setBusy(true)
-    const action =
-      choice.reply === "autoApprove"
-        ? setPermissionLevel(props.request.root ?? props.request.sessionID, props.directory, "autoApprove")
-        : call(
-            client(directoryOf(props.request.sessionID, props.directory)).permission.reply({
-              requestID: props.request.id,
-              decisionRevision: props.request.decisionRevision,
-              reply: choice.reply,
-              ...(choice.scope ? { scope: choice.scope } : {}),
-              ...(message ? { message } : {}),
-            }),
-          )
-    await action
-      .catch((error: Error) =>
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-      )
-      .finally(() => setBusy(false))
-  }
-
-  onMount(() => {
-    const listener = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement
-      if (target.closest("input, textarea, [contenteditable]") || event.ctrlKey || event.metaKey || event.altKey) return
-      const index = Number(event.key) - 1
-      const choice = choices()[index]
-      if (!choice || !/^[1-9]$/.test(event.key)) return
-      event.preventDefault()
-      void reply(choice)
-    }
-    window.addEventListener("keydown", listener)
-    onCleanup(() => window.removeEventListener("keydown", listener))
+const failed = (error: unknown) =>
+  toast({
+    kind: "error",
+    title: t("error.request", { message: error instanceof Error ? error.message : "MRK-1001" }),
+    error,
   })
 
+export function Approval(props: {
+  request: Extract<EngineEvent, { type: "permission.requested" }>
+  more?: number
+  human?: string
+}) {
+  const [busy, setBusy] = createSignal(false)
+  const reply = async (decision: "allow" | "deny") => {
+    const request = props.request.id
+    setBusy(true)
+    try {
+      await (await client()).permission.reply({ request, decision, human: props.human })
+    } catch (error) {
+      failed(error)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <section class="approval" role="region" aria-label={t("approval.label")}>
-      <Show when={props.from}>
-        {(from) => <div class="approval-from subtle">{t("approval.from", { name: from() })}</div>}
-      </Show>
       <div class="approval-head">
         <ShieldAlert class="icon" />
-        <span class="what">{title(props.request)}</span>
-        <For each={permissionTags(props.request)}>
-          {(tag) => <span class="badge warning">{t(`approval.tag.${tag}` as Key)}</span>}
-        </For>
+        <span class="what">{t("approval.tool", { name: props.request.payload.call.name })}</span>
         <span class="spacer" />
         <Show when={props.more}>
-          <span class="subtle">{t("approval.more", { count: props.more })}</span>
+          <span class="subtle">{t("approval.more", { count: props.more! })}</span>
         </Show>
       </div>
-      <pre class="command selectable">{subject(props.request, props.directory)}</pre>
-      <Show when={props.request.sandboxReady === false}>
-        <div class="approval-isolation subtle">
-          <p>
-            {t(
-              ["plan_generate", "plan_edit"].includes(props.request.permission)
-                ? "approval.unisolatedPlan"
-                : "approval.unisolated",
-            )}
-          </p>
-          <SandboxField directory={props.directory} />
-        </div>
-      </Show>
-      <Show
-        when={reason() === undefined}
-        fallback={
-          <div class="approval-reason">
-            <textarea
-              class="input"
-              aria-label={t("approval.reason")}
-              placeholder={t("approval.reasonPlaceholder")}
-              value={reason()}
-              onInput={(event) => setReason(event.currentTarget.value)}
-              autofocus
-            />
-            <div class="row">
-              <span class="spacer" />
-              <button class="button ghost sm" onClick={() => setReason(undefined)}>
-                {t("common.cancel")}
-              </button>
-              <button
-                class="button primary sm"
-                disabled={busy()}
-                onClick={() => void reply(choices().at(-1)!, reason()?.trim() || undefined)}
-              >
-                {t("permission.option.reject")}
-              </button>
-            </div>
-          </div>
-        }
-      >
-        <div class="approval-actions">
-          <For each={choices()}>
-            {(choice, index) => (
-              <button
-                class={index() === 0 ? "button primary sm" : "button secondary sm"}
-                disabled={busy()}
-                onClick={() => void reply(choice)}
-              >
-                <kbd aria-hidden="true">{index() + 1}</kbd>
-                <span>{label(choice)}</span>
-              </button>
-            )}
-          </For>
-          <button class="button ghost sm" onClick={() => setReason("")}>
-            {t("approval.rejectWithReason")}
-          </button>
-        </div>
-      </Show>
+      <pre class="command selectable">{JSON.stringify(props.request.payload.call.input, null, 2)}</pre>
+      <div class="approval-actions">
+        <button class="button primary sm" disabled={busy()} onClick={() => void reply("allow")}>
+          {t("permission.option.once")}
+        </button>
+        <button class="button secondary sm" disabled={busy()} onClick={() => void reply("deny")}>
+          {t("permission.option.reject")}
+        </button>
+      </div>
     </section>
   )
 }
 
-/**
- * The agent asks a question. With one single-choice question, clicking an option submits; multiple choice or several
- * questions need a final Submit.
- */
-export function Question(props: {
-  request: QuestionRequest
-  directory: string
-  /** The group member that asks: its name, product and role */
-  from?: string
-}) {
-  const [answers, setAnswers] = createSignal<string[][]>(props.request.questions.map(() => []))
-  const [custom, setCustom] = createSignal<string[]>(props.request.questions.map(() => ""))
+export function Question(props: { request: Extract<EngineEvent, { type: "question.asked" }>; human?: string }) {
+  const [answer, setAnswer] = createSignal("")
   const [busy, setBusy] = createSignal(false)
-  const quick = () => props.request.questions.length === 1 && !props.request.questions[0]!.multiple
-  const dir = () => directoryOf(props.request.sessionID, props.directory)
-
-  const submit = async (values = answers()) => {
+  createEffect(
+    on(
+      () => props.request.id,
+      () => {
+        setAnswer("")
+        setBusy(false)
+      },
+      { defer: true },
+    ),
+  )
+  const reply = async (cancelled = false) => {
+    const request = props.request.id
+    const text = answer().trim()
+    if (busy() || (!cancelled && !text)) return
     setBusy(true)
-    const final = values.map((list, index) => (custom()[index]?.trim() ? [...list, custom()[index]!.trim()] : list))
-    await call(client(dir()).question.reply({ requestID: props.request.id, answers: final }))
-      .catch((error: Error) =>
-        toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-      )
-      .finally(() => setBusy(false))
+    try {
+      await (await client()).question.reply({ request, text, cancelled, human: props.human })
+    } catch (error) {
+      failed(error)
+    } finally {
+      setBusy(false)
+    }
   }
-  const toggle = (index: number, label: string, multiple: boolean) => {
-    const next = answers().map((list, i) =>
-      i !== index
-        ? list
-        : multiple
-          ? list.includes(label)
-            ? list.filter((item) => item !== label)
-            : [...list, label]
-          : [label],
-    )
-    setAnswers(next)
-    if (quick()) void submit(next)
-  }
-  const skip = () =>
-    call(client(dir()).question.reject({ requestID: props.request.id })).catch((error: Error) =>
-      toast({ kind: "error", title: t("error.request", { message: error.message }), error: error }),
-    )
-
   return (
     <section class="approval question" role="region" aria-label={t("question.label")}>
-      <Show when={props.from}>
-        {(from) => <div class="approval-from subtle">{t("question.from", { name: from() })}</div>}
-      </Show>
-      <For each={props.request.questions}>
-        {(question, index) => (
-          <div class="question-item">
-            <div class="approval-head">
-              <MessageCircleQuestion class="icon" />
-              <span class="what selectable">{question.question}</span>
-            </div>
-            <div class="question-options">
-              <For each={question.options}>
-                {(option) => (
-                  <button
-                    class="question-option"
-                    aria-pressed={answers()[index()]?.includes(option.label) ?? false}
-                    disabled={busy()}
-                    onClick={() => toggle(index(), option.label, !!question.multiple)}
-                  >
-                    <span class="label">{option.label}</span>
-                    <Show when={option.description}>
-                      <span class="desc">{option.description}</span>
-                    </Show>
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={question.custom !== false}>
-              <input
-                class="input"
-                aria-label={t("question.other")}
-                placeholder={t("question.otherPlaceholder")}
-                value={custom()[index()]}
-                onInput={(event) =>
-                  setCustom((list) => list.map((item, i) => (i === index() ? event.currentTarget.value : item)))
-                }
-                onKeyDown={(event) => event.key === "Enter" && !event.isComposing && void submit()}
-              />
-            </Show>
-          </div>
-        )}
-      </For>
+      <div class="question-item">
+        <div class="approval-head">
+          <MessageCircleQuestion class="icon" />
+          <span class="what selectable">{props.request.payload.text}</span>
+        </div>
+        <div class="question-options">
+          <For each={props.request.payload.options ?? []}>
+            {(option) => (
+              <button
+                class="question-option"
+                aria-pressed={answer() === option}
+                disabled={busy()}
+                onClick={() => setAnswer(option)}
+              >
+                <span class="label">{option}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <input
+          class="input"
+          aria-label={t("question.other")}
+          placeholder={t("question.otherPlaceholder")}
+          value={answer()}
+          onInput={(event) => setAnswer(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.isComposing) void reply()
+          }}
+        />
+      </div>
       <div class="approval-actions">
         <span class="spacer" />
-        <Show when={props.request.questions.every((question) => question.dismiss !== false)}>
-          <button class="button ghost sm" onClick={() => void skip()}>
-            {t("question.skip")}
-          </button>
-        </Show>
-        <Show when={!quick() || custom()[0]?.trim()}>
-          <button class="button primary sm" disabled={busy()} onClick={() => void submit()}>
-            {t("question.submit")}
-          </button>
-        </Show>
+        <button class="button ghost sm" disabled={busy()} onClick={() => void reply(true)}>
+          {t("question.skip")}
+        </button>
+        <button class="button primary sm" disabled={busy() || !answer().trim()} onClick={() => void reply()}>
+          {t("question.submit")}
+        </button>
       </div>
     </section>
   )

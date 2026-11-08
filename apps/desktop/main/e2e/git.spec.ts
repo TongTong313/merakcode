@@ -1,237 +1,38 @@
-import { execFileSync } from "node:child_process"
 import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { test, expect, type Kit } from "./fixture"
+import { expect, test } from "./fixture"
 
-test.beforeEach(async ({ kit }) => {
-  await kit.mode(/全面接管|Full takeover/)
-})
+test.use({ git: true })
 
-// Source Control stages, commits and pushes independently of pending conversation review.
-
-let current: Kit
-test.use({
-  git: true,
-  script: {
-    reply: ({ toolResults }) =>
-      toolResults.length
-        ? { text: "写好了" }
-        : { tool: "write", args: { filePath: path.join(current.project, "new.txt"), content: "new\n" } },
-  },
-})
-
-test.beforeEach(({ kit }) => {
-  current = kit
-})
-
-test("stages a file written by the agent, commits it and pushes to the remote", async ({ kit }) => {
-  const remote = path.join(kit.root, "remote.git")
-  execFileSync("git", ["init", "--bare", "--quiet", remote])
-  kit.git("remote", "add", "origin", remote)
-  await kit.send("写个文件")
-  await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
-
-  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+test("shows staged and unstaged files and opens the same baseline diff", async ({ kit }) => {
+  await kit.send("Start the conversation baseline")
+  await expect(kit.text("OK")).toBeVisible()
+  await writeFile(path.join(kit.project, "staged.txt"), "staged content\n")
+  kit.git("add", "staged.txt")
+  await writeFile(path.join(kit.project, "unstaged.txt"), "working content\n")
+  await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
   await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await writeFile(path.join(kit.project, "manual.txt"), "keep unstaged\n")
-  const pending = panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "new.txt" })
-  await pending.getByRole("button", { name: "暂存 new.txt", exact: true }).click()
-  await expect(panel.locator('[data-group="staged"] .git-file').filter({ hasText: "new.txt" })).toBeVisible()
-  await expect(panel.locator(".diff")).toHaveCount(0)
-  await expect(panel.getByRole("button", { name: "快捷命令", exact: true })).toHaveCount(0)
-  await kit.page.screenshot({ path: test.info().outputPath("source-control.png") })
-
-  await panel.getByRole("textbox", { name: "提交信息" }).fill("add new")
-  await panel.getByRole("button", { name: "提交 Commit" }).click()
-  await expect.poll(() => kit.git("log", "-1", "--format=%s").trim()).toBe("add new")
-  await expect(panel.locator('[data-group="staged"] .git-file')).toHaveCount(0)
-  expect(kit.git("status", "--porcelain")).toContain("manual.txt")
-
-  const branch = kit.git("rev-parse", "--abbrev-ref", "HEAD").trim()
-  await panel.getByRole("button", { name: /^推送/ }).click()
-  // git log fails while the remote lacks the branch; treat that as not pushed yet
-  const pushed = () => {
-    try {
-      return execFileSync("git", ["--git-dir", remote, "log", "-1", "--format=%s", branch], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim()
-    } catch {
-      return ""
-    }
-  }
-  await expect.poll(pushed).toBe("add new")
-  await expect(panel.getByRole("button", { name: /^推送/ })).toBeDisabled()
+  const staged = panel.locator(".git-group").filter({ has: kit.page.locator("summary").filter({ hasText: "已暂存" }) })
+  const unstaged = panel
+    .locator(".git-group")
+    .filter({ has: kit.page.locator("summary").filter({ hasText: "未暂存" }) })
+  await expect(staged.getByRole("button", { name: "查看待审改动 staged.txt" })).toBeVisible()
+  await expect(unstaged.getByRole("button", { name: "查看待审改动 unstaged.txt" })).toBeVisible()
+  await expect(panel.getByRole("button", { name: /^(提交|暂存 |取消暂存 )/ })).toHaveCount(0)
+  await staged.getByRole("button", { name: "查看待审改动 staged.txt" }).click()
+  await expect(panel.getByRole("tab", { name: /^审阅/ })).toHaveAttribute("aria-selected", "true")
+  await expect(panel.getByRole("region", { name: "staged.txt", exact: true })).toContainText("staged content")
+  expect(kit.git("diff", "--cached", "--name-only").trim()).toBe("staged.txt")
+  expect(await readFile(path.join(kit.project, "unstaged.txt"), "utf8")).toBe("working content\n")
 })
 
-test("rejecting after an unreviewed push preserves history and undo restores Git review navigation", async ({
-  kit,
-}) => {
-  const remote = path.join(kit.root, "remote.git")
-  execFileSync("git", ["init", "--bare", "--quiet", remote])
-  kit.git("remote", "add", "origin", remote)
-  await kit.send("Write a file")
-  await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
-  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
+test("opens a working file in the read-only code viewer", async ({ kit }) => {
+  await writeFile(path.join(kit.project, "source.ts"), "export const answer = 42\n")
+  await kit.page.getByRole("button", { name: "右侧面板" }).click()
   const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await panel.getByRole("button", { name: "暂存 new.txt", exact: true }).click()
-  await panel.getByRole("textbox", { name: "提交信息" }).fill("commit without review")
-  await panel.getByRole("button", { name: "提交 Commit" }).click()
-  await expect.poll(() => kit.git("log", "-1", "--format=%s").trim()).toBe("commit without review")
-  const head = kit.git("rev-parse", "HEAD").trim()
-  const branch = kit.git("branch", "--show-current").trim()
-  await panel.getByRole("button", { name: /^推送/ }).click()
-  await expect
-    .poll(() => {
-      try {
-        return execFileSync("git", ["--git-dir", remote, "rev-parse", branch], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        }).trim()
-      } catch {
-        return ""
-      }
-    })
-    .toBe(head)
-  await expect(panel.getByRole("button", { name: /^推送/ })).toBeDisabled()
-  await panel.getByRole("tab", { name: /^审阅/ }).click()
-  await panel.getByRole("region", { name: "new.txt" }).getByRole("button", { name: "拒绝文件" }).click()
-  await expect.poll(() => readFile(path.join(kit.project, "new.txt"), "utf8").catch(() => "missing")).toBe("missing")
-  expect(kit.git("rev-parse", "HEAD").trim()).toBe(head)
-  expect(kit.git("show", ":new.txt")).toBe("new\n")
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await expect(panel.locator('[data-group="unstaged"] .git-file').filter({ hasText: "new.txt" })).toBeVisible()
-  await expect(panel.getByRole("button", { name: "查看待审改动 new.txt" })).toHaveCount(0)
-  await panel.getByRole("tab", { name: /^审阅/ }).click()
-  await panel.getByRole("button", { name: "撤销" }).click()
-  await expect(panel.getByRole("region", { name: "new.txt" })).toBeVisible()
-  expect(await readFile(path.join(kit.project, "new.txt"), "utf8")).toBe("new\n")
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  await expect(panel.locator(".git-file")).toHaveCount(0)
-  // A later working edit creates a Git row where the restored pending review can be opened.
-  await writeFile(path.join(kit.project, "new.txt"), "new again\n")
-  await panel.getByRole("button", { name: "刷新 Git 状态" }).click()
-  await expect(panel.getByRole("button", { name: "查看待审改动 new.txt" })).toBeVisible()
-  await panel.getByRole("button", { name: "查看待审改动 new.txt" }).click()
-  await expect(panel.getByRole("region", { name: "new.txt" })).toBeVisible()
-  await expect(panel.getByRole("radio", { name: "整个对话" })).toBeChecked()
-  expect(kit.git("rev-parse", "HEAD").trim()).toBe(head)
-  expect(execFileSync("git", ["--git-dir", remote, "rev-parse", branch], { encoding: "utf8" }).trim()).toBe(head)
-})
-
-test("Git selection and all-file index actions preserve working files and pending review", async ({ kit }) => {
-  const loaded = await kit.page.reload()
-  const authorization = (await loaded!.request().allHeaders()).authorization
-  expect(authorization).toBeTruthy()
-  await kit.mode(/全面接管|Full takeover/)
-  await kit.send("Write a file")
-  await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
-  await writeFile(path.join(kit.project, "manual-a.txt"), "manual A\n")
-  await writeFile(path.join(kit.project, "manual-b.txt"), "manual B\n")
-  await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()
-  const panel = kit.panel()
-  await panel.getByRole("tab", { name: "Git 管理" }).click()
-  const staged = panel.locator('[data-group="staged"]')
-  const unstaged = panel.locator('[data-group="unstaged"]')
-  await unstaged.getByRole("checkbox", { name: "选择 manual-a.txt" }).check()
-  await unstaged.getByRole("checkbox", { name: "选择 manual-b.txt" }).check()
-  await unstaged.getByRole("button", { name: "暂存所选 2 个文件" }).click()
-  await expect
-    .poll(() => kit.git("diff", "--cached", "--name-only").trim().split("\n"))
-    .toEqual(["manual-a.txt", "manual-b.txt"])
-  await staged.getByRole("checkbox", { name: "选择 manual-a.txt" }).check()
-  const firstRead = Promise.withResolvers<void>()
-  const held: { release: () => void; done: Promise<void> }[] = []
-  let capture = true
-  let changedIndex = false
-  let refreshedVcs = false
-  let releaseFirst: (() => void) | undefined
-  const changed = (response: import("@playwright/test").Response) => {
-    if (response.url().includes("/vcs/changes/unstage") && response.status() === 200) changedIndex = true
-    if (changedIndex && new URL(response.url()).pathname === "/vcs" && response.status() === 200) refreshedVcs = true
-  }
-  kit.page.on("response", changed)
-  const pattern = /\/vcs\/changes(?:\?|$)/
-  await kit.page.route(pattern, async (route) => {
-    if (!capture) return route.continue()
-    const afterVcs = refreshedVcs
-    const gate = Promise.withResolvers<void>()
-    const done = Promise.withResolvers<void>()
-    held.push({ release: () => gate.resolve(), done: done.promise })
-    try {
-      const response = await route.fetch({ headers: { ...route.request().headers(), authorization: authorization! } })
-      if (afterVcs && !releaseFirst) {
-        releaseFirst = () => gate.resolve()
-        firstRead.resolve()
-      }
-      await gate.promise
-      await route.fulfill({ response })
-    } finally {
-      done.resolve()
-    }
-  })
-  try {
-    await staged.getByRole("button", { name: "取消暂存所选 1 个文件" }).click()
-    await expect.poll(() => kit.git("diff", "--cached", "--name-only").trim()).toBe("manual-b.txt")
-    await firstRead.promise
-    await writeFile(path.join(kit.project, "late.txt"), "late change\n")
-    await kit.page.evaluate(async () => {
-      // Observe the real focus debounce finishing, including rescheduling by a file watcher.
-      // Neither its delay nor its callback is replaced with simulated behavior.
-      const timers: Pick<Window, "setTimeout"> = window
-      const schedule = timers.setTimeout
-      const callbacks = new Set<TimerHandler>()
-      const completed = Promise.withResolvers<void>()
-      let dispatching = true
-      timers.setTimeout = (handler, delay, ...args) => {
-        if (dispatching && typeof handler === "function") callbacks.add(handler)
-        if (!callbacks.has(handler)) return schedule(handler, delay, ...args)
-        return schedule(() => {
-          try {
-            if (typeof handler === "function") handler(...args)
-          } finally {
-            callbacks.delete(handler)
-            if (!callbacks.size) completed.resolve()
-          }
-        }, delay)
-      }
-      try {
-        window.dispatchEvent(new Event("focus"))
-        dispatching = false
-        if (!callbacks.size) throw new Error("Focus did not schedule a refresh")
-        await completed.promise
-      } finally {
-        timers.setTimeout = schedule
-      }
-    })
-    releaseFirst!()
-    await expect(unstaged.locator(".git-file")).toHaveCount(2)
-    await expect(unstaged.getByRole("button", { name: "暂存全部", exact: true })).toBeEnabled()
-  } finally {
-    capture = false
-    for (const response of held) response.release()
-    await Promise.all(held.map((response) => response.done))
-    kit.page.off("response", changed)
-    await kit.page.unroute(pattern)
-  }
-  await expect(unstaged.locator(".git-file")).toHaveCount(3)
-  await unstaged.getByRole("button", { name: "暂存全部", exact: true }).click()
-  await expect(staged.locator(".git-file")).toHaveCount(4)
-  expect(kit.git("diff", "--cached", "--name-only").trim().split("\n")).toEqual([
-    "late.txt",
-    "manual-a.txt",
-    "manual-b.txt",
-    "new.txt",
-  ])
-  await staged.getByRole("button", { name: "全部取消暂存", exact: true }).click()
-  await expect(staged.locator(".git-file")).toHaveCount(0)
-  await expect(unstaged.locator(".git-file")).toHaveCount(4)
-  expect(await readFile(path.join(kit.project, "late.txt"), "utf8")).toBe("late change\n")
-  expect(await readFile(path.join(kit.project, "manual-a.txt"), "utf8")).toBe("manual A\n")
-  expect(await readFile(path.join(kit.project, "manual-b.txt"), "utf8")).toBe("manual B\n")
-  expect(await readFile(path.join(kit.project, "new.txt"), "utf8")).toBe("new\n")
-  await expect(panel.getByRole("button", { name: "查看待审改动 new.txt" })).toBeVisible()
-  await expect(panel.getByRole("button", { name: "查看待审改动 manual-a.txt" })).toHaveCount(0)
+  await panel.getByRole("tab", { name: "代码", exact: true }).click()
+  await panel.getByRole("treeitem", { name: /source.ts/ }).dblclick()
+  await expect(panel.locator(".monaco-editor")).toContainText("answer")
+  expect(await readFile(path.join(kit.project, "source.ts"), "utf8")).toBe("export const answer = 42\n")
 })

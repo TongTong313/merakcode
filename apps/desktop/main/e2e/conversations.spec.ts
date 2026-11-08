@@ -20,8 +20,8 @@ test.use({
       if (prompt.includes("要审批"))
         return toolResults.length
           ? { text: "审批过了" }
-          : { tool: "bash", args: { command: 'node -e "console.log(1)"', description: "run node" } }
-      return { text: `回复：${prompt}` }
+          : { tool: "bash", args: { command: 'node -e "console.log(1)"' } }
+      return { text: `回复：${prompt.includes("快任务") ? "快任务" : prompt}` }
     },
   },
 })

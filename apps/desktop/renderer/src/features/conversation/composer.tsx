@@ -1,388 +1,122 @@
-import type { FilePartInput, PermissionLevel } from "@merakcode/sdk/client"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import Brain from "lucide-solid/icons/brain"
 import Eye from "lucide-solid/icons/eye"
-import FileText from "lucide-solid/icons/file-text"
-import Folder from "lucide-solid/icons/folder"
-import Hand from "lucide-solid/icons/hand"
 import Paperclip from "lucide-solid/icons/paperclip"
 import Square from "lucide-solid/icons/square"
-import SquareSlash from "lucide-solid/icons/square-slash"
 import X from "lucide-solid/icons/x"
-import Zap from "lucide-solid/icons/zap"
-import { createEffect, createResource, createSignal, For, on, onMount, Show } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createEffect, createSignal, For, on, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
-import { bridge, mac, storage } from "../../lib/bridge"
-import { call, client } from "../../state/client"
 import { choice, choiceKey, choose, find, usage } from "../../state/models"
-import { connected, session } from "../../state/store"
-import { setUi } from "../../state/ui"
+import { connected } from "../../state/store"
 import { Select } from "../../ui/select"
 import { Tip } from "../../ui/tooltip"
 import { toast } from "../../ui/toast"
 import { AttachmentPreview } from "./attachment"
 import { ModelPicker } from "./model-picker"
-import { SandboxField } from "./sandbox-control"
-import { COMPACT, loadCommands } from "./send"
-import { apply, fileUrl, trigger, type Trigger } from "./suggest"
-import { mentionChoices, type Product } from "./members"
 
-const MODES: PermissionLevel[] = ["ask", "autoApprove", "fullTakeover"]
-export const modeOptions = () => [
-  { value: "ask" as const, label: t("permissionLevel.ask"), description: t("permissionLevel.ask.desc"), icon: Eye },
-  {
-    value: "autoApprove" as const,
-    label: t("permissionLevel.autoApprove"),
-    description: t("permissionLevel.autoApprove.desc"),
-    icon: Hand,
-  },
-  {
-    value: "fullTakeover" as const,
-    label: t("permissionLevel.fullTakeover"),
-    description: t("permissionLevel.fullTakeover.desc"),
-    icon: Zap,
-    tone: "danger" as const,
-    badge: t("permissionLevel.fullTakeover.badge"),
-  },
-]
-
-export type Submission = { text: string; files: FilePartInput[] }
-export type ComposerDraft = Submission & { mentions?: { path: string; part: FilePartInput }[] }
-
-/**
- * Text pushed into the composer from outside (when editing a sent message), keyed by conversation; an open composer
- * picks it up immediately
- */
-const [fills, setFills] = createStore<Record<string, { text: string; at: number }>>({})
-export const fill = (key: string, text: string) => setFills(key, { text, at: Date.now() })
-
-type Option = {
-  value: string
-  label: string
-  detail?: string
-  directory?: boolean
-  seat?: boolean
+export type Attachment = { filename: string; mime: string; url: string }
+export type Submission = { text: string; files: Attachment[] }
+export type ComposerDraft = Submission
+const attachmentBytes = (url: string) => {
+  const data = url.slice(url.indexOf(",") + 1)
+  return (data.length * 3) / 4 - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
 }
 
-/** Context usage: share of the model's context window used by the latest reply; hover for tokens and cost */
-function Usage(props: { sessionID: string }) {
-  const value = () => usage(props.sessionID)
-  const detail = (info: { tokens: number; limit?: number; costs: Record<string, number> }) =>
-    Object.keys(info.costs).length
-      ? t("prompt.usageDetail", {
-          tokens: info.tokens.toLocaleString(),
-          limit: (info.limit ?? 0).toLocaleString(),
-          cost: Object.entries(info.costs)
-            .map(([currency, amount]) => `${currency === "CNY" ? "¥" : "$"}${amount.toFixed(4)}`)
-            .join(" · "),
-        })
-      : t("prompt.usageTokens", {
-          tokens: info.tokens.toLocaleString(),
-          limit: (info.limit ?? 0).toLocaleString(),
-        })
-  return (
-    <Show when={value()?.percent !== undefined && value()}>
-      {(info) => (
-        <Tip label={detail(info())} placement="top">
-          <span
-            class="usage"
-            role="status"
-            aria-label={t("prompt.usage", { percent: info().percent! })}
-            data-level={info().percent! >= 80 ? "high" : undefined}
-          >
-            <span class="usage-bar">
-              <span style={{ width: `${info().percent}%` }} />
-            </span>
-            {info().percent}%
-          </span>
-        </Tip>
-      )}
-    </Show>
-  )
-}
-
-/**
- * Composer: Enter sends, Shift+Enter adds a newline (nothing is sent during IME composition), Shift+Tab switches the
- * permission mode. @ mentions files, / runs commands; pasted or dropped images and files become attachments.
- */
 export function Composer(props: {
+  group?: boolean
   sessionID?: string
   directory: string
   busy: boolean
   disabled?: boolean
-  external?: boolean
   draft?: ComposerDraft
   onDraftChange?: (draft: ComposerDraft) => void
   compact?: boolean
   autofocus?: boolean
   placeholder?: string
-  /** Group members offered by @ */
-  seats?: readonly { name: string; product: string; role?: string }[]
-  products?: readonly Product[]
   onSubmit: (submission: Submission) => Promise<unknown> | void
   onStop?: () => void
-  onMode?: (mode: PermissionLevel) => void | Promise<void>
 }) {
   let input!: HTMLTextAreaElement
+  let picker!: HTMLInputElement
   const [text, setText] = createSignal(props.draft?.text ?? "")
-  const [files, setFiles] = createSignal<FilePartInput[]>(props.draft?.files ?? [])
-  /** Files mentioned with @; only those whose "@path" is still in the text are sent */
-  const [mentions, setMentions] = createSignal<{ path: string; part: FilePartInput }[]>(props.draft?.mentions ?? [])
+  const [files, setFiles] = createSignal<Attachment[]>(props.draft?.files ?? [])
   const [sending, setSending] = createSignal(false)
-  const [at, setAt] = createSignal<Trigger>()
-  const [active, setActive] = createSignal(0)
-  const current = () => choice(props.sessionID, props.directory)
-  const variants = () => Object.keys(find(current().model)?.model.variants ?? {})
-  /** For a conversation in a worktree, files and commands are looked up in the worktree directory */
-  const dir = () => (props.sessionID ? session(props.sessionID)?.directory : undefined) ?? props.directory
+  const selected = () => choice(props.sessionID, props.directory)
+  const levels = () => find(selected().model)?.model.thinking ?? []
   const key = () => choiceKey(props.sessionID, props.directory)
-  createEffect(() => {
-    const info = props.sessionID ? session(props.sessionID) : undefined
-    if (info?.permissionNotice !== "legacy-permissions-reset") return
-    const key = `permission-migration:${info.id}`
-    void (async () => {
-      if (await storage.get(key, false)) return
-      await storage.set(key, true)
-      toast({ kind: "info", title: t("permissionLevel.migrated") })
-    })()
-  })
-  let attachmentEpoch = 0
-  createEffect(
-    on(
-      [key, () => props.disabled, () => props.external],
-      () => {
-        attachmentEpoch++
-      },
-      { defer: true },
-    ),
-  )
+  const usable = () => !props.disabled && (props.group || (connected() && !!selected().model))
+  let epoch = 0
   createEffect(
     on(
       key,
       () => {
+        epoch++
         setText(props.draft?.text ?? "")
         setFiles(props.draft?.files ?? [])
-        setMentions(props.draft?.mentions ?? [])
       },
       { defer: true },
     ),
   )
-  createEffect(() => props.onDraftChange?.({ text: text(), files: files(), mentions: mentions() }))
-
-  onMount(() => props.autofocus && input.focus())
-  createEffect(
-    on(
-      () => fills[key()]?.at,
-      (stamp) => {
-        if (!stamp || props.disabled) return
-        setText(fills[key()]!.text)
-        queueMicrotask(() => {
-          resize()
-          input.focus()
-          input.setSelectionRange(input.value.length, input.value.length)
-        })
-      },
-    ),
-  )
-
-  const [options] = createResource(
-    () =>
-      at() && {
-        ...at()!,
-        dir: dir(),
-        seats: props.seats ?? [],
-        products: props.products ?? [],
-      },
-    async (trigger): Promise<Option[]> => {
-      if (trigger.kind === "command") {
-        const list = await loadCommands(trigger.dir)
-        const query = trigger.query.toLowerCase()
-        return [
-          { value: COMPACT, label: COMPACT, detail: t("prompt.compact") },
-          ...list.map((item) => ({ value: item.name, label: item.name, detail: item.description })),
-        ].filter((item) => item.value.toLowerCase().includes(query))
-      }
-      const found = await call(client(trigger.dir).find.files({ query: trigger.query, limit: 20 })).catch(() => [])
-      const mentions = mentionChoices(trigger.query, trigger.seats, trigger.products).map((choice) => ({
-        value: choice.name,
-        label: choice.name,
-        detail: choice.detail,
-        seat: true,
-      }))
-      return [
-        ...mentions,
-        ...found.map((path) => ({
-          value: path.replace(/\\/g, "/"),
-          label: path.replace(/\\/g, "/"),
-          directory: /[\\/]$/.test(path),
-        })),
-      ]
-    },
-  )
-  const open = () => !!at() && (options()?.length ?? 0) > 0
-
-  const detect = () => {
-    if (props.disabled || props.external) return setAt(undefined)
-    setAt(trigger(input.value, input.selectionStart ?? input.value.length))
-  }
-
+  createEffect(() => props.onDraftChange?.({ text: text(), files: files() }))
+  onMount(() => {
+    if (props.autofocus) input.focus()
+  })
   const resize = () => {
     input.style.height = "auto"
     input.style.height = `${Math.min(input.scrollHeight, 320)}px`
   }
-
-  const select = (option: Option | undefined) => {
-    if (props.disabled || props.external) return
-    const hit = at()
-    if (!option || !hit) return
-    const next = apply(text(), hit, option.value)
-    setText(next.text)
-    if (hit.kind === "file" && !option.seat) {
-      const absolute = `${dir().replace(/[\\/]+$/, "")}/${option.value}`
-      setMentions((list) => [
-        ...list.filter((item) => item.path !== option.value),
-        {
-          path: option.value,
-          part: {
-            type: "file",
-            mime: "text/plain",
-            filename: option.value,
-            url: fileUrl(absolute),
-            source: { type: "file", path: option.value, text: { start: 0, end: 0, value: "" } },
-          },
-        },
-      ])
-    }
-    setAt(undefined)
-    setActive(0)
-    queueMicrotask(() => {
-      input.value = next.text
-      input.setSelectionRange(next.caret, next.caret)
-      input.focus()
-      resize()
-    })
-  }
-
   const submit = async () => {
+    if (!usable() || sending() || (!text().trim() && !files().length)) return
     const target = key()
-    const value = text().trim()
-    if ((!value && !files().length) || sending() || props.disabled) return
     setSending(true)
     try {
-      const referenced = mentions()
-        .filter((item) => value.includes(`@${item.path}`))
-        .map((item) => item.part)
-      await props.onSubmit({ text: value, files: [...files(), ...referenced] })
-      if (target !== key()) return
-      setText("")
-      setFiles([])
-      setMentions([])
-      setAt(undefined)
-      resize()
+      await props.onSubmit({ text: text().trim(), files: files() })
+      if (key() === target) {
+        setText("")
+        setFiles([])
+        resize()
+      }
     } catch (error) {
-      toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error })
+      toast({
+        kind: "error",
+        title: t("error.request", { message: error instanceof Error ? error.message : "MRK-1001" }),
+        error,
+      })
     } finally {
       setSending(false)
     }
   }
-
-  const setMode = (mode: PermissionLevel) => {
-    if (props.disabled) return
-    if (props.onMode) return props.onMode(mode)
-    choose(props.sessionID, props.directory, { mode })
-  }
-
-  const keydown = (event: KeyboardEvent) => {
-    if (props.disabled) {
-      event.preventDefault()
+  const attach = (file: File) => {
+    if (props.disabled || props.group) return
+    const target = epoch
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (target !== epoch || props.disabled) return
+      const url = String(reader.result)
+      if (file.size + files().reduce((sum, file) => sum + attachmentBytes(file.url), 0) > 2 * 1024 * 1024) {
+        toast({ kind: "error", title: t("prompt.attachmentLimit") })
+        return
+      }
+      setFiles((items) => [...items, { filename: file.name || "image.png", mime: file.type || "text/plain", url }])
+    }
+    reader.onerror = () => toast({ kind: "error", title: t("prompt.attachmentReadFailed") })
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ kind: "error", title: t("prompt.attachmentLimit") })
       return
     }
+    reader.readAsDataURL(file)
+  }
+  const keydown = (event: KeyboardEvent) => {
     if (event.isComposing || event.keyCode === 229) return
-    if (open()) {
-      const list = options() ?? []
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault()
-        setActive((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + list.length) % list.length)
-        return
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault()
-        select(list[active()])
-        return
-      }
-      if (event.key === "Escape") {
-        event.preventDefault()
-        setAt(undefined)
-        return
-      }
-    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       void submit()
     }
-    if (event.key === "Tab" && event.shiftKey) {
+    if (event.key === "Escape" && props.busy) {
       event.preventDefault()
-      const index = MODES.indexOf(current().mode)
-      setMode(MODES[(index + 1) % MODES.length]!)
+      props.onStop?.()
     }
   }
-
-  const attach = (file: File) => {
-    if (props.disabled || props.external) return
-    const target = key()
-    const epoch = attachmentEpoch
-    const path = bridge?.getPathForFile(file)
-    if (path) {
-      setFiles((list) => [
-        ...list,
-        { type: "file", mime: file.type || "text/plain", filename: file.name, url: fileUrl(path) },
-      ])
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (props.disabled || props.external || target !== key() || epoch !== attachmentEpoch) return
-      setFiles((list) => [
-        ...list,
-        { type: "file", mime: file.type, filename: file.name || "image.png", url: String(reader.result) },
-      ])
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const paste = (event: ClipboardEvent) => {
-    if (props.disabled) {
-      event.preventDefault()
-      return
-    }
-    const items = [...(event.clipboardData?.files ?? [])]
-    if (!items.length) return
-    event.preventDefault()
-    items.forEach(attach)
-  }
-
-  const pick = async () => {
-    if (props.disabled || props.external) return
-    const target = key()
-    const epoch = attachmentEpoch
-    const picked = await bridge?.openFilePicker({ multiple: true })
-    if (props.disabled || props.external || target !== key() || epoch !== attachmentEpoch) return
-    const list = Array.isArray(picked) ? picked : picked ? [picked] : []
-    setFiles((current) => [
-      ...current,
-      ...list.map((path) => ({
-        type: "file" as const,
-        mime: "text/plain",
-        filename: path.split(/[\\/]/).pop() ?? path,
-        url: fileUrl(path),
-      })),
-    ])
-  }
-
-  // Preload the command list so typing / does not wait
-  createEffect(() => !props.external && void loadCommands(dir()))
-
   return (
     <div
       class="composer"
@@ -390,53 +124,19 @@ export function Composer(props: {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault()
-        ;[...(event.dataTransfer?.files ?? [])].forEach(attach)
+        ;[...event.dataTransfer!.files].forEach(attach)
       }}
     >
-      <Show when={!props.disabled && !props.external && open()}>
-        <div
-          class="suggest popover scroll"
-          role="listbox"
-          id="composer-suggest"
-          aria-label={at()?.kind === "file" ? t("prompt.mention") : t("prompt.command")}
-        >
-          <For each={options()}>
-            {(option, index) => (
-              <div
-                id={`composer-suggest-${index()}`}
-                class="menu-item"
-                role="option"
-                aria-selected={index() === active()}
-                data-highlighted={index() === active() ? "" : undefined}
-                onMouseEnter={() => setActive(index())}
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  select(option)
-                }}
-              >
-                <Show when={at()?.kind === "file"} fallback={<SquareSlash class="icon icon-sm muted" />}>
-                  {option.directory ? <Folder class="icon icon-sm muted" /> : <FileText class="icon icon-sm muted" />}
-                </Show>
-                <span class="ellipsis mono">{option.label}</span>
-                <Show when={option.detail}>
-                  <span class="desc ellipsis">{option.detail}</span>
-                </Show>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
       <Show when={files().length}>
         <div class="attachments composer-files">
           <For each={files()}>
             {(file, index) => (
               <span class="attachment">
-                <AttachmentPreview part={file} directory={dir()} />
+                <AttachmentPreview part={file} directory={props.directory} />
                 <button
                   class="icon-button sm"
-                  aria-label={t("prompt.removeAttachment", { name: file.filename ?? "" })}
-                  disabled={props.disabled}
-                  onClick={() => !props.disabled && setFiles((list) => list.filter((_, i) => i !== index()))}
+                  aria-label={t("prompt.removeAttachment", { name: file.filename })}
+                  onClick={() => setFiles((items) => items.filter((_, at) => at !== index()))}
                 >
                   <X class="icon icon-xs" />
                 </button>
@@ -448,105 +148,100 @@ export function Composer(props: {
       <textarea
         ref={input}
         class="composer-input selectable"
-        rows={props.compact ? 1 : 3}
+        rows={2}
         aria-label={t("prompt.label")}
-        aria-controls={open() ? "composer-suggest" : undefined}
-        aria-activedescendant={open() ? `composer-suggest-${active()}` : undefined}
-        placeholder={props.placeholder ?? (props.busy ? t("prompt.placeholderBusy") : t("prompt.placeholder"))}
+        placeholder={props.placeholder ?? t(props.busy ? "prompt.placeholderBusy" : "prompt.placeholder")}
         value={text()}
         disabled={props.disabled}
         onInput={(event) => {
-          if (props.disabled) {
-            event.currentTarget.value = text()
-            return
-          }
           setText(event.currentTarget.value)
-          setActive(0)
-          detect()
           resize()
         }}
-        onClick={detect}
-        onBlur={() => setAt(undefined)}
         onKeyDown={keydown}
-        onPaste={paste}
+        onPaste={(event) => {
+          const pasted = [...(event.clipboardData?.files ?? [])]
+          if (pasted.length) {
+            event.preventDefault()
+            pasted.forEach(attach)
+          }
+        }}
       />
       <div class="composer-bar">
-        <Show when={!props.external}>
+        <Show when={!props.group}>
+          <Tip label={t("permissionLevel.ask.desc")}>
+            <span class="chip">
+              <Eye class="icon icon-sm" />
+              {t("permissionLevel.ask")}
+            </span>
+          </Tip>
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              ;[...(event.currentTarget.files ?? [])].forEach(attach)
+              event.currentTarget.value = ""
+            }}
+          />
           <button
             class="icon-button"
             aria-label={t("prompt.attach")}
             disabled={props.disabled}
-            onClick={() => void pick()}
+            onClick={() => picker.click()}
           >
-            <Paperclip class="icon" />
-          </button>
-        </Show>
-        <Tip label={t("permissionLevel.hint")} placement="top">
-          <Select
-            class={current().mode === "fullTakeover" ? "chip session-mode-auto" : "chip"}
-            label={t("permissionLevel.named", {
-              mode: modeOptions().find((option) => option.value === current().mode)?.label ?? "",
-            })}
-            options={modeOptions()}
-            value={current().mode}
-            disabled={props.disabled}
-            onChange={setMode}
-          />
-        </Tip>
-        <Show when={!props.external && !connected()}>
-          <button class="chip accent" onClick={() => setUi("settings", "models")}>
-            {t("prompt.noModel")}
+            <Paperclip class="icon icon-sm" />
           </button>
         </Show>
         <span class="spacer" />
-        <Show when={!props.external && props.sessionID}>{(id) => <Usage sessionID={id()} />}</Show>
-        <Show when={!props.external && connected()}>
-          <ModelPicker
-            value={current().model}
-            disabled={props.disabled}
-            onChange={(model) => !props.disabled && choose(props.sessionID, props.directory, { model })}
-          />
+        <Show when={props.sessionID ? usage(props.sessionID) : undefined}>
+          {(value) => (
+            <span
+              class="usage"
+              role="status"
+              title={t("prompt.usageTokens", { tokens: value().tokens, limit: value().limit ?? 0 })}
+            >
+              {value().percent ?? 0}%
+            </span>
+          )}
         </Show>
-        <Show when={!props.external && variants().length}>
-          <Tip label={t("model.variant.hint")} placement="top">
+        <Show when={!props.group}>
+          <ModelPicker
+            value={selected().model}
+            disabled={props.disabled}
+            onChange={(model) => choose(props.sessionID, props.directory, { model })}
+          />
+          <Show when={levels().length}>
             <Select
-              label={t("model.variant.named", { level: current().variant ?? variants()[0] ?? "" })}
-              options={variants().map((value) => ({ value, label: value }))}
-              value={current().variant ?? variants()[0]}
+              class="chip"
+              label={t("model.variant.named", { level: selected().variant ?? "" })}
+              options={levels().map((value) => ({ value, label: value }))}
+              value={selected().variant}
               disabled={props.disabled}
-              onChange={(variant) => !props.disabled && choose(props.sessionID, props.directory, { variant })}
+              onChange={(variant) => choose(props.sessionID, props.directory, { variant })}
               display={(option) => (
                 <>
                   <Brain class="icon icon-sm" />
-                  <span>{option?.label}</span>
+                  {option?.label}
                 </>
               )}
             />
-          </Tip>
-        </Show>
-        <Show when={!props.external}>
-          <SandboxField directory={dir()} disabled={props.disabled} permissionLevel={current().mode} />
+          </Show>
         </Show>
         <Show
-          when={props.busy && !text().trim()}
+          when={props.busy && !text().trim() && !files().length}
           fallback={
             <button
               class="icon-button solid"
               aria-label={t("prompt.send")}
-              title={`${t("prompt.send")} (Enter)`}
-              disabled={(!text().trim() && !files().length) || sending() || props.disabled}
+              disabled={!usable() || sending() || (!text().trim() && !files().length)}
               onClick={() => void submit()}
             >
               <ArrowUp class="icon" />
             </button>
           }
         >
-          <button
-            class="icon-button solid stop"
-            aria-label={t("prompt.stop")}
-            title={mac ? "⌘." : "Esc"}
-            onClick={() => props.onStop?.()}
-          >
+          <button class="icon-button solid stop" aria-label={t("prompt.stop")} onClick={() => props.onStop?.()}>
             <Square class="icon icon-xs" />
           </button>
         </Show>

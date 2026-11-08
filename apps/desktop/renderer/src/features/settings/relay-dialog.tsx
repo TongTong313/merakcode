@@ -1,8 +1,8 @@
 import { createEffect, createSignal, For, Show } from "solid-js"
-import type { Config } from "@merakcode/sdk/client"
+import type { ConfigProvider } from "@merakcode/sdk"
 import { t } from "../../i18n"
-import { call, client } from "../../state/client"
-import { loadProviders, state, updateConfig } from "../../state/store"
+import { client } from "../../state/client"
+import { state, updateConfig } from "../../state/store"
 import { Dialog } from "../../ui/dialog"
 import { Segmented } from "../../ui/segmented"
 import { toast } from "../../ui/toast"
@@ -10,25 +10,9 @@ import { manualRow, modelConfig, rowOf, windowsValid, type Endpoint, type RelayR
 
 type Kind = "claude-code" | "codex" | "standard" | "custom"
 
-const project = () => state.folders[0]?.directory
-
-/** The SDKs append their own path, so the saved address has to end in /v1. */
 function apiRoot(url: string) {
   const trimmed = url.trim().replace(/\/+$/, "")
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
-}
-
-function npmOf(endpoint: Endpoint) {
-  if (endpoint === "anthropic") return "@ai-sdk/anthropic"
-  if (endpoint === "openai-responses") return "@ai-sdk/openai"
-  return "@ai-sdk/openai-compatible"
-}
-
-function chosenEndpoint(kind: Kind, endpoint: Endpoint, custom: Endpoint) {
-  if (kind === "claude-code") return "anthropic"
-  if (kind === "codex") return "openai-responses"
-  if (kind === "custom") return custom
-  return endpoint
 }
 
 function headersOf(text: string) {
@@ -81,7 +65,7 @@ export function CustomDialog(props: {
   const [url, setUrl] = createSignal(props.station?.baseURL ?? "")
   const [key, setKey] = createSignal("")
   const [kind, setKind] = createSignal<Kind>("standard")
-  const [protocol, setProtocol] = createSignal<Endpoint>("anthropic")
+  const [protocol, setProtocol] = createSignal<Endpoint>("openai")
   const [auth, setAuth] = createSignal<"bearer" | "x-api-key">("bearer")
   const [headers, setHeaders] = createSignal("")
   let headersBox: HTMLTextAreaElement | undefined
@@ -112,17 +96,25 @@ export function CustomDialog(props: {
     return selected.length > 0 && selected.every(windowsValid)
   }
 
+  const draft = (): ConfigProvider => ({
+    protocol: kind() === "claude-code" ? "anthropic" : protocol(),
+    baseURL: apiRoot(url()),
+    apiKey: key().trim(),
+    auth: kind() === "custom" ? auth() : "bearer",
+    ...(kind() === "custom" ? { headers: headersOf(headers()) } : {}),
+  })
+
   const load = async () => {
-    const found = await call(
-      client(project()).provider.relay.discover({ baseURL: url().trim(), key: key().trim(), kind: kind() }),
-    )
-    if ("error" in found) {
-      toast({ kind: "error", title: found.error })
+    try {
+      const found = await (await client()).model.discover({ provider: draft() })
+      setRows((found ?? []).map(rowOf))
+    } catch (error) {
       setRows([])
-      setStep("models")
-      return
+      toast({
+        kind: "error",
+        title: t("error.request", { message: error instanceof Error ? error.message : String(error) }),
+      })
     }
-    setRows(found.models.map(rowOf))
     setStep("models")
   }
 
@@ -134,74 +126,37 @@ export function CustomDialog(props: {
   }
 
   const save = async () => {
-    const taken = new Set([
-      ...(state.providers?.all ?? []).map((provider) => provider.id),
-      ...Object.keys(state.config?.provider ?? {}),
-    ])
+    const taken = new Set(Object.keys(state.config?.providers ?? {}))
     const station = props.station?.id ?? slug(name(), taken)
-    const selected = rows().filter((row) => row.selected)
-    const endpoints = selected.map((row) => chosenEndpoint(kind(), row.endpoint, protocol()))
     const id = slug(`${station}-${kind()}`, taken)
-    const extra = kind() === "custom" ? headersOf(headers()) : {}
-    const provider: NonNullable<Config["provider"]>[string] = {
+    const provider: ConfigProvider = {
+      ...draft(),
       name: `${name().trim()} · ${t(kinds().find((item) => item[0] === kind())![1])}`,
-      npm: npmOf(endpoints[0] ?? "openai-chat"),
-      api: apiRoot(url()),
-      relay: {
-        station,
-        group: kind(),
-        kind: kind(),
-        ...(kind() === "custom" ? { auth: auth() } : {}),
-      },
-      ...(Object.keys(extra).length ? { options: { headers: extra } } : {}),
+      station,
+      group: kind(),
       models: Object.fromEntries(
-        selected.map((row, index) => [row.id, modelConfig(row, npmOf(endpoints[index] ?? "openai-chat"))]),
+        rows()
+          .filter((row) => row.selected)
+          .map((row) => [row.id, modelConfig(row)]),
       ),
     }
-    await call(client(project()).auth.set({ providerID: id, auth: { type: "api", key: key().trim() } }))
-    const enabled = state.config?.enabled_providers
-    await updateConfig({
-      provider: { [id]: provider },
-      ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
-    })
-    await loadProviders(project())
+    await updateConfig({ providers: { [id]: provider } })
     props.onClose()
   }
 
   const saveCompatible = async () => {
-    const taken = new Set([
-      ...(state.providers?.all ?? []).map((provider) => provider.id),
-      ...Object.keys(state.config?.provider ?? {}),
-    ])
-    const base =
-      compatibleName()
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "custom"
-    let id = base
-    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
-    // Local models rarely need a key, but the engine only lists providers that have one: store a placeholder
-    await call(
-      client(project()).auth.set({ providerID: id, auth: { type: "api", key: compatibleKey().trim() || "none" } }),
-    )
-    const enabled = state.config?.enabled_providers
+    const id = slug(compatibleName(), new Set(Object.keys(state.config?.providers ?? {})))
     await updateConfig({
-      provider: {
+      providers: {
         [id]: {
           name: compatibleName().trim(),
-          npm: "@ai-sdk/openai-compatible",
-          options: { baseURL: compatibleUrl().trim() },
+          protocol: "openai",
+          baseURL: compatibleUrl().trim(),
+          apiKey: compatibleKey().trim(),
           models: Object.fromEntries(ids().map((model) => [model, { name: model }])),
         },
       },
-      ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
     })
-    await loadProviders(project())
-    setCompatibleName("")
-    setCompatibleUrl("")
-    setCompatibleKey("")
-    setModels("")
     props.onClose()
   }
 
@@ -466,17 +421,18 @@ export function CustomDialog(props: {
                 <p class="desc">{t("settings.relay.kind.note")}</p>
               </Show>
             </div>
-            <Show when={kind() === "custom"}>
+            <Show when={kind() !== "claude-code"}>
               <Segmented
                 label={t("settings.relay.protocol")}
                 options={[
                   { value: "anthropic", label: t("settings.relay.protocol.anthropic") },
-                  { value: "openai-responses", label: t("settings.relay.protocol.responses") },
-                  { value: "openai-chat", label: t("settings.relay.protocol.chat") },
+                  { value: "openai", label: t("settings.relay.protocol.chat") },
                 ]}
                 value={protocol()}
                 onChange={setProtocol}
               />
+            </Show>
+            <Show when={kind() === "custom"}>
               <Segmented
                 label={t("settings.relay.auth")}
                 options={[

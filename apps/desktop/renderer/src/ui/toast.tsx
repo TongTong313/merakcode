@@ -5,9 +5,9 @@ import Info from "lucide-solid/icons/info"
 import X from "lucide-solid/icons/x"
 import { For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
-import { t } from "../i18n"
+import { locale, t } from "../i18n"
 import { bridge } from "../lib/bridge"
-import { details, summary } from "../state/error"
+import { details, explain, summary } from "../state/error"
 
 type Toast = {
   id: number
@@ -33,7 +33,7 @@ export function toast(input: Omit<Toast, "id">) {
 const dismiss = (id: number) => setToasts((list) => list.filter((item) => item.id !== id))
 
 /** Copies the error's code, message, request id and app version, ready to paste into a bug report */
-export function copyDetails(error: unknown) {
+function copyDetails(error: unknown) {
   const text = details(error, {
     version: bridge?.version ?? "dev",
     platform: bridge?.os ?? navigator.platform,
@@ -60,7 +60,8 @@ export function Toasts() {
               </Match>
             </Switch>
             <div class="body selectable">
-              <div class="title">{item.title}</div>
+              <div class="title">{explain(item.error, locale())?.title ?? item.title}</div>
+              <Show when={explain(item.error, locale())?.hint}>{(hint) => <div class="muted">{hint()}</div>}</Show>
               <Show when={item.detail}>
                 <div class="muted">{item.detail}</div>
               </Show>

@@ -1,40 +1,36 @@
-import type { Session } from "@merakcode/sdk/client"
 import CircleHelp from "lucide-solid/icons/circle-question-mark"
 import Ellipsis from "lucide-solid/icons/ellipsis"
 import FolderOpen from "lucide-solid/icons/folder-open"
 import FolderPlus from "lucide-solid/icons/folder-plus"
-import GitBranch from "lucide-solid/icons/git-branch"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import Plus from "lucide-solid/icons/plus"
-import Users from "lucide-solid/icons/users"
 import Search from "lucide-solid/icons/search"
 import Settings from "lucide-solid/icons/settings"
 import ArrowUpCircle from "lucide-solid/icons/circle-arrow-up"
-import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createSignal, For, Match, Show, Switch } from "solid-js"
 import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
-import { baseName, sameDir, sessionPath } from "../../lib/route"
-import { call, client } from "../../state/client"
+import { baseName, groupPath, sameDir, sessionPath } from "../../lib/route"
+import { groups, loadGroups, unreadGroup } from "../../state/groups"
+import { GroupCreate } from "../conversation/group-create"
 import { unsavedReason } from "../../state/git"
 import {
-  branchOf,
   closeFolder,
-  listen,
-  loadMore,
+  hideSession,
+  type SessionSummary,
   openFolder,
   sessionsOf,
   state,
   statusOf,
   type Folder,
 } from "../../state/store"
-import { setUi, ui } from "../../state/ui"
+import { setUi } from "../../state/ui"
 import { updateState } from "../update/state"
 import { Confirm } from "../../ui/dialog"
 import { Menu } from "../../ui/menu"
 import { toast } from "../../ui/toast"
 import { Rename } from "./rename"
-import { GroupCreate } from "../conversation/group-create"
 import { releaseBuffers } from "../code/state"
 
 const mod = mac ? "⌘" : "Ctrl"
@@ -66,46 +62,18 @@ function Status(props: { status: ReturnType<typeof statusOf> }) {
   )
 }
 
-function GroupNames(props: { sessionID: string; directory: string }) {
-  const [names, setNames] = createSignal("")
-  const load = () => {
-    void call(client(props.directory).collaboration.get({ sessionID: props.sessionID, directory: props.directory }))
-      .then((group) => setNames(group.seats.map((seat) => seat.name).join("、")))
-      .catch(() => undefined)
-  }
-  onMount(() => {
-    load()
-    onCleanup(
-      listen((_directory, event) => {
-        if (event.type === "collaboration.updated" && event.properties.sessionID === props.sessionID) load()
-      }),
-    )
-  })
-  return (
-    <Show when={names()}>
-      <span class="ellipsis">{names()}</span>
-    </Show>
-  )
-}
-
-function Conversation(props: { session: Session; folder: Folder; current?: string }) {
+function Conversation(props: { session: SessionSummary; folder: Folder; current?: string }) {
   const navigate = useNavigate()
   const [deleting, setDeleting] = createSignal(false)
   const [renaming, setRenaming] = createSignal(false)
   const status = () => statusOf(props.session.id)
-  /** A conversation running in a worktree shows its branch */
-  const worktree = () =>
-    props.folder.project?.vcs === "git" && !sameDir(props.session.directory, props.folder.directory)
   const label = () =>
     ({ running: t("status.running"), approval: t("status.approval"), question: t("status.question"), idle: "" })[
       status()
     ]
-  const c = () => client(props.session.directory)
   const remove = async () => {
+    await hideSession(props.session.id)
     setDeleting(false)
-    await call(c().session.delete({ sessionID: props.session.id })).catch((error: Error) =>
-      toast({ kind: "error", title: error.message, error }),
-    )
     if (props.current === props.session.id) navigate(sessionPath(props.folder.directory))
   }
   return (
@@ -117,27 +85,12 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
       >
         <Status status={status()} />
         <span class="body">
-          <span class="title">
-            {props.session.title || t("sidebar.untitled")}
-            <Show when={props.session.metadata?.group === true}>
-              <span class="chip group-chip">
-                <Users class="icon icon-xs" />
-                {t("sidebar.groupMark")}
-              </span>
-            </Show>
-          </span>
+          <span class="title">{props.session.title || t("sidebar.untitled")}</span>
           <span class="meta">
             <Show when={label()}>
               <span class="state" data-state={status()}>
                 {label()}
               </span>
-            </Show>
-            <Show when={worktree()}>
-              <GitBranch class="icon icon-xs" />
-              <span class="ellipsis">{branchOf(props.session.directory) ?? t("sidebar.worktree")}</span>
-            </Show>
-            <Show when={props.session.metadata?.group === true}>
-              <GroupNames sessionID={props.session.id} directory={props.session.directory} />
             </Show>
           </span>
         </span>
@@ -149,18 +102,22 @@ function Conversation(props: { session: Session; folder: Folder; current?: strin
         trigger={<Ellipsis class="icon icon-sm" />}
         items={[
           { label: t("sidebar.rename"), onSelect: () => setRenaming(true) },
-          { label: t("sidebar.delete"), danger: true, onSelect: () => setDeleting(true) },
+          { label: t("sidebar.hide"), danger: true, onSelect: () => setDeleting(true) },
         ]}
       />
       <Rename session={props.session} open={renaming()} onClose={() => setRenaming(false)} />
       <Confirm
         open={deleting()}
-        title={t("sidebar.deleteConfirm", { title: props.session.title })}
-        description={t("sidebar.deleteDetail")}
-        confirm={t("sidebar.delete")}
+        title={t("sidebar.hideConfirm", { title: props.session.title })}
+        description={t("sidebar.hideDetail")}
+        confirm={t("sidebar.hide")}
         cancel={t("common.cancel")}
         danger
-        onResult={(ok) => (ok ? void remove() : setDeleting(false))}
+        onResult={(ok) =>
+          ok
+            ? void remove().catch((error: Error) => toast({ kind: "error", title: error.message, error }))
+            : setDeleting(false)
+        }
       />
     </div>
   )
@@ -170,14 +127,19 @@ function Group(props: { folder: Folder; current?: string; route?: string }) {
   const navigate = useNavigate()
   const name = () => baseName(props.folder.directory)
   const list = () => sessionsOf(props.folder)
-  const remove = () => {
+  const remove = async () => {
     const directory = props.folder.directory
-    const directories = [directory, ...(props.folder.project?.sandboxes ?? [])]
+    const directories = [directory]
     const reason = directories.map(unsavedReason).find(Boolean)
     if (reason) return void toast({ kind: "info", title: reason })
     for (const value of directories) if (!releaseBuffers(value)) return
     const openHere = props.route !== undefined && sameDir(props.route, directory)
-    closeFolder(directory)
+    try {
+      await closeFolder(directory)
+    } catch (error) {
+      toast({ kind: "error", title: t("error.request", { message: "MRK-5001" }), error })
+      return
+    }
     if (!openHere) return
     const next = state.folders[0]
     navigate(next ? sessionPath(next.directory) : "/")
@@ -206,11 +168,6 @@ function Group(props: { folder: Folder; current?: string; route?: string }) {
       <For each={list()} fallback={<div class="group-empty subtle">{t("sidebar.empty")}</div>}>
         {(session) => <Conversation session={session} folder={props.folder} current={props.current} />}
       </For>
-      <Show when={props.folder.more}>
-        <button class="button ghost sm more" onClick={() => void loadMore(props.folder.directory)}>
-          {t("sidebar.more")}
-        </button>
-      </Show>
     </section>
   )
 }
@@ -237,7 +194,8 @@ function UpdateNotice() {
 }
 
 /** Sidebar: new conversation, search, conversations grouped by project (with run status), settings */
-export function Sidebar(props: { directory?: string; current?: string }) {
+export function Sidebar(props: { directory?: string; current?: string; group?: string }) {
+  const [creatingGroup, setCreatingGroup] = createSignal(false)
   const navigate = useNavigate()
   const directory = () => props.directory ?? state.folders[0]?.directory
   const newConversation = () => {
@@ -259,11 +217,12 @@ export function Sidebar(props: { directory?: string; current?: string }) {
           {t("sidebar.new")}
           <kbd aria-hidden="true">{mod} N</kbd>
         </button>
-        <button class="nav-row" disabled={!directory()} onClick={() => setUi("newTeam", true)}>
-          <Users class="icon" />
-          {t("sidebar.group")}
-          <kbd aria-hidden="true">{mod} G</kbd>
+
+        <button class="nav-row" onClick={() => setCreatingGroup(true)}>
+          <Plus class="icon" />
+          {t("group.title")}
         </button>
+
         <button class="nav-row" onClick={() => setUi("palette", true)}>
           <Search class="icon" />
           {t("sidebar.search")}
@@ -271,10 +230,43 @@ export function Sidebar(props: { directory?: string; current?: string }) {
         </button>
       </div>
       <div class="sidebar-scroll scroll">
+        <Show when={groups().length}>
+          <section class="group" aria-label={t("group.groups")}>
+            <div class="group-title">{t("group.groups")}</div>
+            <For each={groups()}>
+              {(group) => (
+                <A
+                  class="conversation"
+                  href={groupPath(group.project.directory, group.id)}
+                  aria-current={props.group === group.id ? "page" : undefined}
+                >
+                  <span class="body">
+                    <span class="title">{group.name}</span>
+                  </span>
+                  <Show when={unreadGroup(group.id)}>
+                    <span class="count" data-unread-group={group.id}>
+                      {unreadGroup(group.id)}
+                    </span>
+                  </Show>
+                </A>
+              )}
+            </For>
+          </section>
+        </Show>
         <For each={state.folders}>
           {(folder) => <Group folder={folder} current={props.current} route={props.directory} />}
         </For>
       </div>
+      <GroupCreate
+        directory={directory() ?? ""}
+        open={creatingGroup()}
+        onClose={() => setCreatingGroup(false)}
+        onCreated={(group) => {
+          void loadGroups()
+            .then(() => navigate(groupPath(group.project.directory, group.id)))
+            .catch((error) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error }))
+        }}
+      />
       <UpdateNotice />
       <div class="sidebar-bottom">
         <button class="nav-row grow" onClick={() => setUi("settings", "general")}>
@@ -290,16 +282,6 @@ export function Sidebar(props: { directory?: string; current?: string }) {
           <FolderPlus class="icon" />
         </button>
       </div>
-      <Show when={directory()}>
-        {(dir) => (
-          <GroupCreate
-            directory={dir()}
-            open={ui.newTeam}
-            onClose={() => setUi("newTeam", false)}
-            onCreated={(sessionID) => navigate(sessionPath(dir(), sessionID))}
-          />
-        )}
-      </Show>
     </nav>
   )
 }

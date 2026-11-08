@@ -1,17 +1,16 @@
 import CircleCheck from "lucide-solid/icons/circle-check"
 import { createSignal, For, Show } from "solid-js"
 import { locale, t } from "../../i18n"
-import { call, client } from "../../state/client"
-import { connected, loadProviders, state } from "../../state/store"
+import { connected, updateConfig, state } from "../../state/store"
 import { setUi, ui } from "../../state/ui"
 import { Dialog } from "../../ui/dialog"
 import { providerLabel } from "../../ui/provider-label"
 
 /** Providers listed directly on the onboarding page; the rest are in settings */
-const FEATURED = ["alibaba-cn", "deepseek", "zhipuai", "moonshotai-cn", "openai", "anthropic", "google", "openrouter"]
+const FEATURED = ["dashscope", "deepseek", "zhipu", "moonshot", "openai", "anthropic", "gemini", "openrouter"]
 
 /**
- * Shown while no model is usable: pick a provider, enter a key, verify. Can be skipped, which keeps it closed for the
+ * Shown while no model is usable: pick a provider and save a key. Can be skipped, which keeps it closed for the
  * rest of this launch.
  */
 export function Onboarding() {
@@ -19,32 +18,25 @@ export function Onboarding() {
   const [key, setKey] = createSignal("")
   const [error, setError] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
-  const open = () => !!state.providers && !connected() && !ui.skipped && !ui.settings
+  const open = () => !!state.config && !connected() && !ui.skipped && !ui.settings
   const providers = () =>
     FEATURED.flatMap((id) => {
-      const provider = state.providers?.all.find((item) => item.id === id)
-      return provider ? [provider] : []
+      const provider = state.config?.providers[id]
+      return provider ? [{ id, name: provider.name || id, origin: "official" as const }] : []
     })
-  const directory = () => state.folders[0]?.directory
   const label = (item: { id: string; name: string; origin?: "official" | "configured" }) =>
     providerLabel(item, locale())
 
-  const verify = async () => {
+  const save = async () => {
     const providerID = picked()
-    if (!providerID || !key().trim()) return
+    if (!providerID || !key().trim() || busy()) return
     setBusy(true)
     setError(undefined)
     try {
-      await call(client(directory()).auth.set({ providerID, auth: { type: "api", key: key().trim() } }))
-      const result = (await call(client(directory()).provider.verify({ providerID }))) as {
-        ok?: boolean
-        message?: string
-      }
-      if (result.ok === false) {
-        setError(t("settings.provider.invalid", { message: result.message ?? "" }))
-        return
-      }
-      await loadProviders(directory())
+      await updateConfig({
+        providers: { [providerID]: { ...state.config?.providers[providerID], apiKey: key().trim(), disabled: false } },
+      })
+      setKey("")
     } catch (failure) {
       setError((failure as Error).message)
     } finally {
@@ -68,8 +60,8 @@ export function Onboarding() {
           <button class="button secondary" onClick={() => setUi("skipped", true)}>
             {t("onboarding.skip")}
           </button>
-          <button class="button primary" disabled={!picked() || !key().trim() || busy()} onClick={() => void verify()}>
-            {t("settings.provider.verify")}
+          <button class="button primary" disabled={!picked() || !key().trim() || busy()} onClick={() => void save()}>
+            {t("common.save")}
           </button>
         </>
       }
@@ -94,7 +86,7 @@ export function Onboarding() {
               type="password"
               value={key()}
               onInput={(event) => setKey(event.currentTarget.value)}
-              onKeyDown={(event) => event.key === "Enter" && void verify()}
+              onKeyDown={(event) => event.key === "Enter" && !event.isComposing && void save()}
               autofocus
             />
             <Show when={error()}>
@@ -103,7 +95,7 @@ export function Onboarding() {
             <Show when={connected()}>
               <div class="verified">
                 <CircleCheck class="icon icon-sm" />
-                {t("settings.provider.verified")}
+                {t("settings.provider.configured")}
               </div>
             </Show>
           </div>

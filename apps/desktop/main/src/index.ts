@@ -1,5 +1,5 @@
-import { resolveLogRoot } from "@merakcode/log/node"
 import { Paths } from "@merakcode/util/paths"
+import { ErrorCode } from "@merakcode/util/error-code"
 import { Project } from "@merakcode/util/project"
 import { app, dialog, nativeTheme, session, shell } from "electron"
 import { readFileSync } from "node:fs"
@@ -81,11 +81,13 @@ function main() {
   const logs = Log.directory(dev)
   const icon = dev ? path.join(here, "..", "..", "build", "icon.png") : path.join(resources, "icon.png")
   log.info("starting", { version: app.getVersion(), dev, platform: process.platform, engine: layout.kind })
+  let quitting = false
 
   const backend = new Backend({
     executable: Engine.command(layout),
     env: () => ({ MERAKCODE_APP_DIST: Engine.appDist(layout, resources) }),
     cwd: homedir(),
+    serve: dev ? ["--development"] : [],
     log: (level, message, extra) =>
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "backend", message, extra),
   })
@@ -97,6 +99,7 @@ function main() {
     locale: () => settings.locale,
     logs,
     error: () => backend.error,
+    quitting: () => quitting,
     icon: process.platform === "linux" ? icon : undefined,
     log: (level, message, extra) =>
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "windows", message, extra),
@@ -150,23 +153,19 @@ function main() {
     logs: () => void shell.openPath(logs),
     diagnostics: () =>
       void exportDiagnostics({
-        root: resolveLogRoot(),
-        dir: app.getPath("downloads"),
-        info: {
-          version: app.getVersion(),
-          platform: process.platform,
-          arch: process.arch,
-          electron: process.versions.electron,
-          backend: backend.state,
-          error: backend.error,
+        client: backend.client,
+        choose: async (name) => {
+          const result = await dialog.showSaveDialog({
+            defaultPath: name,
+            filters: [{ name: "ZIP", extensions: ["zip"] }],
+          })
+          return result.canceled ? undefined : result.filePath
         },
-      }).then(
-        (file) => shell.showItemInFolder(file),
-        (error: Error) => {
-          log.error("export diagnostics failed", { error })
-          dialog.showErrorBox("MerakCode", error.message)
-        },
-      ),
+      }).catch(() => {
+        const spec = ErrorCode.CATALOG.DIAGNOSTICS_FAILED
+        log.error("export diagnostics failed", { code: spec.code })
+        dialog.showErrorBox(spec.title[settings.locale], `${spec.hint[settings.locale]}\n${spec.code}`)
+      }),
     homepage: () => void shell.openExternal(Project.HOMEPAGE),
     issues: () => void shell.openExternal(Project.ISSUES),
     about: () => {
@@ -186,7 +185,10 @@ function main() {
 
   const browser = new BrowserPanel((win, name, ...args) => windows.send(win, name, ...args))
 
-  Auth.install(session.defaultSession, () => backend.endpoint)
+  Auth.install(session.defaultSession, () => backend.endpoint, {
+    root: Engine.appDist(layout, resources),
+    devURL: dev ? process.env.MERAKCODE_APP_DEV_URL : undefined,
+  })
   // Grant only notifications, clipboard writes and fullscreen; deny everything else (camera, location, ...)
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
     callback(["notifications", "clipboard-sanitized-write", "fullscreen"].includes(permission)),
@@ -247,7 +249,6 @@ function main() {
     process.on("message", (message) => {
       if (message === "quit") app.quit()
     })
-  let quitting = false
   app.on("before-quit", (event) => {
     event.preventDefault()
     if (quitting) return

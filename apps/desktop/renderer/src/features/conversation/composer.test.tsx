@@ -1,293 +1,89 @@
-import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
-import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { setLocale } from "../../i18n"
-import { Composer, modeOptions } from "./composer"
-import { send } from "./send"
-import { setState } from "../../state/store"
+import { afterEach, expect, test } from "vitest"
+import { setLocale, t } from "../../i18n"
 import { Toasts } from "../../ui/toast"
+import { setState } from "../../state/store"
+import { Composer, type Submission } from "./composer"
 
-const png =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
+let dispose = () => {}
+afterEach(() => {
+  dispose()
+  document.body.replaceChildren()
+})
 
-let cleanup = () => {}
-beforeEach(() => setLocale("zh"))
-
-test("a migrated conversation shows its permission change notice once across composer reopen", async () => {
-  const id = "ses_permission_migration"
-  localStorage.removeItem(`ui:permission-migration:${id}`)
-  setState("sessions", "session", [
+function mount(submit: (value: Submission) => Promise<void> | void) {
+  setLocale("en")
+  setState("config", { providers: { fake: { hasKey: true } } })
+  setState("models", [
     {
-      id,
-      slug: id,
-      projectID: "global",
-      directory: "/migration",
-      title: "Migrated",
-      version: "1",
-      time: { created: 1, updated: 1 },
-      permissionLevel: "ask",
-      permissionNotice: "legacy-permissions-reset",
+      provider: "fake",
+      id: "model",
+      window: 32000,
+      maxOutput: 2048,
+      source: "builtin",
+      thinking: ["off", "high"],
+      caps: { tools: true, vision: true, pdf: true },
+      price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     },
   ])
   const host = document.createElement("div")
   document.body.append(host)
-  const mount = () =>
-    render(
-      () => (
-        <>
-          <Composer sessionID={id} directory="/migration" busy={false} onSubmit={() => {}} />
-          <Toasts />
-        </>
-      ),
-      host,
-    )
-  let dispose = mount()
-  try {
-    await vi.waitFor(() => expect(host.textContent).toContain("旧权限已改为每次询问"))
-    dispose()
-    dispose = mount()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(host.textContent?.split("旧权限已改为每次询问").length).toBe(2)
-  } finally {
-    dispose()
-    host.remove()
-    setState("sessions", "session", [])
-  }
-})
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-})
-
-function renderImageDraft(directory: string) {
-  const host = document.createElement("div")
-  document.body.appendChild(host)
-  const dispose = render(
+  dispose = render(
     () => (
-      <Composer
-        directory={directory}
-        busy={false}
-        draft={{
-          text: "",
-          files: [{ type: "file", mime: "image/png", filename: "shot.png", url: png }],
-        }}
-        onSubmit={() => {}}
-      />
+      <>
+        <Composer directory="/workspace" busy={false} onSubmit={submit} />
+        <Toasts />
+      </>
     ),
     host,
   )
-  cleanup = () => {
-    dispose()
-    host.remove()
-  }
-  return host
+  return host.querySelector("textarea")!
 }
 
-test("permission level follows the attachment button and defaults to Ask", () => {
-  const host = renderImageDraft("/session-mode-layout")
-  const buttons = [...host.querySelector(".composer-bar")!.querySelectorAll("button")]
-  expect(buttons[0]?.getAttribute("aria-label")).toBe("附件")
-  expect(buttons[1]?.getAttribute("aria-label")).toContain("询问")
-})
-
-test("the composer exposes the requested permission labels and safety descriptions", () => {
-  const levels = modeOptions()
-  expect(levels.map((option) => option.value)).toEqual(["ask", "autoApprove", "fullTakeover"])
-  const takeover = levels.find((option) => option.value === "fullTakeover")!
-  expect(takeover.tone).toBe("danger")
-  expect(takeover.badge).toBe("危险")
-  expect(levels.map(({ label, description }) => ({ label, description }))).toEqual([
-    { label: "每次询问", description: "智能体全量操作询问用户，安全性最高" },
-    { label: "仅询问危险行为", description: "智能体自动审批非危险行为，仅危险行为询问用户，安全性中等" },
-    { label: "全面接管", description: "将控制权完全交给 MerakCode，所有操作均允许，安全性最低" },
-  ])
-})
-
-test("English permission choices explain the same safety levels", () => {
-  setLocale("en")
-  expect(modeOptions().map(({ label, description }) => ({ label, description }))).toEqual([
-    { label: "Ask every time", description: "Ask the user about every agent operation. Highest safety." },
-    {
-      label: "Ask only for risky actions",
-      description: "Automatically approve non-risky actions and ask the user only about risky actions. Medium safety.",
-    },
-    { label: "Full takeover", description: "Give MerakCode full control and allow all operations. Lowest safety." },
-  ])
-})
-
-test("a disabled composer keeps its draft and prevents typing or sending", () => {
-  const host = document.createElement("div")
-  document.body.appendChild(host)
-  const [disabled, setDisabled] = createSignal(false)
-  const submissions: unknown[] = []
-  const dispose = render(
-    () => (
-      <Composer
-        directory="/composer-lock-test"
-        busy={false}
-        disabled={disabled()}
-        draft={{ text: "Keep this draft", files: [] }}
-        onSubmit={(submission) => void submissions.push(submission)}
-      />
-    ),
-    host,
-  )
-  cleanup = () => {
-    dispose()
-    host.remove()
-  }
-  const input = host.querySelector("textarea")!
-  setDisabled(true)
-  expect(input.disabled).toBe(true)
-  expect(input.value).toBe("Keep this draft")
+test("sends on Enter but preserves composition and Shift Enter", async () => {
+  const sent: Submission[] = []
+  const input = mount((value) => {
+    sent.push(value)
+  })
+  input.value = "Hello"
+  input.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, isComposing: true }))
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, shiftKey: true }))
+  expect(sent).toHaveLength(0)
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-  expect(submissions).toEqual([])
-  expect(host.querySelector<HTMLButtonElement>('[aria-label="附件"]')?.disabled).toBe(true)
-  setDisabled(false)
-  expect(input.disabled).toBe(false)
-  expect(input.value).toBe("Keep this draft")
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(sent).toEqual([{ text: "Hello", files: [] }])
+  expect(input.value).toBe("")
 })
 
-test("a composer discards an attachment from before a lock even after input is enabled again", () => {
-  let finish: (() => void) | undefined
-  vi.stubGlobal(
-    "FileReader",
-    class {
-      result = "data:text/plain;base64,c2VjcmV0"
-      onload?: () => void
-      readAsDataURL() {
-        finish = () => this.onload?.()
-      }
-    },
-  )
-  const host = document.createElement("div")
-  document.body.appendChild(host)
-  const [disabled, setDisabled] = createSignal(false)
-  const dispose = render(
-    () => <Composer directory="/composer-drop-test" busy={false} disabled={disabled()} onSubmit={() => {}} />,
-    host,
-  )
-  cleanup = () => {
-    dispose()
-    host.remove()
+test("preserves the draft when sending fails", async () => {
+  const input = mount(async () => {
+    throw new Error("MRK-1001")
+  })
+  input.value = "Keep this"
+  input.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(input.value).toBe("Keep this")
+})
+
+test("rejects attachments when their combined decoded size exceeds two MiB", async () => {
+  const sent: Submission[] = []
+  mount((value) => {
+    sent.push(value)
+  })
+  const drop = (size: number, name: string) => {
+    const dataTransfer = new DataTransfer()
+    dataTransfer.items.add(new File([new Uint8Array(size)], name, { type: "image/png" }))
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    input.files = dataTransfer.files
+    input.dispatchEvent(new Event("change", { bubbles: true }))
   }
-  const event = new Event("drop", { bubbles: true, cancelable: true })
-  Object.defineProperty(event, "dataTransfer", { value: { files: [new File(["secret"], "blocked.txt")] } })
-  host.querySelector(".composer")!.dispatchEvent(event)
-  expect(finish).toBeTypeOf("function")
-  setDisabled(true)
-  setDisabled(false)
-  finish!()
-  expect(host.textContent).not.toContain("blocked.txt")
+  drop(1024 * 1024, "first.png")
+  await expect.poll(() => document.querySelectorAll(".composer-files .attachment").length).toBe(1)
+  drop(1100 * 1024, "second.png")
+  await expect.poll(() => document.body.textContent).toContain(t("prompt.attachmentLimit"))
+  document.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]!.files.map((file) => file.filename)).toEqual(["first.png"])
 })
-
-test("an external text composer does not require a native model or offer attachments", () => {
-  const host = document.createElement("div")
-  document.body.appendChild(host)
-  const dispose = render(
-    () => <Composer directory="/external-composer-test" busy={false} external onSubmit={() => {}} />,
-    host,
-  )
-  cleanup = () => {
-    dispose()
-    host.remove()
-  }
-  expect(host.textContent).not.toContain("还没有连接模型")
-  expect(host.querySelector('[aria-label="附件"]')).toBeNull()
-})
-
-test("an image draft shows a thumbnail in the composer", () => {
-  const host = renderImageDraft("/composer-image-test")
-  expect(host.querySelector(".composer-files img")?.getAttribute("src")).toBe(png)
-  expect(host.querySelector(".composer-files")?.textContent).toContain("shot.png")
-  expect(host.querySelector('[aria-label="查看图片 shot.png"]')).not.toBeNull()
-})
-
-test("clicking an image attachment's name opens the full image", async () => {
-  const host = renderImageDraft("/composer-image-name-test")
-  const name = [...host.querySelectorAll(".composer-files .ellipsis")].find((node) => node.textContent === "shot.png")
-  if (!name) throw new Error("attachment name did not render")
-  name.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-  await vi.waitFor(() => expect(document.querySelector("[role=dialog] img")?.getAttribute("src")).toBe(png))
-  document.querySelector<HTMLButtonElement>("[role=dialog] .dialog-foot button")!.click()
-  await vi.waitFor(() => expect(document.querySelector("[role=dialog]")).toBeNull())
-})
-
-test("removing an image attachment does not open its preview", () => {
-  const host = renderImageDraft("/composer-image-remove-test")
-  host.querySelector<HTMLButtonElement>('[aria-label="移除 shot.png"]')!.click()
-  expect(host.querySelector(".composer-files .attachment")).toBeNull()
-  expect(document.querySelector("[role=dialog]")).toBeNull()
-})
-
-test.each([
-  ["attachment", "zh", "MRK-4008"],
-  ["attachment", "en", "MRK-4008"],
-  ["disabled", "zh", "MRK-4006"],
-  ["disabled", "en", "MRK-4006"],
-  ["imported", "zh", "MRK-4008"],
-  ["imported", "en", "MRK-4008"],
-] as const)(
-  "an external %s rejection in %s shows its error code and preserves the draft",
-  async (reason, locale, code) => {
-    setLocale(locale)
-    const sessionID = `external-${reason}-error-${locale}`
-    const directory = "/external-attachment-error"
-    setState("sessions", "session", [
-      {
-        id: sessionID,
-        slug: sessionID,
-        projectID: "global",
-        directory,
-        title: "External attachment",
-        version: "1",
-        time: { created: 1, updated: 1 },
-        target: { kind: "external", productID: "claude" },
-        ...(reason === "disabled"
-          ? {
-              targetBlock: {
-                blockID: "disabled-block",
-                productID: "claude",
-                disabledCycleID: "disabled-cycle",
-                decision: "declined" as const,
-              },
-            }
-          : {}),
-        ...(reason === "imported" ? { readOnlyReason: "imported-external-history" as const } : {}),
-      },
-    ])
-    const host = document.createElement("div")
-    document.body.appendChild(host)
-    const dispose = render(
-      () => (
-        <>
-          <Composer
-            sessionID={sessionID}
-            directory={directory}
-            busy={false}
-            external
-            draft={{
-              text: "Keep this draft",
-              files: [{ type: "file", mime: "text/plain", filename: "draft.txt", url: "file:///project/draft.txt" }],
-            }}
-            onSubmit={(submission) => send(sessionID, directory, submission)}
-          />
-          <Toasts />
-        </>
-      ),
-      host,
-    )
-    cleanup = () => {
-      host.querySelectorAll<HTMLButtonElement>(".toast > button:last-child").forEach((button) => button.click())
-      dispose()
-      host.remove()
-    }
-    host.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-    await vi.waitFor(() => expect(host.querySelector(".toasts")?.textContent).toContain(code))
-    const copyLabel =
-      locale === "zh" ? "复制详情（反馈问题时附上）" : "Copy details (attach them when reporting a problem)"
-    expect(host.querySelector<HTMLButtonElement>(`.toasts [aria-label="${copyLabel}"]`)).not.toBeNull()
-    expect(host.querySelector("textarea")!.value).toBe("Keep this draft")
-    expect(host.querySelector(".composer-files")?.textContent).toContain("draft.txt")
-  },
-)

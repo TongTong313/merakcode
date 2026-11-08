@@ -1,0 +1,15 @@
+# Desktop engine lifecycle
+
+The main process connects to `<data>/engine.json` before starting `merak serve --store remote`. It offers the SDK's SQLite storage host during `hello`; a declined offer continues as an ordinary client. Data locations match the Go command: `MERAKCODE_HOME`, Windows `%APPDATA%/MerakCode`, macOS `~/Library/Application Support/MerakCode`, or Linux `$XDG_DATA_HOME/merakcode` with the usual home fallback.
+
+Source builds use `merak/dist/<platform>-<arch>/merak[.exe]`. Installers contain the native binary in `resources/merak/`. The main bundle includes the SQLite runtime and its prebuilt native modules; it does not ship a separate Node engine. `script/dev.ts` builds the native Go target before launching Electron.
+
+The main process serves packaged UI files through Electron's [protocol handler](https://www.electronjs.org/docs/latest/api/protocol), at the engine's HTTP origin. Development forwards those UI requests to Vite. This works even when a command-line process started the engine first. File resolution stays inside the built UI directory. Unrelated HTTP requests use [Session.fetch](https://www.electronjs.org/docs/latest/api/session) with `bypassCustomProtocolHandlers`; only application frames receive the engine token on WebSocket handshakes.
+
+Closing a window hides it in the tray. Quitting sends `engine.stop`, keeps the database open for final events, and waits for the connection and child process to close. A ten-second deadline forces the process to stop. Unexpected exits retry with delays of 500, 1000, 2000, 5000 and 10000 milliseconds; manual retry resets that count. Restart prefers the previous port and falls back to an available port when occupied.
+
+`test/backend.test.ts` runs real Go processes. `e2e/engine-lifecycle.spec.ts` runs the real Electron main process with a small local page and model fixture, checks browser authentication, completes a request while the window is hidden, and verifies the persisted shutdown event.
+
+Group inboxes drive system notifications and tray badges. Opening a notification navigates to its original question, approval, or task report. Clearing notifications marks informational notices as read; unanswered requests remain pending. Read status lives in the main process's local storage and survives page reloads. `e2e/notify.spec.ts` observes the native notification and tray boundaries while retaining the real engine, storage, and UI. `e2e/board.spec.ts` covers task creation, live execution history, structured reports, and inbox navigation.
+
+Task reviews open from the inbox or a board card. Reports precede baseline diffs, and final goal reviews compare the integrated project against the goal's starting commit. Inline comments travel together with the review feedback; worker-start events confirm resumed work. Published artifacts are read through `blob.get` and downloaded without a preview. Released workspaces keep their reports and published artifacts available. `e2e/review.spec.ts` covers worktree rework, return to planning, artifact publication, native downloads, and final delivery using temporary repositories and download destinations.

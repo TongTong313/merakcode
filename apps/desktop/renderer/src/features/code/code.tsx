@@ -1,4 +1,4 @@
-import type { FileNode } from "@merakcode/sdk/client"
+import type { EngineFileNode as FileNode } from "@merakcode/sdk"
 import type * as Monaco from "monaco-editor"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"
@@ -7,10 +7,9 @@ import Folder from "lucide-solid/icons/folder"
 import X from "lucide-solid/icons/x"
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
-import { call, client } from "../../state/client"
-import { listen } from "../../state/store"
+import { client } from "../../state/client"
+import { onCheckoutChange } from "../../state/git"
 import { ui } from "../../state/ui"
-import { Confirm } from "../../ui/dialog"
 import { buffersFor, loadMonaco } from "./state"
 
 const marks: Record<string, string> = { added: "A", modified: "M", deleted: "D" }
@@ -27,7 +26,9 @@ function Level(props: {
   const [nodes] = createResource(
     () => [props.directory, props.path] as const,
     ([directory, path]) =>
-      call(client(directory).file.list({ path })).then((list) => list.filter((node) => !node.ignored)),
+      client()
+        .then((connection) => connection.file.list({ directory, path }))
+        .then((list) => list ?? []),
   )
   return (
     <For each={nodes()}>
@@ -96,8 +97,7 @@ function Node(props: {
 }
 
 /**
- * Code tab: file tree with git changes marked on the left, Monaco editor on the right. Ctrl+S saves and reports a
- * conflict if the file changed elsewhere.
+ * Code viewer: file tree with Git changes and a read-only Monaco editor.
  */
 export function CodeView(props: { directory: string }) {
   let host!: HTMLDivElement
@@ -105,7 +105,6 @@ export function CodeView(props: { directory: string }) {
   const tabs = () => buffer().tabs
   const active = () => buffer().active()
   const setActive = (path: string | undefined) => buffer().setActive(path)
-  const [closing, setClosing] = createSignal<string>()
   const [status, setStatus] = createSignal<Record<string, string>>({})
   const [monaco, setMonaco] = createSignal<typeof Monaco>()
   let editor: Monaco.editor.IStandaloneCodeEditor | undefined
@@ -115,10 +114,11 @@ export function CodeView(props: { directory: string }) {
 
   const loadStatus = () => {
     const directory = props.directory
-    return call(client(directory).file.status())
+    return client()
+      .then((connection) => connection.repo.status({ directory }))
       .then((list) => {
         if (directory === props.directory)
-          setStatus(Object.fromEntries(list.map((item) => [item.path, marks[item.status] ?? "M"])))
+          setStatus(Object.fromEntries(list.files?.map((item) => [item.path, marks[item.status] ?? "M"]) ?? []))
       })
       .catch(() => {})
   }
@@ -129,9 +129,9 @@ export function CodeView(props: { directory: string }) {
     ),
   )
   onCleanup(
-    listen(
-      (directory, event) => directory === props.directory && event.type === "file.watcher.updated" && void loadStatus(),
-    ),
+    onCheckoutChange((directory) => {
+      if (directory === props.directory) void loadStatus()
+    }),
   )
 
   onMount(async () => {
@@ -139,6 +139,7 @@ export function CodeView(props: { directory: string }) {
     if (disposed) return
     editor = loaded.editor.create(host, {
       automaticLayout: true,
+      readOnly: true,
       minimap: { enabled: false },
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"),
       fontSize: 12,
@@ -150,7 +151,6 @@ export function CodeView(props: { directory: string }) {
       occurrencesHighlight: "off",
       tabSize: 2,
     })
-    editor.addCommand(loaded.KeyMod.CtrlCmd | loaded.KeyCode.KeyS, () => void buffer().save())
     setMonaco(loaded)
   })
   onCleanup(() => {
@@ -166,7 +166,7 @@ export function CodeView(props: { directory: string }) {
       () => ui.openFile?.at,
       () => {
         const request = ui.openFile
-        if (request) void buffer().open(request.path, request.planSessionID)
+        if (request) void buffer().open(request.path)
       },
     ),
   )
@@ -178,11 +178,6 @@ export function CodeView(props: { directory: string }) {
       if (tab?.model) editor?.focus()
     }),
   )
-
-  const close = (path: string) => {
-    if (tabs().find((item) => item.path === path)?.dirty) return void setClosing(path)
-    buffer().close(path)
-  }
 
   return (
     <div class="code-pane">
@@ -210,13 +205,11 @@ export function CodeView(props: { directory: string }) {
                 <span class="ellipsis" title={tab.path}>
                   {tab.path.split(/[\\/]/).pop()}
                 </span>
-                <Show when={tab.dirty}>
-                  <span class="dirty" title={t("code.unsaved")} />
-                </Show>
+
                 <button
                   class="icon-button sm"
                   aria-label={t("code.closeTab", { name: tab.path })}
-                  onClick={(event) => (event.stopPropagation(), close(tab.path))}
+                  onClick={(event) => (event.stopPropagation(), buffer().close(tab.path))}
                 >
                   <X class="icon icon-xs" />
                 </button>
@@ -227,16 +220,7 @@ export function CodeView(props: { directory: string }) {
         <Show when={tabs().find((tab) => tab.path === active())?.binary}>
           <div class="empty-state subtle">{t("code.binary")}</div>
         </Show>
-        <Show when={tabs().find((tab) => tab.path === active())?.conflict}>
-          <p class="branch-notice" role="status">
-            {t("code.branchConflict")}
-          </p>
-        </Show>
-        <Show when={tabs().find((tab) => tab.path === active())?.planSessionID}>
-          <p class="branch-notice" role="status">
-            {t("plan.editHint")}
-          </p>
-        </Show>
+
         <Show when={!active()}>
           <div class="empty-state subtle">{t("code.empty")}</div>
         </Show>
@@ -246,18 +230,6 @@ export function CodeView(props: { directory: string }) {
           classList={{ hidden: !active() || !!tabs().find((tab) => tab.path === active())?.binary }}
         />
       </div>
-      <Confirm
-        open={!!closing()}
-        title={t("code.closeDirtyTitle")}
-        description={t("code.closeDirtyDetail", { path: closing() ?? "" })}
-        confirm={t("code.discard")}
-        cancel={t("code.keepEditing")}
-        danger
-        onResult={(discard) => {
-          if (discard && closing()) buffer().close(closing()!)
-          setClosing(undefined)
-        }}
-      />
     </div>
   )
 }

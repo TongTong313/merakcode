@@ -1,0 +1,11 @@
+{
+  "role": "assistant",
+  "parts": [
+    {
+      "reasoning": { "text": "Check the file.", "opaque": "signed-value", "provider": "anthropic" }
+    },
+    { "text": "Reading." },
+    { "toolCall": { "id": "read-one", "name": "read_file", "input": { "path": "notes.txt" } } },
+    { "toolCall": { "id": "list-one", "name": "list_dir", "input": {} } }
+  ]
+}

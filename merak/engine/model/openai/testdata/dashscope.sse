@@ -1,0 +1,8 @@
+data: {"id":"dashscope-fixture","choices":[{"index":0,"delta":{"reasoning_content":"Check the input."}}]}
+
+data: {"id":"dashscope-fixture","choices":[{"index":0,"delta":{"content":"Ready."},"finish_reason":"stop"}]}
+
+data: {"id":"dashscope-fixture","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":8,"prompt_tokens_details":{"cached_tokens":6},"total_tokens":28}}
+
+data: [DONE]
+

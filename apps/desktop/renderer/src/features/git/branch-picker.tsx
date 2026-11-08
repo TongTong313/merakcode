@@ -11,7 +11,7 @@ import {
   identityOf,
   refreshBranches,
   switchBranch,
-  switchReason,
+  unsavedReason,
   switching,
 } from "../../state/git"
 import { trackOverlay } from "../../ui/overlay"
@@ -42,7 +42,7 @@ export function BranchPicker(props: {
   const value = () => (props.purpose === "switch" ? current()?.branch : props.value)
   const display = () => value() || (props.purpose === "switch" ? current()?.head?.slice(0, 7) : undefined)
   const label = () => t(`git.role.${props.purpose}`)
-  const reason = () => (props.purpose === "switch" ? switchReason(props.directory) : undefined)
+  const reason = () => (props.purpose === "switch" ? unsavedReason(props.directory) : undefined)
   const filtered = createMemo(() => items().filter((item) => item.name.toLowerCase().includes(search().toLowerCase())))
   createEffect(
     on(
@@ -191,9 +191,7 @@ export function BranchPicker(props: {
                       ? t("review.currentBranch")
                       : item.worktree && props.purpose === "switch"
                         ? t("git.occupied")
-                        : item.name === data()?.options?.defaultBranch
-                          ? t("review.defaultBranch")
-                          : ""}
+                        : ""}
                   </span>
                   <Show when={value() === item.name}>
                     <Check class="icon icon-xs" />
@@ -204,17 +202,6 @@ export function BranchPicker(props: {
           </div>
           <Show when={!data()?.loading && !data()?.error && !filtered().length}>
             <p class="subtle branch-notice">{items().length ? t("git.noMatch") : t("git.empty")}</p>
-          </Show>
-          <Show when={props.onWorktree && data()?.options?.blocked?.reason === "dirty"}>
-            <button
-              class="button ghost sm"
-              onClick={() => {
-                setOpen(false)
-                props.onWorktree?.()
-              }}
-            >
-              {t("git.useWorktree")}
-            </button>
           </Show>
         </Popover.Content>
       </Popover.Portal>

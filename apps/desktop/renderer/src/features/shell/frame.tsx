@@ -1,13 +1,13 @@
 import PanelRight from "lucide-solid/icons/panel-right"
 import SquareTerminal from "lucide-solid/icons/square-terminal"
-import { Show, type JSX } from "solid-js"
+import { lazy, Show, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { mac } from "../../lib/bridge"
 import { setUi, togglePanel, ui } from "../../state/ui"
 import { Tip } from "../../ui/tooltip"
 import { Panel } from "../panel/panel"
 import { ReviewFull } from "../review/full"
-import { Terminal } from "../terminal/terminal"
+const Terminal = lazy(() => import("../terminal/terminal").then((module) => ({ default: module.Terminal })))
 
 const mod = mac ? "⌘" : "Ctrl"
 

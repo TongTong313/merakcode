@@ -12,19 +12,10 @@ import { CodeView } from "../code/code"
 import { ReviewPanel } from "../review/review"
 import { progress, useReview } from "../review/state"
 import { SourceControl } from "../git/source-control"
-import { PlanPanel } from "../conversation/plan"
-import { call, client } from "../../state/client"
-import { toast } from "../../ui/toast"
 
 /** Side panel with review, code and browser tabs; drag the left edge to resize */
 export function Panel(props: { sessionID?: string; directory: string; folder: string }) {
-  const select = (tab: Tab) => {
-    showTab(tab)
-    if (tab === "plan" && props.sessionID)
-      void call(client(props.directory).session.planView({ sessionID: props.sessionID })).catch((error) =>
-        toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error }),
-      )
-  }
+  const select = showTab
   let panel!: HTMLElement
   const data = useReview(
     () => props.sessionID,
@@ -34,7 +25,6 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
   const count = () => progress(data.data()).total
   const tabs: { id: Tab; label: () => string; icon: typeof Code }[] = [
     { id: "review", label: () => t("panel.review"), icon: FileDiff },
-    { id: "plan", label: () => t("panel.plan"), icon: FileDiff },
     { id: "git", label: () => t("panel.git"), icon: GitBranch },
     { id: "code", label: () => t("panel.code"), icon: Code },
     { id: "browser", label: () => t("panel.browser"), icon: Globe },
@@ -100,9 +90,6 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
       </div>
       <div class="panel-body" role="tabpanel" id={`panel-${ui.tab}`} aria-labelledby={`panel-tab-${ui.tab}`}>
         <Switch>
-          <Match when={ui.tab === "plan"}>
-            <Show when={props.sessionID}>{(id) => <PlanPanel sessionID={id()} directory={props.directory} />}</Show>
-          </Match>
           <Match when={ui.tab === "review"}>
             <ReviewPanel sessionID={props.sessionID} directory={props.directory} data={data} />
           </Match>

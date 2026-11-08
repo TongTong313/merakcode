@@ -1,0 +1,14 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"Reading "},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"files.","tool_calls":[{"index":0,"id":"call-a","type":"function","function":{"name":"read_file","arguments":""}},{"index":1,"id":"call-b","type":"function","function":{"name":"read_file","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":"}},{"index":1,"function":{"arguments":"{\"path\":"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"a.txt\"}"}},{"index":1,"function":{"arguments":"\"b.txt\"}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":2}}}
+
+data: [DONE]
+

@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@merakcode/log": "workspace:*",
+    "@merakcode/sdk": "workspace:*",
     "@merakcode/util": "workspace:*",
     "@playwright/test": "catalog:",
     "@zip.js/zip.js": "2.24.0",

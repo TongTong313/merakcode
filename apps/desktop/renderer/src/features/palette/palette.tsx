@@ -6,15 +6,14 @@ import Plus from "lucide-solid/icons/plus"
 import Settings from "lucide-solid/icons/settings"
 import SquareTerminal from "lucide-solid/icons/square-terminal"
 import TextSearch from "lucide-solid/icons/text-search"
-import Users from "lucide-solid/icons/users"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
-import type { SessionSearchResult } from "@merakcode/sdk/client"
+import { EngineEventSchema } from "@merakcode/sdk"
 import { t } from "../../i18n"
 import { baseName, decodeDir, sessionPath } from "../../lib/route"
-import { call, client } from "../../state/client"
-import { sessionsOf, state, type Folder } from "../../state/store"
+import { client } from "../../state/client"
+import { sessionsOf, state, type Folder, type SessionSummary } from "../../state/store"
 import { setUi, togglePanel, ui } from "../../state/ui"
 import { Dialog } from "../../ui/dialog"
 import { openReview } from "../review/state"
@@ -29,26 +28,41 @@ type Item = {
   run: () => void
 }
 
-type Found = SessionSearchResult & { folder: Folder }
+type Found = { session: SessionSummary; folder: Folder; match: { text: string } }
 
-/** Root conversations of the open projects whose text contains term, looked up on the engine */
-async function searchContent(term: string) {
-  const lists = await Promise.all(
-    state.folders.map(async (folder) => {
-      const project = folder.project
-      if (!project) return []
-      const results = await call(
-        client(folder.directory).session.search({
-          search: term,
-          roots: true,
-          limit: 10,
-          ...(project.id === "global" ? { directory: folder.directory } : {}),
-        }),
-      ).catch(() => [])
-      return results.filter((item) => item.match).map((item) => ({ ...item, folder }))
-    }),
-  )
-  return lists.flat()
+async function searchContent(term: string, stale: () => boolean) {
+  const connection = await client()
+  const found: Found[] = []
+  const needle = term.toLowerCase()
+  for (const folder of state.folders) {
+    for (const session of sessionsOf(folder)) {
+      let from = 1
+      for (;;) {
+        if (stale()) return []
+        const events = await connection.events.read({ stream: `session:${session.id}`, from, limit: 128 })
+        const text = (events ?? [])
+          .flatMap((raw) => {
+            const event = EngineEventSchema.parse(raw)
+            if (event.type !== "message.sent" && event.type !== "message.completed") return []
+            return event.payload.parts?.flatMap((part) => (part.text ? [part.text] : [])) ?? []
+          })
+          .find((text) => text.toLowerCase().includes(needle))
+        if (text) {
+          const index = text.toLowerCase().indexOf(needle)
+          found.push({
+            session,
+            folder,
+            match: { text: text.slice(Math.max(0, index - 40), index + term.length + 80) },
+          })
+          break
+        }
+        if (!events || events.length < 128) break
+        from = events.at(-1)!.seq! + 1
+      }
+      if (found.length === 10) return found
+    }
+  }
+  return found
 }
 
 /** Command palette (Ctrl/⌘+K): search conversations (titles and content) and commands, arrow keys to select, Enter to run */
@@ -66,7 +80,13 @@ export function Palette() {
     setFound([])
     if (!term) return
     let stale = false
-    const timer = setTimeout(() => void searchContent(term).then((items) => stale || setFound(items)), 200)
+    const timer = setTimeout(
+      () =>
+        void searchContent(term, () => stale)
+          .then((items) => stale || setFound(items))
+          .catch(() => {}),
+      200,
+    )
     onCleanup(() => {
       stale = true
       clearTimeout(timer)
@@ -81,13 +101,6 @@ export function Palette() {
         icon: Plus,
         group: t("palette.commands"),
         run: () => directory() && navigate(sessionPath(directory()!)),
-      },
-      {
-        id: "team",
-        label: t("sidebar.group"),
-        icon: Users,
-        group: t("palette.commands"),
-        run: () => directory() && setUi("newTeam", true),
       },
       {
         id: "settings",

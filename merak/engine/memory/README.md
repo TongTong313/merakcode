@@ -1,0 +1,13 @@
+# Conversation memory
+
+`Repository.Remember` and `Repository.Recall` use documents of kind `memory` through the shared store contract. The key includes scope, escaped owner and note ID. Queries explicitly list accessible owners; they never search another owner implicitly. Member, group and project scopes use the same implementation. Single chat sessions currently bind the project scope to a hash of the canonical working directory; group and member ownership will be supplied by their later slices.
+
+Recall scores exact normalized tag matches at 8 points and distinct keyword overlap at 1 point each. Equal scores prefer recent notes, then ID order. A query with no keywords or tags returns recent notes. Results default to 50 notes at most. Notes have a maximum of 8 KiB of text and 32 tags. No embedding, vector index or deduplication runs.
+
+`remember` writes immediately after the existing permission gate approves its write. `recall` is a read operation and is available in the read-only pool. File reads append up to five notes whose tags match the absolute or project-relative file path. The initial user message includes up to five relevant project notes, with recent project notes as the fallback; the system prompt stays frozen. Serialized note text is marked as reference data.
+
+Persistent sessions extract once after 30 seconds without a new turn. `Deps.MemoryIdle` allows an embedding host to choose its idle interval. A new message cancels ongoing extraction. Extraction has a 15-second timeout, a 2,048-token output budget, a 32-KiB response limit and at most eight proposed notes. The model cannot execute tools. Proposals acquire their owner, source and timestamps from the engine, rather than from the model. The `memory.extracted` event records stored count, failure status and usage; replay includes that usage in the session total. Extraction failure does not fail the user's conversation. The synchronous debug `Chat` helper does not start an idle worker.
+
+The shared `internal/platform/secret` scanner rejects recognizable provider keys, GitHub tokens, AWS access IDs, private keys, JWTs, bearer tokens and credential assignments before a note is written. It scans original field text, before JSON escaping. It does not promise to recognize arbitrary secret strings. Rejected proposals never become memory documents. Conversation transcript storage remains governed by the conversation protocol, not by this note scanner.
+
+Tests exercise repository behavior with the real memory store, model extraction with the scripted provider, both memory tools, file annotations, first-message recall, automatic idle extraction and cancellation when a new turn arrives.

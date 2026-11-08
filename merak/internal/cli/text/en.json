@@ -1,0 +1,8 @@
+{
+  "thinking": "Thinking: ",
+  "estimatedCost": "Estimated cost: %s %.6f\n",
+  "unknownCost": "Cost: unknown\n",
+  "allowWrite": "Allow writing %s? [y/n] ",
+  "allowExec": "Run command %s? [y/n] ",
+  "diagnosticSaved": "Diagnostic archive saved to %s\n"
+}

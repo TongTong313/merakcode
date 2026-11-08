@@ -8,6 +8,53 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Watch external Git and file changes, configure event rules and group initiative, emit external events from the command line, and refresh desktop Git and review views automatically.
+
+- Review task reports and baseline changes from the inbox, return combined comments for rework, approve delivery or return a goal to planning, inspect integration conflicts, and download published artifacts.
+
+- Create and assign tasks from group boards, read structured worker reports and live execution history, answer inbox requests, and keep informational read status and tray badges across reloads.
+
+- Create local collaboration groups from desktop, manage and test member profiles, send group and task messages, combine progress, restore member activity, and track unread notices.
+
+- Fold task boards and human inboxes from group events, enforce goal phases and review checkpoints, route approvals by role, and hand tasks between Leader sessions without blocking other goals.
+
+- Run Codex, OpenCode, Pi, ACP agents and commands as workers, forward supported approvals, preserve rework context, and expose their verified capabilities.
+
+- Run document tasks in isolated folders, publish declared artifacts, serialize inplace work with project leases, and run research tasks with read-only tools.
+
+- Support group interruptions and receipts, direct worker messages, task-thread questions, human review and rework, priority queues, and checks before integration.
+
+- Isolate group worker changes in Git worktrees, queue fast-forward integrations, create conflict-resolution tasks for the original member, and reject overlapping collaborator scopes.
+
+- Coordinate local groups with Leader threads, queued worker assignments, bounded reports, progress events, persisted group tables, and SDK group and task requests.
+
+- Run Claude Code workers through the shared event and report contract, discover local products, and expose `merak debug worker` with streamed events and bounded reports.
+
+- Show the engine version in desktop settings and export the engine diagnostic archive through a native save dialog.
+
+- Run desktop terminal tabs through the Go engine with output replay, ordered input, process cleanup, and restored desktop checks and CI coverage.
+
+- Review working files against each conversation's starting commit, send inline feedback, open read-only code, and inspect or switch Git branches through the Go engine.
+
+- Add model discovery without saving drafts, secret-preserving provider configuration, owner-bound questions, replayable model changes, and SDK conversation folding for the desktop migration.
+- Start or reconnect to the Go engine from the desktop app, host SQLite storage, keep work running in the tray, and package the native engine without a separate Node runtime.
+- Export redacted diagnostic ZIP archives from the command line or SDK, and rotate correlated engine logs with bounded file sizes.
+- Run read-only child agents in the background with `spawn` and `wait_child`, deliver reports once through session events, and cancel children with their parent.
+- Generate Go and TypeScript error catalogs from one JSON source, and render command-line messages in Chinese or English using system settings or `--lang`.
+- Recall project notes in new conversations and file reads, add `remember` and `recall`, and extract notes during idle time after scanning for recognizable credentials.
+- Add Anthropic Messages, Gemini and OpenRouter configurations, image and native PDF input, preserved thinking signatures and cache usage, and model catalog refresh with user overrides.
+- Recover interrupted tool calls, preserve partial replies and usage, buffer events during storage-host outages, and stop the engine in order with `merak stop`.
+- Estimate and calibrate context usage, reserve output capacity, rebuild old turns into replayable summaries, and report request budgets without editing recent history.
+- Persist sessions in a shared SQLite format, restore snapshots and event history after restart, and support a single SDK storage host over the protocol.
+- Add an authenticated local Go protocol server, generated SDK types and validators, streamed session requests, cancellation, bounded subscriptions and automatic engine startup from the command line.
+- Add compatible-provider reasoning, thinking selection, model limits, estimated costs and transient retries; expose the built-in catalog with `merak models`.
+- Load deferred Go tools on demand while keeping provider tool definitions fixed and sharing direct-call input validation.
+- Add Go search tools, parallel reads, stale-edit protection, background commands, bounded output with retrievable blob references, and full or read-only tool pools.
+- Run approved bash commands with timeout and exit status, and include workspace AGENTS.md instructions in Go conversations.
+- Stream OpenAI-compatible replies with `merak run`, using `OPENAI_MODEL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY`; keep text increments out of stored event sequences.
+- Require terminal approval before Go conversations write or edit files, and return denied operations to the model.
+- Let Go conversations read workspace files, return tool errors to the model, and replay paired tool events.
+- Add scripted Go debug conversations with ordered events, replayable messages, and structured command diagnostics.
 - Add the Go `merak --version` command, builds for six platforms, and Go checks in the workspace and CI.
 
 ### Changed
@@ -62,6 +109,53 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 新增
 
+- 监视外部 Git 和文件变化，配置事件规则与群主动程度，从命令行发送外部事件，并自动刷新桌面 Git 和审核面板。
+
+- 从收件箱审核任务报告和起点差异，合并评论后返工，通过交付或打回规划，查看集成冲突，并下载已发布产物。
+
+- 在群任务看板创建和指派任务，查看成员报告与实时执行过程，在收件箱处理请求，并在刷新后保留信息已读状态和托盘角标。
+
+- 桌面端支持创建本地协作群、管理和测试成员档案、发送群聊与任务消息、合并进度、恢复成员状态，并显示未读通知数。
+
+- 从群事件生成任务看板和收件箱，检查目标阶段与审核条件，按角色发送审批，并在更换 Leader 时传递交接摘要，其他目标继续运行。
+
+- 支持 Codex、OpenCode、Pi、ACP 智能体和命令作为工作者。引擎转发支持的审批，保留返工上下文，并返回已实现的能力。
+
+- 文档任务使用独立目录并发布声明的产物；原地任务通过项目租约依次运行；调研任务只使用只读工具。
+
+- 支持群发言打断和回执、成员直达消息、任务线程问答、人工审核与返工、优先级队列，以及合并前检查。
+
+- 群内工作者使用独立 Git 工作区；引擎依次快进合并，冲突时给原成员创建集成任务，并拒绝范围重叠的协作认领。
+
+- 本地群支持 Leader 线程、工作者认领队列、定长报告、进度事件和群状态存储；SDK 可建群、加成员及建任务。
+
+- Claude Code 工作者使用统一的事件与报告接口；支持本机产品探测及 `merak debug worker`，并限制报告长度。
+
+- 桌面设置页显示引擎版本，并通过系统保存对话框导出引擎诊断包。
+
+- 桌面终端改用 Go 引擎，支持输出回放、输入保序和进程清理，并恢复桌面端检查及 CI 测试。
+
+- 桌面端按对话起始提交审核文件改动，支持发送行内评论、只读代码查看、查看 Git 状态和切换已有分支。
+
+- 新增临时模型发现、保留密钥的服务商配置、限定回答连接的提问、可重放的模型切换及桌面端会话状态折叠。
+- 桌面端启动或连接 Go 引擎，担任 SQLite 存储宿主，关闭窗口后继续工作，并在安装包中携带原生引擎。
+- 通过命令行或 SDK 导出脱敏诊断 ZIP，并按文件上限轮转带事件关联字段的引擎日志。
+- 新增 `spawn`、`wait_child` 后台只读子智能体；会话事件只插入一次报告，取消父会话会同时停止子智能体。
+- Go 和 TypeScript 从同一份 JSON 生成错误码；命令行按系统设置或 `--lang` 显示中文、英文文案。
+- 新会话和文件读取可召回项目笔记；新增 `remember`、`recall` 工具，并在空闲时提取笔记，写入前扫描可识别的密钥。
+- 新增 Anthropic Messages、Gemini 和 OpenRouter 配置；支持图片与原生 PDF 输入、思考签名和缓存用量保留，以及模型目录刷新与用户覆盖。
+- 引擎恢复未完成的工具调用，保留部分回复和用量，缓冲宿主离线期间的事件，并支持 `merak stop` 有序退出。
+- 新增上下文用量估算与校准、输出容量预留、可重放的旧回合摘要和逐次请求预算事件。
+- 新增共享 SQLite 存储格式、会话快照恢复、重启后历史查询和 SDK 远程存储宿主。
+- 新增带令牌校验的本机 Go 协议服务、自动生成的 SDK 类型与校验器、会话流式请求、取消、有界订阅和命令行自动启动引擎。
+- Go 对话新增兼容服务商思考、档位选择、模型限制、预估费用和临时失败重试；`merak models` 可查询内置目录。
+- Go 对话支持按需加载工具，保持服务商工具定义固定，并复用直接调用时的输入校验。
+- Go 对话新增搜索工具、并行读取、文件变更检查、后台命令、可按引用读取的输出截断，以及完整和只读工具池。
+- Go 对话支持审批后运行 bash 命令，返回超时和退出状态，并读取工作目录中的 AGENTS.md 规则。
+- `merak run` 根据 `OPENAI_MODEL`、`OPENAI_BASE_URL` 和 `OPENAI_API_KEY` 流式输出 OpenAI 兼容模型的回答；消息增量不占用入库事件序号。
+- Go 对话写入或编辑文件前先请求终端审批，拒绝后会把结果交回模型。
+- Go 对话支持读取工作目录中的文件、向模型返回工具错误和重放成对的工具事件。
+- Go 调试命令支持剧本对话、有序事件、消息重放和结构化命令日志。
 - 新增 Go 版 `merak --version` 命令。构建支持六个平台。工作区和 CI 增加 Go 检查。
 
 ### 变更

@@ -20,6 +20,8 @@ export function decodeDir(segment: string) {
 export const sessionPath = (directory: string, sessionID?: string) =>
   `/${encodeDir(directory)}/session${sessionID ? `/${encodeURIComponent(sessionID)}` : ""}`
 
+export const groupPath = (directory: string, id: string) => `/${encodeDir(directory)}/group/${encodeURIComponent(id)}`
+
 /**
  * Treats spellings of one directory (case, slash direction, trailing slash) as equal; case-insensitive on Windows and
  * macOS

@@ -1,20 +1,18 @@
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, expect, test } from "vitest"
-import type { ProviderListResponses } from "@merakcode/sdk/client"
+import type { CatalogModel } from "@merakcode/sdk"
 import { setLocale } from "../../i18n"
 import { setState } from "../../state/store"
 import { setUi, ui } from "../../state/ui"
 import { ModelPicker } from "./model-picker"
-
-type Providers = ProviderListResponses[200]
 
 let cleanup = () => {}
 
 afterEach(() => {
   cleanup()
   cleanup = () => {}
-  setState({ providers: undefined })
+  setState({ models: [], config: undefined })
   setUi("settings", undefined)
 })
 
@@ -31,42 +29,30 @@ function mount(node: () => JSX.Element) {
 
 test("add model opens model settings and leaves hidden models out of the menu", () => {
   setLocale("zh")
-  const model = {
-    release_date: "2026-01-01",
-    attachment: false,
-    reasoning: false,
-    temperature: true,
-    tool_call: true,
-    options: {},
-    limit: { context: 1000, output: 100 },
+  const model: CatalogModel = {
+    provider: "dashscope",
+    id: "qwen-plus",
+    window: 128000,
+    maxOutput: 16000,
+    source: "builtin",
+    caps: { tools: true, vision: false, pdf: false },
+    thinking: null,
+    price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }
-  setState("providers", {
-    all: [
-      {
-        id: "alibaba-cn",
-        name: "Alibaba (China)",
-        origin: "official",
-        env: [],
-        models: {
-          "qwen-plus": { ...model, id: "qwen-plus", name: "Qwen-Plus", homepage: true },
-          "qwen-old": { ...model, id: "qwen-old", name: "Qwen-Old", homepage: false },
-        },
+  setState("models", [model, { ...model, id: "qwen-old" }, { ...model, provider: "relay", id: "claude-sonnet-5" }])
+  setState("config", {
+    providers: {
+      dashscope: {
+        name: "Alibaba",
+        hasKey: true,
+        models: { "qwen-plus": { name: "Qwen-Plus" }, "qwen-old": { name: "Qwen-Old" } },
+        picker: { exclude: ["qwen-old"] },
       },
-      {
-        id: "relay",
-        name: "packy",
-        origin: "configured",
-        env: [],
-        models: {
-          "claude-sonnet-5": { ...model, id: "claude-sonnet-5", name: "claude-sonnet-5", homepage: true },
-        },
-      },
-    ],
-    connected: ["alibaba-cn", "relay"],
-    default: { "alibaba-cn": "qwen-plus" },
-  } as unknown as Providers)
+      relay: { name: "packy", baseURL: "http://localhost/v1" },
+    },
+  })
   const host = mount(() => (
-    <ModelPicker value={{ providerID: "alibaba-cn", modelID: "qwen-plus" }} onChange={() => {}} />
+    <ModelPicker value={{ providerID: "dashscope", modelID: "qwen-plus" }} onChange={() => {}} />
   ))
   host.querySelector("button")?.click()
   document.querySelector<HTMLButtonElement>(".model-add")?.click()

@@ -3,9 +3,7 @@
  * UI). All data directories are isolated in a temp directory, and the model is a local fake server (OpenAI-compatible
  * streaming), so no network access or cost.
  *
- * In development the desktop app runs the apps/cli sources as the engine with node from PATH, so build the main
- * process and the UI first:
- *   pnpm build && pnpm --dir ../renderer build
+ * Build the Go engine, main process and renderer before running these tests.
  */
 import {
   test as base,
@@ -22,7 +20,6 @@ import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
-import { seedCatalog } from "../../../../script/node/seed-catalog.ts"
 
 /** One fake model reply: text, or a tool call (the model is asked again once the tool result is back) */
 type Reply = { text: string } | { tool: string; args: Record<string, unknown> }
@@ -36,6 +33,7 @@ export type Script = (input: {
   toolResults: string[]
   system: string
   model: string
+  tools: string[]
   /** Settles when the engine closes this HTTP response, including cancellation before a reply. */
   closed: Promise<void>
 }) => Reply | Promise<Reply>
@@ -46,7 +44,7 @@ export type Kit = {
   app: ElectronApplication
   page: Page
   project: string
-  /** Isolated data root; the global config is config/merakcode/merakcode.json */
+  /** Isolated data root; configuration is merakcode.json */
   root: string
   /** Number of requests the fake model received */
   requests: () => number
@@ -142,7 +140,14 @@ async function model(script: Script) {
     })
     // Background requests without tools (titles, summaries) always get a short text
     const reply = (body as { tools?: unknown[] }).tools?.length
-      ? await script({ prompt, toolResults, system, model: body.model ?? "", closed: closed.promise })
+      ? await script({
+          prompt,
+          toolResults,
+          system,
+          model: body.model ?? "",
+          tools: (body as { tools: { function: { name: string } }[] }).tools.map((tool) => tool.function.name),
+          closed: closed.promise,
+        })
       : { text: "E2E" }
     response.writeHead(200, { "content-type": "text/event-stream" })
     response.end(stream(reply))
@@ -186,15 +191,17 @@ export const test = base.extend<{
   config: Record<string, unknown>
   /** The project is a git repository with notes.txt committed */
   git: boolean
+  /** Reuses the Go adapter fixture as a discoverable Claude Code executable. */
+  claude: boolean
   kit: Kit
 }>({
   // Wrapped in an object because Playwright treats a bare function as a fixture function
   script: [{ reply: () => ({ text: "OK" }) }, { option: true }],
   config: [{}, { option: true }],
   git: [false, { option: true }],
-  kit: async ({ script, config, git }, use, info) => {
+  claude: [false, { option: true }],
+  kit: async ({ script, config, git, claude }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
-    await seedCatalog(root)
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
     await writeFile(path.join(project, "notes.txt"), "hello from e2e\n")
@@ -223,14 +230,10 @@ export const test = base.extend<{
     await writeFile(
       path.join(root, "merakcode.json"),
       JSON.stringify({
-        model: "alibaba-cn/qwen-plus",
-        small_model: "alibaba-cn/qwen-plus",
-        enabled_providers: ["alibaba-cn"],
-        provider: { "alibaba-cn": { options: { apiKey: "e2e", baseURL: fake.url } } },
-        memory: { auto_extract: false, auto_recall: false, session_memory: false, auto_dream: false },
-        lsp: false,
-        // The renderer follows the OS language until this is set, and GitHub-hosted Windows is English. The tests
-        // assert Chinese copy. bootstrap() applies the config before the splash goes away.
+        model: "openai/e2e",
+        providers: {
+          openai: { apiKey: "e2e", baseURL: fake.url, models: { e2e: { window: 32000, maxOutput: 1024 } } },
+        },
         locale: "zh-CN",
         ...config,
       }),
@@ -244,6 +247,25 @@ export const test = base.extend<{
           entry[0] !== "ELECTRON_RUN_AS_NODE" && !/_API_KEY$/i.test(entry[0]) && entry[1] !== undefined,
       ),
     )
+    if (claude) {
+      const bin = path.join(root, "bin")
+      await mkdir(bin)
+      execFileSync(
+        "go",
+        [
+          "build",
+          "-o",
+          path.join(bin, process.platform === "win32" ? "claude.exe" : "claude"),
+          "./engine/worker/claudecode/testdata/fakeclaude",
+        ],
+        {
+          cwd: path.resolve(main, "../../../merak"),
+          windowsHide: true,
+        },
+      )
+      const key = Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH"
+      env[key] = `${bin}${path.delimiter}${env[key] ?? ""}`
+    }
     const app = await _electron.launch({
       executablePath: electron,
       args: [

@@ -10,7 +10,7 @@
     "node": ">=26.12.0"
   },
   "scripts": {
-    "typecheck": "turbo typecheck --filter=!@merakcode/desktop --filter=!@merakcode/desktop-renderer",
+    "typecheck": "turbo typecheck",
     "sync:project": "node --import ./script/node/register.mjs script/sync-project.ts",
     "hooks:install": "node --import ./script/node/register.mjs script/install-hooks.ts",
     "test": "echo 'do not run tests from root' && exit 1",
@@ -22,10 +22,14 @@
     "check:brand": "node --import ./script/node/register.mjs script/check-brand.ts",
     "generate:errors": "node --import ./script/node/register.mjs script/generate-errors.ts",
     "check:errors": "node --import ./script/node/register.mjs script/generate-errors.ts --check",
+    "generate:protocol": "node --import ./script/node/register.mjs script/generate-protocol.ts",
+    "check:protocol": "node --import ./script/node/register.mjs script/generate-protocol.ts --check",
+    "generate:store": "node --import ./script/node/register.mjs script/generate-store.ts",
+    "check:store": "node --import ./script/node/register.mjs script/generate-store.ts --check",
     "check:comments": "node --import ./script/node/register.mjs script/check-comments.ts",
     "release:version": "node --import ./script/node/register.mjs script/release/version.ts",
     "check:versions": "node --import ./script/node/register.mjs script/release/version.ts --check",
-    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:errors && pnpm typecheck && pnpm check:css && pnpm check:unused"
+    "check": "pnpm format:check && pnpm check:brand && pnpm check:comments && pnpm check:versions && pnpm check:errors && pnpm check:protocol && pnpm check:store && pnpm typecheck && pnpm check:css && pnpm check:unused"
   },
   "devDependencies": {
     "@merakcode/util": "workspace:*",
@@ -37,7 +41,8 @@
     "turbo": "2.11.9",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "license": "MIT",
   "prettier": {

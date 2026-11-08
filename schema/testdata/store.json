@@ -1,0 +1,34 @@
+{
+  "events": [
+    {
+      "id": "01M6VFYT000000000000000001",
+      "stream": "session:golden",
+      "seq": 1,
+      "time": "2026-11-08T01:00:01.123456789Z",
+      "type": "message.sent",
+      "scope": { "group": "group", "task": "task", "session": "golden", "turn": "turn" },
+      "actor": { "kind": "human", "id": "person" },
+      "payload": { "role": "user", "parts": [{ "text": "Inspect café.txt" }] }
+    },
+    {
+      "id": "01M6VFYT000000000000000002",
+      "stream": "session:golden",
+      "seq": 2,
+      "time": "2026-11-08T01:00:02Z",
+      "type": "message.completed",
+      "scope": { "session": "golden", "turn": "turn" },
+      "actor": { "kind": "agent" },
+      "cause": "01M6VFYT000000000000000001",
+      "payload": { "role": "assistant", "parts": [{ "text": "Done" }], "usage": { "input": 12, "output": 3 } }
+    }
+  ],
+  "docs": [
+    {
+      "kind": "blob",
+      "key": "golden",
+      "rev": 1,
+      "body": "AP8B",
+      "meta": { "title": "binary", "contentType": "application/octet-stream" }
+    }
+  ]
+}

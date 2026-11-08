@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"external-session"}
+{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Checking"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Checking"},{"type":"tool_use","id":"call-1","name":"Read","input":{"file_path":"README.md"}}],"usage":{"input_tokens":12,"output_tokens":4,"cache_read_input_tokens":3}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"README content"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Checked README."}],"usage":{"input_tokens":18,"output_tokens":3}}}
+{"type":"result","subtype":"success","result":"Checked README.","is_error":false}

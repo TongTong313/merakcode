@@ -861,7 +861,10 @@
       时出现。五条原则：
     </p>
     <ul>
-      <li>发布分两步：先交给宿主，确认写盘后再分发给订阅者。不存在“先改状态再补事件”的路径。</li>
+      <li>
+        发布分两步：先交给宿主，确认写盘后再分发给订阅者。不存在“先改状态再补事件”的路径。唯一的例外是瞬时事件（目前只有
+        <code>message.delta</code>）：它只给界面边生成边显示用，没有序号，不写盘，直接分发。
+      </li>
       <li>
         状态从事件算出来。会话、任务池、群状态各有一个“应用一条事件”的函数；重放全部历史得到的状态和实时更新得到的完全一样。
       </li>
@@ -1145,10 +1148,12 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
         不用 cgo，<code>CGO_ENABLED=0</code> 一台机器编出 6 个平台。<code>go test -race</code> 只在 Linux CI 上跑。
       </li>
       <li>
-        标准库优先。第三方依赖只有四个：<code>modernc.org/sqlite</code>（命令行宿主）、<code>anthropic-sdk-go</code>（Anthropic
-        客户端，类型不出 <code>model/anthropic</code> 包）、<code>creack/pty</code>（终端面板的伪终端，纯 Go，只在 Unix
-        编译；Windows 用 <code>golang.org/x/sys/windows</code> 直接调 ConPTY，见 D4。它们替代 v0.3.1 的 node-pty
-        原生模块和它的补丁）、<code>zalando/go-keyring</code>（云端令牌，阶段 5 核实是否需要 cgo）。
+        标准库优先。第三方依赖只有五个：<code>modernc.org/sqlite</code>（命令行宿主）、<code>anthropic-sdk-go</code>（Anthropic
+        客户端，类型不出 <code>model/anthropic</code> 包，S12 才加）、<code>creack/pty</code>（终端面板的伪终端，纯
+        Go，只在 Unix 编译；Windows 用 <code>golang.org/x/sys/windows</code> 直接调 ConPTY，见 D4。它们替代 v0.3.1 的
+        node-pty 原生模块和它的补丁）、<code>zalando/go-keyring</code>（云端令牌，阶段 5 核实是否需要
+        cgo）、<code>github.com/ledongthuc/pdf</code>（S12 PDF 抽文字；只允许独立抽取包引用，兼容客户端与 read_file
+        共用，限制输入、解压后内容、页数和累计文字大小）。
       </li>
       <li>gofmt 格式化；<code>pnpm --dir merak typecheck</code> 跑 gofmt 检查和三个系统的 <code>go vet</code>。</li>
       <li>
@@ -1307,9 +1312,9 @@ func Bundle(ctx context.Context, req Request, out io.Writer) error</code></pre>
       </tr>
       <tr>
         <td><code>e2e-desktop</code></td>
-        <td>三个系统</td>
-        <td>桌面端打包和端到端测试，桌面端切到新协议后恢复</td>
-        <td>以后</td>
+        <td>ubuntu</td>
+        <td>桌面端端到端测试：先编出引擎，再构建主进程和界面，再跑 Playwright；桌面端全部迁到新协议后恢复</td>
+        <td>D4</td>
       </tr>
       <tr>
         <td><code>passed</code></td>
@@ -1997,7 +2002,7 @@ const (
 type Event struct {
 	ID      ID              `json:"id"`
 	Stream  Stream          `json:"stream"`
-	Seq     uint64          `json:"seq"` // position in Stream, assigned by the bus, starts at 1
+	Seq     uint64          `json:"seq,omitempty"` // position in Stream, assigned by the bus, starts at 1; 0 on transient events
 	Time    time.Time       `json:"time"`
 	Type    Type            `json:"type"`
 	Scope   Scope           `json:"scope"`
@@ -2038,13 +2043,18 @@ type Sink interface {
 }
 
 // Bus assigns sequence numbers per stream, persists through the sink, then fans out to subscribers.
-// Invariants: Publish returns only after the sink accepted the event; Seq is consecutive per stream; subscribers of
-// one stream see events in Seq order; a subscriber that falls behind gets one Lagged and must re-read from the store.
+// Invariants: Publish returns only after the sink accepted the event; stored events of one stream have consecutive
+// Seq starting at 1; subscribers see stored events in Seq order; a subscriber that falls behind gets one Lagged and
+// must re-read from the store.
+//
+// Transient events (the types in Transient; today only message.delta) are the one exception: they get an ID and a
+// Time but no Seq, never reach the sink, and are delivered to subscribers in publish order between the stored events
+// around them. Dropping them on Lagged loses nothing, because message.completed carries the full text.
 type Bus struct { /* sink, clock, id generator, per-stream next Seq, subscribers, mutex */ }
 
 func NewBus(sink Sink, now func() time.Time, newID func() ID) *Bus
 
-// Publish fills ID, Seq and Time, persists and delivers. Types listed in Transient (message.delta) skip the sink.
+// Publish fills ID and Time, and for non-transient types also Seq, persists and delivers.
 func (b *Bus) Publish(ctx context.Context, e Event) (Event, error)
 
 // Subscribe returns a channel of matching events and an unsubscribe function. The buffer is bounded (1024).
@@ -2071,7 +2081,8 @@ type Filter struct {
         <td><code>message.sent</code> / <code>message.delta</code> / <code>message.completed</code></td>
         <td>loop</td>
         <td>
-          一条消息发出、模型吐出一小段、一条消息完整。delta 只走总线不进存储。completed 里有
+          一条消息发出、模型吐出一小段、一条消息完整。delta
+          是瞬时事件：没有序号，只走总线不进存储，所以存储里的序号仍然连续。completed 里有
           <code>dropped</code>：服务商返回但引擎没有对应 Part 的内容类型
         </td>
       </tr>
@@ -2510,14 +2521,17 @@ func (c *Collector) Message() (Message, Usage, StopReason)</code></pre>
       <tr>
         <td>OpenAI Chat Completions 兼容</td>
         <td>OpenAI、DeepSeek、Moonshot、智谱、阿里（DashScope 兼容模式）、OpenRouter，以及所有中转站和本地模型</td>
-        <td><code>model/openai</code>，<code>net/http</code> 手写，解析 SSE。第一个做</td>
+        <td>
+          <code>model/openai</code>，<code>net/http</code> 手写，解析 SSE。阶段 1 做（S4、S7），覆盖用户手里的服务商
+        </td>
       </tr>
       <tr>
         <td>Anthropic Messages</td>
         <td>Anthropic；智谱、Moonshot、DeepSeek 的 Anthropic 兼容端点也可以用它</td>
         <td>
           <code>model/anthropic</code>，用官方 <code>anthropic-sdk-go</code>（纯
-          Go）。思考块、缓存标记、工具参数流式、拒绝停止原因这些字段变化快，SDK 跟得上
+          Go）。思考块、缓存标记、工具参数流式、拒绝停止原因这些字段变化快，SDK 跟得上。阶段 2
+          做（S12），作为通用消息格式的第二种线协议验收
         </td>
       </tr>
       <tr>
@@ -2703,9 +2717,9 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
       <tr>
         <td><code>call_tool(name, input)</code></td>
         <td>
-          调用一个已加载的延迟工具。引擎按它的 Schema 校验
-          <code>input</code>，不合格就返回校验错误让模型改；合格就按该工具的副作用走权限门后执行。没加载过的工具返回“先
-          load_tools”
+          调用一个已加载的延迟工具。S6 直接转交给目标工具的 <code>Run</code>，由工具解码并校验
+          <code>input</code>，错误与直接调用一致。调用沿用目标工具的权限门。没加载过的工具返回“先 load_tools”。S6
+          不引入通用 JSON Schema 校验器；接入外部工具时按具体用例再判断。
         </td>
       </tr>
     </table>
@@ -5624,11 +5638,13 @@ type Null struct{}</code></pre>
       </tr>
     </table>
     <p>
-      切换期间桌面端不能处在半编译状态。D2 做完时三个开关一起打开：根目录
+      切换期间桌面端不能处在半编译状态，所以 D2、D3、D4 连着做，中间不插别的切片。最后一个依赖旧协议的面板（终端）在 D4
+      迁完，三个开关在 D4 做完时一起打开：根目录
       <code>pnpm typecheck</code> 重新包含桌面端，<code>knip.json</code> 里对桌面端的 ignore 去掉，CI 的 test-ts
       加上渲染进程、新增 Linux 上的 e2e-desktop（先 <code>go build</code> 出引擎，再构建主进程和界面，再跑
       Playwright）；AGENTS.md
-      里“桌面端不编译”的那条删除。在那之前，依赖旧协议的文件要么改好，要么删掉，不留注释掉的代码。
+      里“桌面端不编译”的那条删除。在那之前，依赖旧协议的文件要么改好，要么删掉，不留注释掉的代码；D2 和 D3
+      做完时用本地的桌面端 tsc 衡量进度：报错只剩还没迁的面板和只被它们引用的文件。
     </p>
 
     <h3 id="desktop-views">14.2 新增的视图</h3>
@@ -5780,6 +5796,12 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       <li>OpenAI 兼容客户端：对一个 <code>httptest</code> 服务器回放录好的 SSE 样例，解析出文字、工具调用和用量。</li>
       <li>工具定义被正确转成它的格式。</li>
       <li><code>message.delta</code> 按到达顺序发出，拼起来等于 <code>message.completed</code> 的全文。</li>
+      <li>
+        delta 是瞬时事件：没有序号，不到达 Sink；一条流式回复之后，Sink 收到的事件序号仍然从 1 开始连续（<code
+          >message.completed</code
+        >
+        紧接 <code>message.sent</code>）。
+      </li>
       <li>命令行流式打印；冒烟测试没有密钥时跳过。</li>
     </ol>
     <p>
@@ -5829,23 +5851,33 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       工具、噪音过滤、MCP。
     </p>
 
-    <p class="file">S7 Anthropic 服务商与模型目录</p>
-    <p>做完以后：可以用 Claude 对话，思考块正确往返，缓存命中，能看到这次花了多少钱、能选的思考档位。</p>
+    <p class="file">S7 模型目录、思考档位、价格与重试：OpenAI 兼容系的服务商都能用</p>
+    <p>
+      做完以后：DeepSeek、Moonshot、智谱、阿里和任何中转站、本地模型都能对话；推理模型的思考过程能看到；能选的思考档位按模型显示；能看到这次花了多少钱；网络抖动自动重试。
+    </p>
     <ol>
-      <li>Anthropic 客户端对录好的流解析出文字、思考、工具调用、用量（含缓存读写）和停止原因（含拒绝）。</li>
-      <li>思考块的 <code>Opaque</code> 原样传回；换到别的服务商时思考 Part 被过滤掉。</li>
-      <li>依赖边界测试：除 <code>model/anthropic</code> 外没有包依赖 <code>anthropic-sdk-go</code>。</li>
-      <li>往返黄金测试：样例对话经“引擎 → Anthropic → 引擎”一圈 Part 列表不变；OpenAI 客户端补同样的测试。</li>
-      <li>思考六档映射到自适应思考加 effort，目录里不支持的档被夹到最近的档；系统提示词末尾带缓存断点。</li>
+      <li>
+        往返黄金测试：一段含文字、思考、工具调用、工具结果的样例对话，经“引擎 → OpenAI 兼容客户端 → 引擎”一圈 Part
+        列表不变。这是通用消息格式的第一道验收。
+      </li>
+      <li>
+        推理模型：<code>reasoning_content</code> 解析成 Reasoning
+        Part（字段名放各家配置）；是否回传按各家配置；换服务商时思考 Part 被过滤掉。
+      </li>
+      <li>
+        服务商配置：DeepSeek、Moonshot、智谱、阿里各一份内置配置（地址、思考参数的写法）和一个录制样例测试；思考六档按
+        4.3 节的映射表发出，目录里不支持的档被夹到最近的档。
+      </li>
       <li>
         目录：内置表给出窗口、输出上限、价格、支持的思考档；<code>Usage.Cost</code>
-        按价格表算出；未知模型得到保守默认值并标记。
+        按价格表算出；未知模型得到保守默认值并标记；中转站的模型按名字匹配到内置表。
       </li>
-      <li>并行工具调用的多个结果合成一条消息送回。</li>
+      <li>并行工具调用的多个结果合成一条 <code>RoleTool</code> 消息，客户端编码时拆成多条 <code>role: tool</code>。</li>
+      <li><code>model.Retrying</code>：对 429 和 5xx 按退避重试，用量累计；对 4xx 不重试。</li>
     </ol>
     <p>
-      只实现：Anthropic 客户端（官方 Go SDK）、Reasoning Part
-      的往返与过滤、依赖边界测试、往返测试、思考映射、目录的内置表和价格计算、重试包装。不做：目录在线刷新、其他服务商、多模态输入。
+      只实现：往返测试、Reasoning Part
+      的解析与过滤、四家配置和映射、目录的内置表和价格计算、工具结果合并、重试包装。不做：Anthropic、Gemini、OpenRouter（S12）、目录在线刷新、多模态输入。
     </p>
 
     <h3 id="phase-2">阶段 2：变成服务，存算分离，桌面端可以切过来</h3>
@@ -5933,20 +5965,31 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       命令。不做：系统服务安装、桌面端的重新拉起。
     </p>
 
-    <p class="file">S12 其余六家服务商与多模态输入</p>
-    <p>做完以后：八家服务商都能用；可以给模型发图片和 PDF；<code>read_file</code> 读图片时模型能看到图。</p>
+    <p class="file">S12 第二种线协议：Anthropic、Gemini、OpenRouter 与多模态输入</p>
+    <p>
+      做完以后：八家服务商都能用；Anthropic 的思考块正确往返、缓存命中；智谱、Moonshot、DeepSeek 的 Anthropic
+      兼容端点也能走这条线；可以给模型发图片和 PDF；<code>read_file</code> 读图片时模型能看到图。
+    </p>
     <ol>
+      <li>Anthropic 客户端对录好的流解析出文字、思考、工具调用、用量（含缓存读写）和停止原因（含拒绝）。</li>
       <li>
-        Gemini 经 OpenAI 兼容端点可用；DeepSeek、Moonshot、智谱、阿里、OpenRouter
-        各一份配置和一个录制样例测试，思考参数按映射表发出。
+        往返黄金测试：S7 的样例对话经“引擎 → Anthropic → 引擎”一圈 Part
+        列表不变。这是通用消息格式的第二道验收：两种线协议共用同一份样例。
       </li>
+      <li>思考块的 <code>Opaque</code> 原样传回；思考六档映射到自适应思考加 effort；系统提示词末尾带缓存断点。</li>
+      <li>依赖边界测试：除 <code>model/anthropic</code> 外没有包依赖 <code>anthropic-sdk-go</code>。</li>
+      <li>Gemini 经 OpenAI 兼容端点可用；OpenRouter 一份配置，参数透传。</li>
       <li>
         Image 和 Document Part 在两种线协议里正确编码；<code>read_file</code> 对图片返回 Image Part；没有对应块的内容进
-        <code>dropped</code> 列表。
+        <code>dropped</code> 列表；兼容接口把 PDF 抽成文字；PDF 损坏或没有文字时丢掉 Document，记入
+        <code>dropped</code>，请求继续。
       </li>
-      <li>目录在线刷新：从 Anthropic 和 OpenRouter 的模型接口补窗口和价格；用户覆盖优先；中转站按名字匹配。</li>
+      <li>目录在线刷新：从 Anthropic 和 OpenRouter 的模型接口补窗口和价格；用户覆盖优先。</li>
     </ol>
-    <p>只实现：六家的配置和映射、多模态 Part 编码、目录刷新与覆盖。不做：Gemini 原生接口、音频。</p>
+    <p>
+      只实现：Anthropic 客户端（官方 Go SDK，依赖在这一片才加进 <code>go.mod</code>）、Gemini 和 OpenRouter
+      的配置、多模态 Part 编码、目录刷新与覆盖。不做：Gemini 原生接口、音频。
+    </p>
 
     <p class="file">S13 记忆</p>
     <p>
@@ -6053,12 +6096,11 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       接线、<code>package.ts</code>、打包冒烟。不做：界面进程的任何改动、引擎单独自动更新。
     </p>
 
-    <p class="file">D2 界面进程切到新 SDK，单聊闭环，桌面端重新进入检查和 CI</p>
+    <p class="file">D2 界面进程切到新 SDK，单聊闭环</p>
     <p>
-      做完以后：桌面端能开项目、新建对话、和真实模型流式对话、审批、回答问题、切模型、看历史，引擎重启后自动重连；<code
-        >pnpm typecheck</code
-      >
-      重新包含桌面端，knip 的 ignore 去掉，渲染进程测试和 Linux 上的 e2e 进 CI。
+      做完以后：桌面端能开项目、新建对话、和真实模型流式对话、审批、回答问题、切模型、看历史，引擎重启后自动重连；本地对桌面端跑
+      tsc，报错只剩 review、code、git、terminal 四个面板和只被它们引用的文件。桌面端重新进入检查和 CI 在 D4 做完时（14.1
+      节）。
     </p>
     <p class="muted">依赖：D1、S7 模型目录、S10 预算和重建事件。</p>
     <ol>
@@ -6089,24 +6131,30 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         在对话头部显示本次请求的预算分配。
       </li>
       <li>
-        工程开关：根目录 typecheck 的过滤去掉，knip 的 ignore 去掉，CI 的 test-ts 加渲染进程，新增 e2e-desktop；e2e
-        夹具启动真实的
+        e2e 夹具：启动真实的
         <code>merak serve</code
         >，模型指向夹具里现有的假服务器；chat、composer、permission、tools、conversations、connect 这些 spec
-        跑通；AGENTS.md 里“桌面端不编译”那条删除。
+        改到新协议，D4 打开 e2e-desktop 时和 D3、D4 的 spec 一起进 CI。
       </li>
     </ol>
     <p>
       只实现：客户端层、状态层、单聊部分的 conversation、settings 的服务商和模型页、shell、onboarding、palette、新的
       i18n 键。删除：依赖 v0.3.1 协作协议的界面文件（建群、群状态、群待办、成员列、成员头像、座位气泡、settings
       的协作和产品接入页、<code>state/agent-connections.ts</code>）和 plan；D6 到 D8 按新模型重建协作群界面时从 git
-      历史里取回可复用的组件。不做：review、code、git、terminal（D3、D4）、协作群。
+      历史里取回可复用的组件。不做：review、code、git、terminal（D3、D4）、工程开关（D4）、协作群。
     </p>
 
     <p class="file">D3 审核、代码、git 面板复用；协议加只读的文件和仓库方法</p>
     <p>做完以后：对话里的改动审核（diff、文件树、评论）、代码查看器、源代码管理面板都能用，数据从新引擎来。</p>
-    <p class="muted">依赖：D2、S19 的 <code>platform.Git</code>。</p>
+    <p class="muted">
+      依赖：D2。<code>platform/git</code> 在这一片新建，只放这一片用到的方法；S19 再补 worktree、建分支和合并。
+    </p>
     <ol>
+      <li>
+        <code>platform/git</code>（<code>git</code>
+        命令的薄封装，不用库）：工作区状态、相对某个提交的 diff、分支列表、切分支、读取当前提交；表格测试在
+        <code>t.TempDir()</code> 里的真实仓库上跑。
+      </li>
       <li>
         引擎：协议方法 <code>file.read</code>、<code>file.list</code>
         走和工具一样的路径限制；<code>repo.status</code>、<code>repo.diff</code>、<code>repo.branches</code>、<code
@@ -6121,21 +6169,25 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         git：源代码管理面板用 <code>repo.status</code> 和 <code>repo.branches</code>，切分支走
         <code>repo.checkout</code>。
       </li>
-      <li>e2e：review、git、branch 几个 spec 跑通；worktree.spec 留到 D6，因为 worktree 现在属于认领。</li>
+      <li>
+        e2e：review、git、branch 几个 spec 在本地跑通，D4 时进 CI；worktree.spec 留到 D6，因为 worktree 现在属于认领。
+      </li>
     </ol>
     <p>
-      只实现：六个协议方法和 SDK
-      对应方法、基线提交、三个面板的数据源替换。不做：从界面暂存和提交（用终端或让智能体做）、文件改动推送（S24 之后由
+      只实现：<code>platform/git</code> 的上面五个方法、六个协议方法和 SDK
+      对应方法、基线提交、三个面板的数据源替换。不做：worktree
+      和合并（S19）、从界面暂存和提交（用终端或让智能体做）、文件改动推送（S24 之后由
       <code>repo.changed</code> 事件驱动刷新）。
     </p>
 
-    <p class="file">D4 终端面板</p>
+    <p class="file">D4 终端面板，桌面端重新进入检查和 CI</p>
     <p>
       做完以后：终端面板和 v0.3.1 完全一样：每个目录一组标签页，一个标签一个
       shell；收起面板不杀进程，重新打开时回放输出；关闭标签才结束进程；在终端就绪前敲的键不丢；拖动改高度并记住。变化只在引擎里：v0.3.1
-      用的 node-pty 原生模块和它的补丁换成 Go 实现。
+      用的 node-pty 原生模块和它的补丁换成 Go 实现。最后一个依赖旧协议的面板迁完，<code>pnpm typecheck</code>
+      重新包含桌面端，knip 的 ignore 去掉，渲染进程测试和 Linux 上的 e2e 进 CI。
     </p>
-    <p class="muted">依赖：D2。</p>
+    <p class="muted">依赖：D2、D3（工程开关要等 review、code、git 面板迁完）。</p>
     <p>
       v0.3.1 的实现要点，Go 侧逐条保留：shell 的选择（Windows 优先 Git Bash，按 <code>git.exe</code> 的位置或
       <code>MERAKCODE_GIT_BASH_PATH</code> 找，找不到用 <code>COMSPEC</code>；macOS 用 <code>/bin/zsh</code>；Linux 用
@@ -6170,10 +6222,16 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         界面：features/terminal 原样复用，只把 <code>pty.*</code> 调用和 <code>connectPty</code> 换成新名字；e2e
         的终端用例跑通。
       </li>
+      <li>
+        工程开关（14.1 节）：根目录 typecheck 的过滤去掉，knip 的 ignore 去掉，CI 的 test-ts 加渲染进程，新增
+        e2e-desktop；D2 到 D4 恢复的
+        spec（chat、composer、permission、tools、conversations、connect、review、git、branch 和终端用例）在 CI
+        里跑通；AGENTS.md 里“桌面端不编译”那条删除。
+      </li>
     </ol>
     <p>
       只实现：pty 封装、<code>engine/terminal</code>、五个协议方法和附着通道、SDK
-      方法、面板接线。不做：终端会话跨引擎重启持久化（v0.3.1 也没有）、智能体用终端跑命令。
+      方法、面板接线、工程开关。不做：终端会话跨引擎重启持久化（v0.3.1 也没有）、智能体用终端跑命令。
     </p>
 
     <p class="file">D5 设置页收尾与诊断</p>
@@ -6249,8 +6307,8 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       <li>端到端：两个任务两个成员，最后目标分支包含两份改动；冲突剧本产生集成任务并最终合并。</li>
     </ol>
     <p>
-      只实现：工作区包的 worktree
-      形态（管理器、合并、队列）、<code>request_merge</code>、合并事件、冲突时建集成任务（先写死）、任务卡的范围和认领的范围。不做：其他形态、检查命令、复用、安装命令。
+      只实现：工作区包的 worktree 形态（管理器、合并、队列）、给 D3 建好的 <code>platform/git</code> 补
+      worktree、建分支和合并、<code>request_merge</code>、合并事件、冲突时建集成任务（先写死）、任务卡的范围和认领的范围。不做：其他形态、检查命令、复用、安装命令。
     </p>
 
     <p class="file">S20 人能随时插话，快速通道，关键节点能审核，成员排队</p>

@@ -1,0 +1,8 @@
+data: {"choices":[{"index":0,"delta":{"reasoning_content":"Check the requested file."}}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"Reading."}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"read-one","function":{"name":"read_file","arguments":"{\"path\":\"notes.txt\"}"}},{"index":1,"id":"read-two","function":{"name":"read_file","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

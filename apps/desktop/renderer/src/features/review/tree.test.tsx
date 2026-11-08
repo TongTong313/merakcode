@@ -1,4 +1,4 @@
-import type { ReviewFile } from "@merakcode/sdk/client"
+import type { ReviewFile } from "./data"
 import { type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, expect, test, vi } from "vitest"
