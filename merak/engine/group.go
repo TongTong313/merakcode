@@ -623,6 +623,7 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 	if err != nil {
 		return
 	}
+	defer e.releaseSandbox(c.state.ID)
 	defer c.runner.Env.Jobs.Close()
 	if c.children != nil {
 		defer c.children.Close()

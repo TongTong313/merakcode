@@ -2,6 +2,7 @@ import type { zh } from "./zh"
 
 // Interface text (English). Keys must match zh.ts exactly; variables are written as {name}
 export const en: Record<keyof typeof zh, string> = {
+  "profiles.network": "Allowed network hosts (one per line)",
   "group.initiative": "Initiative",
   "group.initiative.passive": "Passive — record environmental changes",
   "group.initiative.normal": "Normal — combine environmental changes",
@@ -548,6 +549,15 @@ export const en: Record<keyof typeof zh, string> = {
   "sandbox.state.unsupported": "Unsupported",
   "sandbox.retry": "Retry starting",
   "sandbox.hint": "Sandbox status",
+  "sandbox.state.disabled": "Sandbox disabled",
+  "sandbox.state.waiting": "Waiting for a sandbox account",
+  "sandbox.state.partial": "Partially enforced",
+  "sandbox.limit.loopback": "Loopback connections remain unrestricted.",
+  "sandbox.limit.ownAddresses": "Connections to this machine's own addresses remain unrestricted.",
+  "sandbox.limit.ports": "Network restrictions match ports only, not hosts.",
+  "sandbox.limit.udp": "UDP traffic remains unrestricted.",
+  "sandbox.limit.network": "Network restrictions are not enforced. File restrictions remain active.",
+  "sandbox.limit.rollback": "Restored after exit only: {path}",
   "sandbox.install": "Set up and start sandbox",
   "sandbox.setupNotice": "Windows will request administrator approval once. You can retry manually after cancellation.",
   "sandbox.installDesc": "Windows asks for administrator approval once. The first time can take a few minutes.",

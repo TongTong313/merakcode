@@ -121,6 +121,13 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		args = append(args, "--model", r.Product.Model)
 	}
 	a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+	var configDirectory string
+	if r.Sandbox != nil && !r.Sandbox.Disabled {
+		a.SandboxProfile, configDirectory, err = stdio.ClaudeState(a.SandboxProfile, r.Product.Env["CLAUDE_CONFIG_DIR"])
+		if err != nil {
+			return report, err
+		}
+	}
 	cmd := process.Command(ctx, a.Workdir, binary, args...)
 	if r.Sandbox != nil {
 		cmd, err = r.Sandbox.Command(ctx, a.SandboxProfile, binary, args...)
@@ -134,6 +141,9 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
 	cmd.Env = append(cmd.Env, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
+	if configDirectory != "" {
+		cmd.Env = append(cmd.Env, "CLAUDE_CONFIG_DIR="+configDirectory)
+	}
 	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -144,7 +154,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	if err != nil {
 		return report, err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := r.Sandbox.Start(cmd, a.SandboxProfile); err != nil {
 		return report, err
 	}
 	var writeMu sync.Mutex
@@ -162,8 +172,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	}
 	if err := writeControl(map[string]any{"type": "control_request", "request_id": "merak-initialize", "request": map[string]any{"subtype": "initialize", "hooks": nil}}); err != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return report, err
+		return report, errors.Join(err, r.Sandbox.Wait(cmd))
 	}
 	writerCtx, stopWriter := context.WithCancel(ctx)
 	defer stopWriter()
@@ -313,12 +322,10 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	if runErr != nil {
 		_ = cmd.Cancel()
 	}
-	err = cmd.Wait()
+	err = r.Sandbox.Wait(cmd)
 	stopWriter()
 	_ = stdin.Close()
 	<-writerDone
-	if runErr == nil {
-		runErr = err
-	}
+	runErr = errors.Join(runErr, err)
 	return report, runErr
 }

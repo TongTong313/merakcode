@@ -11,6 +11,8 @@ func NewMemory() *Store { return &Store{value: Value{Providers: map[string]Provi
 
 func (s *Store) AllowedNetworkHosts() []string { return s.Get().AllowedHosts }
 
+func (s *Store) DeniedNetworkHosts() []string { return s.Get().DeniedHosts }
+
 func (s *Store) AllowNetworkHost(host string) error {
 	if err := (sandbox.Network{Mode: "allowlist", Hosts: []string{host}}).Validate(); err != nil {
 		return err

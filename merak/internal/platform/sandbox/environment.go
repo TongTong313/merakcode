@@ -28,6 +28,17 @@ func (p Profile) Environment(source []string) []string {
 		positions[key] = len(result)
 		result = append(result, entry)
 	}
+	if p.PrivateDirectory != "" {
+		for _, entry := range privateEnvironment(p.PrivateDirectory) {
+			name, _, _ := strings.Cut(entry, "=")
+			key := environmentKey(name)
+			if index, ok := positions[key]; ok {
+				result[index] = entry
+			} else {
+				result = append(result, entry)
+			}
+		}
+	}
 	return result
 }
 

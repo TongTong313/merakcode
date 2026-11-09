@@ -9,6 +9,7 @@ import (
 
 type NetworkSettings interface {
 	AllowedNetworkHosts() []string
+	DeniedNetworkHosts() []string
 	AllowNetworkHost(string) error
 	UnconfinedDecision(member, project string) string
 	RememberUnconfinedDecision(member, project, decision string) error
@@ -18,14 +19,14 @@ func (e *Engine) ConfigureNetworkSettings(settings NetworkSettings) {
 	if settings == nil {
 		return
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.networkMu.Lock()
+	defer e.networkMu.Unlock()
 	e.networkSettings = settings
 }
 
 func (e *Engine) networkConfiguration() NetworkSettings {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.networkMu.RLock()
+	defer e.networkMu.RUnlock()
 	return e.networkSettings
 }
 

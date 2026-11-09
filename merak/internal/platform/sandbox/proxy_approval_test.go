@@ -2,8 +2,10 @@ package sandbox_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,6 +56,35 @@ func TestProxyHoldsAnUnknownDestinationUntilTheHumanAnswers(t *testing.T) {
 	}
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("denied response = %d", response.Code)
+	}
+}
+
+func TestProxyDenialReportsTheListAndDoesNotAskForApproval(t *testing.T) {
+	for _, source := range []string{"user", "group"} {
+		for _, method := range []string{http.MethodGet, http.MethodConnect} {
+			t.Run(source+" "+method, func(t *testing.T) {
+				var policy sandbox.Network
+				body := `{"mode":"allowlist","hosts":["blocked.example"],"deny":["blocked.example:443"],"denySources":{"blocked.example:443":"` + source + `"}}`
+				if err := json.Unmarshal([]byte(body), &policy); err != nil {
+					t.Fatal(err)
+				}
+				asked := false
+				proxy := &sandbox.Proxy{MemberName: "worker", Network: policy, Approve: func(context.Context, string) (bool, error) { asked = true; return true, nil }}
+				defer proxy.Close()
+				response := httptest.NewRecorder()
+				request := httptest.NewRequest(method, "http://blocked.example:443/", nil)
+				request.Host = "blocked.example:443"
+				proxy.ServeHTTP(response, request)
+				if response.Code != http.StatusForbidden || asked {
+					t.Fatalf("response=%d asked=%v", response.Code, asked)
+				}
+				for _, want := range []string{"MRK-5005", "worker", "blocked.example", source + " DeniedHosts"} {
+					if !strings.Contains(response.Body.String(), want) {
+						t.Fatalf("response missing %q: %s", want, response.Body.String())
+					}
+				}
+			})
+		}
 	}
 }
 

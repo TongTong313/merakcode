@@ -16,7 +16,7 @@ const Updated event.Type = "group.updated"
 func init() { event.Register[Group](Updated) }
 
 func validateSettings(settings Settings, members []Member) error {
-	if err := (sandbox.Network{Hosts: settings.AllowedHosts}).Validate(); err != nil {
+	if err := (sandbox.Network{Hosts: settings.AllowedHosts, Deny: settings.DeniedHosts}).Validate(); err != nil {
 		return err
 	}
 	switch settings.Initiative {

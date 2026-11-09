@@ -8,6 +8,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Enforce S25 member sandboxes on Windows, Linux and macOS, restore protected files, isolate product state, report partial enforcement and offer full takeover through the SDK and desktop. Add shared isolation tests and Windows account cleanup in CI.
+
 - Expose sandbox status and route external member startup and network approvals through the engine.
 
 - Watch external Git and file changes, configure event rules and group initiative, emit external events from the command line, and refresh desktop Git and review views automatically.
@@ -110,6 +112,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
 
 ### 新增
+
+- 完成 S25 成员沙箱，覆盖 Windows、Linux 和 macOS。还原保护文件，隔离产品状态，并报告部分强制。SDK 和桌面支持全面接管。CI 增加共用隔离测试和 Windows 账户清理。
 
 - 提供沙箱状态查询。引擎处理外部成员的启动审批和联网审批。
 

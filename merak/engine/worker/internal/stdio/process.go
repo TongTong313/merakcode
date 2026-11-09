@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os/exec"
 	"sync"
@@ -56,7 +57,7 @@ func Start(ctx context.Context, assignment worker.Assignment, p profile.Product,
 		cancel()
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := launcher.Start(cmd, assignment.SandboxProfile); err != nil {
 		stdin.Close()
 		stdout.Close()
 		cancel()
@@ -80,9 +81,7 @@ func Start(ctx context.Context, assignment worker.Assignment, p profile.Product,
 		if child.err != nil {
 			cancel()
 		}
-		if err := cmd.Wait(); child.err == nil {
-			child.err = err
-		}
+		child.err = errors.Join(child.err, launcher.Wait(cmd))
 		close(lines)
 		close(child.done)
 	}()

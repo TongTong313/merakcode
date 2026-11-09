@@ -30,6 +30,11 @@ func (p Profile) Validate() error {
 			return errors.New("invalid sandbox environment variable name")
 		}
 	}
+	for _, path := range p.WriteAllow {
+		if _, err := os.Stat(path); err != nil {
+			return err
+		}
+	}
 	return p.Network.Validate()
 }
 
@@ -55,6 +60,11 @@ func resolvedPath(path string) bool {
 }
 
 func (n Network) Validate() error {
+	for rule, source := range n.DenySources {
+		if !slices.Contains(n.Deny, rule) || source != "user" && source != "group" {
+			return errors.New("invalid sandbox network denial source")
+		}
+	}
 	if n.Mode != "" && n.Mode != "off" && n.Mode != "allowlist" && n.Mode != "on" {
 		return errors.New("invalid sandbox network mode")
 	}

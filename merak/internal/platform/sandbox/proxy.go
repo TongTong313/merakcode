@@ -16,20 +16,27 @@ import (
 )
 
 type Network struct {
-	Mode         string   `json:"mode"`
-	Hosts        []string `json:"hosts,omitempty"`
-	Deny         []string `json:"deny,omitempty"`
-	BlockedPorts []int    `json:"blockedPorts,omitempty"`
-	LocalPorts   []int    `json:"localPorts,omitempty"`
+	Mode         string            `json:"mode"`
+	Hosts        []string          `json:"hosts,omitempty"`
+	Deny         []string          `json:"deny,omitempty"`
+	DenySources  map[string]string `json:"denySources,omitempty"`
+	BlockedPorts []int             `json:"blockedPorts,omitempty"`
+	LocalPorts   []int             `json:"localPorts,omitempty"`
 }
 
 var errNetworkDenied = errors.New("network destination denied")
+
+type NetworkDenial struct {
+	Host   string
+	Port   int
+	Source string
+}
 
 // Proxy enforces the network destinations allowed by a process profile.
 type Proxy struct {
 	ApprovalTimeout time.Duration
 	Approve         func(context.Context, string) (bool, error)
-	Denied          func(context.Context, string) error
+	Denied          func(context.Context, NetworkDenial) error
 	MemberName      string
 	Network         Network
 	mu              sync.Mutex
@@ -203,12 +210,25 @@ func (p *Proxy) tunnel(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) deny(w http.ResponseWriter, r *http.Request, host string) {
 	host = normalizeHost(host)
 	status := http.StatusForbidden
+	portText := r.URL.Port()
+	if portText == "" {
+		portText = "80"
+	}
+	if r.Method == http.MethodConnect {
+		_, portText, _ = net.SplitHostPort(r.Host)
+	}
+	port, _ := strconv.Atoi(portText)
+	source := p.Network.denialSource(host, port)
 	if p.Denied != nil && validHost(host) {
-		if err := p.Denied(context.WithoutCancel(r.Context()), host); err != nil {
+		if err := p.Denied(context.WithoutCancel(r.Context()), NetworkDenial{Host: host, Port: port, Source: source}); err != nil {
 			status = http.StatusInternalServerError
 		}
 	}
-	http.Error(w, fmt.Sprintf("MRK-5005: member %q, host %q", p.MemberName, host), status)
+	message := fmt.Sprintf("MRK-5005: member %q, host %q", p.MemberName, host)
+	if source != "" {
+		message += "; " + source + " DeniedHosts"
+	}
+	http.Error(w, message, status)
 }
 
 func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, error) {

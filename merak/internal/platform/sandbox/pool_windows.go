@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,25 +17,107 @@ import (
 )
 
 type windowsLease struct {
-	account    windowsAccount
-	lock       *os.File
-	mu         sync.Mutex
-	closed     bool
-	writePaths []string
-	journal    string
+	account     windowsAccount
+	lock        *os.File
+	mu          sync.Mutex
+	closed      bool
+	writePaths  []string
+	readDenials []string
+	deniedRules map[string]bool
+	ancestors   []string
+	journal     string
+}
+
+func cleanWindowsClaims(directory string, accounts []windowsAccount) error {
+	for _, account := range accounts {
+		file, err := os.OpenFile(filepath.Join(directory, "lease-"+account.Name+".lock"), os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return err
+		}
+		err = windows.LockFileEx(windows.Handle(file.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, new(windows.Overlapped))
+		if err != nil {
+			file.Close()
+			if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+				continue
+			}
+			return err
+		}
+		lease := windowsLease{account: account, lock: file, journal: file.Name() + ".json"}
+		if err := lease.Close(); err != nil {
+			file.Close()
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *windowsLease) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.closed = true
-	if err := clearWindowsLeaseWrites(l.journal, l.account.SID); err != nil {
-		return err
+	failure := errors.Join(clearWindowsLeaseWrites(l.journal, l.account.SID), clearWindowsLeaseAccess(l.journal+".deny", l.account.SID, "/remove:d"), clearWindowsLeaseAccess(l.journal+".ancestors", l.account.SID, "directory"))
+	if failure != nil {
+		return failure
 	}
 	return l.lock.Close()
 }
 
+func (l *Launcher) windowsReadDenials(ctx context.Context, paths []string) error {
+	return l.windowsDenyAccess(ctx, paths, "R")
+}
+
+func (l *Launcher) windowsDenyAccess(ctx context.Context, paths []string, rights string) error {
+	l.mu.Lock()
+	lease, ok := l.lease.(*windowsLease)
+	l.mu.Unlock()
+	if !ok {
+		return errors.New("sandbox account is not leased")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return errors.New("sandbox claim has ended")
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		key := rights + "\x00" + path
+		if lease.deniedRules[key] {
+			continue
+		}
+		found := false
+		for _, existing := range lease.readDenials {
+			if existing == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			lease.readDenials = append(lease.readDenials, path)
+		}
+		if err := writeWindowsLeaseJournal(lease.journal+".deny", lease.readDenials); err != nil {
+			return err
+		}
+		cmd := process.Command(ctx, "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, "/deny", "*"+lease.account.SID+":(OI)(CI)"+rights)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		if lease.deniedRules == nil {
+			lease.deniedRules = make(map[string]bool)
+		}
+		lease.deniedRules[key] = true
+	}
+	return nil
+}
+
 func clearWindowsLeaseWrites(journal, sid string) error {
+	return clearWindowsLeaseAccess(journal, sid, "/remove:g")
+}
+
+func clearWindowsLeaseAccess(journal, sid, operation string) error {
 	body, err := os.ReadFile(journal)
 	if os.IsNotExist(err) {
 		return nil
@@ -45,7 +129,7 @@ func clearWindowsLeaseWrites(journal, sid string) error {
 	if err := json.Unmarshal(body, &paths); err != nil {
 		return err
 	}
-	if err := (Profile{WriteAllow: paths}).Validate(); err != nil {
+	if err := (Profile{ReadDeny: paths}).Validate(); err != nil {
 		return err
 	}
 	var failure error
@@ -53,7 +137,11 @@ func clearWindowsLeaseWrites(journal, sid string) error {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			continue
 		}
-		command := process.Command(context.Background(), "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, "/remove:g", "*"+sid)
+		if operation == "directory" {
+			failure = errors.Join(failure, windowsDirectoryAccess(path, sid, false))
+			continue
+		}
+		command := process.Command(context.Background(), "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, operation, "*"+sid)
 		failure = errors.Join(failure, command.Run())
 	}
 	if failure != nil {
@@ -62,7 +150,39 @@ func clearWindowsLeaseWrites(journal, sid string) error {
 	return os.Remove(journal)
 }
 
-func writeWindowsLeaseJournal(path string, entries []string) error {
+func (l *Launcher) windowsAncestorAccess(paths []string) error {
+	l.mu.Lock()
+	lease, ok := l.lease.(*windowsLease)
+	l.mu.Unlock()
+	if !ok {
+		return errors.New("sandbox account is not leased")
+	}
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.closed {
+		return errors.New("sandbox claim has ended")
+	}
+	password, err := accountPassword(lease.account)
+	if err != nil {
+		return err
+	}
+	ancestors, err := windowsUnreadableAncestors(lease.account.Name, password, paths)
+	if err != nil {
+		return err
+	}
+	for _, path := range ancestors {
+		lease.ancestors = append(lease.ancestors, path)
+		if err := writeWindowsLeaseJournal(lease.journal+".ancestors", lease.ancestors); err != nil {
+			return err
+		}
+		if err := windowsDirectoryAccess(path, lease.account.SID, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeWindowsLeaseJournal(path string, entries any) error {
 	file, err := os.CreateTemp(filepath.Dir(path), "lease-journal-")
 	if err != nil {
 		return err
@@ -108,7 +228,15 @@ func (l *Launcher) windowsWriteAccess(ctx context.Context, paths []string) error
 		if err := writeWindowsLeaseJournal(lease.journal, lease.writePaths); err != nil {
 			return err
 		}
-		command := process.Command(ctx, "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, "/grant", "*"+lease.account.SID+":(OI)(CI)M")
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		rights := "M"
+		if info.IsDir() {
+			rights = "(OI)(CI)M"
+		}
+		command := process.Command(ctx, "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, "/grant", "*"+lease.account.SID+":"+rights)
 		if err := command.Run(); err != nil {
 			return err
 		}
@@ -116,11 +244,40 @@ func (l *Launcher) windowsWriteAccess(ctx context.Context, paths []string) error
 	return nil
 }
 
-func (l *Launcher) windowsAccount(ctx context.Context) (windowsAccount, error) {
+func (l *Launcher) windowsAccount(ctx context.Context, project string) (windowsAccount, error) {
+	defer func() { l.mu.Lock(); l.waitingAccount = false; l.mu.Unlock() }()
 	manifest, err := readWindowsAccounts(l.StateDir)
 	if err != nil {
 		return windowsAccount{}, err
 	}
+	project = strings.ToUpper(filepath.Clean(project))
+	l.mu.Lock()
+	preferred := l.previousAccount
+	l.mu.Unlock()
+	histories := make(map[string]map[string]int64)
+	for _, account := range manifest.Accounts {
+		history, err := readWindowsAccountHistory(l.StateDir, account.Name)
+		if err != nil {
+			return windowsAccount{}, err
+		}
+		histories[account.Name] = history
+	}
+	slices.SortStableFunc(manifest.Accounts, func(a, b windowsAccount) int {
+		if a.Name == preferred {
+			return -1
+		}
+		if b.Name == preferred {
+			return 1
+		}
+		first, second := histories[a.Name][project], histories[b.Name][project]
+		if first < second {
+			return -1
+		}
+		if first > second {
+			return 1
+		}
+		return 0
+	})
 	l.mu.Lock()
 	if l.closed {
 		l.mu.Unlock()
@@ -158,7 +315,17 @@ func (l *Launcher) windowsAccount(ctx context.Context) (windowsAccount, error) {
 				return windowsAccount{}, err
 			}
 			lease := &windowsLease{account: account, lock: file, journal: file.Name() + ".json"}
-			if err := clearWindowsLeaseWrites(lease.journal, account.SID); err != nil {
+			if err := errors.Join(clearWindowsLeaseWrites(lease.journal, account.SID), clearWindowsLeaseAccess(lease.journal+".deny", account.SID, "/remove:d"), clearWindowsLeaseAccess(lease.journal+".ancestors", account.SID, "directory")); err != nil {
+				file.Close()
+				return windowsAccount{}, err
+			}
+			history, err := readWindowsAccountHistory(l.StateDir, account.Name)
+			if err != nil {
+				file.Close()
+				return windowsAccount{}, err
+			}
+			history[project] = time.Now().UnixNano()
+			if err := writeWindowsLeaseJournal(filepath.Join(l.StateDir, "history-"+account.Name+".json"), history); err != nil {
 				file.Close()
 				return windowsAccount{}, err
 			}
@@ -174,9 +341,23 @@ func (l *Launcher) windowsAccount(ctx context.Context) (windowsAccount, error) {
 				return current.account, nil
 			}
 			l.lease = lease
+			l.previousAccount = account.Name
+			l.idleSince = time.Now()
 			l.mu.Unlock()
 			return account, nil
 		}
+		if l.ReclaimAccount != nil {
+			reclaimed, err := l.ReclaimAccount()
+			if err != nil {
+				return windowsAccount{}, err
+			}
+			if reclaimed {
+				continue
+			}
+		}
+		l.mu.Lock()
+		l.waitingAccount = true
+		l.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return windowsAccount{}, ctx.Err()
@@ -185,4 +366,22 @@ func (l *Launcher) windowsAccount(ctx context.Context) (windowsAccount, error) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func readWindowsAccountHistory(directory, account string) (map[string]int64, error) {
+	history := make(map[string]int64)
+	body, err := os.ReadFile(filepath.Join(directory, "history-"+account+".json"))
+	if os.IsNotExist(err) {
+		return history, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(body, &history); err != nil {
+		return nil, err
+	}
+	if history == nil {
+		return nil, errors.New("invalid sandbox account history")
+	}
+	return history, nil
 }

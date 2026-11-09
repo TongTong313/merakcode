@@ -10,6 +10,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Bash struct{}
@@ -54,7 +55,13 @@ func (Bash) Run(ctx context.Context, call Call) (Result, error) {
 		}
 		cmd.Dir = call.Env.Workdir
 	}
-	output, runErr := cmd.CombinedOutput()
+	var buffer bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buffer, &buffer
+	runErr := call.Env.Sandbox.Start(cmd, call.Env.SandboxProfile)
+	if runErr == nil {
+		runErr = call.Env.Sandbox.Wait(cmd)
+	}
+	output := buffer.Bytes()
 	exit := -1
 	if cmd.ProcessState != nil {
 		exit = cmd.ProcessState.ExitCode()
@@ -67,6 +74,16 @@ func (Bash) Run(ctx context.Context, call Call) (Result, error) {
 	if runErr != nil {
 		result.IsError = true
 		result.Code = "MRK-5001"
+		var denied *sandbox.DenialError
+		if errors.As(runErr, &denied) {
+			result.Code = "MRK-5009"
+			result.Parts = append(result.Parts, model.Part{Text: denied.Error()})
+		}
+		var protected *sandbox.ProtectionError
+		if errors.As(runErr, &protected) {
+			result.Code = "MRK-5007"
+			result.Parts = append(result.Parts, model.Part{Text: protected.Error()})
+		}
 	}
 	return result, nil
 }

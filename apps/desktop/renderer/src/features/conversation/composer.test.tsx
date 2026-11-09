@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "vitest"
 import { setLocale, t } from "../../i18n"
 import { Toasts } from "../../ui/toast"
 import { setState } from "../../state/store"
+import { choice } from "../../state/models"
 import { Composer, type Submission } from "./composer"
 
 let dispose = () => {}
@@ -39,6 +40,20 @@ function mount(submit: (value: Submission) => Promise<void> | void) {
   )
   return host.querySelector("textarea")!
 }
+
+test("allows selecting full takeover before starting a conversation", () => {
+  mount(() => {})
+  const picker = document.querySelector<HTMLButtonElement>('button[aria-label="Permission level"]')
+  expect(picker).not.toBeNull()
+  expect(picker!.textContent).toContain("Ask every time")
+  picker!.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) =>
+    item.textContent?.includes("Full takeover"),
+  )
+  expect(option).toBeDefined()
+  option!.click()
+  expect(choice(undefined, "/workspace").mode).toBe("takeover")
+})
 
 test("sends on Enter but preserves composition and Shift Enter", async () => {
   const sent: Submission[] = []

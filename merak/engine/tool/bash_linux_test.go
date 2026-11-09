@@ -75,6 +75,9 @@ func checkBashSandboxWrites(t *testing.T, background bool) {
 			if !os.IsNotExist(err) {
 				t.Fatalf("outside file exists or is unreadable: %v", err)
 			}
+			if result.Code != "MRK-5009" {
+				t.Fatalf("unclassified file denial: path=%s result=%+v", test.path, result)
+			}
 		})
 	}
 }

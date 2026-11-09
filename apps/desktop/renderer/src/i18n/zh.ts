@@ -1,5 +1,6 @@
 // 界面文字（中文）。en.ts 的键必须和这里一一对应（类型检查 + i18n.test.ts）；变量写成 {name}
 export const zh = {
+  "profiles.network": "允许联网的主机（每行一项）",
   "group.initiative": "主动程度",
   "group.initiative.passive": "被动：只记录环境变化",
   "group.initiative.normal": "常规：合并处理环境变化",
@@ -532,6 +533,15 @@ export const zh = {
   "sandbox.state.unsupported": "不支持",
   "sandbox.retry": "重试启动",
   "sandbox.hint": "沙箱状态",
+  "sandbox.state.disabled": "沙箱已关闭",
+  "sandbox.state.waiting": "等待沙箱账户",
+  "sandbox.state.partial": "部分强制",
+  "sandbox.limit.loopback": "回环连接不受限制。",
+  "sandbox.limit.ownAddresses": "连接本机地址不受限制。",
+  "sandbox.limit.ports": "网络限制只识别端口，不识别主机。",
+  "sandbox.limit.udp": "UDP 流量不受限制。",
+  "sandbox.limit.network": "网络没有强制，文件仍受限。",
+  "sandbox.limit.rollback": "仅在退出后还原：{path}",
   "sandbox.install": "设置并启动沙箱",
   "sandbox.setupNotice": "Windows 将请求一次管理员确认。取消后可手动重试。",
   "sandbox.installDesc": "会弹出一次管理员确认，第一次可能要几分钟。",

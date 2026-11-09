@@ -77,6 +77,12 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		return report, err
 	}
 	cmd := process.Command(ctx, a.Workdir, binary, r.Product.Args...)
+	if r.Sandbox != nil && !r.Sandbox.Disabled {
+		a.SandboxProfile, err = stdio.ProductState(a.SandboxProfile)
+		if err != nil {
+			return report, err
+		}
+	}
 	if r.Sandbox != nil {
 		cmd, err = r.Sandbox.Command(ctx, a.SandboxProfile, binary, r.Product.Args...)
 		if err != nil {
@@ -94,7 +100,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	if err != nil {
 		return report, err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := r.Sandbox.Start(cmd, a.SandboxProfile); err != nil {
 		return report, err
 	}
 	buffer := make([]byte, 32<<10)
@@ -131,7 +137,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	if runErr != nil {
 		_ = cmd.Cancel()
 	}
-	err = cmd.Wait()
+	err = r.Sandbox.Wait(cmd)
 	if runErr == nil {
 		runErr = err
 	}

@@ -27,3 +27,8 @@ func TestCatalogAllowsAProductToFinishColdStartup(t *testing.T) {
 	t.Setenv("MERAKCODE_FIXTURE_SLOW_VERSION", "1")
 	TestCatalogFindsAProductOnPath(t)
 }
+
+func TestCatalogKeepsTheVersionAfterASixSecondProductStartup(t *testing.T) {
+	t.Setenv("MERAKCODE_FIXTURE_SLOW_VERSION", "6s")
+	TestCatalogFindsAProductOnPath(t)
+}

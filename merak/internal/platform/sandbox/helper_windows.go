@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -102,11 +103,31 @@ func runWindowsHelper(address, secret string) (code int, returned error) {
 	}
 	defer closeDesktop()
 	defer windows.TerminateJobObject(job, 125)
-	if err := windowsAssignAndResume(job, uint32(cmd.Process.Pid)); err != nil {
+	if err := windowsAssignMember(job, uint32(cmd.Process.Pid)); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return 0, err
 	}
+	if err := json.NewEncoder(connection).Encode(map[string]bool{"ready": true}); err != nil {
+		return 0, err
+	}
+	var accepted bool
+	if err := json.NewDecoder(connection).Decode(&accepted); err != nil || !accepted {
+		return 0, errors.New("sandbox controller ended before startup")
+	}
+	if err := connection.SetDeadline(time.Time{}); err != nil {
+		return 0, err
+	}
+	if err := windowsResumeMember(uint32(cmd.Process.Pid)); err != nil {
+		return 0, err
+	}
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		_, _ = io.Copy(io.Discard, connection)
+		_ = windows.TerminateJobObject(job, 125)
+	}()
+	defer func() { _ = connection.SetReadDeadline(time.Now()); <-monitorDone }()
 	if err := cmd.Wait(); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
@@ -117,15 +138,16 @@ func runWindowsHelper(address, secret string) (code int, returned error) {
 	return 0, nil
 }
 
-func windowsAssignAndResume(job windows.Handle, pid uint32) error {
+func windowsAssignMember(job windows.Handle, pid uint32) error {
 	child, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, pid)
 	if err != nil {
 		return err
 	}
 	defer windows.CloseHandle(child)
-	if err := windows.AssignProcessToJobObject(job, child); err != nil {
-		return err
-	}
+	return windows.AssignProcessToJobObject(job, child)
+}
+
+func windowsResumeMember(pid uint32) error {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
 	if err != nil {
 		return err

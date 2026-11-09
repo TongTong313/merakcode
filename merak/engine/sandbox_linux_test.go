@@ -7,12 +7,12 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,8 +20,11 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -29,7 +32,55 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
+func TestEngineSandboxBuiltinCannotReadProductState(t *testing.T) {
+	home, workspace := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	secret := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(secret), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secret, []byte("product credential"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := json.Marshal(map[string]string{"command": fmt.Sprintf("IFS= read -r value < %q", secret)})
+	provider := fake.New(t, fake.Reply{Calls: []model.ToolCall{{ID: "read", Name: "bash", Input: input}}}, fake.Reply{Text: "finished"})
+	e, err := engine.New(engine.Deps{Workdir: workspace, Providers: map[string]model.Provider{"fixture": provider}, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+		return permission.Reply{Decision: permission.Allow}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if _, err := e.Chat(t.Context(), "fixture", "Read the file"); err != nil {
+		t.Fatal(err)
+	}
+	facts, err := e.FindEvents(t.Context(), store.Query{Types: []event.Type{tool.Completed}, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fact := range facts {
+		completion, err := event.Decode[tool.Completion](fact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if completion.Name == "bash" && completion.IsError && completion.Code == "MRK-5009" {
+			return
+		}
+	}
+	t.Fatalf("missing builtin product credential denial: path=%s", secret)
+}
+
 func init() {
+	if len(os.Args) == 4 && os.Args[1] == "--merak-engine-private-data-fixture" {
+		if _, err := os.ReadFile(os.Args[2]); !os.IsPermission(err) {
+			os.Exit(26)
+		}
+		if err := os.WriteFile(os.Args[3], []byte("data denied"), 0600); err != nil {
+			os.Exit(27)
+		}
+		fmt.Print("data denied")
+		os.Exit(0)
+	}
 	if len(os.Args) < 3 || len(os.Args) > 4 || os.Args[1] != "--merak-engine-network-fixture" {
 		return
 	}
@@ -59,11 +110,156 @@ func init() {
 	os.Exit(0)
 }
 
+func TestEngineSandboxDeniesItsOwnDataDirectory(t *testing.T) {
+	data, workspace := t.TempDir(), t.TempDir()
+	secret := filepath.Join(data, "merakcode.json")
+	if err := os.WriteFile(secret, []byte("engine-only data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e, err := engine.New(engine.Deps{DataDir: data, Workdir: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	p := profile.DefaultWorker()
+	marker := filepath.Join(workspace, "completed")
+	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-private-data-fixture", secret, marker}}
+	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run.Wait(t.Context()); err != nil {
+		t.Fatalf("engine data path=%s error=%v", secret, err)
+	}
+	if body, err := os.ReadFile(marker); err != nil || string(body) != "data denied" {
+		t.Fatalf("engine data was readable: marker=%q error=%v", body, err)
+	}
+}
+
+func TestEngineSandboxAsksBeforeNonforwardingStartupWhenNetworkIsUnenforced(t *testing.T) {
+	workspace := t.TempDir()
+	status := new(sandbox.Launcher).Status(t.Context(), sandbox.Profile{})
+	if !status.Available {
+		t.Fatalf("file isolation unavailable: %+v", status)
+	}
+	var asked atomic.Int32
+	e, err := engine.New(engine.Deps{Workdir: workspace, Ask: func(_ context.Context, request permission.Request) (permission.Reply, error) {
+		asked.Add(1)
+		if request.Kind != "launch" || !strings.Contains(request.Spec.Description, "Network restrictions are not enforced; file restrictions remain active.") {
+			t.Errorf("incorrect network-only approval: %+v", request)
+		}
+		return permission.Reply{Decision: permission.Deny}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	p := profile.DefaultWorker()
+	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", filepath.Join(workspace, "output")}}
+	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: "network-enforcement", Workdir: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = run.Wait(t.Context())
+	if status.Network == "none" {
+		if err == nil || !strings.Contains(err.Error(), "MRK-5006") || asked.Load() != 1 {
+			t.Fatalf("unrestricted network launch: asks=%d error=%v", asked.Load(), err)
+		}
+		if _, err := os.Stat(filepath.Join(workspace, "output")); !os.IsNotExist(err) {
+			t.Fatalf("denied member started: %v", err)
+		}
+		return
+	}
+	if err != nil || asked.Load() != 0 {
+		t.Fatalf("enforced network launch: asks=%d error=%v", asked.Load(), err)
+	}
+}
+
+func TestEngineSandboxMergesUserAndGroupNetworkDenials(t *testing.T) {
+	for _, test := range []struct {
+		name, source      string
+		grouped, userDeny bool
+	}{
+		{"user in single chat", "user", false, true},
+		{"user in group", "user", true, true},
+		{"group denial", "group", true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			settings := config.NewMemory()
+			if test.userDeny {
+				denials := []string{"blocked.example:443"}
+				if _, err := settings.Update(config.Patch{DeniedHosts: &denials}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var asked atomic.Int32
+			e, err := engine.New(engine.Deps{NetworkSettings: settings, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+				asked.Add(1)
+				return permission.Reply{Decision: permission.Deny}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			p := profile.DefaultWorker()
+			p.ID, p.Name = "network-member", "Network member"
+			p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://blocked.example:443/"}}
+			a := worker.Assignment{Session: event.NewID(), Workdir: t.TempDir()}
+			if test.grouped {
+				groupSettings := group.Settings{}
+				if !test.userDeny {
+					groupSettings.DeniedHosts = []string{"blocked.example:443"}
+				}
+				g, err := e.CreateGroup(t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: a.Workdir}, DefaultLeader: "leader", Settings: groupSettings}, []group.Member{
+					{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+					{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+					{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
+				}, []profile.Profile{p})
+				if err != nil {
+					t.Fatal(err)
+				}
+				a.Scope.Group, a.Claim.Member = g.ID, "worker"
+			}
+			run, err := e.StartWorker(t.Context(), p, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := run.Wait(t.Context()); err == nil {
+				t.Fatal("denied network call succeeded")
+			}
+			if asked.Load() != 0 {
+				t.Fatalf("explicit network denial asked %d times", asked.Load())
+			}
+			for fact := range run.Events() {
+				if fact.Type != tool.Completed {
+					continue
+				}
+				completion, err := event.Decode[tool.Completion](fact)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if completion.Code != "MRK-5005" || completion.DeniedHost != "blocked.example" || completion.MemberName != p.Name {
+					continue
+				}
+				for _, part := range completion.Parts {
+					if strings.Contains(part.Text, test.source+" DeniedHosts") {
+						return
+					}
+				}
+			}
+			t.Fatal("missing the denial source in tool.completed")
+		})
+	}
+}
+
 func TestEngineSandboxGroupRequiresApprovalForProfileNetworkChanges(t *testing.T) {
+	if runInPublicNetwork(t) {
+		return
+	}
 	localNetworkDNS(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "model response") }))
+	target := publicNetworkServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "model response") }))
 	defer target.Close()
 	port := target.Listener.Addr().(*net.TCPAddr).Port
 	asked := make(chan permission.Request, 4)
@@ -168,7 +364,7 @@ func localNetworkDNS(t *testing.T) {
 			}
 			if query[end-4] == 0 && query[end-3] == 1 {
 				answer[7] = 1
-				answer = append(answer, 0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 127, 0, 0, 1)
+				answer = append(answer, 0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 1, 1, 1, 1)
 			}
 			_, _ = server.WriteTo(answer, peer)
 		}
@@ -181,10 +377,13 @@ func localNetworkDNS(t *testing.T) {
 }
 
 func TestEngineSandboxNetworkApprovalPersistsInGroupSettings(t *testing.T) {
+	if runInPublicNetwork(t) {
+		return
+	}
 	localNetworkDNS(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "approved response") }))
+	target := publicNetworkServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "approved response") }))
 	defer target.Close()
 	port := target.Listener.Addr().(*net.TCPAddr).Port
 	var approvals atomic.Int32
@@ -249,10 +448,13 @@ func TestEngineSandboxNetworkApprovalPersistsInGroupSettings(t *testing.T) {
 }
 
 func TestEngineSandboxSingleChatRemembersNetworkHostsAfterRestart(t *testing.T) {
+	if runInPublicNetwork(t) {
+		return
+	}
 	localNetworkDNS(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "saved response") }))
+	target := publicNetworkServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "saved response") }))
 	defer target.Close()
 	port := target.Listener.Addr().(*net.TCPAddr).Port
 	path := filepath.Join(t.TempDir(), "merakcode.json")
@@ -284,6 +486,48 @@ func TestEngineSandboxSingleChatRemembersNetworkHostsAfterRestart(t *testing.T) 
 		if approvals.Load() != 1 {
 			t.Fatalf("remembered host required %d approvals", approvals.Load())
 		}
+	}
+}
+
+func TestEngineSandboxSingleChatAllowAllStillEnforcesUserDenials(t *testing.T) {
+	if runInPublicNetwork(t) {
+		return
+	}
+	localNetworkDNS(t)
+	target := publicNetworkServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "allowed response") }))
+	defer target.Close()
+	port := target.Listener.Addr().(*net.TCPAddr).Port
+	settings := config.NewMemory()
+	allowed, denied := []string{"*"}, []string{"blocked.example"}
+	if _, err := settings.Update(config.Patch{AllowedHosts: &allowed, DeniedHosts: &denied}); err != nil {
+		t.Fatal(err)
+	}
+	var asked atomic.Int32
+	e, err := engine.New(engine.Deps{NetworkSettings: settings, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+		asked.Add(1)
+		return permission.Reply{Decision: permission.Deny}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	for _, host := range []string{"unlisted.example", "blocked.example"} {
+		p := profile.DefaultWorker()
+		p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://%s:%d/", host, port)}}
+		run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: t.TempDir(), SandboxProfile: sandbox.Profile{Network: sandbox.Network{LocalPorts: []int{port}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := run.Wait(t.Context())
+		if host == "unlisted.example" && (err != nil || report.Summary != "allowed response") {
+			t.Fatalf("allow-all request=%+v %v", report, err)
+		}
+		if host == "blocked.example" && err == nil {
+			t.Fatal("allow-all bypassed user denial")
+		}
+	}
+	if asked.Load() != 0 {
+		t.Fatalf("allow-all and explicit denial requested %d approvals", asked.Load())
 	}
 }
 

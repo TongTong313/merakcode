@@ -14,6 +14,7 @@ type Settings struct {
 	Review            *bool      `json:"review,omitempty"`
 	PlanNeedsApproval bool       `json:"planNeedsApproval,omitempty"`
 	AllowedHosts      []string   `json:"allowedHosts,omitempty"`
+	DeniedHosts       []string   `json:"deniedHosts,omitempty"`
 	MergeNeedsOwner   bool       `json:"mergeNeedsOwner,omitempty"`
 }
 

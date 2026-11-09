@@ -78,17 +78,18 @@ type Env struct {
 type Ref string
 
 type Result struct {
-	DeniedHost string       `json:"deniedHost,omitempty"`
-	MemberName string       `json:"memberName,omitempty"`
-	ChildID    event.ID     `json:"childId,omitempty"`
-	Parts      []model.Part `json:"parts"`
-	IsError    bool         `json:"isError,omitempty"`
-	Code       string       `json:"code,omitempty"`
-	ExitCode   *int         `json:"exitCode,omitempty"`
-	Truncated  bool         `json:"truncated,omitempty"`
-	Full       Ref          `json:"full,omitempty"`
-	JobID      string       `json:"jobId,omitempty"`
-	Running    bool         `json:"running,omitempty"`
+	DeniedHost   string       `json:"deniedHost,omitempty"`
+	DeniedSource string       `json:"deniedSource,omitempty"`
+	MemberName   string       `json:"memberName,omitempty"`
+	ChildID      event.ID     `json:"childId,omitempty"`
+	Parts        []model.Part `json:"parts"`
+	IsError      bool         `json:"isError,omitempty"`
+	Code         string       `json:"code,omitempty"`
+	ExitCode     *int         `json:"exitCode,omitempty"`
+	Truncated    bool         `json:"truncated,omitempty"`
+	Full         Ref          `json:"full,omitempty"`
+	JobID        string       `json:"jobId,omitempty"`
+	Running      bool         `json:"running,omitempty"`
 }
 
 func failure(err error) Result {

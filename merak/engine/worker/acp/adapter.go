@@ -66,11 +66,21 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment) (report task.
 	if err != nil {
 		return report, err
 	}
+	if r.Sandbox != nil && !r.Sandbox.Disabled {
+		var names []string
+		if r.Product.Kind == worker.KindOpenCode {
+			names = []string{".config/opencode", ".local/share/opencode"}
+		}
+		a.SandboxProfile, err = stdio.ProductState(a.SandboxProfile, names...)
+		if err != nil {
+			return report, err
+		}
+	}
 	child, err := stdio.Start(ctx, a, r.Product, r.Product.Args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}
-	defer child.Close()
+	defer func() { runErr = errors.Join(runErr, child.Close()) }()
 	pending := map[string]string{}
 	sequence := 0
 	request := func(method string, params any) error {

@@ -64,11 +64,17 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	for _, setting := range []string{"analytics.enabled=false", "feedback.enabled=false", "check_for_update_on_startup=false", `otel.exporter="none"`, `otel.trace_exporter="none"`, `otel.metrics_exporter="none"`} {
 		args = append(args, "-c", setting)
 	}
+	if r.Sandbox != nil && !r.Sandbox.Disabled {
+		a.SandboxProfile, err = stdio.ProductState(a.SandboxProfile, ".codex")
+		if err != nil {
+			return report, err
+		}
+	}
 	child, err := stdio.Start(ctx, a, p, args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}
-	defer child.Close()
+	defer func() { runErr = errors.Join(runErr, child.Close()) }()
 	pending := map[string]string{}
 	sequence := 0
 	request := func(method string, params any) error {

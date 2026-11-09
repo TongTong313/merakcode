@@ -232,6 +232,35 @@ export function Profiles(props: { group?: string } = {}) {
               onInput={(event) => field("system", event.currentTarget.value)}
             />
           </label>
+          <label class="field">
+            <span>{t("profiles.network")}</span>
+            <textarea
+              class="input"
+              aria-label={t("profiles.network")}
+              value={draft()?.network?.join("\n") ?? ""}
+              onInput={(event) =>
+                setDraft((profile) => ({
+                  ...profile!,
+                  network: event.currentTarget.value
+                    .split(/\r?\n/)
+                    .map((host) => host.trim())
+                    .filter(Boolean),
+                }))
+              }
+            />
+          </label>
+          <label class="field">
+            <span>{t("permissionLevel.label")}</span>
+            <select
+              class="input"
+              aria-label={t("permissionLevel.label")}
+              value={draft()?.mode || "ask"}
+              onChange={(event) => setDraft((profile) => ({ ...profile!, mode: event.currentTarget.value }))}
+            >
+              <option value="ask">{t("permissionLevel.ask")}</option>
+              <option value="takeover">{t("permissionLevel.fullTakeover")}</option>
+            </select>
+          </label>
           <Show when={!draft()?.product}>
             <label class="field">
               <span>{t("profiles.provider")}</span>

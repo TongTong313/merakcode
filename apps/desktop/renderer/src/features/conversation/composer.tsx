@@ -1,6 +1,5 @@
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import Brain from "lucide-solid/icons/brain"
-import Eye from "lucide-solid/icons/eye"
 import Paperclip from "lucide-solid/icons/paperclip"
 import Square from "lucide-solid/icons/square"
 import X from "lucide-solid/icons/x"
@@ -9,10 +8,10 @@ import { t } from "../../i18n"
 import { choice, choiceKey, choose, find, usage } from "../../state/models"
 import { connected } from "../../state/store"
 import { Select } from "../../ui/select"
-import { Tip } from "../../ui/tooltip"
 import { toast } from "../../ui/toast"
 import { AttachmentPreview } from "./attachment"
 import { ModelPicker } from "./model-picker"
+import { SandboxStatus } from "./sandbox-status"
 
 export type Attachment = { filename: string; mime: string; url: string }
 export type Submission = { text: string; files: Attachment[] }
@@ -168,12 +167,28 @@ export function Composer(props: {
       />
       <div class="composer-bar">
         <Show when={!props.group}>
-          <Tip label={t("permissionLevel.ask.desc")}>
-            <span class="chip">
-              <Eye class="icon icon-sm" />
-              {t("permissionLevel.ask")}
-            </span>
-          </Tip>
+          <Select
+            label={t("permissionLevel.label")}
+            value={selected().mode}
+            disabled={!!props.sessionID || props.busy || props.disabled}
+            options={[
+              { value: "ask", label: t("permissionLevel.ask"), description: t("permissionLevel.ask.desc") },
+              {
+                value: "takeover",
+                label: t("permissionLevel.fullTakeover"),
+                description: t("permissionLevel.fullTakeover.desc"),
+                tone: "danger",
+                badge: t("permissionLevel.fullTakeover.badge"),
+              },
+            ]}
+            onChange={(mode: "ask" | "takeover") => choose(props.sessionID, props.directory, { mode })}
+          />
+          <SandboxStatus
+            directory={props.directory}
+            sessionID={props.sessionID}
+            mode={selected().mode}
+            busy={props.busy}
+          />
           <input
             ref={picker}
             type="file"

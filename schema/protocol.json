@@ -1002,6 +1002,19 @@
             }
           ]
         },
+        "deniedHosts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "initiative": {
           "type": "string"
         },
@@ -2244,6 +2257,9 @@
         "mode": {
           "type": "string"
         },
+        "session": {
+          "type": "string"
+        },
         "workdir": {
           "type": "string"
         }
@@ -2662,6 +2678,19 @@
         "disabled": {
           "type": "boolean"
         },
+        "limits": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "network": {
           "type": "string"
         },
@@ -2680,6 +2709,9 @@
         },
         "reason": {
           "type": "string"
+        },
+        "waitingAccount": {
+          "type": "boolean"
         }
       },
       "required": ["available", "backend", "network"],
@@ -3577,6 +3609,9 @@
           "type": "string"
         },
         "deniedHost": {
+          "type": "string"
+        },
+        "deniedSource": {
           "type": "string"
         },
         "exitCode": {

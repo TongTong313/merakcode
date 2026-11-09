@@ -63,6 +63,7 @@ type SessionCreateParams struct {
 }
 
 type SandboxStatusParams struct {
+	Session event.ID        `json:"session,omitempty"`
 	Workdir string          `json:"workdir,omitempty"`
 	Mode    permission.Mode `json:"mode,omitempty"`
 }

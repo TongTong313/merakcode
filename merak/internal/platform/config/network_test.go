@@ -48,3 +48,14 @@ func TestUserNetworkDenialsPersistAndRejectAnUnboundedWildcard(t *testing.T) {
 		t.Fatal("invalid denial changed the saved policy")
 	}
 }
+
+func TestUserMayAllowEveryHostWhileRetainingExplicitDenials(t *testing.T) {
+	settings := config.NewMemory()
+	allowed, denied := []string{"*"}, []string{"blocked.example:443"}
+	if _, err := settings.Update(config.Patch{AllowedHosts: &allowed, DeniedHosts: &denied}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(settings.AllowedNetworkHosts(), allowed) || !slices.Equal(settings.DeniedNetworkHosts(), denied) {
+		t.Fatalf("network rules=%+v", settings.Get())
+	}
+}

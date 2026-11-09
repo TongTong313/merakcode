@@ -3,9 +3,11 @@ package engine_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 func TestEngineSandboxBuiltinBashCannotWriteOutsideItsWorkspace(t *testing.T) {
@@ -79,8 +82,10 @@ func TestEngineSandboxMembersCannotReadCredentialDirectories(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if _, err := run.Wait(ctx); err != nil {
-						t.Fatal(err)
+					_, err = run.Wait(ctx)
+					var denial *sandbox.DenialError
+					if !errors.As(err, &denial) || !strings.Contains(denial.Details, path) {
+						t.Fatalf("missing credential denial: path=%s error=%v", path, err)
 					}
 				}
 				if body, err := os.ReadFile(filepath.Join(workspace, "ran.txt")); err != nil || string(body) != "ran" {

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"slices"
 	"sort"
 	"strconv"
@@ -30,7 +30,7 @@ func init() {
 	}
 	code, err := runWindowsBroker(os.Args[2])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "MRK-5004", err)
+		fmt.Fprintln(os.Stderr, "MRK-5004")
 		code = 125
 	}
 	os.Exit(code)
@@ -45,6 +45,36 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 	if err = json.Unmarshal(body, &request); err != nil {
 		return 0, err
 	}
+	endpoint, err := net.ResolveTCPAddr("tcp4", request.StartupAddress)
+	if err != nil || !endpoint.IP.IsLoopback() || request.StartupToken == "" {
+		return 0, errors.New("invalid sandbox startup endpoint")
+	}
+	startup, err := net.DialTimeout("tcp4", request.StartupAddress, 5*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	defer startup.Close()
+	ready := false
+	defer func() {
+		if ready {
+			return
+		}
+		if err := json.NewEncoder(startup).Encode(windowsStartupMessage{Token: request.StartupToken}); err != nil {
+			return
+		}
+		var approved bool
+		if err := json.NewDecoder(startup).Decode(&approved); err != nil || !approved {
+			return
+		}
+		cmd := process.Command(context.Background(), "", request.Command, request.Args...)
+		cmd.Env = request.Profile.Environment(os.Environ())
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		returned = cmd.Run()
+		var exit *exec.ExitError
+		if errors.As(returned, &exit) {
+			code, returned = exit.ExitCode(), nil
+		}
+	}()
 	if err = request.Profile.Validate(); err != nil {
 		return 0, err
 	}
@@ -77,55 +107,8 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 	if strings.EqualFold(request.Command, self) {
 		request.Command = helper
 	}
-	var granted []string
-	var directoryGrants []string
-	defer func() {
-		for i := len(granted) - 1; i >= 0; i-- {
-			cmd := process.Command(context.Background(), "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), granted[i], "/remove", "*"+account.SID)
-			if err := cmd.Run(); err != nil {
-				returned = errors.Join(returned, err)
-			}
-		}
-		for i := len(directoryGrants) - 1; i >= 0; i-- {
-			returned = errors.Join(returned, windowsDirectoryAccess(directoryGrants[i], account.SID, false))
-		}
-	}()
-	ancestors, err := windowsUnreadableAncestors(account.Name, password, append(append([]string(nil), request.Profile.WriteAllow...), private, helper))
-	if err != nil {
+	if err := windowsPermanentReadDenials(request.StateDir, request.Profile); err != nil {
 		return 0, err
-	}
-	for _, path := range ancestors {
-		if err := windowsDirectoryAccess(path, account.SID, true); err != nil {
-			return 0, err
-		}
-		directoryGrants = append(directoryGrants, path)
-	}
-	for _, path := range request.Profile.ReadDeny {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			return 0, err
-		}
-		transient := slices.Contains(request.Profile.TransientReadDeny, path)
-		if !transient && !slices.Contains(manifest.DenyRoots, path) {
-			manifest.DenyRoots = append(manifest.DenyRoots, path)
-			body, err := json.Marshal(manifest)
-			if err != nil {
-				return 0, err
-			}
-			if err := os.WriteFile(filepath.Join(request.StateDir, "accounts.json"), body, 0600); err != nil {
-				return 0, err
-			}
-		}
-		deniedSID := manifest.Group.SID
-		if transient {
-			deniedSID = account.SID
-			granted = append(granted, path)
-		}
-		cmd := process.Command(context.Background(), "", filepath.Join(os.Getenv("SystemRoot"), "System32", "icacls.exe"), path, "/deny", "*"+deniedSID+":(OI)(CI)R")
-		if err := cmd.Run(); err != nil {
-			return 0, err
-		}
 	}
 	directory, err := os.Getwd()
 	if err != nil {
@@ -140,7 +123,10 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 		name, value, _ := strings.Cut(entry, "=")
 		values[strings.ToUpper(name)] = value
 	}
-	values["TEMP"], values["TMP"] = private, private
+	for _, entry := range privateEnvironment(private) {
+		name, value, _ := strings.Cut(entry, "=")
+		values[strings.ToUpper(name)] = value
+	}
 	count := 0
 	if value := values["GIT_CONFIG_COUNT"]; value != "" {
 		count, err = strconv.Atoi(value)
@@ -174,7 +160,6 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 		return 0, fmt.Errorf("start sandbox helper: %w", err)
 	}
 	password = ""
-	streams.forward()
 	defer windows.CloseHandle(info.Process)
 	defer windows.CloseHandle(info.Thread)
 	defer windows.TerminateProcess(info.Process, 125)
@@ -197,6 +182,29 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 	if err = json.NewEncoder(connection).Encode(launch); err != nil {
 		return 0, err
 	}
+	var started struct {
+		Ready bool
+		Error string
+	}
+	if err = decoder.Decode(&started); err != nil {
+		return 0, err
+	}
+	if !started.Ready {
+		return 0, errors.New("MRK-5004")
+	}
+	if err = json.NewEncoder(startup).Encode(windowsStartupMessage{Token: request.StartupToken, Ready: true}); err != nil {
+		return 0, err
+	}
+	var accepted bool
+	if err = json.NewDecoder(startup).Decode(&accepted); err != nil || !accepted {
+		return 0, errors.New("sandbox controller ended before startup")
+	}
+	if err = json.NewEncoder(connection).Encode(true); err != nil {
+		return 0, err
+	}
+	ready = true
+	streams.forward()
+	startup.Close()
 	if err = connection.SetDeadline(time.Time{}); err != nil {
 		return 0, err
 	}

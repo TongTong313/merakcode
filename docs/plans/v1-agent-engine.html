@@ -1328,6 +1328,16 @@ func Bundle(ctx context.Context, req Request, out io.Writer) error</code></pre>
       Go 环境用 <code>actions/setup-go</code>，版本读 <code>merak/go.mod</code>，开启模块缓存。<code>release.yml</code>
       在阶段 2 结束、命令行能发布时再改。
     </p>
+    <p>
+      开发机是 Windows，macOS 上只有必须在 macOS 内核上跑的部分留给 CI：<code>sandbox-exec</code>
+      真正拦住写入和联网的一致性测试、钥匙串之类只有那边才有的行为。其余都在本地做：按 Profile 生成 Seatbelt
+      规则是纯函数，放在不带构建标签的文件里，用黄金文件在任何系统上测；<code>sandbox_darwin.go</code> 只剩调用
+      <code>sandbox-exec</code> 的那几行，<code>pnpm --dir merak typecheck</code> 对三个系统跑
+      <code>go vet</code>，它编不过本地就能看到。Linux 同理：Landlock 规则的规划（哪些路径给哪些权限、按 ABI
+      取舍）是纯函数本地测，施加规则的系统调用留给 Linux 上的测试。提 PR 触发矩阵里的 macOS
+      job，红了按日志修。一致性测试因此必须是同一张表在三个系统上跑，失败信息要带上被拒的路径或主机，让人只看 CI
+      日志就能改。
+    </p>
 
     <h3 id="foundation">3.9 地基施工单（S0）</h3>
     <p>
@@ -5052,7 +5062,7 @@ type Profile struct {
 	ReadDeny   []string // credential directories under the home folder (.ssh, .aws, .azure, .kube, .gnupg, .docker, gcloud, gh), the
 	                    // engine's own data directory except the private temp dir, and the state directories of the other products
 	WriteAllow []string // the workspace, the engine's private temp dir, package manager caches, the member's own product state
-	                    // directory (~/.claude and ~/.claude.json, ~/.codex, ...); nothing else
+	                    // directory (~/.claude with .claude.json moved inside through CLAUDE_CONFIG_DIR, ~/.codex, ...); nothing else
 	Protect    []string // never writable even inside WriteAllow: .git/hooks, .git/config, merakcode.json(c), .merakcode/
 	Network    Network  // off, allowlist, or on; allow and deny rules (host, IP, *.domain, optional :port); blocked ports; allowed local ports
 	EnvAllow   []string // environment variable names passed through; everything else is stripped
@@ -5064,7 +5074,8 @@ type Profile struct {
 type Status struct {
 	Available bool         // the file limits are enforced
 	Backend   string       // seatbelt, landlock, windows-account, none
-	Network   string       // seatbelt, namespace, account: outbound traffic reaches only the proxy; ports: TCP ports only, hostnames are not enforced; none
+	Network   string       // how outbound traffic is forced to the proxy: seatbelt, namespace, account, ports, none
+	Limits    []string     // what the mechanism leaves open: loopback-open, own-addresses-open, port-only, udp-open; the clients render them
 	Protect   []PathStatus // one per Protect path
 	Reason    string       // what is not enforced and why, for the UI
 }
@@ -5085,14 +5096,34 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       主机名白名单由引擎的本机代理执行，三个系统的机制只负责把成员的出站流量限制到只能到这个代理。<code
         >Status.Network</code
       >
-      报告这一步是否做到：做不到时主机名就没有强制，策略对联网调用逐次询问（10.1 节）。
+      报告用的是哪种机制，<code>Status.Limits</code> 列出这种机制管不到的地方：<code>namespace</code> 和
+      <code>seatbelt</code> 没有缺口，回环也只放行代理端口和 LocalPorts；<code>account</code>
+      只封非回环流量，回环和本机自己的地址开着（<code>loopback-open</code>、<code>own-addresses-open</code>），LocalPorts
+      和 BlockedPorts 不生效；<code>ports</code> 只认端口不认主机，UDP
+      不管（<code>port-only</code>、<code>udp-open</code>）。只有
+      <code>none</code>
+      让策略多问：成员能直连任何地方，主机名白名单形同虚设。其他几种都算网络已强制，缺口在界面的“部分强制”里列出，不多问。
     </p>
     <p>
       读的范围三个系统一致：用户能读的减去 ReadDeny。外部产品要读写自己的状态目录（Claude Code 的
-      <code>~/.claude</code> 和 <code>~/.claude.json</code>、Codex 的 <code>~/.codex</code>、opencode 的
-      <code>~/.config/opencode</code> 和 <code>~/.local/share/opencode</code>、pi 的
+      <code>~/.claude</code>，<code>.claude.json</code> 经 <code>CLAUDE_CONFIG_DIR</code> 也收在这里、Codex 的
+      <code>~/.codex</code>、opencode 的 <code>~/.config/opencode</code> 和 <code>~/.local/share/opencode</code>、pi 的
       <code>~/.pi</code>），登录令牌也在里面，所以适配器把自己产品的状态目录加进这次运行的 WriteAllow，把其他产品的加进
       ReadDeny。引擎自己的数据目录也在 ReadDeny 里：用户配置里有密钥，存储里有对话；私有临时目录除外。
+    </p>
+    <p>
+      Landlock 和 NTFS 只能授权已存在的路径，所以 WriteAllow
+      里的路径在授权前必须存在，而成员进程自己创建不了它们。产品的状态目录由适配器在启动前以用户身份建好（不存在才建，权限只给用户），已有的不改，建不出来算启动失败。产品直接放在用户目录顶层的状态文件没法这样处理：预建文件不行，产品写它时会在旁边排他地建锁文件和临时文件再改名，预建的锁会被当成已占用。办法是用产品自己的配置目录变量把这个文件收进它的状态目录，状态目录不换地方，登录和设置都还在原处：Claude
+      Code 的适配器设 <code>CLAUDE_CONFIG_DIR</code> 指向真实的 <code>~/.claude</code>（用户自己设了就用用户的），<code
+        >.claude.json</code
+      >
+      和它的锁、临时文件就都落在这个已可写的目录里；第一次运行时目录里还没有 <code>.claude.json</code> 而
+      <code>~/.claude.json</code>
+      存在，适配器以用户身份复制一份进去，权限只给用户，此后两份各走各的，成员的项目记录和启动计数不会写回用户自己的那份；<code
+        >~/.claude.json</code
+      >
+      本身永远不授权。不接受“沙箱拒绝后产品退回直接写用户的文件”：几个成员同时跑时没有锁的直接写会损坏用户自己的配置。三个系统都这么做，macOS
+      虽不需要也保持一致。
     </p>
     <table>
       <tr>
@@ -5133,7 +5164,8 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
           >Status.Network</code
         >
         报 <code>namespace</code>；开不了而内核在 6.7 以上，用 Landlock 的网络端口规则只放行代理端口，报
-        <code>ports</code>，它只认端口不认主机，也不管 UDP，不能当成主机名白名单；两样都没有报 <code>none</code>。
+        <code>ports</code>，它只认端口不认主机，也不管 UDP，<code>Limits</code> 报 <code>port-only</code> 和
+        <code>udp-open</code>；两样都没有报 <code>none</code>。
       </li>
       <li>
         已存在的保护路径在有挂载命名空间时以只读方式 bind mount
@@ -5150,7 +5182,13 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
     <ul>
       <li>
         一次性初始化由管理员完成：建一个本地组和一组沙箱账户（默认 4
-        个，初始化时可改）加进组，账户不在登录界面显示，凭据存进系统凭据库，每个账户一条防火墙规则让出站只能到回环。管理员步骤之后以用户身份继续：给组在用户资料目录上授读取和执行并继承（目录属于用户，不需要特权；目录大时第一次要几分钟，界面显示进度），给组在
+        个，初始化时可改）加进组，账户不在登录界面显示，凭据存进系统凭据库，每个账户一条防火墙规则封掉非回环的出站。Windows
+        防火墙不过滤回环，也不过滤发往本机自己地址的流量，所以成员能连到本机上的服务，这是防火墙的形状，不是这台机器的降级：<code
+          >Status.Network</code
+        >
+        报 <code>account</code>，<code>Limits</code> 报 <code>loopback-open</code> 和
+        <code>own-addresses-open</code
+        >，不多问。管理员步骤之后以用户身份继续：给组在用户资料目录上授读取和执行并继承（目录属于用户，不需要特权；目录大时第一次要几分钟，界面显示进度），给组在
         <code>merak</code> 的安装目录上授读取和执行。引擎启动时验证账户可用，凭据变化后重新探测。
       </li>
       <li>
@@ -5162,7 +5200,8 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
         不进来。工作区、私有目录和助手文件通常在用户资料目录或盘根目录下，祖先目录都可读；遇到不可读的祖先，租用时给账户加只读加穿越，只作用于该目录不继承，归还时撤销。
       </li>
       <li>
-        隔离的单位是认领，所以每个活动的认领（单聊里是每条会话）租一个账户，认领内的所有启动共用它，结束时归还；账户用完时新认领排队等待，状态里显示“等待沙箱账户”。租用时引擎在
+        隔离的单位是认领，所以每个活动的认领租一个账户，认领内的所有启动共用它，认领结束归还。单聊按会话租：第一次启动成员进程时租；会话空闲（没有在跑的轮次、没有后台命令）后不立即归还，池子不够时才从空闲最久的会话收回，下一轮再租，上次那个账户还空着就优先用它，这样桌面端常年开着的对话不占死账户，也不用每轮在工作区上重打
+        ACL。账户用完且没有可收回的，新认领排队等待，状态里显示“等待沙箱账户”。不加“结束会话”的协议操作。租用时引擎在
         WriteAllow 和私有目录上给这个账户授 Modify，在已存在的保护路径上给它加显式 Deny（WriteAllow 的授权会向下继承到
         <code>.git/hooks</code>，这条 Deny 不能省）；归还时删掉这些 ACE，引擎启动时清理上次残留的。
       </li>
@@ -5255,7 +5294,12 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       <li>
         不能转发的产品（pi、纯命令行程序）引擎看不到它们内部的调用，能看到的唯一一次调用是启动，所以启动本身按危险调用询问：单聊问用户，群里直接问
         admin，不经 Leader。请求带成员名、<code>Status.Reason</code>
-        和一句说明：这个成员不能转发审批，本机没有可用沙箱，启动后它的操作不受限制。“记住这个选择”有效，按成员加项目记。拒绝则启动失败，记进
+        和一句说明：这个成员不能转发审批，本机没有可用沙箱，启动后它的操作不受限制。文件可用而
+        <code>Status.Network</code> 为 <code>none</code> 时同样启动前问一次，说明改为：网络没有强制，文件仍受限；<code
+          >account</code
+        >
+        和 <code>ports</code>
+        不触发这一问。“记住这个选择”有效，按成员加项目记。拒绝则启动失败，记进
         <code>tool.completed</code> 的错误，有自己的错误码；群里这条任务回到看板等人改派。全面接管下照旧不问。
       </li>
       <li>
@@ -6694,7 +6738,10 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         报未强制且退出后文件被还原、错误里列出该路径；不存在的保护路径断言报缺失且没有被预建；访问未允许的网络，有网络强制时失败，没有时断言
         <code>Status.Network</code> 为 <code>none</code>；通配规则 <code>*.example.com</code> 放行子域、不放行裸 IP
         和顶域本身，拒绝列表压过允许列表。Windows
-        另加两条：写盘根下的一个目录，失败；同时启动两个认领，一个成员写另一个的工作区，失败；账户用完时第三个认领排队。
+        另加三条：写盘根下的一个目录，失败；同时启动两个认领，一个成员写另一个的工作区，失败；账户用完时第三个认领排队；<code
+          >Status.Limits</code
+        >
+        报 <code>loopback-open</code>，pi 和纯命令成员不因此多问；空闲会话占着的账户被新认领收回，会话下一轮重新租到。
       </li>
       <li>
         三个系统共用的日常工具用例：<code>git --version</code>、<code>git status</code>、node 打印一行、node 往 TEMP
@@ -6722,7 +6769,7 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       </li>
     </ol>
     <p>
-      只实现：三个系统的沙箱、保护路径回滚、<code>Status</code>、Windows
+      只实现：三个系统的沙箱（macOS 的以 CI 为准，3.8 节）、保护路径回滚、<code>Status</code>、Windows
       的助手子命令、接入所有运行器、全面接管模式、档案的
       <code>Network</code> 字段、CI 的 <code>sandbox</code> job（Windows 一次性初始化和重置脚本，并删掉工作流里指向 v0.3
       沙箱脚本的 <code>external-network</code> 步骤）。不做：Linux 的挂载命名空间和

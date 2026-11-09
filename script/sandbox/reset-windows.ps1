@@ -34,14 +34,17 @@ $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -En
 foreach ($account in $manifest.accounts) {
     $user = Get-LocalUser -Name $account.name -ErrorAction SilentlyContinue
     if ($user) { Disable-LocalUser -SID $user.SID }
-    $journalPath = Join-Path $statePath ("lease-" + $account.name + '.lock.json')
-    if (Test-Path -LiteralPath $journalPath) {
-        $writeRoots = @(Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json)
-        foreach ($root in $writeRoots) {
-            if (-not ($root -is [string]) -or -not [IO.Path]::IsPathRooted($root) -or [IO.Path]::GetFullPath($root) -ne $root) { throw 'Invalid sandbox lease directory.' }
-            if (-not (Test-Path -LiteralPath $root)) { continue }
-            & "$env:SystemRoot\System32\icacls.exe" $root /remove:g "*$($account.sid)" | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to remove sandbox lease access.' }
+    foreach ($suffix in @('', '.deny', '.ancestors')) {
+        $journalPath = Join-Path $statePath ("lease-" + $account.name + '.lock.json' + $suffix)
+        $removeMode = if ($suffix -eq '.deny') { '/remove:d' } else { '/remove:g' }
+        if (Test-Path -LiteralPath $journalPath) {
+            $accessRoots = @(Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json)
+            foreach ($root in $accessRoots) {
+                if (-not ($root -is [string]) -or -not [IO.Path]::IsPathRooted($root) -or [IO.Path]::GetFullPath($root) -ne $root) { throw 'Invalid sandbox lease directory.' }
+                if (-not (Test-Path -LiteralPath $root)) { continue }
+                & "$env:SystemRoot\System32\icacls.exe" $root $removeMode "*$($account.sid)" | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Failed to remove sandbox lease access.' }
+            }
         }
     }
 }

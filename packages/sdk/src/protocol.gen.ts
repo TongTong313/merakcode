@@ -367,6 +367,7 @@ export type GroupProject = { directory: string }
 export const GroupProjectSchema: z.ZodType<GroupProject> = z.lazy(() => z.strictObject({ directory: z.string() }))
 export type GroupSettings = {
   allowedHosts?: string[] | null
+  deniedHosts?: string[] | null
   initiative?: string
   mergeNeedsOwner?: boolean
   planNeedsApproval?: boolean
@@ -376,6 +377,7 @@ export type GroupSettings = {
 export const GroupSettingsSchema: z.ZodType<GroupSettings> = z.lazy(() =>
   z.strictObject({
     allowedHosts: z.union([z.array(z.string()), z.null()]).optional(),
+    deniedHosts: z.union([z.array(z.string()), z.null()]).optional(),
     initiative: z.string().optional(),
     mergeNeedsOwner: z.boolean().optional(),
     planNeedsApproval: z.boolean().optional(),
@@ -827,9 +829,9 @@ export type ProtocolRepoDiffParams = { base?: string; directory?: string; sessio
 export const ProtocolRepoDiffParamsSchema: z.ZodType<ProtocolRepoDiffParams> = z.lazy(() =>
   z.strictObject({ base: z.string().optional(), directory: z.string().optional(), session: z.string().optional() }),
 )
-export type ProtocolSandboxStatusParams = { mode?: string; workdir?: string }
+export type ProtocolSandboxStatusParams = { mode?: string; session?: string; workdir?: string }
 export const ProtocolSandboxStatusParamsSchema: z.ZodType<ProtocolSandboxStatusParams> = z.lazy(() =>
-  z.strictObject({ mode: z.string().optional(), workdir: z.string().optional() }),
+  z.strictObject({ mode: z.string().optional(), session: z.string().optional(), workdir: z.string().optional() }),
 )
 export type ProtocolSessionCancelParams = { session: string }
 export const ProtocolSessionCancelParamsSchema: z.ZodType<ProtocolSessionCancelParams> = z.lazy(() =>
@@ -981,18 +983,22 @@ export type SandboxStatus = {
   available: boolean
   backend: string
   disabled?: boolean
+  limits?: string[] | null
   network: string
   protect?: SandboxProtectionStatus[] | null
   reason?: string
+  waitingAccount?: boolean
 }
 export const SandboxStatusSchema: z.ZodType<SandboxStatus> = z.lazy(() =>
   z.strictObject({
     available: z.boolean(),
     backend: z.string(),
     disabled: z.boolean().optional(),
+    limits: z.union([z.array(z.string()), z.null()]).optional(),
     network: z.string(),
     protect: z.union([z.array(SandboxProtectionStatusSchema), z.null()]).optional(),
     reason: z.string().optional(),
+    waitingAccount: z.boolean().optional(),
   }),
 )
 export type SessionChildResult = { code?: string; id: string; report?: ModelPart[] | null; stop?: string }
@@ -1341,6 +1347,7 @@ export type ToolCompletion = {
   childId?: string
   code?: string
   deniedHost?: string
+  deniedSource?: string
   exitCode?: number | null
   full?: string
   isError?: boolean
@@ -1357,6 +1364,7 @@ export const ToolCompletionSchema: z.ZodType<ToolCompletion> = z.lazy(() =>
     childId: z.string().optional(),
     code: z.string().optional(),
     deniedHost: z.string().optional(),
+    deniedSource: z.string().optional(),
     exitCode: z.union([z.number().int(), z.null()]).optional(),
     full: z.string().optional(),
     isError: z.boolean().optional(),

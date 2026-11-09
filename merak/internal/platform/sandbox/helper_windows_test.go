@@ -54,6 +54,16 @@ func TestWindowsSandboxHelperDeathKillsTheMemberTree(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	var started struct {
+		Ready bool
+		Error string
+	}
+	if err := json.NewDecoder(connection).Decode(&started); err != nil || !started.Ready {
+		t.Fatalf("member startup: %+v %v", started, err)
+	}
+	if err := json.NewEncoder(connection).Encode(true); err != nil {
+		t.Fatal(err)
+	}
 	reader := bufio.NewScanner(stdout)
 	var descendant, member uint32
 	for reader.Scan() {

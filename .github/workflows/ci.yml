@@ -111,6 +111,51 @@ jobs:
         env:
           CGO_ENABLED: "1"
 
+  sandbox:
+    name: Sandbox (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: "0"
+      MERAKCODE_SANDBOX_REQUIRED: "1"
+      MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Initialize Windows sandbox accounts and read access
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .cache/sandbox-ci | Out-Null
+          ./script/sandbox/setup-windows.ps1 -Count 2 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
+          ./script/sandbox/grant-read-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE -InstallDir "$env:GITHUB_WORKSPACE/.cache/sandbox-ci"
+      - name: Run kernel isolation and shared consistency tests
+        shell: pwsh
+        run: ./script/sandbox/test.ps1
+      - name: Reset Windows accounts, profiles, registry, firewall and state
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:MERAKCODE_SANDBOX_TEST_STATE/accounts.json") {
+            ./script/sandbox/reset-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
+          }
+          $users = @(Get-LocalUser -Name 'merak-sbx-*' -ErrorAction SilentlyContinue)
+          $rules = @(Get-NetFirewallRule -Group 'MerakCode sandbox' -ErrorAction SilentlyContinue)
+          $users
+          $rules
+          if ($users.Count -or $rules.Count -or (Test-Path $env:MERAKCODE_SANDBOX_TEST_STATE)) { throw 'Sandbox cleanup is incomplete.' }
+
   go-build:
     name: Go build and smoke test
     runs-on: ubuntu-24.04
@@ -235,7 +280,7 @@ jobs:
   # cancelled or skipped job fails it; always() makes it report even then instead of being skipped itself.
   passed:
     name: CI passed
-    needs: [check, scripts, test-ts, go, go-build, e2e-sdk, e2e-desktop, desktop-package]
+    needs: [check, scripts, test-ts, go, sandbox, go-build, e2e-sdk, e2e-desktop, desktop-package]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

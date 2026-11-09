@@ -1,4 +1,4 @@
-//go:build !linux && !windows
+//go:build !linux && !windows && !darwin
 
 package sandbox
 
@@ -12,6 +12,6 @@ func (l *Launcher) platformCommand(context.Context, Profile, string, ...string) 
 	return nil, errors.New("sandbox is unavailable")
 }
 
-func platformStatus(context.Context, Profile) Status {
+func (l *Launcher) platformStatus(context.Context, Profile) Status {
 	return Status{Backend: "none", Network: "none", Reason: "MRK-5004"}
 }

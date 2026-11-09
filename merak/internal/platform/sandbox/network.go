@@ -64,6 +64,15 @@ func (n Network) deniesHost(host string, port int) bool {
 	})
 }
 
+func (n Network) denialSource(host string, port int) string {
+	for _, rule := range n.Deny {
+		if matchesNetworkRule(rule, host, port) {
+			return n.DenySources[rule]
+		}
+	}
+	return ""
+}
+
 func parseNetworkRule(rule string) (string, int, bool) {
 	if validHost(rule) {
 		return normalizeHost(rule), 0, true

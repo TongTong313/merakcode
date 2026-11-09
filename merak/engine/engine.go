@@ -43,6 +43,8 @@ import (
 )
 
 type Deps struct {
+	DataDir         string
+	SandboxStateDir string
 	NetworkSettings NetworkSettings
 	AskQuestion     func(context.Context, question.Request) (question.Answer, error)
 	Logger          *slog.Logger
@@ -62,6 +64,12 @@ type Deps struct {
 }
 
 type Engine struct {
+	dataDir         string
+	sandboxMu       sync.Mutex
+	networkMu       sync.RWMutex
+	sandboxStateDir string
+	sandboxes       map[sandboxKey]*sandbox.Launcher
+	sandboxErr      error
 	launchGrants    map[launchGrant]permission.Decision
 	networkSettings NetworkSettings
 	askPermission   func(context.Context, permission.Request) (permission.Reply, error)
@@ -104,6 +112,13 @@ type Engine struct {
 }
 
 func New(d Deps) (*Engine, error) {
+	if d.SandboxStateDir == "" && d.DataDir != "" {
+		d.SandboxStateDir = filepath.Join(d.DataDir, "sandbox")
+	}
+	if runtime.GOOS == "windows" && d.SandboxStateDir != "" {
+		launcher := &sandbox.Launcher{StateDir: d.SandboxStateDir}
+		launcher.Status(context.Background(), sandbox.Profile{})
+	}
 	if d.Now == nil {
 		d.Now = time.Now
 	}
@@ -120,6 +135,9 @@ func New(d Deps) (*Engine, error) {
 		return nil, fmt.Errorf("unknown tool pool %q", d.ToolPool)
 	}
 	e := &Engine{
+		dataDir:         d.DataDir,
+		sandboxStateDir: d.SandboxStateDir,
+		sandboxes:       make(map[sandboxKey]*sandbox.Launcher),
 		askQuestion:     d.AskQuestion,
 		workerQuestions: make(map[event.ID]*pendingWorkerQuestion),
 		logger:          d.Logger,
@@ -205,6 +223,7 @@ func (e *Engine) Chat(ctx context.Context, provider, input string) (loop.Outcome
 	if err != nil {
 		return loop.Outcome{}, err
 	}
+	defer e.releaseSandbox(c.state.ID)
 	defer c.runner.Env.Jobs.Close()
 	if c.children != nil {
 		defer c.children.Close()
@@ -259,27 +278,45 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 		return nil, fmt.Errorf("unknown provider %q", state.Config.Provider)
 	}
 	runner := loop.Loop{Model: p, ModelID: state.Config.Model, Thinking: state.Config.Thinking, Bus: e.Bus, Tools: e.sessionTools(state.Config), Env: tool.Env{Mode: string(state.Config.Mode), Workdir: state.Config.Workdir, Reads: new(tool.Reads), Jobs: new(tool.Jobs), Spill: e.spill}}
-	launcher := &sandbox.Launcher{Disabled: state.Config.Mode == permission.ModeTakeover}
-	if launcher.Disabled || launcher.Status(e.ctx, sandbox.Profile{}).Available {
-		configuration, err := memberSandboxProfile(e.ctx, state.Config.Workdir, sandbox.Profile{Network: sandbox.Network{Mode: "allowlist"}})
+	launcher := &sandbox.Launcher{StateDir: e.sandboxStateDir, Disabled: state.Config.Mode == permission.ModeTakeover, Reclaimable: state.Scope.Group == ""}
+	launcher.Unavailable = func(context.Context, sandbox.Status) error { return nil }
+	configuration, err := e.memberSandboxProfile(e.ctx, state.Config.Workdir, sandbox.Profile{Network: sandbox.Network{Mode: "allowlist"}})
+	if err != nil {
+		return nil, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range []string{".claude", ".claude.json", ".codex", ".pi", ".config/opencode", ".local/share/opencode"} {
+		path, err := resolvedSandboxPath(filepath.Join(home, name))
 		if err != nil {
 			return nil, err
 		}
-		runner.Env.Sandbox = launcher
-		runner.Env.SandboxProfile = configuration
-		memberProfile := profile.DefaultWorker()
-		if state.Scope.Group != "" && state.Config.Member != "" {
-			member, err := e.groupMember(e.ctx, state.Scope.Group, state.Config.Member)
-			if err != nil {
-				return nil, err
-			}
-			memberProfile, err = e.memberProfile(e.ctx, member)
-			if err != nil {
-				return nil, err
-			}
-		}
-		e.connectSandboxNetwork(launcher, memberProfile, worker.Assignment{Session: state.ID, Scope: state.Scope, Workdir: state.Config.Workdir, Claim: task.Claim{Member: state.Config.Member}})
+		configuration.ReadDeny = append(configuration.ReadDeny, path)
+		configuration.TransientReadDeny = append(configuration.TransientReadDeny, path)
 	}
+	runner.Env.Sandbox = launcher
+	runner.Env.SandboxProfile = configuration
+	memberProfile := profile.DefaultWorker()
+	if state.Scope.Group != "" && state.Config.Member != "" {
+		member, err := e.groupMember(e.ctx, state.Scope.Group, state.Config.Member)
+		if err != nil {
+			return nil, err
+		}
+		memberProfile, err = e.memberProfile(e.ctx, member)
+		if err != nil {
+			return nil, err
+		}
+	}
+	assignment := worker.Assignment{Session: state.ID, Scope: state.Scope, Workdir: state.Config.Workdir, Claim: task.Claim{Member: state.Config.Member}, SandboxProfile: configuration}
+	network, err := e.workerNetworkPolicy(e.ctx, memberProfile, assignment)
+	if err != nil {
+		return nil, err
+	}
+	runner.Env.SandboxProfile.Network = network
+	e.connectSandboxNetwork(launcher, memberProfile, assignment)
+	runner.Env.Sandbox = e.keepSandbox(state.ID, launcher)
 	runner.Env.MemoryOwners = []memory.Owner{memory.ProjectOwner(state.Config.Workdir)}
 	runner.Tools.RestoreLoaded(state.Loaded)
 	runner.Snapshot = e.manager.Snapshot
@@ -302,6 +339,7 @@ func (e *Engine) childRun(parent event.ID, config session.Config) func(context.C
 		if err != nil {
 			return loop.Outcome{}, err
 		}
+		defer e.releaseSandbox(child.state.ID)
 		defer child.runner.Env.Jobs.Close()
 		child.state.ID = id
 		child.state, err = e.manager.Create(ctx, *child.state)

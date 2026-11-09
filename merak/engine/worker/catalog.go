@@ -37,7 +37,7 @@ func Catalog(ctx context.Context) []ProductInfo {
 		item := &items[index+1]
 		item.Binary, item.Available = binary, true
 		probes.Go(func() {
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			command := process.Command(ctx, "", binary, "--version")
 			var output versionOutput

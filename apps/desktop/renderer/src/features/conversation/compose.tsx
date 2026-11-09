@@ -38,6 +38,7 @@ export function Compose(props: { directory: string }) {
           provider: selected.model.providerID,
           model: selected.model.modelID,
           thinking: selected.variant,
+          mode: selected.mode,
           workdir: directory,
         })
       ).session

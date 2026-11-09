@@ -46,12 +46,12 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 		for name := range p.Product.Env {
 			a.SandboxProfile.EnvAllow = append(a.SandboxProfile.EnvAllow, name)
 		}
-		candidate := &sandbox.Launcher{Disabled: p.Mode == permission.ModeTakeover}
+		candidate := &sandbox.Launcher{StateDir: e.sandboxStateDir, Disabled: p.Mode == permission.ModeTakeover, Reclaimable: a.Scope.Group == ""}
 		candidate.Unavailable = func(ctx context.Context, status sandbox.Status) error {
 			if e.runnerFor(p, nil).Caps().Permission {
 				return nil
 			}
-			if a.Scope.Group != "" {
+			if a.Scope.Group != "" && !status.Available {
 				if err := e.Groups.SetUnconfined(ctx, a.Scope.Group, a.Claim.Member, true); err != nil {
 					return err
 				}
@@ -59,20 +59,27 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 			return e.approveUnconfinedMember(ctx, p, a, status)
 		}
 		launcher = candidate
-		if candidate.Disabled || candidate.Status(ctx, a.SandboxProfile).Available {
-			launcher.MemberName = p.Name
-			launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
-			launcher.NetworkDenied = func(ctx context.Context, host string) error { return e.recordDeniedNetwork(ctx, p, a, host) }
-			hosts, err := e.workerNetworkHosts(ctx, p, a)
-			if err != nil {
-				return nil, err
-			}
-			a.SandboxProfile.Network.Mode, a.SandboxProfile.Network.Hosts = "allowlist", hosts
-			a.SandboxProfile, err = memberSandboxProfile(ctx, a.Workdir, a.SandboxProfile)
-			if err != nil {
-				return nil, err
-			}
+		launcher.MemberName = p.Name
+		launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
+		launcher.NetworkDenied = func(ctx context.Context, denial sandbox.NetworkDenial) error {
+			return e.recordDeniedNetwork(ctx, p, a, denial)
 		}
+		launcher.ProtectionChanged = func(failure *sandbox.ProtectionError) error {
+			return e.recordProtectionChange(context.WithoutCancel(ctx), p, a, failure)
+		}
+		launcher.FileDenied = func(failure *sandbox.DenialError) error {
+			return e.recordFileDenial(context.WithoutCancel(ctx), p, a, failure)
+		}
+		network, err := e.workerNetworkPolicy(ctx, p, a)
+		if err != nil {
+			return nil, err
+		}
+		a.SandboxProfile.Network = network
+		a.SandboxProfile, err = e.memberSandboxProfile(ctx, a.Workdir, a.SandboxProfile)
+		if err != nil {
+			return nil, err
+		}
+		launcher = e.keepSandbox(a.Session, launcher)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -81,8 +88,10 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(e.ctx, cancel)
+	done := launcher.Hold()
 	run, err := e.runnerFor(p, launcher).Start(ctx, a)
 	if err != nil {
+		done()
 		stop()
 		cancel()
 		return nil, err
@@ -91,6 +100,10 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 		e.groupSessions[a.Session] = true
 	}
 	e.workers.Go(func() {
+		defer done()
+		if a.Scope.Group != "" {
+			defer e.releaseSandbox(a.Session)
+		}
 		defer func() { e.mu.Lock(); delete(e.groupSessions, a.Session); e.mu.Unlock() }()
 		defer stop()
 		defer cancel()
@@ -117,6 +130,7 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 	if err != nil {
 		return loop.Outcome{}, err
 	}
+	defer e.releaseSandbox(c.state.ID)
 	defer c.runner.Env.Jobs.Close()
 	if c.children != nil {
 		defer c.children.Close()

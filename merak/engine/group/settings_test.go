@@ -2,6 +2,7 @@ package group_test
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -54,5 +55,47 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 	saved, err = manager.Get(ctx, g.ID)
 	if err != nil || !reflect.DeepEqual(saved.Group.Settings, settings) {
 		t.Fatalf("invalid update changed settings=%+v %v", saved.Group.Settings, err)
+	}
+}
+
+func TestAdminNetworkDenialsSurviveReloadAndRejectBareWildcards(t *testing.T) {
+	storage := memory.New()
+	bus := event.NewBus(storage, time.Now, event.NewID)
+	manager := group.New(storage, bus, event.NewID)
+	g, err := manager.Create(t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
+		{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
+		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings group.Settings
+	if err := json.Unmarshal([]byte(`{"deniedHosts":["*.blocked.example:443"]}`), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.UpdateSettings(t.Context(), g.ID, "approver", settings); err == nil {
+		t.Fatal("approver changed network denials")
+	}
+	if _, err := manager.UpdateSettings(t.Context(), g.ID, "admin", settings); err != nil {
+		t.Fatal(err)
+	}
+	state, err := group.New(storage, bus, event.NewID).Get(t.Context(), g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(state.Group.Settings)
+	var view struct{ DeniedHosts []string }
+	if err := json.Unmarshal(body, &view); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(view.DeniedHosts, []string{"*.blocked.example:443"}) {
+		t.Fatalf("denied hosts=%v", view.DeniedHosts)
+	}
+	if err := json.Unmarshal([]byte(`{"deniedHosts":["*"]}`), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.UpdateSettings(t.Context(), g.ID, "admin", settings); err == nil {
+		t.Fatal("bare wildcard accepted in network denials")
 	}
 }

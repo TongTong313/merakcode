@@ -387,6 +387,14 @@ func TestWorkerUsesProfileInstructionsAndKeepsGroupAttribution(t *testing.T) {
 	config.Model.Provider = "fake"
 	config.System = "Focus on tests."
 	config.ToolPool = "worker.readonly"
+	_, err = e.Groups.Create(ctx, group.Group{ID: "group", Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+		{ID: "member", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"},
+		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	run, err := e.StartWorker(ctx, config, worker.Assignment{Session: "worker-session", Workdir: dir, Packet: "Verify", Scope: event.Scope{Group: "group", Task: "task"}, Claim: task.Claim{ID: "claim", Member: "member"}})
 	if err != nil {
 		t.Fatal(err)

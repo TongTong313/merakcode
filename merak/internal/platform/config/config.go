@@ -217,7 +217,13 @@ func Validate(value Value) error {
 			return errors.New("invalid unrestricted startup decision")
 		}
 	}
-	if err := (sandbox.Network{Mode: "allowlist", Hosts: value.AllowedHosts, Deny: value.DeniedHosts}).Validate(); err != nil {
+	var allowedHosts []string
+	for _, host := range value.AllowedHosts {
+		if host != "*" {
+			allowedHosts = append(allowedHosts, host)
+		}
+	}
+	if err := (sandbox.Network{Mode: "allowlist", Hosts: allowedHosts, Deny: value.DeniedHosts}).Validate(); err != nil {
 		return err
 	}
 	if value.Log != "" && value.Log != "debug" && value.Log != "info" && value.Log != "warn" && value.Log != "error" {

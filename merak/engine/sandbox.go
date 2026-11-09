@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
@@ -19,29 +20,108 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
-func (e *Engine) SandboxStatus(ctx context.Context, workdir string, mode permission.Mode) (sandbox.Status, error) {
+type sandboxKey struct {
+	session  event.ID
+	disabled bool
+}
+
+func (e *Engine) keepSandbox(session event.ID, launcher *sandbox.Launcher) *sandbox.Launcher {
+	e.sandboxMu.Lock()
+	defer e.sandboxMu.Unlock()
+	key := sandboxKey{session, launcher.Disabled}
+	if existing := e.sandboxes[key]; existing != nil {
+		return existing
+	}
+	e.sandboxes[key] = launcher
+	launcher.ReclaimAccount = func() (bool, error) { return e.reclaimSandbox(launcher) }
+	return launcher
+}
+
+func (e *Engine) reclaimSandbox(requester *sandbox.Launcher) (bool, error) {
+	e.sandboxMu.Lock()
+	var candidates []*sandbox.Launcher
+	for _, launcher := range e.sandboxes {
+		if launcher != requester {
+			candidates = append(candidates, launcher)
+		}
+	}
+	e.sandboxMu.Unlock()
+	var oldest *sandbox.Launcher
+	var since time.Time
+	for _, launcher := range candidates {
+		idle := launcher.IdleSince()
+		if !idle.IsZero() && (since.IsZero() || idle.Before(since)) {
+			oldest, since = launcher, idle
+		}
+	}
+	if oldest == nil {
+		return false, nil
+	}
+	return oldest.Reclaim()
+}
+
+func (e *Engine) releaseSandbox(session event.ID) {
+	e.sandboxMu.Lock()
+	var launchers []*sandbox.Launcher
+	for key, launcher := range e.sandboxes {
+		if session == "" || key.session == session {
+			launchers = append(launchers, launcher)
+			delete(e.sandboxes, key)
+		}
+	}
+	e.sandboxMu.Unlock()
+	var failure error
+	for _, launcher := range launchers {
+		failure = errors.Join(failure, launcher.Close())
+	}
+	if failure != nil {
+		e.sandboxMu.Lock()
+		e.sandboxErr = errors.Join(e.sandboxErr, failure)
+		e.sandboxMu.Unlock()
+	}
+}
+
+func (e *Engine) SandboxStatus(ctx context.Context, workdir string, mode permission.Mode, sessions ...event.ID) (sandbox.Status, error) {
 	if err := ctx.Err(); err != nil {
 		return sandbox.Status{}, err
 	}
 	if mode != "" && mode != permission.ModeAsk && mode != permission.ModeTakeover {
 		return sandbox.Status{}, errors.New("unknown permission mode")
 	}
-	launcher := &sandbox.Launcher{Disabled: mode == permission.ModeTakeover}
+	launcher := &sandbox.Launcher{StateDir: e.sandboxStateDir, Disabled: mode == permission.ModeTakeover}
+	if len(sessions) > 0 && sessions[0] != "" {
+		e.sandboxMu.Lock()
+		for key, live := range e.sandboxes {
+			if key.session == sessions[0] {
+				launcher = live
+				break
+			}
+		}
+		e.sandboxMu.Unlock()
+		state, err := e.SessionSnapshot(ctx, sessions[0])
+		if err != nil {
+			return sandbox.Status{}, err
+		}
+		workdir = state.Config.Workdir
+		if state.Config.Mode == permission.ModeTakeover {
+			launcher = &sandbox.Launcher{Disabled: true}
+		}
+	}
 	if launcher.Disabled {
 		return launcher.Status(ctx, sandbox.Profile{}), nil
 	}
 	if workdir == "" {
 		workdir = e.workdir
 	}
-	p, err := memberSandboxProfile(ctx, workdir, sandbox.Profile{})
+	p, err := e.memberSandboxProfile(ctx, workdir, sandbox.Profile{})
 	if err != nil {
 		return sandbox.Status{}, err
 	}
 	return launcher.Status(ctx, p), nil
 }
 
-func memberSandboxProfile(ctx context.Context, workdir string, p sandbox.Profile) (sandbox.Profile, error) {
-	p.EnvAllow = append(append([]string(nil), p.EnvAllow...), "PATH")
+func (e *Engine) memberSandboxProfile(ctx context.Context, workdir string, p sandbox.Profile) (sandbox.Profile, error) {
+	p.EnvAllow = append(append([]string(nil), p.EnvAllow...), "PATH", "GIT_REFLOG_ACTION", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SystemRoot")
 	root, err := resolvedSandboxPath(workdir)
 	if err != nil {
 		return p, err
@@ -76,6 +156,13 @@ func memberSandboxProfile(ctx context.Context, workdir string, p sandbox.Profile
 		}
 		p.ReadDeny = append(p.ReadDeny, path)
 	}
+	if e.dataDir != "" {
+		path, err := resolvedSandboxPath(e.dataDir)
+		if err != nil {
+			return p, err
+		}
+		p.ReadDeny = append(p.ReadDeny, path)
+	}
 	return p, nil
 }
 
@@ -101,7 +188,9 @@ func resolvedSandboxPath(path string) (string, error) {
 func (e *Engine) connectSandboxNetwork(launcher *sandbox.Launcher, p profile.Profile, a worker.Assignment) {
 	launcher.MemberName = p.Name
 	launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
-	launcher.NetworkDenied = func(ctx context.Context, host string) error { return e.recordDeniedNetwork(ctx, p, a, host) }
+	launcher.NetworkDenied = func(ctx context.Context, denial sandbox.NetworkDenial) error {
+		return e.recordDeniedNetwork(ctx, p, a, denial)
+	}
 }
 
 type launchGrant struct {
@@ -128,7 +217,7 @@ func (e *Engine) rememberSessionLaunch(key launchGrant, decision permission.Deci
 func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile, a worker.Assignment, status sandbox.Status) error {
 	scope := a.Scope
 	scope.Session = a.Session
-	input, err := json.Marshal(map[string]any{"member": p.Name, "reason": status.Reason, "unconfined": true})
+	input, err := json.Marshal(map[string]any{"member": p.Name, "reason": status.Reason, "unconfined": !status.Available, "networkUnenforced": status.Network == "none"})
 	if err != nil {
 		return err
 	}
@@ -146,7 +235,11 @@ func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile,
 	if err != nil {
 		return err
 	}
-	request := permission.Request{Kind: "launch", Spec: tool.Spec{Name: call.Name, Effect: tool.EffectExec, Description: "This member cannot forward approvals. The sandbox is unavailable on this machine. Its operations will be unrestricted after startup."}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
+	description := "This member cannot forward approvals. The sandbox is unavailable on this machine. Its operations will be unrestricted after startup."
+	if status.Available {
+		description = "This member cannot forward approvals. Network restrictions are not enforced; file restrictions remain active."
+	}
+	request := permission.Request{Kind: "launch", Spec: tool.Spec{Name: call.Name, Effect: tool.EffectExec, Description: description}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
 	projectPath := a.Workdir
 	if a.Scope.Group != "" {
 		state, err := e.Groups.Get(ctx, a.Scope.Group)
@@ -287,7 +380,8 @@ func (e *Engine) approveWorkerNetwork(ctx context.Context, p profile.Profile, a 
 	return reply.Decision == permission.Allow, err
 }
 
-func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a worker.Assignment, host string) error {
+func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a worker.Assignment, denial sandbox.NetworkDenial) error {
+	host := denial.Host
 	scope := a.Scope
 	scope.Session = a.Session
 	input, err := json.Marshal(map[string]string{"host": host, "member": p.Name})
@@ -304,6 +398,60 @@ func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a w
 		return err
 	}
 	result := tool.Result{IsError: true, Code: "MRK-5005", DeniedHost: host, MemberName: p.Name, Parts: []model.Part{{Text: "Network destination denied. Review the member profile network hosts."}}}
+	if denial.Source != "" {
+		result.DeniedSource = denial.Source
+		result.Parts = append(result.Parts, model.Part{Text: "Denied by " + denial.Source + " DeniedHosts."})
+	}
+	body, err = json.Marshal(tool.Completion{CallID: call.ID, Name: call.Name, Result: result})
+	if err != nil {
+		return err
+	}
+	_, err = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: tool.Completed, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Cause: called.ID, Payload: body})
+	return err
+}
+
+func (e *Engine) recordProtectionChange(ctx context.Context, p profile.Profile, a worker.Assignment, failure *sandbox.ProtectionError) error {
+	scope := a.Scope
+	scope.Session = a.Session
+	input, err := json.Marshal(map[string]any{"paths": failure.Paths, "member": p.Name})
+	if err != nil {
+		return err
+	}
+	call := model.ToolCall{ID: string(e.newID()), Name: "sandbox_protection", Input: input}
+	body, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	called, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: tool.Called, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Payload: body})
+	if err != nil {
+		return err
+	}
+	result := tool.Result{IsError: true, Code: "MRK-5007", MemberName: p.Name, Parts: []model.Part{{Text: failure.Error()}}}
+	body, err = json.Marshal(tool.Completion{CallID: call.ID, Name: call.Name, Result: result})
+	if err != nil {
+		return err
+	}
+	_, err = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: tool.Completed, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Cause: called.ID, Payload: body})
+	return err
+}
+
+func (e *Engine) recordFileDenial(ctx context.Context, p profile.Profile, a worker.Assignment, failure *sandbox.DenialError) error {
+	scope := a.Scope
+	scope.Session = a.Session
+	input, err := json.Marshal(map[string]string{"details": failure.Details, "member": p.Name})
+	if err != nil {
+		return err
+	}
+	call := model.ToolCall{ID: string(e.newID()), Name: "sandbox_file", Input: input}
+	body, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	called, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: tool.Called, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Payload: body})
+	if err != nil {
+		return err
+	}
+	result := tool.Result{IsError: true, Code: "MRK-5009", MemberName: p.Name, Parts: []model.Part{{Text: failure.Error()}}}
 	body, err = json.Marshal(tool.Completion{CallID: call.ID, Name: call.Name, Result: result})
 	if err != nil {
 		return err

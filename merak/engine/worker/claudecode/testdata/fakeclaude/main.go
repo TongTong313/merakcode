@@ -15,6 +15,9 @@ func main() {
 		if os.Getenv("MERAKCODE_FIXTURE_SLOW_VERSION") == "1" {
 			time.Sleep(2500 * time.Millisecond)
 		}
+		if os.Getenv("MERAKCODE_FIXTURE_SLOW_VERSION") == "6s" {
+			time.Sleep(6 * time.Second)
+		}
 		fmt.Println("2.1.0 (Claude Code fixture)")
 		return
 	}

@@ -11,6 +11,39 @@ export namespace ErrorCode {
     hint: Text
   }
   export const CATALOG = {
+    SANDBOX_FILE_DENIED: {
+      code: "MRK-5009",
+      domain: "tool",
+      status: 403,
+      retryable: false,
+      title: { zh: "成员的文件访问被拒绝", en: "Member file access was denied" },
+      hint: {
+        zh: "查看错误中的路径，并检查工作区范围、保护路径和读取限制。",
+        en: "Review the reported path, workspace scope, protected paths and read restrictions.",
+      },
+    },
+    SANDBOX_NETWORK_UNENFORCED: {
+      code: "MRK-5008",
+      domain: "tool",
+      status: 503,
+      retryable: false,
+      title: { zh: "沙箱未强制网络目标限制", en: "Sandbox network destination limits are not enforced" },
+      hint: {
+        zh: "文件限制仍有效。成员可能绕过代理访问未批准的网络目标。",
+        en: "File limits remain enforced. The member may bypass the proxy to reach unapproved network destinations.",
+      },
+    },
+    SANDBOX_PROTECTION_CHANGED: {
+      code: "MRK-5007",
+      domain: "tool",
+      status: 403,
+      retryable: false,
+      title: { zh: "沙箱检测到保护路径被修改", en: "Sandbox detected changes to protected paths" },
+      hint: {
+        zh: "查看错误中的路径和还原结果。还原失败时，请先恢复保护文件。",
+        en: "Review the reported paths and restoration result. Restore protected files before continuing if rollback failed.",
+      },
+    },
     SANDBOX_LAUNCH_DENIED: {
       code: "MRK-5006",
       domain: "tool",

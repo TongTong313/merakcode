@@ -365,7 +365,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				var params protocol.SandboxStatusParams
 				callErr = decodeParams(request.Params, &params)
 				if callErr == nil {
-					result, callErr = s.engine.SandboxStatus(ctx, params.Workdir, params.Mode)
+					result, callErr = s.engine.SandboxStatus(ctx, params.Workdir, params.Mode, params.Session)
 				}
 			case "model.list":
 				callErr = decodeParams(request.Params, &struct{}{})

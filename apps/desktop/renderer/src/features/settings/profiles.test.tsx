@@ -43,6 +43,7 @@ test("saves a custom product and checks its real adapter connection", async () =
     input("Arguments (one per line)", "--history")
     input("Product model", "fixture-model")
     input("Environment variables (NAME=value)", "FIXTURE_VALUE=example")
+    input("Allowed network hosts (one per line)", "api.example.com\n*.models.example.com:443")
     host.querySelector<HTMLButtonElement>('button[aria-label="Test connection"]')!.click()
     await expect.poll(() => host.textContent, { timeout: 10000 }).toContain("Connection verified")
     host.querySelector<HTMLButtonElement>('button[aria-label="Save profile"]')!.click()
@@ -59,6 +60,10 @@ test("saves a custom product and checks its real adapter connection", async () =
         model: "fixture-model",
         env: { FIXTURE_VALUE: "example" },
       })
+    expect(
+      (await (await client()).profile.list({ human: localHuman }))?.find((profile) => profile.name === "CLI tester")
+        ?.network,
+    ).toEqual(["api.example.com", "*.models.example.com:443"])
   } finally {
     dispose()
     host.remove()
@@ -108,11 +113,18 @@ test("copies a default profile, edits its duties and registers it in the group",
     await expect.poll(() => host.querySelector('button[aria-label="Copy Worker"]')).not.toBeNull()
     press("Copy Worker")
     input("Profile name", "Audit")
+    const mode = host.querySelector<HTMLSelectElement>('select[aria-label="Permission level"]')
+    expect(mode).not.toBeNull()
+    mode!.value = "takeover"
+    mode!.dispatchEvent(new Event("change", { bubbles: true }))
     input("Duties", "Review Go changes and verify regression tests.")
     input("Provider", "fake")
     input("Model", "fixture")
     press("Save profile")
     await expect.poll(() => host.querySelector('button[aria-label="Add Audit"]')).not.toBeNull()
+    expect(
+      (await connection.profile.list({ human: localHuman }))?.find((profile) => profile.name === "Audit")?.mode,
+    ).toBe("takeover")
     press("Add Audit")
     await expect
       .poll(async () =>

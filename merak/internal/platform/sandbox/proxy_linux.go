@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -51,7 +50,7 @@ func (l *Launcher) linuxProxyCommand(ctx context.Context, profile Profile, execu
 	}
 	command := process.Command(ctx, "", executable, append([]string{proxyChildArgument, body, mode, target}, args...)...)
 	command.ExtraFiles = []*os.File{childControl}
-	command.Env = profile.Environment(os.Environ())
+	command.Env = profile.Environment(command.Environ())
 	if namespace {
 		configureNetworkNamespace(command)
 	}
@@ -157,22 +156,6 @@ func linuxChildResult(err error) (int, error) {
 		return exit.ExitCode(), nil
 	}
 	return 0, err
-}
-
-func proxyEnvironment(source []string, address string) []string {
-	result := make([]string, 0, len(source)+6)
-	for _, value := range source {
-		name, _, _ := strings.Cut(value, "=")
-		switch strings.ToUpper(name) {
-		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
-			continue
-		}
-		result = append(result, value)
-	}
-	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
-		result = append(result, name+"="+address)
-	}
-	return result
 }
 
 func enableLinuxLoopback() error {

@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -21,7 +20,7 @@ const helperArgument = "--merak-sandbox-exec"
 const networkProbeArgument = "--merak-sandbox-probe-network"
 const landlockNetworkRule = 2
 
-func platformStatus(ctx context.Context, _ Profile) Status {
+func (l *Launcher) platformStatus(ctx context.Context, _ Profile) Status {
 	status := Status{Backend: "landlock", Network: "none"}
 	if ctx.Err() != nil {
 		status.Reason = "MRK-5004"
@@ -39,6 +38,9 @@ func platformStatus(ctx context.Context, _ Profile) Status {
 	}
 	if version >= 4 {
 		status.Network = "ports"
+		status.Limits = []string{"port-only", "udp-open"}
+	} else {
+		status.Reason = "MRK-5008"
 	}
 	return status
 }
@@ -88,7 +90,7 @@ func (l *Launcher) platformCommand(ctx context.Context, p Profile, name string, 
 		return l.linuxProxyCommand(ctx, p, executable, string(body), target, args...)
 	}
 	command := process.Command(ctx, "", executable, append([]string{role, string(body), target}, args...)...)
-	command.Env = p.Environment(os.Environ())
+	command.Env = p.Environment(command.Environ())
 	if role == helperArgument && networkNamespaces(ctx) {
 		configureNetworkNamespace(command)
 	}
@@ -144,27 +146,26 @@ func restrictLinuxFiles(p Profile, proxyPort int) error {
 	if err != nil {
 		return err
 	}
-	write := uint64(unix.LANDLOCK_ACCESS_FS_WRITE_FILE | unix.LANDLOCK_ACCESS_FS_REMOVE_DIR | unix.LANDLOCK_ACCESS_FS_REMOVE_FILE |
-		unix.LANDLOCK_ACCESS_FS_MAKE_CHAR | unix.LANDLOCK_ACCESS_FS_MAKE_DIR | unix.LANDLOCK_ACCESS_FS_MAKE_REG |
-		unix.LANDLOCK_ACCESS_FS_MAKE_SOCK | unix.LANDLOCK_ACCESS_FS_MAKE_FIFO | unix.LANDLOCK_ACCESS_FS_MAKE_BLOCK | unix.LANDLOCK_ACCESS_FS_MAKE_SYM)
-	if version >= 2 {
-		write |= unix.LANDLOCK_ACCESS_FS_REFER
-	}
-	if version >= 3 {
-		write |= unix.LANDLOCK_ACCESS_FS_TRUNCATE
-	}
-	read := uint64(unix.LANDLOCK_ACCESS_FS_READ_FILE | unix.LANDLOCK_ACCESS_FS_READ_DIR | unix.LANDLOCK_ACCESS_FS_EXECUTE)
-	handled := write
+	nodes := []landlockNode{{Path: "/dev/null"}}
 	if len(p.ReadDeny) > 0 {
-		handled |= read
+		if err := collectLinuxReads("/", p.ReadDeny, &nodes); err != nil {
+			return err
+		}
 	}
+	for _, path := range p.WriteAllow {
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		nodes = append(nodes, landlockNode{path, info.IsDir()})
+	}
+	plan := planLandlock(p, version, proxyPort, nodes)
 	attr := struct {
 		AccessFS  uint64
 		AccessNet uint64
-	}{AccessFS: handled}
+	}{AccessFS: plan.HandledFS, AccessNet: plan.HandledNet}
 	size := uintptr(8)
-	if version >= 4 && (proxyPort > 0 || p.Network.Mode == "" || p.Network.Mode == "off") {
-		attr.AccessNet = unix.LANDLOCK_ACCESS_NET_BIND_TCP | unix.LANDLOCK_ACCESS_NET_CONNECT_TCP
+	if plan.HandledNet != 0 {
 		size = unsafe.Sizeof(attr)
 	}
 	ruleset, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, uintptr(unsafe.Pointer(&attr)), size, 0)
@@ -172,24 +173,19 @@ func restrictLinuxFiles(p Profile, proxyPort int) error {
 		return errno
 	}
 	defer unix.Close(int(ruleset))
-	if attr.AccessNet != 0 && proxyPort > 0 {
+	for _, port := range plan.ConnectPorts {
 		network := struct {
 			Access uint64
 			Port   uint64
-		}{unix.LANDLOCK_ACCESS_NET_CONNECT_TCP, uint64(proxyPort)}
+		}{unix.LANDLOCK_ACCESS_NET_CONNECT_TCP, uint64(port)}
 		_, _, errno := unix.Syscall6(unix.SYS_LANDLOCK_ADD_RULE, ruleset, landlockNetworkRule, uintptr(unsafe.Pointer(&network)), 0, 0, 0)
 		if errno != 0 {
 			return errno
 		}
 	}
-	if len(p.ReadDeny) > 0 {
-		if err := allowLinuxReads(int(ruleset), "/", p.ReadDeny, read); err != nil {
-			return err
-		}
-	}
-	for _, path := range p.WriteAllow {
-		if err := addLinuxPath(int(ruleset), path, write); err != nil {
-			return err
+	for _, rule := range plan.Paths {
+		if err := addLinuxPath(int(ruleset), rule.Path, rule.Access); err != nil {
+			return fmt.Errorf("landlock path %s: %w", rule.Path, err)
 		}
 	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
@@ -223,18 +219,17 @@ func addLinuxPath(ruleset int, path string, access uint64) error {
 	return nil
 }
 
-func allowLinuxReads(ruleset int, path string, denied []string, access uint64) error {
-	ancestor := false
-	for _, blocked := range denied {
-		if path == blocked || strings.HasPrefix(path, strings.TrimSuffix(blocked, "/")+"/") {
-			return nil
+func collectLinuxReads(path string, denied []string, nodes *[]landlockNode) error {
+	switch landlockReadSelection(path, denied) {
+	case "deny":
+		return nil
+	case "allow":
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
 		}
-		if strings.HasPrefix(blocked, strings.TrimSuffix(path, "/")+"/") {
-			ancestor = true
-		}
-	}
-	if !ancestor {
-		return addLinuxPath(ruleset, path, access)
+		*nodes = append(*nodes, landlockNode{path, info.IsDir()})
+		return nil
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -245,7 +240,7 @@ func allowLinuxReads(ruleset int, path string, denied []string, access uint64) e
 		if entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
-		if err := allowLinuxReads(ruleset, filepath.Join(path, entry.Name()), denied, access); err != nil {
+		if err := collectLinuxReads(filepath.Join(path, entry.Name()), denied, nodes); err != nil {
 			return err
 		}
 	}

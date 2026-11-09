@@ -22,6 +22,7 @@ func TestProfileRejectsAmbiguousPathsAndInvalidNetworkOrEnvironmentRules(t *test
 		{"accepts resolved absolute paths", sandbox.Profile{ReadDeny: []string{filepath.Join(root, ".ssh")}, WriteAllow: []string{root}, Protect: []string{filepath.Join(root, ".git", "hooks")}, Network: sandbox.Network{Mode: "allowlist", Hosts: []string{"example.com"}, LocalPorts: []int{1234}}, EnvAllow: []string{"PATH"}}, true},
 		{"rejects relative read denials", sandbox.Profile{ReadDeny: []string{".ssh"}}, false},
 		{"rejects relative write permissions", sandbox.Profile{WriteAllow: []string{"."}}, false},
+		{"rejects missing write permissions", sandbox.Profile{WriteAllow: []string{filepath.Join(root, "missing-state")}}, false},
 		{"rejects relative protection", sandbox.Profile{Protect: []string{".git/hooks"}}, false},
 		{"rejects NUL in paths", sandbox.Profile{Protect: []string{root + "\x00"}}, false},
 		{"rejects traversal in paths", sandbox.Profile{WriteAllow: []string{root + string(filepath.Separator) + ".."}}, false},

@@ -2,6 +2,7 @@ package sandbox_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -20,6 +23,32 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
+
+func TestLinuxSandboxUsesAndRemovesPrivateTemporaryFiles(t *testing.T) {
+	state := t.TempDir()
+	launcher := &sandbox.Launcher{StateDir: state}
+	defer launcher.Close()
+	p := sandbox.Profile{ReadDeny: []string{state}}
+	cmd, err := launcher.Command(t.Context(), p, os.Args[0], "-test.run=^TestSandboxChild$", "--", "temporary-file", "unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := launcher.Start(cmd, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := launcher.Wait(cmd); err != nil {
+		t.Fatalf("temporary write=%q error=%v", output.String(), err)
+	}
+	path := output.String()
+	if !strings.HasPrefix(path, state+string(filepath.Separator)) {
+		t.Fatalf("temporary file is outside private state: %q", path)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("private directory remained after exit: %v", err)
+	}
+}
 
 func TestLinuxSandboxConfinesWritesToAllowedDirectory(t *testing.T) {
 	root := t.TempDir()
@@ -139,6 +168,13 @@ func TestLinuxSandboxEnforcesOrReportsUnavailableNetworkRestrictions(t *testing.
 	status := launcher.Status(context.Background(), sandbox.Profile{})
 	if !status.Available || status.Network != expectedNetwork {
 		t.Fatalf("network capability = %+v, expected %s", status, expectedNetwork)
+	}
+	var limits []string
+	if expectedNetwork == "ports" {
+		limits = []string{"port-only", "udp-open"}
+	}
+	if !slices.Equal(status.Limits, limits) {
+		t.Fatalf("network limits = %v, expected %v", status.Limits, limits)
 	}
 	cmd, err := launcher.Command(context.Background(), sandbox.Profile{Network: sandbox.Network{Mode: "off"}}, os.Args[0], "-test.run=^TestSandboxChild$", "--", "fetch", server.URL)
 	if err != nil {
@@ -295,12 +331,12 @@ func TestLinuxSandboxCancellationLeavesNoProxyFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Start(); err != nil {
+	if err := launcher.Start(cmd, profile); err != nil {
 		t.Fatal(err)
 	}
 	ready, readErr := bufio.NewReader(stdout).ReadString('\n')
 	cancel()
-	waitErr := cmd.Wait()
+	waitErr := launcher.Wait(cmd)
 	if readErr != nil || ready != "ready\n" || waitErr == nil {
 		t.Fatalf("child ready=%q read error=%v wait error=%v", ready, readErr, waitErr)
 	}
@@ -327,7 +363,18 @@ func TestLinuxSandboxEnforcesEnvironmentWhitelistAtExecution(t *testing.T) {
 	if err := json.Unmarshal(output, &received); err != nil {
 		t.Fatal(err)
 	}
-	if len(received) != 1 || received[0] != "MERAKCODE_ALLOWED_VALUE=allowed" {
-		t.Fatal("child environment did not match the profile whitelist")
+	want := map[string]bool{"MERAKCODE_ALLOWED_VALUE": true, "TEMP": true, "TMP": true, "TMPDIR": true, "npm_config_cache": true, "npm_config_store_dir": true, "YARN_CACHE_FOLDER": true, "PIP_CACHE_DIR": true, "UV_CACHE_DIR": true, "GOCACHE": true, "GOMODCACHE": true}
+	for _, entry := range received {
+		name, value, _ := strings.Cut(entry, "=")
+		if !want[name] || value == "" {
+			t.Fatal("child received an unapproved or empty environment entry")
+		}
+		if name == "MERAKCODE_ALLOWED_VALUE" && value != "allowed" {
+			t.Fatal("allowed environment value changed")
+		}
+		delete(want, name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing approved environment variables: %v", want)
 	}
 }

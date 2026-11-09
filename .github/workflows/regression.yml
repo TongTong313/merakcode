@@ -25,6 +25,8 @@ jobs:
         os: [ubuntu-24.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,6 +36,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: merak/go.mod
       - run: pnpm install --frozen-lockfile
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -48,14 +53,28 @@ jobs:
       - run: pnpm test:perf
         if: inputs.suite == 'performance'
         working-directory: apps/cli
-      - name: Set up the sandbox
+      - name: Initialize Windows sandbox accounts and read access
+        if: inputs.suite == 'external-network' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .cache/sandbox-ci | Out-Null
+          ./script/sandbox/setup-windows.ps1 -Count 2 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
+          ./script/sandbox/grant-read-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE -InstallDir "$env:GITHUB_WORKSPACE/.cache/sandbox-ci"
+      - name: Verify external proxy enforcement
         if: inputs.suite == 'external-network'
-        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts setup
-      - run: pnpm test:sandbox:external
-        if: inputs.suite == 'external-network'
-        working-directory: packages/engine
+        shell: pwsh
+        run: ./script/sandbox/test.ps1 -External
         env:
           MERAKCODE_SANDBOX_EXTERNAL_TARGET: ${{ inputs.external-target }}
-      - name: Reset the Windows sandbox
+      - name: Reset Windows accounts, profiles, registry, firewall and state
         if: always() && inputs.suite == 'external-network' && runner.os == 'Windows'
-        run: node --import ./script/node/register.mjs packages/engine/script/sandbox-ci.ts reset
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:MERAKCODE_SANDBOX_TEST_STATE/accounts.json") {
+            ./script/sandbox/reset-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
+          }
+          $users = @(Get-LocalUser -Name 'merak-sbx-*' -ErrorAction SilentlyContinue)
+          $rules = @(Get-NetFirewallRule -Group 'MerakCode sandbox' -ErrorAction SilentlyContinue)
+          $users
+          $rules
+          if ($users.Count -or $rules.Count -or (Test-Path $env:MERAKCODE_SANDBOX_TEST_STATE)) { throw 'Sandbox cleanup is incomplete.' }

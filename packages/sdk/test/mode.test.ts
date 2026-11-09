@@ -62,6 +62,10 @@ it("selects takeover through the SDK and writes without an approval client", asy
         for (const name of [".git/config", "merakcode.json", "merakcode.jsonc", ".merakcode"])
           await expect(readFile(path.join(home, name))).rejects.toMatchObject({ code: "ENOENT" })
         const created = await client.session.create({ provider: "fake", workdir: home, mode: "takeover" })
+        expect(await client.sandbox.status({ session: created.session })).toMatchObject({
+          disabled: true,
+          network: "none",
+        })
         let view: Conversation | undefined
         const watching = await watchConversation(client, created.session, (value) => {
           view = value

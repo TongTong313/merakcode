@@ -55,11 +55,17 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	if a.ReadOnly {
 		args = append(args, "--tools", "read,grep,find,ls")
 	}
+	if r.Sandbox != nil && !r.Sandbox.Disabled {
+		a.SandboxProfile, err = stdio.ProductState(a.SandboxProfile, ".pi")
+		if err != nil {
+			return report, err
+		}
+	}
 	child, err := stdio.Start(ctx, a, p, args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}
-	defer child.Close()
+	defer func() { runErr = errors.Join(runErr, child.Close()) }()
 	send := func(in loop.Input, steer bool) error {
 		text := stdio.Text(in.Parts)
 		if !steer {

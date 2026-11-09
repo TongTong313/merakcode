@@ -79,6 +79,7 @@ func (e *Engine) CreateSession(ctx context.Context, options SessionOptions) (eve
 func (e *Engine) startConversation(c *conversation) {
 	e.sessions[c.state.ID] = c
 	e.workers.Go(func() {
+		defer e.releaseSandbox(c.state.ID)
 		defer c.runner.Env.Jobs.Close()
 		var childrenReady <-chan struct{}
 		if c.children != nil {
@@ -230,6 +231,8 @@ func (e *Engine) runConversation(ctx context.Context, c *conversation, parts []m
 }
 
 func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input) (loop.Outcome, error) {
+	done := c.runner.Env.Sandbox.Hold()
+	defer done()
 	selected := session.Selection{Provider: c.state.Config.Provider, Model: c.state.Config.Model, Thinking: c.state.Config.Thinking}
 	if input.Selection != nil {
 		selected = *input.Selection

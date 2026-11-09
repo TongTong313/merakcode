@@ -98,7 +98,18 @@ func windowsDirectoryAccess(path, account string, grant bool) error {
 	if err != nil {
 		return err
 	}
-	ok, _, err := windows.NewLazySystemDLL("advapi32.dll").NewProc("SetFileSecurityW").Call(uintptr(unsafe.Pointer(name)), windows.DACL_SECURITY_INFORMATION, uintptr(unsafe.Pointer(updated)))
+	control, _, err := descriptor.Control()
+	if err != nil {
+		return err
+	}
+	flags := uint32(windows.DACL_SECURITY_INFORMATION)
+	if control&windows.SE_DACL_PROTECTED != 0 {
+		flags |= windows.PROTECTED_DACL_SECURITY_INFORMATION
+	}
+	if err := updated.SetControl(windows.SE_DACL_PROTECTED, control&windows.SE_DACL_PROTECTED); err != nil {
+		return err
+	}
+	ok, _, err := windows.NewLazySystemDLL("advapi32.dll").NewProc("SetFileSecurityW").Call(uintptr(unsafe.Pointer(name)), uintptr(flags), uintptr(unsafe.Pointer(updated)))
 	runtime.KeepAlive(updated)
 	if ok == 0 {
 		return err

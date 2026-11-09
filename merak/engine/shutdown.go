@@ -40,6 +40,10 @@ func (e *Engine) shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	e.mu.Unlock()
 	e.workers.Wait()
+	e.releaseSandbox("")
+	if e.sandboxErr != nil {
+		return e.sandboxErr
+	}
 	if buffered, ok := e.store.(*store.Buffered); ok {
 		if err := buffered.Wait(ctx); err != nil {
 			return err

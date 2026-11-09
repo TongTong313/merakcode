@@ -113,7 +113,7 @@ func serve(ctx context.Context, args []string) int {
 		defer local.Close()
 		storage = local
 	}
-	e, err := engine.New(engine.Deps{Logger: logger, Store: storage, Providers: providers, Catalog: catalogue, Workdir: workdir, Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
+	e, err := engine.New(engine.Deps{DataDir: home, Logger: logger, Store: storage, Providers: providers, Catalog: catalogue, Workdir: workdir, Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
 		select {
 		case <-ready:
 			return instance.Ask(ctx, request)

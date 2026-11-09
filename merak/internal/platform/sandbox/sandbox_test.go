@@ -103,6 +103,14 @@ func TestSandboxChild(t *testing.T) {
 			err = os.WriteFile(os.Args[i+2], []byte(os.Getenv("MERAKCODE_SANDBOX_TEST_VALUE")), 0o600)
 		case "environment":
 			err = json.NewEncoder(os.Stdout).Encode(os.Environ())
+		case "temporary-file":
+			var file *os.File
+			file, err = os.CreateTemp("", "member-")
+			if err == nil {
+				_, err = file.WriteString("temporary content")
+				file.Close()
+				fmt.Print(file.Name())
+			}
 		case "read":
 			var data []byte
 			data, err = os.ReadFile(os.Args[i+2])
@@ -110,7 +118,7 @@ func TestSandboxChild(t *testing.T) {
 				_, err = os.Stdout.Write(data)
 			}
 		case "fetch", "fetch-proxy":
-			client := &http.Client{Timeout: time.Second}
+			client := &http.Client{Transport: &http.Transport{}, Timeout: 5 * time.Second}
 			if os.Args[i+1] == "fetch-proxy" {
 				proxyURL, parseErr := url.Parse(os.Getenv("HTTP_PROXY"))
 				if parseErr != nil || proxyURL.Scheme != "http" || proxyURL.Host == "" {
@@ -160,7 +168,8 @@ func TestSandboxChild(t *testing.T) {
 			t.Fatal("unknown child operation")
 		}
 		if err != nil {
-			t.Fatal(err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}

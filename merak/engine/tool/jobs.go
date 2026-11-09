@@ -10,6 +10,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 // Jobs owns background commands for one session and joins them on Close.
@@ -60,7 +61,7 @@ func (j *Jobs) start(parent context.Context, env Env, command string) (Result, e
 	result := Result{JobID: id, Running: true, Parts: []model.Part{{Text: "Background command started: " + id}}}
 	current := &job{cancel: cancel, done: make(chan struct{}), result: result}
 	cmd.Stdout, cmd.Stderr = current, current
-	if err := cmd.Start(); err != nil {
+	if err := env.Sandbox.Start(cmd, env.SandboxProfile); err != nil {
 		cancel()
 		return failure(err), nil
 	}
@@ -69,7 +70,7 @@ func (j *Jobs) start(parent context.Context, env Env, command string) (Result, e
 	}
 	j.jobs[id] = current
 	go func() {
-		err := cmd.Wait()
+		err := env.Sandbox.Wait(cmd)
 		current.mu.Lock()
 		exit := cmd.ProcessState.ExitCode()
 		if ctx.Err() != nil {
@@ -81,6 +82,16 @@ func (j *Jobs) start(parent context.Context, env Env, command string) (Result, e
 		if err != nil {
 			current.result.IsError = true
 			current.result.Code = "MRK-5001"
+			var denied *sandbox.DenialError
+			if errors.As(err, &denied) {
+				current.result.Code = "MRK-5009"
+				current.output.WriteString("\n" + denied.Error())
+			}
+			var protected *sandbox.ProtectionError
+			if errors.As(err, &protected) {
+				current.result.Code = "MRK-5007"
+				current.output.WriteString("\n" + protected.Error())
+			}
 		}
 		current.mu.Unlock()
 		cancel()

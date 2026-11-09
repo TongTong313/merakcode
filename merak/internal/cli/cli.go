@@ -153,6 +153,7 @@ func chat(input string, provider model.Provider, modelID string, thinking model.
 	defer cancel()
 	replies := make(chan permission.Reply)
 	e, err := engine.New(engine.Deps{
+		DataDir:   home,
 		Providers: map[string]model.Provider{provider.Name(): provider}, Model: modelID, Thinking: thinking, Workdir: workdir,
 		Ask: func(ctx context.Context, _ permission.Request) (permission.Reply, error) {
 			select {
