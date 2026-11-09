@@ -10,7 +10,9 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/task"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Kind string
@@ -33,13 +35,15 @@ type Caps struct {
 var ErrUnsupported = errors.New("worker does not support this operation")
 
 type Assignment struct {
-	ReadOnly bool
-	Claim    task.Claim
-	Packet   string
-	Workdir  string
-	Session  event.ID
-	Scope    event.Scope
-	Cause    event.ID
+	Mode           permission.Mode
+	SandboxProfile sandbox.Profile
+	ReadOnly       bool
+	Claim          task.Claim
+	Packet         string
+	Workdir        string
+	Session        event.ID
+	Scope          event.Scope
+	Cause          event.ID
 }
 type Runner interface {
 	Start(context.Context, Assignment) (Run, error)

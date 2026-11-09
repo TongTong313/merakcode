@@ -2,7 +2,6 @@ package claudecode_test
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,12 +10,12 @@ import (
 
 func TestCatalogFindsAProductOnPath(t *testing.T) {
 	binary := fakeBinary(t)
-	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PATH", filepath.Dir(binary))
 	for _, product := range worker.Catalog(context.Background()) {
 		if product.Kind != worker.KindClaudeCode {
 			continue
 		}
-		if !product.Available || product.Binary != binary || !product.Caps.Steer || product.Version != "2.1.0 (Claude Code fixture)" {
+		if !product.Available || product.Binary != binary || !product.Caps.Steer || !product.Caps.Permission || product.Version != "2.1.0 (Claude Code fixture)" {
 			t.Fatalf("product=%+v", product)
 		}
 		return

@@ -18,6 +18,6 @@ func (j *Journal) Approve(ctx context.Context, gate *permission.Gate, id, name s
 		return false, nil
 	}
 	guarded := gate.Wrap(approval{tool.Spec{Name: name, Description: "Approve the external worker operation.", Effect: effect, Input: json.RawMessage(`{"type":"object"}`)}})
-	result, err := guarded.Run(ctx, tool.Call{ID: id, Name: name, Input: input, Env: tool.Env{Scope: j.Scope, Workdir: j.Assignment.Workdir}})
+	result, err := guarded.Run(ctx, tool.Call{ID: id, Name: name, Input: input, Env: tool.Env{Scope: j.Scope, Workdir: j.Assignment.Workdir, Mode: string(j.Assignment.Mode)}})
 	return err == nil && !result.IsError, err
 }

@@ -5,10 +5,16 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
 func (p Profile) Validate() error {
+	for _, path := range p.TransientReadDeny {
+		if !slices.Contains(p.ReadDeny, path) {
+			return errors.New("transient read denials must be included in ReadDeny")
+		}
+	}
 	for _, paths := range [][]string{p.ReadDeny, p.WriteAllow, p.Protect} {
 		for _, path := range paths {
 			if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsRune(path, '\x00') {
@@ -59,9 +65,11 @@ func (n Network) Validate() error {
 			}
 		}
 	}
-	for _, host := range n.Hosts {
-		if !validHost(host) {
-			return errors.New("sandbox hosts must be exact hostnames or IP addresses")
+	for _, rules := range [][]string{n.Hosts, n.Deny} {
+		for _, host := range rules {
+			if _, _, valid := parseNetworkRule(host); !valid {
+				return errors.New("sandbox hosts must be hostnames, IP addresses or subdomain patterns with optional ports")
+			}
 		}
 	}
 	return nil

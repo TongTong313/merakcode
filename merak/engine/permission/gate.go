@@ -30,6 +30,7 @@ func init() {
 }
 
 type Reply struct {
+	Remember string   `json:"remember,omitempty"`
 	Human    event.ID `json:"human,omitempty"`
 	Decision Decision `json:"decision"`
 }
@@ -55,7 +56,11 @@ func (g guarded) Run(ctx context.Context, call tool.Call) (tool.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return tool.Result{}, err
 	}
-	decision := g.gate.Policy.Decide(call, g.Spec())
+	policy := g.gate.Policy
+	if call.Env.Mode != "" {
+		policy.Mode = Mode(call.Env.Mode)
+	}
+	decision := policy.Decide(call, g.Spec())
 	if decision == Ask {
 		request := Request{Call: call, Spec: g.Spec()}
 		id, err := g.gate.emit(ctx, call.Env.Scope, event.ActorAgent, Requested, request, "")

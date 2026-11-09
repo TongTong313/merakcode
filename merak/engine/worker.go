@@ -9,15 +9,21 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.Assignment) (worker.Run, error) {
+	if err := validateProfileNetwork(p); err != nil {
+		return nil, err
+	}
+	a.Mode = p.Mode
 	if a.Claim.ID != "" {
 		ctx = process.WithReflogAction(ctx, "merak-claim["+string(a.Claim.ID)+"]")
 	}
@@ -34,6 +40,40 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	if a.ReadOnly || p.ToolPool == "worker.readonly" {
 		a.ReadOnly, p.ToolPool = true, "worker.readonly"
 	}
+	var launcher *sandbox.Launcher
+	if p.Product != nil {
+		a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "PATH")
+		for name := range p.Product.Env {
+			a.SandboxProfile.EnvAllow = append(a.SandboxProfile.EnvAllow, name)
+		}
+		candidate := &sandbox.Launcher{Disabled: p.Mode == permission.ModeTakeover}
+		candidate.Unavailable = func(ctx context.Context, status sandbox.Status) error {
+			if e.runnerFor(p, nil).Caps().Permission {
+				return nil
+			}
+			if a.Scope.Group != "" {
+				if err := e.Groups.SetUnconfined(ctx, a.Scope.Group, a.Claim.Member, true); err != nil {
+					return err
+				}
+			}
+			return e.approveUnconfinedMember(ctx, p, a, status)
+		}
+		launcher = candidate
+		if candidate.Disabled || candidate.Status(ctx, a.SandboxProfile).Available {
+			launcher.MemberName = p.Name
+			launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
+			launcher.NetworkDenied = func(ctx context.Context, host string) error { return e.recordDeniedNetwork(ctx, p, a, host) }
+			hosts, err := e.workerNetworkHosts(ctx, p, a)
+			if err != nil {
+				return nil, err
+			}
+			a.SandboxProfile.Network.Mode, a.SandboxProfile.Network.Hosts = "allowlist", hosts
+			a.SandboxProfile, err = memberSandboxProfile(ctx, a.Workdir, a.SandboxProfile)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.ctx.Err() != nil {
@@ -41,7 +81,7 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(e.ctx, cancel)
-	run, err := e.runnerFor(p).Start(ctx, a)
+	run, err := e.runnerFor(p, launcher).Start(ctx, a)
 	if err != nil {
 		stop()
 		cancel()
@@ -72,7 +112,7 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 		}
 		c, err = e.conversationFor(priorState)
 	} else {
-		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool})
+		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Mode: p.Mode, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool})
 	}
 	if err != nil {
 		return loop.Outcome{}, err

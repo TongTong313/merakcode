@@ -7,6 +7,28 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 )
 
+type NetworkSettings interface {
+	AllowedNetworkHosts() []string
+	AllowNetworkHost(string) error
+	UnconfinedDecision(member, project string) string
+	RememberUnconfinedDecision(member, project, decision string) error
+}
+
+func (e *Engine) ConfigureNetworkSettings(settings NetworkSettings) {
+	if settings == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.networkSettings = settings
+}
+
+func (e *Engine) networkConfiguration() NetworkSettings {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.networkSettings
+}
+
 func (e *Engine) SetProvider(name string, provider model.Provider) {
 	e.providersMu.Lock()
 	defer e.providersMu.Unlock()

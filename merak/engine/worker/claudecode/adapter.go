@@ -14,23 +14,28 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/engine/worker/internal/stdio"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Bus     *event.Bus
 	Store   store.Store
+	Gate    *permission.Gate
 	Product profile.Product
 	System  string
 }
 
-func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true} }
+func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true, Permission: true} }
 func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, error) {
 	binary := r.Product.Binary
 	if binary == "" {
@@ -60,7 +65,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		}
 		return r.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Type: kind, Scope: scope, Actor: actor, Cause: cause, Payload: body})
 	}
-	state := session.State{ID: a.Session, Scope: scope, Config: session.Config{Provider: "claude-code", Model: r.Product.Model, Workdir: a.Workdir}}
+	state := session.State{ID: a.Session, Scope: scope, Config: session.Config{Provider: "claude-code", Model: r.Product.Model, Workdir: a.Workdir, Mode: a.Mode, Member: a.Claim.Member}}
 	if previous.Product == "" {
 		if _, err := emit(ctx, session.Created, state, ""); err != nil {
 			return report, err
@@ -104,6 +109,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		return report, err
 	}
 	args := append([]string{"-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--include-partial-messages"}, r.Product.Args...)
+	args = append(args, "--permission-prompt-tool", "stdio", "--permission-mode", "default", "--settings", `{"permissions":{"ask":["*"]},"sandbox":{"autoAllowBashIfSandboxed":false}}`)
 	if a.ReadOnly {
 		args = append(args, "--tools", "Read,Grep,Glob")
 	}
@@ -114,11 +120,20 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	if r.Product.Model != "" {
 		args = append(args, "--model", r.Product.Model)
 	}
+	a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
 	cmd := process.Command(ctx, a.Workdir, binary, args...)
+	if r.Sandbox != nil {
+		cmd, err = r.Sandbox.Command(ctx, a.SandboxProfile, binary, args...)
+		if err != nil {
+			return report, err
+		}
+		cmd.Dir = a.Workdir
+	}
 	cmd.Env = cmd.Environ()
 	for key, value := range r.Product.Env {
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
+	cmd.Env = append(cmd.Env, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
 	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -133,16 +148,19 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		return report, err
 	}
 	var writeMu sync.Mutex
+	writeControl := func(value any) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return json.NewEncoder(stdin).Encode(value)
+	}
 	write := func(parts []model.Part) error {
 		var text strings.Builder
 		for _, part := range parts {
 			text.WriteString(part.Text)
 		}
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		return json.NewEncoder(stdin).Encode(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text.String()}, "parent_tool_use_id": nil})
+		return writeControl(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text.String()}, "parent_tool_use_id": nil})
 	}
-	if err := write([]model.Part{{Text: a.Packet}}); err != nil {
+	if err := writeControl(map[string]any{"type": "control_request", "request_id": "merak-initialize", "request": map[string]any{"subtype": "initialize", "hooks": nil}}); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return report, err
@@ -150,8 +168,14 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	writerCtx, stopWriter := context.WithCancel(ctx)
 	defer stopWriter()
 	writerDone := make(chan struct{})
+	initialized := make(chan struct{})
 	go func() {
 		defer close(writerDone)
+		select {
+		case <-writerCtx.Done():
+			return
+		case <-initialized:
+		}
 		for {
 			select {
 			case <-writerCtx.Done():
@@ -166,8 +190,16 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	}()
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
+	journal := &stdio.Journal{Bus: r.Bus, Assignment: a, Scope: scope}
+	ready := false
 	for scanner.Scan() {
 		var raw struct {
+			RequestID string         `json:"request_id"`
+			Request   controlRequest `json:"request"`
+			Response  struct {
+				RequestID string `json:"request_id"`
+				Subtype   string `json:"subtype"`
+			} `json:"response"`
 			SessionID string `json:"session_id"`
 			Message   struct {
 				ID string `json:"id"`
@@ -182,6 +214,25 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
 			runErr = err
 			break
+		}
+		if raw.Type == "control_response" {
+			if ready || raw.Response.RequestID != "merak-initialize" || raw.Response.Subtype != "success" {
+				runErr = errors.New("external worker initialization failed")
+				break
+			}
+			if runErr = write([]model.Part{{Text: a.Packet}}); runErr != nil {
+				break
+			}
+			ready = true
+			close(initialized)
+			continue
+		}
+		if raw.Type == "control_request" {
+			runErr = r.respondPermission(ctx, journal, raw.RequestID, raw.Request, writeControl)
+			if runErr != nil {
+				break
+			}
+			continue
 		}
 		if raw.Type == "system" && raw.Subtype == "init" && raw.SessionID != "" {
 			if err := r.saveSession(ctx, a, raw.SessionID, previous); err != nil {

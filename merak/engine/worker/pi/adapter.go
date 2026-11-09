@@ -13,10 +13,13 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/internal/stdio"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"io"
+	"maps"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Store   store.Store
 	Bus     *event.Bus
 	Product profile.Product
@@ -39,6 +42,12 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	if p.Binary == "" {
 		p.Binary = "pi"
 	}
+	p.Env = maps.Clone(p.Env)
+	if p.Env == nil {
+		p.Env = make(map[string]string)
+	}
+	p.Env["PI_SKIP_VERSION_CHECK"], p.Env["PI_TELEMETRY"], p.Env["PI_OFFLINE"] = "1", "0", "1"
+	a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY", "PI_OFFLINE")
 	args := append([]string{"--mode", "rpc", "--no-session"}, p.Args...)
 	if p.Model != "" {
 		args = append(args, "--model", p.Model)
@@ -46,7 +55,7 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	if a.ReadOnly {
 		args = append(args, "--tools", "read,grep,find,ls")
 	}
-	child, err := stdio.Start(ctx, a.Workdir, p, args)
+	child, err := stdio.Start(ctx, a, p, args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}

@@ -161,6 +161,7 @@ func (e *Engine) routePermission(ask func(context.Context, permission.Request) (
 		}
 		if !allowed {
 			reply.Decision = permission.Deny
+			reply.Remember = ""
 		}
 		body, _ = json.Marshal(reply)
 		_, publishErr := e.Bus.Publish(context.WithoutCancel(ctx), event.Event{Stream: event.Stream("group:" + scope.Group), Scope: scope, Type: permission.Replied, Actor: event.Actor{Kind: event.ActorHuman, ID: reply.Human}, Cause: req.ID, Payload: body})

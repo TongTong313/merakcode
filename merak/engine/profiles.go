@@ -11,6 +11,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 func defaultProfiles() []profile.Profile {
@@ -72,7 +73,17 @@ func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Prof
 	return p, err
 }
 
+func validateProfileNetwork(p profile.Profile) error {
+	if (p.Product == nil || p.Product.Kind == worker.KindBuiltin) && len(p.Network) != 0 {
+		return errors.New("network hosts are only available to external member profiles")
+	}
+	return (sandbox.Network{Mode: "allowlist", Hosts: p.Network}).Validate()
+}
+
 func validateProfile(p profile.Profile) error {
+	if err := validateProfileNetwork(p); err != nil {
+		return err
+	}
 	if strings.TrimSpace(p.Name) == "" || p.Role != profile.Leader && p.Role != profile.Worker {
 		return errors.New("profile name and role are required")
 	}
@@ -119,7 +130,7 @@ func (e *Engine) RegisterMember(ctx context.Context, groupID, human event.ID, me
 			continue
 		}
 		member.Owner = human
-		return e.AddGroupMember(ctx, groupID, member, nil)
+		return e.addGroupMember(ctx, groupID, member, nil, actor.Can(group.RoleAdmin))
 	}
 	return group.Member{}, errors.New("profile is not owned by this human")
 }

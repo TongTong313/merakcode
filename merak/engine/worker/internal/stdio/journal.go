@@ -45,7 +45,7 @@ func NewJournal(ctx context.Context, bus *event.Bus, storage store.Store, a work
 		}
 	}
 	if !created {
-		if _, err := j.Emit(ctx, session.Created, session.State{ID: a.Session, Scope: j.Scope, Config: session.Config{Provider: provider, Model: modelName, Workdir: a.Workdir, Member: a.Claim.Member}}, ""); err != nil {
+		if _, err := j.Emit(ctx, session.Created, session.State{ID: a.Session, Scope: j.Scope, Config: session.Config{Provider: provider, Model: modelName, Workdir: a.Workdir, Member: a.Claim.Member, Mode: a.Mode}}, ""); err != nil {
 			return nil, err
 		}
 	}

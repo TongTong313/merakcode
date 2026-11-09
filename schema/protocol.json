@@ -121,6 +121,22 @@
       "required": ["price"],
       "type": "object"
     },
+    "ConfigLaunchDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "member": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        }
+      },
+      "required": ["decision", "member", "project"],
+      "type": "object"
+    },
     "ConfigModel": {
       "additionalProperties": false,
       "properties": {
@@ -152,6 +168,46 @@
     "ConfigPatch": {
       "additionalProperties": false,
       "properties": {
+        "allowedHosts": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deniedHosts": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "locale": {
           "anyOf": [
             {
@@ -199,6 +255,26 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unconfined": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/ConfigLaunchDecision"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             {
               "type": "null"
@@ -307,6 +383,32 @@
     "ConfigValue": {
       "additionalProperties": false,
       "properties": {
+        "allowedHosts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deniedHosts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "locale": {
           "type": "string"
         },
@@ -324,6 +426,19 @@
         },
         "thinking": {
           "type": "string"
+        },
+        "unconfined": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ConfigLaunchDecision"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": ["providers"],
@@ -732,6 +847,19 @@
         "group": {
           "type": "string"
         },
+        "hosts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "id": {
           "type": "string"
         },
@@ -765,6 +893,9 @@
         },
         "status": {
           "type": "string"
+        },
+        "unconfined": {
+          "type": "boolean"
         }
       },
       "required": ["group", "id", "kind", "name", "status"],
@@ -1034,6 +1165,9 @@
         },
         "status": {
           "type": "string"
+        },
+        "unconfined": {
+          "type": "boolean"
         }
       },
       "required": ["id", "kind", "name", "queue", "role", "status"],
@@ -1473,6 +1607,9 @@
         },
         "human": {
           "type": "string"
+        },
+        "remember": {
+          "type": "string"
         }
       },
       "required": ["decision"],
@@ -1563,11 +1700,27 @@
         "id": {
           "type": "string"
         },
+        "mode": {
+          "type": "string"
+        },
         "model": {
           "$ref": "#/$defs/ProfileModelRef"
         },
         "name": {
           "type": "string"
+        },
+        "network": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "product": {
           "anyOf": [
@@ -2005,6 +2158,9 @@
         "human": {
           "type": "string"
         },
+        "remember": {
+          "type": "string"
+        },
         "request": {
           "type": "string"
         }
@@ -2082,6 +2238,18 @@
       },
       "type": "object"
     },
+    "ProtocolSandboxStatusParams": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ProtocolSessionCancelParams": {
       "additionalProperties": false,
       "properties": {
@@ -2095,6 +2263,9 @@
     "ProtocolSessionCreateParams": {
       "additionalProperties": false,
       "properties": {
+        "mode": {
+          "type": "string"
+        },
         "model": {
           "type": "string"
         },
@@ -2466,6 +2637,54 @@
       "required": ["text"],
       "type": "object"
     },
+    "SandboxProtectionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": ["path", "state"],
+      "type": "object"
+    },
+    "SandboxStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "network": {
+          "type": "string"
+        },
+        "protect": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SandboxProtectionStatus"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": ["available", "backend", "network"],
+      "type": "object"
+    },
     "SessionChildResult": {
       "additionalProperties": false,
       "properties": {
@@ -2554,6 +2773,9 @@
       "additionalProperties": false,
       "properties": {
         "member": {
+          "type": "string"
+        },
+        "mode": {
           "type": "string"
         },
         "model": {
@@ -3354,6 +3576,9 @@
         "code": {
           "type": "string"
         },
+        "deniedHost": {
+          "type": "string"
+        },
         "exitCode": {
           "anyOf": [
             {
@@ -3371,6 +3596,9 @@
           "type": "boolean"
         },
         "jobId": {
+          "type": "string"
+        },
+        "memberName": {
           "type": "string"
         },
         "name": {
@@ -3679,6 +3907,9 @@
     },
     "member.asked": {
       "$ref": "#/$defs/GroupMemberQuestion"
+    },
+    "member.updated": {
+      "$ref": "#/$defs/GroupMember"
     },
     "memory.extracted": {
       "$ref": "#/$defs/MemoryExtraction"
@@ -4191,6 +4422,14 @@
       },
       "result": {
         "$ref": "#/$defs/GitState"
+      }
+    },
+    "sandbox.status": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSandboxStatusParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SandboxStatus"
       }
     },
     "session.cancel": {

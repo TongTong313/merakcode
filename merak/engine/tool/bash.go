@@ -39,13 +39,20 @@ func (Bash) Run(ctx context.Context, call Call) (Result, error) {
 		return failure(errors.New("command is required")), nil
 	}
 	if input.Background {
-		return call.Env.Jobs.start(ctx, call.Env.Workdir, input.Command)
+		return call.Env.Jobs.start(ctx, call.Env, input.Command)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	cmd, err := process.Shell(ctx, call.Env.Workdir, input.Command)
 	if err != nil {
 		return failure(err), nil
+	}
+	if call.Env.Sandbox != nil {
+		cmd, err = call.Env.Sandbox.Command(ctx, call.Env.SandboxProfile, cmd.Path, cmd.Args[1:]...)
+		if err != nil {
+			return failure(err), nil
+		}
+		cmd.Dir = call.Env.Workdir
 	}
 	output, runErr := cmd.CombinedOutput()
 	exit := -1

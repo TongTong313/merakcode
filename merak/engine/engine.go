@@ -37,28 +37,34 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker/opencode"
 	"github.com/TongTong313/merakcode/merak/engine/worker/pi"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Deps struct {
-	AskQuestion func(context.Context, question.Request) (question.Answer, error)
-	Logger      *slog.Logger
-	MemoryIdle  time.Duration
-	Store       store.Store
-	Catalog     *catalog.Catalog
-	Providers   map[string]model.Provider
-	Model       string
-	Thinking    model.Thinking
-	Now         func() time.Time
-	NewID       func() event.ID
-	Workdir     string
-	System      string
-	ToolPool    string
-	Deferred    []tool.Tool
-	Ask         func(context.Context, permission.Request) (permission.Reply, error)
+	NetworkSettings NetworkSettings
+	AskQuestion     func(context.Context, question.Request) (question.Answer, error)
+	Logger          *slog.Logger
+	MemoryIdle      time.Duration
+	Store           store.Store
+	Catalog         *catalog.Catalog
+	Providers       map[string]model.Provider
+	Model           string
+	Thinking        model.Thinking
+	Now             func() time.Time
+	NewID           func() event.ID
+	Workdir         string
+	System          string
+	ToolPool        string
+	Deferred        []tool.Tool
+	Ask             func(context.Context, permission.Request) (permission.Reply, error)
 }
 
 type Engine struct {
+	launchGrants    map[launchGrant]permission.Decision
+	networkSettings NetworkSettings
+	askPermission   func(context.Context, permission.Request) (permission.Reply, error)
 	askQuestion     func(context.Context, question.Request) (question.Answer, error)
 	workerQuestions map[event.ID]*pendingWorkerQuestion
 	Groups          *group.Manager
@@ -68,7 +74,7 @@ type Engine struct {
 	claimRuns       map[event.ID]claimRun
 	groupRuns       map[event.ID]*groupRun
 	groupSessions   map[event.ID]bool
-	runnerFor       func(profile.Profile) worker.Runner
+	runnerFor       func(profile.Profile, *sandbox.Launcher) worker.Runner
 	Terminals       *terminal.Manager
 	providersMu     sync.RWMutex
 	logger          *slog.Logger
@@ -121,24 +127,29 @@ func New(d Deps) (*Engine, error) {
 		workdir: d.Workdir, system: d.System, now: d.Now, store: d.Store, tools: tool.NewPool(d.ToolPool),
 	}
 	e.Terminals = terminal.New(e.Bus, e.newID)
+	e.networkSettings = d.NetworkSettings
+	if e.networkSettings == nil {
+		e.networkSettings = config.NewMemory()
+	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.askQuestion = e.routeQuestion(d.AskQuestion)
-	gate := &permission.Gate{Policy: permission.Policy{Mode: permission.ModeAsk}, Ask: e.routePermission(d.Ask), Bus: e.Bus}
-	e.runnerFor = func(p profile.Profile) worker.Runner {
+	e.askPermission = e.routePermission(d.Ask)
+	gate := &permission.Gate{Policy: permission.Policy{Mode: permission.ModeAsk}, Ask: e.askPermission, Bus: e.Bus}
+	e.runnerFor = func(p profile.Profile, launcher *sandbox.Launcher) worker.Runner {
 		if p.Product != nil {
 			switch p.Product.Kind {
 			case worker.KindClaudeCode:
-				return &claudecode.Runner{Bus: e.Bus, Store: e.store, Product: *p.Product, System: p.System}
+				return &claudecode.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
 			case worker.KindCodex:
-				return &codex.Runner{Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
+				return &codex.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
 			case worker.KindOpenCode:
-				return &opencode.Runner{Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
+				return &opencode.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
 			case worker.KindPi:
-				return &pi.Runner{Bus: e.Bus, Store: e.store, Product: *p.Product, System: p.System}
+				return &pi.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Product: *p.Product, System: p.System}
 			case worker.KindACP:
-				return &acp.Runner{Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
+				return &acp.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
 			case worker.KindCommand:
-				return &command.Runner{Bus: e.Bus, Store: e.store, Product: *p.Product}
+				return &command.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Product: *p.Product}
 			}
 		}
 		return &builtin.Adapter{Bus: e.Bus, Execute: func(ctx context.Context, a worker.Assignment, steer loop.Steer) (loop.Outcome, error) {
@@ -202,6 +213,9 @@ func (e *Engine) Chat(ctx context.Context, provider, input string) (loop.Outcome
 }
 
 func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*conversation, error) {
+	if options.Mode != "" && options.Mode != permission.ModeAsk && options.Mode != permission.ModeTakeover {
+		return nil, fmt.Errorf("MRK-4001")
+	}
 	if e.provider(options.Provider) == nil {
 		return nil, fmt.Errorf("unknown provider %q", options.Provider)
 	}
@@ -233,7 +247,7 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	if options.ID == "" {
 		options.ID = e.newID()
 	}
-	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir}}
+	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir}}
 	state.BaseCommit, _ = git.Current(ctx, options.Workdir)
 	state.Tools = e.sessionTools(state.Config).Specs()
 	return e.conversationFor(state)
@@ -244,7 +258,28 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	if p == nil {
 		return nil, fmt.Errorf("unknown provider %q", state.Config.Provider)
 	}
-	runner := loop.Loop{Model: p, ModelID: state.Config.Model, Thinking: state.Config.Thinking, Bus: e.Bus, Tools: e.sessionTools(state.Config), Env: tool.Env{Workdir: state.Config.Workdir, Reads: new(tool.Reads), Jobs: new(tool.Jobs), Spill: e.spill}}
+	runner := loop.Loop{Model: p, ModelID: state.Config.Model, Thinking: state.Config.Thinking, Bus: e.Bus, Tools: e.sessionTools(state.Config), Env: tool.Env{Mode: string(state.Config.Mode), Workdir: state.Config.Workdir, Reads: new(tool.Reads), Jobs: new(tool.Jobs), Spill: e.spill}}
+	launcher := &sandbox.Launcher{Disabled: state.Config.Mode == permission.ModeTakeover}
+	if launcher.Disabled || launcher.Status(e.ctx, sandbox.Profile{}).Available {
+		configuration, err := memberSandboxProfile(e.ctx, state.Config.Workdir, sandbox.Profile{Network: sandbox.Network{Mode: "allowlist"}})
+		if err != nil {
+			return nil, err
+		}
+		runner.Env.Sandbox = launcher
+		runner.Env.SandboxProfile = configuration
+		memberProfile := profile.DefaultWorker()
+		if state.Scope.Group != "" && state.Config.Member != "" {
+			member, err := e.groupMember(e.ctx, state.Scope.Group, state.Config.Member)
+			if err != nil {
+				return nil, err
+			}
+			memberProfile, err = e.memberProfile(e.ctx, member)
+			if err != nil {
+				return nil, err
+			}
+		}
+		e.connectSandboxNetwork(launcher, memberProfile, worker.Assignment{Session: state.ID, Scope: state.Scope, Workdir: state.Config.Workdir, Claim: task.Claim{Member: state.Config.Member}})
+	}
 	runner.Env.MemoryOwners = []memory.Owner{memory.ProjectOwner(state.Config.Workdir)}
 	runner.Tools.RestoreLoaded(state.Loaded)
 	runner.Snapshot = e.manager.Snapshot

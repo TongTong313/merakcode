@@ -27,7 +27,7 @@ func TestProfileRejectsAmbiguousPathsAndInvalidNetworkOrEnvironmentRules(t *test
 		{"rejects traversal in paths", sandbox.Profile{WriteAllow: []string{root + string(filepath.Separator) + ".."}}, false},
 		{"rejects an unknown network mode", sandbox.Profile{Network: sandbox.Network{Mode: "sometimes"}}, false},
 		{"rejects URLs as hosts", sandbox.Profile{Network: sandbox.Network{Mode: "allowlist", Hosts: []string{"https://example.com"}}}, false},
-		{"rejects host suffix wildcards", sandbox.Profile{Network: sandbox.Network{Mode: "allowlist", Hosts: []string{"*.example.com"}}}, false},
+		{"accepts subdomain wildcards", sandbox.Profile{Network: sandbox.Network{Mode: "allowlist", Hosts: []string{"*.example.com"}}}, true},
 		{"rejects hosts with whitespace", sandbox.Profile{Network: sandbox.Network{Mode: "allowlist", Hosts: []string{"example.com "}}}, false},
 		{"rejects an invalid local port", sandbox.Profile{Network: sandbox.Network{LocalPorts: []int{0}}}, false},
 		{"rejects an invalid blocked port", sandbox.Profile{Network: sandbox.Network{BlockedPorts: []int{65536}}}, false},

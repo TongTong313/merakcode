@@ -23,6 +23,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/terminal"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
@@ -42,6 +43,7 @@ func main() {
 		{"config.set", reflect.TypeFor[protocol.ConfigPatch](), reflect.TypeFor[protocol.Config]()},
 		{"model.list", reflect.TypeFor[struct{}](), reflect.TypeFor[[]catalog.Model]()},
 		{"member.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
+		{"sandbox.status", reflect.TypeFor[protocol.SandboxStatusParams](), reflect.TypeFor[sandbox.Status]()},
 		{"member.register", reflect.TypeFor[protocol.MemberRegisterParams](), reflect.TypeFor[group.Member]()},
 		{"member.test", reflect.TypeFor[protocol.ProfileSaveParams](), reflect.TypeFor[worker.Caps]()},
 		{"profile.list", reflect.TypeFor[protocol.ProfileListParams](), reflect.TypeFor[[]profile.Profile]()},

@@ -15,7 +15,7 @@ func Need(req Request, ws workspace.Workspace, g group.Group) group.Role {
 	if req.Kind == "budget" || req.Kind == "mode" || req.Kind == "default_leader" || req.Kind == "merge" && g.Settings.MergeNeedsOwner {
 		return group.RoleOwner
 	}
-	if req.Deletes {
+	if req.Deletes || req.Kind == "launch" {
 		return group.RoleAdmin
 	}
 	if req.Spec.Effect == tool.EffectNetwork {

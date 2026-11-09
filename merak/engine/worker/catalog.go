@@ -23,7 +23,7 @@ type ProductInfo struct {
 func Catalog(ctx context.Context) []ProductInfo {
 	items := []ProductInfo{
 		{Kind: KindBuiltin, Name: "MerakCode", Available: true, Caps: Caps{Steer: true, Permission: true}},
-		{Kind: KindClaudeCode, Name: "Claude Code", Caps: Caps{Steer: true}},
+		{Kind: KindClaudeCode, Name: "Claude Code", Caps: Caps{Steer: true, Permission: true}},
 		{Kind: KindCodex, Name: "Codex", Caps: Caps{Steer: true, Permission: true}},
 		{Kind: KindOpenCode, Name: "OpenCode", Caps: Caps{Permission: true}},
 		{Kind: KindPi, Name: "Pi", Caps: Caps{Steer: true}},

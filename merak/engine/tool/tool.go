@@ -8,6 +8,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 const (
@@ -62,27 +63,32 @@ type Call struct {
 }
 
 type Env struct {
-	Children     Children
-	MemoryOwners []memory.Owner
-	Workdir      string
-	Scope        event.Scope
-	Reads        *Reads
-	Jobs         *Jobs
-	Spill        func(context.Context, string, []byte) (Ref, error)
+	Mode           string
+	Sandbox        *sandbox.Launcher
+	SandboxProfile sandbox.Profile
+	Children       Children
+	MemoryOwners   []memory.Owner
+	Workdir        string
+	Scope          event.Scope
+	Reads          *Reads
+	Jobs           *Jobs
+	Spill          func(context.Context, string, []byte) (Ref, error)
 }
 
 type Ref string
 
 type Result struct {
-	ChildID   event.ID     `json:"childId,omitempty"`
-	Parts     []model.Part `json:"parts"`
-	IsError   bool         `json:"isError,omitempty"`
-	Code      string       `json:"code,omitempty"`
-	ExitCode  *int         `json:"exitCode,omitempty"`
-	Truncated bool         `json:"truncated,omitempty"`
-	Full      Ref          `json:"full,omitempty"`
-	JobID     string       `json:"jobId,omitempty"`
-	Running   bool         `json:"running,omitempty"`
+	DeniedHost string       `json:"deniedHost,omitempty"`
+	MemberName string       `json:"memberName,omitempty"`
+	ChildID    event.ID     `json:"childId,omitempty"`
+	Parts      []model.Part `json:"parts"`
+	IsError    bool         `json:"isError,omitempty"`
+	Code       string       `json:"code,omitempty"`
+	ExitCode   *int         `json:"exitCode,omitempty"`
+	Truncated  bool         `json:"truncated,omitempty"`
+	Full       Ref          `json:"full,omitempty"`
+	JobID      string       `json:"jobId,omitempty"`
+	Running    bool         `json:"running,omitempty"`
 }
 
 func failure(err error) Result {

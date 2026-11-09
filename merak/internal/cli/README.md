@@ -6,6 +6,8 @@
 
 The same command accepts `codex`, `opencode`, `pi`, `acp` and `command`. Use `--binary PATH` for a specific executable; ACP and command require it. For example, `merak debug worker --kind command --binary ./verifier "Check README"` sends the prompt on stdin and synthesizes a report from stdout. Configure product arguments and environment in a worker profile when running group tasks.
 
+When `debug worker` emits `permission.requested`, reply on stdin with a JSON line such as `{"decision":"allow"}` or `{"decision":"deny"}`. Invalid input and EOF deny the request. A member that cannot forward approvals requests permission to start when the system sandbox is unavailable; that request includes the reason and the unrestricted-startup warning.
+
 `merak --lang zh run --model MODEL INPUT` selects a language for a command. `merak run --lang en ...` also works. The language flag accepts `zh` and `en`; it does not change the engine or model language.
 
 Without a flag, selection checks `MERAKCODE_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`, in that order. Chinese locale names select `zh`; other names select `en`. On Windows, when those variables are absent, the command reads the user's locale with [GetUserDefaultLocaleName](https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-getuserdefaultlocalename). Other platforms use the terminal locale environment and fall back to English.

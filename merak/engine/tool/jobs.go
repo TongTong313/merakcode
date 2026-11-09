@@ -33,7 +33,7 @@ func (j *job) Write(body []byte) (int, error) {
 	return j.output.Write(body)
 }
 
-func (j *Jobs) start(parent context.Context, workdir, command string) (Result, error) {
+func (j *Jobs) start(parent context.Context, env Env, command string) (Result, error) {
 	if j == nil {
 		return failure(errors.New("background commands are unavailable")), nil
 	}
@@ -43,10 +43,18 @@ func (j *Jobs) start(parent context.Context, workdir, command string) (Result, e
 		return failure(errors.New("session has closed")), nil
 	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
-	cmd, err := process.Shell(ctx, workdir, command)
+	cmd, err := process.Shell(ctx, env.Workdir, command)
 	if err != nil {
 		cancel()
 		return failure(err), nil
+	}
+	if env.Sandbox != nil {
+		cmd, err = env.Sandbox.Command(ctx, env.SandboxProfile, cmd.Path, cmd.Args[1:]...)
+		if err != nil {
+			cancel()
+			return failure(err), nil
+		}
+		cmd.Dir = env.Workdir
 	}
 	id := string(event.NewID())
 	result := Result{JobID: id, Running: true, Parts: []model.Part{{Text: "Background command started: " + id}}}

@@ -10,6 +10,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/window"
@@ -18,6 +19,7 @@ import (
 )
 
 type SessionOptions struct {
+	Mode     permission.Mode
 	ID       event.ID
 	Scope    event.Scope
 	Role     string

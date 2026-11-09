@@ -24,7 +24,7 @@ func TestDebugWorkerRunsAConfiguredCommand(t *testing.T) {
 	}
 	t.Chdir(dir)
 	var output bytes.Buffer
-	code := Run([]string{"debug", "worker", "--kind", "command", "--binary", binary, "Inspect"}, strings.NewReader(""), &output)
+	code := Run([]string{"debug", "worker", "--kind", "command", "--binary", binary, "Inspect"}, strings.NewReader("{\"decision\":\"allow\"}\n"), &output)
 	if code != 0 || !strings.Contains(output.String(), `"synthesized":true`) {
 		t.Fatalf("exit=%d output=%s", code, &output)
 	}

@@ -60,6 +60,9 @@ func (s *Server) offerApproval(conn *websocket.Conn, id event.ID) bool {
 }
 
 func (s *Server) replyApproval(ctx context.Context, conn *websocket.Conn, params protocol.PermissionReplyParams) error {
+	if params.Remember != "" && params.Remember != "session" && params.Remember != "always" {
+		return errors.New("MRK-5002")
+	}
 	human, err := s.engine.AuthorizePermission(ctx, params.Request, params.Human)
 	if err != nil {
 		return errors.New("MRK-5002")
@@ -71,7 +74,7 @@ func (s *Server) replyApproval(ctx context.Context, conn *websocket.Conn, params
 		return errors.New("MRK-5002")
 	}
 	select {
-	case pending.reply <- permission.Reply{Decision: params.Decision, Human: human}:
+	case pending.reply <- permission.Reply{Decision: params.Decision, Human: human, Remember: params.Remember}:
 		return nil
 	default:
 		return errors.New("MRK-5002")

@@ -8,6 +8,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Expose sandbox status and route external member startup and network approvals through the engine.
+
 - Watch external Git and file changes, configure event rules and group initiative, emit external events from the command line, and refresh desktop Git and review views automatically.
 
 - Review task reports and baseline changes from the inbox, return combined comments for rework, approve delivery or return a goal to planning, inspect integration conflicts, and download published artifacts.
@@ -108,6 +110,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
 
 ### 新增
+
+- 提供沙箱状态查询。引擎处理外部成员的启动审批和联网审批。
 
 - 监视外部 Git 和文件变化，配置事件规则与群主动程度，从命令行发送外部事件，并自动刷新桌面 Git 和审核面板。
 

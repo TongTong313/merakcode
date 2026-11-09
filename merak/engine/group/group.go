@@ -56,17 +56,19 @@ type Group struct {
 	Settings      Settings `json:"settings,omitempty"`
 }
 type Member struct {
-	ID        event.ID   `json:"id"`
-	Group     event.ID   `json:"group"`
-	Kind      MemberKind `json:"kind"`
-	Name      string     `json:"name"`
-	Role      string     `json:"role,omitempty"`
-	AgentRole AgentRole  `json:"agentRole,omitempty"`
-	Owner     event.ID   `json:"owner,omitempty"`
-	Profile   event.ID   `json:"profile,omitempty"`
-	Status    Status     `json:"status"`
-	Current   event.ID   `json:"current,omitempty"`
-	Queue     []event.ID `json:"queue,omitempty"`
+	Unconfined bool       `json:"unconfined,omitempty"`
+	Hosts      []string   `json:"hosts,omitempty"`
+	ID         event.ID   `json:"id"`
+	Group      event.ID   `json:"group"`
+	Kind       MemberKind `json:"kind"`
+	Name       string     `json:"name"`
+	Role       string     `json:"role,omitempty"`
+	AgentRole  AgentRole  `json:"agentRole,omitempty"`
+	Owner      event.ID   `json:"owner,omitempty"`
+	Profile    event.ID   `json:"profile,omitempty"`
+	Status     Status     `json:"status"`
+	Current    event.ID   `json:"current,omitempty"`
+	Queue      []event.ID `json:"queue,omitempty"`
 }
 type State struct {
 	Group   Group    `json:"group"`
@@ -74,13 +76,15 @@ type State struct {
 }
 
 const (
-	Created     event.Type = "group.created"
-	MemberAdded event.Type = "member.added"
+	Created       event.Type = "group.created"
+	MemberAdded   event.Type = "member.added"
+	MemberUpdated event.Type = "member.updated"
 )
 
 func init() {
 	event.Register[State](Created)
 	event.Register[Member](MemberAdded)
+	event.Register[Member](MemberUpdated)
 }
 
 type Manager struct {
@@ -219,6 +223,17 @@ func (m *Manager) get(ctx context.Context, id event.ID) (State, error) {
 					return state, err
 				}
 				state.Members = append(state.Members, member)
+			case MemberUpdated:
+				member, err := event.Decode[Member](fact)
+				if err != nil {
+					return state, err
+				}
+				for i := range state.Members {
+					if state.Members[i].ID == member.ID {
+						state.Members[i] = member
+						break
+					}
+				}
 			case Updated:
 				updated, err := event.Decode[Group](fact)
 				if err != nil {

@@ -70,7 +70,8 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 			return group.Group{}, err
 		}
 	}
-	for _, member := range members {
+	members = append([]group.Member(nil), members...)
+	for i, member := range members {
 		if member.Kind != group.MemberAgent {
 			continue
 		}
@@ -84,6 +85,7 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 		if member.AgentRole == group.AgentLeader && p.Product != nil {
 			return group.Group{}, errors.New("external leaders are not supported")
 		}
+		members[i].Hosts = append([]string(nil), p.Network...)
 	}
 	created, err := e.Groups.Create(ctx, g, members)
 	if err != nil {
@@ -95,6 +97,9 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 	return created, nil
 }
 func (e *Engine) saveGroupProfile(ctx context.Context, p profile.Profile) error {
+	if err := validateProfileNetwork(p); err != nil {
+		return err
+	}
 	if p.ID == "" || p.Role != profile.Leader && p.Role != profile.Worker {
 		return errors.New("profile id and role are required")
 	}
@@ -115,6 +120,11 @@ func (e *Engine) saveGroupProfile(ctx context.Context, p profile.Profile) error 
 	return e.store.Put(ctx, store.Doc{Kind: "profile", Key: string(p.ID), Body: body})
 }
 func (e *Engine) AddGroupMember(ctx context.Context, id event.ID, member group.Member, p *profile.Profile) (group.Member, error) {
+	return e.addGroupMember(ctx, id, member, p, true)
+}
+
+func (e *Engine) addGroupMember(ctx context.Context, id event.ID, member group.Member, p *profile.Profile, acceptNetwork bool) (group.Member, error) {
+	member.Hosts = nil
 	if p != nil {
 		if string(p.Role) != string(member.AgentRole) {
 			return group.Member{}, errors.New("member role must match its profile")
@@ -131,6 +141,9 @@ func (e *Engine) AddGroupMember(ctx context.Context, id event.ID, member group.M
 		}
 		if string(configured.Role) != string(member.AgentRole) {
 			return group.Member{}, errors.New("member role must match its profile")
+		}
+		if acceptNetwork {
+			member.Hosts = append([]string(nil), configured.Network...)
 		}
 	}
 	return e.Groups.AddMember(ctx, id, member)
@@ -545,7 +558,7 @@ func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
 		return
 	}
 	e.mu.Lock()
-	e.claimRuns[claim.ID] = claimRun{run: run, caps: e.runnerFor(p).Caps()}
+	e.claimRuns[claim.ID] = claimRun{run: run, caps: e.runnerFor(p, nil).Caps()}
 	e.workers.Go(func() {
 		report, _ := run.Wait(context.Background())
 		e.mu.Lock()

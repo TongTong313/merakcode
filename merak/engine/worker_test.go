@@ -22,7 +22,15 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
+
+func approveFixtureStartup(_ context.Context, request permission.Request) (permission.Reply, error) {
+	if request.Kind == "launch" {
+		return permission.Reply{Decision: permission.Allow}, nil
+	}
+	return permission.Reply{Decision: permission.Deny}, nil
+}
 
 func TestExternalWorkerCancellationRetainsOutputAndClosesPendingCalls(t *testing.T) {
 	for _, kind := range []worker.Kind{"command", "codex", "pi", "acp", "opencode"} {
@@ -34,7 +42,10 @@ func TestExternalWorkerCancellationRetainsOutputAndClosesPendingCalls(t *testing
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s %v", out, err)
 			}
-			e, err := engine.New(engine.Deps{Ask: func(ctx context.Context, _ permission.Request) (permission.Reply, error) {
+			e, err := engine.New(engine.Deps{Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
+				if request.Kind == "launch" {
+					return permission.Reply{Decision: permission.Allow}, nil
+				}
 				<-ctx.Done()
 				return permission.Reply{}, ctx.Err()
 			}})
@@ -52,6 +63,15 @@ func TestExternalWorkerCancellationRetainsOutputAndClosesPendingCalls(t *testing
 				fact, ok := <-run.Events()
 				if !ok {
 					t.Fatal("worker ended before cancellation")
+				}
+				if fact.Type == permission.Requested {
+					request, err := event.Decode[permission.Request](fact)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if request.Kind == "launch" {
+						continue
+					}
 				}
 				if fact.Type == session.MessageDelta || fact.Type == permission.Requested {
 					break
@@ -97,7 +117,7 @@ func TestCodexAndPiAcceptMessagesDuringExecution(t *testing.T) {
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s %v", out, err)
 			}
-			e, err := engine.New(engine.Deps{})
+			e, err := engine.New(engine.Deps{Ask: approveFixtureStartup})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -134,7 +154,7 @@ func TestExternalReworkKeepsTheSessionAndPreviousContext(t *testing.T) {
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s %v", out, err)
 			}
-			e, err := engine.New(engine.Deps{})
+			e, err := engine.New(engine.Deps{Ask: approveFixtureStartup})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -245,19 +265,19 @@ func TestEngineStartsEveryExternalWorkerKind(t *testing.T) {
 }
 
 func TestReadonlyProfileRestrictsExternalProductTools(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
 	dir := t.TempDir()
 	name := "claude-fixture"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	binary := filepath.Join(t.TempDir(), name)
-	cmd := process.Command(ctx, "", "go", "build", "-o", binary, "./worker/claudecode/testdata/fakeclaude")
+	cmd := process.Command(t.Context(), "", "go", "build", "-o", binary, "./worker/claudecode/testdata/fakeclaude")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture build: %v %s", err, output)
 	}
-	e, err := engine.New(engine.Deps{Workdir: dir})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	e, err := engine.New(engine.Deps{Workdir: dir, Ask: approveFixtureStartup})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,8 +308,12 @@ func TestReadonlyAssignmentsConstrainOrRejectExternalProducts(t *testing.T) {
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("build: %s %v", out, err)
 			}
-			asked := 0
-			e, err := engine.New(engine.Deps{Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+			asked, launches := 0, 0
+			e, err := engine.New(engine.Deps{Ask: func(_ context.Context, request permission.Request) (permission.Reply, error) {
+				if request.Kind == "launch" {
+					launches++
+					return permission.Reply{Decision: permission.Allow}, nil
+				}
 				asked++
 				return permission.Reply{Decision: permission.Allow}, nil
 			}})
@@ -321,6 +345,13 @@ func TestReadonlyAssignmentsConstrainOrRejectExternalProducts(t *testing.T) {
 			report, err := run.Wait(ctx)
 			if err != nil || asked != 0 || report.Verdict != task.VerdictDone {
 				t.Fatalf("report=%+v err=%v asked=%d", report, err, asked)
+			}
+			wantLaunches := 0
+			if kind == worker.KindPi && !(&sandbox.Launcher{}).Status(ctx, sandbox.Profile{}).Available {
+				wantLaunches = 1
+			}
+			if launches != wantLaunches {
+				t.Errorf("startup approvals=%d, want %d", launches, wantLaunches)
 			}
 			if kind != "pi" && report.Summary != "Denied" {
 				t.Fatalf("write request was allowed: %+v", report)

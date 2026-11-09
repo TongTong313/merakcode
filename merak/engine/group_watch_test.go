@@ -73,6 +73,12 @@ func inplaceCommits(t *testing.T, kind worker.Kind) {
 				continue
 			}
 			result, err := event.Decode[tool.Completion](fact)
+			if err == nil && result.Name == "sandbox_launch" {
+				if result.IsError {
+					t.Fatalf("member startup was denied: %+v", result)
+				}
+				continue
+			}
 			if err != nil || result.Result.IsError {
 				t.Fatalf("worker commit=%+v, %v", result, err)
 			}

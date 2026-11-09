@@ -14,12 +14,14 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/internal/stdio"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"io"
 	"os"
 	"strconv"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Store   store.Store
 	Bus     *event.Bus
 	Gate    *permission.Gate
@@ -64,7 +66,7 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment) (report task.
 	if err != nil {
 		return report, err
 	}
-	child, err := stdio.Start(ctx, a.Workdir, r.Product, r.Product.Args)
+	child, err := stdio.Start(ctx, a, r.Product, r.Product.Args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}

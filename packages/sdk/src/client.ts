@@ -182,6 +182,9 @@ export async function connect(options: {
       register: (params: Methods["member.register"]["params"]) => call("member.register", params),
       test: (params: Methods["member.test"]["params"]) => call("member.test", params),
     },
+    sandbox: {
+      status: (params: Methods["sandbox.status"]["params"]) => call("sandbox.status", params),
+    },
     profile: {
       list: (params: Methods["profile.list"]["params"]) => call("profile.list", params),
       save: (params: Methods["profile.save"]["params"]) => call("profile.save", params),

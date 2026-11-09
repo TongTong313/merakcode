@@ -41,6 +41,16 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 			t.Fatal("invalid settings accepted")
 		}
 	}
+	for _, host := range []string{"example.*.com", "https://example.com", "example.com:65536", "*", ""} {
+		t.Run("invalid host "+host, func(t *testing.T) {
+			if _, err := manager.UpdateSettings(ctx, g.ID, "admin", group.Settings{AllowedHosts: []string{host}}); err == nil {
+				t.Error("settings accepted an invalid network host")
+			}
+			if err := manager.AllowNetworkHost(ctx, g.ID, "admin", host); err == nil {
+				t.Error("approval accepted an invalid network host")
+			}
+		})
+	}
 	saved, err = manager.Get(ctx, g.ID)
 	if err != nil || !reflect.DeepEqual(saved.Group.Settings, settings) {
 		t.Fatalf("invalid update changed settings=%+v %v", saved.Group.Settings, err)

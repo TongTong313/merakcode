@@ -10,11 +10,13 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/acp"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"maps"
 	"os"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Store   store.Store
 	Bus     *event.Bus
 	Gate    *permission.Gate
@@ -62,5 +64,10 @@ func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, er
 		return nil, err
 	}
 	p.Env["OPENCODE_CONFIG_CONTENT"] = string(body)
-	return (&acp.Runner{Bus: r.Bus, Store: r.Store, Gate: r.Gate, Product: p, System: r.System}).Start(ctx, a)
+	a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "OPENCODE_CONFIG_CONTENT")
+	for _, name := range []string{"OPENCODE_DISABLE_AUTOUPDATE", "OPENCODE_DISABLE_MODELS_FETCH", "OPENCODE_DISABLE_LSP_DOWNLOAD"} {
+		p.Env[name] = "1"
+		a.SandboxProfile.EnvAllow = append(a.SandboxProfile.EnvAllow, name)
+	}
+	return (&acp.Runner{Bus: r.Bus, Store: r.Store, Gate: r.Gate, Product: p, System: r.System, Sandbox: r.Sandbox}).Start(ctx, a)
 }

@@ -11,6 +11,39 @@
     "internal": 9
   },
   "codes": {
+    "SANDBOX_LAUNCH_DENIED": {
+      "code": "MRK-5006",
+      "domain": "tool",
+      "status": 403,
+      "retryable": false,
+      "title": { "zh": "未批准无沙箱启动", "en": "Unrestricted member startup was not approved" },
+      "hint": {
+        "zh": "恢复本机沙箱，或批准成员无沙箱启动。群里的启动请求需要 admin 同意。",
+        "en": "Restore the local sandbox or approve unrestricted member startup. Startup requests in a group require admin approval."
+      }
+    },
+    "SANDBOX_NETWORK_DENIED": {
+      "code": "MRK-5005",
+      "domain": "tool",
+      "status": 403,
+      "retryable": false,
+      "title": { "zh": "沙箱拒绝了网络目标", "en": "Sandbox denied a network destination" },
+      "hint": {
+        "zh": "检查成员档案的 Network 主机列表。群里的新网络目标需要 admin 同意。",
+        "en": "Review the member profile Network host list. New network destinations in a group require admin approval."
+      }
+    },
+    "SANDBOX_UNAVAILABLE": {
+      "code": "MRK-5004",
+      "domain": "tool",
+      "status": 503,
+      "retryable": false,
+      "title": { "zh": "系统沙箱不可用", "en": "Operating-system sandbox is unavailable" },
+      "hint": {
+        "zh": "检查系统沙箱支持和初始化状态。沙箱不可用时，非只读操作需要逐次确认。",
+        "en": "Check system sandbox support and setup. Non-read-only operations require per-operation approval while the sandbox is unavailable."
+      }
+    },
     "WATCH_OVERLOADED": {
       "code": "MRK-1005",
       "domain": "engine",

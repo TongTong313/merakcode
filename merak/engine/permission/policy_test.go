@@ -28,3 +28,14 @@ func TestAskModeAllowsReadsAndAsksBeforeWrites(t *testing.T) {
 		})
 	}
 }
+
+func TestTakeoverModeAllowsOperationsWithoutApproval(t *testing.T) {
+	policy := permission.Policy{Mode: "takeover"}
+	for _, effect := range []tool.Effect{tool.EffectRead, tool.EffectWrite, tool.EffectExec, tool.EffectNetwork, tool.EffectGroup} {
+		t.Run(string(effect), func(t *testing.T) {
+			if got := policy.Decide(tool.Call{}, tool.Spec{Effect: effect}); got != permission.Allow {
+				t.Fatalf("takeover decision = %s, want allow", got)
+			}
+		})
+	}
+}

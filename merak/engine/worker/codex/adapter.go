@@ -14,12 +14,14 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/internal/stdio"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"io"
 	"os"
 	"strconv"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Store   store.Store
 	Bus     *event.Bus
 	Gate    *permission.Gate
@@ -59,7 +61,10 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	if len(args) == 0 || args[0] != "app-server" {
 		args = append([]string{"app-server"}, args...)
 	}
-	child, err := stdio.Start(ctx, a.Workdir, p, args)
+	for _, setting := range []string{"analytics.enabled=false", "feedback.enabled=false", "check_for_update_on_startup=false", `otel.exporter="none"`, `otel.trace_exporter="none"`, `otel.metrics_exporter="none"`} {
+		args = append(args, "-c", setting)
+	}
+	child, err := stdio.Start(ctx, a, p, args, r.Sandbox)
 	if err != nil {
 		return report, err
 	}

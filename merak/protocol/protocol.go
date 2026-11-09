@@ -35,6 +35,7 @@ type Capabilities struct {
 }
 
 type PermissionReplyParams struct {
+	Remember string              `json:"remember,omitempty"`
 	Human    event.ID            `json:"human,omitempty"`
 	Request  event.ID            `json:"request"`
 	Decision permission.Decision `json:"decision"`
@@ -54,10 +55,16 @@ type HelloResult struct {
 }
 
 type SessionCreateParams struct {
-	Provider string         `json:"provider,omitempty"`
-	Model    string         `json:"model,omitempty"`
-	Thinking model.Thinking `json:"thinking,omitempty"`
-	Workdir  string         `json:"workdir,omitempty"`
+	Mode     permission.Mode `json:"mode,omitempty"`
+	Provider string          `json:"provider,omitempty"`
+	Model    string          `json:"model,omitempty"`
+	Thinking model.Thinking  `json:"thinking,omitempty"`
+	Workdir  string          `json:"workdir,omitempty"`
+}
+
+type SandboxStatusParams struct {
+	Workdir string          `json:"workdir,omitempty"`
+	Mode    permission.Mode `json:"mode,omitempty"`
 }
 
 type SessionCreateResult struct {

@@ -38,13 +38,14 @@ type ClaimLine struct {
 	Status task.ClaimStatus `json:"status"`
 }
 type MemberLine struct {
-	ID      event.ID         `json:"id"`
-	Name    string           `json:"name"`
-	Kind    group.MemberKind `json:"kind"`
-	Role    string           `json:"role"`
-	Status  group.Status     `json:"status"`
-	Current event.ID         `json:"current,omitempty"`
-	Queue   int              `json:"queue"`
+	Unconfined bool             `json:"unconfined,omitempty"`
+	ID         event.ID         `json:"id"`
+	Name       string           `json:"name"`
+	Kind       group.MemberKind `json:"kind"`
+	Role       string           `json:"role"`
+	Status     group.Status     `json:"status"`
+	Current    event.ID         `json:"current,omitempty"`
+	Queue      int              `json:"queue"`
 }
 type State struct {
 	mu      sync.Mutex
@@ -79,7 +80,7 @@ func (s *State) Apply(fact event.Event) error {
 		for _, member := range value.Members {
 			s.addMember(member)
 		}
-	case group.MemberAdded:
+	case group.MemberAdded, group.MemberUpdated:
 		member, err := event.Decode[group.Member](fact)
 		if err != nil {
 			return err
@@ -186,7 +187,7 @@ func (s *State) addMember(member group.Member) {
 	if member.Kind == group.MemberAgent {
 		role = string(member.AgentRole)
 	}
-	line := MemberLine{ID: member.ID, Name: member.Name, Kind: member.Kind, Role: role, Status: member.Status}
+	line := MemberLine{ID: member.ID, Name: member.Name, Kind: member.Kind, Role: role, Status: member.Status, Unconfined: member.Unconfined}
 	for i, previous := range s.Members {
 		if previous.ID == member.ID {
 			s.Members[i] = line
@@ -221,8 +222,18 @@ func (s *State) root(id event.ID) event.ID {
 func (s *State) Render(budget int, focus event.ID) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var risk strings.Builder
+	for _, member := range s.Members {
+		if member.Unconfined {
+			fmt.Fprintf(&risk, "Member %s is unconfined on its device.\n", member.ID)
+		}
+	}
+	if risk.Len() > 0 {
+		risk.WriteString("Avoid assigning sensitive tasks to unconfined members.\n")
+	}
 	for _, limit := range []int{240, 120, 60, 30, 0} {
 		var out strings.Builder
+		out.WriteString(risk.String())
 		out.WriteString("## Goals\n| ID | Title | Status | Owner |\n|---|---|---|---|\n")
 		for _, goal := range s.Goals {
 			ids := string(goal.ID)
@@ -256,6 +267,7 @@ func (s *State) Render(budget int, focus event.ID) string {
 	}
 	// IDs are the irreducible context; the request budget rejects an impossible limit.
 	var out strings.Builder
+	out.WriteString(risk.String())
 	out.WriteString("Goals:")
 	for _, goal := range s.Goals {
 		fmt.Fprintf(&out, " %s", goal.ID)

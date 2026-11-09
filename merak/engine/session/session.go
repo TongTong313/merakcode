@@ -7,6 +7,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"slices"
 )
@@ -66,13 +67,14 @@ type Rebuild struct {
 }
 
 type Config struct {
-	Member   event.ID       `json:"member,omitempty"`
-	ToolPool string         `json:"toolPool,omitempty"`
-	Parent   event.ID       `json:"parent,omitempty"`
-	Provider string         `json:"provider"`
-	Model    string         `json:"model"`
-	Thinking model.Thinking `json:"thinking,omitempty"`
-	Workdir  string         `json:"workdir"`
+	Mode     permission.Mode `json:"mode,omitempty"`
+	Member   event.ID        `json:"member,omitempty"`
+	ToolPool string          `json:"toolPool,omitempty"`
+	Parent   event.ID        `json:"parent,omitempty"`
+	Provider string          `json:"provider"`
+	Model    string          `json:"model"`
+	Thinking model.Thinking  `json:"thinking,omitempty"`
+	Workdir  string          `json:"workdir"`
 }
 
 type Selection struct {

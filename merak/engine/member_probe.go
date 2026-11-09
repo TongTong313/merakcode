@@ -57,5 +57,5 @@ func (e *Engine) TestMember(ctx context.Context, human event.ID, p profile.Profi
 	if report.Verdict != task.VerdictDone {
 		return worker.Caps{}, errors.New("member connection check failed")
 	}
-	return e.runnerFor(p).Caps(), nil
+	return e.runnerFor(p, nil).Caps(), nil
 }

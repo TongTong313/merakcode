@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Model struct {
@@ -44,19 +46,25 @@ type Picker struct {
 }
 
 type Value struct {
-	Model     string              `json:"model,omitempty"`
-	Thinking  string              `json:"thinking,omitempty"`
-	Locale    string              `json:"locale,omitempty"`
-	Log       string              `json:"log,omitempty"`
-	Providers map[string]Provider `json:"providers"`
+	Unconfined   []LaunchDecision    `json:"unconfined,omitempty"`
+	AllowedHosts []string            `json:"allowedHosts,omitempty"`
+	DeniedHosts  []string            `json:"deniedHosts,omitempty"`
+	Model        string              `json:"model,omitempty"`
+	Thinking     string              `json:"thinking,omitempty"`
+	Locale       string              `json:"locale,omitempty"`
+	Log          string              `json:"log,omitempty"`
+	Providers    map[string]Provider `json:"providers"`
 }
 
 type Patch struct {
-	Model     *string              `json:"model,omitempty"`
-	Thinking  *string              `json:"thinking,omitempty"`
-	Locale    *string              `json:"locale,omitempty"`
-	Log       *string              `json:"log,omitempty"`
-	Providers map[string]*Provider `json:"providers,omitempty"`
+	Unconfined   *[]LaunchDecision    `json:"unconfined,omitempty"`
+	AllowedHosts *[]string            `json:"allowedHosts,omitempty"`
+	DeniedHosts  *[]string            `json:"deniedHosts,omitempty"`
+	Model        *string              `json:"model,omitempty"`
+	Thinking     *string              `json:"thinking,omitempty"`
+	Locale       *string              `json:"locale,omitempty"`
+	Log          *string              `json:"log,omitempty"`
+	Providers    map[string]*Provider `json:"providers,omitempty"`
 }
 
 type Store struct {
@@ -102,7 +110,20 @@ func (s *Store) Get() Value { return public(s.Private()) }
 func (s *Store) Update(patch Patch) (Value, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.update(patch)
+}
+
+func (s *Store) update(patch Patch) (Value, error) {
 	next := clone(s.value)
+	if patch.Unconfined != nil {
+		next.Unconfined = append([]LaunchDecision(nil), (*patch.Unconfined)...)
+	}
+	if patch.AllowedHosts != nil {
+		next.AllowedHosts = append([]string(nil), (*patch.AllowedHosts)...)
+	}
+	if patch.DeniedHosts != nil {
+		next.DeniedHosts = append([]string(nil), (*patch.DeniedHosts)...)
+	}
 	for _, field := range []struct {
 		update *string
 		value  *string
@@ -135,6 +156,10 @@ func (s *Store) Update(patch Patch) (Value, error) {
 	}
 	if err := Validate(next); err != nil {
 		return Value{}, err
+	}
+	if s.path == "" {
+		s.value = clone(next)
+		return public(next), nil
 	}
 	data, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
@@ -187,6 +212,14 @@ func clone(value Value) Value {
 }
 
 func Validate(value Value) error {
+	for _, launch := range value.Unconfined {
+		if strings.TrimSpace(launch.Member) == "" || !filepath.IsAbs(launch.Project) || strings.ContainsRune(launch.Project, '\x00') || launch.Decision != "allow" && launch.Decision != "deny" {
+			return errors.New("invalid unrestricted startup decision")
+		}
+	}
+	if err := (sandbox.Network{Mode: "allowlist", Hosts: value.AllowedHosts, Deny: value.DeniedHosts}).Validate(); err != nil {
+		return err
+	}
 	if value.Log != "" && value.Log != "debug" && value.Log != "info" && value.Log != "warn" && value.Log != "error" {
 		return errors.New("invalid log level")
 	}

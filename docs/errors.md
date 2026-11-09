@@ -56,11 +56,14 @@ what to do.
 
 ## 5xxx 工具、权限与沙箱 · Tools, permissions and sandbox
 
-| 错误码 Code | 说明           | Meaning                        | 怎么办 · What to do                                                                                                           |
-| ----------- | -------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| MRK-5001    | 工具执行失败   | Tool execution failed          | 检查工具参数、文件路径和访问权限后重试。<br>Check the tool arguments, file paths, and access permissions before trying again. |
-| MRK-5002    | 操作未获允许   | Operation was not allowed      | 请检查操作内容，再决定是否重新发起审批。<br>Review the operation before requesting approval again.                            |
-| MRK-5003    | 工具执行被中断 | Tool execution was interrupted | 检查工具是否已产生部分结果，再决定是否重新执行。<br>Check for partial results before deciding whether to run the tool again.  |
+| 错误码 Code | 说明               | Meaning                                      | 怎么办 · What to do                                                                                                                                                                                       |
+| ----------- | ------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-5001    | 工具执行失败       | Tool execution failed                        | 检查工具参数、文件路径和访问权限后重试。<br>Check the tool arguments, file paths, and access permissions before trying again.                                                                             |
+| MRK-5002    | 操作未获允许       | Operation was not allowed                    | 请检查操作内容，再决定是否重新发起审批。<br>Review the operation before requesting approval again.                                                                                                        |
+| MRK-5003    | 工具执行被中断     | Tool execution was interrupted               | 检查工具是否已产生部分结果，再决定是否重新执行。<br>Check for partial results before deciding whether to run the tool again.                                                                              |
+| MRK-5004    | 系统沙箱不可用     | Operating-system sandbox is unavailable      | 检查系统沙箱支持和初始化状态。沙箱不可用时，非只读操作需要逐次确认。<br>Check system sandbox support and setup. Non-read-only operations require per-operation approval while the sandbox is unavailable. |
+| MRK-5005    | 沙箱拒绝了网络目标 | Sandbox denied a network destination         | 检查成员档案的 Network 主机列表。群里的新网络目标需要 admin 同意。<br>Review the member profile Network host list. New network destinations in a group require admin approval.                            |
+| MRK-5006    | 未批准无沙箱启动   | Unrestricted member startup was not approved | 恢复本机沙箱，或批准成员无沙箱启动。群里的启动请求需要 admin 同意。<br>Restore the local sandbox or approve unrestricted member startup. Startup requests in a group require admin approval.              |
 
 ## 6xxx 任务和协作群 · Tasks and groups
 

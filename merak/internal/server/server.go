@@ -361,6 +361,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if callErr == nil {
 					result = worker.Catalog(ctx)
 				}
+			case "sandbox.status":
+				var params protocol.SandboxStatusParams
+				callErr = decodeParams(request.Params, &params)
+				if callErr == nil {
+					result, callErr = s.engine.SandboxStatus(ctx, params.Workdir, params.Mode)
+				}
 			case "model.list":
 				callErr = decodeParams(request.Params, &struct{}{})
 				if callErr == nil {
@@ -505,7 +511,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						params.Thinking = model.Thinking(settings.Thinking)
 					}
 					var id event.ID
-					id, callErr = s.engine.CreateSession(ctx, engine.SessionOptions{Provider: params.Provider, Model: params.Model, Thinking: params.Thinking, Workdir: params.Workdir})
+					id, callErr = s.engine.CreateSession(ctx, engine.SessionOptions{Mode: params.Mode, Provider: params.Provider, Model: params.Model, Thinking: params.Thinking, Workdir: params.Workdir})
 					result = protocol.SessionCreateResult{Session: id}
 				}
 			case "session.send":

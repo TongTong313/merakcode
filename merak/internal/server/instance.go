@@ -81,6 +81,7 @@ func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (
 	info := protocol.ConnectionInfo{Endpoint: "ws://" + listener.Addr().String() + "/rpc", Token: hex.EncodeToString(secret[:]), PID: os.Getpid(), Protocol: protocol.Version}
 	handler := New(e, info.Token)
 	handler.settings = settings
+	e.ConfigureNetworkSettings(settings)
 	handler.applyConfiguration(settings.Private())
 	handler.dataDir = home
 	handler.logRoot, _ = platformlog.Root()

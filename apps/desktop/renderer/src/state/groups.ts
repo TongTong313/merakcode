@@ -3,6 +3,7 @@ import { z } from "zod"
 import {
   applyToBoard,
   applyToInbox,
+  applyToMembers,
   emptyBoard,
   emptyInbox,
   foldSession,
@@ -190,10 +191,7 @@ async function watch(connection: EngineClient, id: string) {
     }
     if (event.stream !== `group:${id}` || !event.seq || event.seq <= current.lastSeq) return
     if (event.seq !== current.lastSeq + 1) throw new Error("MRK-1003")
-    let members = current.members
-    if (event.type === "group.created") members = event.payload.members ?? []
-    if (event.type === "member.added")
-      members = [...members.filter((member) => member.id !== event.payload.id), event.payload]
+    const members = applyToMembers(current.members, event)
     current = {
       ...current,
       members,

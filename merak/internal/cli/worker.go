@@ -11,12 +11,13 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
-func debugWorker(args []string, stdout io.Writer) int {
+func debugWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 	flags := flag.NewFlagSet("worker", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	kind := flags.String("kind", "claude-code", "")
@@ -39,7 +40,15 @@ func debugWorker(args []string, stdout io.Writer) int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	e, err := engine.New(engine.Deps{Workdir: workdir})
+	replies := make(chan permission.Reply)
+	e, err := engine.New(engine.Deps{Workdir: workdir, Ask: func(ctx context.Context, _ permission.Request) (permission.Reply, error) {
+		select {
+		case reply := <-replies:
+			return reply, nil
+		case <-ctx.Done():
+			return permission.Reply{}, ctx.Err()
+		}
+	}})
 	if err != nil {
 		return 1
 	}
@@ -51,9 +60,21 @@ func debugWorker(args []string, stdout io.Writer) int {
 		return 1
 	}
 	encoder := json.NewEncoder(stdout)
+	decoder := json.NewDecoder(stdin)
 	for fact := range run.Events() {
 		if encoder.Encode(fact) != nil {
 			return 1
+		}
+		if fact.Type == permission.Requested {
+			reply := permission.Reply{Decision: permission.Deny}
+			if err := decoder.Decode(&reply); err != nil {
+				reply = permission.Reply{Decision: permission.Deny}
+			}
+			select {
+			case replies <- reply:
+			case <-ctx.Done():
+				return 1
+			}
 		}
 	}
 	report, err := run.Wait(context.Background())

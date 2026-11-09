@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Process struct {
@@ -23,13 +25,21 @@ type Process struct {
 	err    error
 }
 
-func Start(ctx context.Context, dir string, p profile.Product, args []string) (*Process, error) {
+func Start(ctx context.Context, assignment worker.Assignment, p profile.Product, args []string, launcher *sandbox.Launcher) (*Process, error) {
 	binary, err := exec.LookPath(p.Binary)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	cmd := process.Command(ctx, dir, binary, args...)
+	cmd := process.Command(ctx, assignment.Workdir, binary, args...)
+	if launcher != nil {
+		cmd, err = launcher.Command(ctx, assignment.SandboxProfile, binary, args...)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		cmd.Dir = assignment.Workdir
+	}
 	cmd.Env = cmd.Environ()
 	for k, v := range p.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)

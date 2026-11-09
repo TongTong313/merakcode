@@ -44,6 +44,14 @@ func Root(ctx context.Context, directory string) (string, error) {
 	return filepath.EvalSymlinks(strings.TrimSpace(string(body)))
 }
 
+func MetadataPath(ctx context.Context, directory, name string) (string, error) {
+	body, err := run(ctx, directory, "rev-parse", "--path-format=absolute", "--git-path", name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(strings.TrimSpace(string(body))), nil
+}
+
 func ExcludeWorktrees(ctx context.Context, directory string) error {
 	body, err := run(ctx, directory, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {

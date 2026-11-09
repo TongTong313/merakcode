@@ -78,7 +78,7 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 		return debugChat(args[3], args[4], stdin, stdout, ui)
 	}
 	if len(args) >= 2 && args[0] == "debug" && args[1] == "worker" {
-		return debugWorker(args[2:], stdout)
+		return debugWorker(args[2:], stdin, stdout)
 	}
 	if len(args) > 0 && args[0] == "run" {
 		flags := flag.NewFlagSet("run", flag.ContinueOnError)

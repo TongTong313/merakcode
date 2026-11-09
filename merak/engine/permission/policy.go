@@ -6,7 +6,10 @@ import "github.com/TongTong313/merakcode/merak/engine/tool"
 type Mode string
 type Decision string
 
-const ModeAsk Mode = "ask"
+const (
+	ModeAsk      Mode = "ask"
+	ModeTakeover Mode = "takeover"
+)
 
 const (
 	Allow Decision = "allow"
@@ -19,6 +22,9 @@ type Policy struct {
 }
 
 func (p Policy) Decide(_ tool.Call, spec tool.Spec) Decision {
+	if p.Mode == ModeTakeover {
+		return Allow
+	}
 	if p.Mode != ModeAsk {
 		return Deny
 	}

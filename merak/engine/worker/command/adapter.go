@@ -20,9 +20,11 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/internal/stdio"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 type Runner struct {
+	Sandbox *sandbox.Launcher
 	Store   store.Store
 	Bus     *event.Bus
 	Product profile.Product
@@ -75,6 +77,13 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 		return report, err
 	}
 	cmd := process.Command(ctx, a.Workdir, binary, r.Product.Args...)
+	if r.Sandbox != nil {
+		cmd, err = r.Sandbox.Command(ctx, a.SandboxProfile, binary, r.Product.Args...)
+		if err != nil {
+			return report, err
+		}
+		cmd.Dir = a.Workdir
+	}
 	cmd.Env = cmd.Environ()
 	for k, v := range r.Product.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)

@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 type Network struct {
 	Mode         string   `json:"mode"`
 	Hosts        []string `json:"hosts,omitempty"`
+	Deny         []string `json:"deny,omitempty"`
 	BlockedPorts []int    `json:"blockedPorts,omitempty"`
 	LocalPorts   []int    `json:"localPorts,omitempty"`
 }
@@ -25,12 +27,17 @@ var errNetworkDenied = errors.New("network destination denied")
 
 // Proxy enforces the network destinations allowed by a process profile.
 type Proxy struct {
-	Network     Network
-	mu          sync.Mutex
-	closed      bool
-	connections map[*proxyConnection]struct{}
-	nextRequest uint64
-	requests    map[uint64]context.CancelFunc
+	ApprovalTimeout time.Duration
+	Approve         func(context.Context, string) (bool, error)
+	Denied          func(context.Context, string) error
+	MemberName      string
+	Network         Network
+	mu              sync.Mutex
+	closed          bool
+	connections     map[*proxyConnection]struct{}
+	nextRequest     uint64
+	requests        map[uint64]context.CancelFunc
+	approvals       map[uint64]context.CancelFunc
 }
 
 type proxyConnection struct {
@@ -57,6 +64,9 @@ func (p *Proxy) Close() {
 	p.closed = true
 	cancels := make([]context.CancelFunc, 0, len(p.requests))
 	for _, cancel := range p.requests {
+		cancels = append(cancels, cancel)
+	}
+	for _, cancel := range p.approvals {
 		cancels = append(cancels, cancel)
 	}
 	connections := make([]*proxyConnection, 0, len(p.connections))
@@ -125,8 +135,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer transport.CloseIdleConnections()
 	response, err := transport.RoundTrip(request)
 	if err != nil {
-		if errors.Is(err, errNetworkDenied) {
-			http.Error(w, errNetworkDenied.Error(), http.StatusForbidden)
+		if errors.Is(err, errNetworkDenied) || r.Context().Err() != nil {
+			p.deny(w, r, r.URL.Hostname())
 			return
 		}
 		http.Error(w, "proxy connection failed", http.StatusBadGateway)
@@ -146,7 +156,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) tunnel(w http.ResponseWriter, r *http.Request) {
 	upstream, err := p.dial(r.Context(), "tcp", r.Host)
 	if err != nil {
-		http.Error(w, errNetworkDenied.Error(), http.StatusForbidden)
+		host, _, _ := net.SplitHostPort(r.Host)
+		p.deny(w, r, host)
 		return
 	}
 	defer upstream.Close()
@@ -189,6 +200,17 @@ func (p *Proxy) tunnel(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
+func (p *Proxy) deny(w http.ResponseWriter, r *http.Request, host string) {
+	host = normalizeHost(host)
+	status := http.StatusForbidden
+	if p.Denied != nil && validHost(host) {
+		if err := p.Denied(context.WithoutCancel(r.Context()), host); err != nil {
+			status = http.StatusInternalServerError
+		}
+	}
+	http.Error(w, fmt.Sprintf("MRK-5005: member %q, host %q", p.MemberName, host), status)
+}
+
 func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, error) {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
@@ -198,16 +220,30 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 	if err != nil || port < 1 || port > 65535 || slices.Contains(p.Network.BlockedPorts, port) {
 		return nil, errNetworkDenied
 	}
+	if !validHost(host) {
+		return nil, errNetworkDenied
+	}
+	policy := p.Network
+	if policy.deniesHost(host, port) {
+		return nil, errNetworkDenied
+	}
+	ip, ipErr := netip.ParseAddr(host)
+	local := (normalizeHost(host) == "localhost" || ipErr == nil && ip.IsLoopback()) && slices.Contains(policy.LocalPorts, port)
+	if !local && !policy.permitsHost(host, port) {
+		if policy.Mode != "allowlist" || p.Approve == nil {
+			return nil, errNetworkDenied
+		}
+		if !p.approve(ctx, normalizeHost(host)) {
+			return nil, errNetworkDenied
+		}
+		policy.Hosts = append(append([]string(nil), policy.Hosts...), host)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var addresses []netip.Addr
 	if ip, err := netip.ParseAddr(host); err == nil {
 		addresses = []netip.Addr{ip}
 	} else {
-		local := normalizeHost(host) == "localhost" && slices.Contains(p.Network.LocalPorts, port)
-		if !local && !p.Network.permitsHost(host) {
-			return nil, errNetworkDenied
-		}
 		addresses, err = net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		if err != nil {
 			return nil, err
@@ -215,7 +251,7 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 	}
 	var failure error = errNetworkDenied
 	for _, ip := range addresses {
-		if !p.Network.Allows(host, port, ip) {
+		if !policy.Allows(host, port, ip) {
 			continue
 		}
 		connection, err := (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(ip.String(), portText))
@@ -226,6 +262,42 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 		return p.track(connection)
 	}
 	return nil, failure
+}
+
+func (p *Proxy) approve(ctx context.Context, host string) bool {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return false
+	}
+	approvalContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	p.nextRequest++
+	id := p.nextRequest
+	if p.approvals == nil {
+		p.approvals = make(map[uint64]context.CancelFunc)
+	}
+	p.approvals[id] = cancel
+	p.mu.Unlock()
+	answer := make(chan bool, 1)
+	go func() {
+		defer cancel()
+		defer func() { p.mu.Lock(); delete(p.approvals, id); p.mu.Unlock() }()
+		allowed, err := p.Approve(approvalContext, host)
+		answer <- err == nil && allowed
+	}()
+	wait := p.ApprovalTimeout
+	if wait <= 0 || wait > 2*time.Minute {
+		wait = 2 * time.Minute
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case allowed := <-answer:
+		return allowed
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+	return false
 }
 
 func removeProxyHeaders(header http.Header) {

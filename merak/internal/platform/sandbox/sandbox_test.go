@@ -3,13 +3,29 @@ package sandbox_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
+
+func TestCancelledLaunchDoesNotReturnACommand(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	launcher := &sandbox.Launcher{Disabled: true}
+	cmd, err := launcher.Command(ctx, sandbox.Profile{}, os.Args[0], "-test.run=^TestSandboxChild$")
+	if cmd != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled launch returned command %v and error %v", cmd, err)
+	}
+}
 
 func TestEnvironmentWhitelistReachesTheRealChild(t *testing.T) {
 	profile := sandbox.Profile{EnvAllow: []string{"SystemRoot", "MERAKCODE_TEST_ALLOWED"}}
@@ -58,6 +74,24 @@ func TestTakeoverRunsWithoutFileOrEnvironmentRestrictions(t *testing.T) {
 	}
 }
 
+func TestTakeoverStatusReportsThatTheSandboxIsDisabled(t *testing.T) {
+	launcher := &sandbox.Launcher{Disabled: true}
+	status := launcher.Status(t.Context(), sandbox.Profile{})
+	body, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := json.Unmarshal(body, &view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.Disabled || status.Available || status.Backend != "none" || status.Network != "none" {
+		t.Fatalf("takeover status=%s", body)
+	}
+}
+
 func TestSandboxChild(t *testing.T) {
 	for i, arg := range os.Args {
 		if arg != "--" || len(os.Args) < i+3 {
@@ -69,6 +103,59 @@ func TestSandboxChild(t *testing.T) {
 			err = os.WriteFile(os.Args[i+2], []byte(os.Getenv("MERAKCODE_SANDBOX_TEST_VALUE")), 0o600)
 		case "environment":
 			err = json.NewEncoder(os.Stdout).Encode(os.Environ())
+		case "read":
+			var data []byte
+			data, err = os.ReadFile(os.Args[i+2])
+			if err == nil {
+				_, err = os.Stdout.Write(data)
+			}
+		case "fetch", "fetch-proxy":
+			client := &http.Client{Timeout: time.Second}
+			if os.Args[i+1] == "fetch-proxy" {
+				proxyURL, parseErr := url.Parse(os.Getenv("HTTP_PROXY"))
+				if parseErr != nil || proxyURL.Scheme != "http" || proxyURL.Host == "" {
+					t.Fatal("missing valid sandbox proxy")
+				}
+				client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			}
+			var response *http.Response
+			response, err = client.Get(os.Args[i+2])
+			if err == nil {
+				if response.StatusCode != http.StatusOK {
+					response.Body.Close()
+					t.Fatalf("unexpected HTTP status %d", response.StatusCode)
+				}
+				_, err = io.Copy(os.Stdout, response.Body)
+				response.Body.Close()
+			}
+		case "namespaces":
+			links := make(map[string]string)
+			for _, name := range []string{"user", "net"} {
+				links[name], err = os.Readlink("/proc/self/ns/" + name)
+				if err != nil {
+					break
+				}
+			}
+			if err == nil {
+				err = json.NewEncoder(os.Stdout).Encode(links)
+			}
+		case "wait":
+			if _, err := os.Stdout.WriteString("ready\n"); err != nil {
+				t.Fatal(err)
+			}
+			for {
+				time.Sleep(time.Hour)
+			}
+		case "spawn-wait":
+			child := process.Command(context.Background(), "", os.Args[0], "-test.run=^TestSandboxChild$", "--", "wait", "unused")
+			child.Stdout, child.Stderr = os.Stdout, os.Stderr
+			if err := child.Start(); err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("child:%d parent:%d\n", child.Process.Pid, os.Getpid())
+			for {
+				time.Sleep(time.Hour)
+			}
 		default:
 			t.Fatal("unknown child operation")
 		}

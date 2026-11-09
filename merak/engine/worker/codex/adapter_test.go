@@ -23,9 +23,10 @@ import (
 )
 
 func TestProductInterruptionRetainsPartialAnswerAndCancelsTheTurn(t *testing.T) {
+	binary := fakeBinary(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: fakeBinary(t), Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "interrupted"}}}
+	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "interrupted"}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +78,7 @@ func TestCodexRoutesApprovalsAndEmitsSharedEvents(t *testing.T) {
 			if !runner.Caps().Permission || !runner.Caps().Steer {
 				t.Fatal("missing capabilities")
 			}
-			run, err := runner.Start(ctx, worker.Assignment{Session: "session", Scope: event.Scope{Group: "group", Task: "task"}, Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
+			run, err := runner.Start(ctx, worker.Assignment{Mode: permission.ModeAsk, Session: "session", Scope: event.Scope{Group: "group", Task: "task"}, Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,6 +94,12 @@ func TestCodexRoutesApprovalsAndEmitsSharedEvents(t *testing.T) {
 			var callID, requestID event.ID
 			for fact := range run.Events() {
 				actual = append(actual, fact.Type)
+				if fact.Type == session.Created {
+					state, err := event.Decode[session.State](fact)
+					if err != nil || state.Config.Mode != permission.ModeAsk {
+						t.Fatalf("session mode=%q error=%v", state.Config.Mode, err)
+					}
+				}
 				if fact.Type == tool.Called {
 					callID = fact.ID
 				}

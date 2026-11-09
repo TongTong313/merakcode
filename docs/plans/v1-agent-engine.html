@@ -1306,7 +1306,8 @@ func Bundle(ctx context.Context, req Request, out io.Writer) error</code></pre>
         <td>三个系统</td>
         <td>
           沙箱一致性测试，<code>MERAKCODE_SANDBOX_REQUIRED=1</code> 保证真跑而不是跳过；Windows
-          需要一次性初始化和事后重置
+          需要一次性初始化和事后重置。<code>regression.yml</code> 里指向 v0.3 沙箱脚本的 <code>external-network</code>
+          步骤随它一起换掉
         </td>
         <td>S25</td>
       </tr>
@@ -3296,7 +3297,7 @@ type Group struct {
 	Project       Project    `json:"project"`       // repo (remote url + local checkout per device) or folder
 	DefaultLeader event.ID   `json:"defaultLeader"` // member with AgentRole leader; runs the group thread
 	Brief         Brief      `json:"brief"`         // goal, conventions, check command, target branch; has a revision
-	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, budgets, setup
+	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, allowed and denied hosts, budgets, setup
 }
 
 type MemberKind string
@@ -3342,6 +3343,8 @@ type Member struct {
 	Current   event.ID   `json:"current,omitempty"` // Workers: the claim being worked on
 	Queue     []event.ID `json:"queue,omitempty"`   // Workers: claims waiting behind it (section 7.3)
 	Threads   []event.ID `json:"threads,omitempty"` // Leaders: the threads it is running (section 6.2)
+	Hosts     []string   `json:"hosts,omitempty"`   // Agents: profile Network hosts an admin accepted for this group (section 10.3)
+	Unconfined bool      `json:"unconfined,omitempty"` // Agents: runs without a sandbox on its device; Leaders avoid it for sensitive tasks
 }</code></pre>
     <table>
       <tr>
@@ -3395,6 +3398,7 @@ type Profile struct {
 	Budget   Budget          `json:"budget"`
 	Memory   []memory.Scope  `json:"memory"`   // scopes to recall and write
 	Product  *Product        `json:"product,omitempty"` // external only
+	Network  []string        `json:"network,omitempty"` // hosts of the services this member itself connects to, such as its model API or relay; exact hostnames or IPs; external only
 	Shared   bool            `json:"shared"`   // false: only the owner may assign to it; true: the whole group may
 }
 
@@ -3432,6 +3436,7 @@ func DefaultWorker() Profile</code></pre>
   "budget": { "maxSteps": 60, "maxTokens": 400000, "maxCost": 5, "maxWallClock": "45m" },
   "memory": ["member", "project"],
   "product": { "kind": "codex", "binary": "codex", "args": ["app-server"], "env": { "OPENAI_API_KEY": "" }, "model": "gpt-5.5" },
+  "network": ["api.openai.com"],
   "shared": true
 }</code></pre>
     <p>
@@ -3518,7 +3523,9 @@ type Run interface {
 }</code></pre>
     <p>
       接法：常用的四家各写一个原生适配器，因为它们的中途消息和审批转发只有原生接法拿得到；其余产品走 ACP；连 ACP
-      都不支持的走纯命令行。能力一栏是目前所知，实现前逐个核实。
+      都不支持的走纯命令行。能力一栏是目前所知，实现前逐个核实。四个原生适配器的审批都走产品自己的 stdio 通道：Claude
+      Code 的 <code>control_request</code>、Codex 的审批消息、opencode 和 ACP 的标准审批请求；审批不依赖 MCP，MCP
+      只用来挂群工具（S27）。
     </p>
     <table>
       <tr>
@@ -3536,8 +3543,11 @@ type Run interface {
         <td>
           启动
           <code>claude -p --output-format stream-json --input-format stream-json</code>，工作目录设成工作区；审批请求经
-          <code>--permission-prompt-tool</code> 指向我们的 MCP 服务；群工具经
-          <code>--mcp-config</code> 挂载。报告靠结尾追加一段指令让它输出 JSON
+          <code>--permission-prompt-tool stdio</code> 走同一条 stream-json 通道（<code>control_request</code> 进、<code
+            >control_response</code
+          >
+          出），不依赖 MCP；<code>--settings</code> 把所有工具设成要问，使它以“每次都问”启动；群工具经
+          <code>--mcp-config</code> 挂载（S27）。报告靠结尾追加一段指令让它输出 JSON
         </td>
         <td>是 / 是 / 是</td>
       </tr>
@@ -3591,10 +3601,14 @@ package claudecode
 func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, error) {
 	cmd := r.Sandbox.Command(ctx, a.Profile, r.Product.Binary, "-p",
 		"--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
-		"--permission-prompt-tool", "mcp__merak__approve", "--mcp-config", r.mcpConfig(a.MCP))
+		"--permission-prompt-tool", "stdio", "--permission-mode", "default",
+		"--settings", `{"permissions":{"ask":["*"]}}`) // every tool asks; the answer comes back on the same channel
+	// group tools (section 8.3, S27): "--mcp-config", r.mcpConfig(a.MCP)
 	cmd.Dir = a.Workdir
-	// stdin: the rendered packet as the first user message, then follow-ups from Send
-	// stdout: one JSON object per line, translated by translate() into message.*, tool.* and permission.* events
+	// stdin: the rendered packet as the first user message, then follow-ups from Send, then control_response lines
+	// stdout: one JSON object per line, translated by translate() into message.*, tool.* and permission.* events;
+	//         a control_request with subtype can_use_tool goes through the permission gate (section 10.1) and is
+	//         answered with allow (optionally with updatedInput) or deny
 	// on exit: the final assistant text is parsed as a report when the closing instruction asked for JSON,
 	//          otherwise a synthesized task.Report is returned from Wait
 	...
@@ -4939,7 +4953,7 @@ type Action struct {
         <td>每次询问 <code>ask</code>（默认）</td>
         <td>所有写文件、跑命令、联网、改群状态的调用</td>
         <td>只读</td>
-        <td>开。本机没有可用沙箱时照样逐次询问</td>
+        <td>开。本机没有可用沙箱时照样逐次询问；不能转发审批的成员改为启动前问一次（10.3 节）</td>
         <td>人。群里按角色路由</td>
       </tr>
       <tr>
@@ -4949,7 +4963,7 @@ type Action struct {
           配置文件）、新的网络目标、合并到目标分支、超预算、用户规则里标“问”的命令
         </td>
         <td>工作区内的写文件、用户规则里标“允许”的命令、已允许过的网络目标、包管理器缓存目录的写入</td>
-        <td>开。本机没有可用沙箱时退化为逐次询问</td>
+        <td>开。本机没有可用沙箱时退化为逐次询问；不能转发审批的成员改为启动前问 admin（10.3 节）</td>
         <td>常规类别在群里先给任务线程的 Leader 代答（拿不准问人）；需要 admin 或 owner 的直接给人。单聊里直接问人</td>
       </tr>
       <tr>
@@ -4979,7 +4993,9 @@ type Action struct {
         <td>approver</td>
       </tr>
       <tr>
-        <td>工作区外写入、删除、保护路径、新的网络目标、给成员发超出任务卡范围的指示</td>
+        <td>
+          工作区外写入、删除、保护路径、新的网络目标、沙箱不可用时启动不能转发审批的成员、给成员发超出任务卡范围的指示
+        </td>
         <td>admin</td>
       </tr>
       <tr>
@@ -4998,6 +5014,8 @@ func Need(req Request, ws workspace.Workspace, g group.Group) Role {
 	case req.Spec.Effect == tool.EffectWrite &amp;&amp; !ws.Contains(req.Path) || req.Deletes || ws.Protected(req.Path):
 		return group.RoleAdmin
 	case req.Spec.Effect == tool.EffectNetwork &amp;&amp; !g.Settings.AllowedHost(req.Host):
+		return group.RoleAdmin
+	case req.Kind == KindLaunch: // a member that cannot forward approvals, started without a sandbox (section 10.3)
 		return group.RoleAdmin
 	case req.Kind == KindMerge &amp;&amp; g.Settings.MergeNeedsOwner, req.Kind == KindBudget, req.Kind == KindMode:
 		return group.RoleOwner
@@ -5031,26 +5049,51 @@ package sandbox
 // Profile is plain data so it can be written to a file for helper processes. Every path is absolute and resolved to
 // its real location.
 type Profile struct {
-	ReadDeny  []string // credential directories under the home folder: .ssh, .aws, .azure, .kube, .gnupg, .docker, gcloud, gh
-	WriteAllow []string // the workspace, the engine's private temp dir, package manager caches; nothing else
-	Protect   []string // never writable even inside WriteAllow: .git/hooks, .git/config, merakcode.json(c), .merakcode/
-	Network   Network  // off, allowlist of hosts, or on; blocked ports; allowed local ports
-	EnvAllow  []string // environment variable names passed through; everything else is stripped
+	ReadDeny   []string // credential directories under the home folder (.ssh, .aws, .azure, .kube, .gnupg, .docker, gcloud, gh), the
+	                    // engine's own data directory except the private temp dir, and the state directories of the other products
+	WriteAllow []string // the workspace, the engine's private temp dir, package manager caches, the member's own product state
+	                    // directory (~/.claude and ~/.claude.json, ~/.codex, ...); nothing else
+	Protect    []string // never writable even inside WriteAllow: .git/hooks, .git/config, merakcode.json(c), .merakcode/
+	Network    Network  // off, allowlist, or on; allow and deny rules (host, IP, *.domain, optional :port); blocked ports; allowed local ports
+	EnvAllow   []string // environment variable names passed through; everything else is stripped
 }
 
+// Status reports what this machine enforces for one profile. Available covers the file limits (ReadDeny and
+// WriteAllow) and is what the permission policy keys off. Network and Protect are reported on their own, because a
+// machine can enforce the files and still not the rest.
 type Status struct {
-	Available bool   // this machine can enforce the profile
-	Backend   string // seatbelt, landlock, windows-account, none
-	Reason    string // why not, for the UI
+	Available bool         // the file limits are enforced
+	Backend   string       // seatbelt, landlock, windows-account, none
+	Network   string       // seatbelt, namespace, account: outbound traffic reaches only the proxy; ports: TCP ports only, hostnames are not enforced; none
+	Protect   []PathStatus // one per Protect path
+	Reason    string       // what is not enforced and why, for the UI
 }
 
-// Status reports whether the sandbox can run here. Windows needs a one-time administrator setup (a separate low
-// privilege account); Linux needs Landlock in the kernel; macOS has sandbox-exec.
-func (l *Launcher) Status(ctx context.Context) Status
+type PathStatus struct {
+	Path  string
+	State string // enforced: the OS refuses writes; unenforced: only the rollback after exit; missing: the path does not exist
+}
+
+// Status takes the profile because what can be enforced depends on which paths exist. Windows needs a one-time
+// administrator setup (a separate low privilege account); Linux needs Landlock in the kernel; macOS has sandbox-exec.
+func (l *Launcher) Status(ctx context.Context, p Profile) Status
 
 // Command returns an exec.Cmd confined to the profile. In takeover mode the launcher is Disabled and returns a plain
 // command. When Status is not Available, the permission policy asks for every call instead (section 10.1).
 func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...string) (*exec.Cmd, error)</code></pre>
+    <p>
+      主机名白名单由引擎的本机代理执行，三个系统的机制只负责把成员的出站流量限制到只能到这个代理。<code
+        >Status.Network</code
+      >
+      报告这一步是否做到：做不到时主机名就没有强制，策略对联网调用逐次询问（10.1 节）。
+    </p>
+    <p>
+      读的范围三个系统一致：用户能读的减去 ReadDeny。外部产品要读写自己的状态目录（Claude Code 的
+      <code>~/.claude</code> 和 <code>~/.claude.json</code>、Codex 的 <code>~/.codex</code>、opencode 的
+      <code>~/.config/opencode</code> 和 <code>~/.local/share/opencode</code>、pi 的
+      <code>~/.pi</code>），登录令牌也在里面，所以适配器把自己产品的状态目录加进这次运行的 WriteAllow，把其他产品的加进
+      ReadDeny。引擎自己的数据目录也在 ReadDeny 里：用户配置里有密钥，存储里有对话；私有临时目录除外。
+    </p>
     <table>
       <tr>
         <th style="width: 14%">系统</th>
@@ -5058,26 +5101,169 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       </tr>
       <tr>
         <td>macOS</td>
-        <td><code>sandbox-exec</code> 加一份按 Profile 生成的 Seatbelt 规则。系统自带</td>
+        <td>
+          <code>sandbox-exec</code> 加一份按 Profile 生成的 Seatbelt 规则，文件、保护路径和网络都由它强制。系统自带
+        </td>
       </tr>
       <tr>
         <td>Linux</td>
-        <td>Landlock 限制文件系统，网络经本机代理按白名单放行；内核太老时报 Status 不可用</td>
+        <td>
+          Landlock 强制 ReadDeny 和 WriteAllow，<code>Available</code>
+          只取决于它。网络靠用户加网络命名空间，开不了时按内核能力降级；保护路径靠挂载命名空间里的只读 bind
+          mount，没有时报未强制
+        </td>
       </tr>
       <tr>
         <td>Windows</td>
         <td>
-          一个单独的低权限账户加 NTFS
+          一组低权限账户，每个活动的认领租一个，加只写限制令牌、NTFS
           权限和防火墙规则；第一次需要管理员做一次初始化，引擎启动时验证账户可用，凭据变化后重新探测
         </td>
       </tr>
     </table>
+
+    <h4>Linux</h4>
+    <ul>
+      <li>
+        Landlock 只有允许规则，父目录的权限向下传给整个子树，所以它只负责 ReadDeny 和 WriteAllow。内核没有 Landlock 时
+        <code>Available</code> 为假，这是 Linux 上唯一让沙箱不可用的条件；命名空间开不了不算。
+      </li>
+      <li>
+        网络按能力降级：能开用户加网络命名空间就开，成员只剩回环，助手进程把回环端口桥到引擎的代理，<code
+          >Status.Network</code
+        >
+        报 <code>namespace</code>；开不了而内核在 6.7 以上，用 Landlock 的网络端口规则只放行代理端口，报
+        <code>ports</code>，它只认端口不认主机，也不管 UDP，不能当成主机名白名单；两样都没有报 <code>none</code>。
+      </li>
+      <li>
+        已存在的保护路径在有挂载命名空间时以只读方式 bind mount
+        到自身，这是在可写目录里精确只读化一条路径的唯一非特权手段；没有挂载命名空间时报未强制。不收回父目录的创建权：对工作区根目录那会禁止新建顶层文件，对
+        <code>.git</code> 会让 git 写不了锁文件。
+      </li>
+      <li>
+        不用 seccomp：项目不用 cgo，只能手写 BPF，白名单会打坏 Node、Bun、Rust 写的成员，黑名单能拦的 Landlock
+        已经限制。
+      </li>
+    </ul>
+
+    <h4>Windows</h4>
+    <ul>
+      <li>
+        一次性初始化由管理员完成：建一个本地组和一组沙箱账户（默认 4
+        个，初始化时可改）加进组，账户不在登录界面显示，凭据存进系统凭据库，每个账户一条防火墙规则让出站只能到回环。管理员步骤之后以用户身份继续：给组在用户资料目录上授读取和执行并继承（目录属于用户，不需要特权；目录大时第一次要几分钟，界面显示进度），给组在
+        <code>merak</code> 的安装目录上授读取和执行。引擎启动时验证账户可用，凭据变化后重新探测。
+      </li>
+      <li>
+        读的范围由此和另外两个系统一样：用户能读的减去 ReadDeny。ReadDeny 靠显式 Deny 读取并继承，离目标最近的继承 Deny
+        排在更远的继承 Allow 前面，所以压得过用户资料目录上的 Allow。ReadDeny
+        分两类：全机一致的（凭据目录、引擎数据目录）给组加，租用时补上新出现的目录，不撤销，重置时随组一起清；随成员变的（其他产品的状态目录）给本次账户加，归还时删掉，否则
+        Claude Code 跑过一次之后 Codex 自己也读不了 <code>~/.codex</code>。私有临时目录在引擎数据目录下，它的 DACL
+        断开继承，只给用户、SYSTEM、管理员和租用的账户，引擎目录上的 Deny
+        不进来。工作区、私有目录和助手文件通常在用户资料目录或盘根目录下，祖先目录都可读；遇到不可读的祖先，租用时给账户加只读加穿越，只作用于该目录不继承，归还时撤销。
+      </li>
+      <li>
+        隔离的单位是认领，所以每个活动的认领（单聊里是每条会话）租一个账户，认领内的所有启动共用它，结束时归还；账户用完时新认领排队等待，状态里显示“等待沙箱账户”。租用时引擎在
+        WriteAllow 和私有目录上给这个账户授 Modify，在已存在的保护路径上给它加显式 Deny（WriteAllow 的授权会向下继承到
+        <code>.git/hooks</code>，这条 Deny 不能省）；归还时删掉这些 ACE，引擎启动时清理上次残留的。
+      </li>
+      <li>
+        引擎用 <code>CreateProcessWithLogonW</code> 以租用的账户启动 <code>merak</code> 的内部助手子命令；助手用
+        <code>WRITE_RESTRICTED</code> 创建自己令牌的限制副本，再用 <code>CreateProcessAsUser</code> 在一个 Job
+        对象里启动成员，Job
+        关闭即杀，退出码原样转发，标准流靠句柄继承。成员跑在助手新建的未命名窗口站和桌面里，不在用户的交互窗口站上，读不到剪贴板、发不了窗口消息。全程不需要特权。限制
+        SID 三个：账户自己的 SID、Everyone（S-1-1-0）、WRITE RESTRICTED（S-1-5-33）。写任何对象都要 ACL
+        同时授权给账户和这三个之一：Authenticated Users 和 Users 的授权不算数，所以盘根下默认对 Authenticated Users
+        开放写入的目录、ProgramData 都写不了；别的认领的工作区授权给别的账户，也写不了；账户自己的 SID
+        让它创建的对象照常可用，命名管道的默认 DACL 只给创建者、SYSTEM 和管理员，node 的子进程管道靠这条；Everyone 和
+        WRITE RESTRICTED 让系统设备（CNG 等）和内核对象命名空间照常可用。读不受影响。不降低完整性级别，不打 Low
+        标签，不改系统对象的 DACL。
+      </li>
+      <li>
+        已知的缝：盘根下的目录继承 CREATOR OWNER 完全控制，成员新建的文件因此带着账户的 ACE，认领结束后留在 inplace
+        工作区里的这些文件，下一次租到同一账户的认领还写得了。worktree
+        删除时文件随之消失；租账户时优先选最近没在这个项目干过活的。
+      </li>
+      <li>
+        TEMP 和 TMP 改指私有目录；USERPROFILE、APPDATA、LOCALAPPDATA 保持真实路径，成员要读
+        <code>~/.gitconfig</code>、<code>~/.npmrc</code> 和产品自己的配置，能写的只有 WriteAllow
+        里的缓存目录和产品状态目录。工作区的所有者是用户不是沙箱账户，git 会报 dubious ownership，环境里经
+        <code>GIT_CONFIG_COUNT</code> 加一条 <code>safe.directory=*</code>。写注册表 HKCU
+        会失败，接受。代理若用命名管道，给租用的账户授写权限，或者直接走回环
+        TCP。成员在限制令牌下跑不起来，走下文“沙箱不可用时”的启动询问。
+      </li>
+    </ul>
+
+    <h4>保护路径</h4>
+    <ul>
+      <li>
+        不存在的保护路径跳过：不报错、不限制父目录、不预建，<code>Status.Protect</code>
+        记为缺失。配置文件的真正防线在引擎（10.4 节），沙箱只是第二道。
+      </li>
+      <li>
+        三个系统都加一道回滚：每次启动前给已存在的保护路径拍快照（路径和内容），进程退出后比对，改过的还原、新增的删掉、删掉的放回，动过的文件列进
+        <code>tool.completed</code> 的错误，界面显示“被沙箱拦下”。回滚不依赖系统机制，所以 Linux
+        没有挂载命名空间时保护路径仍有一道实际的防线，macOS 和 Windows 上它是系统强制之外的第二道。<code
+          >Status.Protect</code
+        >
+        的 <code>unenforced</code> 表示“系统不强制，只有回滚”。快照由引擎而非成员进程持有，成员改不了它。
+      </li>
+    </ul>
+
+    <h4>网络白名单从哪来</h4>
+    <ul>
+      <li>
+        一次运行的白名单是成员档案的 <code>Network</code>（这个成员自己要连的服务，比如它的模型服务或中转站，5.2
+        节）并上群设置的
+        <code>AllowedHosts</code
+        >（这个群批准过的目标）；单聊再并上用户配置里“以后都允许”记下的主机。拒绝列表只有两处：用户配置的
+        <code>DeniedHosts</code> 对本机上的每次运行都生效，包括群里的，是设备主人的否决权；群设置的
+        <code>DeniedHosts</code> 由 admin 维护，对群里每次运行生效。一次运行合并两处拒绝列表。档案的
+        <code>Network</code>
+        只放允许规则。
+      </li>
+      <li>
+        一条规则是主机名、IP 或子域通配 <code>*.example.com</code>，可以带 <code>:端口</code>；通配不匹配裸 IP，也不匹配
+        <code>example.com</code> 自己。单独的 <code>*</code> 只接受在用户配置的
+        <code>AllowedHosts</code> 里，等于本机单聊的网络模式 <code>on</code>；群里没有
+        <code>*</code>。拒绝列表优先于允许列表，用于在
+        <code>on</code>
+        或宽通配下挖掉个别主机；审批不能覆盖拒绝：命中拒绝列表的目标代理直接拒绝，不发审批，错误里写明是用户配置还是群设置拒的。代理按请求行里的主机判断，不看
+        Host 头；解析出的地址再查一次回环和保留地址，不能靠域名绕到本机服务。
+      </li>
+      <li>
+        引擎不替任何产品加默认域名。代理拒绝一个目标时，<code>tool.completed</code>
+        的错误带被拒的主机名和成员名，错误码的提示指向成员档案的网络列表。桌面端的档案表单可以按产品种类和环境变量里的地址预填建议，引擎不参与。
+      </li>
+      <li>适配器关掉产品的非必要流量，比如 Claude Code 的遥测和错误上报；否则用户会看到一串域名被拒，然后盲目放行。</li>
+      <li>
+        群里 admin 加成员时看到并接受档案当时的主机列表，记在群成员记录的 <code>Hosts</code>
+        里。之后拥有者改档案新增的主机，在这个群里算新的网络目标，问 admin，同意后更新成员记录。改档案仍只有拥有者能做。
+      </li>
+      <li>
+        代理遇到不在白名单的目标时发起审批并挂住连接，最多等两分钟，超时拒绝，审批请求保持打开；同意后记进群的
+        <code>AllowedHosts</code> 或单聊的用户配置，成员重试或下次派工就能通。内置工具的联网先过权限门，到不了代理。
+      </li>
+    </ul>
+
+    <h4>沙箱不可用时</h4>
     <ul>
       <li>
         能转发审批请求的产品（Claude Code、Codex、opencode、通用
-        ACP）以“每次都问”的模式启动，所有请求进我们的权限门和路由，用户在 MerakCode 里选的模式对它们同样生效。
+        ACP）以“每次都问”的模式启动，所有请求进我们的权限门和路由，用户在 MerakCode
+        里选的模式对它们同样生效。沙箱不可用时每个非只读调用都问人。
       </li>
-      <li>不能转发的产品只有沙箱这一道闸，档案里标出，Leader 派敏感任务时避开。</li>
+      <li>
+        不能转发的产品（pi、纯命令行程序）引擎看不到它们内部的调用，能看到的唯一一次调用是启动，所以启动本身按危险调用询问：单聊问用户，群里直接问
+        admin，不经 Leader。请求带成员名、<code>Status.Reason</code>
+        和一句说明：这个成员不能转发审批，本机没有可用沙箱，启动后它的操作不受限制。“记住这个选择”有效，按成员加项目记。拒绝则启动失败，记进
+        <code>tool.completed</code> 的错误，有自己的错误码；群里这条任务回到看板等人改派。全面接管下照旧不问。
+      </li>
+      <li>
+        不能转发的产品只有沙箱这一道闸，档案里标出；沙箱不可用时成员记录再标 <code>Unconfined</code>，Leader
+        派敏感任务时避开。
+      </li>
+    </ul>
+    <ul>
       <li>
         沙箱的拒绝发生在系统调用层。引擎监视 stderr 和退出码，能识别的拒绝记成
         <code>tool.completed</code> 里的错误，界面显示“被沙箱拦下”。
@@ -5099,6 +5285,15 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
         云端群里哪些数据离开本机逐项列清楚并在建群时确认：群的事件（含对话）、报告、产物元数据会上传；文件内容只以路径和行数出现，产物按需上传。
       </li>
       <li>云端登录令牌由引擎存进系统凭据库，界面拿不到；凭据库不可用时存在数据目录里受限的文件中。</li>
+      <li>
+        工作区配置（<code>merakcode.json</code>、<code>merakcode.jsonc</code>、<code>.merakcode/</code>）来自仓库，可能是克隆来的。引擎在会话开始时读一次并记内容哈希；涉及安全的字段，比如权限规则、MCP
+        服务器、要跑的命令，首次见到的哈希和之后的任何变化都要人确认才生效，权限判断和 MCP
+        只读已确认的快照。确认和拒绝按项目以内容哈希记进用户配置，被拒绝的不再重复问。
+      </li>
+      <li>
+        确认后的配置在它下一次被读取的边界生效，进行中的操作继续用原快照：按轮读取的配置下一轮前生效；工具列表和 MCP
+        服务器在会话开始时定下，下一次会话生效；沙箱 Profile 和 setup 命令在下一次认领或启动成员进程时生效。
+      </li>
     </ul>
     <h2 id="protocol">11. 协议与 SDK</h2>
 
@@ -6487,21 +6682,51 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     <p class="file">S25 沙箱覆盖所有成员进程</p>
     <p>
       做完以后：每次询问和仅询问危险行为两档下，任何成员进程（内置 bash、Claude
-      Code、Codex、opencode、pi）都读不了凭据目录、写不了工作区以外的目录和保护路径、连不了没允许的网络；全面接管模式从这一片起可选，选了就关沙箱；CI
+      Code、Codex、opencode、pi）都读不了凭据目录、写不了工作区以外的目录和保护路径、连不了没允许的网络；本机做不到其中某项时
+      <code>Status</code> 如实报告，策略按 10.3 节降级；全面接管模式从这一片起可选，选了就关沙箱；CI
       多了三个系统的沙箱一致性 job。
     </p>
     <ol>
       <li>
         每个系统一份一致性测试：在沙箱里跑一个试图写工作区外文件的命令，失败；写工作区内，成功；读
-        <code>~/.ssh</code>，失败；写 <code>.git/hooks</code>，失败；访问未允许的网络，失败。
+        <code>~/.ssh</code>，失败；写 <code>.git/hooks</code>，macOS 和 Windows 失败，Linux 断言
+        <code>Status</code>
+        报未强制且退出后文件被还原、错误里列出该路径；不存在的保护路径断言报缺失且没有被预建；访问未允许的网络，有网络强制时失败，没有时断言
+        <code>Status.Network</code> 为 <code>none</code>；通配规则 <code>*.example.com</code> 放行子域、不放行裸 IP
+        和顶域本身，拒绝列表压过允许列表。Windows
+        另加两条：写盘根下的一个目录，失败；同时启动两个认领，一个成员写另一个的工作区，失败；账户用完时第三个认领排队。
       </li>
-      <li>所有运行器都经 <code>sandbox.Command</code> 启动；环境变量按白名单透传；全面接管下返回不加限制的进程。</li>
-      <li><code>Status</code> 报告不可用时，每次询问和仅询问危险行为两档对每个非只读调用都问人。</li>
-      <li>识别到的沙箱拒绝记进 <code>tool.completed</code> 的错误。</li>
+      <li>
+        三个系统共用的日常工具用例：<code>git --version</code>、<code>git status</code>、node 打印一行、node 往 TEMP
+        写一个文件、读用户资料目录下 ReadDeny 之外的一个普通文件、在工作区里用用户的全局身份
+        <code>git commit</code>，都成功；退出码、UTF-8 输出和参数原样回传。Windows 另加：node
+        用默认管道再起一个子进程成功；管道和 ConPTY
+        两种标准流接法都覆盖；成员进程看不到用户的交互窗口站（读不到剪贴板）；凭据失效后
+        <code>Status</code> 翻为不可用、恢复后翻回；助手自身启动失败和成员退出码 125 区分开，前者让 <code>Status</code>
+        翻为不可用，后者不影响。
+      </li>
+      <li>
+        所有运行器都经 <code>sandbox.Command</code> 启动；环境变量按白名单透传，TEMP 和 TMP 改指私有目录，Windows 上再加
+        git 的 <code>safe.directory</code>；适配器把产品状态目录加进 WriteAllow、其他产品的加进
+        ReadDeny；全面接管下返回不加限制的进程。
+      </li>
+      <li>
+        <code>Status</code>
+        报告不可用时，能转发审批的成员每个非只读调用都问人；不能转发的成员启动前问一次，拒绝则启动失败并有自己的错误码。
+      </li>
+      <li>
+        识别到的沙箱拒绝记进 <code>tool.completed</code> 的错误；代理的拒绝带主机名和成员名；回滚动过的文件列在同一处。
+      </li>
+      <li>
+        一次运行的网络白名单按 10.3 节合成：档案 <code>Network</code>、群 <code>AllowedHosts</code>、单聊的用户配置。
+      </li>
     </ol>
     <p>
-      只实现：三个系统的沙箱、<code>Status</code>、接入所有运行器、全面接管模式、CI 的 <code>sandbox</code> job（Windows
-      一次性初始化和重置脚本）。不做：没有沙箱机制的系统上的替代方案。
+      只实现：三个系统的沙箱、保护路径回滚、<code>Status</code>、Windows
+      的助手子命令、接入所有运行器、全面接管模式、档案的
+      <code>Network</code> 字段、CI 的 <code>sandbox</code> job（Windows 一次性初始化和重置脚本，并删掉工作流里指向 v0.3
+      沙箱脚本的 <code>external-network</code> 步骤）。不做：Linux 的挂载命名空间和
+      seccomp、没有沙箱机制的系统上的替代方案、工作区配置的确认机制（10.4 节，随工作区配置一起做）。
     </p>
 
     <p class="file">S26 仅询问危险行为模式与审批路由</p>
@@ -6538,7 +6763,10 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         <code>create_task</code>，任务出现在线程的任务子树里；越权（在别的任务下建任务）被拒。
       </li>
     </ol>
-    <p>只实现：MCP 客户端、MCP 服务端两种角色、各适配器的 MCP 挂载配置、<code>Caps.MCP</code>。不做：技能、插件。</p>
+    <p>
+      MCP 服务器配置来自工作区时，遵守 10.4 节的确认规则。只实现：MCP 客户端、MCP 服务端两种角色、各适配器的 MCP
+      挂载配置、<code>Caps.MCP</code>。不做：技能、插件。
+    </p>
 
     <p class="file">S28 外部产品当 Leader</p>
     <p>做完以后：可以指定 Claude Code 当一个任务的 Leader，它通过 MCP 建子任务、派工、批审批、在讨论串里回复人。</p>
@@ -6569,7 +6797,7 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
 
     <p class="file">D9 权限模式、沙箱状态、上下文与花费</p>
     <p>
-      做完以后：设置里能选三档权限模式并看到风险提示；对话和群里能看到沙箱状态（可用、不可用、已关闭）；每条会话有“上下文花在哪了”，每个群有按任务和成员汇总的
+      做完以后：设置里能选三档权限模式并看到风险提示；对话和群里能看到沙箱状态（可用、部分强制、不可用、已关闭）；每条会话有“上下文花在哪了”，每个群有按任务和成员汇总的
       token 和费用；限流和哨兵的提醒进收件箱。
     </p>
     <p class="muted">依赖：D7、S25 沙箱、S26 仅询问危险行为模式、S29 限流与哨兵。</p>
@@ -6577,7 +6805,10 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       <li>
         权限模式选择器：复用权限级别组件和接管确认对话框；选全面接管时弹风险提示；经 <code>config.set</code> 生效。
       </li>
-      <li>沙箱状态：复用沙箱控制组件（含 Windows 的一次性初始化入口）显示三种状态。</li>
+      <li>
+        沙箱状态：复用沙箱控制组件（含 Windows
+        的一次性初始化入口）显示可用、部分强制（列出未强制的项）、不可用、已关闭四种状态。
+      </li>
       <li>
         上下文与花费视图：<code>session.budget</code> 画成分段条；<code>turn.finished</code>
         的用量按任务和成员汇总成表。
