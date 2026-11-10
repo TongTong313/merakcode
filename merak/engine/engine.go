@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -102,6 +103,7 @@ type Engine struct {
 	sentinelMu        sync.Mutex
 	sentinelSeen      map[string]bool
 	gate              *permission.Gate
+	defaultModel      atomic.Pointer[profile.ModelRef]
 	workspaceMu       sync.Mutex
 	workspacePending  map[config.Trust]bool
 	mcpCommand        string

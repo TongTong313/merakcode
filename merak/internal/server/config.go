@@ -143,6 +143,8 @@ func (s *Server) applyConfiguration(value config.Value) {
 		}
 	}
 	s.engine.ConfigureModels(overrides)
+	provider, name, _ := strings.Cut(value.Model, "/")
+	s.engine.SetDefaultModel(provider, name, model.Thinking(value.Thinking))
 	s.engine.Catalog().ConfigureSources(sources)
 	if s.Level != nil && value.Log != "" {
 		var level slog.Level

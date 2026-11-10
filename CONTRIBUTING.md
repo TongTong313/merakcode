@@ -10,7 +10,7 @@
 
 - 仓库里有 Go 程序 `merak/`、桌面端（`apps/desktop`）和共用的 `packages/util`、`packages/log`。
 - 桌面端已经使用新的 Go 协议和 SDK。`pnpm typecheck` 和 `pnpm check:unused` 检查桌面端。CI 运行主进程、渲染进程测试和已迁移的 Linux 桌面端端到端测试。
-- `ci.yml` 已经覆盖当前仓库。`release.yml` 和下面的"发布"一节还是 v0.3 的流程。`ci.yml` 只在 PR 和推送到 `main` 时运行，`release.yml` 只在打 tag 时运行。`regression.yml` 手动运行三个系统的外网沙箱检查。
+- `ci.yml` 已经覆盖当前仓库。`release.yml` 和下面的"发布"一节还是 v0.3 的流程。`ci.yml` 只在 PR 和推送到 `main`、`dev-v1.0.0` 时运行，`release.yml` 只在打 tag 时运行。`regression.yml` 手动运行三个系统的外网沙箱检查。
 
 ## 准备环境
 
@@ -170,7 +170,7 @@ The `dev-v1.0.0` branch rebuilds the whole architecture. The old engine, the `me
 
 - The repository holds the Go program `merak/`, the desktop app (`apps/desktop`) and the shared `packages/util` and `packages/log`.
 - The desktop app uses the new Go protocol and SDK. Both `pnpm typecheck` and `pnpm check:unused` include it. CI runs main-process and renderer tests and the migrated desktop end-to-end tests on Linux.
-- `ci.yml` covers the current repository; `release.yml` and the "Releasing" section below still describe v0.3. `ci.yml` runs only on pull requests and pushes to `main`, and `release.yml` only on tags. `regression.yml` manually checks external sandbox networking on all three systems.
+- `ci.yml` covers the current repository; `release.yml` and the "Releasing" section below still describe v0.3. `ci.yml` runs only on pull requests and pushes to `main` and `dev-v1.0.0`, and `release.yml` only on tags. `regression.yml` manually checks external sandbox networking on all three systems.
 
 ## Setup
 

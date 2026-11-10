@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, dev-v1.0.0]
   # The release workflow runs all of CI on the commit it releases
   workflow_call:
 

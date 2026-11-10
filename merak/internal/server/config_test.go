@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,10 +13,13 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/server"
@@ -168,5 +172,51 @@ func TestConfigRPCPersistsRelayAndUsesItForNewConversations(t *testing.T) {
 		}
 		client.Close()
 		instance.Close()
+	}
+}
+
+func TestConfiguredDefaultModelRunsMembersWithoutAModel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	home := t.TempDir()
+	provider := fake.New(t, fake.Reply{Text: "Planning", Expect: func(req model.Request) error {
+		if req.Model != "default-model" || req.Thinking != "high" {
+			return fmt.Errorf("model=%q thinking=%q", req.Model, req.Thinking)
+		}
+		return nil
+	}})
+	e, err := engine.New(engine.Deps{Workdir: home, Providers: map[string]model.Provider{"fixture": provider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	c, err := protocol.Connect(ctx, s.Info.Endpoint, s.Info.Token, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.Call(ctx, "config.set", map[string]string{"model": "fixture/default-model", "thinking": "high"}, new(map[string]any)); err != nil {
+		t.Fatal(err)
+	}
+	var g group.Group
+	if err := c.Call(ctx, "group.create", map[string]any{"name": "Defaults", "kind": "local", "project": group.Project{Directory: home}, "defaultLeader": "leader", "members": []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+	}, "profiles": []profile.Profile{}}, &g); err != nil {
+		t.Fatal(err)
+	}
+	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{loop.TurnFinished}})
+	defer stop()
+	if err := c.Call(ctx, "group.say", map[string]any{"group": g.ID, "human": "owner", "text": "Plan the work", "to": []string{"leader"}}, new(event.ID)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-facts:
+	case <-ctx.Done():
+		t.Fatal("the Leader did not answer with the configured default model")
 	}
 }

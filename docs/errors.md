@@ -77,10 +77,15 @@ what to do.
 
 ## 6xxx 任务和协作群 · Tasks and groups
 
-| 错误码 Code | 说明             | Meaning                        | 怎么办 · What to do                                                                                                                                |
-| ----------- | ---------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MRK-6001    | 群或任务操作失败 | Group or task operation failed | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state.                                                             |
-| MRK-6002    | 任务需要检查     | Task needs attention           | 查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。<br>Review the sentinel reason and related events, then resume, reassign or cancel the task. |
+| 错误码 Code | 说明                      | Meaning                                  | 怎么办 · What to do                                                                                                                                                                               |
+| ----------- | ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-6001    | 群或任务操作失败          | Group or task operation failed           | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state.                                                                                                            |
+| MRK-6002    | 任务需要检查              | Task needs attention                     | 查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。<br>Review the sentinel reason and related events, then resume, reassign or cancel the task.                                                |
+| MRK-6003    | 成员角色和智能体不符      | Member role does not match the agent     | Leader 成员要选 Leader 智能体，Worker 成员要选 Worker 智能体。<br>A Leader member needs a Leader agent, and a Worker member needs a Worker agent.                                                 |
+| MRK-6004    | 智能体还在协作群里        | The agent is still in a group            | 先把它从所有协作群里移除，再删除。<br>Remove it from every group first, then delete it.                                                                                                           |
+| MRK-6005    | 只有拥有者能修改          | Only the owner can change this           | 复制一份再修改，或请拥有者操作。<br>Make a copy and change the copy, or ask the owner to do it.                                                                                                   |
+| MRK-6006    | 目标分支无效              | The target branch is not valid           | 目标分支需要在项目的 git 仓库根目录里存在；游离 HEAD 的仓库要手动指定分支。<br>The target branch must exist in the project's git repository root; a detached repository needs one chosen by hand. |
+| MRK-6007    | 这个外部产品不能当 Leader | This external product cannot be a Leader | 外部 Leader 需要支持 MCP 和中途消息，请换一个产品，或让它当 Worker。<br>An external Leader must support MCP and mid-turn messages. Pick another product, or use it as a Worker.                   |
 
 ## 8xxx 安装与更新 · Install and update
 

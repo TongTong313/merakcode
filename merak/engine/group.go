@@ -20,6 +20,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 )
 
@@ -90,17 +91,17 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 			g.Brief.TargetBranch = status.Branch
 		}
 		if g.Brief.TargetBranch == "" {
-			return group.Group{}, errors.New("a target branch is required for a detached repository")
+			return group.Group{}, coded(errorcode.TargetBranchInvalid, errors.New("a target branch is required for a detached repository"))
 		}
 		if _, err := git.Commit(ctx, g.Project.Directory, "refs/heads/"+g.Brief.TargetBranch); err != nil {
-			return group.Group{}, err
+			return group.Group{}, coded(errorcode.TargetBranchInvalid, err)
 		}
 		g.Project.Remote, err = git.ProjectRemote(ctx, g.Project.Directory, g.Project.Remote)
 		if err != nil {
 			return group.Group{}, err
 		}
 	} else if g.Brief.TargetBranch != "" {
-		return group.Group{}, errors.New("a target branch requires a repository root project")
+		return group.Group{}, coded(errorcode.TargetBranchInvalid, errors.New("a target branch requires a repository root project"))
 	}
 	members = append([]group.Member(nil), members...)
 	var owner event.ID
@@ -136,12 +137,12 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 			return group.Group{}, err
 		}
 		if string(p.Role) != string(member.AgentRole) {
-			return group.Group{}, errors.New("member role must match its profile")
+			return group.Group{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
 		}
 		if member.AgentRole == group.AgentLeader && p.Product != nil {
 			caps := e.runnerFor(p, nil).Caps()
 			if !caps.MCP || !caps.Steer {
-				return group.Group{}, errors.New("external leaders require MCP and steering")
+				return group.Group{}, coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
 			}
 		}
 		members[i].Hosts = append([]string(nil), p.Network...)
@@ -201,7 +202,7 @@ func (e *Engine) addGroupMember(ctx context.Context, id event.ID, member group.M
 	member.Hosts = nil
 	if p != nil {
 		if string(p.Role) != string(member.AgentRole) {
-			return group.Member{}, errors.New("member role must match its profile")
+			return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
 		}
 		if err := e.saveGroupProfile(ctx, *p, member.Owner); err != nil {
 			return group.Member{}, err
@@ -214,12 +215,12 @@ func (e *Engine) addGroupMember(ctx context.Context, id event.ID, member group.M
 			return group.Member{}, err
 		}
 		if string(configured.Role) != string(member.AgentRole) {
-			return group.Member{}, errors.New("member role must match its profile")
+			return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
 		}
 		if member.AgentRole == group.AgentLeader && configured.Product != nil {
 			caps := e.runnerFor(configured, nil).Caps()
 			if !caps.MCP || !caps.Steer {
-				return group.Member{}, errors.New("external leaders require MCP and steering")
+				return group.Member{}, coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
 			}
 		}
 		if acceptNetwork {
@@ -877,7 +878,11 @@ func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *
 	if loadErr == nil {
 		c, err = e.conversationFor(saved)
 	} else {
-		c, err = e.newConversation(ctx, SessionOptions{ID: thread.Session.ID, Scope: thread.Session.Scope, Member: thread.Leader, Role: "leader", Mode: p.Mode, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: g.group.Project.Directory, System: p.System, ToolPool: "leader.default", Budget: p.Budget})
+		var chosen profile.ModelRef
+		if chosen, err = e.memberModel(p.Model); err != nil {
+			return nil, err
+		}
+		c, err = e.newConversation(ctx, SessionOptions{ID: thread.Session.ID, Scope: thread.Session.Scope, Member: thread.Leader, Role: "leader", Mode: p.Mode, Provider: chosen.Provider, Model: chosen.Model, Thinking: chosen.Thinking, Workdir: g.group.Project.Directory, System: p.System, ToolPool: "leader.default", Budget: p.Budget})
 	}
 	if err != nil {
 		return nil, err

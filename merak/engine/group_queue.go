@@ -11,6 +11,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 )
 
 func (e *Engine) withdrawClaimTool(g *groupRun, thread *leader.Thread) tool.Tool {
@@ -62,7 +63,7 @@ func (e *Engine) AssignTask(ctx context.Context, id, human, member event.ID, rol
 		return task.Claim{}, err
 	}
 	if !actor.Can(group.RoleMember) {
-		return task.Claim{}, errors.New("human membership is required")
+		return task.Claim{}, coded(errorcode.GroupRequestFailed, errors.New("human membership is required"))
 	}
 	if role == "" {
 		role = task.RoleOwner

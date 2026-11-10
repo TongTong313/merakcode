@@ -143,6 +143,58 @@ export namespace ErrorCode {
         en: "Review the sentinel reason and related events, then resume, reassign or cancel the task.",
       },
     },
+    MEMBER_ROLE_MISMATCH: {
+      code: "MRK-6003",
+      domain: "task",
+      status: 400,
+      retryable: false,
+      title: { zh: "成员角色和智能体不符", en: "Member role does not match the agent" },
+      hint: {
+        zh: "Leader 成员要选 Leader 智能体，Worker 成员要选 Worker 智能体。",
+        en: "A Leader member needs a Leader agent, and a Worker member needs a Worker agent.",
+      },
+    },
+    PROFILE_IN_USE: {
+      code: "MRK-6004",
+      domain: "task",
+      status: 409,
+      retryable: false,
+      title: { zh: "智能体还在协作群里", en: "The agent is still in a group" },
+      hint: { zh: "先把它从所有协作群里移除，再删除。", en: "Remove it from every group first, then delete it." },
+    },
+    PROFILE_OWNER_ONLY: {
+      code: "MRK-6005",
+      domain: "task",
+      status: 403,
+      retryable: false,
+      title: { zh: "只有拥有者能修改", en: "Only the owner can change this" },
+      hint: {
+        zh: "复制一份再修改，或请拥有者操作。",
+        en: "Make a copy and change the copy, or ask the owner to do it.",
+      },
+    },
+    TARGET_BRANCH_INVALID: {
+      code: "MRK-6006",
+      domain: "task",
+      status: 400,
+      retryable: false,
+      title: { zh: "目标分支无效", en: "The target branch is not valid" },
+      hint: {
+        zh: "目标分支需要在项目的 git 仓库根目录里存在；游离 HEAD 的仓库要手动指定分支。",
+        en: "The target branch must exist in the project's git repository root; a detached repository needs one chosen by hand.",
+      },
+    },
+    EXTERNAL_LEADER_UNSUPPORTED: {
+      code: "MRK-6007",
+      domain: "task",
+      status: 400,
+      retryable: false,
+      title: { zh: "这个外部产品不能当 Leader", en: "This external product cannot be a Leader" },
+      hint: {
+        zh: "外部 Leader 需要支持 MCP 和中途消息，请换一个产品，或让它当 Worker。",
+        en: "An external Leader must support MCP and mid-turn messages. Pick another product, or use it as a Worker.",
+      },
+    },
     GROUP_REQUEST_FAILED: {
       code: "MRK-6001",
       domain: "task",

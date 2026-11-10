@@ -24,6 +24,16 @@ const messageSchema = z.object({
   params: z.unknown().optional(),
 })
 
+/** Calls that wait on a model service, an external product or a log archive get longer than the default 10 seconds. */
+const CALL_TIMEOUTS: Partial<Record<keyof Methods, number>> = {
+  "member.test": 40000,
+  "model.refresh": 30000,
+  "model.discover": 30000,
+  "remote.connect": 30000,
+  "group.create": 30000,
+  "diagnostics.bundle": 120000,
+}
+
 export async function connect(options: {
   endpoint: string
   token?: string
@@ -108,7 +118,7 @@ export async function connect(options: {
       const timer = setTimeout(() => {
         pending.delete(id)
         reject(new Error("MRK-1001"))
-      }, 10000)
+      }, CALL_TIMEOUTS[method] ?? 10000)
       pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer)
