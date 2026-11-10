@@ -748,6 +748,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(request.Method, "config.") {
 					code = "MRK-3001"
 				}
+				var failure *engine.Error
+				if errors.As(callErr, &failure) {
+					code = failure.Code
+				}
 				response.Error = &protocol.Error{Code: -32602, Message: "Invalid request parameters", Data: protocol.ErrorData{Code: code}}
 				if callErr.Error() == "MRK-4005" {
 					response.Error.Data = protocol.ErrorData{Code: "MRK-4005"}

@@ -11,6 +11,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
@@ -26,7 +27,7 @@ func (e *Engine) authorizeMemberAssignment(ctx context.Context, member group.Mem
 		return err
 	}
 	if !p.Shared && (actor.Kind != event.ActorHuman || actor.ID != member.Owner) {
-		return errors.New("only the owner can assign an unshared member")
+		return coded(errorcode.ProfileOwnerOnly, errors.New("only the owner can assign an unshared member"))
 	}
 	return nil
 }
@@ -62,7 +63,7 @@ func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
 		return err
 	}
 	if human == "" || doc.Meta["owner"] != string(human) {
-		return errors.New("only the profile owner can delete it")
+		return coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can delete it"))
 	}
 	facts, err := e.store.Find(ctx, store.Query{Types: []event.Type{group.Created}})
 	if err != nil {
@@ -75,7 +76,7 @@ func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
 		}
 		for _, member := range state.Members {
 			if member.Profile == id {
-				return errors.New("profile is still assigned to a group member")
+				return coded(errorcode.ProfileInUse, errors.New("profile is still assigned to a group member"))
 			}
 		}
 	}
@@ -105,7 +106,7 @@ func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Prof
 		return profile.Profile{}, err
 	}
 	if err == nil && doc.Meta["owner"] != string(human) {
-		return profile.Profile{}, errors.New("only the profile owner can edit it")
+		return profile.Profile{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can edit it"))
 	}
 	body, err := json.Marshal(p)
 	if err != nil {
@@ -142,7 +143,7 @@ func validateProfile(p profile.Profile) error {
 			return errors.New("leader profile requires leader tools")
 		}
 		if p.Product != nil && p.Product.Kind != worker.KindClaudeCode && p.Product.Kind != worker.KindCodex && p.Product.Kind != worker.KindPi {
-			return errors.New("external leaders require MCP and steering")
+			return coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
 		}
 	} else if p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
 		return errors.New("worker profile requires worker tools")

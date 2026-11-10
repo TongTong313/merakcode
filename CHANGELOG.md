@@ -79,6 +79,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
+
 - Keep group usage folding in the SDK and preserve the newest context budget when history arrives out of order.
 
 - Expose cloud member discovery through the SDK and route the MCP command through the Go SDK.
@@ -210,6 +212,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 模型刷新、连通测试和云端调用较慢时不再 10 秒就失败。群和智能体的失败用各自的错误码说明真实原因；内置 Leader 和 Worker 没有配置模型时使用默认模型。
 
 - 由 SDK 汇总群用量。历史事件乱序到达时保留最新上下文预算。
 

@@ -213,7 +213,11 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 		}
 		c, err = e.conversationFor(priorState)
 	} else {
-		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Mode: p.Mode, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool, Budget: p.Budget})
+		var chosen profile.ModelRef
+		if chosen, err = e.memberModel(p.Model); err != nil {
+			return loop.Outcome{}, err
+		}
+		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Mode: p.Mode, Provider: chosen.Provider, Model: chosen.Model, Thinking: chosen.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool, Budget: p.Budget})
 	}
 	if err != nil {
 		return loop.Outcome{}, err
