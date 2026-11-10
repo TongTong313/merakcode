@@ -32,4 +32,6 @@ func (e *Engine) ReadBlob(ctx context.Context, ref string, offset, limit int) ([
 	return doc.Body[offset:min(offset+limit, len(doc.Body))], len(doc.Body), nil
 }
 
-func (e *Engine) ModelCatalog() []catalog.Model { return e.catalog.List() }
+func (e *Engine) ModelCatalog(overrides ...catalog.Override) []catalog.Model {
+	return e.catalog.List(overrides...)
+}

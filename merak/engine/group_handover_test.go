@@ -88,6 +88,80 @@ func TestLeaderThreadRecoveryKeepsItsSessionAndConversation(t *testing.T) {
 	}
 }
 
+func TestDefaultLeaderChangeHandsOverTheGroupThread(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(map[bool]string{false: "live", true: "restart"}[restart], func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+			defer cancel()
+			dir, disk := t.TempDir(), memory.New()
+			provider := fake.New(t, fake.Reply{Text: "Keep the public API"}, fake.Reply{Text: "Keep the public API", Expect: func(req model.Request) error {
+				if !strings.Contains(req.System, "handover summary") {
+					return fmt.Errorf("missing handover request")
+				}
+				return nil
+			}}, fake.Reply{Text: "Inherited", Expect: func(req model.Request) error {
+				if !strings.Contains(fmt.Sprint(req.Messages), "## Handover") || !strings.Contains(fmt.Sprint(req.Messages), "Keep the public API") {
+					return fmt.Errorf("missing handover context")
+				}
+				return nil
+			}})
+			e, err := engine.New(engine.Deps{Store: disk, Workdir: dir, Providers: map[string]model.Provider{"fake": provider}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			p := profile.DefaultLeader()
+			p.ID, p.Model.Provider = "profile", "fake"
+			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Handover", DefaultLeader: "first", Project: group.Project{Directory: dir}}, []group.Member{
+				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+				{ID: "first", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
+				{ID: "second", Name: "Second", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
+			}, []profile.Profile{p})
+			if err != nil {
+				t.Fatal(err)
+			}
+			facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{loop.TurnFinished}})
+			defer stop()
+			if _, err := e.SayGroup(ctx, g.ID, "", "owner", group.Message{Text: "Remember this agreement"}); err != nil {
+				t.Fatal(err)
+			}
+			var previous event.Event
+			select {
+			case previous = <-facts:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			if restart {
+				e.Close()
+				e, err = engine.New(engine.Deps{Store: disk, Workdir: dir, Providers: map[string]model.Provider{"fake": provider}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer e.Close()
+				facts, stop = e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{loop.TurnFinished}})
+				defer stop()
+			}
+			id := event.ID("second")
+			if _, err := e.UpdateGroup(ctx, g.ID, "owner", group.Update{DefaultLeader: &id}); err != nil {
+				t.Fatal(err)
+			}
+			if restart {
+				if err := e.Recover(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case fact := <-facts:
+				if fact.Actor.ID != "second" || fact.Scope.Task != "" || fact.Scope.Session == previous.Scope.Session {
+					t.Fatalf("successor=%+v", fact)
+				}
+			case <-ctx.Done():
+				t.Fatal("group leader change did not complete")
+			}
+		})
+	}
+}
+
 func TestRecoveryCompletesALeaderChangePersistedBeforeTheHandover(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()

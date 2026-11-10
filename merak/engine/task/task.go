@@ -1,6 +1,9 @@
 package task
 
-import "github.com/TongTong313/merakcode/merak/engine/event"
+import (
+	"github.com/TongTong313/merakcode/merak/engine/event"
+	"time"
+)
 
 type Status string
 
@@ -26,13 +29,17 @@ const (
 type ClaimStatus string
 
 const (
-	ClaimQueued    ClaimStatus = "queued"
-	ClaimActive    ClaimStatus = "active"
-	ClaimReported  ClaimStatus = "reported"
-	ClaimAbandoned ClaimStatus = "abandoned"
+	ClaimQueued      ClaimStatus = "queued"
+	ClaimActive      ClaimStatus = "active"
+	ClaimReported    ClaimStatus = "reported"
+	ClaimAbandoned   ClaimStatus = "abandoned"
+	ClaimInterrupted ClaimStatus = "interrupted"
 )
 
 type Card struct {
+	Grants         []Grant       `json:"grants,omitempty"`
+	Budget         Budget        `json:"budget,omitempty"`
+	Participants   []event.ID    `json:"participants,omitempty"`
 	Phase          Phase         `json:"phase,omitempty"`
 	PreviousPhase  Phase         `json:"previousPhase,omitempty"`
 	PreviousStatus Status        `json:"previousStatus,omitempty"`
@@ -57,6 +64,25 @@ type Card struct {
 	Status         Status        `json:"status"`
 	Claims         []Claim       `json:"claims"`
 	CreatedBy      event.Actor   `json:"createdBy"`
+}
+
+type Budget struct {
+	MaxSteps     int           `json:"maxSteps,omitempty"`
+	MaxTokens    int           `json:"maxTokens,omitempty"`
+	MaxCost      float64       `json:"maxCost,omitempty"`
+	MaxWallClock time.Duration `json:"maxWallClock,omitempty"`
+}
+
+type BudgetIncrease struct {
+	Tokens    int           `json:"tokens,omitempty"`
+	Cost      float64       `json:"cost,omitempty"`
+	WallClock time.Duration `json:"wallClock,omitempty"`
+}
+
+type Grant struct {
+	BudgetIncrease
+	By event.Actor `json:"by"`
+	At time.Time   `json:"at"`
 }
 
 const (

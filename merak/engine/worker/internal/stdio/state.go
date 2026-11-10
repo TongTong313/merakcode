@@ -21,10 +21,7 @@ func ProductState(p sandbox.Profile, names ...string) (sandbox.Profile, error) {
 		if err := sandbox.PrepareStateDirectory(filepath.Join(home, name)); err != nil {
 			return p, err
 		}
-		path, err := filepath.EvalSymlinks(filepath.Join(home, name))
-		if os.IsNotExist(err) {
-			continue
-		}
+		path, err := productStatePath(filepath.Join(home, name))
 		if err != nil {
 			return p, err
 		}
@@ -34,10 +31,7 @@ func ProductState(p sandbox.Profile, names ...string) (sandbox.Profile, error) {
 		if slices.Contains(names, name) {
 			continue
 		}
-		path, err := filepath.EvalSymlinks(filepath.Join(home, name))
-		if os.IsNotExist(err) {
-			continue
-		}
+		path, err := productStatePath(filepath.Join(home, name))
 		if err != nil {
 			return p, err
 		}
@@ -45,6 +39,22 @@ func ProductState(p sandbox.Profile, names ...string) (sandbox.Profile, error) {
 		p.TransientReadDeny = append(p.TransientReadDeny, path)
 	}
 	return p, nil
+}
+
+func productStatePath(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	parent := filepath.Dir(path)
+	if !os.IsNotExist(err) || parent == path {
+		return "", err
+	}
+	resolved, err = productStatePath(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolved, filepath.Base(path)), nil
 }
 
 func ClaudeState(p sandbox.Profile, configured string) (sandbox.Profile, string, error) {

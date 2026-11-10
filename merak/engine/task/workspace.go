@@ -17,7 +17,7 @@ func (p *Pool) BindWorkspace(ctx context.Context, claimID, workspace event.ID) e
 	if !ok {
 		return store.ErrNotFound
 	}
-	if card.Claims[index].Status != ClaimActive || card.Claims[index].Workspace != "" || workspace == "" {
+	if card.Claims[index].Status != ClaimActive && card.Claims[index].Status != ClaimReported || card.Claims[index].Workspace != "" || workspace == "" {
 		return ErrState
 	}
 	card = clone(card)

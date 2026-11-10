@@ -1,4 +1,47 @@
 /* App shell, conversation, settings, onboarding, command palette, terminal */
+.context-budget {
+  padding: 8px 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.context-bar {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+}
+.context-bar span {
+  flex-basis: 0;
+  background: var(--surface-active);
+}
+.context-bar [data-segment="system"] {
+  background: var(--accent);
+}
+.context-bar [data-segment="tools"] {
+  background: var(--accent-hover);
+}
+.context-bar [data-segment="messages"] {
+  background: var(--text-muted);
+}
+.context-bar [data-segment="reserve"] {
+  background: var(--border-strong);
+}
+.usage-table {
+  padding: 16px;
+}
+.usage-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.usage-table th,
+.usage-table td {
+  padding: 8px;
+  text-align: start;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
 .app {
   display: flex;
   height: 100vh;
@@ -281,6 +324,9 @@
   padding: 0 32px 96px;
 }
 .compose-heading {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
   margin: 0 0 14px;
   font-size: var(--text-xl);
   font-weight: 600;
@@ -288,6 +334,7 @@
 }
 .compose-wrap {
   width: min(720px, 100%);
+  min-width: 0;
 }
 .context-row {
   display: flex;
@@ -515,11 +562,17 @@
   max-width: var(--content-width);
   margin: 0 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 .turn {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 12px;
+}
+.assistant-message {
+  min-width: 0;
 }
 /* Finished turns skip layout while off screen, so long conversations stay smooth */
 .turn.settled {
@@ -543,6 +596,7 @@
   opacity: 0;
 }
 .user-turn:hover .message-actions,
+.assistant-message:hover .message-actions,
 .message-actions:focus-within {
   opacity: 1;
 }
@@ -608,6 +662,7 @@
 
 /* Markdown */
 .markdown {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 .markdown > :first-child {
@@ -1009,7 +1064,9 @@
 /* Permission bar and questions */
 .dock {
   padding: 0 28px 16px;
-  flex: none;
+  flex: 0 1 auto;
+  max-height: 100%;
+  overflow-y: auto;
 }
 .dock-inner {
   max-width: var(--content-width);
@@ -1027,6 +1084,9 @@
 }
 .approval.question {
   border-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  max-height: min(360px, 42cqh);
 }
 /* Same inset as the head below it; the head then needs no top padding of its own */
 .approval-from {
@@ -1045,6 +1105,8 @@
 }
 .approval-head .what {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .approval-head > .icon {
   color: var(--warning);
@@ -1066,6 +1128,7 @@
 }
 .approval-actions {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 14px 12px;
@@ -1083,6 +1146,9 @@
 }
 .question-item {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  overflow-y: auto;
   gap: 8px;
   padding-bottom: 4px;
 }
@@ -1105,6 +1171,8 @@
   border: 1px solid var(--border);
   background: var(--surface);
   text-align: left;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .question-option:hover {
   background: var(--surface-hover);
@@ -1156,6 +1224,8 @@
 }
 .settings-inner {
   max-width: 760px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .settings-inner h1 {
   margin: 0 0 4px;
@@ -1171,6 +1241,7 @@
 }
 .section-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 0 0 8px;
@@ -1184,6 +1255,7 @@
 }
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 10px 14px;
@@ -1193,6 +1265,9 @@
 }
 .setting-row .label {
   font-weight: 500;
+}
+.setting-row > .grow {
+  flex: 1 1 180px;
 }
 .setting-row .desc {
   color: var(--text-muted);
@@ -1235,6 +1310,8 @@
 }
 .form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 14px;
   color: var(--text);
 }
@@ -1450,37 +1527,59 @@
 .chat-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  container-type: size;
   display: flex;
   flex-direction: column;
 }
 
-.member-column {
-  width: 220px;
+.group-tabs {
+  display: flex;
   flex: none;
-  padding: 16px;
-  overflow-y: auto;
-  border-left: 1px solid var(--border);
-  background: var(--bg-sidebar);
-}
-.member-column h2 {
-  margin: 0 0 12px;
-  font-size: var(--text-md);
-}
-.member-seat {
-  display: grid;
   gap: 8px;
-  padding: 12px;
-  margin-top: 12px;
+  padding: 8px 20px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+.member-settings {
+  margin-bottom: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+.member-settings > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.member-settings .field {
+  margin-top: 10px;
+}
+.turn-limits {
+  min-width: 0;
+  padding: 0;
+  margin: 12px 0;
+  border: 0;
+}
+.turn-limits legend {
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.turn-limits .field {
+  grid-template-columns: minmax(0, 1fr) 64px;
+  align-items: center;
+}
+.member-seat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 8px;
+  padding: 8px 12px 12px;
   overflow-wrap: anywhere;
 }
 .member-seat p {
   margin: 0;
-}
-.member-seat[data-state="busy"] {
-  border-color: var(--accent);
 }
 .group-discussion {
   display: flex;
@@ -1507,6 +1606,8 @@
   border-left: 2px solid var(--border-strong);
 }
 .profile-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 16px;
   margin-bottom: 12px;
 }
@@ -1516,12 +1617,72 @@
   align-items: center;
   gap: 8px;
 }
-
-@media (max-width: 1000px) {
-  .member-column {
-    width: 180px;
-    padding: 12px;
-  }
+.profile-card .button,
+.member-seat .button,
+.task-goals .button,
+.inbox-notice .button {
+  white-space: normal;
+  height: auto;
+  min-height: var(--control-height);
+  min-width: 0;
+  max-width: 100%;
+  padding-block: 6px;
+  overflow-wrap: anywhere;
+}
+.profile-card h3 {
+  margin: 0 0 12px;
+  font-size: var(--text-md);
+}
+.profile-card p {
+  margin: 8px 0 12px;
+}
+.remote-member {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.review-artifact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.review-artifact > span {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.remote-member > div {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.remote-member p {
+  margin: 4px 0;
+}
+.sandbox-status {
+  width: fit-content;
+}
+.sandbox-details {
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(360px, 60vh);
+  padding: 14px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+.sandbox-details h2 {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+}
+.sandbox-details p {
+  margin: 8px 0;
 }
 
 /* Group chat: the user on the right, the leader and members on the left */
@@ -1624,6 +1785,14 @@
   gap: 6px;
   padding: 72px 0 24px;
   text-align: center;
+  overflow-wrap: anywhere;
+}
+.group-intro h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.group-intro p {
+  margin: 0;
 }
 .group-intro-faces {
   display: flex;
@@ -1644,6 +1813,7 @@
 
 /* Member column */
 .members {
+  min-width: 0;
   width: 252px;
   flex: none;
   display: flex;
@@ -1656,6 +1826,7 @@
   width: 52px;
 }
 .members-head {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1732,6 +1903,9 @@
   gap: 6px;
   min-width: 0;
   font-weight: 600;
+}
+.member-name.ellipsis {
+  display: block;
 }
 .member-meta {
   font-size: var(--text-sm);
@@ -1838,67 +2012,6 @@
   background: var(--accent-soft);
   vertical-align: 1px;
 }
-/* The group todo sits over the chat, as wide as the messages and the composer */
-.group-todo {
-  flex: none;
-  padding: 12px 28px 0;
-}
-.group-todo-card {
-  max-width: var(--content-width);
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-muted);
-}
-.group-todo-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 0;
-  background: none;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.group-todo-head[aria-expanded="true"] .chevron {
-  transform: rotate(90deg);
-}
-.group-todo-count {
-  flex: none;
-  font-weight: 600;
-}
-.group-todo-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0 12px 10px 36px;
-  list-style: none;
-}
-.group-todo-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.group-todo-item::before {
-  content: "○";
-  flex: none;
-  width: 12px;
-  color: var(--text-subtle);
-}
-.group-todo-item[data-status="in_progress"]::before {
-  content: "◐";
-  color: var(--accent);
-}
-.group-todo-item[data-status="completed"] {
-  color: var(--text-muted);
-}
-.group-todo-item[data-status="completed"]::before {
-  content: "✓";
-  color: var(--success);
-}
-
 @media (prefers-color-scheme: dark) {
   .avatar {
     color: hsl(var(--hue) 80% 85%);
@@ -2050,7 +2163,11 @@
 }
 .group-inbox {
   display: grid;
-  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  align-content: start;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   gap: 24px;
   padding: 20px;
 }
@@ -2059,6 +2176,7 @@
 }
 .inbox-notice {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px;
   margin-bottom: 12px;
@@ -2068,4 +2186,20 @@
 .inbox-notice p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.inbox-notice .button {
+  justify-content: flex-start;
+  text-align: left;
+}
+.group-create .row {
+  align-items: flex-start;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.group-create .row > span {
+  min-width: 0;
+}
+.group-create input[type="checkbox"],
+.group-create input[type="radio"] {
+  flex: none;
 }

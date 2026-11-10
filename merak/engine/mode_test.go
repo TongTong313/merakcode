@@ -123,3 +123,37 @@ func TestBuiltinWorkerTakeoverUsesTheMemberMode(t *testing.T) {
 		t.Fatalf("member report=%+v error=%v approvals=%d file=%q error=%v", report, runErr, approvals.Load(), body, readErr)
 	}
 }
+
+func TestAutoWorkerWritesLocallyAndFallsBackToHumanWithoutSandbox(t *testing.T) {
+	dir := t.TempDir()
+	provider := fake.New(t, integrationCall("write_file", map[string]any{"path": "auto.txt", "content": "approved"}), fake.Reply{Text: "Finished"})
+	var approvals atomic.Int32
+	e, err := engine.New(engine.Deps{Workdir: dir, Providers: map[string]model.Provider{"fixture": provider}, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+		approvals.Add(1)
+		return permission.Reply{Decision: permission.Allow}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	status, err := e.SandboxStatus(t.Context(), dir, permission.ModeAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := profile.DefaultWorker()
+	p.Mode, p.Model.Provider = permission.ModeAuto, "fixture"
+	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: dir, Packet: "Write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	want := int32(1)
+	if status.Available {
+		want = 0
+	}
+	if body, err := os.ReadFile(filepath.Join(dir, "auto.txt")); err != nil || string(body) != "approved" || approvals.Load() != want {
+		t.Fatalf("file=%q error=%v approvals=%d want=%d", body, err, approvals.Load(), want)
+	}
+}

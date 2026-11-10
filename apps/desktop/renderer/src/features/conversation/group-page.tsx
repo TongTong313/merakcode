@@ -15,15 +15,32 @@ import { useSearchParams } from "@solidjs/router"
 import { GroupInbox } from "../group/inbox"
 import { TaskReview } from "../group/review"
 import { noticeText } from "../group/notice"
+import { TurnLimits } from "../group/turn-limits"
+import { GroupUsage } from "../group/usage"
+import { SandboxStatus } from "./sandbox-status"
+import ChevronsLeft from "lucide-solid/icons/chevrons-left"
+import ChevronsRight from "lucide-solid/icons/chevrons-right"
+import Plus from "lucide-solid/icons/plus"
+import { ui, setUi, saveLayout } from "../../state/ui"
+import { Avatar } from "../../ui/avatar"
 
 export function GroupConversation(props: { id: string; directory: string }) {
   const [to, setTo] = createSignal<string[]>([])
   const [task, setTask] = createSignal("")
   const [editing, setEditing] = createSignal(false)
+  const [openMember, setOpenMember] = createSignal("")
   const [savingInitiative, setSavingInitiative] = createSignal(false)
+  const collapsed = () => ui.membersCollapsed || ui.panel
+  const collapse = (value: boolean) => {
+    if (!value) setUi("panel", false)
+    setUi("membersCollapsed", value)
+    saveLayout()
+  }
   const [params, setParams] = useSearchParams()
   const tab = () =>
-    params.view === "board" || params.view === "inbox" || params.view === "review" ? params.view : "chat"
+    params.view === "board" || params.view === "inbox" || params.view === "review" || params.view === "usage"
+      ? params.view
+      : "chat"
   const setTab = (view: string) => setParams({ view, task: undefined, notice: undefined })
   const view = () => groupView(props.id)
   const reviewedTask = () =>
@@ -53,6 +70,7 @@ export function GroupConversation(props: { id: string; directory: string }) {
   const canMessage = (member: GroupMember) => {
     if (!capabilitiesReady()) return false
     const profile = sources()?.profiles.find((profile) => profile.id === member.profile)
+    if (profile?.product?.kind === "remote") return !!profile.product.remote?.caps.steer
     return (
       !!profile &&
       !!sources()?.products.find((product) => product.kind === (profile.product?.kind ?? "builtin"))?.caps.steer
@@ -76,12 +94,22 @@ export function GroupConversation(props: { id: string; directory: string }) {
       )
     return { busy: sessions.length > 0 || tasks.length > 0, tasks }
   }
+  const memberSession = (member: GroupMember) => {
+    const claim = Object.values(view()?.board.columns ?? {})
+      .flat()
+      .flatMap((card) => card.claims ?? [])
+      .find((claim) => claim.member === member.id && claim.status === "active")
+    if (claim?.session) return claim.session
+    const sessions = Object.entries(view()?.activity ?? {}).filter(([, session]) => session.member === member.id)
+    return sessions.find(([, session]) => session.status === "running")?.[0] ?? sessions.at(-1)?.[0]
+  }
   createEffect(
     on(
       () => props.id,
       (id) => {
         setTo([])
         setTask("")
+        setOpenMember("")
         void loadGroup(id).catch((error) =>
           toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error }),
         )
@@ -117,60 +145,78 @@ export function GroupConversation(props: { id: string; directory: string }) {
       directory={props.directory}
       folder={props.directory}
       title={<span class="title ellipsis">{view()?.group?.name}</span>}
-      actions={
-        <div class="row" role="tablist" aria-label={t("group.views")}>
-          <button class="button ghost sm" role="tab" aria-selected={tab() === "chat"} onClick={() => setTab("chat")}>
-            {t("group.chat")}
-          </button>
-          <button class="button ghost sm" role="tab" aria-selected={tab() === "board"} onClick={() => setTab("board")}>
-            {t("task.board")}
-          </button>
-          <button class="button ghost sm" role="tab" aria-selected={tab() === "inbox"} onClick={() => setTab("inbox")}>
-            {t("inbox.title")}
-          </button>
-        </div>
-      }
+      actions={<span class="chip">{t("group.members", { count: view()?.members.length ?? 0 })}</span>}
     >
+      <nav class="group-tabs" role="tablist" aria-label={t("group.views")}>
+        <button class="panel-tab" role="tab" aria-selected={tab() === "chat"} onClick={() => setTab("chat")}>
+          {t("group.chat")}
+        </button>
+        <button
+          class="panel-tab"
+          role="tab"
+          aria-selected={tab() === "board" || tab() === "review"}
+          onClick={() => setTab("board")}
+        >
+          {t("task.board")}
+        </button>
+        <button class="panel-tab" role="tab" aria-selected={tab() === "inbox"} onClick={() => setTab("inbox")}>
+          {t("inbox.title")}
+        </button>
+        <button class="panel-tab" role="tab" aria-selected={tab() === "usage"} onClick={() => setTab("usage")}>
+          {t("usage.title")}
+        </button>
+      </nav>
       <Show
         when={tab() === "chat"}
         fallback={
           <Show when={view()?.group}>
             {(group) => (
               <Show
-                when={tab() === "board"}
+                when={tab() !== "usage"}
                 fallback={
-                  <Show
-                    when={tab() === "review"}
-                    fallback={
-                      <GroupInbox
-                        inbox={view()!.inbox}
-                        notice={typeof params.notice === "string" ? params.notice : undefined}
-                        onTask={(task) => setParams({ view: "review", task, notice: undefined })}
-                      />
-                    }
-                  >
-                    <Show when={reviewedTask()}>
-                      {(card) => (
-                        <TaskReview
-                          card={card()}
-                          cards={Object.values(view()!.board.columns).flat()}
-                          events={view()!.events}
-                          members={view()!.members}
-                          directory={props.directory}
-                          onBack={() => setTab("board")}
-                        />
-                      )}
-                    </Show>
-                  </Show>
+                  <GroupUsage
+                    events={view()!.events}
+                    members={view()!.members}
+                    tasks={Object.values(view()!.board.columns).flat()}
+                  />
                 }
               >
-                <TaskBoard
-                  group={group()}
-                  board={view()!.board}
-                  members={view()!.members}
-                  task={typeof params.task === "string" ? params.task : undefined}
-                  onReview={(task) => setParams({ view: "review", task, notice: undefined })}
-                />
+                <Show
+                  when={tab() === "board"}
+                  fallback={
+                    <Show
+                      when={tab() === "review"}
+                      fallback={
+                        <GroupInbox
+                          inbox={view()!.inbox}
+                          notice={typeof params.notice === "string" ? params.notice : undefined}
+                          onTask={(task) => setParams({ view: "review", task, notice: undefined })}
+                        />
+                      }
+                    >
+                      <Show when={reviewedTask()}>
+                        {(card) => (
+                          <TaskReview
+                            card={card()}
+                            cards={Object.values(view()!.board.columns).flat()}
+                            events={view()!.events}
+                            members={view()!.members}
+                            directory={props.directory}
+                            onBack={() => setTab("board")}
+                          />
+                        )}
+                      </Show>
+                    </Show>
+                  }
+                >
+                  <TaskBoard
+                    group={group()}
+                    board={view()!.board}
+                    members={view()!.members}
+                    task={typeof params.task === "string" ? params.task : undefined}
+                    onReview={(task) => setParams({ view: "review", task, notice: undefined })}
+                  />
+                </Show>
               </Show>
             )}
           </Show>
@@ -179,6 +225,12 @@ export function GroupConversation(props: { id: string; directory: string }) {
         <div class="chat-area">
           <div class="chat-main">
             <div class="messages scroll" role="log" aria-label={t("group.chat")}>
+              <Show when={!messages().length}>
+                <div class="group-intro">
+                  <h2>{view()?.group?.name}</h2>
+                  <p class="muted">{t("group.empty")}</p>
+                </div>
+              </Show>
               <For each={messages()}>
                 {(message) => (
                   <article class="group-message" data-group-message={message.kind}>
@@ -247,92 +299,198 @@ export function GroupConversation(props: { id: string; directory: string }) {
               </div>
             </div>
           </div>
-          <aside class="member-column" aria-label={t("group.column")}>
-            <Show
-              when={view()?.members.some(
-                (member) => member.id === localHuman && (member.role === "owner" || member.role === "admin"),
-              )}
-            >
-              <label>
-                <span>{t("group.initiative")}</span>
-                <select
-                  class="input"
-                  aria-label={t("group.initiative")}
-                  value={view()?.group?.settings?.initiative || "normal"}
-                  disabled={savingInitiative()}
-                  onChange={async (event) => {
-                    const selected = event.currentTarget
-                    const group = view()?.group
-                    if (!group) return
-                    setSavingInitiative(true)
-                    try {
-                      const initiative = z.enum(["passive", "normal", "eager"]).parse(selected.value)
-                      await (
-                        await client()
-                      ).group.update({
-                        group: group.id,
-                        human: localHuman,
-                        settings: { ...group.settings, initiative },
-                      })
-                    } catch (error) {
-                      selected.value = group.settings?.initiative || "normal"
-                      toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
-                    } finally {
-                      setSavingInitiative(false)
-                    }
-                  }}
-                >
-                  <option value="passive">{t("group.initiative.passive")}</option>
-                  <option value="normal">{t("group.initiative.normal")}</option>
-                  <option value="eager">{t("group.initiative.eager")}</option>
-                </select>
-              </label>
-            </Show>
-            <h2>{t("group.column.title")}</h2>
-            <Show when={sources.error}>
-              <button class="button secondary sm" onClick={() => void refetch()}>
-                {t("error.retry")}
+          <aside class="members" classList={{ collapsed: collapsed() }} aria-label={t("group.column")}>
+            <div class="members-head">
+              <Show when={!collapsed()}>
+                <span class="members-title">{t("group.column.title")}</span>
+              </Show>
+              <button
+                class="icon-button sm"
+                aria-label={t(collapsed() ? "group.expand" : "group.collapse")}
+                title={t(collapsed() ? "group.expand" : "group.collapse")}
+                onClick={() => collapse(!collapsed())}
+              >
+                <Show when={collapsed()} fallback={<ChevronsRight class="icon icon-sm" />}>
+                  <ChevronsLeft class="icon icon-sm" />
+                </Show>
               </button>
-            </Show>
-            <button class="button secondary sm" onClick={() => setEditing(true)}>
-              {t("group.addMember")}
-            </button>
-            <For each={view()?.members.filter((member) => member.kind === "agent")}>
-              {(member) => (
-                <div
-                  class="member-seat"
-                  role="group"
-                  aria-label={t("group.member", { name: member.name })}
-                  data-state={activity(member).busy ? "busy" : "idle"}
-                >
-                  <strong>{member.name}</strong>
-                  <span class="subtle">{t(activity(member).busy ? "group.busy" : "group.idle")}</span>
-                  <For each={activity(member).tasks}>
-                    {(card) => (
+            </div>
+            <Show
+              when={!collapsed()}
+              fallback={
+                <div class="members-strip scroll">
+                  <For each={view()?.members.filter((member) => member.kind === "agent")}>
+                    {(member) => (
                       <button
-                        class="button ghost sm"
+                        class="members-face"
+                        aria-label={member.name}
+                        title={member.name}
                         onClick={() => {
-                          setTask(card.id)
-                          setTo([])
+                          collapse(false)
+                          setOpenMember(member.id)
+                          queueMicrotask(() =>
+                            document
+                              .getElementById(`member-${props.id}-${member.id}`)
+                              ?.scrollIntoView({ block: "nearest" }),
+                          )
                         }}
                       >
-                        {card.title}
+                        <Avatar id={member.id} name={member.name} />
+                        <Show when={activity(member).busy}>
+                          <span class="member-busy" />
+                        </Show>
                       </button>
                     )}
                   </For>
                   <button
-                    class="button secondary sm"
-                    aria-label={t("group.messageMember", { name: member.name })}
-                    disabled={!canMessage(member)}
-                    title={capabilityHint(member)}
-                    onClick={() => setTo([member.id])}
+                    class="icon-button sm"
+                    aria-label={t("group.addMember")}
+                    onClick={() => {
+                      collapse(false)
+                      setEditing(true)
+                    }}
                   >
-                    {t("group.messageMember", { name: member.name })}
+                    <Plus class="icon icon-sm" />
                   </button>
-                  <Show when={capabilityHint(member)}>{(hint) => <p class="subtle">{hint()}</p>}</Show>
                 </div>
-              )}
-            </For>
+              }
+            >
+              <div class="members-body scroll">
+                <details class="member-settings">
+                  <summary>{t("group.settings")}</summary>
+                  <Show when={view()?.group}>
+                    {(group) => (
+                      <TurnLimits
+                        group={group()}
+                        editable={
+                          !!view()?.members.some(
+                            (member) =>
+                              member.id === localHuman && (member.role === "owner" || member.role === "admin"),
+                          )
+                        }
+                      />
+                    )}
+                  </Show>
+                  <Show
+                    when={view()?.members.some(
+                      (member) => member.id === localHuman && (member.role === "owner" || member.role === "admin"),
+                    )}
+                  >
+                    <label class="field">
+                      <span>{t("group.initiative")}</span>
+                      <select
+                        class="input"
+                        aria-label={t("group.initiative")}
+                        value={view()?.group?.settings?.initiative || "normal"}
+                        disabled={savingInitiative()}
+                        onChange={async (event) => {
+                          const selected = event.currentTarget
+                          const group = view()?.group
+                          if (!group) return
+                          setSavingInitiative(true)
+                          try {
+                            const initiative = z.enum(["passive", "normal", "eager"]).parse(selected.value)
+                            await (
+                              await client()
+                            ).group.update({
+                              group: group.id,
+                              human: localHuman,
+                              settings: { ...group.settings, initiative },
+                            })
+                          } catch (error) {
+                            selected.value = group.settings?.initiative || "normal"
+                            toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
+                          } finally {
+                            setSavingInitiative(false)
+                          }
+                        }}
+                      >
+                        <option value="passive">{t("group.initiative.passive")}</option>
+                        <option value="normal">{t("group.initiative.normal")}</option>
+                        <option value="eager">{t("group.initiative.eager")}</option>
+                      </select>
+                    </label>
+                  </Show>
+                </details>
+                <Show when={sources.error}>
+                  <button class="button secondary sm" onClick={() => void refetch()}>
+                    {t("error.retry")}
+                  </button>
+                </Show>
+                <button class="member-add" onClick={() => setEditing(true)}>
+                  <Plus class="icon icon-sm" />
+                  {t("group.addMember")}
+                </button>
+                <For each={view()?.members.filter((member) => member.kind === "agent")}>
+                  {(member) => (
+                    <div
+                      class="member"
+                      classList={{ open: openMember() === member.id }}
+                      id={`member-${props.id}-${member.id}`}
+                      role="group"
+                      aria-label={t("group.member", { name: member.name })}
+                      data-state={activity(member).busy ? "busy" : "idle"}
+                    >
+                      <button
+                        class="member-row"
+                        aria-label={member.name}
+                        aria-expanded={openMember() === member.id}
+                        onClick={() => setOpenMember(openMember() === member.id ? "" : member.id)}
+                      >
+                        <Avatar id={member.id} name={member.name} />
+                        <span class="member-text">
+                          <span class="member-name ellipsis" title={member.name}>
+                            {member.name}
+                          </span>
+                          <span class="member-meta subtle">
+                            {t(activity(member).busy ? "group.busy" : "group.idle")}
+                          </span>
+                        </span>
+                        <Show when={activity(member).busy}>
+                          <span class="member-busy" />
+                        </Show>
+                      </button>
+                      <Show when={openMember() === member.id}>
+                        <div class="member-seat">
+                          <SandboxStatus
+                            group={props.id}
+                            member={member.id}
+                            remote={member.remote}
+                            directory={props.directory}
+                            sessionID={memberSession(member)}
+                            mode={sources()?.profiles.find((profile) => profile.id === member.profile)?.mode ?? "ask"}
+                            busy={activity(member).busy}
+                          />
+                          <For each={activity(member).tasks}>
+                            {(card) => (
+                              <button
+                                class="button ghost sm"
+                                onClick={() => {
+                                  setTask(card.id)
+                                  setTo([])
+                                }}
+                              >
+                                {card.title}
+                              </button>
+                            )}
+                          </For>
+                          <button
+                            class="button secondary sm"
+                            aria-label={t("group.messageMember", { name: member.name })}
+                            disabled={!canMessage(member)}
+                            title={capabilityHint(member)}
+                            onClick={() => setTo([member.id])}
+                          >
+                            {t("group.sendMessage")}
+                          </button>
+                          <Show when={capabilityHint(member)}>{(hint) => <p class="subtle">{hint()}</p>}</Show>
+                        </div>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
           </aside>
           <Dialog
             open={editing()}
@@ -346,7 +504,7 @@ export function GroupConversation(props: { id: string; directory: string }) {
           >
             <div class="dialog-body">
               <Show when={editing()}>
-                <Profiles group={props.id} />
+                <Profiles group={props.id} kind={view()?.group?.kind} />
               </Show>
             </div>
           </Dialog>

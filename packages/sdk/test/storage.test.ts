@@ -72,7 +72,9 @@ test("retains local and remote-host history across an engine process restart", a
             }),
           ])
           const facts = await client.events.read({ stream: `session:${id}`, from: 1, limit: 100 })
-          expect(facts?.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6])
+          expect(facts?.map((event) => event.seq)).toEqual(facts?.map((_, index) => index + 1))
+          expect(facts?.filter((event) => event.type === "session.mcp_configured")).toHaveLength(1)
+          expect(facts?.filter((event) => event.type === "turn.finished")).toHaveLength(1)
           if (store) expect(store.read(`session:${id}`, 1, 100)).toEqual(facts)
         } finally {
           await client.close()
@@ -87,8 +89,11 @@ test("retains local and remote-host history across an engine process restart", a
         try {
           expect((await client.session.list())?.map((session) => session.id)).toEqual([id])
           const facts = await client.events.read({ stream: `session:${id}`, from: 1, limit: 100 })
-          expect(facts?.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6])
-          expect(facts?.[4]?.payload).toMatchObject({ role: "assistant", parts: [{ text: "Saved reply" }] })
+          expect(facts?.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7])
+          expect(facts?.find((event) => event.type === "message.completed")?.payload).toMatchObject({
+            role: "assistant",
+            parts: [{ text: "Saved reply" }],
+          })
           const done = Promise.withResolvers<void>()
           await client.events.subscribe({ scope: { session: id } }, (event) => {
             if (event.type === "turn.finished") done.resolve()
@@ -101,8 +106,8 @@ test("retains local and remote-host history across an engine process restart", a
             }),
           ])
           expect(
-            (await client.events.read({ stream: `session:${id}`, from: 7, limit: 100 }))?.map((event) => event.seq),
-          ).toEqual([7, 8, 9, 10, 11])
+            (await client.events.read({ stream: `session:${id}`, from: 8, limit: 100 }))?.map((event) => event.seq),
+          ).toEqual([8, 9, 10, 11, 12])
         } finally {
           await client.close()
         }

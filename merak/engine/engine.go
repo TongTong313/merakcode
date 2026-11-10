@@ -3,6 +3,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
+	"github.com/TongTong313/merakcode/merak/engine/mcp"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
@@ -36,82 +38,128 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker/command"
 	"github.com/TongTong313/merakcode/merak/engine/worker/opencode"
 	"github.com/TongTong313/merakcode/merak/engine/worker/pi"
+	"github.com/TongTong313/merakcode/merak/engine/worker/remote"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
+	"github.com/TongTong313/merakcode/merak/internal/cloud"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 type Deps struct {
-	DataDir         string
-	SandboxStateDir string
-	NetworkSettings NetworkSettings
-	AskQuestion     func(context.Context, question.Request) (question.Answer, error)
-	Logger          *slog.Logger
-	MemoryIdle      time.Duration
-	Store           store.Store
-	Catalog         *catalog.Catalog
-	Providers       map[string]model.Provider
-	Model           string
-	Thinking        model.Thinking
-	Now             func() time.Time
-	NewID           func() event.ID
-	Workdir         string
-	System          string
-	ToolPool        string
-	Deferred        []tool.Tool
-	Ask             func(context.Context, permission.Request) (permission.Reply, error)
+	Cloud            cloud.Link
+	SentinelInterval time.Duration
+	MCPCommand       string
+	ApprovalTimeout  time.Duration
+	DataDir          string
+	SandboxStateDir  string
+	NetworkSettings  NetworkSettings
+	AskQuestion      func(context.Context, question.Request) (question.Answer, error)
+	Logger           *slog.Logger
+	MemoryIdle       time.Duration
+	Store            store.Store
+	Catalog          *catalog.Catalog
+	Providers        map[string]model.Provider
+	Model            string
+	Thinking         model.Thinking
+	Now              func() time.Time
+	NewID            func() event.ID
+	Workdir          string
+	System           string
+	ToolPool         string
+	Deferred         []tool.Tool
+	Ask              func(context.Context, permission.Request) (permission.Reply, error)
 }
 
 type Engine struct {
-	dataDir         string
-	sandboxMu       sync.Mutex
-	networkMu       sync.RWMutex
-	sandboxStateDir string
-	sandboxes       map[sandboxKey]*sandbox.Launcher
-	sandboxErr      error
-	launchGrants    map[launchGrant]permission.Decision
-	networkSettings NetworkSettings
-	askPermission   func(context.Context, permission.Request) (permission.Reply, error)
-	askQuestion     func(context.Context, question.Request) (question.Answer, error)
-	workerQuestions map[event.ID]*pendingWorkerQuestion
-	Groups          *group.Manager
-	Tasks           *task.Pool
-	Workspaces      *workspace.Manager
-	merging         map[event.ID]bool
-	claimRuns       map[event.ID]claimRun
-	groupRuns       map[event.ID]*groupRun
-	groupSessions   map[event.ID]bool
-	runnerFor       func(profile.Profile, *sandbox.Launcher) worker.Runner
-	Terminals       *terminal.Manager
-	providersMu     sync.RWMutex
-	logger          *slog.Logger
-	notes           *memory.Repository
-	memoryIdle      time.Duration
-	Bus             *event.Bus
-	providers       map[string]model.Provider
-	model           string
-	thinking        model.Thinking
-	newID           func() event.ID
-	workdir         string
-	system          string
-	now             func() time.Time
-	tools           *tool.Pool
-	store           store.Store
-	manager         *session.Manager
-	counter         *window.Counter
-	catalog         *catalog.Catalog
-	mu              sync.Mutex
-	sessions        map[event.ID]*conversation
-	ctx             context.Context
-	cancel          context.CancelFunc
-	workers         sync.WaitGroup
-	shutdownOnce    sync.Once
-	shutdownDone    chan struct{}
-	shutdownErr     error
+	profileMu         sync.Mutex
+	remoteImportMu    sync.Mutex
+	cloudHost         *deviceHost
+	remoteHosts       map[string]*deviceHost
+	memberMu          sync.Mutex
+	memberExecutions  map[memberExecution]chan struct{}
+	memberChanges     chan struct{}
+	cloudLifecycle    sync.Mutex
+	cloudMu           sync.Mutex
+	cloudCancel       context.CancelFunc
+	cloudDone         chan struct{}
+	cloudLoops        chan struct{}
+	cloudWorkCtx      context.Context
+	cloudWorkCancel   context.CancelFunc
+	cloudJobs         *sync.WaitGroup
+	cloudCredentials  cloud.Credentials
+	hostedGroups      sync.Map
+	memoryExtractions sync.Map
+	deviceRuns        map[event.ID]*deviceRun
+	cloudReplies      map[event.ID]chan permission.Reply
+	cloudAnswers      map[event.ID]*deviceAnswer
+	remoteLookups     map[event.ID]chan tool.Result
+	cloudReplyMu      sync.Mutex
+	cloudPublishMu    sync.Mutex
+	cloudWake         chan struct{}
+	cloud             cloud.Link
+	sentinelMu        sync.Mutex
+	sentinelSeen      map[string]bool
+	gate              *permission.Gate
+	workspaceMu       sync.Mutex
+	workspacePending  map[config.Trust]bool
+	mcpCommand        string
+	mcpProcesses      map[event.ID][]*mcp.Process
+	taskApprovals     map[event.ID]*taskApproval
+	permissions       *permission.Router
+	dataDir           string
+	sandboxMu         sync.Mutex
+	networkMu         sync.RWMutex
+	sandboxStateDir   string
+	sandboxes         map[sandboxKey]*sandbox.Launcher
+	sandboxErr        error
+	launchGrants      map[launchGrant]permission.Decision
+	networkSettings   NetworkSettings
+	askPermission     func(context.Context, permission.Request) (permission.Reply, error)
+	askQuestion       func(context.Context, question.Request) (question.Answer, error)
+	workerQuestions   map[event.ID]*pendingWorkerQuestion
+	Groups            *group.Manager
+	Tasks             *task.Pool
+	Workspaces        *workspace.Manager
+	merging           map[event.ID]bool
+	claimRuns         map[event.ID]claimRun
+	claimPreparing    map[event.ID]*claimPreparation
+	groupRuns         map[event.ID]*groupRun
+	groupSessions     map[event.ID]bool
+	runnerFor         func(profile.Profile, *sandbox.Launcher) worker.Runner
+	Terminals         *terminal.Manager
+	providersMu       sync.RWMutex
+	logger            *slog.Logger
+	notes             *memory.Repository
+	memoryIdle        time.Duration
+	Bus               *event.Bus
+	providers         map[string]model.Provider
+	model             string
+	thinking          model.Thinking
+	newID             func() event.ID
+	workdir           string
+	system            string
+	now               func() time.Time
+	tools             *tool.Pool
+	store             store.Store
+	manager           *session.Manager
+	counter           *window.Counter
+	catalog           *catalog.Catalog
+	mu                sync.Mutex
+	sessions          map[event.ID]*conversation
+	ctx               context.Context
+	cancel            context.CancelFunc
+	workers           sync.WaitGroup
+	shutdownOnce      sync.Once
+	shutdownDone      chan struct{}
+	shutdownErr       error
 }
 
 func New(d Deps) (*Engine, error) {
+	if d.Cloud == nil {
+		d.Cloud = cloud.Null{}
+	}
 	if d.SandboxStateDir == "" && d.DataDir != "" {
 		d.SandboxStateDir = filepath.Join(d.DataDir, "sandbox")
 	}
@@ -135,11 +183,17 @@ func New(d Deps) (*Engine, error) {
 		return nil, fmt.Errorf("unknown tool pool %q", d.ToolPool)
 	}
 	e := &Engine{
+		memberChanges:   make(chan struct{}, 1),
+		cloud:           d.Cloud,
+		sentinelSeen:    make(map[string]bool),
+		mcpCommand:      d.MCPCommand,
 		dataDir:         d.DataDir,
 		sandboxStateDir: d.SandboxStateDir,
 		sandboxes:       make(map[sandboxKey]*sandbox.Launcher),
 		askQuestion:     d.AskQuestion,
 		workerQuestions: make(map[event.ID]*pendingWorkerQuestion),
+		claimPreparing:  make(map[event.ID]*claimPreparation),
+		taskApprovals:   make(map[event.ID]*taskApproval),
 		logger:          d.Logger,
 		Bus:             event.NewBus(d.Store, d.Now, d.NewID), providers: make(map[string]model.Provider), newID: d.NewID, model: d.Model, thinking: d.Thinking,
 		workdir: d.Workdir, system: d.System, now: d.Now, store: d.Store, tools: tool.NewPool(d.ToolPool),
@@ -150,12 +204,35 @@ func New(d Deps) (*Engine, error) {
 		e.networkSettings = config.NewMemory()
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
+	e.deviceRuns = make(map[event.ID]*deviceRun)
+	e.cloudReplies = make(map[event.ID]chan permission.Reply)
+	e.cloudAnswers = make(map[event.ID]*deviceAnswer)
+	e.remoteLookups = make(map[event.ID]chan tool.Result)
+	e.cloudWake = make(chan struct{}, 1)
+	e.Bus.Route = e.deviceStream
+	e.Groups = group.New(d.Store, e.Bus, e.newID)
+	e.Tasks = task.New(d.Store, e.Bus, e.newID, e.Groups)
+	e.Tasks.AuthorizeAssignment = e.authorizeMemberAssignment
+	e.permissions = &permission.Router{Bus: e.Bus, Groups: e.Groups, Tasks: e.Tasks, Human: d.Ask, Timeout: d.ApprovalTimeout}
+	e.permissions.TimedOut = e.approvalTimedOut
+	e.permissions.Remote = e.routeDevicePermission
 	e.askQuestion = e.routeQuestion(d.AskQuestion)
-	e.askPermission = e.routePermission(d.Ask)
-	gate := &permission.Gate{Policy: permission.Policy{Mode: permission.ModeAsk}, Ask: e.askPermission, Bus: e.Bus}
+	e.askPermission = e.permissions.Ask
+	gate := &permission.Gate{Policy: permission.Policy{Mode: permission.ModeAsk}, Router: e.permissions, Bus: e.Bus, Grants: permission.NewGrants(func() permission.Settings { return e.networkConfiguration() })}
+	e.gate = gate
 	e.runnerFor = func(p profile.Profile, launcher *sandbox.Launcher) worker.Runner {
 		if p.Product != nil {
 			switch p.Product.Kind {
+			case worker.KindRemote:
+				source := profile.RemoteSource{}
+				if p.Product.Remote != nil {
+					source = *p.Product.Remote
+				}
+				return &remote.Runner{Source: source, Bus: e.Bus, Store: e.store, Credentials: func(ctx context.Context) (protocol.RemoteConnectParams, error) {
+					return e.remoteCredentials(ctx, source.Connection)
+				}, Import: func(ctx context.Context, fact event.Event) error {
+					return e.importRemoteEvent(ctx, source.Connection, fact)
+				}, Reply: e.replyRemoteEvent}
 			case worker.KindClaudeCode:
 				return &claudecode.Runner{Sandbox: launcher, Bus: e.Bus, Store: e.store, Gate: gate, Product: *p.Product, System: p.System}
 			case worker.KindCodex:
@@ -181,8 +258,6 @@ func New(d Deps) (*Engine, error) {
 	}
 	e.shutdownDone = make(chan struct{})
 	e.manager = session.NewManager(d.Store, e.Bus)
-	e.Groups = group.New(d.Store, e.Bus, e.newID)
-	e.Tasks = task.New(d.Store, e.Bus, e.newID, e.Groups)
 	e.Workspaces = workspace.New(e.ctx, d.Store, e.Bus, e.newID)
 	e.merging = make(map[event.ID]bool)
 	e.claimRuns = make(map[event.ID]claimRun)
@@ -215,6 +290,7 @@ func New(d Deps) (*Engine, error) {
 		e.tools.Deferred[t.Spec().Name] = gate.Wrap(t)
 		delete(e.tools.Tools, t.Spec().Name)
 	}
+	e.watchSentinel(d.SentinelInterval)
 	return e, nil
 }
 
@@ -232,7 +308,13 @@ func (e *Engine) Chat(ctx context.Context, provider, input string) (loop.Outcome
 }
 
 func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*conversation, error) {
-	if options.Mode != "" && options.Mode != permission.ModeAsk && options.Mode != permission.ModeTakeover {
+	if err := config.ValidateMCPServers(options.MCPServers); err != nil {
+		return nil, err
+	}
+	if err := options.Budget.Validate(); err != nil {
+		return nil, err
+	}
+	if options.Mode != "" && options.Mode != permission.ModeAsk && options.Mode != permission.ModeAuto && options.Mode != permission.ModeTakeover {
 		return nil, fmt.Errorf("MRK-4001")
 	}
 	if e.provider(options.Provider) == nil {
@@ -267,9 +349,18 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 		options.ID = e.newID()
 	}
 	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir}}
+	state.Config.Budget = options.Budget
+	if options.Budget.MaxWallClock > 0 {
+		state.Config.BudgetDeadline = e.now().Add(options.Budget.MaxWallClock)
+	}
 	state.BaseCommit, _ = git.Current(ctx, options.Workdir)
 	state.Tools = e.sessionTools(state.Config).Specs()
-	return e.conversationFor(state)
+	c, err := e.conversationFor(state)
+	if err == nil && len(options.MCPServers) > 0 {
+		body, _ := json.Marshal(options.MCPServers)
+		_ = json.Unmarshal(body, &c.mcpServers)
+	}
+	return c, err
 }
 
 func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
@@ -277,30 +368,24 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	if p == nil {
 		return nil, fmt.Errorf("unknown provider %q", state.Config.Provider)
 	}
-	runner := loop.Loop{Model: p, ModelID: state.Config.Model, Thinking: state.Config.Thinking, Bus: e.Bus, Tools: e.sessionTools(state.Config), Env: tool.Env{Mode: string(state.Config.Mode), Workdir: state.Config.Workdir, Reads: new(tool.Reads), Jobs: new(tool.Jobs), Spill: e.spill}}
+	runner := loop.Loop{Model: p, ModelID: state.Config.Model, Thinking: state.Config.Thinking, Bus: e.Bus, Tools: e.sessionTools(state.Config), Env: tool.Env{Member: state.Config.Member, Mode: string(state.Config.Mode), Workdir: state.Config.Workdir, Reads: new(tool.Reads), Jobs: new(tool.Jobs), Spill: e.spill}}
+	runner.Limits = state.Config.Budget
 	launcher := &sandbox.Launcher{StateDir: e.sandboxStateDir, Disabled: state.Config.Mode == permission.ModeTakeover, Reclaimable: state.Scope.Group == ""}
 	launcher.Unavailable = func(context.Context, sandbox.Status) error { return nil }
 	configuration, err := e.memberSandboxProfile(e.ctx, state.Config.Workdir, sandbox.Profile{Network: sandbox.Network{Mode: "allowlist"}})
 	if err != nil {
 		return nil, err
 	}
-	home, err := os.UserHomeDir()
+	configuration, err = denyProductState(configuration)
 	if err != nil {
 		return nil, err
-	}
-	for _, name := range []string{".claude", ".claude.json", ".codex", ".pi", ".config/opencode", ".local/share/opencode"} {
-		path, err := resolvedSandboxPath(filepath.Join(home, name))
-		if err != nil {
-			return nil, err
-		}
-		configuration.ReadDeny = append(configuration.ReadDeny, path)
-		configuration.TransientReadDeny = append(configuration.TransientReadDeny, path)
 	}
 	runner.Env.Sandbox = launcher
 	runner.Env.SandboxProfile = configuration
 	memberProfile := profile.DefaultWorker()
 	if state.Scope.Group != "" && state.Config.Member != "" {
-		member, err := e.groupMember(e.ctx, state.Scope.Group, state.Config.Member)
+		groupID, memberID := e.executionSource(state.Scope, state.Config.Member)
+		member, err := e.groupMember(e.ctx, groupID, memberID)
 		if err != nil {
 			return nil, err
 		}
@@ -317,7 +402,10 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	runner.Env.SandboxProfile.Network = network
 	e.connectSandboxNetwork(launcher, memberProfile, assignment)
 	runner.Env.Sandbox = e.keepSandbox(state.ID, launcher)
-	runner.Env.MemoryOwners = []memory.Owner{memory.ProjectOwner(state.Config.Workdir)}
+	runner.Env.MemoryOwners = e.memberMemoryOwners(e.ctx, state.Config.Workdir, state.Scope, state.Config.Member)
+	runner.Env.Spill = func(ctx context.Context, name string, body []byte) (tool.Ref, error) {
+		return e.spillScoped(ctx, state.Scope, name, body)
+	}
 	runner.Tools.RestoreLoaded(state.Loaded)
 	runner.Snapshot = e.manager.Snapshot
 	entry := e.catalog.Get(state.Config.Provider, state.Config.Model)
@@ -326,22 +414,22 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	runner.Window.Snapshot = e.manager.Snapshot
 	c := &conversation{state: state, runner: runner, queue: make(chan *conversationTurn, 1), turns: make(map[*conversationTurn]struct{})}
 	if state.Config.Parent == "" {
-		c.children = builtin.New(e.ctx, e.Bus, e.newID, e.childRun(state.ID, state.Config))
+		c.children = builtin.New(e.ctx, e.Bus, e.newID, e.childRun(state.ID, state.Scope, state.Config))
 		c.runner.Env.Children = c.children
 		c.runner.Steer = c.children
 	}
 	return c, nil
 }
 
-func (e *Engine) childRun(parent event.ID, config session.Config) func(context.Context, event.ID, string) (loop.Outcome, error) {
+func (e *Engine) childRun(parent event.ID, scope event.Scope, config session.Config) func(context.Context, event.ID, string) (loop.Outcome, error) {
 	return func(ctx context.Context, id event.ID, input string) (loop.Outcome, error) {
-		child, err := e.newConversation(ctx, SessionOptions{Parent: parent, Provider: config.Provider, Model: config.Model, Thinking: config.Thinking, Workdir: config.Workdir})
+		childScope := event.Scope{Group: scope.Group, Task: scope.Task, Session: id}
+		child, err := e.newConversation(ctx, SessionOptions{ID: id, Parent: parent, Scope: childScope, Member: config.Member, Mode: config.Mode, Provider: config.Provider, Model: config.Model, Thinking: config.Thinking, Workdir: config.Workdir, Budget: config.Budget})
 		if err != nil {
 			return loop.Outcome{}, err
 		}
 		defer e.releaseSandbox(child.state.ID)
 		defer child.runner.Env.Jobs.Close()
-		child.state.ID = id
 		child.state, err = e.manager.Create(ctx, *child.state)
 		if err != nil {
 			return loop.Outcome{}, err
@@ -373,8 +461,12 @@ func (e *Engine) sessionTools(config session.Config) *tool.Pool {
 }
 
 func (e *Engine) spill(ctx context.Context, name string, body []byte) (tool.Ref, error) {
+	return e.spillScoped(ctx, event.Scope{}, name, body)
+}
+
+func (e *Engine) spillScoped(ctx context.Context, scope event.Scope, name string, body []byte) (tool.Ref, error) {
 	id := string(e.newID())
-	if err := e.store.Put(ctx, store.Doc{Kind: "blob", Key: id, Body: body, Meta: map[string]string{"title": name}}); err != nil {
+	if err := e.store.Put(ctx, store.Doc{Kind: "blob", Key: id, Body: body, Meta: map[string]string{"title": name, "group": string(scope.Group), "session": string(scope.Session)}}); err != nil {
 		return "", err
 	}
 	return tool.Ref("mrk://blob/" + id), nil

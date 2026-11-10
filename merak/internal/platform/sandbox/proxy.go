@@ -244,12 +244,12 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 		return nil, errNetworkDenied
 	}
 	policy := p.Network
-	if policy.deniesHost(host, port) {
+	if policy.DeniesHost(host, port) {
 		return nil, errNetworkDenied
 	}
 	ip, ipErr := netip.ParseAddr(host)
 	local := (normalizeHost(host) == "localhost" || ipErr == nil && ip.IsLoopback()) && slices.Contains(policy.LocalPorts, port)
-	if !local && !policy.permitsHost(host, port) {
+	if !local && !policy.AllowsHost(host, port) {
 		if policy.Mode != "allowlist" || p.Approve == nil {
 			return nil, errNetworkDenied
 		}

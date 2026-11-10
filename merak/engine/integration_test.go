@@ -92,15 +92,19 @@ func TestGroupWorkersUseSeparateWorktreesAndMergeBothResults(t *testing.T) {
 		if conflict {
 			name = "conflict resolved by original member"
 		}
-		t.Run(name, func(t *testing.T) { runGroupIntegration(t, conflict, false) })
+		t.Run(name, func(t *testing.T) { runGroupIntegration(t, conflict, false, false) })
 	}
 }
 
 func TestConflictResolutionPreservesTheHumanReviewRequirement(t *testing.T) {
-	runGroupIntegration(t, true, true)
+	runGroupIntegration(t, true, true, false)
 }
 
-func runGroupIntegration(t *testing.T, conflict, review bool) {
+func TestMergeWaitsForOwnerApproval(t *testing.T) {
+	runGroupIntegration(t, false, false, true)
+}
+
+func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir := integrationRepository(t)
@@ -177,7 +181,14 @@ func runGroupIntegration(t *testing.T, conflict, review bool) {
 		}
 		return fake.Reply{Text: "Waiting."}
 	}}
-	e, err := engine.New(engine.Deps{Workdir: dir, Providers: providers, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
+	var mergeApprovals atomic.Int32
+	e, err := engine.New(engine.Deps{Workdir: dir, Providers: providers, Ask: func(_ context.Context, req permission.Request) (permission.Reply, error) {
+		if req.Kind == "merge" {
+			mergeApprovals.Add(1)
+			if fixtureGit(t, dir, "rev-list", "--count", "main") != "1" && mergeApprovals.Load() == 1 {
+				t.Error("target changed before first approval")
+			}
+		}
 		return permission.Reply{Decision: permission.Allow}, nil
 	}})
 	if err != nil {
@@ -197,7 +208,11 @@ func runGroupIntegration(t *testing.T, conflict, review bool) {
 		profiles = append(profiles, p)
 		members = append(members, group.Member{ID: event.ID(name), Name: name, Kind: group.MemberAgent, AgentRole: role, Profile: p.ID, Owner: "human"})
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}}, members, profiles)
+	settings := group.Settings{Review: new(false)}
+	if !ownerApproval {
+		settings.MergeNeedsOwner = new(false)
+	}
+	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: settings}, members, profiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +228,14 @@ func runGroupIntegration(t *testing.T, conflict, review bool) {
 		}
 	}
 	merged, delivered, conflicts, integrations := 0, 0, 0, 0
+	defer func() {
+		if ownerApproval && mergeApprovals.Load() < 2 {
+			t.Errorf("merge approvals=%d want at least 2", mergeApprovals.Load())
+		}
+		if !ownerApproval && mergeApprovals.Load() != 0 {
+			t.Errorf("disabled approval asked %d times", mergeApprovals.Load())
+		}
+	}()
 	for delivered < 2 {
 		select {
 		case fact := <-facts:

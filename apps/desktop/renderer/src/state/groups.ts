@@ -31,7 +31,7 @@ type GroupView = {
   activity: Record<string, { member: string; task?: string; status: string; sequence: number }>
 }
 const [views, setViews] = createSignal<Record<string, GroupView>>({})
-const watching = new Map<string, { connection: EngineClient; ready: Promise<void> }>()
+const watching = new Map<string, { connection: EngineClient; ready: Promise<void>; stop: () => void }>()
 export const groupView = (id: string) => views()[id]
 const [readSequences, setReadSequences] = createSignal<Record<string, number>>({})
 const [readNotices, setReadNotices] = createSignal<string[]>([])
@@ -77,7 +77,10 @@ export function markNoticesRead(ids: string[]) {
 export function unreadGroup(id: string) {
   const after = readSequences()[id] ?? 0
   return (groupView(id)?.events ?? []).filter(
-    (event) => event.type === "notice.sent" && event.payload.to?.includes(localHuman) && (event.seq ?? 0) > after,
+    (event) =>
+      event.type === "notice.sent" &&
+      event.payload.to?.includes(localHuman) &&
+      (event.stream.startsWith("inbox:") ? !noticeRead(event.id) : (event.seq ?? 0) > after),
   ).length
 }
 
@@ -98,6 +101,13 @@ export async function loadGroups() {
       ? [event.payload.group]
       : []
   })
+  const visible = new Set(list.map((group) => group.id))
+  for (const [id, watch] of watching) {
+    if (visible.has(id)) continue
+    watch.stop()
+    watching.delete(id)
+  }
+  setViews((all) => Object.fromEntries(Object.entries(all).filter(([id]) => visible.has(id))))
   setGroups(list)
   await Promise.all(list.map((group) => loadGroup(group.id)))
   setGroups((all) => all.map((group) => groupView(group.id)?.group ?? group))
@@ -129,15 +139,17 @@ export async function loadGroup(id: string) {
   const connection = await client()
   const previous = watching.get(id)
   if (previous?.connection === connection) return previous.ready
-  const ready = watch(connection, id)
-  watching.set(id, { connection, ready })
+  previous?.stop()
+  const controller = new AbortController()
+  const ready = watch(connection, id, controller.signal)
+  watching.set(id, { connection, ready, stop: () => controller.abort() })
   void ready.catch(() => {
     if (watching.get(id)?.ready === ready) watching.delete(id)
   })
   return ready
 }
 
-async function watch(connection: EngineClient, id: string) {
+async function watch(connection: EngineClient, id: string, signal: AbortSignal) {
   let current: GroupView = {
     members: [],
     events: [],
@@ -168,7 +180,30 @@ async function watch(connection: EngineClient, id: string) {
     }
   }
   const apply = (event: EngineEvent) => {
+    if (event.scope.group === id && (event.stream.startsWith("inbox:") || event.stream.startsWith("device:"))) {
+      if (!event.seq || current.events.some((known) => known.id === event.id)) return
+      current = {
+        ...current,
+        events: [...current.events, event],
+        board: applyToBoard(current.board, event),
+        inbox: applyToInbox(current.inbox, event, localHuman),
+      }
+      return
+    }
     if (event.stream.startsWith("session:") && event.scope.session && event.seq) {
+      if (
+        (event.type === "turn.finished" ||
+          event.type === "session.budget" ||
+          event.type === "permission.replied" ||
+          event.type === "question.answered") &&
+        !current.events.some((known) => known.id === event.id)
+      ) {
+        current = {
+          ...current,
+          events: [...current.events, event],
+          inbox: applyToInbox(current.inbox, event, localHuman),
+        }
+      }
       if (event.type === "session.created") snapshotActivity({ ...event.payload, lastSeq: event.seq })
       if (event.type !== "turn.started" && event.type !== "turn.finished") return
       const previous = current.activity[event.scope.session]
@@ -215,6 +250,19 @@ async function watch(connection: EngineClient, id: string) {
     }
   }
   const catchUpActivity = async () => {
+    const delivered = await connection.events.find({ types: ["notice.sent"] })
+    for (const fact of delivered ?? []) {
+      if (fact.scope.group === id && fact.stream.startsWith("inbox:")) apply(EngineEventSchema.parse(fact))
+    }
+    const progress = await connection.events.find({ scope: { group: id }, types: ["task.progress"] })
+    for (const fact of progress ?? []) {
+      if (fact.stream.startsWith("device:")) apply(EngineEventSchema.parse(fact))
+    }
+    const usage = await connection.events.find({
+      scope: { group: id },
+      types: ["turn.finished", "session.budget", "permission.replied", "question.answered"],
+    })
+    for (const event of usage ?? []) apply(EngineEventSchema.parse(event))
     const threads = new Map<string, string>()
     for (const event of current.events) {
       if (event.type === "thread.started" || event.type === "thread.handed_over")
@@ -240,10 +288,12 @@ async function watch(connection: EngineClient, id: string) {
     )
   }
   const publish = () => {
+    if (signal.aborted) return
     setViews((all) => ({ ...all, [id]: current }))
     if (current.group) setGroups((all) => all.map((group) => (group.id === id ? current.group! : group)))
   }
   const unsubscribe = await connection.events.subscribe({ scope: { group: id } }, (event) => {
+    if (signal.aborted) return
     if (!ready) {
       pending.push(event)
       return
@@ -264,6 +314,14 @@ async function watch(connection: EngineClient, id: string) {
         void connection.close()
       })
   })
+  const stop = () => {
+    void unsubscribe().catch(() => {})
+  }
+  signal.addEventListener("abort", stop, { once: true })
+  if (signal.aborted) {
+    stop()
+    return
+  }
   try {
     await catchUp()
     await catchUpActivity()

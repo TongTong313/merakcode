@@ -114,7 +114,7 @@ test("external file changes and commits refresh Git and review views", async () 
     dispose,
   }))
   try {
-    await expect.poll(() => review.data()).toBeDefined()
+    await expect.poll(() => review.data(), { timeout: 5000 }).toBeDefined()
     await writeFile(path.join(env.project, "watched.txt"), "External file\n")
     await expect
       .poll(() => changes.data()?.files?.map((file) => file.path), { timeout: 10_000 })

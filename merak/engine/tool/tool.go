@@ -63,16 +63,18 @@ type Call struct {
 }
 
 type Env struct {
-	Mode           string
-	Sandbox        *sandbox.Launcher
-	SandboxProfile sandbox.Profile
-	Children       Children
-	MemoryOwners   []memory.Owner
-	Workdir        string
-	Scope          event.Scope
-	Reads          *Reads
-	Jobs           *Jobs
-	Spill          func(context.Context, string, []byte) (Ref, error)
+	CacheDirectories []string
+	Member           event.ID
+	Mode             string
+	Sandbox          *sandbox.Launcher
+	SandboxProfile   sandbox.Profile
+	Children         Children
+	MemoryOwners     []memory.Owner
+	Workdir          string
+	Scope            event.Scope
+	Reads            *Reads
+	Jobs             *Jobs
+	Spill            func(context.Context, string, []byte) (Ref, error)
 }
 
 type Ref string

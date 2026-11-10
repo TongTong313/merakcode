@@ -67,6 +67,15 @@ func TestProfilesListDefaultsAndSaveAnOwnedCopy(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatal("private profile leaked to another human")
 	}
+	if err := client.Call(ctx, "profile.delete", map[string]any{"human": "other", "profile": saved.ID}, new(struct{})); err == nil {
+		t.Fatal("another human deleted an owned profile")
+	}
+	if err := client.Call(ctx, "profile.delete", map[string]any{"human": "owner", "profile": saved.ID}, new(struct{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "profile.list", map[string]any{"human": "owner"}, &list); err != nil || len(list) != 2 {
+		t.Fatalf("deleted profile remains visible: %+v %v", list, err)
+	}
 	if err := client.Call(ctx, "profile.save", map[string]any{"human": "owner", "profile": defaults[0]}, new(profile.Profile)); err == nil {
 		t.Fatal("builtin profile was overwritten")
 	}
@@ -138,5 +147,14 @@ func TestRegisterAddsAnOwnedProfileAsAGroupMember(t *testing.T) {
 	state, err := e.Groups.Get(ctx, g.ID)
 	if err != nil || len(state.Members) != 3 {
 		t.Fatalf("members=%+v err=%v", state.Members, err)
+	}
+	if err := client.Call(ctx, "profile.delete", protocol.ProfileDeleteParams{Human: "owner", Profile: saved.ID}, nil); err == nil {
+		t.Fatal("deleted a profile still referenced by a group member")
+	}
+	if err := client.Call(ctx, "group.removeMember", protocol.GroupRemoveMemberParams{Group: g.ID, Human: "owner", Member: member.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "profile.delete", protocol.ProfileDeleteParams{Human: "owner", Profile: saved.ID}, nil); err != nil {
+		t.Fatal(err)
 	}
 }

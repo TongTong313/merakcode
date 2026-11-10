@@ -103,16 +103,16 @@ test("replays group history and sends a mention through the shared composer", as
         (link) => link.textContent?.includes("Coordination") && link.href.includes(`/group/${group.id}`),
       ),
     ).toBe(true)
-    await expect
-      .poll(() => host.querySelector('button[aria-label="Message Coordinator"]'), { timeout: 10000 })
-      .not.toBeNull()
+    await expect.poll(() => host.querySelector('button[aria-label="Batch tool"]'), { timeout: 10000 }).not.toBeNull()
+    host.querySelector<HTMLButtonElement>('button[aria-label="Batch tool"]')!.click()
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="Message Batch tool"]')?.disabled).toBe(true)
+    await expect.poll(() => host.textContent, { timeout: 10000 }).toContain("Messages will be dispatched as new tasks.")
+    host.querySelector<HTMLButtonElement>('button[aria-label="Coordinator"]')!.click()
     await expect
       .poll(() => host.querySelector<HTMLButtonElement>('button[aria-label="Message Coordinator"]')?.disabled, {
         timeout: 10000,
       })
       .toBe(false)
-    expect(host.textContent).toContain("Messages will be dispatched as new tasks.")
     host.querySelector<HTMLButtonElement>('button[aria-label="Message Coordinator"]')!.click()
     const input = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')!
     input.value = "Can you coordinate?"

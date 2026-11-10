@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,131 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/claudecode"
 )
+
+func TestLeaderRecoversInputsNotAcknowledgedByTheProduct(t *testing.T) {
+	binary := fakeBinary(t)
+	for _, phase := range []string{"initialize-failure", "unacknowledged"} {
+		t.Run(phase, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			storage := memory.New()
+			runner := &claudecode.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--recovery-phase", phase}}}
+			a := worker.Assignment{Leader: true, Session: "recover", Workdir: t.TempDir(), Packet: "Original instruction"}
+			run, err := runner.Start(ctx, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = run.Wait(ctx); err == nil {
+				t.Fatal("fixture should fail before acknowledging input")
+			}
+			runner.Product.Args = []string{"--recovery-phase", "echo"}
+			a.Packet = "Continue after failure"
+			run, err = runner.Start(ctx, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer run.Cancel(context.Background())
+			restored := false
+			for {
+				select {
+				case fact, ok := <-run.Events():
+					if !ok {
+						_, err := run.Wait(ctx)
+						t.Fatalf("recovery stopped: %v", err)
+					}
+					if fact.Type == session.MessageCompleted {
+						completion, _ := event.Decode[session.Completion](fact)
+						for _, part := range completion.Parts {
+							restored = restored || strings.Contains(part.Text, "Original instruction") && strings.Contains(part.Text, "Continue after failure")
+						}
+					}
+					if fact.Type == loop.TurnFinished {
+						if !restored {
+							t.Fatal("recovery lost the original instruction")
+						}
+						return
+					}
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+			}
+		})
+	}
+}
+
+func TestLeaderErrorResultKeepsFailedOutcome(t *testing.T) {
+	binary := fakeBinary(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	fixture := filepath.Join(dir, "error.jsonl")
+	if err := os.WriteFile(fixture, []byte("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
+	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: dir, Packet: "Fail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run.Wait(ctx); err == nil {
+		t.Fatal("leader error was lost")
+	}
+	var finished int
+	for fact := range run.Events() {
+		if fact.Type != loop.TurnFinished {
+			continue
+		}
+		finished++
+		outcome, err := event.Decode[loop.Outcome](fact)
+		if err != nil || outcome.Stop != loop.Failed {
+			t.Fatalf("outcome=%+v %v", outcome, err)
+		}
+	}
+	if finished != 1 {
+		t.Fatalf("finished=%d", finished)
+	}
+}
+
+func TestLeaderKeepsUnacknowledgedInputAcrossAnEarlierResult(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: fakeBinary(t), Args: []string{"--leader-boundary"}}}
+	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: t.TempDir(), Packet: "First"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Cancel(context.Background())
+	if err := run.Send(ctx, loop.Input{Parts: []model.Part{{Text: "Second"}}}); err != nil {
+		t.Fatal(err)
+	}
+	completed := 0
+	inputs := 0
+	for {
+		select {
+		case fact := <-run.Events():
+			if fact.Type == session.MessageSent {
+				inputs++
+				if fact.Scope.Turn == "" {
+					t.Fatal("input lost its turn")
+				}
+			}
+			if fact.Type == session.MessageCompleted {
+				completed++
+				if fact.Scope.Turn == "" {
+					t.Fatal("response lost its turn")
+				}
+			}
+			if fact.Type == loop.TurnFinished && completed == 2 {
+				if inputs != 2 {
+					t.Fatalf("finished before both inputs were recorded: %d", inputs)
+				}
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("leader did not acknowledge both inputs")
+		}
+	}
+}
 
 func TestExternalWorkerReceivesSteeringAndCancelsAWaitingProcess(t *testing.T) {
 	binary := fakeBinary(t)

@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store"
 import { storage } from "../lib/bridge"
 
 export type Tab = "review" | "git" | "code" | "browser"
-export type SettingsSection = "general" | "models" | "profiles" | "about"
+export type SettingsSection = "general" | "models" | "profiles" | "cloud" | "about"
 
 /** UI layout state; panel width, tab and terminal height are saved and restored on the next launch */
 type UI = {

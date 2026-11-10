@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { createServer } from "node:http"
+import type { EventEmitter } from "node:events"
 import path from "node:path"
 import { test, expect } from "./fixture"
 
@@ -49,6 +50,8 @@ test("terminal: opens with Ctrl+J and runs commands in the project directory", a
   await expect
     .poll(() => readFile(path.join(kit.project, "term.txt"), "utf8").catch(() => ""), { timeout: 30_000 })
     .toBe("E2E_TERM")
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await expect(terminal).toHaveCount(0)
 })
 
 test("multiple terminals run independently, switching back works, and closing one leaves one", async ({ kit }) => {
@@ -107,6 +110,16 @@ test("closing a project stops its terminal process and descendants", async ({ ki
 })
 
 test("hiding and reopening a terminal preserves its shell and remembered height", async ({ kit }) => {
+  await kit.page.evaluate(() => {
+    const fetch = window.fetch.bind(window)
+    const ready = new Promise<void>((resolve) =>
+      window.addEventListener("terminal-ready", () => resolve(), { once: true }),
+    )
+    window.fetch = async (...args) => {
+      if (String(args[0]).endsWith("/ghostty-vt.wasm")) await ready
+      return fetch(...args)
+    }
+  })
   await kit.page.keyboard.press("ControlOrMeta+J")
   const terminal = kit.page.getByRole("region", { name: "终端" })
   const command = async (text: string) => {
@@ -123,6 +136,7 @@ test("hiding and reopening a terminal preserves its shell and remembered height"
   const height = await terminal.evaluate((element) => element.getBoundingClientRect().height)
   await kit.page.keyboard.press("ControlOrMeta+J")
   await expect(terminal).toHaveCount(0)
+  await kit.page.evaluate(() => window.dispatchEvent(new Event("terminal-ready")))
   await kit.page.keyboard.press("ControlOrMeta+J")
   await command(`printf '%s' "$MERAK_REPLAY" > replay.txt`)
   await expect.poll(() => readFile(path.join(kit.project, "replay.txt"), "utf8").catch(() => "")).toBe("kept")
@@ -130,4 +144,33 @@ test("hiding and reopening a terminal preserves its shell and remembered height"
   await kit.page.reload()
   await kit.page.keyboard.press("ControlOrMeta+J")
   expect(await terminal.evaluate((element) => element.getBoundingClientRect().height)).toBe(height)
+})
+
+test("hiding a terminal during socket connection preserves early input", async ({ kit }) => {
+  await kit.app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    const events = contents as EventEmitter
+    let held = false
+    contents.session.webRequest.onBeforeRequest({ urls: ["ws://*/*"] }, (details, callback) => {
+      if (held || !new URL(details.url).pathname.startsWith("/terminal/")) return callback({})
+      held = true
+      events.once("terminal-release", () => callback({}))
+    })
+  })
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await expect
+    .poll(() =>
+      kit.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.webContents.listenerCount("terminal-release"),
+      ),
+    )
+    .toBe(1)
+  await kit.page.locator(".terminal-host:visible").click()
+  await kit.page.keyboard.type("printf connected > connected.txt")
+  await kit.page.keyboard.press("Enter")
+  await kit.page.getByRole("button", { name: "收起终端", exact: true }).click()
+  await expect(kit.page.getByRole("region", { name: "终端" })).toHaveCount(0)
+  await kit.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.emit("terminal-release"))
+  await kit.page.keyboard.press("ControlOrMeta+J")
+  await expect.poll(() => readFile(path.join(kit.project, "connected.txt"), "utf8").catch(() => "")).toBe("connected")
 })

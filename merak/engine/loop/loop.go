@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
@@ -36,11 +37,26 @@ type StopReason string
 const Answered StopReason = "answered"
 
 const (
-	Cancelled StopReason = "cancelled"
-	Failed    StopReason = "failed"
+	Cancelled    StopReason = "cancelled"
+	Failed       StopReason = "failed"
+	MaxSteps     StopReason = "maxSteps"
+	MaxTokens    StopReason = "maxTokens"
+	MaxCost      StopReason = "maxCost"
+	MaxWallClock StopReason = "maxWallClock"
 )
 
+type Limits = session.Budget
+
+var errWallClock = errors.New("worker wall clock budget exhausted")
+
+func BudgetStop(reason StopReason) bool {
+	return reason == MaxSteps || reason == MaxTokens || reason == MaxCost || reason == MaxWallClock
+}
+
 type Loop struct {
+	Limits   Limits
+	Budget   func(context.Context) (StopReason, error)
+	Deadline func(context.Context) (time.Time, error)
 	Finish   func() []model.Part
 	Steer    Steer
 	Model    model.Provider
@@ -54,11 +70,13 @@ type Loop struct {
 }
 
 type Input struct {
-	Selection *session.Selection
-	Parts     []model.Part
-	Actor     event.Actor
-	Cause     event.ID
-	Child     *session.ChildResult
+	ExtendBudget bool
+	Sources      []event.ID
+	Selection    *session.Selection
+	Parts        []model.Part
+	Actor        event.Actor
+	Cause        event.ID
+	Child        *session.ChildResult
 }
 
 type Steer interface {
@@ -81,6 +99,15 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 	if err != nil {
 		return Outcome{}, err
 	}
+	if l.Limits.MaxWallClock > 0 {
+		deadline := s.Config.BudgetDeadline
+		if deadline.IsZero() {
+			deadline = time.Now().Add(l.Limits.MaxWallClock)
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = l.wallClock(ctx, deadline)
+		defer cancel()
+	}
 	scope.Turn = started.ID
 	var usage model.Usage
 	defer func() {
@@ -94,6 +121,11 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 		if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 			outcome.Stop = Cancelled
 			outcome.Code = ""
+		}
+		if errors.Is(context.Cause(ctx), errWallClock) {
+			outcome.Stop = MaxWallClock
+			outcome.Code = "MRK-4005"
+			runErr = nil
 		}
 		_ = session.CloseInterruptedCalls(context.WithoutCancel(ctx), l.Bus, s)
 		_, _ = l.emit(context.WithoutCancel(ctx), s, scope, event.Actor{Kind: event.ActorAgent}, TurnFinished, outcome, "")
@@ -110,7 +142,16 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 		specs = append(specs, model.ToolSpec{Name: spec.Name, Description: spec.Description, Input: spec.Input})
 	}
 	agent := event.Actor{Kind: event.ActorAgent}
-	for {
+	for step := 0; ; step++ {
+		stop, err := l.limit(ctx, s, step)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if stop != "" {
+			outcome := Outcome{Stop: stop, Usage: usage, Code: "MRK-4005"}
+			_, err := l.emit(ctx, s, scope, agent, TurnFinished, outcome, "")
+			return outcome, err
+		}
 		if l.Steer != nil {
 			if err := l.Inject(ctx, s, l.Steer.Poll()); err != nil {
 				return Outcome{}, err
@@ -163,6 +204,18 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 			return Outcome{}, err
 		}
 		usage = usage.Add(message.Usage)
+		stop, err = l.limit(ctx, s, 0)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if stop != "" {
+			if err := session.CloseInterruptedCalls(ctx, l.Bus, s); err != nil {
+				return Outcome{}, err
+			}
+			outcome := Outcome{Stop: stop, Usage: usage, Final: message.Parts, Code: "MRK-4005"}
+			_, err := l.emit(ctx, s, scope, agent, TurnFinished, outcome, "")
+			return outcome, err
+		}
 		var calls []model.ToolCall
 		for _, part := range message.Parts {
 			if part.ToolCall != nil {
@@ -194,6 +247,22 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 			}
 		}
 	}
+}
+
+func (l *Loop) limit(ctx context.Context, s *session.State, steps int) (StopReason, error) {
+	if l.Limits.MaxSteps > 0 && steps >= l.Limits.MaxSteps {
+		return MaxSteps, nil
+	}
+	if l.Limits.MaxTokens > 0 && s.Usage.Input+s.Usage.Output >= l.Limits.MaxTokens {
+		return MaxTokens, nil
+	}
+	if l.Limits.MaxCost > 0 && s.Usage.CostKnown && s.Usage.Cost >= l.Limits.MaxCost {
+		return MaxCost, nil
+	}
+	if l.Budget != nil {
+		return l.Budget(ctx)
+	}
+	return "", nil
 }
 
 func (l *Loop) runTools(ctx context.Context, s *session.State, scope event.Scope, calls []model.ToolCall) error {
@@ -250,7 +319,7 @@ func (l *Loop) Inject(ctx context.Context, s *session.State, inputs []Input) err
 			}
 			continue
 		}
-		if _, err := l.emit(ctx, s, s.Scope, input.Actor, session.MessageSent, model.Message{Role: model.User, Parts: input.Parts}, input.Cause); err != nil {
+		if _, err := l.emit(ctx, s, s.Scope, input.Actor, session.MessageSent, session.Input{Message: model.Message{Role: model.User, Parts: input.Parts}, Sources: input.Sources}, input.Cause); err != nil {
 			return err
 		}
 	}

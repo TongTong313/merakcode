@@ -5,8 +5,19 @@ import { client } from "../../state/client"
 import { localHuman } from "../../state/groups"
 import { toast } from "../../ui/toast"
 import { Section } from "./layout"
+import { PermissionModeSelect } from "../conversation/permission-mode"
+import { RemoteMembers } from "./remote"
+import { CloudMembers } from "./cloud-members"
 
-export function Profiles(props: { group?: string } = {}) {
+export function Profiles(props: { group?: string; kind?: string } = {}) {
+  return (
+    <Show when={props.group && props.kind === "cloud"} fallback={<LocalProfiles group={props.group} />}>
+      <CloudMembers group={props.group!} />
+    </Show>
+  )
+}
+
+function LocalProfiles(props: { group?: string }) {
   const [profiles, { refetch }] = createResource(
     async () => (await (await client()).profile.list({ human: localHuman })) ?? [],
   )
@@ -103,6 +114,9 @@ export function Profiles(props: { group?: string } = {}) {
     setDraft((profile) => ({ ...profile!, [key]: value }))
   return (
     <Section title={t("profiles.title")}>
+      <Show when={props.group && !draft()}>
+        <RemoteMembers group={props.group!} onAdded={() => void refetch()} />
+      </Show>
       <Show when={!draft()}>
         <div class="card profile-card">
           <h3>{t("settings.collaboration.products")}</h3>
@@ -137,20 +151,22 @@ export function Profiles(props: { group?: string } = {}) {
                 <p>{profile.summary}</p>
                 <p class="subtle">{profile.duties}</p>
                 <div class="row">
-                  <button
-                    class="button secondary sm"
-                    aria-label={t("profiles.copy", { name: profile.name })}
-                    onClick={() => edit({ ...structuredClone(profile), id: "" })}
-                  >
-                    {t("profiles.copy", { name: profile.name })}
-                  </button>
-                  <Show when={!profile.id.startsWith("builtin-")}>
+                  <Show when={profile.product?.kind !== "remote"}>
+                    <button
+                      class="button secondary sm"
+                      aria-label={t("profiles.copy", { name: profile.name })}
+                      onClick={() => edit({ ...structuredClone(profile), id: "" })}
+                    >
+                      {t("common.copy")}
+                    </button>
+                  </Show>
+                  <Show when={!profile.id.startsWith("builtin-") && profile.product?.kind !== "remote"}>
                     <button
                       class="button secondary sm"
                       aria-label={t("profiles.edit", { name: profile.name })}
                       onClick={() => edit(structuredClone(profile))}
                     >
-                      {t("profiles.edit", { name: profile.name })}
+                      {t("common.edit")}
                     </button>
                   </Show>
                   <Show when={props.group}>
@@ -160,7 +176,7 @@ export function Profiles(props: { group?: string } = {}) {
                       aria-label={t("profiles.add", { name: profile.name })}
                       onClick={() => void add(profile)}
                     >
-                      {t("profiles.add", { name: profile.name })}
+                      {t("common.add")}
                     </button>
                   </Show>
                 </div>
@@ -251,15 +267,10 @@ export function Profiles(props: { group?: string } = {}) {
           </label>
           <label class="field">
             <span>{t("permissionLevel.label")}</span>
-            <select
-              class="input"
-              aria-label={t("permissionLevel.label")}
+            <PermissionModeSelect
               value={draft()?.mode || "ask"}
-              onChange={(event) => setDraft((profile) => ({ ...profile!, mode: event.currentTarget.value }))}
-            >
-              <option value="ask">{t("permissionLevel.ask")}</option>
-              <option value="takeover">{t("permissionLevel.fullTakeover")}</option>
-            </select>
+              onChange={(mode) => setDraft((profile) => ({ ...profile!, mode }))}
+            />
           </label>
           <Show when={!draft()?.product}>
             <label class="field">

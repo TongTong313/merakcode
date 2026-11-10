@@ -67,6 +67,7 @@ jobs:
           - packages/util
           - packages/log
           - packages/sdk
+          - apps/desktop/main
           - apps/desktop/renderer
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -231,7 +232,7 @@ jobs:
         working-directory: merak
       - run: pnpm --dir apps/desktop/renderer run build
       - run: pnpm --dir apps/desktop/main run build
-      - run: xvfb-run -a pnpm --dir apps/desktop/main test:e2e e2e/chat.spec.ts e2e/composer.spec.ts e2e/permission.spec.ts e2e/tools.spec.ts e2e/conversations.spec.ts e2e/connect.spec.ts e2e/reconnect.spec.ts e2e/review.spec.ts e2e/git.spec.ts e2e/branch.spec.ts e2e/panels.spec.ts e2e/about.spec.ts e2e/group.spec.ts e2e/agents.spec.ts e2e/worktree.spec.ts e2e/board.spec.ts e2e/notify.spec.ts
+      - run: xvfb-run -a pnpm --dir apps/desktop/main test:e2e e2e/chat.spec.ts e2e/composer.spec.ts e2e/permission.spec.ts e2e/tools.spec.ts e2e/conversations.spec.ts e2e/connect.spec.ts e2e/reconnect.spec.ts e2e/review.spec.ts e2e/git.spec.ts e2e/branch.spec.ts e2e/panels.spec.ts e2e/about.spec.ts e2e/group.spec.ts e2e/agents.spec.ts e2e/worktree.spec.ts e2e/board.spec.ts e2e/notify.spec.ts e2e/engine-lifecycle.spec.ts e2e/background.spec.ts e2e/layout.spec.ts
       - uses: actions/upload-artifact@v6
         if: failure()
         with:

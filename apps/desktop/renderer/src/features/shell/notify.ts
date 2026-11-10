@@ -15,6 +15,7 @@ const noticeTitles: Record<string, Key> = {
   blocked: "task.status.blocked",
   info: "inbox.info",
   receipt: "inbox.receipt",
+  sentinel: "notify.sentinel",
 }
 
 /** Background notifications navigate to the parent conversation for child requests. */
@@ -67,13 +68,15 @@ export function Notify() {
       const current = session(event.scope.session)
       const id = current?.parentID ?? event.scope.session
       const title =
-        event.type === "turn.finished" && !current?.parentID
-          ? t("notify.done")
-          : event.type === "permission.requested"
-            ? t("notify.approval")
-            : event.type === "question.asked"
-              ? t("notify.question")
-              : undefined
+        event.type === "sentinel.flagged"
+          ? t("notify.sentinel")
+          : event.type === "turn.finished" && !current?.parentID
+            ? t("notify.done")
+            : (event.type === "permission.requested" && !event.payload.leader) || event.type === "permission.escalated"
+              ? t("notify.approval")
+              : event.type === "question.asked"
+                ? t("notify.question")
+                : undefined
       if (!title) return
       const parent = session(id)
       const href = sessionPath(parent?.directory ?? directory, id)

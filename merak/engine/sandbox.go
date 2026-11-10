@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/mcp"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
@@ -18,11 +19,65 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 type sandboxKey struct {
 	session  event.ID
 	disabled bool
+}
+
+func (e *Engine) SetupSandbox(ctx context.Context) error {
+	return sandbox.Initialize(ctx, e.sandboxStateDir)
+}
+
+func (e *Engine) MemberSandboxStatus(ctx context.Context, groupID, memberID, sessionID event.ID) (sandbox.Status, error) {
+	state, err := e.Groups.Get(ctx, groupID)
+	if err != nil {
+		return sandbox.Status{}, err
+	}
+	member, err := e.groupMember(ctx, groupID, memberID)
+	if err != nil {
+		return sandbox.Status{}, err
+	}
+	p, err := e.memberProfile(ctx, member)
+	if err != nil {
+		return sandbox.Status{}, err
+	}
+	if sessionID != "" {
+		saved, err := e.manager.Load(ctx, sessionID)
+		if err != nil {
+			return sandbox.Status{}, err
+		}
+		if saved.Scope.Group != groupID || saved.Config.Member != memberID {
+			return sandbox.Status{}, errors.New("MRK-6001")
+		}
+		if p.Product != nil && p.Product.Kind == worker.KindRemote {
+			return e.remoteSandboxStatus(ctx, p.Product.Remote, protocol.SandboxStatusParams{Session: sessionID})
+		}
+		return e.SandboxStatus(ctx, saved.Config.Workdir, saved.Config.Mode, sessionID)
+	}
+	if p.Product != nil && p.Product.Kind == worker.KindRemote {
+		return e.remoteSandboxStatus(ctx, p.Product.Remote, protocol.SandboxStatusParams{Group: p.Product.Remote.Group, Member: p.Product.Remote.Member})
+	}
+	return e.SandboxStatus(ctx, state.Group.Project.Directory, p.Mode)
+}
+
+func (e *Engine) remoteSandboxStatus(ctx context.Context, source *profile.RemoteSource, params protocol.SandboxStatusParams) (sandbox.Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	credentials, err := e.remoteCredentials(ctx, source.Connection)
+	if err != nil {
+		return sandbox.Status{}, err
+	}
+	client, err := protocol.Connect(ctx, credentials.Endpoint, credentials.Token, protocol.HelloParams{Protocol: protocol.Version})
+	if err != nil {
+		return sandbox.Status{}, err
+	}
+	defer client.Close()
+	var status sandbox.Status
+	err = client.Call(ctx, "sandbox.status", params, &status)
+	return status, err
 }
 
 func (e *Engine) keepSandbox(session event.ID, launcher *sandbox.Launcher) *sandbox.Launcher {
@@ -62,6 +117,13 @@ func (e *Engine) reclaimSandbox(requester *sandbox.Launcher) (bool, error) {
 
 func (e *Engine) releaseSandbox(session event.ID) {
 	e.sandboxMu.Lock()
+	var processes []*mcp.Process
+	for id, live := range e.mcpProcesses {
+		if session == "" || id == session {
+			processes = append(processes, live...)
+			delete(e.mcpProcesses, id)
+		}
+	}
 	var launchers []*sandbox.Launcher
 	for key, launcher := range e.sandboxes {
 		if session == "" || key.session == session {
@@ -71,6 +133,9 @@ func (e *Engine) releaseSandbox(session event.ID) {
 	}
 	e.sandboxMu.Unlock()
 	var failure error
+	for _, process := range processes {
+		failure = errors.Join(failure, process.Close())
+	}
 	for _, launcher := range launchers {
 		failure = errors.Join(failure, launcher.Close())
 	}
@@ -85,7 +150,7 @@ func (e *Engine) SandboxStatus(ctx context.Context, workdir string, mode permiss
 	if err := ctx.Err(); err != nil {
 		return sandbox.Status{}, err
 	}
-	if mode != "" && mode != permission.ModeAsk && mode != permission.ModeTakeover {
+	if mode != "" && mode != permission.ModeAsk && mode != permission.ModeAuto && mode != permission.ModeTakeover {
 		return sandbox.Status{}, errors.New("unknown permission mode")
 	}
 	launcher := &sandbox.Launcher{StateDir: e.sandboxStateDir, Disabled: mode == permission.ModeTakeover}
@@ -185,6 +250,22 @@ func resolvedSandboxPath(path string) (string, error) {
 	return filepath.Join(parent, filepath.Base(absolute)), nil
 }
 
+func denyProductState(configuration sandbox.Profile) (sandbox.Profile, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return configuration, err
+	}
+	for _, name := range []string{".claude", ".claude.json", ".codex", ".pi", ".config/opencode", ".local/share/opencode"} {
+		path, err := resolvedSandboxPath(filepath.Join(home, name))
+		if err != nil {
+			return configuration, err
+		}
+		configuration.ReadDeny = append(configuration.ReadDeny, path)
+		configuration.TransientReadDeny = append(configuration.TransientReadDeny, path)
+	}
+	return configuration, nil
+}
+
 func (e *Engine) connectSandboxNetwork(launcher *sandbox.Launcher, p profile.Profile, a worker.Assignment) {
 	launcher.MemberName = p.Name
 	launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
@@ -239,20 +320,20 @@ func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile,
 	if status.Available {
 		description = "This member cannot forward approvals. Network restrictions are not enforced; file restrictions remain active."
 	}
-	request := permission.Request{Kind: "launch", Spec: tool.Spec{Name: call.Name, Effect: tool.EffectExec, Description: description}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
-	projectPath := a.Workdir
-	if a.Scope.Group != "" {
-		state, err := e.Groups.Get(ctx, a.Scope.Group)
-		if err != nil {
-			return err
-		}
-		projectPath = state.Group.Project.Directory
+	request := permission.Request{Member: a.Claim.Member, Kind: "launch", Spec: tool.Spec{Name: call.Name, Effect: tool.EffectExec, Description: description}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
+	projectPath, err := e.executionProject(ctx, scope, a.Workdir)
+	if err != nil {
+		return err
 	}
 	project, err := resolvedSandboxPath(projectPath)
 	if err != nil {
 		return err
 	}
 	member := string(a.Claim.Member)
+	_, sourceMember := e.executionSource(scope, a.Claim.Member)
+	if sourceMember != "" {
+		member = string(sourceMember)
+	}
 	if member == "" {
 		member = string(p.ID)
 	}
@@ -267,14 +348,7 @@ func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile,
 	}
 	var askErr error
 	if reply.Decision == "" {
-		request.ID, err = emit(permission.Requested, agent, called, request)
-		if err != nil {
-			return err
-		}
 		reply, askErr = e.askPermission(ctx, request)
-		if _, err := emit(permission.Replied, event.Actor{Kind: event.ActorHuman, ID: reply.Human}, request.ID, reply); err != nil {
-			return err
-		}
 		if askErr == nil && reply.Remember == "always" && member != "" {
 			if err := settings.RememberUnconfinedDecision(member, project, string(reply.Decision)); err != nil {
 				return err
@@ -343,16 +417,7 @@ func (e *Engine) approveWorkerNetwork(ctx context.Context, p profile.Profile, a 
 		return false, err
 	}
 	call := model.ToolCall{ID: string(e.newID()), Name: "sandbox_network", Input: input}
-	request := permission.Request{Kind: "network", Host: host, Spec: tool.Spec{Name: call.Name, Effect: tool.EffectNetwork, Description: "Allow this member to connect to the requested host."}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
-	body, err := json.Marshal(request)
-	if err != nil {
-		return false, err
-	}
-	fact, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: permission.Requested, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Payload: body})
-	if err != nil {
-		return false, err
-	}
-	request.ID = fact.ID
+	request := permission.Request{Member: a.Claim.Member, Kind: "network", Host: host, Spec: tool.Spec{Name: call.Name, Effect: tool.EffectNetwork, Description: "Allow this member to connect to the requested host."}, Call: tool.Call{ID: call.ID, Name: call.Name, Input: input, Env: tool.Env{Scope: scope, Workdir: a.Workdir}}}
 	reply, err := e.askPermission(ctx, request)
 	if err != nil {
 		return false, err
@@ -372,12 +437,7 @@ func (e *Engine) approveWorkerNetwork(ctx context.Context, p profile.Profile, a 
 			return false, err
 		}
 	}
-	body, err = json.Marshal(reply)
-	if err != nil {
-		return false, err
-	}
-	_, err = e.Bus.Publish(context.WithoutCancel(ctx), event.Event{Stream: event.Stream("session:" + a.Session), Scope: scope, Type: permission.Replied, Actor: event.Actor{Kind: event.ActorHuman, ID: reply.Human}, Cause: fact.ID, Payload: body})
-	return reply.Decision == permission.Allow, err
+	return reply.Decision == permission.Allow, nil
 }
 
 func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a worker.Assignment, denial sandbox.NetworkDenial) error {

@@ -10,11 +10,19 @@ import (
 )
 
 type Update struct {
-	Leader event.ID `json:"leader,omitempty"`
-	Phase  Phase    `json:"phase,omitempty"`
+	Budget *BudgetIncrease `json:"budget,omitempty"`
+	Reason string          `json:"reason,omitempty"`
+	Leader event.ID        `json:"leader,omitempty"`
+	Phase  Phase           `json:"phase,omitempty"`
 }
 
 func (p *Pool) Update(ctx context.Context, id event.ID, update Update, actor event.Actor) error {
+	if update.Budget != nil {
+		if update.Phase != "" || update.Leader != "" {
+			return ErrState
+		}
+		return p.increaseBudget(ctx, id, *update.Budget, actor)
+	}
 	if update.Phase != "" {
 		if update.Leader != "" {
 			return ErrState

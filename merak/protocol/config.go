@@ -1,6 +1,13 @@
 package protocol
 
-import "github.com/TongTong313/merakcode/merak/internal/platform/config"
+import (
+	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
+)
+
+type ModelListParams struct {
+	Overrides []catalog.Override `json:"overrides,omitempty"`
+}
 
 type Config = config.Value
 type ConfigPatch = config.Patch

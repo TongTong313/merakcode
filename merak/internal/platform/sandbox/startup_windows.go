@@ -7,12 +7,15 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 type windowsStartupMessage struct {
-	Token string `json:"token"`
-	Ready bool   `json:"ready"`
+	PrivateDirectory string `json:"privateDirectory,omitempty"`
+	Token            string `json:"token"`
+	Ready            bool   `json:"ready"`
 }
 
 func (l *Launcher) windowsStartup(ctx context.Context) (*commandStartup, string, string, error) {
@@ -26,6 +29,8 @@ func (l *Launcher) windowsStartup(ctx context.Context) (*commandStartup, string,
 	done := make(chan struct{})
 	authenticated := make(chan struct{})
 	var failure error
+	var private string
+	closed := false
 	go func() {
 		defer close(done)
 		defer listener.Close()
@@ -63,9 +68,31 @@ func (l *Launcher) windowsStartup(ctx context.Context) (*commandStartup, string,
 			}
 			return
 		}
+		if result.PrivateDirectory != "" {
+			rel, err := filepath.Rel(l.StateDir, result.PrivateDirectory)
+			if err != nil || filepath.Dir(rel) != "." || !strings.HasPrefix(rel, "member-") {
+				failure = errors.New("invalid sandbox cache directory")
+				return
+			}
+			l.mu.Lock()
+			if !closed {
+				private = result.PrivateDirectory
+				if l.privateDirectories == nil {
+					l.privateDirectories = make(map[string]struct{})
+				}
+				l.privateDirectories[private] = struct{}{}
+			}
+			l.mu.Unlock()
+		}
 		failure = json.NewEncoder(connection).Encode(true)
 	}()
-	startup := &commandStartup{close: cancel, wait: func() error {
+	startup := &commandStartup{close: func() {
+		cancel()
+		l.mu.Lock()
+		closed = true
+		delete(l.privateDirectories, private)
+		l.mu.Unlock()
+	}, wait: func() error {
 		timer := time.NewTimer(15 * time.Second)
 		defer timer.Stop()
 		connected := authenticated

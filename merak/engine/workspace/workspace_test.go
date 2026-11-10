@@ -95,8 +95,9 @@ func TestClaimWorkspaceIsExcludedPersistedIntegratedAndReleased(t *testing.T) {
 	if err := manager.Release(ctx, ws); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(ws.Directory); !os.IsNotExist(err) {
-		t.Fatalf("worktree was not removed: %v", err)
+	pooled, err := manager.Get(ctx, ws.ID)
+	if err != nil || !pooled.Released || !pooled.Pooled {
+		t.Fatalf("pooled=%+v %v", pooled, err)
 	}
 }
 

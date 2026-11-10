@@ -11,6 +11,50 @@ export namespace ErrorCode {
     hint: Text
   }
   export const CATALOG = {
+    CLOUD_ACCOUNT_REQUIRED: {
+      code: "MRK-1006",
+      domain: "engine",
+      status: 401,
+      retryable: false,
+      title: { zh: "云端账号尚未登录", en: "Cloud sign-in is required" },
+      hint: {
+        zh: "请先登录云端账号，再创建或打开云端群。",
+        en: "Sign in to the cloud before creating or opening a cloud group.",
+      },
+    },
+    CLOUD_UNAVAILABLE: {
+      code: "MRK-1007",
+      domain: "engine",
+      status: 503,
+      retryable: true,
+      title: { zh: "云端连接不可用", en: "Cloud connection is unavailable" },
+      hint: {
+        zh: "检查云端地址和网络连接。引擎会自动重连。",
+        en: "Check the cloud endpoint and network connection. The engine reconnects automatically.",
+      },
+    },
+    WORKSPACE_CONFIG_INVALID: {
+      code: "MRK-3002",
+      domain: "config",
+      status: 400,
+      retryable: false,
+      title: { zh: "工作区配置无效", en: "Workspace configuration is invalid" },
+      hint: {
+        zh: "只保留一个配置文件，并检查注释、字段和 MCP 服务器格式。会话仍可继续。",
+        en: "Keep one configuration file and check its syntax, fields and MCP server definitions. The session can continue.",
+      },
+    },
+    MCP_START_FAILED: {
+      code: "MRK-5010",
+      domain: "tool",
+      status: 503,
+      retryable: true,
+      title: { zh: "MCP 服务器启动失败", en: "MCP server startup failed" },
+      hint: {
+        zh: "检查服务器命令、沙箱权限和 10 秒启动限制。会话已跳过这台服务器。",
+        en: "Check the server command, sandbox permissions and 10-second startup limit. This session skipped the server.",
+      },
+    },
     SANDBOX_FILE_DENIED: {
       code: "MRK-5009",
       domain: "tool",
@@ -88,6 +132,17 @@ export namespace ErrorCode {
         en: "The project exceeded 50000 files or a scan took over 1 second. Reduce project files or use a version with native file notifications.",
       },
     },
+    TASK_NEEDS_ATTENTION: {
+      code: "MRK-6002",
+      domain: "task",
+      status: 409,
+      retryable: false,
+      title: { zh: "任务需要检查", en: "Task needs attention" },
+      hint: {
+        zh: "查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。",
+        en: "Review the sentinel reason and related events, then resume, reassign or cancel the task.",
+      },
+    },
     GROUP_REQUEST_FAILED: {
       code: "MRK-6001",
       domain: "task",
@@ -155,6 +210,39 @@ export namespace ErrorCode {
       retryable: true,
       title: { zh: "上下文重建失败", en: "Context rebuild failed" },
       hint: { zh: "原始历史已保留。请稍后重试。", en: "The original history is preserved. Try again later." },
+    },
+    WORKSPACE_SETUP_FAILED: {
+      code: "MRK-5011",
+      domain: "tool",
+      status: 500,
+      retryable: false,
+      title: { zh: "工作区安装失败", en: "Workspace setup failed" },
+      hint: {
+        zh: "查看安装日志，修正群的安装命令后重新认领任务。",
+        en: "Read the setup log, fix the group's setup command, then create a new claim.",
+      },
+    },
+    BUDGET_EXHAUSTED: {
+      code: "MRK-4005",
+      domain: "session",
+      status: 409,
+      retryable: false,
+      title: { zh: "执行预算已用完", en: "Execution budget exhausted" },
+      hint: {
+        zh: "单聊确认追加预算后继续。群任务由 owner 批准追加预算后重新派工。",
+        en: "Explicitly extend the chat budget to continue. Group tasks require an owner-approved increase before reassignment.",
+      },
+    },
+    LEADER_RUN_FAILED: {
+      code: "MRK-4004",
+      domain: "session",
+      status: 502,
+      retryable: true,
+      title: { zh: "Leader 运行停止", en: "Leader run stopped" },
+      hint: {
+        zh: "会话和待处理事件已保留。请检查成员配置后发送消息重试。",
+        en: "The conversation and pending events are preserved. Check the member configuration, then send a message to retry.",
+      },
     },
     MODEL_REQUEST_FAILED: {
       code: "MRK-2001",

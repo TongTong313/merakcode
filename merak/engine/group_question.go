@@ -46,21 +46,54 @@ func (e *Engine) askLeaderTool(a worker.Assignment) tool.Tool {
 			return nil, err
 		}
 		defer func() { e.mu.Lock(); delete(e.workerQuestions, fact.ID); e.mu.Unlock() }()
+		if e.activeDeviceGroup(a.Scope.Group) {
+			answer, err := e.waitDeviceQuestion(ctx, fact.ID)
+			if err == nil && answer.Cancelled {
+				err = context.Canceled
+			}
+			if err == nil {
+				body, _ := json.Marshal(group.MemberAnswer{Member: a.Claim.Member, Text: answer.Text})
+				_, err = e.Bus.Publish(ctx, event.Event{Stream: fact.Stream, Scope: fact.Scope, Actor: event.Actor{Kind: event.ActorExternal}, Type: group.MemberAnswered, Cause: fact.ID, Payload: body})
+			}
+			return answer.Text, err
+		}
+		state, err := e.Groups.Get(ctx, a.Scope.Group)
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithTimeout(ctx, max(0, state.Group.Settings.ApprovalWait(e.permissions.Timeout)-e.now().Sub(fact.Time)))
+		defer cancel()
 		select {
 		case answer := <-pending.reply:
 			return answer, nil
 		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				e.approvalTimedOut(context.WithoutCancel(ctx), fact.Scope, fact.Actor.ID, fact.ID)
+			}
 			return nil, ctx.Err()
 		}
 	}}
 }
 
 func (e *Engine) askHumanTool(g *groupRun, thread *leader.Thread, finish func(string)) tool.Tool {
-	return groupTool{spec: tool.Spec{Name: "ask_human", Description: "Ask a human one question with optional suggested answers or a named recipient (to), then end this turn. The answer arrives as a question.answered event in this thread.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"to":{"type":"string"},"options":{"type":"array","items":{"type":"string"}}},"required":["text"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
-		var request question.Request
-		if err := decodeGroupInput(call.Input, &request); err != nil {
+	return groupTool{spec: tool.Spec{Name: "ask_human", Description: "Ask a human one question, or escalate a permission request by providing its request ID. End this turn while waiting for the human. Options and to apply only to questions.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"request":{"type":"string"},"text":{"type":"string"},"to":{"type":"string"},"options":{"type":"array","items":{"type":"string"}}},"anyOf":[{"required":["text"]},{"required":["request"]}],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
+		var input struct {
+			Request event.ID `json:"request"`
+			Text    string   `json:"text"`
+			To      event.ID `json:"to"`
+			Options []string `json:"options"`
+		}
+		if err := decodeGroupInput(call.Input, &input); err != nil {
 			return nil, err
 		}
+		if input.Request != "" {
+			if err := e.permissions.Escalate(ctx, input.Request, g.group.ID, thread.Key, thread.Leader); err != nil {
+				return nil, err
+			}
+			finish("Permission request sent to a human.")
+			return input.Request, nil
+		}
+		request := question.Request{Text: input.Text, To: input.To, Options: input.Options}
 		if strings.TrimSpace(request.Text) == "" || e.askQuestion == nil {
 			return nil, errors.New("question text and a human question handler are required")
 		}
@@ -134,13 +167,10 @@ func (e *Engine) messageMemberTool(g *groupRun, thread *leader.Thread) tool.Tool
 				if claim.Member != input.Member || claim.Status != task.ClaimActive {
 					continue
 				}
-				e.mu.Lock()
-				active, ok := e.claimRuns[claim.ID]
-				e.mu.Unlock()
-				if !ok || !active.caps.Steer {
+				if !e.sendClaimInput(ctx, g.group.ID, claim, loop.Input{Actor: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}, Parts: []model.Part{{Text: input.Text}}}) {
 					return nil, errors.New("member does not accept live input; assign a new task")
 				}
-				return claim.ID, active.run.Send(ctx, loop.Input{Actor: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}, Parts: []model.Part{{Text: input.Text}}})
+				return claim.ID, nil
 			}
 		}
 		return nil, errors.New("member has no active claim in this thread")

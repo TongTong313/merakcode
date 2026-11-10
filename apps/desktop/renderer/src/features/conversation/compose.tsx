@@ -2,6 +2,7 @@ import Folder from "lucide-solid/icons/folder"
 import { createEffect, createSignal, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { t } from "../../i18n"
+import { mac } from "../../lib/bridge"
 import { baseName, sessionPath } from "../../lib/route"
 import { client } from "../../state/client"
 import { choice, choose } from "../../state/models"
@@ -55,30 +56,44 @@ export function Compose(props: { directory: string }) {
     <Frame
       directory={props.directory}
       folder={props.directory}
-      title={<span class="title ellipsis">{baseName(props.directory)}</span>}
+      title={<span class="title ellipsis">{t("sidebar.new")}</span>}
     >
       <div class="compose-page">
         <h1 class="compose-heading">{t("compose.heading", { name: baseName(props.directory) })}</h1>
-        <div class="compose-options context-row">
-          <span class="chip outlined">
-            <Folder class="icon icon-sm" />
-            {baseName(props.directory)}
-          </span>
-          <Show when={identityOf(props.directory)}>
-            <BranchPicker directory={props.directory} purpose="switch" />
-          </Show>
+        <div class="compose-wrap">
+          <div class="context-row">
+            <span class="chip outlined">
+              <Folder class="icon icon-sm" />
+              <span class="ellipsis" title={props.directory}>
+                {baseName(props.directory)}
+              </span>
+            </span>
+            <Show when={identityOf(props.directory)}>
+              <BranchPicker directory={props.directory} purpose="switch" />
+            </Show>
+          </div>
+          <Composer
+            directory={props.directory}
+            busy={false}
+            disabled={creating()}
+            autofocus
+            draft={preparation().draft}
+            onDraftChange={(draft) => {
+              preparation().draft = draft
+            }}
+            onSubmit={submit}
+          />
+          <div class="hints">
+            <span>
+              <kbd>{mac ? "⌘" : "Ctrl"} K</kbd>
+              {t("compose.hint.palette")}
+            </span>
+            <span>
+              <kbd>{mac ? "⌘" : "Ctrl"} J</kbd>
+              {t("compose.hint.terminal")}
+            </span>
+          </div>
         </div>
-        <Composer
-          directory={props.directory}
-          busy={false}
-          disabled={creating()}
-          autofocus
-          draft={preparation().draft}
-          onDraftChange={(draft) => {
-            preparation().draft = draft
-          }}
-          onSubmit={submit}
-        />
       </div>
     </Frame>
   )

@@ -14,6 +14,7 @@ export type Board = {
   goals: GoalRow[]
   lastSeq: number
   queueOrder: string[]
+  streams?: Record<string, number>
 }
 
 export function emptyBoard(): Board {
@@ -35,11 +36,16 @@ export function emptyBoard(): Board {
   }
 }
 
-/** Applies the complete group stream; session events and duplicate deliveries are ignored. */
+/** Applies host task state and independent remote progress streams. */
 export function applyToBoard(board: Board, event: EngineEvent): Board {
-  if (!event.stream.startsWith("group:") || !event.seq || event.seq <= board.lastSeq) return board
-  if (event.seq !== board.lastSeq + 1) throw new Error("Board event sequence gap")
-  const next: Board = { ...board, lastSeq: event.seq }
+  const grouped = event.stream.startsWith("group:")
+  if (!grouped && (!event.stream.startsWith("device:") || event.type !== "task.progress")) return board
+  const previousSeq = grouped ? board.lastSeq : (board.streams?.[event.stream] ?? 0)
+  if (!event.seq || event.seq <= previousSeq) return board
+  if (grouped && event.seq !== previousSeq + 1) throw new Error("Board event sequence gap")
+  const next: Board = grouped
+    ? { ...board, lastSeq: event.seq }
+    : { ...board, streams: { ...board.streams, [event.stream]: event.seq } }
   switch (event.type) {
     case "task.created":
     case "task.opened":

@@ -10,8 +10,11 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 )
@@ -34,9 +37,6 @@ func (e *Engine) mergeTool(g *groupRun, thread *leader.Thread) tool.Tool {
 }
 
 func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event.ID) (any, error) {
-	if card.Review && (card.LastReview == nil || card.LastReview.Decision != "approve" || card.LastReview.Phase == task.PhasePlanning) {
-		return nil, errors.New("merge requires human approval")
-	}
 	var claim task.Claim
 	for _, candidate := range card.Claims {
 		if candidate.ID == claimID {
@@ -44,12 +44,52 @@ func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event
 			break
 		}
 	}
-	if claim.Workspace == "" || claim.Report == nil || claim.Report.Verdict != task.VerdictDone || claim.Integrated != "" {
+	if claim.Report == nil || claim.Report.Verdict != task.VerdictDone || claim.Integrated != "" || card.Workspace != workspace.KindWorktree {
 		return nil, errors.New("merge requires an unintegrated successful worktree report")
 	}
-	ws, err := e.Workspaces.Get(ctx, claim.Workspace)
+	e.mu.Lock()
+	if e.merging[claim.ID] {
+		e.mu.Unlock()
+		return map[string]event.ID{"queued": claim.ID}, nil
+	}
+	e.merging[claim.ID] = true
+	e.mu.Unlock()
+	launched := false
+	defer func() {
+		if !launched {
+			e.mu.Lock()
+			delete(e.merging, claim.ID)
+			e.mu.Unlock()
+		}
+	}()
+	member, err := e.groupMember(ctx, card.Group, claim.Member)
 	if err != nil {
 		return nil, err
+	}
+	p, err := e.memberProfile(ctx, member)
+	if err != nil {
+		return nil, err
+	}
+	var source *profile.RemoteSource
+	var ws workspace.Workspace
+	if p.Product != nil && p.Product.Kind == worker.KindRemote {
+		source = p.Product.Remote
+		if source == nil {
+			return nil, errors.New("remote source is missing")
+		}
+		ws, err = e.prepareRemoteDelivery(ctx, card, claim, *source)
+		claim.Workspace = ws.ID
+	} else {
+		ws, err = e.Workspaces.Get(ctx, claim.Workspace)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if card.Review && (card.LastReview == nil || card.LastReview.Decision != "approve" || card.LastReview.Phase == task.PhasePlanning) {
+		if source != nil {
+			return map[string]event.ID{"review": claim.ID}, nil
+		}
+		return nil, errors.New("merge requires human approval")
 	}
 	state, err := e.Groups.Get(ctx, card.Group)
 	if err != nil {
@@ -60,13 +100,26 @@ func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event
 	if e.ctx.Err() != nil {
 		return nil, e.ctx.Err()
 	}
-	if e.merging[claim.ID] {
-		return map[string]event.ID{"queued": claim.ID}, nil
-	}
-	e.merging[claim.ID] = true
+	launched = true
 	e.workers.Go(func() {
 		defer func() { e.mu.Lock(); delete(e.merging, claim.ID); e.mu.Unlock() }()
-		_, err := e.Workspaces.Integrate(e.ctx, ws, state.Group.Brief.TargetBranch, state.Group.Brief.Check)
+		if state.Group.Settings.MergeApprovalRequired() {
+			input, _ := json.Marshal(map[string]any{"task": card.ID, "claim": claim.ID, "target": state.Group.Brief.TargetBranch})
+			reply, err := e.permissions.Ask(e.ctx, permission.Request{Kind: "merge", Member: card.Leader,
+				Spec: tool.Spec{Name: "request_merge", Effect: tool.EffectGroup},
+				Call: tool.Call{Input: input, Env: tool.Env{Workdir: ws.Directory, Scope: event.Scope{Group: card.Group, Task: card.ID, Session: claim.Session}}},
+			})
+			if err != nil || reply.Decision != permission.Allow {
+				return
+			}
+		}
+		result, err := e.Workspaces.Integrate(e.ctx, ws, state.Group.Brief.TargetBranch, state.Group.Brief.Check)
+		if err == nil && source != nil && result.Head != "" && len(result.Conflicts) == 0 {
+			err = git.PushBranch(e.ctx, state.Group.Project.Directory, state.Group.Project.Remote, ws.Branch, true)
+			if err == nil {
+				_, err = e.remoteDelivery(e.ctx, *source, claim, true)
+			}
+		}
 		if err != nil {
 			var check *workspace.CheckFailure
 			if errors.As(err, &check) {

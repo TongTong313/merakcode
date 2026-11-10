@@ -212,7 +212,11 @@ function CommentView(props: { comment: Comment; sessionID: string }) {
     <div class="line-comment">
       <div class="who">
         <MessageSquare class="icon icon-xs" />
-        <button class="button ghost sm comment-location" onClick={() => revealComment(props.comment)}>
+        <button
+          class="button ghost sm comment-location"
+          title={commentLocation(props.comment)}
+          onClick={() => revealComment(props.comment)}
+        >
           {commentLocation(props.comment)}
         </button>
         <span class="spacer" />

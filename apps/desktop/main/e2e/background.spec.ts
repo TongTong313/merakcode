@@ -1,17 +1,15 @@
 import { test, expect } from "./fixture"
 
-/** Whether session memory has asked the model to update its notes */
+/** Whether the idle extractor has started its model request */
 let writingMemory = false
 
-// The fake model reports 13k prompt tokens, past the threshold where session memory starts after a reply
 test.use({
-  config: { memory: { session_memory: true, auto_extract: false, auto_recall: false, auto_dream: false } },
   script: {
-    reply: ({ prompt }) => {
-      if (!prompt.includes("update the session notes file")) return { text: "回复完了" }
+    reply: async ({ system, closed }) => {
+      if (!system.includes("Extract durable project facts")) return { text: "回复完了" }
       writingMemory = true
-      // It keeps working in the background until the app closes
-      return new Promise(() => {})
+      await closed
+      return { text: "[]" }
     },
   },
 })
@@ -21,8 +19,8 @@ test("once the reply is done the conversation stops reading as running, even whi
 }) => {
   await kit.send("你好")
   await expect(kit.text("回复完了")).toBeVisible()
-  await expect.poll(() => writingMemory).toBe(true)
+  await expect.poll(() => writingMemory, { timeout: 45_000 }).toBe(true)
   const row = kit.page.getByRole("navigation", { name: "对话" }).getByRole("link").first()
-  await expect(row).toContainText("E2E")
+  await expect(row).toContainText("你好")
   await expect(row).not.toContainText("运行中")
 })

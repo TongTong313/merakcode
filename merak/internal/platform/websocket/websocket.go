@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -69,14 +70,23 @@ func Accept(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 
 func Dial(ctx context.Context, endpoint, token string) (*Conn, error) {
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "ws" || u.Host == "" || u.User != nil || u.Fragment != "" {
+	if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" || u.User != nil || u.Fragment != "" {
 		return nil, errors.New("websocket: invalid endpoint")
 	}
 	address := u.Host
 	if u.Port() == "" {
-		address = net.JoinHostPort(u.Hostname(), "80")
+		port := "80"
+		if u.Scheme == "wss" {
+			port = "443"
+		}
+		address = net.JoinHostPort(u.Hostname(), port)
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	var conn net.Conn
+	if u.Scheme == "wss" {
+		conn, err = (&tls.Dialer{Config: &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12}}).DialContext(ctx, "tcp", address)
+	} else {
+		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	}
 	if err != nil {
 		return nil, err
 	}

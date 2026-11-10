@@ -3,6 +3,7 @@ package leader
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -48,12 +49,13 @@ type MemberLine struct {
 	Queue      int              `json:"queue"`
 }
 type State struct {
-	mu      sync.Mutex
-	LastSeq uint64       `json:"lastSeq"`
-	Rev     uint64       `json:"rev"`
-	Goals   []GoalLine   `json:"goals"`
-	Tasks   []TaskLine   `json:"tasks"`
-	Members []MemberLine `json:"members"`
+	PausedThreads []event.ID `json:"pausedThreads,omitempty"`
+	mu            sync.Mutex
+	LastSeq       uint64       `json:"lastSeq"`
+	Rev           uint64       `json:"rev"`
+	Goals         []GoalLine   `json:"goals"`
+	Tasks         []TaskLine   `json:"tasks"`
+	Members       []MemberLine `json:"members"`
 }
 
 func (s *State) Apply(fact event.Event) error {
@@ -61,6 +63,12 @@ func (s *State) Apply(fact event.Event) error {
 	defer s.mu.Unlock()
 	s.LastSeq = max(s.LastSeq, fact.Seq)
 	switch fact.Type {
+	case group.Paused, group.Resumed:
+		var err error
+		s.PausedThreads, err = group.FoldPauses(s.PausedThreads, fact)
+		if err != nil {
+			return err
+		}
 	case task.Progressed:
 		progress, err := event.Decode[task.Progress](fact)
 		if err != nil {
@@ -86,6 +94,12 @@ func (s *State) Apply(fact event.Event) error {
 			return err
 		}
 		s.addMember(member)
+	case group.MemberRemoved:
+		member, err := event.Decode[group.Member](fact)
+		if err != nil {
+			return err
+		}
+		s.Members = slices.DeleteFunc(s.Members, func(item MemberLine) bool { return item.ID == member.ID })
 	case task.Created, task.Opened, task.QueuedEvent, task.Started, task.Reported, task.Closed, task.Updated, task.Reviewed, task.PhaseChanged:
 		card, err := event.Decode[task.Card](fact)
 		if err != nil {
@@ -166,11 +180,12 @@ func (s *State) Apply(fact event.Event) error {
 }
 
 type View struct {
-	Rev     uint64       `json:"rev"`
-	LastSeq uint64       `json:"lastSeq"`
-	Goals   []GoalLine   `json:"goals"`
-	Tasks   []TaskLine   `json:"tasks"`
-	Members []MemberLine `json:"members"`
+	PausedThreads []event.ID   `json:"pausedThreads,omitempty"`
+	Rev           uint64       `json:"rev"`
+	LastSeq       uint64       `json:"lastSeq"`
+	Goals         []GoalLine   `json:"goals"`
+	Tasks         []TaskLine   `json:"tasks"`
+	Members       []MemberLine `json:"members"`
 }
 
 func (s *State) Snapshot() View {
@@ -180,7 +195,7 @@ func (s *State) Snapshot() View {
 	for i := range tasks {
 		tasks[i].Claims = append([]ClaimLine(nil), tasks[i].Claims...)
 	}
-	return View{Rev: s.Rev, LastSeq: s.LastSeq, Goals: append([]GoalLine(nil), s.Goals...), Tasks: tasks, Members: append([]MemberLine(nil), s.Members...)}
+	return View{PausedThreads: append([]event.ID(nil), s.PausedThreads...), Rev: s.Rev, LastSeq: s.LastSeq, Goals: append([]GoalLine(nil), s.Goals...), Tasks: tasks, Members: append([]MemberLine(nil), s.Members...)}
 }
 func (s *State) addMember(member group.Member) {
 	role := member.Role

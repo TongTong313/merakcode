@@ -25,32 +25,33 @@ type Profile struct {
 }
 
 type Launcher struct {
-	Unavailable       func(context.Context, Status) error
-	ApproveNetwork    func(context.Context, string) (bool, error)
-	NetworkDenied     func(context.Context, NetworkDenial) error
-	ProtectionChanged func(*ProtectionError) error
-	FileDenied        func(*DenialError) error
-	MemberName        string
-	Disabled          bool
-	StateDir          string
-	Project           string
-	Reclaimable       bool
-	ReclaimAccount    func() (bool, error)
-	mu                sync.Mutex
-	lease             io.Closer
-	closed            bool
-	lifetime          context.Context
-	endLifetime       context.CancelFunc
-	protections       map[*exec.Cmd][]protectionSnapshot
-	running           map[*exec.Cmd]*launchRun
-	closeDone         chan struct{}
-	closeErr          error
-	startups          map[*exec.Cmd]*commandStartup
-	runtimeFailure    bool
-	waitingAccount    bool
-	active            int
-	idleSince         time.Time
-	previousAccount   string
+	Unavailable        func(context.Context, Status) error
+	ApproveNetwork     func(context.Context, string) (bool, error)
+	NetworkDenied      func(context.Context, NetworkDenial) error
+	ProtectionChanged  func(*ProtectionError) error
+	FileDenied         func(*DenialError) error
+	MemberName         string
+	Disabled           bool
+	StateDir           string
+	Project            string
+	Reclaimable        bool
+	ReclaimAccount     func() (bool, error)
+	mu                 sync.Mutex
+	privateDirectories map[string]struct{}
+	lease              io.Closer
+	closed             bool
+	lifetime           context.Context
+	endLifetime        context.CancelFunc
+	protections        map[*exec.Cmd][]protectionSnapshot
+	running            map[*exec.Cmd]*launchRun
+	closeDone          chan struct{}
+	closeErr           error
+	startups           map[*exec.Cmd]*commandStartup
+	runtimeFailure     bool
+	waitingAccount     bool
+	active             int
+	idleSince          time.Time
+	previousAccount    string
 }
 
 type commandStartup struct {

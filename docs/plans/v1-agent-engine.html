@@ -1043,7 +1043,7 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
 ├── event/           事件、事件流、总线                        不依赖其他引擎包
 ├── store/           存储契约。子包 memory 是测试用的内存实现     依赖 event
 ├── model/           模型接口、消息、片段、流。子包 catalog、fake、openai、anthropic、gemini
-├── tool/            工具接口和工具池。子包 fs、shell、web、groupkit、leaderkit
+├── tool/            工具接口和工具池。子包 fs、shell、web、mcp、groupkit、leaderkit
 ├── permission/      三档模式、策略、权限门、审批路由            依赖 tool
 ├── profile/         成员档案和两份内置默认档案                  纯数据
 ├── session/         会话状态、Fold、管理器                     依赖 event、store、model
@@ -2160,9 +2160,9 @@ type Filter struct {
         <td>群状态改了、记录了一个决定</td>
       </tr>
       <tr>
-        <td><code>group.paused</code> / <code>group.resumed</code> / <code>group.throttled</code></td>
+        <td><code>group.paused</code> / <code>group.resumed</code></td>
         <td>leader</td>
-        <td>人暂停、恢复了群；某条线程因限流或预算暂停唤醒模型</td>
+        <td>人暂停、恢复了群；某条线程的回合出错后暂停，人从客户端恢复。每分钟次数超了不发事件</td>
       </tr>
       <tr>
         <td><code>workspace.created</code> / <code>workspace.released</code></td>
@@ -3015,7 +3015,8 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input, steer St
       <li>被打断的那次模型调用已花掉的 token 照样记账，已吐出的文字作为一条标了“被打断”的消息留在事件流里。</li>
       <li>
         一步里的多个工具结果合成一条消息送回。<code>Limits</code>
-        来自档案预算，超了就停，由调用方决定继续还是放弃：单聊里是人，群里是任务的 Leader。
+        来自档案预算，超了就停，由调用方决定继续还是放弃：单聊里是人，群里是任务的 Leader（怎么继续见 10.2
+        节“超预算”）。
       </li>
       <li>
         后台子智能体完成时，运行器把 <code>child.finished</code> 变成一条 <code>Input</code> 经
@@ -3307,7 +3308,7 @@ type Group struct {
 	Project       Project    `json:"project"`       // repo (remote url + local checkout per device) or folder
 	DefaultLeader event.ID   `json:"defaultLeader"` // member with AgentRole leader; runs the group thread
 	Brief         Brief      `json:"brief"`         // goal, conventions, check command, target branch; has a revision
-	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, allowed and denied hosts, budgets, setup
+	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, allowed and denied hosts, turns per minute, setup
 }
 
 type MemberKind string
@@ -3600,7 +3601,9 @@ type Run interface {
       </tr>
       <tr>
         <td><code>remote</code></td>
-        <td>另一台电脑上 <code>merak serve</code> 名下的成员。事件原样转发</td>
+        <td>
+          另一台电脑上 <code>merak serve</code> 名下的成员，只当 Worker。事件原样转发；代码经仓库远端回来（5.5 节）
+        </td>
         <td>随对方成员</td>
       </tr>
     </table>
@@ -3636,9 +3639,36 @@ func translate(line []byte, scope event.Scope, actor event.Actor) ([]event.Event
     <h3 id="member-remote">5.5 远程的 MerakCode 成员</h3>
     <p>
       <code>worker/remote</code> 用 Go 协议客户端连到另一台电脑的 <code>merak serve</code>，对方名下所有已注册成员（内置
-      Worker、它那台机器上的 Claude Code、Codex
-      等）都可以被拉进本群，事件原样转发。局域网里手动填地址和令牌直连；跨网经云端的设备链接（第 13 节）。
+      Worker、它那台机器上的 Claude Code、Codex 等）都可以被拉进本群当
+      Worker，事件原样转发。局域网里手动填地址和令牌直连；跨网经云端的设备链接（第 13 节）。
     </p>
+    <ul>
+      <li>
+        只当 Worker。Leader
+        线程是群宿主引擎里的调度器、群状态和快速通道，本地群的宿主是本机引擎，云端群的是云端。远程成员不能做默认
+        Leader，也不能做任务的 Leader，这两种请求被拒。要让编排跑在别处，建云端群。
+      </li>
+      <li>
+        在对方的检出里干活。对方成员注册时声明了本机检出（远端地址到路径，13.2
+        节）；群的项目是有远端的仓库且对方声明了同一远端时，远程成员能接 <code>worktree</code> 形态的任务，否则只能接
+        <code>none</code>。<code>folder</code> 和 <code>inplace</code> 不派给远程成员，派了被拒，错误码回到
+        Leader。工作区由对方引擎建：先 fetch，再从任务卡的 <code>Base</code> 建 worktree；fetch 后仍拿不到
+        <code>Base</code>，认领失败。
+      </li>
+      <li>
+        代码经仓库远端回来。<code>request_merge</code> 时对方把分支 <code>merak/&lt;task&gt;/&lt;member&gt;</code>
+        推到远端；本机 fetch 这条分支，之后和本地认领一样：审核看的 diff
+        从本机检出算，合并队列在本机变基、跑检查命令、快进。没有额外的校验步骤，合并队列和人的审核就是校验。合并成功后本机删掉远端上的这条分支，对方释放
+        worktree。
+      </li>
+      <li>
+        权限门和沙箱在对方引擎里，按对方成员的档案和对方设备的用户配置（<code>DeniedHosts</code>
+        是对方设备主人的否决权，10.3 节）；审批请求转到本群，按 10.2 节路由，回答送回对方。
+      </li>
+      <li>
+        报告、进度、问题、会话事件原样转发进本群的流；对方断线时它名下进行中的认领标为中断，任务线程决定等还是改派。
+      </li>
+    </ul>
 
     <h3 id="member-external-leader">5.6 外部产品怎么当 Leader</h3>
     <p>Leader 比 Worker 多的只有一套编排工具和一份群状态，把这两样递给外部产品即可。一条线程一个外部 Leader 进程。</p>
@@ -3760,7 +3790,7 @@ func (g *Threads) HandOver(ctx context.Context, t *Thread, leader event.ID) (*Th
         <rect class="b" x="490" y="160" width="230" height="80" rx="6" />
         <text class="t" x="605" y="182" text-anchor="middle" dominant-baseline="middle">攒批与节流</text>
         <text class="s" x="605" y="204" text-anchor="middle" dominant-baseline="middle">静默窗口 3 s · 每批 30 条</text>
-        <text class="s" x="605" y="222" text-anchor="middle" dominant-baseline="middle">每分钟 6 次 · 每小时预算</text>
+        <text class="s" x="605" y="222" text-anchor="middle" dominant-baseline="middle">线程每分钟 6 次 · 群 30 次</text>
         <path class="f" d="M720 200 H760" />
         <rect class="b" x="760" y="160" width="170" height="80" rx="6" />
         <text class="t" x="845" y="182" text-anchor="middle" dominant-baseline="middle">摘要消息</text>
@@ -3823,26 +3853,39 @@ type Scheduler struct {
 }
 
 type Limits struct {
-	Preempt           Priority      // Urgent
-	QuietWindow       time.Duration // low-priority events wait this long so a batch forms; 3s
-	Coalesce          time.Duration // messages from one human within this window merge into one input; 2s
-	MaxBatch          int           // events per digest; the rest wait for the next turn; 30
-	MaxTurnsPerMinute int           // 6 per thread; beyond it the queue keeps batching and the fast lane keeps answering
-	HourlyTokens      int           // per thread, plus a group-wide cap in group settings; beyond either the model
-	                                // is not woken and group.throttled is emitted
+	Preempt        Priority      // Urgent
+	QuietWindow    time.Duration // low-priority events wait this long so a batch forms; 3s
+	Coalesce       time.Duration // messages from one human within this window merge into one input; 2s
+	MaxBatch       int           // events per digest; the rest wait for the next turn; 30
+	TurnsPerMinute TurnLimits    // from group settings; beyond either limit the queue keeps batching and the fast
+	                             // lane keeps answering; no event is emitted
+}
+
+// TurnLimits caps how often Leader threads wake the model, over a sliding 60 seconds; slots are given first come,
+// first served. It is the group setting "turnsPerMinute". A missing field takes its default; a value must be a
+// positive integer. A change applies from the next wake.
+type TurnLimits struct {
+	Thread int `json:"thread"` // each thread of the group; default 6
+	Group  int `json:"group"`  // all threads of the group together; default 30
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
+	var pending []event.Event // events that need the model; kept across iterations, never dropped
 	for {
-		batch, err := s.queue.Wait(ctx) // blocks until something arrives, then drains what is already there
+		// Wait returns as soon as events arrive and drains what is already there. With pending events and no free
+		// slot it also returns, empty, at the moment the oldest turn leaves the 60-second window of the thread or
+		// the group; with nothing pending it has no deadline.
+		arrived, err := s.queue.Wait(ctx, s.wakeAt(pending))
 		if err != nil {
 			return err
 		}
-		batch = s.fast.Handle(ctx, batch) // events the fast lane fully handles drop out; it also sends receipts
-		batch = s.coalesce(batch)         // keep the newest progress per task, merge one human's burst
-		if len(batch) == 0 || !s.limits.allow(s.state) {
-			continue // nothing needs the model, or we are throttled: no cost
+		arrived = s.fast.Handle(ctx, arrived)            // runs even while over the limit: receipts, routing, delivery
+		pending = s.coalesce(append(pending, arrived...)) // keep the newest progress per task, merge one human's burst
+		if len(pending) == 0 || !s.limits.take(s.thread) {
+			continue // nothing needs the model, or no slot in the thread or the group yet: no cost
 		}
+		var batch []event.Event
+		batch, pending = s.split(pending) // MaxBatch events by priority; the rest wait for the next turn
 		in := s.digest.Render(batch, s.state)
 		if _, err := s.loop.RunTurn(ctx, s.session, in, s); err != nil {
 			s.pause(ctx, err) // publishes group.paused for this thread; a human resumes from the client
@@ -3889,12 +3932,10 @@ func (s *Scheduler) Preempt() &lt;-chan struct{} { return s.queue.Above(s.limits
       </tr>
       <tr>
         <td>限流</td>
-        <td>一条线程每分钟最多唤醒模型 6 次；超过后事件继续攒着，快速通道继续发回执和路由</td>
-      </tr>
-      <tr>
-        <td>预算</td>
         <td>
-          每条线程和整个群各有每小时的 token 和费用上限；超了不再唤醒模型，发 <code>group.throttled</code> 通知 owner
+          一条线程每分钟最多唤醒模型 6 次，一个群的所有线程合计每分钟最多 30 次，两个数都在群设置的
+          <code>turnsPerMinute</code> 里可改；按滑动的 60
+          秒算，名额按到达顺序给；超过后事件继续攒着，快速通道继续发回执和路由，不发事件
         </td>
       </tr>
       <tr>
@@ -4004,7 +4045,7 @@ func (s *Sentinel) Run(ctx context.Context) error</code></pre>
       <tr>
         <td>Worker 的审批请求</td>
         <td>
-          按 10.2 节的路由表送到有对应角色的人的收件箱；自动审批模式下常规类别送给
+          按 10.2 节的路由表送到有对应角色的人的收件箱；仅询问危险行为模式下常规类别先送给任务线程的
           Leader（进慢速通道）。超时转为任务受阻
         </td>
       </tr>
@@ -4057,7 +4098,7 @@ func (f *FastLane) Handle(ctx context.Context, batch []event.Event) (rest []even
 		case inTaskThread(e):         // human.said inside a task's discussion thread
 			f.deliverToClaim(ctx, e)
 		case e.Type == permission.Requested:
-			f.router.Route(ctx, e)    // section 10.2; auto mode may hand routine ones to the thread's Leader
+			f.router.Route(ctx, e)    // section 10.2; auto mode hands routine ones to the thread's Leader first
 		case e.Type == workspace.MergeConflicted:
 			f.createIntegrationTask(ctx, e)
 		case f.matchTrigger(e):
@@ -4142,8 +4183,8 @@ func (s *State) Render(budget int, focus event.ID) string</code></pre>
       <tr>
         <td><code>create_task</code> / <code>update_task</code></td>
         <td>
-          写任务卡：标题、描述、验收标准、碰的文件、依赖、工作区形态、要不要人审核、参与者。群线程建的是顶层任务，任务线程建的是自己子树里的子任务。从草稿到发布发
-          <code>task.opened</code>
+          写任务卡：标题、描述、验收标准、碰的文件、依赖、工作区形态、要不要人审核、参与者、预算。群线程建的是顶层任务，任务线程建的是自己子树里的子任务。从草稿到发布发
+          <code>task.opened</code>。给进行中的任务加预算要 owner 批（10.2 节“超预算”）
         </td>
       </tr>
       <tr>
@@ -4996,7 +5037,7 @@ type Action struct {
       </tr>
       <tr>
         <td>工作区内写文件、跑用户规则没列的命令</td>
-        <td>approver（仅询问危险行为模式下任务线程的 Leader 可代）</td>
+        <td>approver（仅询问危险行为模式下先给任务线程的 Leader 代答，有人在线也一样；Leader 拿不准再找人）</td>
       </tr>
       <tr>
         <td>审核标了“需要审核”的任务；“计划先经人确认”</td>
@@ -5004,7 +5045,8 @@ type Action struct {
       </tr>
       <tr>
         <td>
-          工作区外写入、删除、保护路径、新的网络目标、沙箱不可用时启动不能转发审批的成员、给成员发超出任务卡范围的指示
+          工作区外写入、删除、保护路径、新的网络目标、沙箱不可用时启动不能转发审批的成员、给成员发超出任务卡范围的指示、启用工作区配置里的
+          MCP 服务器（10.5 节）
         </td>
         <td>admin</td>
       </tr>
@@ -5027,6 +5069,8 @@ func Need(req Request, ws workspace.Workspace, g group.Group) Role {
 		return group.RoleAdmin
 	case req.Kind == KindLaunch: // a member that cannot forward approvals, started without a sandbox (section 10.3)
 		return group.RoleAdmin
+	case req.Kind == KindWorkspace: // an MCP server from the workspace file (section 10.5)
+		return group.RoleAdmin
 	case req.Kind == KindMerge &amp;&amp; g.Settings.MergeNeedsOwner, req.Kind == KindBudget, req.Kind == KindMode:
 		return group.RoleOwner
 	default:
@@ -5034,15 +5078,58 @@ func Need(req Request, ws workspace.Workspace, g group.Group) Role {
 	}
 }
 
-// Route finds who answers. Order: humans named on the task card with the role and online; any online human of the
-// group with the role; in auto mode and for RoleApprover, the task thread's Leader; otherwise the request waits in
-// the inboxes of everyone with the role (across devices through the cloud) until Timeout, then the task is blocked
-// and the owner is notified. A human with a higher role may always answer for a lower one.
+// Route finds who answers. In auto mode in a group, a routine request (a tool call whose Need is RoleApprover, raised
+// by a Worker) goes first to the task thread's Leader, even when a human with the role is online; the Leader answers
+// with approve or escalates with ask_human. Every other request, and every escalated one, goes to humans in order:
+// humans named on the task card with the role and online; any online human of the group with the role; otherwise
+// the request waits in the inboxes of everyone with the role (across devices through the cloud). Reviews, plan
+// confirmations and requests raised by a Leader thread itself always go to humans. Timeout counts from the first
+// request, not from the escalation; when it passes, the task is blocked and the owner is notified. Workspace
+// confirmations belong to no task: they have no Timeout and wait in the inboxes until answered. A human with a
+// higher role may always answer for a lower one.
 func (r *Router) Route(ctx context.Context, req Request) (Answerer, error)</code></pre>
     <p>
       本地单人使用时这个人持有全部角色，所有请求都到他这里；角色检查是真的，只是落在同一个人头上。外部 Leader 用 MCP 的
-      <code>approve</code> 工具回答，受同一张表限制，想批 owner 级别的事会被拒绝并转给人。
+      <code>approve</code> 工具回答，受同一张表限制，想批 admin 或 owner 级别的事会被拒绝并转给人。
     </p>
+    <h4>超预算</h4>
+    <p>
+      预算有两层：成员档案的预算限制这个成员在一个任务（单聊里是一条会话）上的用量，任务卡的预算限制整个任务所有认领的合计；两层都只能由
+      owner 放宽。认领撞到任何一层的 token、费用或时长上限就停下并交一份“受阻”报告，任务受阻。任务线程的 Leader
+      决定下一步：拆细、改派、取消，或者申请加预算。
+    </p>
+    <ul>
+      <li>
+        申请：Leader 调
+        <code>update_task</code>
+        给任务卡加预算，写的是增量，token、费用、时长至少一项大于零；步数是每回合的限制，不在此列。非 owner
+        提出的加预算是一个 Kind 为 <code>budget</code> 的请求，路由给 owner，任务卡在批准前不变；owner 自己经
+        <code>task.update</code> 改预算直接生效。请求带任务 id、Leader
+        的一句话理由、已用量（token、费用、已用时长）、现在的上限（任务卡的和受阻成员档案的）和增量。
+      </li>
+      <li>
+        批准：增量记进任务卡的 <code>Grants</code>，不改档案，不影响别的任务。任务的合计上限是任务卡预算加所有
+        grant；每个成员在这个任务上的个人上限是它档案的预算加所有 grant；时长上限同样顺延。任务回到受阻前的状态，Leader
+        重新派工：派回原成员则原会话继续，派给别人按接力规则。
+      </li>
+      <li>拒绝：任务保持受阻，Leader 拆细、改派或取消；引擎不会自动重新申请。</li>
+      <li>
+        单聊：没有 owner 审批。<code>turn.finished</code> 带预算类停止原因时客户端提示人；人下一次
+        <code>session.send</code> 带
+        <code>extendBudget: true</code>
+        就给这条会话再加一份档案预算（token、费用、时长各加档案里的数），不带的发送被拒并返回同一个错误码。
+      </li>
+    </ul>
+    <p class="file">engine/task/task.go</p>
+    <pre><code>// Grant is one approved budget increase for this task (section 10.2). Limits are checked against the card's
+// budget plus every grant, and against each member's profile budget plus every grant.
+type Grant struct {
+	Tokens    int           `json:"tokens,omitempty"`
+	Cost      float64       `json:"cost,omitempty"` // same currency as MaxCost
+	WallClock time.Duration `json:"wallClock,omitempty"`
+	By        event.Actor   `json:"by"`
+	At        time.Time     `json:"at"`
+}</code></pre>
 
     <h3 id="sec-sandbox">10.3 沙箱</h3>
     <p>
@@ -5332,13 +5419,118 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       <li>
         工作区配置（<code>merakcode.json</code>、<code>merakcode.jsonc</code>、<code>.merakcode/</code>）来自仓库，可能是克隆来的。引擎在会话开始时读一次并记内容哈希；涉及安全的字段，比如权限规则、MCP
         服务器、要跑的命令，首次见到的哈希和之后的任何变化都要人确认才生效，权限判断和 MCP
-        只读已确认的快照。确认和拒绝按项目以内容哈希记进用户配置，被拒绝的不再重复问。
+        只读已确认的快照。确认和拒绝按项目以内容哈希记进用户配置，被拒绝的不再重复问。文件格式、确认的单位和记录见 10.5
+        节。
       </li>
       <li>
         确认后的配置在它下一次被读取的边界生效，进行中的操作继续用原快照：按轮读取的配置下一轮前生效；工具列表和 MCP
         服务器在会话开始时定下，下一次会话生效；沙箱 Profile 和 setup 命令在下一次认领或启动成员进程时生效。
       </li>
     </ul>
+
+    <h3 id="sec-workspace-config">10.5 工作区配置与 MCP 服务器</h3>
+    <p>
+      MCP 服务器有两个来源：用户配置（数据目录里的 <code>merakcode.json</code>）和工作区配置（工作区根目录的
+      <code>merakcode.json</code> 或 <code>merakcode.jsonc</code>）；<code>merak acp</code>
+      的会话多一个来源，编辑器传进来的，见下面“ACP 客户端”一条。两处用同一个 <code>mcpServers</code>
+      字段，同名时用户配置的生效，工作区那一项不启动也不问。用户配置是用户自己写的，不用确认；工作区配置可能是克隆来的，按
+      10.4 节逐项确认。
+    </p>
+    <pre><code>// merakcode.jsonc at the workspace root
+{
+  // stdio servers only
+  "mcpServers": {
+    "docs": {
+      "command": "node",
+      "args": ["./tools/docs-mcp.js", "--stdio"],
+      "env": { "DOCS_ROOT": "docs" },
+    },
+  },
+}</code></pre>
+    <ul>
+      <li>
+        文件：读会话工作区的根目录，群里是认领的工作区，单聊是会话的工作目录。两个文件用同一个解析器：标准 JSON
+        加注释和尾逗号，自己写，不加依赖。两个文件同时存在、解析失败或有未知字段时整份不用，发一个 config 域（3xxx）的
+        MRK 码，会话照常开始。现在只有 <code>mcpServers</code> 一个字段；<code>.merakcode/</code> 目录留给以后。
+      </li>
+      <li>
+        字段：服务器名由 1 到 32 个字母、数字、<code>_</code>、<code>-</code> 组成；<code>command</code> 必填，含
+        <code>/</code> 的相对路径按工作区根解析，否则在 PATH 里找；<code>args</code> 是字符串数组；<code>env</code>
+        是变量名到字面值，不做 <code>${VAR}</code> 展开，要密钥的服务器写进用户配置。只支持 stdio，<code>url</code>
+        这类远程字段现在算未知字段。
+      </li>
+      <li>
+        确认：单位是一台服务器。哈希是这一项解析后重新编码成 JSON 的
+        SHA-256，注释、空白、键的顺序和别的服务器都不影响它。请求的 Kind 是 <code>workspace</code>，需要 admin，Leader
+        批不了；单聊直接问人。请求里有项目、服务器名、<code>command</code>、<code>args</code> 和
+        <code>env</code> 的变量名，不带变量值。回答一律记进用户配置的
+        <code>workspaceTrust</code
+        >，按（项目、条目、哈希）一条，旧的不删，来回切分支不会反复问。同一个（项目、条目、哈希）同时只有一个未答的请求。这种请求不挂在任务上，不超时、不让任务受阻，留在收件箱等人回答。
+      </li>
+      <li>
+        生效：会话第一轮开始前定下这条会话的服务器。已确认的启动，被拒绝的跳过，没确认过的这次不启动，同时发出确认请求；确认后下一次会话生效。项目按
+        10.3 节取：群里是群的项目目录，单聊是会话的工作目录，都解析成真实路径，所以同一个项目的各个工作树共用确认记录。
+      </li>
+      <li>
+        进程：服务器经 <code>platform/sandbox.Command</code>
+        启动，用这条会话的沙箱配置，工作目录是工作区根，环境是 EnvAllow 放行的变量加上
+        <code>env</code
+        >，联网走同一个代理和白名单；全面接管下不加限制。会话开始时启动并取工具列表，会话结束时停掉。启动或取列表失败（10
+        秒没完成也算失败）就跳过这台，发一个 tool 域（5xxx）的 MRK 码，会话照常继续。
+      </li>
+      <li>
+        工具：每个工具成为延迟工具 <code>mcp__服务器名__工具名</code>，在权限门里算
+        <code>exec</code>，不信服务器自己报的只读标注。
+      </li>
+      <li>
+        范围：这两处的服务器只给内置成员用。外部产品读它自己的 MCP 配置，MerakCode 只给它挂 <code>merak mcp</code>（8.3
+        节）。
+      </li>
+      <li>
+        ACP 客户端：<code>merak acp</code> 的 <code>session/new</code> 可以带
+        <code>mcpServers</code
+        >。客户端是用户自己的编辑器，它替用户回答审批请求，所以它传的服务器按用户配置对待：不确认，这条会话就启动。字段规则同上，只收
+        stdio；<code>initialize</code> 回的 <code>mcpCapabilities</code> 里 <code>http</code> 和 <code>sse</code> 都是
+        false，客户端仍传了这两种就拒绝整个 <code>session/new</code>（-32602）；与用户配置同名时用户配置的生效。<code
+          >env</code
+        >
+        的值按密钥处理。用户配置和工作区的服务器在 ACP 会话里照常生效；工作区的确认请求像别的审批一样以
+        <code>session/request_permission</code> 发给编辑器，回答记进 <code>workspaceTrust</code>，下一次
+        <code>session/new</code> 生效。
+      </li>
+      <li>
+        用户配置里 <code>env</code> 的值按密钥处理：<code>config.get</code> 只给变量名，诊断包脱敏。<code
+          >config.set</code
+        >
+        暂不支持这个字段，用户手改文件。
+      </li>
+    </ul>
+    <p class="file">internal/platform/config/workspace.go</p>
+    <pre><code>// MCPServer is one stdio MCP server. The user configuration and the workspace file use the same shape.
+type MCPServer struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"` // literal values; never logged or put in events
+}
+
+// Workspace is the workspace file. An unknown field makes the whole file unusable.
+type Workspace struct {
+	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+}
+
+// ReadWorkspace reads merakcode.json or merakcode.jsonc at root; comments and trailing commas are allowed in both.
+// Neither file present returns an empty Workspace; both present is an error.
+func ReadWorkspace(root string) (Workspace, error)
+
+// Trust is one answer to a workspace confirmation, kept in the user configuration under workspaceTrust. Item names
+// the entry, for example "mcpServers/docs"; Hash is the hex SHA-256 of the entry re-encoded as JSON. Permission
+// rules and setup commands from the workspace will use the same record.
+type Trust struct {
+	Project  string `json:"project"`
+	Item     string `json:"item"`
+	Hash     string `json:"hash"`
+	Decision string `json:"decision"` // allow or deny
+}</code></pre>
     <h2 id="protocol">11. 协议与 SDK</h2>
 
     <h3 id="proto-transport">11.1 传输方式和握手</h3>
@@ -6773,7 +6965,7 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       的助手子命令、接入所有运行器、全面接管模式、档案的
       <code>Network</code> 字段、CI 的 <code>sandbox</code> job（Windows 一次性初始化和重置脚本，并删掉工作流里指向 v0.3
       沙箱脚本的 <code>external-network</code> 步骤）。不做：Linux 的挂载命名空间和
-      seccomp、没有沙箱机制的系统上的替代方案、工作区配置的确认机制（10.4 节，随工作区配置一起做）。
+      seccomp、没有沙箱机制的系统上的替代方案、工作区配置的确认机制（10.5 节，S27 随 MCP 服务器一起做）。
     </p>
 
     <p class="file">S26 仅询问危险行为模式与审批路由</p>
@@ -6783,14 +6975,28 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </p>
     <ol>
       <li>策略：该模式的允许和要问的类别各一个用例；保护路径；用户规则里的命令前缀。</li>
-      <li>路由：按角色找人，参与者优先；任务线程的 Leader 代答常规类别并可升级给人；owner 级别的 Leader 批不了。</li>
-      <li>超时转受阻并通知 owner；“记住这次选择”写进配置。</li>
+      <li>
+        路由：常规类别先到任务线程的 Leader，有 approver 在线也一样；Leader
+        升级后和其他请求一样按角色找人，参与者优先；审核、计划确认和 Leader 自己发起的请求直接给人；admin 和 owner
+        级别的 Leader 批不了。
+      </li>
+      <li>超时从第一次请求算起（Leader 升级不重新计时），到了转受阻并通知 owner；“记住这次选择”写进配置。</li>
+      <li>
+        超预算（10.2 节“超预算”）：认领撞到任务卡或档案的上限后任务受阻；Leader 经 <code>update_task</code> 加预算产生
+        <code>budget</code> 请求到 owner，Leader 自己批不了；批准后任务卡多一条
+        grant，派回原成员后原会话在新上限内继续；拒绝后任务保持受阻；owner 经
+        <code>task.update</code> 加预算直接生效；单聊里 <code>session.send</code> 带
+        <code>extendBudget</code> 再给一份档案预算，不带的被拒。
+      </li>
     </ol>
-    <p>只实现：该模式的策略、路由算法、<code>approve</code> 工具、超时、记住选择。不做：规则编辑界面。</p>
+    <p>
+      只实现：该模式的策略、路由算法、<code>approve</code> 工具、超时、记住选择、超预算的申请和 grant、单聊的
+      <code>extendBudget</code>。不做：规则编辑界面、按成员或按群的总预算。
+    </p>
 
     <p class="file">S27 MCP：客户端与服务端</p>
     <p>
-      做完以后：MCP 服务器的工具成为延迟工具；外部 Worker 经
+      做完以后：用户配置和确认过的工作区配置里的 MCP 服务器，它们的工具成为延迟工具；外部 Worker 经
       <code>merak mcp --claim C --as worker</code> 拿到群工具并能交结构化报告；<code
         >merak mcp --thread T --as leader</code
       >
@@ -6798,8 +7004,23 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </p>
     <ol>
       <li>
-        MCP 客户端连一个测试用的 MCP 服务器，它的工具成为延迟工具，经 <code>load_tools</code> 和
-        <code>call_tool</code> 可用。
+        配置：解析两个文件名、注释和尾逗号、两个文件同时存在、未知字段、字段校验；用户配置与工作区同名时用户的生效；<code
+          >config.get</code
+        >
+        不给 <code>env</code> 的值。
+      </li>
+      <li>
+        确认：工作区的服务器第一次出现时不启动并发出
+        <code>workspace</code>
+        请求；确认后下一次会话启动它；拒绝后不再问；改了这一项会再问，改注释或别的服务器不会；同一项目的另一个工作树不再问。
+      </li>
+      <li>
+        MCP 客户端在沙箱里连一个测试用的 MCP 服务器，它的工具成为延迟工具 <code>mcp__服务器名__工具名</code>，经
+        <code>load_tools</code> 和 <code>call_tool</code> 可用；启动失败的服务器被跳过，会话照常继续。
+      </li>
+      <li>
+        ACP：<code>merak acp</code> 的 <code>session/new</code> 带一台 stdio 服务器，它的工具这条会话就可用；带 http 或
+        sse 的被拒；用户配置里的同名服务器优先；工作区的确认请求以 <code>session/request_permission</code> 送到客户端。
       </li>
       <li>
         MCP 服务端（worker）：一个测试客户端能调 <code>submit_report</code>，报告出现在任务上；Claude Code 假二进制经
@@ -6811,8 +7032,10 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       </li>
     </ol>
     <p>
-      MCP 服务器配置来自工作区时，遵守 10.4 节的确认规则。只实现：MCP 客户端、MCP 服务端两种角色、各适配器的 MCP
-      挂载配置、<code>Caps.MCP</code>。不做：技能、插件。
+      只实现：10.5 节的 <code>mcpServers</code>（用户配置、工作区文件、ACP 客户端传入）、<code>workspaceTrust</code>
+      确认记录、stdio 的 MCP 客户端、MCP 服务端两种角色、各适配器的 MCP 挂载配置、<code>Caps.MCP</code>。不做：远程 MCP
+      服务器、<code>config.set</code>
+      和设置页编辑 MCP 服务器、工作区配置的其他字段、技能、插件。
     </p>
 
     <p class="file">S28 外部产品当 Leader</p>
@@ -6824,28 +7047,35 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </ol>
     <p>只实现：Leader 侧的运行器抽象（内置和外部走同一个调度器）、队长模板。不做：外部 Leader 的上下文管理。</p>
 
-    <p class="file">S29 worktree 优化，限流、预算与哨兵</p>
+    <p class="file">S29 worktree 优化，限流与哨兵</p>
     <p>
       做完以后：认领开始时自动跑安装命令；用过的 worktree 复用，node_modules
-      不用重装；每条线程和每个群都有每分钟次数和每小时预算上限；哨兵发现卡住、死进程、原地打转、预算烧得太快时提醒相关的人和线程。
+      不用重装；每条线程和每个群都有每分钟次数上限，两个数在群设置里可改；哨兵发现卡住、死进程、原地打转、预算烧得太快时提醒相关的人和线程。
     </p>
     <ol>
       <li><code>setup</code> 命令在工作区建好后运行一次，失败时任务受阻并附日志。</li>
       <li>复用：释放的 worktree 被下一个认领重置后使用，被 git 忽略的目录保留。</li>
       <li>
-        限流：超过每分钟次数时事件继续攒着，快速通道照常；超过每小时预算发 <code>group.throttled</code> 并通知 owner。
+        限流（6.2 节
+        <code>TurnLimits</code
+        >）：线程超过每分钟次数、群合计超过每分钟次数时事件继续攒着，快速通道照常，不发事件；名额空出来时没有新事件也会自己醒来，攒着的事件一个不丢地进下一批；群设置没写
+        <code>turnsPerMinute</code> 时用 6 和 30；改了以后下一次唤醒就按新值；0、负数和非整数被
+        <code>group.update</code> 拒绝。
       </li>
       <li>
         哨兵：6.2 节表里的每条规则一个测试；发现时发
         <code>sentinel.flagged</code> 并路由到线程和收件箱；每分钟检查一次，不调模型。
       </li>
     </ol>
-    <p>只实现：安装命令、复用池、两项限制、哨兵的八条规则。不做：按成员的预算、用模型判断“是否在原地打转”。</p>
+    <p>
+      只实现：安装命令、复用池、两项每分钟限制和群设置的 <code>turnsPerMinute</code>、哨兵的八条规则。不做：每小时的
+      token 和费用上限、按成员的预算、用模型判断“是否在原地打转”。
+    </p>
 
     <p class="file">D9 权限模式、沙箱状态、上下文与花费</p>
     <p>
       做完以后：设置里能选三档权限模式并看到风险提示；对话和群里能看到沙箱状态（可用、部分强制、不可用、已关闭）；每条会话有“上下文花在哪了”，每个群有按任务和成员汇总的
-      token 和费用；限流和哨兵的提醒进收件箱。
+      token 和费用；群设置里能改线程和群的每分钟次数；哨兵的提醒进收件箱。
     </p>
     <p class="muted">依赖：D7、S25 沙箱、S26 仅询问危险行为模式、S29 限流与哨兵。</p>
     <ol>
@@ -6858,11 +7088,17 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       </li>
       <li>
         上下文与花费视图：<code>session.budget</code> 画成分段条；<code>turn.finished</code>
-        的用量按任务和成员汇总成表。
+        的用量按任务和成员汇总成表，费用按币种分列，不换算，未知费用显示“未知”。
       </li>
-      <li><code>group.throttled</code> 和 <code>sentinel.flagged</code> 进收件箱并发系统通知。</li>
+      <li>
+        每分钟次数：群设置里两个数字输入框（线程、群），显示当前值或默认值 6 和 30，经 <code>group.update</code>
+        保存；没有改群设置权限的人只读；引擎拒绝的值显示错误码。
+      </li>
+      <li><code>sentinel.flagged</code> 进收件箱并发系统通知。</li>
     </ol>
-    <p>只实现：选择器、沙箱状态、花费视图、两类通知。不做：权限规则编辑界面、按成员设预算。</p>
+    <p>
+      只实现：选择器、沙箱状态、花费视图、每分钟次数的两个输入框、哨兵通知。不做：权限规则编辑界面、群设置的其他项、按成员设预算。
+    </p>
 
     <h3 id="phase-5">阶段 5：云端</h3>
 
@@ -6889,14 +7125,31 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
     </p>
 
     <p class="file">S31 远程 MerakCode 成员</p>
-    <p>做完以后：局域网里另一台电脑上 <code>merak serve</code> 名下的任何成员都能被拉进本地群。</p>
+    <p>
+      做完以后：局域网里另一台电脑上 <code>merak serve</code> 名下的任何成员都能作为 Worker
+      拉进本地群；它改的代码经仓库远端回到本机合并。
+    </p>
     <ol>
       <li>
-        两个真实的 <code>merak serve</code> 在随机端口上：A 列出 B 的成员；A 把任务派给 B 的成员，事件在 A
-        的群流里出现。
+        两个真实的 <code>merak serve</code> 在随机端口上：A 列出 B 的成员和它们声明的检出；A 把一个 <code>none</code>
+        任务派给 B 的成员，事件和报告在 A 的群流里出现。
       </li>
+      <li>
+        往返：一个裸仓库当远端，A 和 B 各有检出，A 的群项目是 A 的检出；一个 <code>worktree</code> 任务派给 B 的成员，B
+        在自己的检出里建 worktree 干活，<code>request_merge</code> 时推分支；A fetch
+        后合并队列变基、跑检查命令、快进，<code>merge.done</code> 在 A 的流里出现，远端上的分支被删掉。
+      </li>
+      <li>
+        拒绝：把远程成员设为默认 Leader 或任务 Leader；给远程成员派 <code>folder</code> 任务；群项目没有远端时派
+        <code>worktree</code> 任务。三种都返回错误码。
+      </li>
+      <li>B 断线：它名下进行中的认领在 A 这边标为中断。</li>
     </ol>
-    <p>只实现：remote 适配器（经 Go 协议客户端）、手动填地址和令牌。不做：自动发现。</p>
+    <p>
+      只实现：remote 适配器（经 Go 协议客户端）、手动填地址和令牌、注册时声明检出、<code>worktree</code> 和
+      <code>none</code> 两种形态、经远端的往返。不做：自动发现、远程 Leader、远程成员的 <code>folder</code> 和
+      <code>inplace</code> 形态、跨设备传产物文件。
+    </p>
 
     <p class="file">D10 云端登录与云端群</p>
     <p>
@@ -6910,7 +7163,10 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         <code>cloud.login</code>、<code>cloud.logout</code>（令牌只在引擎里）；设置页显示账号和本设备的在线状态。
       </li>
       <li>建群：kind 可选 cloud；没登录时灰掉并提示；云端群的事件经本机引擎转发，界面不区分本地群和云端群。</li>
-      <li>远程成员：加成员时可以填另一台 <code>merak serve</code> 的地址和令牌，列出对方的成员。</li>
+      <li>
+        远程成员：加成员时可以填另一台 <code>merak serve</code>
+        的地址和令牌，列出对方的成员；没有声明本群项目远端检出的成员标明“只能接不改代码的任务”。
+      </li>
     </ol>
     <p>
       只实现：登录、建群选项、远程成员表单。不做：网页端、手机端、把成员分享给别人的界面（放在云端仓库的网页端里）。
@@ -6994,7 +7250,7 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
         兼容）、存储契约（内存和远程）、运行器（内置和 Claude Code，从 S17 起）。
       </li>
       <li>
-        常量先写死。重建阈值、保留轮数、工具输出上限、静默窗口、限流次数、超时、哨兵阈值都先是常量，第二个人要改时再变成配置。
+        常量先写死。重建阈值、保留轮数、工具输出上限、静默窗口、超时、哨兵阈值都先是常量，第二个人要改时再变成配置。
       </li>
       <li>不写规则语言。触发规则的条件只支持路径 glob；权限规则只支持路径前缀和命令前缀。</li>
       <li>不预留。不为“以后”留字段、接口、TODO、空包。能力清单只有三项。</li>

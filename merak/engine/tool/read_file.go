@@ -65,15 +65,19 @@ func (r ReadFile) Run(ctx context.Context, call Call) (result Result, runErr err
 		return failure(err), nil
 	}
 	call.Env.Reads.remember(path, data)
+	return fileParts(ctx, path, data), nil
+}
+
+func fileParts(ctx context.Context, path string, data []byte) Result {
 	mime := http.DetectContentType(data)
 	if mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" || mime == "image/gif" {
-		return Result{Parts: []model.Part{{Image: &model.Image{MIME: mime, Data: data}}}}, nil
+		return Result{Parts: []model.Part{{Image: &model.Image{MIME: mime, Data: data}}}}
 	}
 	if mime == "application/pdf" {
 		if text, err := pdf.Extract(ctx, data, pdf.Limits{}); err == nil {
-			return Result{Parts: []model.Part{{Text: text}}}, nil
+			return Result{Parts: []model.Part{{Text: text}}}
 		}
-		return Result{Parts: []model.Part{{Document: &model.Document{MIME: mime, Name: filepath.Base(path), Data: data}}}}, nil
+		return Result{Parts: []model.Part{{Document: &model.Document{MIME: mime, Name: filepath.Base(path), Data: data}}}}
 	}
-	return Result{Parts: []model.Part{{Text: string(data)}}}, nil
+	return Result{Parts: []model.Part{{Text: string(data)}}}
 }

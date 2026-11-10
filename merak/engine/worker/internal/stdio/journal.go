@@ -12,10 +12,12 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"time"
 )
 
 type Journal struct {
+	Sandbox    *sandbox.Launcher
 	Bus        *event.Bus
 	Assignment worker.Assignment
 	Scope      event.Scope
@@ -45,7 +47,14 @@ func NewJournal(ctx context.Context, bus *event.Bus, storage store.Store, a work
 		}
 	}
 	if !created {
-		if _, err := j.Emit(ctx, session.Created, session.State{ID: a.Session, Scope: j.Scope, Config: session.Config{Provider: provider, Model: modelName, Workdir: a.Workdir, Member: a.Claim.Member, Mode: a.Mode}}, ""); err != nil {
+		pool := "worker.default"
+		if a.ReadOnly {
+			pool = "worker.readonly"
+		}
+		if a.Leader {
+			pool = "leader.default"
+		}
+		if _, err := j.Emit(ctx, session.Created, session.State{ID: a.Session, Scope: j.Scope, Config: session.Config{ToolPool: pool, Provider: provider, Model: modelName, Workdir: a.Workdir, Member: a.Claim.Member, Mode: a.Mode}}, ""); err != nil {
 			return nil, err
 		}
 	}
@@ -54,6 +63,7 @@ func NewJournal(ctx context.Context, bus *event.Bus, storage store.Store, a work
 		return nil, err
 	}
 	j.Scope.Turn = start.ID
+	a.LeaderTurn.Begin()
 	return j, nil
 }
 
@@ -79,11 +89,36 @@ func (j *Journal) Emit(ctx context.Context, kind event.Type, value any, cause ev
 	return j.Bus.Publish(ctx, event.Event{Type: kind, Payload: body, Stream: event.Stream("session:" + j.Assignment.Session), Scope: j.Scope, Actor: event.Actor{Kind: event.ActorAgent, ID: j.Assignment.Claim.Member}, Cause: cause})
 }
 func (j *Journal) Input(ctx context.Context, in loop.Input) error {
-	_, err := j.Emit(ctx, session.MessageSent, model.Message{Role: model.User, Parts: in.Parts}, in.Cause)
+	_, err := j.RecordInput(ctx, in)
 	return err
 }
+
+func (j *Journal) RecordInput(ctx context.Context, in loop.Input) (event.ID, error) {
+	if err := j.BeginTurn(ctx, in.Cause); err != nil {
+		return "", err
+	}
+	if in.Cause == j.Assignment.Cause && len(in.Sources) == 0 {
+		in.Sources = j.Assignment.Sources
+	}
+	fact, err := j.Emit(ctx, session.MessageSent, session.Input{Message: model.Message{Role: model.User, Parts: in.Parts}, Sources: in.Sources}, in.Cause)
+	return fact.ID, err
+}
+
+func (j *Journal) BeginTurn(ctx context.Context, cause event.ID) error {
+	if j.Scope.Turn == "" {
+		start, err := j.Emit(ctx, loop.TurnStarted, session.Started{}, cause)
+		if err != nil {
+			return err
+		}
+		j.Scope.Turn = start.ID
+	}
+	j.Assignment.LeaderTurn.Begin()
+	return nil
+}
 func (j *Journal) Message(ctx context.Context, msg session.Completion) error {
-	j.partial = ""
+	if len(msg.Parts) > 0 {
+		j.partial = ""
+	}
 	text := ""
 	for _, part := range msg.Parts {
 		text += part.Text
@@ -132,14 +167,12 @@ func (j *Journal) Complete(ctx context.Context, id string, result tool.Result) e
 	return err
 }
 func (j *Journal) Finish(ctx context.Context, runErr error) (task.Report, error) {
-	stop := loop.Answered
-	if ctx.Err() != nil {
-		stop, runErr = loop.Cancelled, ctx.Err()
-	} else if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
-		stop = loop.Cancelled
-	} else if runErr != nil {
-		stop = loop.Failed
+	defer j.Assignment.LeaderTurn.End()
+	if j.Scope.Turn == "" {
+		return task.Report{}, runErr
 	}
+	stop := loop.Answered
+	stop, runErr = worker.Termination(ctx, runErr, stop)
 	ending, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if j.partial != "" {
@@ -155,6 +188,20 @@ func (j *Journal) Finish(ctx context.Context, runErr error) (task.Report, error)
 		runErr = err
 	}
 	return report, runErr
+}
+
+// EndTurn records an external Leader's completed batch while keeping its process alive.
+func (j *Journal) EndTurn(ctx context.Context) error {
+	_, err := j.Finish(ctx, nil)
+	if err != nil {
+		return err
+	}
+	j.Scope.Turn = ""
+	j.Last, j.partial = "", ""
+	j.usage = model.Usage{}
+	j.order = nil
+	j.Previous = nil
+	return nil
 }
 func Text(parts []model.Part) string {
 	out := ""

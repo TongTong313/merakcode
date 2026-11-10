@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
@@ -12,8 +13,14 @@ import (
 )
 
 type claimRun struct {
-	run  worker.Run
-	caps worker.Caps
+	run     worker.Run
+	caps    worker.Caps
+	sources []event.ID
+}
+
+type claimPreparation struct {
+	cancel context.CancelFunc
+	inputs []loop.Input
 }
 
 func (e *Engine) forwardHuman(ctx context.Context, g *groupRun, fact event.Event) bool {
@@ -43,13 +50,7 @@ func (e *Engine) forwardHuman(ctx context.Context, g *groupRun, fact event.Event
 					continue
 				}
 			}
-			e.mu.Lock()
-			active, ok := e.claimRuns[claim.ID]
-			e.mu.Unlock()
-			if !ok || !active.caps.Steer {
-				continue
-			}
-			if err := active.run.Send(ctx, loop.Input{Actor: fact.Actor, Cause: fact.ID, Parts: []model.Part{{Text: message.Text}}}); err != nil {
+			if !e.sendClaimInput(ctx, g.group.ID, claim, loop.Input{Actor: fact.Actor, Cause: fact.ID, Parts: []model.Part{{Text: message.Text}}}) {
 				continue
 			}
 			forwarded = true
@@ -87,4 +88,36 @@ func (e *Engine) forwardHuman(ctx context.Context, g *groupRun, fact event.Event
 		return e.Tasks.RecordDiscussion(ctx, fact.Scope.Task, fact.ID) == nil
 	}
 	return forwarded
+}
+
+func (e *Engine) sendClaimInput(ctx context.Context, groupID event.ID, claim task.Claim, input loop.Input) bool {
+	e.mu.Lock()
+	active, running := e.claimRuns[claim.ID]
+	e.mu.Unlock()
+	if !running {
+		member, err := e.groupMember(ctx, groupID, claim.Member)
+		if err != nil {
+			return false
+		}
+		p, err := e.memberProfile(ctx, member)
+		if err != nil || !e.runnerFor(p, nil).Caps().Steer {
+			return false
+		}
+		e.mu.Lock()
+		active, running = e.claimRuns[claim.ID]
+		if !running && e.claimPreparing[claim.ID] != nil {
+			preparing := e.claimPreparing[claim.ID]
+			preparing.inputs = append(preparing.inputs, input)
+			e.mu.Unlock()
+			return true
+		}
+		e.mu.Unlock()
+	}
+	if !running || !active.caps.Steer {
+		return false
+	}
+	if input.Cause != "" && slices.Contains(active.sources, input.Cause) {
+		return true
+	}
+	return active.run.Send(ctx, input) == nil
 }

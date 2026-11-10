@@ -138,17 +138,19 @@ async function model(script: Script) {
       prompt,
       tools: (body as { tools?: unknown[] }).tools?.length ?? 0,
     })
-    // Background requests without tools (titles, summaries) always get a short text
-    const reply = (body as { tools?: unknown[] }).tools?.length
-      ? await script({
-          prompt,
-          toolResults,
-          system,
-          model: body.model ?? "",
-          tools: (body as { tools: { function: { name: string } }[] }).tools.map((tool) => tool.function.name),
-          closed: closed.promise,
-        })
-      : { text: "E2E" }
+    // Titles and summaries use a fixed reply; idle extraction is observable by the scenario.
+    const reply =
+      (body as { tools?: unknown[] }).tools?.length || system.includes("Extract durable project facts")
+        ? await script({
+            prompt,
+            toolResults,
+            system,
+            model: body.model ?? "",
+            tools:
+              (body as { tools?: { function: { name: string } }[] }).tools?.map((tool) => tool.function.name) ?? [],
+            closed: closed.promise,
+          })
+        : { text: "E2E" }
     response.writeHead(200, { "content-type": "text/event-stream" })
     response.end(stream(reply))
   })
@@ -191,6 +193,7 @@ export const test = base.extend<{
   config: Record<string, unknown>
   /** The project is a git repository with notes.txt committed */
   git: boolean
+  modelWindow: number
   /** Reuses the Go adapter fixture as a discoverable Claude Code executable. */
   claude: boolean
   kit: Kit
@@ -199,8 +202,9 @@ export const test = base.extend<{
   script: [{ reply: () => ({ text: "OK" }) }, { option: true }],
   config: [{}, { option: true }],
   git: [false, { option: true }],
+  modelWindow: [32000, { option: true }],
   claude: [false, { option: true }],
-  kit: async ({ script, config, git, claude }, use, info) => {
+  kit: async ({ script, config, git, claude, modelWindow }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
@@ -232,7 +236,7 @@ export const test = base.extend<{
       JSON.stringify({
         model: "openai/e2e",
         providers: {
-          openai: { apiKey: "e2e", baseURL: fake.url, models: { e2e: { window: 32000, maxOutput: 1024 } } },
+          openai: { apiKey: "e2e", baseURL: fake.url, models: { e2e: { window: modelWindow, maxOutput: 1024 } } },
         },
         locale: "zh-CN",
         ...config,

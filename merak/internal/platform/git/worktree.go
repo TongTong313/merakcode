@@ -44,6 +44,20 @@ func Root(ctx context.Context, directory string) (string, error) {
 	return filepath.EvalSymlinks(strings.TrimSpace(string(body)))
 }
 
+// ProjectRoot identifies one repository across its linked worktrees.
+func ProjectRoot(ctx context.Context, directory string) (string, error) {
+	body, err := run(ctx, directory, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return "", err
+	}
+	first, _, _ := strings.Cut(string(body), "\x00")
+	root, ok := strings.CutPrefix(first, "worktree ")
+	if !ok || root == "" {
+		return "", errors.New("repository has no primary worktree")
+	}
+	return filepath.EvalSymlinks(root)
+}
+
 func MetadataPath(ctx context.Context, directory, name string) (string, error) {
 	body, err := run(ctx, directory, "rev-parse", "--path-format=absolute", "--git-path", name)
 	if err != nil {
@@ -81,8 +95,53 @@ func ExcludeWorktrees(ctx context.Context, directory string) error {
 	return err
 }
 
-func RemoveWorktree(ctx context.Context, directory, path string) error {
-	_, err := run(ctx, directory, "worktree", "remove", "--", path)
+// DiscardWorktree removes a released managed worktree after the caller validates its root.
+func DiscardWorktree(ctx context.Context, directory, path string) error {
+	_, err := run(ctx, directory, "worktree", "remove", "--force", "--", path)
+	return err
+}
+
+// ReuseWorktree preserves the old result branch and ignored caches while replacing claim files.
+func ReuseWorktree(ctx context.Context, directory, previous, branch, base string) (runErr error) {
+	status, err := Status(ctx, directory)
+	if err != nil {
+		return err
+	}
+	if status.Branch != previous {
+		return errors.New("pooled worktree branch has changed")
+	}
+	if _, err := run(ctx, directory, "check-ref-format", "--branch", branch); err != nil {
+		return err
+	}
+	commit, err := resolveCommit(ctx, directory, base)
+	if err != nil {
+		return err
+	}
+	branches, err := Branches(ctx, directory)
+	if err != nil {
+		return err
+	}
+	for _, known := range branches {
+		if known.Name == branch {
+			return errors.New("claim branch already exists")
+		}
+	}
+	defer func() {
+		if runErr == nil {
+			return
+		}
+		ending, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, err := run(ending, directory, "switch", "--discard-changes", previous)
+		runErr = errors.Join(runErr, err)
+	}()
+	if _, err := run(ctx, directory, "switch", "--discard-changes", "--detach", commit); err != nil {
+		return err
+	}
+	if _, err := run(ctx, directory, "clean", "-ffd"); err != nil {
+		return err
+	}
+	_, err = run(ctx, directory, "switch", "-c", branch, commit)
 	return err
 }
 

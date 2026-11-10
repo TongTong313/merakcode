@@ -10,6 +10,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/internal/platform/secret"
 )
 
 type Verdict string
@@ -37,6 +38,13 @@ type Claim struct {
 }
 
 func (r Report) Validate() error {
+	body, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	if secret.Contains(string(body)) {
+		return errors.New("MRK-5001: remove credentials before submitting the report")
+	}
 	if strings.TrimSpace(r.Summary) == "" {
 		return errors.New("report summary is required")
 	}

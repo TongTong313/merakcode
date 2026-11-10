@@ -1,5 +1,8 @@
 import { expect, test } from "vitest"
-import { createRequire } from "node:module"
+import { access, mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import path from "node:path"
 import { bundle } from "../script/build"
 import { build } from "esbuild"
@@ -19,13 +22,28 @@ test("bundles the public SDK for a browser without native storage", async () => 
 })
 
 test("bundles a main process with a loadable native storage host", async () => {
-  await bundle()
-  const require = createRequire(path.resolve(import.meta.dirname, "../dist/main.js"))
-  const Database = require("./node_modules/better-sqlite3")
-  const db = new Database(":memory:")
+  const output = await mkdtemp(path.join(tmpdir(), "merak-desktop-build-"))
   try {
-    expect(db.prepare("SELECT 42 AS answer").get()).toEqual({ answer: 42 })
+    await bundle({ outdir: output })
+    await access(path.join(output, "main.js"))
+    await access(path.join(output, "preload.cjs"))
+    // A separate process releases the native module before Windows removes the temporary output.
+    const result = await promisify(execFile)(
+      process.execPath,
+      [
+        "-e",
+        `
+      const Database = require(process.argv[1])
+      const db = new Database(':memory:')
+      process.stdout.write(JSON.stringify(db.prepare('SELECT 42 AS answer').get()))
+      db.close()
+    `,
+        path.join(output, "node_modules/better-sqlite3"),
+      ],
+      { windowsHide: true },
+    )
+    expect(JSON.parse(result.stdout)).toEqual({ answer: 42 })
   } finally {
-    db.close()
+    await rm(output, { recursive: true, force: true })
   }
 }, 30000)

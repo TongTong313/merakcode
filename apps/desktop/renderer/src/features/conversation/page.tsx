@@ -1,5 +1,5 @@
 import ArrowLeft from "lucide-solid/icons/arrow-left"
-import { createEffect, on, Show } from "solid-js"
+import { createEffect, createSignal, on, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { t } from "../../i18n"
 import { sessionPath } from "../../lib/route"
@@ -11,11 +11,20 @@ import { Composer } from "./composer"
 import { Approval, Question } from "./dock"
 import { Messages } from "./messages"
 import { send, stop } from "./send"
+import { ContextBudget } from "./context-budget"
 
 export function Conversation(props: { id: string; directory: string }) {
   const navigate = useNavigate()
   const info = () => session(props.id)
   const requests = () => pending(props.id)
+  const exhausted = () => state.views[props.id]?.error === "MRK-4005"
+  const [extendBudget, setExtendBudget] = createSignal(false)
+  createEffect(
+    on(
+      () => [props.id, exhausted()],
+      () => setExtendBudget(false),
+    ),
+  )
   createEffect(
     on(
       () => props.id,
@@ -53,6 +62,18 @@ export function Conversation(props: { id: string; directory: string }) {
           />
           <div class="dock">
             <div class="dock-inner">
+              <Show when={state.views[props.id]?.budget}>{(report) => <ContextBudget report={report()} />}</Show>
+              <Show when={exhausted()}>
+                <label class="row">
+                  <input
+                    type="checkbox"
+                    aria-label={t("conversation.extendBudget")}
+                    checked={extendBudget()}
+                    onChange={(event) => setExtendBudget(event.currentTarget.checked)}
+                  />
+                  {t("conversation.extendBudget")}
+                </label>
+              </Show>
               <Show when={requests().permissions[0]} keyed>
                 {(request) => <Approval request={request} more={requests().permissions.length - 1} />}
               </Show>
@@ -63,10 +84,10 @@ export function Conversation(props: { id: string; directory: string }) {
                 sessionID={props.id}
                 directory={props.directory}
                 busy={busy(props.id)}
-                disabled={!state.connected || !!info()?.parentID}
+                disabled={!state.connected || !!info()?.parentID || (exhausted() && !extendBudget())}
                 compact
                 autofocus
-                onSubmit={(submission) => send(props.id, props.directory, submission)}
+                onSubmit={(submission) => send(props.id, props.directory, submission, extendBudget())}
                 onStop={() =>
                   void stop(props.id).catch((error) =>
                     toast({ kind: "error", title: t("error.request", { message: error.message }), error }),

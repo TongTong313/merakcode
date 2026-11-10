@@ -5,9 +5,21 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 )
 
+// MCPServer is the executable configuration exchanged with an engine host.
+type MCPServer = config.MCPServer
+
+// WorkspaceTrust identifies a host's decision for one version of a workspace entry.
+type WorkspaceTrust = config.Trust
+
 type NetworkSettings interface {
+	MCPServers() map[string]MCPServer
+	WorkspaceDecision(project, item, hash string) string
+	RememberWorkspaceTrust(WorkspaceTrust) error
+	permission.Settings
 	AllowedNetworkHosts() []string
 	DeniedNetworkHosts() []string
 	AllowNetworkHost(string) error

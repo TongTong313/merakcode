@@ -5,8 +5,35 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/profile"
 )
+
+func TestIdleGroupMemberSandboxUsesItsEffectiveProfile(t *testing.T) {
+	ctx := t.Context()
+	directory := t.TempDir()
+	e, err := engine.New(engine.Deps{Workdir: directory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead.ID = "leader-profile"
+	work.ID = "private-profile"
+	work.Mode = permission.ModeTakeover
+	g, err := e.CreateGroup(ctx, group.Group{Name: "Inline", Kind: group.KindLocal, Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}}, []profile.Profile{lead, work})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := e.MemberSandboxStatus(ctx, g.ID, "worker", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Disabled {
+		t.Fatalf("sandbox=%+v", status)
+	}
+}
 
 func TestSandboxStatusResolvesProtectionInALinkedWorktree(t *testing.T) {
 	root := t.TempDir()

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"slices"
+	"strings"
 )
 
 type approval struct{ spec tool.Spec }
@@ -14,10 +16,13 @@ func (approval) Run(context.Context, tool.Call) (tool.Result, error) { return to
 
 // Approve applies the same gate as builtin tools before answering a product request.
 func (j *Journal) Approve(ctx context.Context, gate *permission.Gate, id, name string, effect tool.Effect, input json.RawMessage) (bool, error) {
+	if server := j.Assignment.MCP; server != nil && strings.HasPrefix(name, "mcp__merak__") && slices.Contains(server.Tools, strings.TrimPrefix(name, "mcp__merak__")) {
+		return true, nil
+	}
 	if gate == nil || j.Assignment.ReadOnly && effect != tool.EffectRead {
 		return false, nil
 	}
 	guarded := gate.Wrap(approval{tool.Spec{Name: name, Description: "Approve the external worker operation.", Effect: effect, Input: json.RawMessage(`{"type":"object"}`)}})
-	result, err := guarded.Run(ctx, tool.Call{ID: id, Name: name, Input: input, Env: tool.Env{Scope: j.Scope, Workdir: j.Assignment.Workdir, Mode: string(j.Assignment.Mode)}})
+	result, err := guarded.Run(ctx, tool.Call{ID: id, Name: name, Input: input, Env: tool.Env{Member: j.Assignment.Claim.Member, Scope: j.Scope, Workdir: j.Assignment.Workdir, Mode: string(j.Assignment.Mode), Sandbox: j.Sandbox, SandboxProfile: j.Assignment.SandboxProfile}})
 	return err == nil && !result.IsError, err
 }

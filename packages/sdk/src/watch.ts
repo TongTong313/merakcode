@@ -18,7 +18,15 @@ export async function watchConversation(
   let queue = Promise.resolve()
 
   const catchUp = async () => {
-    if (!current) current = createConversation(await client.session.snapshot({ session }))
+    if (!current) {
+      current = createConversation(await client.session.snapshot({ session }))
+      const budgets = await client.events.find({ scope: { session }, types: ["session.budget"] })
+      for (const value of budgets ?? []) {
+        const event = EngineEventSchema.parse(value)
+        if (event.type === "session.budget" && event.seq && event.seq <= current.state.lastSeq)
+          current.budget = event.payload
+      }
+    }
     for (;;) {
       const events = await client.events.read({
         stream: `session:${session}`,

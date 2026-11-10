@@ -25,16 +25,22 @@ const (
 	KindOpenCode   Kind = "opencode"
 	KindPi         Kind = "pi"
 	KindACP        Kind = "acp"
+	KindRemote     Kind = "remote"
 )
 
 type Caps struct {
 	Steer      bool `json:"steer"`
 	Permission bool `json:"permission"`
+	MCP        bool `json:"mcp"`
 }
 
 var ErrUnsupported = errors.New("worker does not support this operation")
 
 type Assignment struct {
+	Sources        []event.ID
+	LeaderTurn     *LeaderTurn
+	Leader         bool
+	MCP            *MCPConfig
 	Mode           permission.Mode
 	SandboxProfile sandbox.Profile
 	ReadOnly       bool
@@ -44,6 +50,13 @@ type Assignment struct {
 	Session        event.ID
 	Scope          event.Scope
 	Cause          event.ID
+}
+
+type MCPConfig struct {
+	Tools   []string          `json:"-"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
 }
 type Runner interface {
 	Start(context.Context, Assignment) (Run, error)
@@ -137,7 +150,7 @@ func ReportFromText(claim event.ID, text string, stop loop.StopReason, err error
 // SynthesizeReport bounds plain output without interpreting it as a structured report.
 func SynthesizeReport(claim event.ID, text string, stop loop.StopReason, err error) task.Report {
 	verdict := task.VerdictDone
-	if stop == loop.Cancelled || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if stop == loop.Cancelled || loop.BudgetStop(stop) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		verdict = task.VerdictBlocked
 	} else if err != nil || stop == loop.Failed {
 		verdict = task.VerdictFailed

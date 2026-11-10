@@ -39,19 +39,39 @@ func main() {
 	}{
 		{"hello", reflect.TypeFor[protocol.HelloParams](), reflect.TypeFor[protocol.HelloResult]()},
 		{"engine.stop", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
+		{"cloud.login", reflect.TypeFor[protocol.CloudLoginParams](), reflect.TypeFor[protocol.CloudStatus]()},
+		{"cloud.logout", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
+		{"cloud.status", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.CloudStatus]()},
+		{"cloud.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]group.Member]()},
 		{"config.get", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.Config]()},
 		{"config.set", reflect.TypeFor[protocol.ConfigPatch](), reflect.TypeFor[protocol.Config]()},
-		{"model.list", reflect.TypeFor[struct{}](), reflect.TypeFor[[]catalog.Model]()},
+		{"model.list", reflect.TypeFor[protocol.ModelListParams](), reflect.TypeFor[[]catalog.Model]()},
 		{"member.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
+		{"worker.run", reflect.TypeFor[protocol.WorkerRunParams](), reflect.TypeFor[task.Report]()},
 		{"sandbox.status", reflect.TypeFor[protocol.SandboxStatusParams](), reflect.TypeFor[sandbox.Status]()},
+		{"sandbox.setup", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
 		{"member.register", reflect.TypeFor[protocol.MemberRegisterParams](), reflect.TypeFor[group.Member]()},
+		{"remote.connect", reflect.TypeFor[protocol.RemoteConnectParams](), reflect.TypeFor[protocol.RemoteConnection]()},
+		{"remote.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]protocol.RemoteMember]()},
+		{"remote.start", reflect.TypeFor[protocol.RemoteStartParams](), reflect.TypeFor[protocol.RemoteStartResult]()},
+		{"remote.deliver", reflect.TypeFor[protocol.RemoteDeliveryParams](), reflect.TypeFor[protocol.RemoteDelivery]()},
+		{"remote.sync", reflect.TypeFor[protocol.RemoteSyncParams](), reflect.TypeFor[struct{}]()},
+		{"remote.control", reflect.TypeFor[protocol.RemoteControlParams](), reflect.TypeFor[struct{}]()},
 		{"member.test", reflect.TypeFor[protocol.ProfileSaveParams](), reflect.TypeFor[worker.Caps]()},
 		{"profile.list", reflect.TypeFor[protocol.ProfileListParams](), reflect.TypeFor[[]profile.Profile]()},
 		{"profile.save", reflect.TypeFor[protocol.ProfileSaveParams](), reflect.TypeFor[profile.Profile]()},
+		{"profile.delete", reflect.TypeFor[protocol.ProfileDeleteParams](), reflect.TypeFor[struct{}]()},
 		{"group.create", reflect.TypeFor[protocol.GroupCreateParams](), reflect.TypeFor[group.Group]()},
 		{"group.update", reflect.TypeFor[protocol.GroupUpdateParams](), reflect.TypeFor[group.Group]()},
 		{"group.addMember", reflect.TypeFor[protocol.GroupAddMemberParams](), reflect.TypeFor[group.Member]()},
+		{"group.removeMember", reflect.TypeFor[protocol.GroupRemoveMemberParams](), reflect.TypeFor[struct{}]()},
+		{"member.remove", reflect.TypeFor[protocol.GroupRemoveMemberParams](), reflect.TypeFor[struct{}]()},
 		{"group.state", reflect.TypeFor[protocol.GroupIDParams](), reflect.TypeFor[leader.View]()},
+		{"group.pause", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},
+		{"group.resume", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},
+		{"doc.list", reflect.TypeFor[protocol.GroupIDParams](), reflect.TypeFor[[]group.DocumentInfo]()},
+		{"doc.read", reflect.TypeFor[protocol.DocReadParams](), reflect.TypeFor[group.Document]()},
+		{"doc.write", reflect.TypeFor[protocol.DocWriteParams](), reflect.TypeFor[group.Document]()},
 		{"task.create", reflect.TypeFor[protocol.TaskCreateParams](), reflect.TypeFor[task.Card]()},
 		{"group.say", reflect.TypeFor[protocol.GroupSayParams](), reflect.TypeFor[event.ID]()},
 		{"task.assign", reflect.TypeFor[protocol.TaskAssignParams](), reflect.TypeFor[task.Claim]()},
@@ -181,7 +201,7 @@ func (g *generator) object(t reflect.Type) node {
 			name = field.Name
 		}
 		properties[name] = g.describe(field.Type)
-		if !slices.Contains(tag, "omitempty") {
+		if !slices.Contains(tag, "omitempty") && !slices.Contains(tag, "omitzero") {
 			required = append(required, name)
 		}
 	}

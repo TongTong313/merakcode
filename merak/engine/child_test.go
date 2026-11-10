@@ -18,6 +18,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/openai"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	storage "github.com/TongTong313/merakcode/merak/engine/store/memory"
 )
@@ -97,7 +98,7 @@ func TestParentContinuesWhileReadOnlyChildRunsAndReceivesItsReportOnce(t *testin
 	defer e.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	id, err := e.CreateSession(ctx, engine.SessionOptions{Provider: "openai"})
+	id, err := e.CreateSession(ctx, engine.SessionOptions{Provider: "openai", Mode: permission.ModeTakeover, Member: "researcher", Scope: event.Scope{Task: "research"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,9 +113,21 @@ func TestParentContinuesWhileReadOnlyChildRunsAndReceivesItsReportOnce(t *testin
 		case fact := <-events:
 			if fact.Type == session.ChildStarted {
 				started++
+
 			}
 			if fact.Type == session.ChildFinished {
 				finished++
+				result, err := event.Decode[session.ChildResult](fact)
+				if err != nil {
+					t.Fatal(err)
+				}
+				child, err := session.NewManager(durable, e.Bus).Load(ctx, result.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if child.Config.Mode != permission.ModeTakeover || child.Config.Member != "researcher" || child.Scope.Task != "research" || child.Scope.Session != child.ID {
+					t.Fatalf("child lost execution context: %+v", child)
+				}
 			}
 			if fact.Type != session.MessageCompleted {
 				continue

@@ -126,14 +126,14 @@ committed:
 	}
 }
 
-func TestInitialWatcherOverloadNotifiesTheOwnerWithoutModelCalls(t *testing.T) {
+func TestWatcherOverloadNotifiesTheOwnerOnce(t *testing.T) {
 	directory := t.TempDir()
 	for index := 0; index < 50001; index++ {
 		if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("%05d.txt", index)), nil, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	e, err := engine.New(engine.Deps{Workdir: directory, Providers: map[string]model.Provider{"leader": fake.New(t)}})
+	e, err := engine.New(engine.Deps{Workdir: directory, Providers: map[string]model.Provider{"leader": fake.New(t, fake.Reply{Hold: make(chan struct{})})}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,20 @@ func TestInitialWatcherOverloadNotifiesTheOwnerWithoutModelCalls(t *testing.T) {
 			if err != nil || finding == "" || fact.Cause != finding || len(notice.To) != 1 || notice.To[0] != "owner" || notice.Text != "MRK-1005" {
 				t.Fatalf("notice=%+v cause=%s, %v", notice, fact.Cause, err)
 			}
-			return
+			deadline := time.After(6 * time.Second)
+			for {
+				select {
+				case duplicate := <-facts:
+					if duplicate.Type == engine.SentinelFlagged {
+						t.Fatal("persistent overload repeated")
+					}
+					if duplicate.Type == group.NoticeSent && duplicate.Cause == finding {
+						t.Fatal("owner received the same overload notice twice")
+					}
+				case <-deadline:
+					return
+				}
+			}
 		case <-ctx.Done():
 			t.Fatal("initial overload did not notify owner")
 		}

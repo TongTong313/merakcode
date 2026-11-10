@@ -113,10 +113,15 @@ test("copies a default profile, edits its duties and registers it in the group",
     await expect.poll(() => host.querySelector('button[aria-label="Copy Worker"]')).not.toBeNull()
     press("Copy Worker")
     input("Profile name", "Audit")
-    const mode = host.querySelector<HTMLSelectElement>('select[aria-label="Permission level"]')
-    expect(mode).not.toBeNull()
-    mode!.value = "takeover"
-    mode!.dispatchEvent(new Event("change", { bubbles: true }))
+    host
+      .querySelector<HTMLButtonElement>('button[aria-label="Permission level"]')!
+      .dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+    ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((option) => option.textContent?.includes("Full takeover"))!
+      .click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((button) => button.textContent === "Enable full takeover")!
+      .click()
     input("Duties", "Review Go changes and verify regression tests.")
     input("Provider", "fake")
     input("Model", "fixture")

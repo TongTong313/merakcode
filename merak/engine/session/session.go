@@ -10,6 +10,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"slices"
+	"time"
 )
 
 const (
@@ -18,32 +19,44 @@ const (
 	MessageSent      event.Type = "message.sent"
 	MessageCompleted event.Type = "message.completed"
 	MessageDelta     event.Type = "message.delta"
+	BudgetExtended   event.Type = "session.budget_extended"
 )
 
 func init() {
 	event.Register[State](Created)
 	event.Register[Rebuild](Rebuilt)
-	event.Register[model.Message](MessageSent)
+	event.Register[Input](MessageSent)
 	event.Register[Completion](MessageCompleted)
 	event.Register[model.Chunk](MessageDelta)
+	event.Register[Budget](BudgetExtended)
+}
+
+// Input retains the source events of a combined Leader message for restart recovery.
+type Input struct {
+	model.Message
+	Sources []event.ID `json:"sources,omitempty"`
 }
 
 type State struct {
-	BaseCommit string                    `json:"baseCommit,omitempty"`
-	Children   map[event.ID]ChildState   `json:"children,omitempty"`
-	ID         event.ID                  `json:"id"`
-	Scope      event.Scope               `json:"scope"`
-	Config     Config                    `json:"config"`
-	System     string                    `json:"system"`
-	Messages   []model.Message           `json:"messages"`
-	LastSeq    uint64                    `json:"lastSeq"`
-	Usage      model.Usage               `json:"usage"`
-	Tools      []tool.Spec               `json:"tools,omitempty"`
-	Loaded     []string                  `json:"loaded,omitempty"`
-	SummaryID  event.ID                  `json:"summaryId,omitempty"`
-	Status     Status                    `json:"status"`
-	Open       map[string]model.ToolCall `json:"open,omitempty"`
-	Causes     map[string]event.ID       `json:"causes,omitempty"`
+	BudgetExtensions int                             `json:"budgetExtensions,omitempty"`
+	Warnings         []Diagnostic                    `json:"warnings,omitempty"`
+	MCP              *MCPSelection                   `json:"mcp,omitempty"`
+	Permissions      map[event.ID]permission.Pending `json:"permissions,omitempty"`
+	BaseCommit       string                          `json:"baseCommit,omitempty"`
+	Children         map[event.ID]ChildState         `json:"children,omitempty"`
+	ID               event.ID                        `json:"id"`
+	Scope            event.Scope                     `json:"scope"`
+	Config           Config                          `json:"config"`
+	System           string                          `json:"system"`
+	Messages         []model.Message                 `json:"messages"`
+	LastSeq          uint64                          `json:"lastSeq"`
+	Usage            model.Usage                     `json:"usage"`
+	Tools            []tool.Spec                     `json:"tools,omitempty"`
+	Loaded           []string                        `json:"loaded,omitempty"`
+	SummaryID        event.ID                        `json:"summaryId,omitempty"`
+	Status           Status                          `json:"status"`
+	Open             map[string]model.ToolCall       `json:"open,omitempty"`
+	Causes           map[string]event.ID             `json:"causes,omitempty"`
 }
 
 type Status string
@@ -67,14 +80,16 @@ type Rebuild struct {
 }
 
 type Config struct {
-	Mode     permission.Mode `json:"mode,omitempty"`
-	Member   event.ID        `json:"member,omitempty"`
-	ToolPool string          `json:"toolPool,omitempty"`
-	Parent   event.ID        `json:"parent,omitempty"`
-	Provider string          `json:"provider"`
-	Model    string          `json:"model"`
-	Thinking model.Thinking  `json:"thinking,omitempty"`
-	Workdir  string          `json:"workdir"`
+	Budget         Budget          `json:"budget,omitempty"`
+	BudgetDeadline time.Time       `json:"budgetDeadline,omitempty,omitzero"`
+	Mode           permission.Mode `json:"mode,omitempty"`
+	Member         event.ID        `json:"member,omitempty"`
+	ToolPool       string          `json:"toolPool,omitempty"`
+	Parent         event.ID        `json:"parent,omitempty"`
+	Provider       string          `json:"provider"`
+	Model          string          `json:"model"`
+	Thinking       model.Thinking  `json:"thinking,omitempty"`
+	Workdir        string          `json:"workdir"`
 }
 
 type Selection struct {
@@ -89,6 +104,8 @@ type Started struct {
 
 type Completion struct {
 	model.Message
+	// Step is false when a product emits another fragment of the same model step.
+	Step        *bool       `json:"step,omitempty"`
 	Usage       model.Usage `json:"usage"`
 	Interrupted bool        `json:"interrupted,omitempty"`
 	Dropped     []string    `json:"dropped,omitempty"`
@@ -99,6 +116,37 @@ func Fold(s *State, e event.Event) error {
 		return nil
 	}
 	switch e.Type {
+	case BudgetExtended:
+		s.BudgetExtensions++
+	case Warning:
+		warning, err := event.Decode[Diagnostic](e)
+		if err != nil {
+			return err
+		}
+		s.AddWarning(warning)
+	case MCPConfigured:
+		selected, err := event.Decode[MCPSelection](e)
+		if err != nil {
+			return err
+		}
+		s.MCP = &selected
+	case permission.Requested:
+		request, err := event.Decode[permission.Request](e)
+		if err != nil {
+			return err
+		}
+		request.ID = e.ID
+		if s.Permissions == nil {
+			s.Permissions = make(map[event.ID]permission.Pending)
+		}
+		s.Permissions[e.ID] = permission.Pending{Request: request, Scope: e.Scope, Time: e.Time, Seq: e.Seq}
+	case permission.Escalated:
+		if pending, ok := s.Permissions[e.Cause]; ok {
+			pending.Request.Leader = ""
+			s.Permissions[e.Cause] = pending
+		}
+	case permission.Replied:
+		delete(s.Permissions, e.Cause)
 	case ChildStarted, ChildFinished:
 		child, err := event.Decode[ChildResult](e)
 		if err != nil {
@@ -143,6 +191,11 @@ func Fold(s *State, e event.Event) error {
 		s.Scope.Turn = e.ID
 		s.Status = Running
 	case "turn.finished":
+		for id, pending := range s.Permissions {
+			if pending.Request.Kind != "workspace" {
+				delete(s.Permissions, id)
+			}
+		}
 		var outcome struct {
 			Stop string `json:"stop"`
 		}
@@ -194,7 +247,9 @@ func Fold(s *State, e event.Event) error {
 		if err != nil {
 			return err
 		}
-		s.Messages = append(s.Messages, message.Message)
+		if len(message.Parts) > 0 {
+			s.Messages = append(s.Messages, message.Message)
+		}
 		s.Usage = s.Usage.Add(message.Usage)
 		for _, part := range message.Parts {
 			if part.ToolCall == nil {

@@ -11,12 +11,14 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
 type protectedEntry struct {
-	body []byte
-	mode os.FileMode
+	body     []byte
+	mode     os.FileMode
+	adjusted bool
 }
 
 func existingProtection(p Profile) (Profile, error) {
@@ -37,6 +39,59 @@ type protectionSnapshot struct {
 	root    *os.Root
 	path    string
 	entries map[string]protectedEntry
+}
+
+type protectionLease struct {
+	snapshot protectionSnapshot
+	users    int
+}
+
+var protectedPaths = struct {
+	sync.Mutex
+	leases map[string]*protectionLease
+}{leases: make(map[string]*protectionLease)}
+
+func acquireProtection(path string) (protectionSnapshot, error) {
+	protectedPaths.Lock()
+	defer protectedPaths.Unlock()
+	if lease := protectedPaths.leases[path]; lease != nil {
+		lease.users++
+		return lease.snapshot, nil
+	}
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		return protectionSnapshot{}, nil
+	} else if err != nil {
+		return protectionSnapshot{}, err
+	}
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return protectionSnapshot{}, err
+	}
+	snapshot := protectionSnapshot{root: root, path: path}
+	snapshot.entries, err = snapshot.capture(false)
+	if err != nil {
+		root.Close()
+		return protectionSnapshot{}, err
+	}
+	protectedPaths.leases[path] = &protectionLease{snapshot: snapshot, users: 1}
+	return snapshot, nil
+}
+
+func (s protectionSnapshot) release(restore bool) ([]string, error) {
+	protectedPaths.Lock()
+	defer protectedPaths.Unlock()
+	var paths []string
+	var err error
+	if restore {
+		paths, err = s.restore()
+	}
+	lease := protectedPaths.leases[s.path]
+	lease.users--
+	if lease.users == 0 {
+		delete(protectedPaths.leases, s.path)
+		err = errors.Join(err, s.root.Close())
+	}
+	return paths, err
 }
 
 type ProtectionError struct {
@@ -64,27 +119,17 @@ func (l *Launcher) Start(cmd *exec.Cmd, p Profile) error {
 	defer func() {
 		if !started {
 			for _, snapshot := range snapshots {
-				snapshot.root.Close()
+				_, _ = snapshot.release(false)
 			}
 		}
 	}()
 	for _, path := range p.Protect {
-		_, err := os.Lstat(path)
-		if os.IsNotExist(err) {
+		snapshot, err := acquireProtection(path)
+		if err != nil {
+			return err
+		}
+		if snapshot.root == nil {
 			continue
-		}
-		if err != nil {
-			return err
-		}
-		root, err := os.OpenRoot(filepath.Dir(path))
-		if err != nil {
-			return err
-		}
-		snapshot := protectionSnapshot{root: root, path: path}
-		snapshot.entries, err = snapshot.capture()
-		if err != nil {
-			root.Close()
-			return err
 		}
 		snapshots = append(snapshots, snapshot)
 	}
@@ -189,8 +234,7 @@ func (l *Launcher) waitProtected(cmd *exec.Cmd) error {
 	var changed []string
 	var restoreErr error
 	for _, snapshot := range snapshots {
-		paths, err := snapshot.restore()
-		snapshot.root.Close()
+		paths, err := snapshot.release(true)
 		changed = append(changed, paths...)
 		if err != nil {
 			restoreErr = errors.Join(restoreErr, fmt.Errorf("restore %s: %w", snapshot.path, err))
@@ -208,7 +252,7 @@ func (l *Launcher) waitProtected(cmd *exec.Cmd) error {
 	return runErr
 }
 
-func (s protectionSnapshot) capture() (map[string]protectedEntry, error) {
+func (s protectionSnapshot) capture(repair bool) (map[string]protectedEntry, error) {
 	entries := make(map[string]protectedEntry)
 	err := fs.WalkDir(s.root.FS(), filepath.Base(s.path), func(path string, entry fs.DirEntry, err error) error {
 		if os.IsNotExist(err) {
@@ -222,6 +266,18 @@ func (s protectionSnapshot) capture() (map[string]protectedEntry, error) {
 			return err
 		}
 		value := protectedEntry{mode: info.Mode()}
+		if repair && (info.IsDir() || info.Mode().IsRegular()) {
+			access := os.FileMode(0600)
+			if info.IsDir() {
+				access = 0700
+			}
+			if info.Mode().Perm()&access != access {
+				if err := s.root.Chmod(path, info.Mode().Perm()|access); err != nil {
+					return err
+				}
+				value.adjusted = true
+			}
+		}
 		switch {
 		case info.IsDir():
 		case info.Mode().IsRegular():
@@ -243,7 +299,7 @@ func (s protectionSnapshot) capture() (map[string]protectedEntry, error) {
 }
 
 func (s protectionSnapshot) restore() ([]string, error) {
-	current, readErr := s.capture()
+	current, readErr := s.capture(true)
 	var changed []string
 	for path, before := range s.entries {
 		after, exists := current[path]
@@ -258,9 +314,6 @@ func (s protectionSnapshot) restore() ([]string, error) {
 	}
 	if readErr != nil && len(changed) == 0 {
 		changed = append(changed, s.path)
-	}
-	if len(changed) == 0 {
-		return nil, nil
 	}
 	var removals []string
 	for path, after := range current {
@@ -308,7 +361,7 @@ func (s protectionSnapshot) restore() ([]string, error) {
 	}
 	for i := len(paths) - 1; i >= 0; i-- {
 		entry := s.entries[paths[i]]
-		if after, exists := current[paths[i]]; exists && entry.mode == after.mode && bytes.Equal(entry.body, after.body) {
+		if after, exists := current[paths[i]]; exists && !after.adjusted && entry.mode == after.mode && bytes.Equal(entry.body, after.body) {
 			continue
 		}
 		if entry.mode&os.ModeSymlink == 0 {

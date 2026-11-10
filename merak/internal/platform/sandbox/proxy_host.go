@@ -18,12 +18,12 @@ func proxyEnvironment(source []string, address string) []string {
 	for _, value := range source {
 		name, _, _ := strings.Cut(value, "=")
 		switch strings.ToUpper(name) {
-		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
+		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "MERAKCODE_SANDBOX_PROXY":
 			continue
 		}
 		result = append(result, value)
 	}
-	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
+	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "MERAKCODE_SANDBOX_PROXY"} {
 		result = append(result, name+"="+address)
 	}
 	return result

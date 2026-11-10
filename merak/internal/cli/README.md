@@ -1,5 +1,15 @@
 # Command-line language
 
+Product commands connect through the Go SDK. `serve` and isolated debug-host startup assemble the engine; commands do not call engine business methods directly.
+
+`merak run --json INPUT` streams event JSON lines and accepts permission and question replies as JSON lines on stdin. Provider selection uses the engine configuration. `merak acp` serves ACP version 1 over stdin and stdout, including new sessions, prompts, cancellation, text updates and permission requests. Client-provided stdio MCP servers start in the new session; user configuration takes precedence on name conflicts. HTTP and SSE servers are rejected. Workspace MCP servers retain their per-server trust requests, forwarded to the editor through `session/request_permission`.
+
+`merak group` exposes create, add, remove, update, board, inbox, say, pause and resume. `merak task` exposes create, assign, review, update and cancel. `merak member` exposes catalog, register and test. Use `--file PATH` for a protocol-shaped JSON request or `--file -` to read it from stdin; requests are limited to 1 MiB.
+
+`merak cloud login --dev --endpoint ws://127.0.0.1:8787` signs in to a development cloud server. `merak cloud status` reports the account and device connection, and `merak cloud logout` disconnects and removes the stored login. The engine stores tokens in the system credential store, with a restricted local file fallback when unavailable. Client responses never contain the cloud token.
+
+`merak serve --listen 192.168.1.10 --port 8788` explicitly exposes the authenticated engine protocol on a local network address. The default address remains `127.0.0.1`. The remote member form accepts `ws://192.168.1.10:8788/rpc` and the token from that engine's `engine.json`. Remote Workers execute in the registered source member's checkout. The assigning engine receives the original event IDs and sequences and routes approvals through its own task thread.
+
 `merak event emit --group GROUP --type ci.finished --payload '{"status":"success"}'` sends an external event to an existing engine. The command prefixes short types with `external.` and prints the resulting event ID. Payloads must be JSON objects; omitted payloads use `{}`. Protocol clients use `event.emit` (SDK `client.event.emit`) with the full `external.*` type. Built-in event types cannot be emitted through this entry point. The engine records the event as an external actor in the group's stream.
 
 `merak debug worker --kind claude-code "Check README"` runs the installed Claude Code product in the current directory. It writes engine event JSON lines as they arrive and ends with a JSON object containing `report`. Interrupting the command cancels the process tree. `member.catalog` and `client.member.catalog()` discover local products without starting a task.

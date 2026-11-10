@@ -6,6 +6,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
@@ -60,6 +61,7 @@ func TestFolderTaskPublishesDeclaredArtifactsAndWaitsForReview(t *testing.T) {
 	}
 	defer e.Close()
 	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
@@ -145,6 +147,7 @@ func workspaceGroup(t *testing.T, dir string, providers map[string]model.Provide
 	}
 	t.Cleanup(func() { _ = e.Close() })
 	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := e.CreateGroup(context.Background(), group.Group{Kind: group.KindLocal, Name: "Workspace", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{

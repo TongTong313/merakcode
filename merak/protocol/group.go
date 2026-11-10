@@ -16,29 +16,43 @@ type GroupIDParams struct {
 	Group event.ID `json:"group"`
 }
 
+type GroupControlParams struct {
+	Group  event.ID `json:"group"`
+	Human  event.ID `json:"human"`
+	Thread event.ID `json:"thread,omitempty"`
+}
+
+type GroupRemoveMemberParams struct {
+	Group  event.ID `json:"group"`
+	Human  event.ID `json:"human"`
+	Member event.ID `json:"member"`
+}
+
 type GroupUpdateParams struct {
-	Group    event.ID       `json:"group"`
-	Human    event.ID       `json:"human"`
-	Settings group.Settings `json:"settings"`
+	Group event.ID `json:"group"`
+	Human event.ID `json:"human"`
+	group.Update
 }
 type GroupAddMemberParams struct {
+	Human   event.ID         `json:"human"`
 	Group   event.ID         `json:"group"`
 	Member  group.Member     `json:"member"`
 	Profile *profile.Profile `json:"profile,omitempty"`
 }
 type TaskCreateParams struct {
-	Workspace   string   `json:"workspace,omitempty"`
-	Inputs      []string `json:"inputs,omitempty"`
-	Human       event.ID `json:"human,omitempty"`
-	Member      event.ID `json:"member,omitempty"`
-	Review      bool     `json:"review,omitempty"`
-	Priority    int      `json:"priority,omitempty"`
-	Group       event.ID `json:"group"`
-	Leader      event.ID `json:"leader,omitempty"`
-	Title       string   `json:"title"`
-	Description string   `json:"description,omitempty"`
-	Acceptance  []string `json:"acceptance,omitempty"`
-	Areas       []string `json:"areas,omitempty"`
+	Budget      task.Budget `json:"budget,omitempty"`
+	Workspace   string      `json:"workspace,omitempty"`
+	Inputs      []string    `json:"inputs,omitempty"`
+	Human       event.ID    `json:"human,omitempty"`
+	Member      event.ID    `json:"member,omitempty"`
+	Review      bool        `json:"review,omitempty"`
+	Priority    int         `json:"priority,omitempty"`
+	Group       event.ID    `json:"group"`
+	Leader      event.ID    `json:"leader,omitempty"`
+	Title       string      `json:"title"`
+	Description string      `json:"description,omitempty"`
+	Acceptance  []string    `json:"acceptance,omitempty"`
+	Areas       []string    `json:"areas,omitempty"`
 }
 
 type GroupSayParams struct {

@@ -10,6 +10,11 @@ type ProfileListParams struct {
 	Human event.ID `json:"human"`
 }
 
+type ProfileDeleteParams struct {
+	Human   event.ID `json:"human"`
+	Profile event.ID `json:"profile"`
+}
+
 type ProfileSaveParams struct {
 	Human   event.ID        `json:"human"`
 	Profile profile.Profile `json:"profile"`

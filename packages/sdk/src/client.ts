@@ -168,6 +168,16 @@ export async function connect(options: {
   return {
     hello,
     closed: closed.promise,
+    cloud: {
+      members: () => call("cloud.members", {}),
+      status: () => call("cloud.status", {}),
+      login: (params: Methods["cloud.login"]["params"]) => call("cloud.login", params),
+      logout: () => call("cloud.logout", {}),
+    },
+    remote: {
+      connect: (params: Methods["remote.connect"]["params"]) => call("remote.connect", params),
+      members: () => call("remote.members", {}),
+    },
     config: {
       get: () => call("config.get", {}),
       set: (params: Methods["config.set"]["params"]) => call("config.set", params),
@@ -178,18 +188,24 @@ export async function connect(options: {
       discover: (params: Methods["model.discover"]["params"]) => call("model.discover", params),
     },
     member: {
+      remove: (params: Methods["member.remove"]["params"]) => call("member.remove", params),
       catalog: () => call("member.catalog", {}),
       register: (params: Methods["member.register"]["params"]) => call("member.register", params),
       test: (params: Methods["member.test"]["params"]) => call("member.test", params),
     },
     sandbox: {
+      setup: () => call("sandbox.setup", {}),
       status: (params: Methods["sandbox.status"]["params"]) => call("sandbox.status", params),
     },
     profile: {
+      delete: (params: Methods["profile.delete"]["params"]) => call("profile.delete", params),
       list: (params: Methods["profile.list"]["params"]) => call("profile.list", params),
       save: (params: Methods["profile.save"]["params"]) => call("profile.save", params),
     },
     group: {
+      pause: (params: Methods["group.pause"]["params"]) => call("group.pause", params),
+      resume: (params: Methods["group.resume"]["params"]) => call("group.resume", params),
+      removeMember: (params: Methods["group.removeMember"]["params"]) => call("group.removeMember", params),
       update: (params: Methods["group.update"]["params"]) => call("group.update", params),
       say: (params: Methods["group.say"]["params"]) => call("group.say", params),
       create: (params: Methods["group.create"]["params"]) => call("group.create", params),
@@ -202,6 +218,11 @@ export async function connect(options: {
       assign: (params: Methods["task.assign"]["params"]) => call("task.assign", params),
       review: (params: Methods["task.review"]["params"]) => call("task.review", params),
       create: (params: Methods["task.create"]["params"]) => call("task.create", params),
+    },
+    doc: {
+      list: (params: Methods["doc.list"]["params"]) => call("doc.list", params),
+      read: (params: Methods["doc.read"]["params"]) => call("doc.read", params),
+      write: (params: Methods["doc.write"]["params"]) => call("doc.write", params),
     },
     permission: {
       reply: (params: Methods["permission.reply"]["params"]) => call("permission.reply", params),

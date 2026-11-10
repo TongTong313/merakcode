@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -21,15 +22,16 @@ var (
 )
 
 type Pool struct {
-	mu     sync.Mutex
-	store  store.Store
-	bus    *event.Bus
-	newID  func() event.ID
-	groups *group.Manager
-	loaded bool
-	cards  map[event.ID]Card
-	causes map[event.ID]event.ID
-	queue  []event.ID
+	AuthorizeAssignment func(context.Context, group.Member, event.Actor) error
+	mu                  sync.Mutex
+	store               store.Store
+	bus                 *event.Bus
+	newID               func() event.ID
+	groups              *group.Manager
+	loaded              bool
+	cards               map[event.ID]Card
+	causes              map[event.ID]event.ID
+	queue               []event.ID
 }
 
 func New(storage store.Store, bus *event.Bus, newID func() event.ID, groups *group.Manager) *Pool {
@@ -67,6 +69,28 @@ func (p *Pool) apply(fact event.Event, card Card) {
 	p.cards[card.ID] = card
 	p.causes[card.ID] = fact.ID
 }
+
+// Observe refreshes the projection after its host's fact has been persisted.
+func (p *Pool) Observe(ctx context.Context, fact event.Event) error {
+	if !slices.Contains(kinds, fact.Type) {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return err
+	}
+	card, err := event.Decode[Card](fact)
+	if err != nil {
+		return err
+	}
+	if card.ID != fact.Scope.Task || card.Group != fact.Scope.Group {
+		return ErrState
+	}
+	p.apply(fact, card)
+	return nil
+}
+
 func (p *Pool) emit(ctx context.Context, kind event.Type, card Card, actor event.Actor) error {
 	body, err := json.Marshal(card)
 	if err != nil {
@@ -97,6 +121,9 @@ func (p *Pool) Create(ctx context.Context, card Card) (Card, error) {
 	}
 	if strings.TrimSpace(card.Title) == "" {
 		return Card{}, errors.New("task title is required")
+	}
+	if card.Budget.MaxSteps < 0 || card.Budget.MaxWallClock < 0 || card.Budget.MaxTokens < 0 || card.Budget.MaxCost < 0 || math.IsNaN(card.Budget.MaxCost) || math.IsInf(card.Budget.MaxCost, 0) || len(card.Grants) > 0 {
+		return Card{}, errors.New("task budget must be finite and nonnegative")
 	}
 	if card.ID == "" {
 		card.ID = p.newID()
@@ -197,14 +224,59 @@ func (p *Pool) assign(ctx context.Context, id, memberID event.ID, role ClaimRole
 	if err != nil {
 		return Claim{}, err
 	}
+	if actor.Kind == "" {
+		actor = event.Actor{Kind: event.ActorAgent, ID: card.Leader}
+		if publish {
+			actor = card.CreatedBy
+		}
+	}
 	worker := false
 	for _, member := range state.Members {
 		if member.ID == memberID && member.Kind == group.MemberAgent && member.AgentRole == group.AgentWorker {
+			if p.AuthorizeAssignment != nil {
+				if err := p.AuthorizeAssignment(ctx, member, actor); err != nil {
+					return Claim{}, err
+				}
+			}
+			if member.Remote && card.Workspace != "none" && (card.Workspace != "worktree" || state.Group.Project.Remote == "" || member.Checkouts[state.Group.Project.Remote] == "") {
+				return Claim{}, errors.New("MRK-6001: remote member requires a matching checkout for worktree tasks")
+			}
 			worker = true
 		}
 	}
 	if !worker {
 		return Claim{}, ErrNotMember
+	}
+	if (card.Status == Review || card.Status == Queued || card.Status == Running) && len(card.Grants) > 0 {
+		for i, previous := range card.Claims {
+			if previous.Member != memberID || previous.Role != role || previous.Status != ClaimReported || previous.Report == nil || previous.Report.Verdict != VerdictBlocked {
+				continue
+			}
+			if len(scope) > 0 && !slices.Equal(scope, previous.Scope) {
+				return Claim{}, ErrState
+			}
+			card = clone(card)
+			card.Claims[i].Status, card.Claims[i].Report, card.Claims[i].Feedback = ClaimQueued, nil, "Continue the task within the owner-approved budget."
+			card.Status = claimStatus(card.Claims)
+			if err := p.emit(ctx, Updated, card, actor); err != nil {
+				return Claim{}, err
+			}
+			return card.Claims[i], nil
+		}
+	}
+	if (card.Status == Review || card.Status == Queued || card.Status == Running) && len(card.Grants) > 0 && role == RoleOwner {
+		for i, previous := range card.Claims {
+			if previous.Role != RoleOwner || previous.Status != ClaimReported || previous.Report == nil || previous.Report.Verdict != VerdictBlocked {
+				continue
+			}
+			card = clone(card)
+			card.Claims[i].Status = ClaimAbandoned
+			card.Status = claimStatus(card.Claims)
+			if card.Status == Review {
+				card.Status = Open
+			}
+			break
+		}
 	}
 	allowed := card.Status == Open || card.Status == Queued || card.Status == Running
 	if publish {
@@ -213,7 +285,7 @@ func (p *Pool) assign(ctx context.Context, id, memberID event.ID, role ClaimRole
 	if !allowed || role != RoleOwner && role != RoleCollaborator {
 		return Claim{}, ErrState
 	}
-	claimed := slices.ContainsFunc(card.Claims, func(c Claim) bool { return c.Status != ClaimAbandoned })
+	claimed := slices.ContainsFunc(card.Claims, func(c Claim) bool { return c.Role == RoleOwner && c.Status != ClaimAbandoned })
 	if !claimed && role != RoleOwner || claimed && role != RoleCollaborator {
 		return Claim{}, ErrState
 	}
@@ -242,12 +314,6 @@ func (p *Pool) assign(ctx context.Context, id, memberID event.ID, role ClaimRole
 	card = clone(card)
 	card.Claims = append(card.Claims, claim)
 	card.Status = claimStatus(card.Claims)
-	if actor.Kind == "" {
-		actor = event.Actor{Kind: event.ActorAgent, ID: card.Leader}
-		if publish {
-			actor = card.CreatedBy
-		}
-	}
 	if err := p.emit(ctx, QueuedEvent, card, actor); err != nil {
 		return Claim{}, err
 	}
@@ -274,18 +340,21 @@ func (p *Pool) Next(ctx context.Context, member event.ID) (Claim, error) {
 	})
 	for _, id := range queue {
 		card, index, ok := p.claim(id)
-		if !ok || card.Claims[index].Member != member || card.Claims[index].Status != ClaimQueued {
+		if !ok || card.Status == Blocked || card.Claims[index].Member != member || card.Claims[index].Status != ClaimQueued {
 			continue
 		}
 		goal := p.root(card)
+		state, err := p.groups.Get(ctx, card.Group)
+		if err != nil {
+			return Claim{}, err
+		}
+		if state.IsPaused(goal.ID) {
+			continue
+		}
 		if goal.Phase == PhaseStalled || goal.Phase == PhaseCancelled || goal.Phase == PhaseDone {
 			continue
 		}
 		if goal.Phase == PhasePlanning {
-			state, err := p.groups.Get(ctx, card.Group)
-			if err != nil {
-				return Claim{}, err
-			}
 			if state.Group.Settings.PlanNeedsApproval {
 				continue
 			}
@@ -332,7 +401,11 @@ func (p *Pool) Submit(ctx context.Context, report Report) error {
 	}
 	card = clone(card)
 	card.Claims[index].Status, card.Claims[index].Report = ClaimReported, &report
-	card.Status = claimStatus(card.Claims)
+	if card.Status == Blocked {
+		card.PreviousStatus = claimStatus(card.Claims)
+	} else {
+		card.Status = claimStatus(card.Claims)
+	}
 	return p.emit(ctx, Reported, card, event.Actor{Kind: event.ActorAgent, ID: card.Claims[index].Member})
 }
 func (p *Pool) Close(ctx context.Context, id event.ID, status Status) error {

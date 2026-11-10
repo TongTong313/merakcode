@@ -86,3 +86,32 @@ func TestBundleIncludesRedactedRecentLogsAndOnlyExplicitSessionEvents(t *testing
 		}
 	}
 }
+
+func TestBundleRedactsEveryMCPEnvironmentValue(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{/* configuration */"mcpServers":{"docs":{"command":"node","env":{"PLAIN_NAME":"private-environment-value"}},},}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := (diagnose.Bundler{DataDir: directory}).Bundle(t.Context(), diagnose.Request{WithConfig: true}, &output); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(output.Bytes()), int64(output.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range archive.File {
+		reader, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), "private-environment-value") {
+			t.Fatal("MCP environment value leaked")
+		}
+	}
+}

@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +17,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/anthropic"
+	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/model/openai"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
@@ -22,7 +26,52 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/localstore"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 	"github.com/TongTong313/merakcode/merak/internal/server"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
+
+// debugClient hosts an isolated engine; debug commands use its public protocol.
+func debugClient(ctx context.Context, provider model.Provider) (*protocol.Client, func(), error) {
+	home, err := os.MkdirTemp("", "merak-debug-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(home) }
+	workdir, err := os.Getwd()
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	var instance *server.Instance
+	providers := map[string]model.Provider{}
+	if provider != nil {
+		providers[provider.Name()] = provider
+	}
+	e, err := engine.New(engine.Deps{DataDir: home, Workdir: workdir, Providers: providers,
+		Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
+			return instance.Ask(ctx, request)
+		},
+		AskQuestion: func(ctx context.Context, request question.Request) (question.Answer, error) {
+			return instance.AskQuestion(ctx, request)
+		},
+	})
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	instance, err = server.Start(e, home)
+	if err != nil {
+		_ = e.Close()
+		cleanup()
+		return nil, nil, err
+	}
+	client, err := connectEngine(ctx, home)
+	if err != nil {
+		_ = instance.Close()
+		cleanup()
+		return nil, nil, err
+	}
+	return client, func() { _ = client.Close(); _ = instance.Close(); cleanup() }, nil
+}
 
 func serve(ctx context.Context, args []string) int {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
@@ -33,10 +82,11 @@ func serve(ctx context.Context, args []string) int {
 	refresh := flags.Bool("refresh-models", false, "")
 	development := flags.Bool("development", false, "")
 	port := flags.Int("port", 0, "")
+	listen := flags.String("listen", "127.0.0.1", "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		return 2
 	}
-	if (*storageMode != "local" && *storageMode != "remote") || *port < 0 || *port > 65535 {
+	if (*storageMode != "local" && *storageMode != "remote") || *port < 0 || *port > 65535 || net.ParseIP(*listen) == nil {
 		return 2
 	}
 	logDir, err := platformlog.Directory("engine", *development)
@@ -137,7 +187,7 @@ func serve(ctx context.Context, args []string) int {
 			return 1
 		}
 	}
-	instance, err = server.StartOn(e, home, *port, remote)
+	instance, err = server.StartListening(e, home, *listen, *port, remote)
 	if err != nil {
 		return 1
 	}
@@ -174,4 +224,35 @@ func dataHome() (string, error) {
 		return filepath.Join(dir, "merakcode"), nil
 	}
 	return filepath.Join(userHome, ".local", "share", "merakcode"), nil
+}
+
+func configuredCatalog(path string) (*catalog.Catalog, error) {
+	var options catalog.Options
+	for _, provider := range []string{"anthropic", "openrouter"} {
+		prefix := strings.ToUpper(provider)
+		key, base := os.Getenv(prefix+"_API_KEY"), os.Getenv(prefix+"_BASE_URL")
+		if key != "" || base != "" {
+			options.Sources = append(options.Sources, catalog.Source{Provider: provider, APIKey: key, BaseURL: base})
+		}
+	}
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&options.Overrides); err != nil {
+			return nil, err
+		}
+		if decoder.Decode(new(any)) != io.EOF {
+			return nil, errors.New("expected one overrides array")
+		}
+		for _, override := range options.Overrides {
+			if override.Provider == "" || override.ID == "" || override.Window != nil && *override.Window <= 0 || override.MaxOutput != nil && *override.MaxOutput <= 0 {
+				return nil, errors.New("invalid model override")
+			}
+		}
+	}
+	return catalog.New(options), nil
 }

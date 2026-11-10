@@ -4,6 +4,7 @@ import FolderOpen from "lucide-solid/icons/folder-open"
 import FolderPlus from "lucide-solid/icons/folder-plus"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import Plus from "lucide-solid/icons/plus"
+import Users from "lucide-solid/icons/users"
 import Search from "lucide-solid/icons/search"
 import Settings from "lucide-solid/icons/settings"
 import ArrowUpCircle from "lucide-solid/icons/circle-arrow-up"
@@ -12,7 +13,8 @@ import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
 import { baseName, groupPath, sameDir, sessionPath } from "../../lib/route"
-import { groups, loadGroups, unreadGroup } from "../../state/groups"
+import { groups, groupView, loadGroups, unreadGroup } from "../../state/groups"
+import type { GroupGroup } from "@merakcode/sdk"
 import { GroupCreate } from "../conversation/group-create"
 import { unsavedReason } from "../../state/git"
 import {
@@ -25,7 +27,7 @@ import {
   statusOf,
   type Folder,
 } from "../../state/store"
-import { setUi } from "../../state/ui"
+import { setUi, ui } from "../../state/ui"
 import { updateState } from "../update/state"
 import { Confirm } from "../../ui/dialog"
 import { Menu } from "../../ui/menu"
@@ -123,10 +125,39 @@ function Conversation(props: { session: SessionSummary; folder: Folder; current?
   )
 }
 
-function Group(props: { folder: Folder; current?: string; route?: string }) {
+function GroupLink(props: { group: GroupGroup; current?: string }) {
+  const names = () =>
+    groupView(props.group.id)
+      ?.members.filter((member) => member.kind === "agent")
+      .map((member) => member.name)
+      .join("、")
+  return (
+    <A
+      class="conversation"
+      href={groupPath(props.group.project.directory, props.group.id)}
+      aria-current={props.current === props.group.id ? "page" : undefined}
+    >
+      <Users class="icon icon-sm" />
+      <span class="body">
+        <span class="title">{props.group.name}</span>
+        <span class="meta ellipsis" title={names()}>
+          {names()}
+        </span>
+      </span>
+      <Show when={unreadGroup(props.group.id)}>
+        <span class="count" data-unread-group={props.group.id}>
+          {unreadGroup(props.group.id)}
+        </span>
+      </Show>
+    </A>
+  )
+}
+
+function Group(props: { folder: Folder; current?: string; route?: string; group?: string }) {
   const navigate = useNavigate()
   const name = () => baseName(props.folder.directory)
   const list = () => sessionsOf(props.folder)
+  const teams = () => groups().filter((group) => sameDir(group.project.directory, props.folder.directory))
   const remove = async () => {
     const directory = props.folder.directory
     const directories = [directory]
@@ -149,7 +180,7 @@ function Group(props: { folder: Folder; current?: string; route?: string }) {
       <div class="group-title">
         <FolderOpen class="icon icon-sm" />
         <span class="ellipsis">{name()}</span>
-        <span class="count">{list().length || ""}</span>
+        <span class="count">{list().length + teams().length || ""}</span>
         <Menu
           class="icon-button sm row-menu"
           label={t("sidebar.projectMenu")}
@@ -165,7 +196,11 @@ function Group(props: { folder: Folder; current?: string; route?: string }) {
           ]}
         />
       </div>
-      <For each={list()} fallback={<div class="group-empty subtle">{t("sidebar.empty")}</div>}>
+      <For each={teams()}>{(group) => <GroupLink group={group} current={props.group} />}</For>
+      <Show when={!list().length && !teams().length}>
+        <div class="group-empty subtle">{t("sidebar.empty")}</div>
+      </Show>
+      <For each={list()}>
         {(session) => <Conversation session={session} folder={props.folder} current={props.current} />}
       </For>
     </section>
@@ -195,9 +230,10 @@ function UpdateNotice() {
 
 /** Sidebar: new conversation, search, conversations grouped by project (with run status), settings */
 export function Sidebar(props: { directory?: string; current?: string; group?: string }) {
-  const [creatingGroup, setCreatingGroup] = createSignal(false)
   const navigate = useNavigate()
   const directory = () => props.directory ?? state.folders[0]?.directory
+  const otherGroups = () =>
+    groups().filter((group) => !state.folders.some((folder) => sameDir(folder.directory, group.project.directory)))
   const newConversation = () => {
     const dir = directory()
     if (dir) navigate(sessionPath(dir))
@@ -218,9 +254,10 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
           <kbd aria-hidden="true">{mod} N</kbd>
         </button>
 
-        <button class="nav-row" onClick={() => setCreatingGroup(true)}>
-          <Plus class="icon" />
+        <button class="nav-row" disabled={!directory()} onClick={() => setUi("newTeam", true)}>
+          <Users class="icon" />
           {t("group.title")}
+          <kbd aria-hidden="true">{mod} G</kbd>
         </button>
 
         <button class="nav-row" onClick={() => setUi("palette", true)}>
@@ -230,37 +267,20 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
         </button>
       </div>
       <div class="sidebar-scroll scroll">
-        <Show when={groups().length}>
+        <Show when={otherGroups().length}>
           <section class="group" aria-label={t("group.groups")}>
             <div class="group-title">{t("group.groups")}</div>
-            <For each={groups()}>
-              {(group) => (
-                <A
-                  class="conversation"
-                  href={groupPath(group.project.directory, group.id)}
-                  aria-current={props.group === group.id ? "page" : undefined}
-                >
-                  <span class="body">
-                    <span class="title">{group.name}</span>
-                  </span>
-                  <Show when={unreadGroup(group.id)}>
-                    <span class="count" data-unread-group={group.id}>
-                      {unreadGroup(group.id)}
-                    </span>
-                  </Show>
-                </A>
-              )}
-            </For>
+            <For each={otherGroups()}>{(group) => <GroupLink group={group} current={props.group} />}</For>
           </section>
         </Show>
         <For each={state.folders}>
-          {(folder) => <Group folder={folder} current={props.current} route={props.directory} />}
+          {(folder) => <Group folder={folder} current={props.current} route={props.directory} group={props.group} />}
         </For>
       </div>
       <GroupCreate
         directory={directory() ?? ""}
-        open={creatingGroup()}
-        onClose={() => setCreatingGroup(false)}
+        open={ui.newTeam}
+        onClose={() => setUi("newTeam", false)}
         onCreated={(group) => {
           void loadGroups()
             .then(() => navigate(groupPath(group.project.directory, group.id)))

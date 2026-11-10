@@ -1,14 +1,9 @@
 name: Manual regression
 
-# Timing on shared runners and external connectivity are deliberately outside the PR/release gates.
+# External connectivity is deliberately outside the PR/release gates.
 on:
   workflow_dispatch:
     inputs:
-      suite:
-        description: Regression suite to run on all three systems
-        type: choice
-        options: [performance, external-network]
-        default: performance
       external-target:
         description: External TCP control endpoint (http://host:port), required for external-network
         type: string
@@ -18,7 +13,7 @@ permissions:
 
 jobs:
   regression:
-    name: ${{ inputs.suite }} (${{ matrix.os }})
+    name: External network (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -50,24 +45,20 @@ jobs:
             macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
             Windows) choco install ripgrep -y --no-progress ;;
           esac
-      - run: pnpm test:perf
-        if: inputs.suite == 'performance'
-        working-directory: apps/cli
       - name: Initialize Windows sandbox accounts and read access
-        if: inputs.suite == 'external-network' && runner.os == 'Windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force .cache/sandbox-ci | Out-Null
           ./script/sandbox/setup-windows.ps1 -Count 2 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
           ./script/sandbox/grant-read-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE -InstallDir "$env:GITHUB_WORKSPACE/.cache/sandbox-ci"
       - name: Verify external proxy enforcement
-        if: inputs.suite == 'external-network'
         shell: pwsh
         run: ./script/sandbox/test.ps1 -External
         env:
           MERAKCODE_SANDBOX_EXTERNAL_TARGET: ${{ inputs.external-target }}
       - name: Reset Windows accounts, profiles, registry, firewall and state
-        if: always() && inputs.suite == 'external-network' && runner.os == 'Windows'
+        if: always() && runner.os == 'Windows'
         shell: pwsh
         run: |
           if (Test-Path "$env:MERAKCODE_SANDBOX_TEST_STATE/accounts.json") {

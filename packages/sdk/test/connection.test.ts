@@ -53,7 +53,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         kind: "builtin",
         name: "MerakCode",
         available: true,
-        caps: { steer: true, permission: true },
+        caps: { steer: true, permission: true, mcp: false },
       })
       const created = await client.session.create({ provider: "fake" })
       let view: Conversation | undefined
@@ -83,7 +83,8 @@ it("connects to a real merak serve and receives a completed conversation", async
       expect(unrelated).toEqual([])
       const completed = received.find((event) => event.type === "message.completed")
       expect(completed?.payload.parts?.[0]?.text).toBe("Hello from the SDK test.")
-      expect(received.filter((event) => event.seq).map((event) => event.seq)).toEqual([2, 3, 4, 5, 6])
+      expect(received.filter((event) => event.seq).map((event) => event.seq)).toEqual([2, 3, 4, 5, 6, 7])
+      expect(received.filter((event) => event.type === "session.mcp_configured")).toHaveLength(1)
       await expect.poll(() => view?.state.status).toBe("done")
       expect(view?.state.messages?.at(-1)?.parts?.[0]?.text).toBe("Hello from the SDK test.")
       await watching.close()
@@ -91,7 +92,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         view = value
       })
       expect(view?.state.messages).toHaveLength(2)
-      expect(view?.state.lastSeq).toBe(6)
+      expect(view?.state.lastSeq).toBe(7)
       await restored.close()
       const logDir = path.join(home, "logs", "production", "desktop")
       await mkdir(logDir, { recursive: true })
@@ -119,6 +120,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         project: { directory: home },
         defaultLeader: "leader",
         members: [
+          { id: "human", group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
           {
             id: "leader",
             group: "",
@@ -145,7 +147,7 @@ it("connects to a real merak serve and receives a completed conversation", async
       const stopGroup = await client.events.subscribe({ scope: { group: group.id } }, (event) => {
         if (event.type === "turn.finished") groupDone.resolve()
       })
-      const task = await client.task.create({ group: group.id, title: "Verify the SDK group" })
+      const task = await client.task.create({ group: group.id, human: "human", title: "Verify the SDK group" })
       await Promise.race([
         groupDone.promise,
         delay(5000).then(() => {
@@ -159,10 +161,7 @@ it("connects to a real merak serve and receives a completed conversation", async
       await stopGroup()
       await client.group.addMember({
         group: group.id,
-        member: { id: "human", group: group.id, kind: "human", name: "Owner", role: "owner", status: "idle" },
-      })
-      await client.group.addMember({
-        group: group.id,
+        human: "human",
         member: {
           id: "worker",
           group: group.id,

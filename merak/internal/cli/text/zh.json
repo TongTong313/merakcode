@@ -1,4 +1,7 @@
 {
+  "allowOnce": "允许这次",
+  "rejectOnce": "拒绝",
+  "answer": "回答（输入结束则取消）：",
   "thinking": "思考：",
   "estimatedCost": "预估费用：%s %.6f\n",
   "unknownCost": "费用：未知\n",

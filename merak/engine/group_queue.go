@@ -61,11 +61,11 @@ func (e *Engine) AssignTask(ctx context.Context, id, human, member event.ID, rol
 	if err != nil {
 		return task.Claim{}, err
 	}
-	if actor.Kind != group.MemberHuman {
+	if !actor.Can(group.RoleMember) {
 		return task.Claim{}, errors.New("human membership is required")
 	}
 	if role == "" {
 		role = task.RoleOwner
 	}
-	return e.Tasks.Assign(ctx, id, member, role, scope)
+	return e.Tasks.AssignAs(ctx, id, member, role, scope, event.Actor{Kind: event.ActorHuman, ID: human})
 }

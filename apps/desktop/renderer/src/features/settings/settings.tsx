@@ -7,7 +7,8 @@ import { Dynamic } from "solid-js/web"
 import type { Theme } from "../../desktop/bridge-contract"
 import { locale, setLocale, t, toConfig, type Locale } from "../../i18n"
 import { bridge } from "../../lib/bridge"
-import { updateConfig } from "../../state/store"
+import { state, updateConfig } from "../../state/store"
+import { PermissionModeSelect } from "../conversation/permission-mode"
 import { onConnection } from "../../state/client"
 import { setUi, ui, type SettingsSection } from "../../state/ui"
 import { Segmented } from "../../ui/segmented"
@@ -18,6 +19,7 @@ import { updateState } from "../update/state"
 import { Row, Section } from "./layout"
 import { Models } from "./models"
 import { Profiles } from "./profiles"
+import { Cloud } from "./cloud"
 
 const fail = (error: Error) => {
   toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
@@ -34,6 +36,12 @@ function General() {
   return (
     <Section title={t("settings.general")}>
       <div class="card">
+        <Row label={t("permissionLevel.label")} desc={t("permissionLevel.default.desc")}>
+          <PermissionModeSelect
+            value={state.config?.mode ?? "ask"}
+            onChange={(mode) => void updateConfig({ mode }).catch(fail)}
+          />
+        </Row>
         <Row label={t("settings.language")} desc={t("settings.language.desc")}>
           <Select
             class="chip outlined"
@@ -158,6 +166,7 @@ const SECTIONS: { id: SettingsSection; label: () => string; icon: typeof Cpu; vi
   { id: "general", label: () => t("settings.general"), icon: SettingsIcon, view: General },
   { id: "models", label: () => t("settings.models"), icon: Cpu, view: Models },
   { id: "profiles", label: () => t("profiles.title"), icon: Cpu, view: Profiles },
+  { id: "cloud", label: () => t("cloud.title"), icon: SettingsIcon, view: Cloud },
   { id: "about", label: () => t("settings.about"), icon: Info, view: About },
 ]
 

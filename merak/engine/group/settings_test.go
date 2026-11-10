@@ -27,10 +27,10 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := group.Settings{Initiative: group.Eager, Triggers: []group.Trigger{{ID: "docs", When: event.Filter{Types: []event.Type{"file.changed"}}, Where: "docs/**/*.md", Then: group.Action{Kind: group.CreateTask, Template: "Sync docs", Member: "worker"}}}}
-	if _, err := manager.UpdateSettings(ctx, g.ID, "approver", settings); err == nil {
+	if _, err := manager.Update(ctx, g.ID, "approver", group.Update{Settings: &settings}); err == nil {
 		t.Fatal("approver changed group settings")
 	}
-	if _, err := manager.UpdateSettings(ctx, g.ID, "admin", settings); err != nil {
+	if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &settings}); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := group.New(storage, bus, event.NewID).Get(ctx, g.ID)
@@ -38,13 +38,22 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 		t.Fatalf("settings=%+v %v", saved.Group.Settings, err)
 	}
 	for _, invalid := range []group.Settings{{Initiative: "unknown"}, {Triggers: []group.Trigger{{ID: "assign", When: event.Filter{Types: []event.Type{"external.ready"}}, Then: group.Action{Kind: group.AssignMember, Member: "missing"}}}}} {
-		if _, err := manager.UpdateSettings(ctx, g.ID, "admin", invalid); err == nil {
+		if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &invalid}); err == nil {
 			t.Fatal("invalid settings accepted")
+		}
+	}
+	for _, raw := range []string{`{"turnsPerMinute":{"thread":0}}`, `{"turnsPerMinute":{"group":-1}}`, `{"turnsPerMinute":{"thread":1.5}}`} {
+		var invalid group.Settings
+		if err := json.Unmarshal([]byte(raw), &invalid); err != nil {
+			continue
+		}
+		if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &invalid}); err == nil {
+			t.Fatalf("invalid rate accepted: %s", raw)
 		}
 	}
 	for _, host := range []string{"example.*.com", "https://example.com", "example.com:65536", "*", ""} {
 		t.Run("invalid host "+host, func(t *testing.T) {
-			if _, err := manager.UpdateSettings(ctx, g.ID, "admin", group.Settings{AllowedHosts: []string{host}}); err == nil {
+			if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &group.Settings{AllowedHosts: []string{host}}}); err == nil {
 				t.Error("settings accepted an invalid network host")
 			}
 			if err := manager.AllowNetworkHost(ctx, g.ID, "admin", host); err == nil {
@@ -74,10 +83,10 @@ func TestAdminNetworkDenialsSurviveReloadAndRejectBareWildcards(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"deniedHosts":["*.blocked.example:443"]}`), &settings); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.UpdateSettings(t.Context(), g.ID, "approver", settings); err == nil {
+	if _, err := manager.Update(t.Context(), g.ID, "approver", group.Update{Settings: &settings}); err == nil {
 		t.Fatal("approver changed network denials")
 	}
-	if _, err := manager.UpdateSettings(t.Context(), g.ID, "admin", settings); err != nil {
+	if _, err := manager.Update(t.Context(), g.ID, "admin", group.Update{Settings: &settings}); err != nil {
 		t.Fatal(err)
 	}
 	state, err := group.New(storage, bus, event.NewID).Get(t.Context(), g.ID)
@@ -95,7 +104,7 @@ func TestAdminNetworkDenialsSurviveReloadAndRejectBareWildcards(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"deniedHosts":["*"]}`), &settings); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.UpdateSettings(t.Context(), g.ID, "admin", settings); err == nil {
+	if _, err := manager.Update(t.Context(), g.ID, "admin", group.Update{Settings: &settings}); err == nil {
 		t.Fatal("bare wildcard accepted in network denials")
 	}
 }

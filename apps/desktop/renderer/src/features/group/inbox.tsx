@@ -15,6 +15,7 @@ const kindKeys: Record<string, Key> = {
   blocked: "task.status.blocked",
   info: "inbox.info",
   receipt: "inbox.receipt",
+  sentinel: "notify.sentinel",
 }
 
 export function GroupInbox(props: { inbox: Inbox; notice?: string; onTask: (id: string) => void }) {
@@ -75,7 +76,15 @@ export function GroupInbox(props: { inbox: Inbox; notice?: string; onTask: (id: 
           <For each={props.inbox.info}>
             {(notice) => (
               <article class="inbox-notice" data-read={noticeRead(notice.id)}>
+                <Show when={notice.kind === "sentinel"}>
+                  <strong>{t("notify.sentinel")}</strong>
+                </Show>
                 <p>{noticeText(notice.text)}</p>
+                <Show when={notice.scope.task}>
+                  <button class="button ghost sm" onClick={() => open(notice)}>
+                    {t("usage.task")}
+                  </button>
+                </Show>
                 <Show when={!noticeRead(notice.id)} fallback={<span class="subtle">{t("inbox.read")}</span>}>
                   <button class="button secondary sm" onClick={() => markNoticeRead(notice.id)}>
                     {t("inbox.markRead")}

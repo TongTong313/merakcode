@@ -7,6 +7,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -18,13 +19,6 @@ const (
 	FileChanged     event.Type = "file.changed"
 	SentinelFlagged event.Type = "sentinel.flagged"
 )
-
-type WatchOverload struct {
-	Rule      string `json:"rule"`
-	Code      string `json:"code"`
-	Directory string `json:"directory"`
-	watch.Overload
-}
 
 type FileChanges struct {
 	Directory string              `json:"directory"`
@@ -40,7 +34,7 @@ type RepoChanges struct {
 func init() {
 	event.Register[RepoChanges](RepoChanged)
 	event.Register[FileChanges](FileChanged)
-	event.Register[WatchOverload](SentinelFlagged)
+	event.Register[leader.Finding](SentinelFlagged)
 }
 
 func (e *Engine) watchGroup(ctx context.Context, g group.Group) error {
@@ -107,32 +101,35 @@ func (e *Engine) watchGroup(ctx context.Context, g group.Group) error {
 					continue
 				}
 				files.SetExcluded(append(excluded, recent...))
-				var changed *watch.RepoChanged
-				if repository != nil {
-					changed, _ = repository.Poll(e.ctx)
-				}
-				scan, err := files.Poll(e.ctx)
-				if err == nil {
-					recent = nil
-					_ = e.reportWatchOverload(e.ctx, g, scan.Overload)
-				}
-				var owned map[string]event.ID
-				if changed != nil || len(scan.Paths) > 0 {
-					owned = e.integratedCommits(e.ctx, g.ID, g.Project.Directory)
-				}
-				if changed != nil {
-					claims := map[string]event.ID{}
-					for _, commit := range changed.Commits {
-						if owner := owned[commit.ID]; owner != "" {
-							claims[commit.ID] = owner
-						}
+				_ = e.Workspaces.ObserveProject(e.ctx, g.Project.Directory, func(ctx context.Context) error {
+					var changed *watch.RepoChanged
+					if repository != nil {
+						changed, _ = repository.Poll(e.ctx)
 					}
-					_ = e.environmentEvent(e.ctx, g.ID, RepoChanged, RepoChanges{RepoChanged: *changed, Claims: claims})
-				}
-				if err == nil && len(scan.Paths) > 0 {
-					claims := e.integratedFiles(e.ctx, g.Project.Directory, scan.Paths, owned)
-					_ = e.environmentEvent(e.ctx, g.ID, FileChanged, FileChanges{Directory: g.Project.Directory, Paths: scan.Paths, Claims: claims})
-				}
+					scan, err := files.Poll(e.ctx)
+					if err == nil {
+						recent = nil
+						_ = e.reportWatchOverload(e.ctx, g, scan.Overload)
+					}
+					var owned map[string]event.ID
+					if changed != nil || len(scan.Paths) > 0 {
+						owned = e.integratedCommits(e.ctx, g.ID, g.Project.Directory)
+					}
+					if changed != nil {
+						claims := map[string]event.ID{}
+						for _, commit := range changed.Commits {
+							if owner := owned[commit.ID]; owner != "" {
+								claims[commit.ID] = owner
+							}
+						}
+						_ = e.environmentEvent(e.ctx, g.ID, RepoChanged, RepoChanges{RepoChanged: *changed, Claims: claims})
+					}
+					if err == nil && len(scan.Paths) > 0 {
+						claims := e.integratedFiles(e.ctx, g.Project.Directory, scan.Paths, owned)
+						_ = e.environmentEvent(e.ctx, g.ID, FileChanged, FileChanges{Directory: g.Project.Directory, Paths: scan.Paths, Claims: claims})
+					}
+					return nil
+				})
 			}
 		}
 	})
@@ -150,7 +147,7 @@ func (e *Engine) watchedWorkspaces(ctx context.Context) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ws.Released || ws.Kind == workspace.KindNone || ws.Kind == workspace.KindInplace && !ws.Active {
+		if ws.Released && !ws.Pooled || ws.Kind == workspace.KindNone || ws.Kind == workspace.KindInplace && !ws.Active {
 			continue
 		}
 		directories = append(directories, ws.Directory)
@@ -162,32 +159,15 @@ func (e *Engine) reportWatchOverload(ctx context.Context, g group.Group, overloa
 	if overload == nil {
 		return nil
 	}
-	body, err := json.Marshal(WatchOverload{Rule: "watch.overload", Code: "MRK-1005", Directory: g.Project.Directory, Overload: *overload})
-	if err != nil {
-		return err
-	}
-	fact, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + g.ID), Scope: event.Scope{Group: g.ID}, Actor: event.Actor{Kind: "system"}, Type: SentinelFlagged, Payload: body})
-	if err != nil {
-		return err
-	}
-	state, err := e.Groups.Get(ctx, g.ID)
-	if err != nil {
-		return err
-	}
-	var to []event.ID
-	for _, member := range state.Members {
-		if member.Can(group.RoleOwner) {
-			to = append(to, member.ID)
+	findings := leader.Inspect(leader.SentinelView{Watch: []leader.WatchView{{Files: overload.Files, Duration: overload.Duration}}})
+	for _, finding := range findings {
+		finding.Directory, finding.Files, finding.Duration = g.Project.Directory, overload.Files, overload.Duration
+		if err := e.flagFinding(ctx, g.ID, finding); err != nil {
+			return err
 		}
 	}
-	body, err = json.Marshal(group.Notice{Kind: "info", Text: "MRK-1005", To: to})
-	if err != nil {
-		return err
-	}
-	_, err = e.Bus.Publish(ctx, event.Event{Stream: fact.Stream, Scope: fact.Scope, Actor: fact.Actor, Type: group.NoticeSent, Cause: fact.ID, Payload: body})
-	return err
+	return nil
 }
-
 func (e *Engine) integratedCommits(ctx context.Context, groupID event.ID, directory string) map[string]event.ID {
 	owned := map[string]event.ID{}
 	if marked, err := git.ClaimCommits(ctx, directory); err == nil {
@@ -225,8 +205,6 @@ func (e *Engine) integratedFiles(ctx context.Context, directory string, paths []
 	if len(owned) == 0 {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
 	status, err := git.Status(ctx, directory)
 	if err != nil {
 		return nil

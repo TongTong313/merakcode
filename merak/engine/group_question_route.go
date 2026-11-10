@@ -21,10 +21,21 @@ func (e *Engine) routeQuestion(ask func(context.Context, question.Request) (ques
 			}
 			return ask(ctx, req)
 		}
+		if e.activeDeviceGroup(fact.Scope.Group) {
+			return e.waitDeviceQuestion(ctx, req.ID)
+		}
 		state, err := e.Groups.Get(ctx, fact.Scope.Group)
 		if err != nil {
 			return question.Answer{}, err
 		}
+		remaining := max(0, state.Group.Settings.ApprovalWait(e.permissions.Timeout)-e.now().Sub(fact.Time))
+		ctx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		defer func() {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				e.approvalTimedOut(context.WithoutCancel(ctx), fact.Scope, fact.Actor.ID, fact.ID)
+			}
+		}()
 		var to []event.ID
 		for _, member := range state.Members {
 			if member.Kind == group.MemberHuman && (req.To == member.ID || req.To == "" && member.Can(group.RoleApprover)) {
@@ -40,6 +51,10 @@ func (e *Engine) routeQuestion(ask func(context.Context, question.Request) (ques
 			return question.Answer{}, err
 		}
 		answer := question.Answer{Cancelled: true}
+		if ask == nil {
+			<-ctx.Done()
+			err = ctx.Err()
+		}
 		if ask != nil {
 			answer, err = ask(ctx, req)
 			if err == nil {

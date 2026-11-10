@@ -52,6 +52,12 @@ test("allows selecting full takeover before starting a conversation", () => {
   )
   expect(option).toBeDefined()
   option!.click()
+  expect(choice(undefined, "/workspace").mode).toBe("ask")
+  const confirm = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent === "Enable full takeover",
+  )
+  expect(confirm).toBeDefined()
+  confirm!.click()
   expect(choice(undefined, "/workspace").mode).toBe("takeover")
 })
 

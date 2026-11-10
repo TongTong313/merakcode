@@ -19,7 +19,7 @@ func (e *Engine) SayGroup(ctx context.Context, groupID, taskID, human event.ID, 
 	if err != nil {
 		return "", err
 	}
-	if member.Kind != group.MemberHuman || strings.TrimSpace(message.Text) == "" {
+	if !member.Can(group.RoleMember) || strings.TrimSpace(message.Text) == "" {
 		return "", errors.New("a human member and message text are required")
 	}
 	if taskID != "" {

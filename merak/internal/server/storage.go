@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/store"
@@ -14,23 +16,25 @@ import (
 
 // RemoteStore forwards persistence requests to the single accepted host.
 type RemoteStore struct {
-	mu      sync.Mutex
-	conn    *websocket.Conn
-	next    uint64
-	pending map[string]chan protocol.Message
+	onTimeout func()
+	mu        sync.Mutex
+	conn      *websocket.Conn
+	next      uint64
+	pending   map[string]chan protocol.Message
 }
 
 func NewRemoteStore() *RemoteStore {
 	return &RemoteStore{pending: make(map[string]chan protocol.Message)}
 }
 
-func (s *RemoteStore) attach(conn *websocket.Conn) bool {
+func (s *RemoteStore) attach(conn *websocket.Conn, onTimeout func()) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conn != nil {
 		return false
 	}
 	s.conn = conn
+	s.onTimeout = onTimeout
 	return true
 }
 
@@ -71,6 +75,7 @@ func (s *RemoteStore) call(ctx context.Context, method string, params, result an
 	}
 	s.mu.Lock()
 	conn := s.conn
+	onTimeout := s.onTimeout
 	if conn == nil {
 		s.mu.Unlock()
 		return store.ErrUnavailable
@@ -80,6 +85,21 @@ func (s *RemoteStore) call(ctx context.Context, method string, params, result an
 	reply := make(chan protocol.Message, 1)
 	s.pending[string(id)] = reply
 	s.mu.Unlock()
+	ctx, cancel := context.WithTimeoutCause(ctx, 30*time.Second, errStorageTimeout)
+	defer cancel()
+	expire := func() {
+		if !errors.Is(context.Cause(ctx), errStorageTimeout) {
+			return
+		}
+		if s.detach(conn) {
+			_ = conn.Close()
+			if onTimeout != nil {
+				go onTimeout()
+			}
+		}
+	}
+	stop := context.AfterFunc(ctx, expire)
+	defer stop()
 	defer func() { s.mu.Lock(); delete(s.pending, string(id)); s.mu.Unlock() }()
 	body, err := json.Marshal(params)
 	if err != nil {
@@ -102,9 +122,15 @@ func (s *RemoteStore) call(ctx context.Context, method string, params, result an
 		}
 		return nil
 	case <-ctx.Done():
+		if errors.Is(context.Cause(ctx), errStorageTimeout) {
+			expire()
+			return store.ErrUnavailable
+		}
 		return ctx.Err()
 	}
 }
+
+var errStorageTimeout = errors.New("storage acknowledgement timed out")
 
 func (s *RemoteStore) Append(ctx context.Context, events []event.Event) error {
 	return s.call(ctx, "store.append", protocol.StoreAppendParams{Events: events}, nil)

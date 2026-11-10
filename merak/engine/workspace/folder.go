@@ -149,7 +149,7 @@ func (m *Manager) Publish(ctx context.Context, workspace Workspace, artifacts []
 		if err := project.WriteFile(file, body, 0600); err != nil {
 			return ids, err
 		}
-		if err := m.store.Put(ctx, store.Doc{Kind: "blob", Key: string(id), Body: body, Meta: map[string]string{"title": artifact.Title, "path": filepath.ToSlash(path), "mediaType": artifact.MediaType}}); err != nil {
+		if err := m.store.Put(ctx, store.Doc{Kind: "blob", Key: string(id), Body: body, Meta: map[string]string{"title": artifact.Title, "path": filepath.ToSlash(path), "mediaType": artifact.MediaType, "group": string(ws.Group)}}); err != nil {
 			return ids, err
 		}
 		published := Published{ID: id, Workspace: ws.ID, Claim: ws.Claim, Path: filepath.ToSlash(path), Title: artifact.Title, MediaType: artifact.MediaType}

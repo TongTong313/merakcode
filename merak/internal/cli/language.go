@@ -31,6 +31,7 @@ var texts = func() map[string]map[string]string {
 }()
 
 type renderer struct {
+	machine  bool
 	language string
 	reported bool
 }
@@ -55,6 +56,11 @@ func (r *renderer) text(key string) string { return texts[r.language][key] }
 
 func (r *renderer) failure(out io.Writer, code string) {
 	if r.reported {
+		return
+	}
+	if r.machine {
+		_ = json.NewEncoder(out).Encode(map[string]any{"error": map[string]string{"code": code}})
+		r.reported = true
 		return
 	}
 	spec, ok := errorcode.Lookup(code)

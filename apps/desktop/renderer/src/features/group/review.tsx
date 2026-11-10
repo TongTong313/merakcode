@@ -210,7 +210,7 @@ export function TaskReview(props: {
               <Show when={claim().report}>{(report) => <Report report={report()} />}</Show>
               <For each={claim().report?.artifacts}>
                 {(artifact) => (
-                  <div class="row">
+                  <div class="review-artifact">
                     <span>
                       {artifact.title} <code>{artifact.path}</code>
                     </span>
@@ -221,10 +221,11 @@ export function TaskReview(props: {
                       {(file) => (
                         <button
                           class="button secondary sm"
+                          aria-label={t("task.review.download", { title: artifact.title || artifact.path })}
                           disabled={!!downloading()}
                           onClick={() => void download(file())}
                         >
-                          {t("task.review.download", { title: artifact.title || artifact.path })}
+                          {t("common.download")}
                         </button>
                       )}
                     </Show>

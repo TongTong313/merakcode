@@ -54,6 +54,18 @@ test("owners change group initiative and receive later settings updates", async 
     )
     const selector = () => host.querySelector<HTMLSelectElement>('select[aria-label="Initiative"]')
     await expect.poll(() => selector()?.value).toBe("normal")
+    const limit = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)
+    expect(limit("Thread turns per minute")?.value).toBe("6")
+    expect(limit("Group turns per minute")?.value).toBe("30")
+    limit("Thread turns per minute")!.value = "9"
+    limit("Thread turns per minute")!.dispatchEvent(new Event("change", { bubbles: true }))
+    await expect.poll(() => groupView(group.id)?.group?.settings?.turnsPerMinute?.thread).toBe(9)
+    expect(groupView(group.id)?.group?.settings?.planNeedsApproval).toBe(true)
+    await connection.group.say({ group: group.id, human: localHuman, text: "Report current status", to: ["leader"] })
+    await expect
+      .poll(() => groupView(group.id)?.events.some((event) => event.type === "turn.finished"), { timeout: 10000 })
+      .toBe(true)
+    await expect.poll(() => groupView(group.id)?.events.some((event) => event.type === "session.budget")).toBe(true)
     selector()!.value = "passive"
     selector()!.dispatchEvent(new Event("change", { bubbles: true }))
     await expect.poll(() => groupView(group.id)?.group?.settings?.initiative).toBe("passive")

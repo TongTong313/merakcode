@@ -183,7 +183,7 @@ func TestGroupMemberHostsComeFromTheAcceptedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.AddGroupMember(ctx, g.ID, group.Member{ID: "added", Name: "Added worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Hosts: []string{"injected.example"}}, nil); err != nil {
+	if _, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{ID: "added", Name: "Added worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Hosts: []string{"injected.example"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	state, err := e.Groups.Get(ctx, g.ID)

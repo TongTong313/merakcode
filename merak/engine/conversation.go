@@ -15,25 +15,30 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/window"
 	"github.com/TongTong313/merakcode/merak/engine/worker/builtin"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 )
 
 type SessionOptions struct {
-	Mode     permission.Mode
-	ID       event.ID
-	Scope    event.Scope
-	Role     string
-	Member   event.ID
-	System   string
-	ToolPool string
-	Parent   event.ID
-	Provider string
-	Model    string
-	Thinking model.Thinking
-	Workdir  string
+	MCPServers map[string]config.MCPServer
+	Budget     session.Budget
+	Mode       permission.Mode
+	ID         event.ID
+	Scope      event.Scope
+	Role       string
+	Member     event.ID
+	System     string
+	ToolPool   string
+	Parent     event.ID
+	Provider   string
+	Model      string
+	Thinking   model.Thinking
+	Workdir    string
 }
 
 type conversation struct {
+	mcpServers       map[string]config.MCPServer
+	mcpReady         bool
 	suppressChildren bool
 	children         *builtin.Runner
 	memoryCancel     context.CancelFunc
@@ -44,10 +49,12 @@ type conversation struct {
 }
 
 type conversationTurn struct {
-	selection *session.Selection
-	ctx       context.Context
-	cancel    context.CancelFunc
-	parts     []model.Part
+	budgetCause  event.ID
+	extendBudget bool
+	selection    *session.Selection
+	ctx          context.Context
+	cancel       context.CancelFunc
+	parts        []model.Part
 }
 
 func (e *Engine) CreateSession(ctx context.Context, options SessionOptions) (event.ID, error) {
@@ -122,7 +129,7 @@ func (e *Engine) startConversation(c *conversation) {
 			case turn := <-c.queue:
 				timer.Stop()
 				idle = nil
-				outcome, err := e.runInput(turn.ctx, c, loop.Input{Parts: turn.parts, Actor: event.Actor{Kind: event.ActorHuman}, Selection: turn.selection})
+				outcome, err := e.runInput(turn.ctx, c, loop.Input{Parts: turn.parts, Actor: event.Actor{Kind: event.ActorHuman}, Selection: turn.selection, ExtendBudget: turn.extendBudget})
 				turn.cancel()
 				e.mu.Lock()
 				delete(c.turns, turn)
@@ -157,6 +164,10 @@ func (e *Engine) Cancel(id event.ID) error {
 }
 
 func (e *Engine) Send(ctx context.Context, id event.ID, parts []model.Part, selections ...session.Selection) error {
+	return e.SendWithBudget(ctx, id, parts, false, selections...)
+}
+
+func (e *Engine) SendWithBudget(ctx context.Context, id event.ID, parts []model.Part, extendBudget bool, selections ...session.Selection) error {
 	var selected *session.Selection
 	if len(selections) > 1 {
 		return errors.New("MRK-4001")
@@ -210,8 +221,32 @@ func (e *Engine) Send(ctx context.Context, id event.ID, parts []model.Part, sele
 		}
 		e.startConversation(c)
 	}
+	var budgetCause event.ID
+	if c.state.Config.Budget != (session.Budget{}) || extendBudget {
+		facts, err := e.store.Find(ctx, store.Query{Scope: event.Scope{Session: id}, Types: []event.Type{loop.TurnFinished}})
+		if err != nil {
+			return err
+		}
+		var outcome loop.Outcome
+		if len(facts) > 0 {
+			outcome, _ = event.Decode[loop.Outcome](facts[len(facts)-1])
+			if extendBudget {
+				budgetCause = facts[len(facts)-1].ID
+			}
+		}
+		if loop.BudgetStop(outcome.Stop) && !extendBudget || extendBudget && (c.state.Scope.Group != "" || !loop.BudgetStop(outcome.Stop)) {
+			return errors.New("MRK-4005")
+		}
+		if extendBudget {
+			for pending := range c.turns {
+				if pending.budgetCause == budgetCause {
+					return errors.New("MRK-4005")
+				}
+			}
+		}
+	}
 	turnCtx, cancel := context.WithCancel(e.ctx)
-	turn := &conversationTurn{ctx: turnCtx, cancel: cancel, parts: copy, selection: selected}
+	turn := &conversationTurn{ctx: turnCtx, cancel: cancel, parts: copy, selection: selected, extendBudget: extendBudget, budgetCause: budgetCause}
 	select {
 	case c.queue <- turn:
 		c.suppressChildren = false
@@ -231,8 +266,22 @@ func (e *Engine) runConversation(ctx context.Context, c *conversation, parts []m
 }
 
 func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input) (loop.Outcome, error) {
+	if input.ExtendBudget {
+		body, _ := json.Marshal(c.state.Config.Budget)
+		fact, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + c.state.ID), Scope: c.state.Scope, Type: session.BudgetExtended, Actor: input.Actor, Payload: body})
+		if err != nil {
+			return loop.Outcome{}, err
+		}
+		if err := session.Fold(c.state, fact); err != nil {
+			return loop.Outcome{}, err
+		}
+	}
+	if err := e.configureExecutionBudget(ctx, c); err != nil {
+		return loop.Outcome{}, err
+	}
 	done := c.runner.Env.Sandbox.Hold()
 	defer done()
+	e.prepareMCP(ctx, c)
 	selected := session.Selection{Provider: c.state.Config.Provider, Model: c.state.Config.Model, Thinking: c.state.Config.Thinking}
 	if input.Selection != nil {
 		selected = *input.Selection
@@ -240,7 +289,7 @@ func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input
 	if c.children != nil {
 		config := c.state.Config
 		config.Provider, config.Model, config.Thinking = selected.Provider, selected.Model, selected.Thinking
-		c.children.SetRun(e.childRun(c.state.ID, config))
+		c.children.SetRun(e.childRun(c.state.ID, c.state.Scope, config))
 	}
 	provider := e.provider(selected.Provider)
 	if provider == nil {
@@ -254,21 +303,26 @@ func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input
 	c.runner.Window.Budget.Window = entry.Window
 	c.runner.Window.Budget.Reserve = max(entry.MaxOutput/4, 8192)
 	if len(c.state.Messages) == 0 && input.Child == nil {
-		var text string
-		for _, part := range parts {
-			text += part.Text + "\n"
-		}
-		notes, recallErr := e.notes.Recall(ctx, memory.Query{Owners: c.runner.Env.MemoryOwners, Text: text, Limit: 5})
-		if recallErr == nil && len(notes) == 0 {
-			notes, recallErr = e.notes.Recall(ctx, memory.Query{Owners: c.runner.Env.MemoryOwners, Limit: 5})
-		}
-		if recallErr == nil && len(notes) > 0 {
-			parts = append([]model.Part{{Text: memory.Format(notes)}}, parts...)
+		if c.state.Scope.Task == "" || c.state.Config.ToolPool == "leader.default" {
+			var text string
+			for _, part := range parts {
+				text += part.Text + "\n"
+			}
+			notes, recallErr := e.notes.Recall(ctx, memory.Query{Owners: c.runner.Env.MemoryOwners, Text: text, Limit: 5})
+			if recallErr == nil && len(notes) == 0 {
+				notes, recallErr = e.notes.Recall(ctx, memory.Query{Owners: c.runner.Env.MemoryOwners, Limit: 5})
+			}
+			if recallErr == nil && len(notes) > 0 {
+				parts = append([]model.Part{{Text: memory.Format(notes)}}, parts...)
+			}
 		}
 		parts = append([]model.Part{{Text: "Current date and time: " + e.now().Format(time.RFC3339)}}, parts...)
 	}
 	input.Parts = parts
 	outcome, err := c.runner.RunTurn(ctx, c.state, input)
+	if loop.BudgetStop(outcome.Stop) {
+		e.blockBudgetTask(context.WithoutCancel(ctx), c.state.Scope)
+	}
 	if e.logger != nil {
 		logger := platformlog.With(e.logger, c.state.Scope).With("event", string(c.state.Scope.Turn))
 		if err != nil {

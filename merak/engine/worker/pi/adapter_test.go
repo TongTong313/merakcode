@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
@@ -19,6 +20,38 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLeaderKeepsPendingPromptAcrossEarlierSettledEvent(t *testing.T) {
+	binary := fakeBinary(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	runner := &pi.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary"}}}
+	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: t.TempDir(), Packet: "First"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Cancel(context.Background())
+	if err := run.Send(ctx, loop.Input{Parts: []model.Part{{Text: "Second"}}}); err != nil {
+		t.Fatal(err)
+	}
+	completed := false
+	for {
+		select {
+		case fact := <-run.Events():
+			if fact.Type == session.MessageCompleted {
+				completed = true
+				if fact.Scope.Turn == "" {
+					t.Fatal("response lost its turn")
+				}
+			}
+			if fact.Type == loop.TurnFinished && completed {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("leader did not finish the second prompt")
+		}
+	}
+}
 
 func fakeBinary(t *testing.T) string {
 	t.Helper()

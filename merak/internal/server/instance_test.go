@@ -61,3 +61,32 @@ func TestInstancePublishesConnectionInfoAndExclusivelyOwnsItsDirectory(t *testin
 	}
 	next.Close()
 }
+
+func TestInstanceAcceptsAnExplicitListenAddressAndStillRequiresItsToken(t *testing.T) {
+	e, err := engine.New(engine.Deps{Workdir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if instance, err := server.StartListening(e, t.TempDir(), "invalid-address", 0); err == nil {
+		instance.Close()
+		t.Fatal("invalid listen address was accepted")
+	}
+	instance, err := server.StartListening(e, t.TempDir(), "127.0.0.1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	hello := protocol.HelloParams{Protocol: protocol.Version, Client: protocol.ClientInfo{Name: "remote-test"}}
+	if client, err := protocol.Connect(ctx, instance.Info.Endpoint, "wrong-token", hello); err == nil {
+		client.Close()
+		t.Fatal("remote listener accepted an invalid token")
+	}
+	client, err := protocol.Connect(ctx, instance.Info.Endpoint, instance.Info.Token, hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+}

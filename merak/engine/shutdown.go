@@ -35,11 +35,20 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 }
 
 func (e *Engine) shutdown(ctx context.Context) error {
+	defer e.disconnectCloud()
 	e.Terminals.Close()
 	e.Workspaces.Close()
 	e.mu.Lock()
 	e.mu.Unlock()
 	e.workers.Wait()
+	e.cloudMu.Lock()
+	connected, link := e.cloudCancel != nil, e.cloud
+	e.cloudMu.Unlock()
+	if connected {
+		if err := e.flushCloud(ctx, link); err != nil {
+			return err
+		}
+	}
 	e.releaseSandbox("")
 	if e.sandboxErr != nil {
 		return e.sandboxErr

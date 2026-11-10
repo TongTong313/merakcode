@@ -8,9 +8,11 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 )
 
-func (e *Engine) UpdateGroupSettings(ctx context.Context, id, human event.ID, settings group.Settings) (group.Group, error) {
-	if _, err := leader.NewTriggers(append(leader.DefaultTriggers(), settings.Triggers...)); err != nil {
-		return group.Group{}, err
+func (e *Engine) UpdateGroup(ctx context.Context, id, human event.ID, change group.Update) (group.Group, error) {
+	if change.Settings != nil {
+		if _, err := leader.NewTriggers(append(leader.DefaultTriggers(), change.Settings.Triggers...)); err != nil {
+			return group.Group{}, err
+		}
 	}
-	return e.Groups.UpdateSettings(ctx, id, human, settings)
+	return e.Groups.Update(ctx, id, human, change)
 }

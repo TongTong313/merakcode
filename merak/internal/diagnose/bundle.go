@@ -21,6 +21,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/store"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 	"github.com/TongTong313/merakcode/merak/internal/platform/secret"
 )
@@ -98,18 +99,12 @@ func (b Bundler) Bundle(ctx context.Context, req Request, out io.Writer) (runErr
 		return err
 	}
 	if req.WithConfig && b.DataDir != "" {
-		body, err := os.ReadFile(filepath.Join(b.DataDir, "merakcode.json"))
-		if err != nil && !os.IsNotExist(err) {
-			return err
+		settings, err := config.Open(filepath.Join(b.DataDir, "merakcode.json"))
+		if err != nil {
+			return errors.New("invalid diagnostic configuration file")
 		}
-		if err == nil {
-			var config any
-			if err := json.Unmarshal(body, &config); err != nil {
-				return errors.New("invalid diagnostic configuration file")
-			}
-			if err := write("config/merakcode.json", config); err != nil {
-				return err
-			}
+		if err := write("config/merakcode.json", settings.Get()); err != nil {
+			return err
 		}
 	}
 	if b.LogRoot != "" {

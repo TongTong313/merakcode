@@ -25,7 +25,7 @@ func priority(fact event.Event) Priority {
 		return PriorityUrgent
 	}
 	switch fact.Type {
-	case "task.reported", "merge.conflicted", "permission.requested":
+	case "task.reported", "merge.conflicted", "permission.requested", "permission.routed", "sentinel.flagged":
 		return PriorityHigh
 	case "file.changed", "repo.changed", "member.status":
 		return PriorityLow
@@ -41,6 +41,7 @@ type Scheduler struct {
 	quietUntil time.Time
 	preempt    chan struct{}
 	digest     Digest
+	admit      func(context.Context) (time.Time, error)
 }
 
 type queuedEvent struct {
@@ -51,6 +52,17 @@ type queuedEvent struct {
 
 func NewScheduler() *Scheduler {
 	return &Scheduler{ready: make(chan struct{}, 1), preempt: make(chan struct{}, 1)}
+}
+
+func (s *Scheduler) Pending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, item := range s.queue {
+		if item.wake {
+			return true
+		}
+	}
+	return false
 }
 func (s *Scheduler) Enqueue(fact event.Event) {
 	s.enqueue(fact, priority(fact), true)
@@ -109,6 +121,19 @@ func (s *Scheduler) Next(ctx context.Context) (event.Event, error) {
 
 func (s *Scheduler) NextBatch(ctx context.Context) ([]event.Event, error) { return s.wait(ctx, 30) }
 
+func (s *Scheduler) SetAdmission(admit func(context.Context) (time.Time, error)) {
+	s.mu.Lock()
+	s.admit = admit
+	s.mu.Unlock()
+	s.Signal()
+}
+func (s *Scheduler) Signal() {
+	select {
+	case s.ready <- struct{}{}:
+	default:
+	}
+}
+
 func (s *Scheduler) wait(ctx context.Context, limit int) ([]event.Event, error) {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -116,6 +141,7 @@ func (s *Scheduler) wait(ctx context.Context, limit int) ([]event.Event, error) 
 		}
 		s.mu.Lock()
 		var delay time.Duration
+		allowed := true
 		wake := false
 		for _, queued := range s.queue {
 			wake = wake || queued.wake
@@ -124,6 +150,22 @@ func (s *Scheduler) wait(ctx context.Context, limit int) ([]event.Event, error) 
 			delay = time.Until(s.quietUntil)
 		}
 		if wake && delay <= 0 {
+			if s.admit != nil {
+				deadline, err := s.admit(ctx)
+				if err != nil {
+					s.mu.Unlock()
+					return nil, err
+				}
+				if !deadline.IsZero() {
+					delay = time.Until(deadline)
+				}
+				if !deadline.IsZero() {
+					allowed = false
+					delay = max(delay, time.Millisecond)
+				}
+			}
+		}
+		if wake && delay <= 0 && allowed {
 			batch := s.take(limit)
 			s.mu.Unlock()
 			return batch, nil
@@ -194,6 +236,13 @@ func (s *Scheduler) Poll() []loop.Input {
 	return []loop.Input{digest.Render(batch)}
 }
 
+// PollEvents lets an external runtime restore a batch if its process never records it.
+func (s *Scheduler) PollEvents() []event.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.take(30)
+}
+
 type Thread struct {
 	Key       event.ID
 	Leader    event.ID
@@ -228,8 +277,32 @@ type Threads struct {
 	items map[event.ID]*Thread
 }
 
+func (t *Threads) Wake() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, thread := range t.items {
+		thread.Scheduler.Signal()
+	}
+}
+
+func (t *Threads) List() []*Thread {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	threads := make([]*Thread, 0, len(t.items))
+	for _, thread := range t.items {
+		threads = append(threads, thread)
+	}
+	return threads
+}
+
 func NewThreads(g group.Group, state *State, newID func() event.ID) *Threads {
 	return &Threads{group: g, state: state, newID: newID, items: map[event.ID]*Thread{}}
+}
+
+func (t *Threads) UpdateGroup(g group.Group) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.group = g
 }
 
 // Restore reuses the latest durable thread identity without scheduling a model call.
@@ -242,11 +315,11 @@ func (t *Threads) Restore(saved Handover, scope event.Scope) {
 	t.items[saved.Key] = &Thread{Key: saved.Key, Leader: saved.Leader, Session: &session.State{ID: saved.Session, Scope: scope, Config: session.Config{Member: saved.Leader}}, Scheduler: NewScheduler(), Handover: saved.Summary}
 }
 func (t *Threads) Route(fact event.Event) *Thread {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if fact.Scope.Group != t.group.ID {
 		return nil
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	key, member := t.group.ID, t.group.DefaultLeader
 	scope := event.Scope{Group: t.group.ID}
 	if fact.Scope.Task != "" {

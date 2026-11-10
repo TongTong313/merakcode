@@ -11,7 +11,7 @@ const root = path.resolve(import.meta.dirname, "..")
 const dist = path.join(root, "dist")
 const watch = process.argv.includes("--watch")
 
-function entries(options: { minify?: boolean }): BuildOptions[] {
+function entries(options: { minify?: boolean; outdir?: string }): BuildOptions[] {
   const common = {
     bundle: true,
     platform: "node" as const,
@@ -29,7 +29,7 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
     {
       ...common,
       entryPoints: { main: path.join(root, "src", "index.ts") },
-      outdir: dist,
+      outdir: options.outdir ?? dist,
       format: "esm",
       outExtension: { ".js": ".js" },
       // Bundled CommonJS dependencies (electron-updater and others) still require built-in modules
@@ -40,7 +40,7 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
     {
       ...common,
       entryPoints: { preload: path.join(root, "src", "preload.ts") },
-      outdir: dist,
+      outdir: options.outdir ?? dist,
       format: "cjs",
       outExtension: { ".js": ".cjs" },
     },
@@ -48,18 +48,19 @@ function entries(options: { minify?: boolean }): BuildOptions[] {
 }
 
 /** Builds both entries and returns the absolute paths of the source files whose code ended up in the output */
-export async function bundle(options: { minify?: boolean } = {}) {
-  await rm(dist, { recursive: true, force: true })
-  const results = await Promise.all(entries(options).map((entry) => build({ ...entry, metafile: true })))
-  const native = await nativeRuntime()
+export async function bundle(options: { minify?: boolean; outdir?: string } = {}) {
+  const outdir = path.resolve(options.outdir ?? dist)
+  await rm(outdir, { recursive: true, force: true })
+  const results = await Promise.all(entries({ ...options, outdir }).map((entry) => build({ ...entry, metafile: true })))
+  const native = await nativeRuntime(outdir)
   return [...results.flatMap((result) => bundled(result.metafile)), ...native]
 }
 
-async function nativeRuntime() {
+async function nativeRuntime(outdir = dist) {
   const require = createRequire(import.meta.url)
   const sdk = createRequire(require.resolve("@merakcode/sdk"))
   const source = path.dirname(sdk.resolve("better-sqlite3/package.json"))
-  const destination = path.join(dist, "node_modules", "better-sqlite3")
+  const destination = path.join(outdir, "node_modules", "better-sqlite3")
   await mkdir(destination, { recursive: true })
   await Promise.all(
     ["lib", "prebuilds", "package.json", "LICENSE"].map((name) =>
@@ -68,7 +69,7 @@ async function nativeRuntime() {
   )
   const sqlite = createRequire(path.join(source, "package.json"))
   const addon = path.dirname(sqlite.resolve("node-addon-api/package.json"))
-  await cp(addon, path.join(dist, "node_modules", "node-addon-api"), { recursive: true })
+  await cp(addon, path.join(outdir, "node_modules", "node-addon-api"), { recursive: true })
   return [path.join(source, "lib", "index.js"), path.join(addon, "index.js")]
 }
 

@@ -35,4 +35,7 @@ test("replays accepted hosts and sandbox availability without changing earlier m
   const restored = applyToMembers(next, { ...updated, id: "restored", seq: 3, payload: worker })
   expect(restored[0]?.unconfined).toBeUndefined()
   expect(applyToMembers(next, { ...updated, payload: { ...worker, id: "unknown" } })).toEqual(next)
+  const removed = applyToMembers(next, { ...updated, type: "member.removed", payload: worker })
+  expect(removed).toEqual([])
+  expect(next).toHaveLength(1)
 })

@@ -17,7 +17,7 @@ func (n Network) Allows(host string, port int, address netip.Addr) bool {
 		return false
 	}
 	address = address.Unmap()
-	if n.deniesHost(host, port) {
+	if n.DeniesHost(host, port) {
 		return false
 	}
 	if address.IsLoopback() {
@@ -25,7 +25,7 @@ func (n Network) Allows(host string, port int, address netip.Addr) bool {
 		local := normalizeHost(host) == "localhost" || err == nil && literal.Unmap().IsLoopback()
 		return local && slices.Contains(n.LocalPorts, port)
 	}
-	return publicNetworkAddress(address) && n.permitsHost(host, port)
+	return publicNetworkAddress(address) && n.AllowsHost(host, port)
 }
 
 // IANA special-purpose registries identify private, shared, documentation and reserved destinations.
@@ -43,8 +43,8 @@ func publicNetworkAddress(address netip.Addr) bool {
 	return !slices.ContainsFunc(reservedNetworkPrefixes, func(prefix netip.Prefix) bool { return prefix.Contains(address) })
 }
 
-func (n Network) permitsHost(host string, port int) bool {
-	if n.deniesHost(host, port) {
+func (n Network) AllowsHost(host string, port int) bool {
+	if n.DeniesHost(host, port) {
 		return false
 	}
 	if n.Mode == "on" {
@@ -58,7 +58,7 @@ func (n Network) permitsHost(host string, port int) bool {
 	})
 }
 
-func (n Network) deniesHost(host string, port int) bool {
+func (n Network) DeniesHost(host string, port int) bool {
 	return slices.ContainsFunc(n.Deny, func(rule string) bool {
 		return matchesNetworkRule(rule, host, port)
 	})

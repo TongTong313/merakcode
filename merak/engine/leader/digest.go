@@ -47,6 +47,9 @@ func (d Digest) Render(batch []event.Event) loop.Input {
 		text.WriteByte('\n')
 	}
 	var input loop.Input
+	for _, fact := range batch {
+		input.Sources = append(input.Sources, fact.ID)
+	}
 	for _, item := range d.Inputs(batch) {
 		if input.Cause == "" {
 			input.Cause, input.Actor = item.Cause, item.Actor

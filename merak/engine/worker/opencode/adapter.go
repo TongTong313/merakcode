@@ -24,7 +24,7 @@ type Runner struct {
 	System  string
 }
 
-func (*Runner) Caps() worker.Caps { return worker.Caps{Permission: true} }
+func (*Runner) Caps() worker.Caps { return worker.Caps{Permission: true, MCP: true} }
 func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, error) {
 	p := r.Product
 	p.Kind = "opencode"
@@ -53,6 +53,14 @@ func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, er
 		config = map[string]any{}
 	}
 	config["permission"] = "ask"
+	if a.MCP != nil {
+		servers, _ := config["mcp"].(map[string]any)
+		if servers == nil {
+			servers = map[string]any{}
+		}
+		servers["merak"] = map[string]any{"type": "local", "command": append([]string{a.MCP.Command}, a.MCP.Args...), "environment": a.MCP.Env, "enabled": true}
+		config["mcp"] = servers
+	}
 	if a.ReadOnly {
 		config["permission"] = map[string]string{"*": "deny", "read": "allow", "glob": "allow", "grep": "allow", "list": "allow"}
 	}

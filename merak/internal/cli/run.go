@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +17,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 	"github.com/TongTong313/merakcode/merak/internal/server"
@@ -48,35 +51,21 @@ func runProtocol(input, provider, modelID string, thinking model.Thinking, base 
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client, err := connectEngine(ctx, home)
+	client, err := ensureEngine(ctx, home, provider, base)
 	if err != nil {
-		if err = startEngine(provider, base); err != nil {
-			return 1
-		}
-		deadline := time.NewTimer(5 * time.Second)
-		defer deadline.Stop()
-		ticker := time.NewTicker(25 * time.Millisecond)
-		defer ticker.Stop()
-	wait:
-		for {
-			select {
-			case <-deadline.C:
-				return 1
-			case <-ticker.C:
-				client, err = connectEngine(ctx, home)
-				if err == nil {
-					break wait
-				}
-			}
-		}
+		return 1
 	}
 	defer client.Close()
 	workdir, err := os.Getwd()
 	if err != nil {
 		return 1
 	}
+	return protocolChat(ctx, client, protocol.SessionCreateParams{Provider: provider, Model: modelID, Thinking: thinking, Workdir: workdir}, input, stdin, stdout, ui)
+}
+
+func protocolChat(ctx context.Context, client *protocol.Client, params protocol.SessionCreateParams, input string, stdin io.Reader, stdout io.Writer, ui *renderer) int {
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: provider, Model: modelID, Thinking: thinking, Workdir: workdir}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", params, &created); err != nil {
 		return 1
 	}
 	if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: created.Session}}, nil); err != nil {
@@ -86,19 +75,70 @@ func runProtocol(input, provider, modelID string, thinking model.Thinking, base 
 		return 1
 	}
 	printed, reasoning := false, false
-	ask := terminalApproval(stdin, stdout, ui)
+	scanner := bufio.NewScanner(stdin)
+	ask := terminalApproval(scanner, stdout, ui)
 	for fact := range client.Events {
+		if ui.machine {
+			if json.NewEncoder(stdout).Encode(fact) != nil {
+				return 1
+			}
+			if fact.Type != permission.Requested && fact.Type != question.Asked && fact.Type != loop.TurnFinished && fact.Type != event.Lagged {
+				continue
+			}
+		}
 		switch fact.Type {
 		case permission.Requested:
 			request, err := event.Decode[permission.Request](fact)
 			if err != nil {
 				return 1
 			}
-			reply, err := ask(ctx, request)
+			var reply permission.Reply
+			if ui.machine {
+				reply.Decision = permission.Deny
+				if scanner.Scan() {
+					err = json.Unmarshal(scanner.Bytes(), &reply)
+				}
+			} else {
+				reply, err = ask(ctx, request)
+			}
 			if err != nil {
 				return 1
 			}
 			if err := client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: fact.ID, Decision: reply.Decision}, nil); err != nil {
+				return 1
+			}
+		case question.Asked:
+			request, err := event.Decode[question.Request](fact)
+			if err != nil {
+				return 1
+			}
+			reply := protocol.QuestionReplyParams{Request: fact.ID, Cancelled: true}
+			if !ui.machine {
+				if _, err := fmt.Fprintln(stdout, request.Text); err != nil {
+					return 1
+				}
+				for _, option := range request.Options {
+					if _, err := fmt.Fprintln(stdout, option); err != nil {
+						return 1
+					}
+				}
+				if _, err := io.WriteString(stdout, ui.text("answer")); err != nil {
+					return 1
+				}
+			}
+			if scanner.Scan() {
+				reply.Cancelled = false
+				if ui.machine {
+					var answer question.Answer
+					if json.Unmarshal(scanner.Bytes(), &answer) != nil {
+						return 1
+					}
+					reply.Text, reply.Cancelled = answer.Text, answer.Cancelled
+				} else {
+					reply.Text = scanner.Text()
+				}
+			}
+			if scanner.Err() != nil || client.Call(ctx, "question.reply", reply, nil) != nil {
 				return 1
 			}
 		case session.MessageDelta:
@@ -156,6 +196,30 @@ func runProtocol(input, provider, modelID string, thinking model.Thinking, base 
 		}
 	}
 	return 1
+}
+
+func ensureEngine(ctx context.Context, home, provider, base string) (*protocol.Client, error) {
+	client, err := connectEngine(ctx, home)
+	if err == nil {
+		return client, nil
+	}
+	if err := startEngine(provider, base); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			if client, err := connectEngine(ctx, home); err == nil {
+				return client, nil
+			}
+		}
+	}
 }
 
 func startEngine(provider, base string) error {

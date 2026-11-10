@@ -47,6 +47,9 @@ func TestRunSelectsProviderThinkingAndReportsReasoningAndCost(t *testing.T) {
 }
 
 func TestModelsRefreshKeepsFileOverrides(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MERAKCODE_HOME", home)
+	cleanupEngine(t, home)
 	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
 			t.Errorf("path=%s", r.URL.Path)
@@ -114,6 +117,9 @@ func TestRunConnectsToSecondProtocolAndNewCompatibleProviders(t *testing.T) {
 }
 
 func TestModelsListsSupportedThinkingAndUnknownPrices(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MERAKCODE_HOME", home)
+	cleanupEngine(t, home)
 	var output bytes.Buffer
 	if code := Run([]string{"models"}, strings.NewReader(""), &output); code != 0 {
 		t.Fatalf("code=%d", code)

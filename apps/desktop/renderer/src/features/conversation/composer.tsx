@@ -7,6 +7,7 @@ import { createEffect, createSignal, For, on, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { choice, choiceKey, choose, find, usage } from "../../state/models"
 import { connected } from "../../state/store"
+import { PermissionModeSelect } from "./permission-mode"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
 import { AttachmentPreview } from "./attachment"
@@ -167,21 +168,10 @@ export function Composer(props: {
       />
       <div class="composer-bar">
         <Show when={!props.group}>
-          <Select
-            label={t("permissionLevel.label")}
+          <PermissionModeSelect
             value={selected().mode}
             disabled={!!props.sessionID || props.busy || props.disabled}
-            options={[
-              { value: "ask", label: t("permissionLevel.ask"), description: t("permissionLevel.ask.desc") },
-              {
-                value: "takeover",
-                label: t("permissionLevel.fullTakeover"),
-                description: t("permissionLevel.fullTakeover.desc"),
-                tone: "danger",
-                badge: t("permissionLevel.fullTakeover.badge"),
-              },
-            ]}
-            onChange={(mode: "ask" | "takeover") => choose(props.sessionID, props.directory, { mode })}
+            onChange={(mode) => choose(props.sessionID, props.directory, { mode })}
           />
           <SandboxStatus
             directory={props.directory}

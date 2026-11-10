@@ -31,8 +31,11 @@ func (r *Runner) approve(ctx context.Context, j *stdio.Journal, m wire) (any, er
 	}
 	return map[string]string{"decision": decision}, err
 }
-func translate(ctx context.Context, j *stdio.Journal, method string, params json.RawMessage) error {
+func translate(ctx context.Context, j *stdio.Journal, method string, params json.RawMessage, nativeUsage *model.Usage) error {
 	var raw struct {
+		TokenUsage struct {
+			Total struct{ InputTokens, OutputTokens, CachedInputTokens, CacheWriteInputTokens int }
+		}
 		Delta string
 		Item  struct {
 			ID, Type, Text, Command, Status, AggregatedOutput, Server, Tool string
@@ -45,6 +48,17 @@ func translate(ctx context.Context, j *stdio.Journal, method string, params json
 		return err
 	}
 	switch method {
+	case "thread/tokenUsage/updated":
+		total := raw.TokenUsage.Total
+		usage := model.Usage{Input: max(0, total.InputTokens-nativeUsage.Input), Output: max(0, total.OutputTokens-nativeUsage.Output), CacheRead: max(0, total.CachedInputTokens-nativeUsage.CacheRead), CacheWrite: max(0, total.CacheWriteInputTokens-nativeUsage.CacheWrite)}
+		if usage.Input == 0 && usage.Output == 0 {
+			return nil
+		}
+		if err := j.Message(ctx, session.Completion{Message: model.Message{Role: model.Assistant}, Usage: usage}); err != nil {
+			return err
+		}
+		*nativeUsage = nativeUsage.Add(usage)
+		return nil
 	case "thread/started", "turn/started", "serverRequest/resolved":
 		return nil
 	case "item/agentMessage/delta":
@@ -56,7 +70,7 @@ func translate(ctx context.Context, j *stdio.Journal, method string, params json
 		switch item.Type {
 		case "agentMessage":
 			if method == "item/completed" {
-				return j.Message(ctx, session.Completion{Message: model.Message{Role: model.Assistant, Parts: []model.Part{{Text: item.Text}}}})
+				return j.Message(ctx, session.Completion{Message: model.Message{Role: model.Assistant, Parts: []model.Part{{Text: item.Text}}}, Step: new(false)})
 			}
 			return nil
 		case "userMessage":
@@ -69,7 +83,7 @@ func translate(ctx context.Context, j *stdio.Journal, method string, params json
 			for _, text := range append(item.Summary, item.Content...) {
 				parts = append(parts, model.Part{Reasoning: &model.Reasoning{Text: text, Provider: "codex"}})
 			}
-			return j.Message(ctx, session.Completion{Message: model.Message{Role: model.Assistant, Parts: parts}})
+			return j.Message(ctx, session.Completion{Message: model.Message{Role: model.Assistant, Parts: parts}, Step: new(false)})
 		case "commandExecution", "fileChange", "mcpToolCall":
 			if method == "item/started" {
 				input := params

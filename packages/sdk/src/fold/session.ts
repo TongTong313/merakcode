@@ -50,6 +50,47 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
     causes: { ...previous.causes },
   }
   switch (event.type) {
+    case "session.budget_extended":
+      state.budgetExtensions = (previous.budgetExtensions ?? 0) + 1
+      break
+    case "session.warning":
+      if (
+        !(previous.warnings ?? []).some(
+          (warning) => warning.code === event.payload.code && warning.server === event.payload.server,
+        )
+      ) {
+        state.warnings = [...(previous.warnings ?? []).slice(-63), event.payload]
+      }
+      break
+    case "session.mcp_configured":
+      state.mcp = structuredClone(event.payload)
+      break
+    case "permission.requested":
+      state.permissions = {
+        ...previous.permissions,
+        [event.id]: {
+          request: { ...event.payload, id: event.id },
+          scope: { ...event.scope },
+          time: event.time,
+          seq: event.seq,
+        },
+      }
+      break
+    case "permission.escalated": {
+      const pending = event.cause ? previous.permissions?.[event.cause] : undefined
+      if (event.cause && pending) {
+        state.permissions = {
+          ...previous.permissions,
+          [event.cause]: { ...pending, request: { ...pending.request, leader: undefined } },
+        }
+      }
+      break
+    }
+    case "permission.replied":
+      state.permissions = { ...previous.permissions }
+      if (event.cause) delete state.permissions[event.cause]
+      if (!Object.keys(state.permissions).length) delete state.permissions
+      break
     case "child.started":
     case "child.finished": {
       const child = event.payload
@@ -95,13 +136,17 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
       state.status = "running"
       break
     case "turn.finished":
+      state.permissions = Object.fromEntries(
+        Object.entries(previous.permissions ?? {}).filter(([, pending]) => pending.request.kind === "workspace"),
+      )
+      if (!Object.keys(state.permissions).length) delete state.permissions
       state.status = event.payload.stop === "answered" ? "done" : event.payload.stop === "failed" ? "failed" : "idle"
       break
     case "message.sent":
     case "message.completed": {
       const { role, parts } = event.payload
       state.messages ??= []
-      state.messages.push({ role, parts: structuredClone(parts) })
+      if (parts?.length) state.messages.push({ role, parts: structuredClone(parts) })
       state.usage = addUsage(state.usage, event.type === "message.completed" ? event.payload.usage : emptyUsage())
       for (const part of parts ?? []) if (part.toolCall) state.open![part.toolCall.id] = part.toolCall
       break

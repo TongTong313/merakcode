@@ -134,7 +134,7 @@ func (m Model) Clamp(requested model.Thinking) model.Thinking {
 }
 
 // List returns independent values in provider/model order.
-func (c *Catalog) List() []Model {
+func (c *Catalog) List(overrides ...Override) []Model {
 	c.mu.RLock()
 	keys := make(map[[2]string]bool)
 	for _, m := range c.models {
@@ -144,9 +144,18 @@ func (c *Catalog) List() []Model {
 		keys[[2]string{m.Provider, m.ID}] = true
 	}
 	c.mu.RUnlock()
+	for _, o := range overrides {
+		keys[[2]string{o.Provider, o.ID}] = true
+	}
 	result := make([]Model, 0, len(keys))
 	for key := range keys {
-		result = append(result, c.Get(key[0], key[1]))
+		value := c.Get(key[0], key[1])
+		for _, o := range overrides {
+			if o.Provider == key[0] && o.ID == key[1] {
+				value = o.apply(value, "override")
+			}
+		}
+		result = append(result, value)
 	}
 	slices.SortFunc(result, func(a, b Model) int { return strings.Compare(a.Provider+"/"+a.ID, b.Provider+"/"+b.ID) })
 	return result

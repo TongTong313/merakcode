@@ -75,6 +75,10 @@ test("creates a real session with the selected full takeover mode", async () => 
   ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
     .find((item) => item.textContent?.includes("Full takeover"))!
     .click()
+  await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull()
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+    .find((button) => button.textContent === "Enable full takeover")!
+    .click()
   await expect
     .poll(() => document.querySelector('[aria-label="Sandbox status"]')?.textContent)
     .toContain("Sandbox disabled")

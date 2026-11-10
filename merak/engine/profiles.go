@@ -20,6 +20,17 @@ func defaultProfiles() []profile.Profile {
 	return []profile.Profile{leader, worker}
 }
 
+func (e *Engine) authorizeMemberAssignment(ctx context.Context, member group.Member, actor event.Actor) error {
+	p, err := e.memberProfile(ctx, member)
+	if err != nil {
+		return err
+	}
+	if !p.Shared && (actor.Kind != event.ActorHuman || actor.ID != member.Owner) {
+		return errors.New("only the owner can assign an unshared member")
+	}
+	return nil
+}
+
 func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Profile, error) {
 	result := defaultProfiles()
 	docs, err := e.store.List(ctx, "profile", "")
@@ -27,7 +38,7 @@ func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Pr
 		return nil, err
 	}
 	for _, meta := range docs {
-		if meta.Meta["owner"] != string(human) || human == "" {
+		if meta.Meta["owner"] != string(human) || human == "" || meta.Meta["deleted"] == "true" {
 			continue
 		}
 		doc, err := e.store.Fetch(ctx, "profile", meta.Key)
@@ -43,7 +54,38 @@ func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Pr
 	return result, nil
 }
 
+func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
+	e.profileMu.Lock()
+	defer e.profileMu.Unlock()
+	doc, err := e.store.Fetch(ctx, "profile", string(id))
+	if err != nil {
+		return err
+	}
+	if human == "" || doc.Meta["owner"] != string(human) {
+		return errors.New("only the profile owner can delete it")
+	}
+	facts, err := e.store.Find(ctx, store.Query{Types: []event.Type{group.Created}})
+	if err != nil {
+		return err
+	}
+	for _, fact := range facts {
+		state, err := e.Groups.Get(ctx, fact.Scope.Group)
+		if err != nil {
+			return err
+		}
+		for _, member := range state.Members {
+			if member.Profile == id {
+				return errors.New("profile is still assigned to a group member")
+			}
+		}
+	}
+	doc.Meta["deleted"] = "true"
+	return e.store.Put(ctx, doc)
+}
+
 func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Profile) (profile.Profile, error) {
+	e.profileMu.Lock()
+	defer e.profileMu.Unlock()
 	if human == "" {
 		return profile.Profile{}, errors.New("profile owner is required")
 	}
@@ -74,6 +116,14 @@ func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Prof
 }
 
 func validateProfileNetwork(p profile.Profile) error {
+	for _, scope := range p.Memory {
+		if scope != "member" && scope != "group" && scope != "project" {
+			return errors.New("invalid profile memory scope")
+		}
+	}
+	if err := p.Budget.Validate(); err != nil {
+		return err
+	}
 	if (p.Product == nil || p.Product.Kind == worker.KindBuiltin) && len(p.Network) != 0 {
 		return errors.New("network hosts are only available to external member profiles")
 	}
@@ -88,19 +138,27 @@ func validateProfile(p profile.Profile) error {
 		return errors.New("profile name and role are required")
 	}
 	if p.Role == profile.Leader {
-		if p.Product != nil {
-			return errors.New("external leaders are not supported")
-		}
 		if p.ToolPool != "leader.default" {
 			return errors.New("leader profile requires leader tools")
 		}
-		return nil
-	}
-	if p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
+		if p.Product != nil && p.Product.Kind != worker.KindClaudeCode && p.Product.Kind != worker.KindCodex && p.Product.Kind != worker.KindPi {
+			return errors.New("external leaders require MCP and steering")
+		}
+	} else if p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
 		return errors.New("worker profile requires worker tools")
 	}
 	if p.Product == nil {
 		return nil
+	}
+	if p.Product.Kind == worker.KindRemote {
+		source := p.Product.Remote
+		if source == nil || source.Connection == "" || source.Group == "" || source.Member == "" || p.Product.Binary != "" || len(p.Product.Args) != 0 || len(p.Product.Env) != 0 || len(p.Network) != 0 {
+			return errors.New("remote profiles require a connection and a source member")
+		}
+		return nil
+	}
+	if p.Product.Remote != nil {
+		return errors.New("only remote profiles can select a remote source")
 	}
 	if strings.TrimSpace(p.Product.Binary) == "" {
 		return errors.New("product binary is required")
@@ -118,7 +176,7 @@ func (e *Engine) RegisterMember(ctx context.Context, groupID, human event.ID, me
 	if err != nil {
 		return group.Member{}, err
 	}
-	if actor.Kind != group.MemberHuman || member.Kind != group.MemberAgent || member.Owner != "" && member.Owner != human {
+	if !actor.Can(group.RoleAdmin) || member.Kind != group.MemberAgent || member.Owner != "" && member.Owner != human {
 		return group.Member{}, errors.New("a human member can register only their own agents")
 	}
 	profiles, err := e.ListProfiles(ctx, human)

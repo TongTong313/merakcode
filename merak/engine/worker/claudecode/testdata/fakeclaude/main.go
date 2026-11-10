@@ -7,7 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/testmcp"
 )
 
 func main() {
@@ -29,6 +33,7 @@ func main() {
 	flag.String("model", "", "")
 	system := flag.String("append-system-prompt", "", "")
 	fixture := flag.String("fixture", "", "")
+	fixtureHold := flag.Bool("fixture-hold", false, "")
 	hold := flag.Bool("hold", false, "")
 	history := flag.Bool("history", false, "")
 	resume := flag.String("resume", "", "")
@@ -37,6 +42,11 @@ func main() {
 	permissionMode := flag.String("permission-mode", "", "")
 	settings := flag.String("settings", "", "")
 	requestPermission := flag.Bool("request-permission", false, "")
+	mcpConfig := flag.String("mcp-config", "", "")
+	mcpReport := flag.Bool("mcp-report", false, "")
+	mcpLeader := flag.Bool("mcp-leader", false, "")
+	leaderBoundary := flag.Bool("leader-boundary", false, "")
+	recovery := flag.String("recovery-phase", "", "")
 	flag.Parse()
 	if err := os.WriteFile("tools.txt", []byte(*tools), 0600); err != nil {
 		os.Exit(9)
@@ -49,22 +59,29 @@ func main() {
 	}
 	reader := bufio.NewScanner(os.Stdin)
 	var inputs []json.RawMessage
+	leader := new(testmcp.Leader)
+	var inputIDs []string
 	initialized := false
 	for reader.Scan() {
 		var input struct {
+			UUID      string `json:"uuid"`
 			Type      string `json:"type"`
 			RequestID string `json:"request_id"`
 			Request   struct {
 				Subtype string `json:"subtype"`
 			} `json:"request"`
 			Message struct {
-				Role string `json:"role"`
+				Role    string `json:"role"`
+				Content string `json:"content"`
 			} `json:"message"`
 		}
 		if json.Unmarshal(reader.Bytes(), &input) != nil {
 			os.Exit(3)
 		}
 		if input.Type == "control_request" && input.Request.Subtype == "initialize" {
+			if *recovery == "initialize-failure" {
+				os.Exit(31)
+			}
 			initialized = true
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": input.RequestID, "response": map[string]any{}}})
 			continue
@@ -73,6 +90,45 @@ func main() {
 			os.Exit(3)
 		}
 		inputs = append(inputs, append(json.RawMessage(nil), reader.Bytes()...))
+		inputIDs = append(inputIDs, input.UUID)
+		if *recovery != "" {
+			fmt.Println(`{"type":"system","subtype":"init","session_id":"recovery-session"}`)
+			if *recovery == "unacknowledged" {
+				os.Exit(32)
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "assistant", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": input.Message.Content}}}})
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "subtype": "success", "user_message_uuids": []string{input.UUID}})
+			continue
+		}
+		if strings.Contains(input.Message.Content, "Write a short handover summary") {
+			fmt.Println(`{"type":"assistant","message":{"content":[{"type":"text","text":"Fixture handover"}]}}`)
+			fmt.Println(`{"type":"result","subtype":"success","result":"Fixture handover"}`)
+			return
+		}
+		if *leaderBoundary {
+			if len(inputIDs) < 2 {
+				continue
+			}
+			for index, id := range inputIDs {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "assistant", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": fmt.Sprint(index)}}}})
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "subtype": "success", "user_message_uuids": []string{id}})
+			}
+			continue
+		}
+		if *mcpLeader {
+			var configuration struct {
+				Servers map[string]worker.MCPConfig `json:"mcpServers"`
+			}
+			if json.Unmarshal([]byte(*mcpConfig), &configuration) != nil {
+				os.Exit(20)
+			}
+			leader.Server = configuration.Servers["merak"]
+			if err := leader.Handle(input.Message.Content); err != nil {
+				os.Exit(21)
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "subtype": "success", "result": "Waiting for events.", "user_message_uuids": []string{input.UUID}})
+			continue
+		}
 		body, _ := json.Marshal(inputs)
 		if err := os.WriteFile("inputs.json", body, 0600); err != nil {
 			os.Exit(4)
@@ -144,6 +200,24 @@ func main() {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "subtype": "success", "structured_output": map[string]string{"verdict": "done", "summary": text}})
 			return
 		}
+		if *mcpReport {
+			fmt.Println(`{"type":"control_request","request_id":"mcp-permission","request":{"subtype":"can_use_tool","tool_name":"mcp__merak__submit_report","tool_use_id":"mcp-report","input":{"verdict":"done","summary":"Report submitted through MCP."}}}`)
+			if !reader.Scan() {
+				os.Exit(16)
+			}
+			var approval struct {
+				Response struct{ Response struct{ Behavior string } }
+			}
+			if json.Unmarshal(reader.Bytes(), &approval) != nil || approval.Response.Response.Behavior != "allow" {
+				os.Exit(17)
+			}
+			if err := submitMCPReport(*mcpConfig); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(15)
+			}
+			fmt.Println(`{"type":"result","subtype":"success","result":"MCP finished."}`)
+			return
+		}
 		if *fixture == "" {
 			fmt.Println(`{"type":"assistant","message":{"content":[{"type":"text","text":"Checked README."}]}}`)
 			fmt.Println(`{"type":"result","subtype":"success","result":"Checked README."}`)
@@ -154,6 +228,25 @@ func main() {
 			os.Exit(5)
 		}
 		_, _ = os.Stdout.Write(output)
+		if *fixtureHold {
+			for {
+				time.Sleep(time.Second)
+			}
+		}
 		return
 	}
+}
+
+func submitMCPReport(configuration string) error {
+	var config struct {
+		Servers map[string]worker.MCPConfig `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(configuration), &config); err != nil {
+		return err
+	}
+	server, ok := config.Servers["merak"]
+	if !ok {
+		return fmt.Errorf("missing merak MCP server")
+	}
+	return testmcp.Report(server)
 }

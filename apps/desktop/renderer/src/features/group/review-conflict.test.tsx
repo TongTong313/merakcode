@@ -48,7 +48,7 @@ test.each([
       (button) => button.textContent === "Approve",
     )!
     expect(approve.disabled).toBe(!available)
-    expect(host.textContent?.includes("Download Report")).toBe(available)
+    expect(!!host.querySelector('button[aria-label="Download Report"]')).toBe(available)
   } finally {
     dispose()
   }

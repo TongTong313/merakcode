@@ -7,13 +7,16 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/TongTong313/merakcode/merak/engine/event"
 )
 
 func TestApprovalRolesFollowTheOperationAndWorkspace(t *testing.T) {
 	directory := t.TempDir()
 	ws := workspace.Workspace{Directory: directory}
-	g := group.Group{Settings: group.Settings{AllowedHosts: []string{"api.example.test"}, MergeNeedsOwner: true}}
+	g := group.Group{Settings: group.Settings{AllowedHosts: []string{"api.example.test"}, MergeNeedsOwner: new(true)}}
 	for _, tc := range []struct {
 		name             string
 		effect           tool.Effect
@@ -39,6 +42,31 @@ func TestApprovalRolesFollowTheOperationAndWorkspace(t *testing.T) {
 			req := permission.Request{Spec: tool.Spec{Effect: tc.effect}, Call: tool.Call{Input: input}, Kind: tc.kind, Host: tc.host, Deletes: tc.deletes}
 			if got := permission.Need(req, ws, g); got != tc.want {
 				t.Fatalf("role=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHumanRoutingPrefersOnlineTaskParticipantsThenTheGroup(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		participant, other group.Status
+		want               []event.ID
+	}{
+		{"online participant first", group.Idle, group.Idle, []event.ID{"participant"}},
+		{"online group fallback", group.Offline, group.Idle, []event.ID{"other"}},
+		{"offline inbox fallback", group.Offline, group.Offline, []event.ID{"participant", "other"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			members := []group.Member{
+				{ID: "viewer", Kind: group.MemberHuman, Status: group.Idle},
+				{ID: "participant", Kind: group.MemberHuman, Role: group.RoleApprover, Status: tc.participant},
+				{ID: "other", Kind: group.MemberHuman, Role: group.RoleOwner, Status: tc.other},
+				{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Role: group.RoleOwner, Status: group.Idle},
+			}
+			got := permission.Recipients(members, group.RoleApprover, []event.ID{"viewer", "participant"})
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("recipients=%v want=%v", got, tc.want)
 			}
 		})
 	}

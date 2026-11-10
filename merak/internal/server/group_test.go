@@ -13,6 +13,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
@@ -125,17 +126,18 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	params := protocol.GroupCreateParams{Group: group.Group{Kind: "cloud", Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, Members: []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, Profiles: []profile.Profile{p}}
 	var created group.Group
-	if err := client.Call(ctx, "group.create", params, &created); err == nil || err.Error() != "MRK-6001" {
+	if err := client.Call(ctx, "group.create", params, &created); err == nil || err.Error() != "MRK-1006" {
 		t.Fatalf("unsupported group: %v", err)
 	}
 	params.Kind = group.KindLocal
+	params.Members = append(params.Members, group.Member{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner})
 	if err := client.Call(ctx, "group.create", params, &created); err != nil {
 		t.Fatal(err)
 	}
 	p = profile.DefaultWorker()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
 	var member group.Member
-	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, Profile: &p}, &member); err != nil {
+	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Human: "owner", Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, Profile: &p}, &member); err != nil {
 		t.Fatal(err)
 	}
 	if member.ID == "" || member.Group != created.ID {
@@ -145,7 +147,7 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 		t.Fatal(err)
 	}
 	var card task.Card
-	if err := client.Call(ctx, "task.create", map[string]any{"group": created.ID, "title": "Verify project", "areas": []string{"docs"}}, &card); err != nil {
+	if err := client.Call(ctx, "task.create", map[string]any{"group": created.ID, "human": "owner", "title": "Verify project", "areas": []string{"docs"}}, &card); err != nil {
 		t.Fatal(err)
 	}
 	if len(card.Areas) != 1 || card.Areas[0] != "docs" {
@@ -164,7 +166,7 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 			if err := client.Call(ctx, "group.state", protocol.GroupIDParams{Group: created.ID}, &view); err != nil {
 				t.Fatal(err)
 			}
-			if len(view.Tasks) != 1 || len(view.Members) != 2 || view.Tasks[0].Leader != "leader" || view.LastSeq == 0 {
+			if len(view.Tasks) != 1 || len(view.Members) != 3 || view.Tasks[0].Leader != "leader" || view.LastSeq == 0 {
 				t.Fatalf("view=%+v", view)
 			}
 			return
@@ -204,6 +206,7 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
+			work.Memory = []memory.Scope{}
 			var g group.Group
 			err = client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, Members: []group.Member{
 				{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},

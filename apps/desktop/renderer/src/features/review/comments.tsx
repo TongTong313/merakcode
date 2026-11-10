@@ -36,7 +36,11 @@ export function CommentSummary(props: { comment: Comment }) {
   return (
     <div class="comment-item">
       <div class="loc">
-        <button class="button ghost sm comment-location" onClick={() => revealComment(props.comment)}>
+        <button
+          class="button ghost sm comment-location"
+          title={commentLocation(props.comment)}
+          onClick={() => revealComment(props.comment)}
+        >
           {commentLocation(props.comment)}
         </button>
         <span class="spacer" />

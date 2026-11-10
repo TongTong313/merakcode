@@ -95,6 +95,8 @@ export async function engineFixture(options: { replies?: unknown[] } = {}) {
   await git("config", "user.name", "Fixture")
   await git("config", "user.email", "fixture@example.invalid")
   return {
+    endpoint: info.endpoint,
+    token,
     project,
     git,
     url: `http://127.0.0.1:${address.port}`,

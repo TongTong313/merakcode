@@ -8,29 +8,37 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
+
 	"os"
 	"os/signal"
-	"path/filepath"
+
 	"strings"
 	"syscall"
 
 	"github.com/TongTong313/merakcode/merak"
-	"github.com/TongTong313/merakcode/merak/engine"
-	"github.com/TongTong313/merakcode/merak/engine/event"
+
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/model/anthropic"
+
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/model/openai"
+
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/session"
+
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
-	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 // Run executes one command and returns its process exit code.
 func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
+	if len(args) == 1 && args[0] == "internal-read-tool" {
+		return readCode(stdin, stdout)
+	}
+	if len(args) > 0 && args[0] == "mcp" {
+		return runMCP(args[1:], stdin, stdout)
+	}
+	if len(args) > 0 && args[0] == "acp" {
+		return runACP(args[1:], stdin, stdout)
+	}
 	ui := &renderer{language: defaultLanguage()}
 	defer func() {
 		if code == 2 {
@@ -70,6 +78,12 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 	if len(args) > 0 && args[0] == "models" {
 		return models(args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "cloud" {
+		return cloudCommand(args[1:], stdout)
+	}
+	if len(args) > 0 && (args[0] == "group" || args[0] == "task" || args[0] == "member") {
+		return groupCommand(args, stdin, stdout, ui)
+	}
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Fprintln(stdout, merak.Version())
 		return 0
@@ -88,7 +102,9 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 		thinking := flags.String("thinking", "", "")
 		base := flags.String("base-url", os.Getenv("OPENAI_BASE_URL"), "")
 		lang := flags.String("lang", ui.language, "")
+		machine := flags.Bool("json", false, "")
 		parseErr := flags.Parse(args[1:])
+		ui.machine = *machine
 		if *lang != "zh" && *lang != "en" {
 			return 2
 		}
@@ -99,13 +115,6 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 		switch model.Thinking(*thinking) {
 		case "", model.ThinkingOff, model.ThinkingLow, model.ThinkingMedium, model.ThinkingHigh, model.ThinkingXHigh, model.ThinkingMax:
 		default:
-			return 2
-		}
-		_, ok := openai.Builtin(*provider)
-		if !ok && (*provider == "anthropic" || strings.HasSuffix(*provider, "-anthropic")) {
-			_, ok = anthropic.Builtin(strings.TrimSuffix(*provider, "-anthropic"))
-		}
-		if !ok {
 			return 2
 		}
 		return runProtocol(flags.Arg(0), *provider, *name, model.Thinking(*thinking), *base, stdin, stdout, ui)
@@ -122,135 +131,19 @@ func debugChat(path, input string, stdin io.Reader, stdout io.Writer, ui *render
 	if err := json.Unmarshal(data, &replies); err != nil || len(replies) == 0 {
 		return 2
 	}
-	return chat(input, fake.New(nil, replies...), "", "", stdin, stdout, ui)
-}
-
-func chat(input string, provider model.Provider, modelID string, thinking model.Thinking, stdin io.Reader, stdout io.Writer, ui *renderer) int {
-	home := os.Getenv("MERAKCODE_HOME")
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			return 1
-		}
-		home = filepath.Join(userHome, ".merakcode")
-	}
-	level := slog.LevelInfo
-	if os.Getenv("MERAKCODE_LOG") == "debug" {
-		level = slog.LevelDebug
-	}
-	logger, closeLog, err := platformlog.New(platformlog.Options{
-		Dir: filepath.Join(home, "logs", "production", "cli"), Level: level, Component: "cli",
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client, closeHost, err := debugClient(ctx, fake.New(nil, replies...))
 	if err != nil {
 		return 1
 	}
-	defer closeLog()
+	defer closeHost()
 	workdir, err := os.Getwd()
 	if err != nil {
 		return 1
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	replies := make(chan permission.Reply)
-	e, err := engine.New(engine.Deps{
-		DataDir:   home,
-		Providers: map[string]model.Provider{provider.Name(): provider}, Model: modelID, Thinking: thinking, Workdir: workdir,
-		Ask: func(ctx context.Context, _ permission.Request) (permission.Reply, error) {
-			select {
-			case reply := <-replies:
-				return reply, nil
-			case <-ctx.Done():
-				return permission.Reply{}, ctx.Err()
-			}
-		},
-	})
-	if err != nil {
-		return 1
-	}
-	events, unsubscribe := e.Bus.Subscribe(event.Filter{})
-	defer unsubscribe()
-	finished := make(chan error, 1)
-	go func() {
-		outcome, err := e.Chat(ctx, provider.Name(), input)
-		if err != nil {
-			logger.Error("chat failed")
-		} else {
-			logger.Info("chat finished", "stop", outcome.Stop)
-		}
-		finished <- err
-		unsubscribe()
-	}()
-	ask := terminalApproval(stdin, stdout, ui)
-	var renderErr error
-	printed := false
-	reasoning := false
-	for fact := range events {
-		if renderErr != nil {
-			continue
-		}
-		switch fact.Type {
-		case session.MessageDelta:
-			var chunk model.Chunk
-			chunk, renderErr = event.Decode[model.Chunk](fact)
-			if renderErr == nil && chunk.Kind == model.ReasoningChunk && chunk.Reasoning != nil {
-				if !reasoning {
-					_, renderErr = io.WriteString(stdout, ui.text("thinking"))
-					reasoning = true
-				}
-				if renderErr == nil {
-					_, renderErr = io.WriteString(stdout, chunk.Reasoning.Text)
-					printed = true
-				}
-			}
-			if renderErr == nil && chunk.Kind == model.Text && chunk.Text != "" {
-				if reasoning {
-					_, renderErr = fmt.Fprintln(stdout)
-					reasoning = false
-				}
-				if renderErr != nil {
-					break
-				}
-				_, renderErr = io.WriteString(stdout, chunk.Text)
-				printed = true
-			}
-		case session.MessageCompleted:
-			if printed {
-				_, renderErr = fmt.Fprintln(stdout)
-				printed = false
-			}
-			reasoning = false
-			if renderErr == nil {
-				var completed session.Completion
-				completed, renderErr = event.Decode[session.Completion](fact)
-				if renderErr == nil {
-					renderErr = printCost(stdout, completed.Usage, ui)
-				}
-			}
-		case permission.Requested:
-			var request permission.Request
-			request, renderErr = event.Decode[permission.Request](fact)
-			if renderErr == nil {
-				var reply permission.Reply
-				reply, renderErr = ask(ctx, request)
-				if renderErr == nil {
-					select {
-					case replies <- reply:
-					case <-ctx.Done():
-						renderErr = ctx.Err()
-					}
-				}
-			}
-		}
-		if renderErr != nil {
-			cancel()
-		}
-	}
-	if err := <-finished; err != nil || renderErr != nil {
-		return 1
-	}
-	return 0
+	return protocolChat(ctx, client, protocol.SessionCreateParams{Provider: "fake", Workdir: workdir}, input, stdin, stdout, ui)
 }
-
 func printCost(out io.Writer, usage model.Usage, ui *renderer) error {
 	if usage.Input+usage.Output == 0 {
 		return nil
@@ -263,8 +156,7 @@ func printCost(out io.Writer, usage model.Usage, ui *renderer) error {
 	return err
 }
 
-func terminalApproval(stdin io.Reader, stdout io.Writer, ui *renderer) func(context.Context, permission.Request) (permission.Reply, error) {
-	scanner := bufio.NewScanner(stdin)
+func terminalApproval(scanner *bufio.Scanner, stdout io.Writer, ui *renderer) func(context.Context, permission.Request) (permission.Reply, error) {
 	return func(ctx context.Context, request permission.Request) (permission.Reply, error) {
 		if err := ctx.Err(); err != nil {
 			return permission.Reply{}, err

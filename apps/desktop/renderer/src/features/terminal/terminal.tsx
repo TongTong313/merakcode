@@ -14,7 +14,7 @@ import { saveLayout, setUi, ui } from "../../state/ui"
  * One group of terminal tabs per directory, one shell process per tab. Collapsing the terminal area keeps the
  * processes alive and reopening resumes them (the server replays the output); only closing a tab ends its process.
  */
-type Tab = { key: number; terminalID?: string }
+type Tab = { key: number; terminalID?: string; pending: string[] }
 const [groups, setGroups] = createStore<Record<string, { tabs: Tab[]; active: number; next: number }>>({})
 
 const starting = new Map<string, Promise<string | undefined>>()
@@ -49,7 +49,7 @@ function add(directory: string) {
   const group = groups[directory]
   const key = group?.next ?? 1
   setGroups(directory, (current) => ({
-    tabs: [...(current?.tabs ?? []), { key }],
+    tabs: [...(current?.tabs ?? []), { key, pending: [] }],
     active: key,
     next: key + 1,
   }))
@@ -76,17 +76,24 @@ function Shell(props: { directory: string; tab: Tab; active: boolean }) {
   let socket: TerminalConnection | undefined
   let fit: FitAddon | undefined
   let disposed = false
-  /** Keys typed before the terminal is ready (typing right after opening it) */
-  const early: string[] = []
-
+  let connected = false
+  const send = (data: string) => {
+    if (connected) socket?.send(data)
+    else
+      setGroups(
+        props.directory,
+        "tabs",
+        (tab) => tab.key === props.tab.key,
+        "pending",
+        (pending) => [...pending, data],
+      )
+  }
   const earlyKey = (event: KeyboardEvent) => {
     if ((term && event.target !== host) || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
     const data =
       event.key.length === 1 ? event.key : event.key === "Enter" ? "\r" : event.key === "Backspace" ? "\x7f" : undefined
     if (!data) return
-    if (socket) socket.send(data)
-    else if (event.key === "Backspace") early.pop()
-    else early.push(data)
+    send(data)
     event.preventDefault()
   }
 
@@ -133,12 +140,17 @@ function Shell(props: { directory: string; tab: Tab; active: boolean }) {
         log("warn", "terminal socket error")
       },
       onOpen() {
+        connected = true
+        for (const data of props.tab.pending) connection.send(data)
+        setGroups(props.directory, "tabs", (tab) => tab.key === props.tab.key, "pending", [])
         void c.terminal.update({ id, size: { cols: instance.cols, rows: instance.rows } }).catch(failed)
+      },
+      onClose() {
+        connected = false
       },
     })
     socket = connection
-    for (const data of early.splice(0)) connection.send(data)
-    instance.onData((data) => connection.send(data))
+    instance.onData(send)
     instance.onResize(({ cols, rows }) => void c.terminal.update({ id, size: { cols, rows } }).catch(failed))
     term = instance
     if (props.active) instance.focus()

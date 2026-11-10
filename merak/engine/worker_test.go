@@ -224,6 +224,9 @@ func TestEngineStartsEveryExternalWorkerKind(t *testing.T) {
 			}
 			p := profile.DefaultWorker()
 			p.Product = &profile.Product{Kind: kind, Binary: binary}
+			if _, err := e.Tasks.Create(ctx, task.Card{ID: "task", Group: "group", Title: "Verify"}); err != nil {
+				t.Fatal(err)
+			}
 			if kind == "pi" {
 				fixture, err := filepath.Abs("worker/pi/testdata/conversation.jsonl")
 				if err != nil {
@@ -261,6 +264,40 @@ func TestEngineStartsEveryExternalWorkerKind(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestARegisteredMemberRunsOneAssignmentAtATime(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	entered := make(chan struct{})
+	provider := fake.New(t, fake.Reply{Hold: make(chan struct{}), Expect: func(model.Request) error { close(entered); return nil }}, fake.Reply{Text: "Unexpected concurrent reply"})
+	e, err := engine.New(engine.Deps{Providers: map[string]model.Provider{"fake": provider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	p := profile.DefaultWorker()
+	p.Model.Provider = "fake"
+	a := worker.Assignment{Session: "first-assignment", Claim: task.Claim{ID: "first-claim", Member: "registered-member"}, Workdir: t.TempDir(), Packet: "First"}
+	first, err := e.StartWorker(ctx, p, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	a.Session, a.Claim.ID = "second-assignment", "second-claim"
+	waiting, stop := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer stop()
+	second, err := e.StartWorker(waiting, p, a)
+	if err == nil || second != nil {
+		t.Fatal("a registered member executed two assignments concurrently")
+	}
+	if err := first.Cancel(ctx); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -393,6 +430,9 @@ func TestWorkerUsesProfileInstructionsAndKeepsGroupAttribution(t *testing.T) {
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Tasks.Create(ctx, task.Card{ID: "task", Group: "group", Title: "Verify"}); err != nil {
 		t.Fatal(err)
 	}
 	run, err := e.StartWorker(ctx, config, worker.Assignment{Session: "worker-session", Workdir: dir, Packet: "Verify", Scope: event.Scope{Group: "group", Task: "task"}, Claim: task.Claim{ID: "claim", Member: "member"}})

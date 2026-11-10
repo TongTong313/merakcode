@@ -52,7 +52,7 @@ export function shownDefaultModel() {
   return model && modelKey(model)
 }
 
-type Choice = { model?: ModelRef; thinking?: Record<string, string>; mode?: "ask" | "takeover" }
+type Choice = { model?: ModelRef; thinking?: Record<string, string>; mode?: "ask" | "auto" | "takeover" }
 const [choices, setChoices] = createStore<Record<string, Choice>>({})
 export const choiceKey = (id: string | undefined, directory: string) => id ?? `new:${directory}`
 
@@ -65,14 +65,16 @@ export function choice(id: string | undefined, directory: string) {
   const saved = model ? own?.thinking?.[modelKey(model)] : undefined
   const sameModel = config?.provider === model?.providerID && config?.model === model?.modelID
   const requested = saved ?? (sameModel ? config?.thinking : undefined) ?? state.config?.thinking
-  const mode: "ask" | "takeover" = (config?.mode ?? own?.mode) === "takeover" ? "takeover" : "ask"
+  const requestedMode = config?.mode ?? own?.mode ?? state.config?.mode
+  const mode: "ask" | "auto" | "takeover" =
+    requestedMode === "takeover" || requestedMode === "auto" ? requestedMode : "ask"
   return { model, mode, variant: requested && (!levels.length || levels.includes(requested)) ? requested : levels[0] }
 }
 
 export function choose(
   id: string | undefined,
   directory: string,
-  patch: { model?: ModelRef; variant?: string; mode?: "ask" | "takeover" },
+  patch: { model?: ModelRef; variant?: string; mode?: "ask" | "auto" | "takeover" },
 ) {
   const key = choiceKey(id, directory)
   const target = patch.model ?? choice(id, directory).model

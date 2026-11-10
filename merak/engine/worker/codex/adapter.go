@@ -10,6 +10,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -18,6 +19,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Runner struct {
@@ -29,7 +31,7 @@ type Runner struct {
 	System  string
 }
 
-func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true, Permission: true} }
+func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true, Permission: true, MCP: true} }
 func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, error) {
 	return worker.Launch(ctx, r.Bus, a, func(ctx context.Context, inputs <-chan loop.Input) (task.Report, error) {
 		return r.execute(ctx, a, inputs)
@@ -40,7 +42,10 @@ type wire struct {
 	ID             json.RawMessage
 	Method         string
 	Params, Result json.RawMessage
-	Error          *struct{ Code int }
+	Error          *struct {
+		Code    int
+		Message string
+	}
 }
 
 func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan loop.Input) (report task.Report, runErr error) {
@@ -53,6 +58,22 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	if err != nil {
 		return report, err
 	}
+	var nativeUsage model.Usage
+	if previous != "" && r.Store != nil {
+		state, err := session.NewManager(r.Store, r.Bus).Load(ctx, a.Session)
+		if err != nil {
+			return report, err
+		}
+		nativeUsage = state.Usage
+	}
+	packet := a.Packet
+	var recovered []event.ID
+	if a.Leader {
+		packet, recovered, err = worker.RecoverInput(ctx, r.Store, a.Session, previous == "", j.Previous, a.Packet)
+		if err != nil {
+			return report, err
+		}
+	}
 	p := r.Product
 	if p.Binary == "" {
 		p.Binary = "codex"
@@ -64,12 +85,23 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	for _, setting := range []string{"analytics.enabled=false", "feedback.enabled=false", "check_for_update_on_startup=false", `otel.exporter="none"`, `otel.trace_exporter="none"`, `otel.metrics_exporter="none"`} {
 		args = append(args, "-c", setting)
 	}
+	if a.MCP != nil {
+		command, _ := json.Marshal(a.MCP.Command)
+		arguments, _ := json.Marshal(a.MCP.Args)
+		args = append(args, "-c", "mcp_servers.merak.command="+string(command), "-c", "mcp_servers.merak.args="+string(arguments))
+		for name, value := range a.MCP.Env {
+			key, _ := json.Marshal(name)
+			literal, _ := json.Marshal(value)
+			args = append(args, "-c", "mcp_servers.merak.env."+string(key)+"="+string(literal))
+		}
+	}
 	if r.Sandbox != nil && !r.Sandbox.Disabled {
 		a.SandboxProfile, err = stdio.ProductState(a.SandboxProfile, ".codex")
 		if err != nil {
 			return report, err
 		}
 	}
+	j.Sandbox, j.Assignment = r.Sandbox, a
 	child, err := stdio.Start(ctx, a, p, args, r.Sandbox)
 	if err != nil {
 		return report, err
@@ -87,27 +119,75 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 		return report, err
 	}
 	thread, turn := "", ""
-	var queued []loop.Input
-	send := func(in loop.Input, steer bool) error {
+	starting := false
+	waitingCompletion := false
+	type delivery struct {
+		input  loop.Input
+		logged bool
+		ids    []event.ID
+		text   string
+		turn   string
+	}
+	var startedDelivery delivery
+	var queued []delivery
+	steers := make(map[string]delivery)
+	send := func(item delivery, steer bool) error {
+		in := item.input
 		params := map[string]any{"threadId": thread, "input": []map[string]string{{"type": "text", "text": stdio.Text(in.Parts)}}}
+		if item.text != "" {
+			params["input"] = []map[string]string{{"type": "text", "text": item.text}}
+		}
 		method := "turn/start"
 		if steer {
 			method = "turn/steer"
 			params["expectedTurnId"] = turn
 		}
+		if !steer {
+			starting = true
+		}
+		if err := j.BeginTurn(ctx, in.Cause); err != nil {
+			return err
+		}
+		if !item.logged {
+			id, err := j.RecordInput(ctx, in)
+			if err != nil {
+				return err
+			}
+			item.ids = append(item.ids, id)
+			item.logged = true
+		}
 		if err := request(method, params); err != nil {
 			return err
 		}
-		return j.Input(ctx, in)
+		if steer {
+			item.turn = turn
+			steers[`"`+strconv.Itoa(sequence)+`"`] = item
+		} else {
+			startedDelivery = item
+		}
+		return nil
+	}
+	flush := func() error {
+		if thread == "" || starting || waitingCompletion || a.LeaderTurn.Finishing() || len(steers) > 0 || len(queued) == 0 {
+			return nil
+		}
+		item := queued[0]
+		queued = queued[1:]
+		return send(item, turn != "")
+	}
+	endIfIdle := func() error {
+		if a.Leader && thread != "" && turn == "" && !starting && len(steers) == 0 && len(queued) == 0 {
+			return j.EndTurn(ctx)
+		}
+		return nil
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			return report, ctx.Err()
 		case in := <-inputs:
-			if turn == "" {
-				queued = append(queued, in)
-			} else if err := send(in, true); err != nil {
+			queued = append(queued, delivery{input: in})
+			if err := flush(); err != nil {
 				return report, err
 			}
 		case line, ok := <-child.Lines:
@@ -124,7 +204,19 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 			if m.Method == "" {
 				method := pending[string(m.ID)]
 				delete(pending, string(m.ID))
+				item, steered := steers[string(m.ID)]
+				delete(steers, string(m.ID))
 				if m.Error != nil {
+					if steered && m.Error.Code == -32600 && strings.EqualFold(m.Error.Message, "no active turn to steer") {
+						waitingCompletion = turn != ""
+						queued = append([]delivery{item}, queued...)
+						if turn == "" {
+							if err := flush(); err != nil {
+								return report, err
+							}
+						}
+						continue
+					}
 					return report, errors.New("codex rejected a request")
 				}
 				switch method {
@@ -137,10 +229,14 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 						cwd, _ = os.Getwd()
 					}
 					sandbox := "workspace-write"
+					approval := "untrusted"
+					if a.Mode == permission.ModeTakeover {
+						sandbox, approval = "danger-full-access", "never"
+					}
 					if a.ReadOnly {
 						sandbox = "read-only"
 					}
-					params := map[string]any{"cwd": cwd, "approvalPolicy": "untrusted", "approvalsReviewer": "user", "sandbox": sandbox, "developerInstructions": r.System}
+					params := map[string]any{"cwd": cwd, "approvalPolicy": approval, "approvalsReviewer": "user", "sandbox": sandbox, "developerInstructions": r.System}
 					if p.Model != "" {
 						params["model"] = p.Model
 					}
@@ -164,7 +260,7 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 					if err := stdio.SaveSession(ctx, r.Store, a, "codex", thread); err != nil {
 						return report, err
 					}
-					if err := send(loop.Input{Parts: []model.Part{{Text: a.Packet}}, Cause: a.Cause}, false); err != nil {
+					if err := send(delivery{input: loop.Input{Parts: []model.Part{{Text: a.Packet}}, Cause: a.Cause}, text: packet, ids: recovered}, false); err != nil {
 						return report, err
 					}
 				case "turn/start":
@@ -173,15 +269,33 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 						return report, err
 					}
 					turn = result.Turn.ID
+					starting = false
 					if turn == "" {
 						return report, errors.New("codex did not start a turn")
 					}
-					for _, in := range queued {
-						if err := send(in, true); err != nil {
+					if a.Leader {
+						if err := worker.AcknowledgeInputs(ctx, r.Store, a.Session, startedDelivery.ids); err != nil {
 							return report, err
 						}
 					}
-					queued = nil
+				case "turn/steer":
+					var result struct {
+						TurnID string `json:"turnId"`
+					}
+					if err := json.Unmarshal(m.Result, &result); err != nil || !steered || result.TurnID != item.turn {
+						return report, errors.New("codex acknowledged a different turn")
+					}
+					if a.Leader {
+						if err := worker.AcknowledgeInputs(ctx, r.Store, a.Session, item.ids); err != nil {
+							return report, err
+						}
+					}
+				}
+				if err := flush(); err != nil {
+					return report, err
+				}
+				if err := endIfIdle(); err != nil {
+					return report, err
 				}
 				continue
 			}
@@ -215,9 +329,24 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 				if scope.Turn.Status != "completed" {
 					return report, errors.New("codex turn failed")
 				}
+				if a.Leader {
+					turn = ""
+					waitingCompletion = false
+					if a.LeaderTurn.Finishing() {
+						// Reopen orchestration for accepted inputs before settling the batch.
+						a.LeaderTurn.End()
+					}
+					if err := flush(); err != nil {
+						return report, err
+					}
+					if err := endIfIdle(); err != nil {
+						return report, err
+					}
+					continue
+				}
 				return report, nil
 			}
-			if err := translate(ctx, j, m.Method, m.Params); err != nil {
+			if err := translate(ctx, j, m.Method, m.Params, &nativeUsage); err != nil {
 				return report, err
 			}
 		}

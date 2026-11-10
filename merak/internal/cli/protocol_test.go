@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,10 +15,76 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
+	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
+	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 )
+
+func TestModelsReadsTheRunningEnginesConfiguration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MERAKCODE_HOME", home)
+	e, err := engine.New(engine.Deps{Workdir: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.ConfigureModels([]catalog.Override{{Provider: "company", ID: "configured", Window: new(7777)}})
+	instance, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	// Server configuration is applied at startup, then live changes must be visible.
+	e.ConfigureModels([]catalog.Override{{Provider: "company", ID: "configured", Window: new(7777)}})
+	var out bytes.Buffer
+	if code := Run([]string{"models"}, strings.NewReader(""), &out); code != 0 || !strings.Contains(out.String(), "configured") {
+		t.Fatalf("code=%d output=%s", code, &out)
+	}
+}
+
+func TestRunJSONUsesConfiguredProviderAndAnswersQuestions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MERAKCODE_HOME", home)
+	var instance *server.Instance
+	provider := fake.New(t, fake.Reply{Calls: []model.ToolCall{{ID: "question", Name: "ask_user", Input: json.RawMessage(`{"text":"Which target?","options":["main","next"]}`)}}}, fake.Reply{Text: "Used main", Expect: func(req model.Request) error {
+		body, _ := json.Marshal(req.Messages)
+		if !strings.Contains(string(body), "main") {
+			return fmt.Errorf("answer missing")
+		}
+		return nil
+	}})
+	e, err := engine.New(engine.Deps{Workdir: home, Providers: map[string]model.Provider{"company-relay": provider}, AskQuestion: func(ctx context.Context, req question.Request) (question.Answer, error) {
+		return instance.AskQuestion(ctx, req)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err = server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	var out bytes.Buffer
+	if code := Run([]string{"run", "--json", "--provider", "company-relay", "--model", "fixture", "Begin"}, strings.NewReader("{\"text\":\"main\"}\n"), &out); code != 0 {
+		t.Fatalf("code=%d output=%s", code, &out)
+	}
+	decoder := json.NewDecoder(&out)
+	asked, finished := false, false
+	for decoder.More() {
+		var fact event.Event
+		if err := decoder.Decode(&fact); err != nil {
+			t.Fatal(err)
+		}
+		asked = asked || fact.Type == question.Asked
+		finished = finished || fact.Type == loop.TurnFinished
+	}
+	if !asked || !finished {
+		t.Fatalf("asked=%v finished=%v", asked, finished)
+	}
+}
 
 func TestRunUsesThePlatformDataDirectory(t *testing.T) {
 	root := t.TempDir()

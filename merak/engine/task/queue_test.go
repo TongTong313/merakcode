@@ -2,8 +2,10 @@ package task_test
 
 import (
 	"context"
+	"errors"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"testing"
@@ -83,5 +85,42 @@ func TestMemberQueueHonorsPriorityWithdrawalAndLeaderReordering(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPausedGroupKeepsClaimsQueued(t *testing.T) {
+	ctx := t.Context()
+	storage := memory.New()
+	bus := event.NewBus(storage, time.Now, event.NewID)
+	groups := group.New(storage, bus, event.NewID)
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := task.New(storage, bus, event.NewID, groups)
+	card, err := pool.Create(ctx, task.Card{Group: g.ID, Title: "Queued work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := pool.OpenAndAssign(ctx, card.ID, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groups.SetPaused(ctx, g.ID, "owner", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Next(ctx, "worker"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("paused next: %v", err)
+	}
+	if err := groups.SetPaused(ctx, g.ID, "owner", "", false); err != nil {
+		t.Fatal(err)
+	}
+	next, err := pool.Next(ctx, "worker")
+	if err != nil || next.ID != claim.ID {
+		t.Fatalf("resumed next: %+v %v", next, err)
 	}
 }

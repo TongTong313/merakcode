@@ -182,6 +182,18 @@ func TestDebugChatRunsAScript(t *testing.T) {
 	}
 }
 
+func TestDebugChatPrintsSafeCredentialPrefixAtCompletion(t *testing.T) {
+	t.Setenv("MERAKCODE_HOME", t.TempDir())
+	script := filepath.Join(t.TempDir(), "reply.json")
+	if err := os.WriteFile(script, []byte(`[{"text":"Yes sk"}]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if code := Run([]string{"debug", "chat", "--script", script, "Hello"}, strings.NewReader(""), &output); code != 0 || output.String() != "Yes sk\n" {
+		t.Fatalf("code=%d output=%q", code, output.String())
+	}
+}
+
 func TestRun(t *testing.T) {
 	t.Setenv("MERAKCODE_LANG", "en")
 	tests := []struct {

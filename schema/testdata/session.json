@@ -16,6 +16,7 @@
         "id": "golden",
         "scope": {},
         "config": {
+          "budget": {},
           "provider": "fake",
           "model": "golden",
           "workdir": "/workspace"
@@ -395,6 +396,7 @@
       "turn": "golden-02"
     },
     "config": {
+      "budget": {},
       "provider": "fake",
       "model": "golden",
       "workdir": "/workspace"

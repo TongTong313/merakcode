@@ -49,6 +49,7 @@ async function createGroup() {
     name: "Task review",
     project: { directory: engine.project },
     defaultLeader: "leader",
+    settings: { mergeNeedsOwner: false },
     profiles: [],
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },

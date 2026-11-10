@@ -9,12 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 func debugWorker(args []string, stdin io.Reader, stdout io.Writer) int {
@@ -40,47 +41,58 @@ func debugWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	replies := make(chan permission.Reply)
-	e, err := engine.New(engine.Deps{Workdir: workdir, Ask: func(ctx context.Context, _ permission.Request) (permission.Reply, error) {
-		select {
-		case reply := <-replies:
-			return reply, nil
-		case <-ctx.Done():
-			return permission.Reply{}, ctx.Err()
-		}
-	}})
+	client, closeHost, err := debugClient(ctx, nil)
 	if err != nil {
 		return 1
 	}
-	defer e.Close()
+	defer closeHost()
 	p := profile.DefaultWorker()
 	p.Product = &profile.Product{Kind: worker.Kind(*kind), Binary: *binary}
-	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: event.NewID(), Packet: flags.Arg(0), Workdir: workdir})
-	if err != nil {
+	id := event.NewID()
+	if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: id}}, nil); err != nil {
 		return 1
 	}
-	encoder := json.NewEncoder(stdout)
-	decoder := json.NewDecoder(stdin)
-	for fact := range run.Events() {
-		if encoder.Encode(fact) != nil {
-			return 1
-		}
-		if fact.Type == permission.Requested {
-			reply := permission.Reply{Decision: permission.Deny}
-			if err := decoder.Decode(&reply); err != nil {
-				reply = permission.Reply{Decision: permission.Deny}
-			}
-			select {
-			case replies <- reply:
-			case <-ctx.Done():
+	type result struct {
+		report task.Report
+		err    error
+	}
+	completed := make(chan result, 1)
+	go func() {
+		var report task.Report
+		err := client.Call(ctx, "worker.run", protocol.WorkerRunParams{Session: id, Profile: p, Workdir: workdir, Packet: flags.Arg(0)}, &report)
+		completed <- result{report, err}
+	}()
+	encoder, decoder := json.NewEncoder(stdout), json.NewDecoder(stdin)
+	var outcome *result
+	finished := false
+	for !finished || outcome == nil {
+		select {
+		case value := <-completed:
+			if value.err != nil {
 				return 1
 			}
+			outcome = &value
+		case fact, ok := <-client.Events:
+			if !ok || encoder.Encode(fact) != nil {
+				return 1
+			}
+			if fact.Type == permission.Requested {
+				reply := permission.Reply{Decision: permission.Deny}
+				if decoder.Decode(&reply) != nil {
+					reply.Decision = permission.Deny
+				}
+				if client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: fact.ID, Decision: reply.Decision}, nil) != nil {
+					return 1
+				}
+			}
+			finished = finished || fact.Type == loop.TurnFinished
+		case <-ctx.Done():
+			return 1
 		}
 	}
-	report, err := run.Wait(context.Background())
 	if encoder.Encode(struct {
 		Report task.Report `json:"report"`
-	}{report}) != nil || err != nil {
+	}{outcome.report}) != nil {
 		return 1
 	}
 	return 0

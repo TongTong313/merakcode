@@ -1,14 +1,15 @@
 package cli
 
 import (
-	"bytes"
+	"github.com/TongTong313/merakcode/merak/protocol"
+	"time"
+
 	"context"
 	"encoding/json"
-	"errors"
+
 	"flag"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 )
@@ -21,48 +22,30 @@ func models(args []string, output io.Writer) int {
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		return 2
 	}
-	c, err := configuredCatalog(*overrides)
+	home, err := dataHome()
 	if err != nil {
 		return 1
 	}
-	if *refresh {
-		if err := c.Refresh(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client, err := ensureEngine(ctx, home, "", "")
+	if err != nil {
+		return 1
+	}
+	defer client.Close()
+	if *refresh && client.Call(ctx, "model.refresh", protocol.ModelRefreshParams{}, nil) != nil {
+		return 1
+	}
+	params := protocol.ModelListParams{}
+	if *overrides != "" {
+		body, err := os.ReadFile(*overrides)
+		if err != nil || json.Unmarshal(body, &params.Overrides) != nil {
 			return 1
 		}
 	}
-	if err := json.NewEncoder(output).Encode(c.List()); err != nil {
+	var entries []catalog.Model
+	if client.Call(ctx, "model.list", params, &entries) != nil || json.NewEncoder(output).Encode(entries) != nil {
 		return 1
 	}
 	return 0
-}
-
-func configuredCatalog(path string) (*catalog.Catalog, error) {
-	var options catalog.Options
-	for _, provider := range []string{"anthropic", "openrouter"} {
-		prefix := strings.ToUpper(provider)
-		key, base := os.Getenv(prefix+"_API_KEY"), os.Getenv(prefix+"_BASE_URL")
-		if key != "" || base != "" {
-			options.Sources = append(options.Sources, catalog.Source{Provider: provider, APIKey: key, BaseURL: base})
-		}
-	}
-	if path != "" {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&options.Overrides); err != nil {
-			return nil, err
-		}
-		if decoder.Decode(new(any)) != io.EOF {
-			return nil, errors.New("expected one overrides array")
-		}
-		for _, override := range options.Overrides {
-			if override.Provider == "" || override.ID == "" || override.Window != nil && *override.Window <= 0 || override.MaxOutput != nil && *override.MaxOutput <= 0 {
-				return nil, errors.New("invalid model override")
-			}
-		}
-	}
-	return catalog.New(options), nil
 }

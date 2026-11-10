@@ -33,6 +33,8 @@ what to do.
 | MRK-1003    | 存储请求失败               | Storage request failed                       | 检查存储宿主连接和磁盘空间后重试。<br>Check the storage host connection and available disk space, then retry.                                                                                                                |
 | MRK-1004    | 诊断包生成失败             | Diagnostic archive creation failed           | 检查日志、存储连接和输出路径后重试。<br>Check the logs, storage connection and output path, then retry.                                                                                                                      |
 | MRK-1005    | 项目文件监视器超出扫描上限 | Project file watcher exceeded its scan limit | 项目超过 50000 个文件或扫描超过 1 秒。请减少项目文件，或使用支持系统文件通知的版本。<br>The project exceeded 50000 files or a scan took over 1 second. Reduce project files or use a version with native file notifications. |
+| MRK-1006    | 云端账号尚未登录           | Cloud sign-in is required                    | 请先登录云端账号，再创建或打开云端群。<br>Sign in to the cloud before creating or opening a cloud group.                                                                                                                     |
+| MRK-1007    | 云端连接不可用             | Cloud connection is unavailable              | 检查云端地址和网络连接。引擎会自动重连。<br>Check the cloud endpoint and network connection. The engine reconnects automatically.                                                                                            |
 
 ## 2xxx 模型服务 · Model providers
 
@@ -42,17 +44,20 @@ what to do.
 
 ## 3xxx 配置 · Configuration
 
-| 错误码 Code | 说明         | Meaning                   | 怎么办 · What to do                                                                |
-| ----------- | ------------ | ------------------------- | ---------------------------------------------------------------------------------- |
-| MRK-3001    | 命令参数无效 | Invalid command arguments | 检查命令、模型名称和参数值。<br>Check the command, model name and argument values. |
+| 错误码 Code | 说明           | Meaning                            | 怎么办 · What to do                                                                                                                                                                     |
+| ----------- | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-3001    | 命令参数无效   | Invalid command arguments          | 检查命令、模型名称和参数值。<br>Check the command, model name and argument values.                                                                                                      |
+| MRK-3002    | 工作区配置无效 | Workspace configuration is invalid | 只保留一个配置文件，并检查注释、字段和 MCP 服务器格式。会话仍可继续。<br>Keep one configuration file and check its syntax, fields and MCP server definitions. The session can continue. |
 
 ## 4xxx 会话 · Sessions
 
-| 错误码 Code | 说明               | Meaning                              | 怎么办 · What to do                                                                                                        |
-| ----------- | ------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| MRK-4001    | 会话请求失败       | Session request failed               | 检查会话编号、模型配置和消息内容后重试。<br>Check the session ID, model configuration and message content before retrying. |
-| MRK-4002    | 上下文超过可用容量 | Context exceeds the available window | 缩短输入，或选择上下文容量更大的模型。<br>Shorten the input or choose a model with a larger context window.                |
-| MRK-4003    | 上下文重建失败     | Context rebuild failed               | 原始历史已保留。请稍后重试。<br>The original history is preserved. Try again later.                                        |
+| 错误码 Code | 说明               | Meaning                              | 怎么办 · What to do                                                                                                                                                                   |
+| ----------- | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-4001    | 会话请求失败       | Session request failed               | 检查会话编号、模型配置和消息内容后重试。<br>Check the session ID, model configuration and message content before retrying.                                                            |
+| MRK-4002    | 上下文超过可用容量 | Context exceeds the available window | 缩短输入，或选择上下文容量更大的模型。<br>Shorten the input or choose a model with a larger context window.                                                                           |
+| MRK-4003    | 上下文重建失败     | Context rebuild failed               | 原始历史已保留。请稍后重试。<br>The original history is preserved. Try again later.                                                                                                   |
+| MRK-4004    | Leader 运行停止    | Leader run stopped                   | 会话和待处理事件已保留。请检查成员配置后发送消息重试。<br>The conversation and pending events are preserved. Check the member configuration, then send a message to retry.            |
+| MRK-4005    | 执行预算已用完     | Execution budget exhausted           | 单聊确认追加预算后继续。群任务由 owner 批准追加预算后重新派工。<br>Explicitly extend the chat budget to continue. Group tasks require an owner-approved increase before reassignment. |
 
 ## 5xxx 工具、权限与沙箱 · Tools, permissions and sandbox
 
@@ -67,12 +72,15 @@ what to do.
 | MRK-5007    | 沙箱检测到保护路径被修改 | Sandbox detected changes to protected paths         | 查看错误中的路径和还原结果。还原失败时，请先恢复保护文件。<br>Review the reported paths and restoration result. Restore protected files before continuing if rollback failed.                             |
 | MRK-5008    | 沙箱未强制网络目标限制   | Sandbox network destination limits are not enforced | 文件限制仍有效。成员可能绕过代理访问未批准的网络目标。<br>File limits remain enforced. The member may bypass the proxy to reach unapproved network destinations.                                          |
 | MRK-5009    | 成员的文件访问被拒绝     | Member file access was denied                       | 查看错误中的路径，并检查工作区范围、保护路径和读取限制。<br>Review the reported path, workspace scope, protected paths and read restrictions.                                                             |
+| MRK-5010    | MCP 服务器启动失败       | MCP server startup failed                           | 检查服务器命令、沙箱权限和 10 秒启动限制。会话已跳过这台服务器。<br>Check the server command, sandbox permissions and 10-second startup limit. This session skipped the server.                           |
+| MRK-5011    | 工作区安装失败           | Workspace setup failed                              | 查看安装日志，修正群的安装命令后重新认领任务。<br>Read the setup log, fix the group's setup command, then create a new claim.                                                                             |
 
 ## 6xxx 任务和协作群 · Tasks and groups
 
-| 错误码 Code | 说明             | Meaning                        | 怎么办 · What to do                                                                    |
-| ----------- | ---------------- | ------------------------------ | -------------------------------------------------------------------------------------- |
-| MRK-6001    | 群或任务操作失败 | Group or task operation failed | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state. |
+| 错误码 Code | 说明             | Meaning                        | 怎么办 · What to do                                                                                                                                |
+| ----------- | ---------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-6001    | 群或任务操作失败 | Group or task operation failed | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state.                                                             |
+| MRK-6002    | 任务需要检查     | Task needs attention           | 查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。<br>Review the sentinel reason and related events, then resume, reassign or cancel the task. |
 
 ## 8xxx 安装与更新 · Install and update
 

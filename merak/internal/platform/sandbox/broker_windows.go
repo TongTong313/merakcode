@@ -192,7 +192,7 @@ func runWindowsBroker(encoded string) (code int, returned error) {
 	if !started.Ready {
 		return 0, errors.New("MRK-5004")
 	}
-	if err = json.NewEncoder(startup).Encode(windowsStartupMessage{Token: request.StartupToken, Ready: true}); err != nil {
+	if err = json.NewEncoder(startup).Encode(windowsStartupMessage{Token: request.StartupToken, Ready: true, PrivateDirectory: private}); err != nil {
 		return 0, err
 	}
 	var accepted bool

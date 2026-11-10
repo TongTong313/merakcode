@@ -31,7 +31,7 @@ func (e *Engine) routeEnvironment(ctx context.Context, run *groupRun, fact event
 		return nil
 	}
 	priority := leader.PriorityLow
-	if len(targets) > 0 || run.group.Settings.Initiative == group.Eager {
+	if len(targets) > 0 || run.configuration().Settings.Initiative == group.Eager {
 		priority = leader.PriorityNormal
 	}
 	if len(targets) == 0 {

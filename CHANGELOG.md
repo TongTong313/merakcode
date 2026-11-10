@@ -8,6 +8,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Route routine Worker approvals to the task Leader, preserve escalation deadlines, and require per-server trust for workspace MCP configuration. Mount group tools in supported external products.
+
+- Run Claude Code, Codex and Pi as Leaders; preserve queued events across rate limits; patrol stalled tasks; run workspace setup and reuse idle worktrees.
+
+- Configure permission defaults and turn limits in desktop, show context and usage totals, and initialize Windows member isolation from settings.
+
+- Connect development cloud accounts, forward cloud groups through the local engine, and register remote Workers by address and token. Add cloud account settings, cloud group creation and remote member selection.
+
 - Enforce S25 member sandboxes on Windows, Linux and macOS, restore protected files, isolate product state, report partial enforcement and offer full takeover through the SDK and desktop. Add shared isolation tests and Windows account cleanup in CI.
 
 - Expose sandbox status and route external member startup and network approvals through the engine.
@@ -71,6 +79,25 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Keep group usage folding in the SDK and preserve the newest context budget when history arrives out of order.
+
+- Expose cloud member discovery through the SDK and route the MCP command through the Go SDK.
+- Preserve the previous cloud connection when saving credentials fails, and avoid rewriting unchanged system credential markers.
+
+- Preserve terminal input while its display loads or its connection opens, including when hidden and reopened. Keep global shortcuts available while the terminal has focus.
+
+- Preserve instructions received while a Worker prepares its workspace and material packet, and avoid replaying instructions already included in that packet.
+
+- Build desktop tests in a temporary directory so they cannot delete the running app's entry file.
+
+- Restore the v0.3.1 conversation width, project grouping, group shortcut and collapsible member sidebar. Adapt task, inbox, budget, remote member and review screens to small windows; contain long text and keep question controls reachable with the terminal open.
+
+- Enforce task and member budgets across rework and remote claims. Apply owner-approved grants, extend active deadlines, and require explicit consent to continue a budget-stopped chat. Accept trusted editor stdio MCP servers in ACP sessions and redact credentials split across streamed fragments.
+
+- Enforce task and profile budgets across rework sessions, retain paused Leader inputs after restart, hand over the default Leader, and extract closed-task memory for external members.
+- Restrict private member assignments to their owner, preserve shared-document access through the SDK, redact imported event secrets and exclude file bodies from cloud uploads.
+- Expose group, task, member, JSON streaming and ACP commands through the SDK; run desktop main-process and engine lifecycle checks in CI.
+
 - Reject runtime-supplied command arguments, package-manager side effects, indirect file reads and system changes in draft-only tasks. Apply sensitive-file approval to input redirects, file aliases and option values while preserving ordinary literal file reads.
 
 - Reject shell argument expansion and shell-state changes in draft-only tasks while preserving quoted literal arguments.
@@ -112,6 +139,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
 
 ### 新增
+
+- 常规 Worker 审批先交给任务线程 Leader。升级后保留原截止时间。工作区 MCP 按服务器确认。外部产品可使用群工具。
+
+- Claude Code、Codex 和 Pi 可担任 Leader。限流期间保留待处理事件。引擎巡查停滞任务、运行工作区安装命令并复用空闲工作树。
+
+- 桌面端可设置默认权限和回合上限。界面显示上下文与用量统计。设置页可初始化 Windows 成员隔离。
+
+- 引擎可登录开发云端，并转发云端群请求。用户可用地址和令牌添加远端 Worker。桌面端增加云端账号、云端建群和远端成员表单。
 
 - 完成 S25 成员沙箱，覆盖 Windows、Linux 和 macOS。还原保护文件，隔离产品状态，并报告部分强制。SDK 和桌面支持全面接管。CI 增加共用隔离测试和 Windows 账户清理。
 
@@ -175,6 +210,25 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 由 SDK 汇总群用量。历史事件乱序到达时保留最新上下文预算。
+
+- SDK 提供云端成员查询。MCP 命令通过 Go SDK 连接引擎。
+- 凭据保存失败时保留原云端连接。更新系统凭据时不再重复写入相同标记。
+
+- 保留终端加载和连接期间的输入，隐藏并重新打开终端后继续发送。终端获得焦点后仍可使用全局快捷键。
+
+- 保留 Worker 准备工作区和材料包期间收到的指令，避免重复发送材料包已包含的指令。
+
+- 桌面构建测试改用临时目录，避免删除正在运行的应用入口文件。
+
+- 恢复 v0.3.1 的对话宽度、项目归组、协作群快捷键和成员栏折叠交互。任务、收件箱、预算、远程成员和审核界面适配小窗口，长文本不再溢出，打开终端后仍能操作问题区。
+
+- 返工与远程认领共用任务和成员预算。owner 批准后追加额度，运行中的时长上限随之延长。单聊用完预算后，人必须确认才能继续。ACP 会话可直接启动编辑器传入的 stdio MCP 服务器。流式片段中的密钥会先脱敏。
+
+- 任务预算和档案预算累计返工用量。引擎在重启后保留暂停期间的输入，并支持默认 Leader 交接。外部成员结束任务后也会提取记忆。
+- 私有成员仅接受拥有者派工。共享文档通过 SDK 访问。引擎清除导入事件中的密钥，云端上传排除文件正文。
+- 群、任务、成员、JSON 流和 ACP 命令通过 SDK 调用产品能力。CI 增加桌面主进程和引擎生命周期检查。
 
 - 只出稿任务拒绝动态命令参数、包管理器副作用、间接文件读取和系统修改。输入重定向、文件别名和选项值统一检查敏感文件审批。普通文件读取继续可用。
 

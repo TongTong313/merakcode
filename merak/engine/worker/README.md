@@ -5,16 +5,21 @@ All adapters emit engine session, message, tool and turn events. Engine scope an
 | Kind        | Transport           | Mid-run messages           | Permission forwarding | Read-only assignment                         |
 | ----------- | ------------------- | -------------------------- | --------------------- | -------------------------------------------- |
 | builtin     | In process          | Yes                        | Yes                   | Read-only tool pool                          |
-| claude-code | stream-json         | Yes                        | Deferred to S27 MCP   | Restricted tool list                         |
+| claude-code | stream-json         | Yes                        | Engine MCP gate       | Restricted tool list                         |
 | codex       | app-server JSON-RPC | turn/steer                 | Engine gate           | Read-only sandbox and denied write approvals |
 | opencode    | ACP v1              | Unsupported                | Engine gate           | Read tools allowed; other permissions denied |
 | pi          | LF-delimited RPC    | prompt with steer behavior | Not advertised        | Restricted tool list                         |
 | acp         | ACP v1              | Unsupported                | Engine gate           | Rejected before launch                       |
 | command     | Text stdin/stdout   | Unsupported                | Unsupported           | Rejected before launch                       |
+| remote      | MerakCode protocol  | Source member capability   | Assigning engine      | Enforced by the source engine                |
 
 Capabilities describe this implementation. ACP v1 does not promise insertion into an active prompt; these adapters return `worker.ErrUnsupported` from `Send`. ACP clients advertise no filesystem or terminal services. Unknown requests cannot grant access. Approval responses select only a one-time option. OpenCode receives an inline `permission: "ask"` override. Generic ACP agents must be configured to request approval through the protocol.
 
-Codex starts with `untrusted` approvals and the user approval reviewer. Codex approvals and ACP permission requests pass through the same permission gate as builtin tools. Pi has no standard engine permission bridge here; no permission capability is advertised. Engine tools are mounted in S27, not in these adapters.
+Codex uses `untrusted` approvals and the user approval reviewer in asking modes. Full takeover disables its built-in approval and sandbox layers; the engine's selected isolation still applies. Codex approvals and ACP permission requests pass through the same permission gate as builtin tools. Pi has no standard engine permission bridge here; no permission capability is advertised. Claude Code, Codex, OpenCode, Pi and supported ACP products receive the engine's scoped MCP group tools. Workspace MCP servers are mounted only in builtin members.
+
+Claude Code, Codex and Pi also run as external Leaders. Their code tools remain read-only while MCP exposes task planning, member messages and approval tools. A completed model reply does not finish a Leader turn until the engine receives its finish signal.
+
+Remote adapters preserve the execution engine's event IDs and sequences. Group history is synchronized in bounded batches. Shared document lookups, questions and permissions are answered by the assigning engine. Reconnecting to the same endpoint preserves its connection identity and updates the stored token.
 
 Native Codex threads and ACP sessions are persisted against the engine session, member, group, task and working directory. Rework resumes the same native session. An ACP agent that cannot reload its saved session returns an error. Pi runs with `--no-session`; rework restores the engine conversation in the next prompt. Replay is bounded to 4 MiB and refuses an oversized history without silently discarding it. Command reruns retain engine history while receiving only the new task packet on stdin.
 

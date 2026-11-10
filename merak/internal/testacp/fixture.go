@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+
+	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/testmcp"
 )
 
 type message struct {
@@ -48,6 +51,7 @@ func Serve(product string) {
 	var prompt json.RawMessage
 	history := os.Getenv("MERAKCODE_FIXTURE_MODE") == "history"
 	resumed := false
+	var mcpServer worker.MCPConfig
 	for scan.Scan() {
 		var m message
 		if json.Unmarshal(scan.Bytes(), &m) != nil {
@@ -63,6 +67,23 @@ func Serve(product string) {
 			}
 			reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": true}})
 		case "session/new":
+			if os.Getenv("MERAKCODE_FIXTURE_MCP") == "1" {
+				var configuration struct {
+					MCPServers []struct {
+						Name, Command string
+						Args          []string
+						Env           []struct{ Name, Value string }
+					}
+				}
+				if json.Unmarshal(m.Params, &configuration) != nil || len(configuration.MCPServers) != 1 || configuration.MCPServers[0].Name != "merak" {
+					os.Exit(20)
+				}
+				server := configuration.MCPServers[0]
+				mcpServer = worker.MCPConfig{Command: server.Command, Args: server.Args, Env: map[string]string{}}
+				for _, entry := range server.Env {
+					mcpServer.Env[entry.Name] = entry.Value
+				}
+			}
 			if history {
 				if _, err := os.Stat("history.txt"); err == nil {
 					os.Exit(13)
@@ -89,6 +110,13 @@ func Serve(product string) {
 			reply(map[string]any{})
 		case "session/prompt":
 			prompt = m.ID
+			if os.Getenv("MERAKCODE_FIXTURE_MCP") == "1" {
+				if err := testmcp.Report(mcpServer); err != nil {
+					os.Exit(21)
+				}
+				reply(map[string]string{"stopReason": "end_turn"})
+				continue
+			}
 			if history {
 				var p struct{ Prompt []struct{ Text string } }
 				_ = json.Unmarshal(m.Params, &p)

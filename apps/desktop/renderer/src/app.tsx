@@ -18,7 +18,7 @@ import { Startup } from "./features/shell/startup"
 import { GroupConversation } from "./features/conversation/group-page"
 import { connectGroups, loadGroups } from "./state/groups"
 
-/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, "," settings, J terminal, B side panel */
+/** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, G new group, "," settings, J terminal, B side panel */
 function Shortcuts() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -30,14 +30,16 @@ function Shortcuts() {
       const key = event.key.toLowerCase()
       if (key === "k") setUi("palette", !ui.palette)
       else if (key === "n" && directory()) navigate(sessionPath(directory()!))
+      else if (key === "g" && directory()) setUi("newTeam", true)
       else if (key === ",") setUi("settings", "general")
       else if (key === "j") setUi("terminal", !ui.terminal)
       else if (key === "b") togglePanel()
       else return
       event.preventDefault()
+      event.stopPropagation()
     }
-    window.addEventListener("keydown", listener)
-    onCleanup(() => window.removeEventListener("keydown", listener))
+    window.addEventListener("keydown", listener, true)
+    onCleanup(() => window.removeEventListener("keydown", listener, true))
     // Actions from the tray and the menu
     const stops = [
       bridge?.onNavigate((href) => navigate(href)),
@@ -154,7 +156,9 @@ function GroupWorkspace() {
     <Show when={directory()} fallback={<Navigate href="/" />}>
       {(dir) => (
         <div class="app">
-          <Sidebar directory={dir()} group={params.id} />
+          <Show when={!ui.maximized}>
+            <Sidebar directory={dir()} group={params.id} />
+          </Show>
           <GroupConversation id={params.id!} directory={dir()} />
         </div>
       )}

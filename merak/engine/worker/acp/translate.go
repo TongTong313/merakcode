@@ -133,7 +133,19 @@ func (s *translation) approve(ctx context.Context, gate *permission.Gate, params
 	if call.Kind == "edit" || call.Kind == "delete" || call.Kind == "move" {
 		effect = tool.EffectWrite
 	}
-	allowed, err := s.journal.Approve(ctx, gate, call.ToolCallID, "acp."+call.Kind, effect, params)
+	input := call.RawInput
+	if len(input) == 0 {
+		input = json.RawMessage(`{}`)
+	}
+	if call.Kind == "delete" || call.Kind == "move" {
+		var values map[string]json.RawMessage
+		if json.Unmarshal(input, &values) != nil || values == nil {
+			values = make(map[string]json.RawMessage)
+		}
+		values["deletes"] = json.RawMessage(`true`)
+		input, _ = json.Marshal(values)
+	}
+	allowed, err := s.journal.Approve(ctx, gate, call.ToolCallID, "acp."+call.Kind, effect, input)
 	if err != nil {
 		return nil, err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
@@ -44,6 +45,7 @@ func TestHumanReviewRequiresApprovalAndReworkKeepsTheClaimSession(t *testing.T) 
 	}
 	defer e.Close()
 	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
@@ -131,6 +133,7 @@ func TestWorktreeReviewBlocksMergeUntilTheHumanApproves(t *testing.T) {
 	}
 	defer e.Close()
 	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
@@ -231,6 +234,7 @@ func TestFailedGroupCheckReturnsTheOriginalClaimForRework(t *testing.T) {
 	}
 	defer e.Close()
 	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}, Brief: group.Brief{Check: "grep -qx good result.txt || { echo 'check expected good'; exit 1; }"}}, []group.Member{

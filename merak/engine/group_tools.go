@@ -71,30 +71,39 @@ func (e *Engine) scopedTask(ctx context.Context, g event.ID, thread *leader.Thre
 }
 func (e *Engine) leaderTools(g *groupRun, thread *leader.Thread, finish func(string)) []tool.Tool {
 	tools := []tool.Tool{
+		e.groupLookup(g.group.ID),
+		e.readGroupDoc(g.group.ID),
+		e.listGroupDocsTool(g.group.ID),
+		e.writeGroupDocTool(g.group.ID, thread.Leader),
+		e.gate.Wrap(tool.Remember{Memory: e.notes}),
+		e.gate.Wrap(tool.Recall{Memory: e.notes}),
+		e.approveTool(g, thread),
 		e.setPhaseTool(g, thread),
 		e.askHumanTool(g, thread, finish),
 		e.messageMemberTool(g, thread),
 		e.withdrawClaimTool(g, thread),
 		e.setTaskPriorityTool(g, thread),
+		e.updateTaskTool(g, thread),
 		e.sayTool(g, thread, finish),
 		e.mergeTool(g, thread),
 		e.publishTool(g, thread),
-		groupTool{spec: tool.Spec{Name: "create_task", Description: "Create and publish a task in this thread. Include a clear description, acceptance criteria and project-relative areas.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"acceptance":{"type":"array","items":{"type":"string"}},"areas":{"type":"array","items":{"type":"string"}},"inputs":{"type":"array","items":{"type":"string"}},"workspace":{"type":"string","enum":["worktree","folder","inplace","none"]},"priority":{"type":"integer"},"review":{"type":"boolean"}},"required":["title"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
+		groupTool{spec: tool.Spec{Name: "create_task", Description: "Create and publish a task in this thread. Include a clear description, acceptance criteria and project-relative areas.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"acceptance":{"type":"array","items":{"type":"string"}},"areas":{"type":"array","items":{"type":"string"}},"inputs":{"type":"array","items":{"type":"string"}},"workspace":{"type":"string","enum":["worktree","folder","inplace","none"]},"priority":{"type":"integer"},"review":{"type":"boolean"},"budget":{"type":"object","properties":{"maxSteps":{"type":"integer","minimum":0},"maxTokens":{"type":"integer","minimum":0},"maxCost":{"type":"number","minimum":0},"maxWallClock":{"type":"integer","minimum":0}},"additionalProperties":false}},"required":["title"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
 			var input struct {
-				Title       string   `json:"title"`
-				Description string   `json:"description"`
-				Acceptance  []string `json:"acceptance"`
-				Areas       []string `json:"areas"`
-				Inputs      []string `json:"inputs"`
-				Workspace   string   `json:"workspace"`
-				Priority    int      `json:"priority"`
-				Review      bool     `json:"review"`
+				Title       string      `json:"title"`
+				Description string      `json:"description"`
+				Acceptance  []string    `json:"acceptance"`
+				Areas       []string    `json:"areas"`
+				Inputs      []string    `json:"inputs"`
+				Workspace   string      `json:"workspace"`
+				Priority    int         `json:"priority"`
+				Review      bool        `json:"review"`
+				Budget      task.Budget `json:"budget"`
 			}
 			if err := decodeGroupInput(call.Input, &input); err != nil {
 				return nil, err
 			}
 			parent := thread.Session.Scope.Task
-			return e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: parent, Title: input.Title, Description: input.Description, Acceptance: input.Acceptance, Areas: input.Areas, Inputs: input.Inputs, Workspace: input.Workspace, Priority: input.Priority, Review: input.Review, CreatedBy: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}})
+			return e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: parent, Title: input.Title, Description: input.Description, Acceptance: input.Acceptance, Areas: input.Areas, Inputs: input.Inputs, Workspace: input.Workspace, Priority: input.Priority, Review: input.Review, Budget: input.Budget, CreatedBy: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}})
 		}},
 		groupTool{spec: tool.Spec{Name: "assign_task", Description: "Assign a task to a worker member. The first claim owns the task; collaborators require explicit non-overlapping scopes. Busy members queue the task.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"task":{"type":"string"},"member":{"type":"string"},"role":{"type":"string","enum":["owner","collaborator"]},"scope":{"type":"array","items":{"type":"string"}}},"required":["task","member"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
 			var input struct {

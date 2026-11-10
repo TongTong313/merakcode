@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 )
 
@@ -16,6 +17,12 @@ func (e *Engine) DisconnectedStorage() {
 	if buffered, ok := e.store.(*store.Buffered); ok {
 		buffered.Disconnect()
 	}
+}
+
+// StorageTimedOut records a host failure after the transport releases pending calls.
+func (e *Engine) StorageTimedOut() {
+	e.DisconnectedStorage()
+	_ = e.flagFinding(e.ctx, "", leader.Finding{Rule: "storage.timeout", Code: "MRK-1003", Action: "buffer"})
 }
 
 func (e *Engine) watchStorage() {

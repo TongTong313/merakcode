@@ -266,6 +266,18 @@ export function Messages(props: {
             <div class="subtle mono">{view()?.error}</div>
           </div>
         </Show>
+        <Index each={view()?.state.warnings ?? []}>
+          {(warning) => (
+            <div class="error" role="status">
+              <div>{explain(warning().code, locale())?.title ?? warning().code}</div>
+              <Show when={warning().server}>
+                <div>{warning().server}</div>
+              </Show>
+              <div>{explain(warning().code, locale())?.hint}</div>
+              <div class="subtle mono">{warning().code}</div>
+            </div>
+          )}
+        </Index>
       </div>
     </div>
   )

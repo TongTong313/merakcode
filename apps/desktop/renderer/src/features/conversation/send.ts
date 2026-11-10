@@ -20,7 +20,7 @@ export function submissionParts(submission: Submission): ModelPart[] {
   return parts
 }
 
-export async function send(id: string, directory: string, submission: Submission) {
+export async function send(id: string, directory: string, submission: Submission, extendBudget = false) {
   const selected = choice(id, directory)
   if (!selected.model) throw new Error("MRK-3001")
   await (
@@ -28,6 +28,7 @@ export async function send(id: string, directory: string, submission: Submission
   ).session.send({
     session: id,
     parts: submissionParts(submission),
+    extendBudget,
     selection: { provider: selected.model.providerID, model: selected.model.modelID, thinking: selected.variant },
   })
   if (!session(id)?.title) await renameSession(id, submission.text.slice(0, 80) || submission.files[0]?.filename || "")

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -44,6 +45,15 @@ func Start(e *engine.Engine, home string, storage ...*RemoteStore) (*Instance, e
 }
 
 func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (*Instance, error) {
+	return StartListening(e, home, "127.0.0.1", port, storage...)
+}
+
+// StartListening exposes the authenticated protocol at an explicitly selected address.
+func StartListening(e *engine.Engine, home, address string, port int, storage ...*RemoteStore) (*Instance, error) {
+	ip := net.ParseIP(address)
+	if ip == nil || port < 0 || port > 65535 {
+		return nil, errors.New("MRK-3001")
+	}
 	dir := home
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -64,9 +74,9 @@ func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (
 		lock.Close()
 		return nil, err
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:"+strconv.Itoa(port))
-	if err != nil && port > 0 && port <= 65535 {
-		listener, err = net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", net.JoinHostPort(address, strconv.Itoa(port)))
+	if err != nil && port > 0 && ip.IsLoopback() {
+		listener, err = net.Listen("tcp", net.JoinHostPort(address, "0"))
 	}
 	if err != nil {
 		lock.Close()
@@ -78,7 +88,15 @@ func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (
 		lock.Close()
 		return nil, err
 	}
-	info := protocol.ConnectionInfo{Endpoint: "ws://" + listener.Addr().String() + "/rpc", Token: hex.EncodeToString(secret[:]), PID: os.Getpid(), Protocol: protocol.Version}
+	endpoint := listener.Addr().String()
+	if ip.IsUnspecified() {
+		local := "::1"
+		if ip.To4() != nil {
+			local = "127.0.0.1"
+		}
+		endpoint = net.JoinHostPort(local, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	}
+	info := protocol.ConnectionInfo{Endpoint: "ws://" + endpoint + "/rpc", Token: hex.EncodeToString(secret[:]), PID: os.Getpid(), Protocol: protocol.Version}
 	handler := New(e, info.Token)
 	handler.settings = settings
 	e.ConfigureNetworkSettings(settings)
@@ -99,6 +117,7 @@ func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (
 		return nil, err
 	}
 	go func() { _ = instance.http.Serve(listener) }()
+	handler.restoreCloud()
 	return instance, nil
 }
 

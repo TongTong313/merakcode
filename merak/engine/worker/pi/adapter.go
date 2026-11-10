@@ -16,6 +16,9 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"io"
 	"maps"
+	"os"
+	"path/filepath"
+	"strconv"
 )
 
 type Runner struct {
@@ -26,7 +29,7 @@ type Runner struct {
 	System  string
 }
 
-func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true} }
+func (*Runner) Caps() worker.Caps { return worker.Caps{Steer: true, MCP: true} }
 func (r *Runner) Start(ctx context.Context, a worker.Assignment) (worker.Run, error) {
 	return worker.Launch(ctx, r.Bus, a, func(ctx context.Context, inputs <-chan loop.Input) (task.Report, error) {
 		return r.execute(ctx, a, inputs)
@@ -49,6 +52,27 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 	p.Env["PI_SKIP_VERSION_CHECK"], p.Env["PI_TELEMETRY"], p.Env["PI_OFFLINE"] = "1", "0", "1"
 	a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY", "PI_OFFLINE")
 	args := append([]string{"--mode", "rpc", "--no-session"}, p.Args...)
+	if a.MCP != nil {
+		directory, err := os.MkdirTemp("", "merak-pi-mcp-*")
+		if err != nil {
+			return report, err
+		}
+		defer os.RemoveAll(directory)
+		directory, err = filepath.EvalSymlinks(directory)
+		if err != nil {
+			return report, err
+		}
+		extension := filepath.Join(directory, "merak.mjs")
+		const source = `export default function (pi) { pi.registerMcpServer("merak", { ...JSON.parse(process.env.MERAKCODE_MCP_CONFIG), exposure: "direct" }) }`
+		if err := os.WriteFile(extension, []byte(source), 0600); err != nil {
+			return report, err
+		}
+		body, _ := json.Marshal(a.MCP)
+		p.Env["MERAKCODE_MCP_CONFIG"] = string(body)
+		a.SandboxProfile.EnvAllow = append(a.SandboxProfile.EnvAllow, "MERAKCODE_MCP_CONFIG")
+		a.SandboxProfile.WriteAllow = append(append([]string(nil), a.SandboxProfile.WriteAllow...), directory)
+		args = append(args, "--extension", extension)
+	}
 	if p.Model != "" {
 		args = append(args, "--model", p.Model)
 	}
@@ -66,6 +90,15 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 		return report, err
 	}
 	defer func() { runErr = errors.Join(runErr, child.Close()) }()
+	sequence := 0
+	pending := make(map[string]bool)
+	active := false
+	endIfIdle := func() error {
+		if a.Leader && !active && len(pending) == 0 {
+			return j.EndTurn(ctx)
+		}
+		return nil
+	}
 	send := func(in loop.Input, steer bool) error {
 		text := stdio.Text(in.Parts)
 		if !steer {
@@ -79,23 +112,40 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 			text = r.System + "\n\n" + text
 		}
 		cmd := map[string]any{"type": "prompt", "message": text}
-		if steer {
+		if a.Leader {
+			sequence++
+			id := strconv.Itoa(sequence)
+			cmd["id"], pending[id] = id, true
+		}
+		if steer || a.Leader {
 			cmd["streamingBehavior"] = "steer"
 		}
-		if err := child.Write(cmd); err != nil {
+		if err := j.Input(ctx, in); err != nil {
 			return err
 		}
-		return j.Input(ctx, in)
+		return child.Write(cmd)
 	}
 	if err := send(loop.Input{Parts: []model.Part{{Text: a.Packet}}, Cause: a.Cause}, false); err != nil {
 		return report, err
 	}
+	var queued []loop.Input
 	for {
+		if len(queued) > 0 && !a.LeaderTurn.Finishing() {
+			in := queued[0]
+			queued = queued[1:]
+			if err := send(in, j.Scope.Turn != ""); err != nil {
+				return report, err
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return report, ctx.Err()
 		case in := <-inputs:
-			if err := send(in, true); err != nil {
+			if a.LeaderTurn.Finishing() {
+				queued = append(queued, in)
+				continue
+			}
+			if err := send(in, j.Scope.Turn != ""); err != nil {
 				return report, err
 			}
 		case line, ok := <-child.Lines:
@@ -106,6 +156,7 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 				return report, io.ErrUnexpectedEOF
 			}
 			var header struct {
+				ID      string
 				Type    string
 				Success bool
 				Aborted bool
@@ -118,6 +169,23 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 				if !header.Success {
 					return report, errors.New("pi rejected a command")
 				}
+				if a.Leader {
+					if !pending[header.ID] {
+						return report, errors.New("pi returned an unknown prompt response")
+					}
+					delete(pending, header.ID)
+					switch header.Data.Disposition {
+					case "started":
+						active = true
+					case "queued", "handled":
+					default:
+						return report, errors.New("pi omitted its prompt disposition")
+					}
+					if err := endIfIdle(); err != nil {
+						return report, err
+					}
+					continue
+				}
 				if header.Data.Disposition == "handled" {
 					return report, nil
 				}
@@ -127,7 +195,17 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment, inputs <-chan
 				if header.Aborted {
 					return report, context.Canceled
 				}
+				if a.Leader {
+					active = false
+					if err := endIfIdle(); err != nil {
+						return report, err
+					}
+					continue
+				}
 				return report, nil
+			}
+			if a.Leader && header.Type == "agent_start" {
+				active = true
 			}
 			if err := translate(ctx, j, line); err != nil {
 				return report, err

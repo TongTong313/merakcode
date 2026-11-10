@@ -32,6 +32,10 @@ func TestACPVersionOnePermissionsAndGoldenEvents(t *testing.T) {
 			asked := 0
 			gate := &permission.Gate{Bus: bus, Policy: permission.Policy{Mode: permission.ModeAsk}, Ask: func(_ context.Context, req permission.Request) (permission.Reply, error) {
 				asked++
+				var input struct{ Command string }
+				if err := json.Unmarshal(req.Call.Input, &input); err != nil || input.Command != "verify" {
+					t.Errorf("approval lost command input: %s %v", req.Call.Input, err)
+				}
 				if req.Call.Env.Scope.Task != "task" {
 					t.Errorf("scope=%+v", req.Call.Env.Scope)
 				}

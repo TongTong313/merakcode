@@ -29,6 +29,26 @@ export const CatalogModelSchema: z.ZodType<CatalogModel> = z.lazy(() =>
     window: z.number().int(),
   }),
 )
+export type CatalogOverride = {
+  caps?: CatalogCaps | null
+  id: string
+  maxOutput?: number | null
+  price?: CatalogPrice | null
+  provider: string
+  thinking?: string[] | null | null
+  window?: number | null
+}
+export const CatalogOverrideSchema: z.ZodType<CatalogOverride> = z.lazy(() =>
+  z.strictObject({
+    caps: z.union([CatalogCapsSchema, z.null()]).optional(),
+    id: z.string(),
+    maxOutput: z.union([z.number().int(), z.null()]).optional(),
+    price: z.union([CatalogPriceSchema, z.null()]).optional(),
+    provider: z.string(),
+    thinking: z.union([z.union([z.array(z.string()), z.null()]), z.null()]).optional(),
+    window: z.union([z.number().int(), z.null()]).optional(),
+  }),
+)
 export type CatalogPrice = {
   cacheRead: number
   cacheWrite: number
@@ -55,9 +75,21 @@ export const CatalogTierSchema: z.ZodType<CatalogTier> = z.lazy(() =>
     price: CatalogPriceSchema,
   }),
 )
+export type ConfigCloud = { endpoint?: string }
+export const ConfigCloudSchema: z.ZodType<ConfigCloud> = z.lazy(() =>
+  z.strictObject({ endpoint: z.string().optional() }),
+)
 export type ConfigLaunchDecision = { decision: string; member: string; project: string }
 export const ConfigLaunchDecisionSchema: z.ZodType<ConfigLaunchDecision> = z.lazy(() =>
   z.strictObject({ decision: z.string(), member: z.string(), project: z.string() }),
+)
+export type ConfigMCPServer = { args?: string[] | null; command: string; env?: Record<string, string> }
+export const ConfigMCPServerSchema: z.ZodType<ConfigMCPServer> = z.lazy(() =>
+  z.strictObject({
+    args: z.union([z.array(z.string()), z.null()]).optional(),
+    command: z.string(),
+    env: z.record(z.string(), z.string()).optional(),
+  }),
 )
 export type ConfigModel = { maxOutput?: number; name?: string; thinking?: string[] | null; window?: number }
 export const ConfigModelSchema: z.ZodType<ConfigModel> = z.lazy(() =>
@@ -70,10 +102,14 @@ export const ConfigModelSchema: z.ZodType<ConfigModel> = z.lazy(() =>
 )
 export type ConfigPatch = {
   allowedHosts?: string[] | null | null
+  cloud?: ConfigCloud | null
   deniedHosts?: string[] | null | null
   locale?: string | null
   log?: string | null
+  mode?: string | null
   model?: string | null
+  permissionGrants?: ConfigPermissionGrant[] | null | null
+  permissionRules?: ConfigPermissionRule[] | null | null
   providers?: Record<string, ConfigProvider | null>
   thinking?: string | null
   unconfined?: ConfigLaunchDecision[] | null | null
@@ -81,13 +117,37 @@ export type ConfigPatch = {
 export const ConfigPatchSchema: z.ZodType<ConfigPatch> = z.lazy(() =>
   z.strictObject({
     allowedHosts: z.union([z.union([z.array(z.string()), z.null()]), z.null()]).optional(),
+    cloud: z.union([ConfigCloudSchema, z.null()]).optional(),
     deniedHosts: z.union([z.union([z.array(z.string()), z.null()]), z.null()]).optional(),
     locale: z.union([z.string(), z.null()]).optional(),
     log: z.union([z.string(), z.null()]).optional(),
+    mode: z.union([z.string(), z.null()]).optional(),
     model: z.union([z.string(), z.null()]).optional(),
+    permissionGrants: z.union([z.union([z.array(ConfigPermissionGrantSchema), z.null()]), z.null()]).optional(),
+    permissionRules: z.union([z.union([z.array(ConfigPermissionRuleSchema), z.null()]), z.null()]).optional(),
     providers: z.record(z.string(), z.union([ConfigProviderSchema, z.null()])).optional(),
     thinking: z.union([z.string(), z.null()]).optional(),
     unconfined: z.union([z.union([z.array(ConfigLaunchDecisionSchema), z.null()]), z.null()]).optional(),
+  }),
+)
+export type ConfigPermissionGrant = { decision: string; key: string }
+export const ConfigPermissionGrantSchema: z.ZodType<ConfigPermissionGrant> = z.lazy(() =>
+  z.strictObject({ decision: z.string(), key: z.string() }),
+)
+export type ConfigPermissionRule = {
+  commandPrefix?: string
+  decision: string
+  pathPrefix?: string
+  project?: string
+  tool?: string
+}
+export const ConfigPermissionRuleSchema: z.ZodType<ConfigPermissionRule> = z.lazy(() =>
+  z.strictObject({
+    commandPrefix: z.string().optional(),
+    decision: z.string(),
+    pathPrefix: z.string().optional(),
+    project: z.string().optional(),
+    tool: z.string().optional(),
   }),
 )
 export type ConfigPicker = { exclude?: string[] | null; include?: string[] | null }
@@ -133,26 +193,42 @@ export const ConfigProviderSchema: z.ZodType<ConfigProvider> = z.lazy(() =>
     station: z.string().optional(),
   }),
 )
+export type ConfigTrust = { decision: string; hash: string; item: string; project: string }
+export const ConfigTrustSchema: z.ZodType<ConfigTrust> = z.lazy(() =>
+  z.strictObject({ decision: z.string(), hash: z.string(), item: z.string(), project: z.string() }),
+)
 export type ConfigValue = {
   allowedHosts?: string[] | null
+  cloud?: ConfigCloud
   deniedHosts?: string[] | null
   locale?: string
   log?: string
+  mcpServers?: Record<string, ConfigMCPServer>
+  mode?: string
   model?: string
+  permissionGrants?: ConfigPermissionGrant[] | null
+  permissionRules?: ConfigPermissionRule[] | null
   providers: Record<string, ConfigProvider>
   thinking?: string
   unconfined?: ConfigLaunchDecision[] | null
+  workspaceTrust?: ConfigTrust[] | null
 }
 export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
   z.strictObject({
     allowedHosts: z.union([z.array(z.string()), z.null()]).optional(),
+    cloud: ConfigCloudSchema.optional(),
     deniedHosts: z.union([z.array(z.string()), z.null()]).optional(),
     locale: z.string().optional(),
     log: z.string().optional(),
+    mcpServers: z.record(z.string(), ConfigMCPServerSchema).optional(),
+    mode: z.string().optional(),
     model: z.string().optional(),
+    permissionGrants: z.union([z.array(ConfigPermissionGrantSchema), z.null()]).optional(),
+    permissionRules: z.union([z.array(ConfigPermissionRuleSchema), z.null()]).optional(),
     providers: z.record(z.string(), ConfigProviderSchema),
     thinking: z.string().optional(),
     unconfined: z.union([z.array(ConfigLaunchDecisionSchema), z.null()]).optional(),
+    workspaceTrust: z.union([z.array(ConfigTrustSchema), z.null()]).optional(),
   }),
 )
 export type EngineFileChanges = { claims?: Record<string, string>; directory: string; paths: string[] | null }
@@ -189,14 +265,22 @@ export const EngineRepoChangesSchema: z.ZodType<EngineRepoChanges> = z.lazy(() =
     target: z.string(),
   }),
 )
-export type EngineWatchOverload = { code: string; directory: string; duration: number; files: number; rule: string }
-export const EngineWatchOverloadSchema: z.ZodType<EngineWatchOverload> = z.lazy(() =>
+export type EngineworkspaceSetup = {
+  claim: string
+  code?: string
+  log?: string
+  success: boolean
+  truncated?: boolean
+  workspace: string
+}
+export const EngineworkspaceSetupSchema: z.ZodType<EngineworkspaceSetup> = z.lazy(() =>
   z.strictObject({
-    code: z.string(),
-    directory: z.string(),
-    duration: z.number().int(),
-    files: z.number().int(),
-    rule: z.string(),
+    claim: z.string(),
+    code: z.string().optional(),
+    log: z.string().optional(),
+    success: z.boolean(),
+    truncated: z.boolean().optional(),
+    workspace: z.string(),
   }),
 )
 export type EventActor = { id?: string; kind: string }
@@ -291,9 +375,26 @@ export const GroupActionSchema: z.ZodType<GroupAction> = z.lazy(() =>
     template: z.string().optional(),
   }),
 )
-export type GroupBrief = { check?: string; targetBranch?: string }
+export type GroupBrief = { check?: string; conventions?: string; goal?: string; targetBranch?: string }
 export const GroupBriefSchema: z.ZodType<GroupBrief> = z.lazy(() =>
-  z.strictObject({ check: z.string().optional(), targetBranch: z.string().optional() }),
+  z.strictObject({
+    check: z.string().optional(),
+    conventions: z.string().optional(),
+    goal: z.string().optional(),
+    targetBranch: z.string().optional(),
+  }),
+)
+export type GroupControl = { code?: string; session?: string; thread: string }
+export const GroupControlSchema: z.ZodType<GroupControl> = z.lazy(() =>
+  z.strictObject({ code: z.string().optional(), session: z.string().optional(), thread: z.string() }),
+)
+export type GroupDocument = { group: string; key: string; rev: number; text: string; title: string }
+export const GroupDocumentSchema: z.ZodType<GroupDocument> = z.lazy(() =>
+  z.strictObject({ group: z.string(), key: z.string(), rev: z.number().int(), text: z.string(), title: z.string() }),
+)
+export type GroupDocumentInfo = { group: string; key: string; rev: number; title: string }
+export const GroupDocumentInfoSchema: z.ZodType<GroupDocumentInfo> = z.lazy(() =>
+  z.strictObject({ group: z.string(), key: z.string(), rev: z.number().int(), title: z.string() }),
 )
 export type GroupGroup = {
   brief?: GroupBrief
@@ -316,8 +417,11 @@ export const GroupGroupSchema: z.ZodType<GroupGroup> = z.lazy(() =>
   }),
 )
 export type GroupMember = {
+  account?: string
   agentRole?: string
+  checkouts?: Record<string, string>
   current?: string
+  device?: string
   group: string
   hosts?: string[] | null
   id: string
@@ -326,14 +430,19 @@ export type GroupMember = {
   owner?: string
   profile?: string
   queue?: string[] | null
+  remote?: boolean
   role?: string
   status: string
+  summary?: string
   unconfined?: boolean
 }
 export const GroupMemberSchema: z.ZodType<GroupMember> = z.lazy(() =>
   z.strictObject({
+    account: z.string().optional(),
     agentRole: z.string().optional(),
+    checkouts: z.record(z.string(), z.string()).optional(),
     current: z.string().optional(),
+    device: z.string().optional(),
     group: z.string(),
     hosts: z.union([z.array(z.string()), z.null()]).optional(),
     id: z.string(),
@@ -342,8 +451,10 @@ export const GroupMemberSchema: z.ZodType<GroupMember> = z.lazy(() =>
     owner: z.string().optional(),
     profile: z.string().optional(),
     queue: z.union([z.array(z.string()), z.null()]).optional(),
+    remote: z.boolean().optional(),
     role: z.string().optional(),
     status: z.string(),
+    summary: z.string().optional(),
     unconfined: z.boolean().optional(),
   }),
 )
@@ -363,31 +474,43 @@ export type GroupNotice = { kind: string; text: string; to: string[] | null }
 export const GroupNoticeSchema: z.ZodType<GroupNotice> = z.lazy(() =>
   z.strictObject({ kind: z.string(), text: z.string(), to: z.union([z.array(z.string()), z.null()]) }),
 )
-export type GroupProject = { directory: string }
-export const GroupProjectSchema: z.ZodType<GroupProject> = z.lazy(() => z.strictObject({ directory: z.string() }))
+export type GroupProject = { directory: string; remote?: string }
+export const GroupProjectSchema: z.ZodType<GroupProject> = z.lazy(() =>
+  z.strictObject({ directory: z.string(), remote: z.string().optional() }),
+)
 export type GroupSettings = {
   allowedHosts?: string[] | null
+  approvalTimeout?: number
   deniedHosts?: string[] | null
   initiative?: string
-  mergeNeedsOwner?: boolean
+  mergeNeedsOwner?: boolean | null
   planNeedsApproval?: boolean
   review?: boolean | null
+  setup?: string[] | null
   triggers?: GroupTrigger[] | null
+  turnsPerMinute?: GroupTurnLimits | null
 }
 export const GroupSettingsSchema: z.ZodType<GroupSettings> = z.lazy(() =>
   z.strictObject({
     allowedHosts: z.union([z.array(z.string()), z.null()]).optional(),
+    approvalTimeout: z.number().int().optional(),
     deniedHosts: z.union([z.array(z.string()), z.null()]).optional(),
     initiative: z.string().optional(),
-    mergeNeedsOwner: z.boolean().optional(),
+    mergeNeedsOwner: z.union([z.boolean(), z.null()]).optional(),
     planNeedsApproval: z.boolean().optional(),
     review: z.union([z.boolean(), z.null()]).optional(),
+    setup: z.union([z.array(z.string()), z.null()]).optional(),
     triggers: z.union([z.array(GroupTriggerSchema), z.null()]).optional(),
+    turnsPerMinute: z.union([GroupTurnLimitsSchema, z.null()]).optional(),
   }),
 )
-export type GroupState = { group: GroupGroup; members: GroupMember[] | null }
+export type GroupState = { group: GroupGroup; members: GroupMember[] | null; pausedThreads?: string[] | null }
 export const GroupStateSchema: z.ZodType<GroupState> = z.lazy(() =>
-  z.strictObject({ group: GroupGroupSchema, members: z.union([z.array(GroupMemberSchema), z.null()]) }),
+  z.strictObject({
+    group: GroupGroupSchema,
+    members: z.union([z.array(GroupMemberSchema), z.null()]),
+    pausedThreads: z.union([z.array(z.string()), z.null()]).optional(),
+  }),
 )
 export type GroupTrigger = { cooldown?: number; id: string; then: GroupAction; when: EventFilter; where?: string }
 export const GroupTriggerSchema: z.ZodType<GroupTrigger> = z.lazy(() =>
@@ -399,9 +522,46 @@ export const GroupTriggerSchema: z.ZodType<GroupTrigger> = z.lazy(() =>
     where: z.string().optional(),
   }),
 )
+export type GroupTurnLimits = { group?: number | null; thread?: number | null }
+export const GroupTurnLimitsSchema: z.ZodType<GroupTurnLimits> = z.lazy(() =>
+  z.strictObject({
+    group: z.union([z.number().int(), z.null()]).optional(),
+    thread: z.union([z.number().int(), z.null()]).optional(),
+  }),
+)
 export type LeaderClaimLine = { id: string; member: string; status: string }
 export const LeaderClaimLineSchema: z.ZodType<LeaderClaimLine> = z.lazy(() =>
   z.strictObject({ id: z.string(), member: z.string(), status: z.string() }),
+)
+export type LeaderFinding = {
+  action: string
+  claim?: string
+  code: string
+  directory?: string
+  duration?: number
+  evidence?: string[] | null
+  files?: number
+  member?: string
+  rule: string
+  session?: string
+  task?: string
+  workspace?: string
+}
+export const LeaderFindingSchema: z.ZodType<LeaderFinding> = z.lazy(() =>
+  z.strictObject({
+    action: z.string(),
+    claim: z.string().optional(),
+    code: z.string(),
+    directory: z.string().optional(),
+    duration: z.number().int().optional(),
+    evidence: z.union([z.array(z.string()), z.null()]).optional(),
+    files: z.number().int().optional(),
+    member: z.string().optional(),
+    rule: z.string(),
+    session: z.string().optional(),
+    task: z.string().optional(),
+    workspace: z.string().optional(),
+  }),
 )
 export type LeaderGoalLine = { id: string; owner: string; phase?: string; status: string; title: string }
 export const LeaderGoalLineSchema: z.ZodType<LeaderGoalLine> = z.lazy(() =>
@@ -477,6 +637,7 @@ export type LeaderView = {
   goals: LeaderGoalLine[] | null
   lastSeq: number
   members: LeaderMemberLine[] | null
+  pausedThreads?: string[] | null
   rev: number
   tasks: LeaderTaskLine[] | null
 }
@@ -485,8 +646,29 @@ export const LeaderViewSchema: z.ZodType<LeaderView> = z.lazy(() =>
     goals: z.union([z.array(LeaderGoalLineSchema), z.null()]),
     lastSeq: z.number().int(),
     members: z.union([z.array(LeaderMemberLineSchema), z.null()]),
+    pausedThreads: z.union([z.array(z.string()), z.null()]).optional(),
     rev: z.number().int(),
     tasks: z.union([z.array(LeaderTaskLineSchema), z.null()]),
+  }),
+)
+export type LoopInput = {
+  Actor: EventActor
+  Cause: string
+  Child: SessionChildResult | null
+  ExtendBudget: boolean
+  Parts: ModelPart[] | null
+  Selection: SessionSelection | null
+  Sources: string[] | null
+}
+export const LoopInputSchema: z.ZodType<LoopInput> = z.lazy(() =>
+  z.strictObject({
+    Actor: EventActorSchema,
+    Cause: z.string(),
+    Child: z.union([SessionChildResultSchema, z.null()]),
+    ExtendBudget: z.boolean(),
+    Parts: z.union([z.array(ModelPartSchema), z.null()]),
+    Selection: z.union([SessionSelectionSchema, z.null()]),
+    Sources: z.union([z.array(z.string()), z.null()]),
   }),
 )
 export type LoopOutcome = { code?: string; final?: ModelPart[] | null; stop: string; usage: ModelUsage }
@@ -592,16 +774,35 @@ export const ModelUsageSchema: z.ZodType<ModelUsage> = z.lazy(() =>
     output: z.number().int(),
   }),
 )
-export type PermissionReply = { decision: string; human?: string; remember?: string }
+export type PermissionPending = { request: PermissionRequest; scope: EventScope; seq: number; time: string }
+export const PermissionPendingSchema: z.ZodType<PermissionPending> = z.lazy(() =>
+  z.strictObject({
+    request: PermissionRequestSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int(),
+    time: z.string(),
+  }),
+)
+export type PermissionReply = { decision: string; human?: string; leader?: string; remember?: string }
 export const PermissionReplySchema: z.ZodType<PermissionReply> = z.lazy(() =>
-  z.strictObject({ decision: z.string(), human: z.string().optional(), remember: z.string().optional() }),
+  z.strictObject({
+    decision: z.string(),
+    human: z.string().optional(),
+    leader: z.string().optional(),
+    remember: z.string().optional(),
+  }),
 )
 export type PermissionRequest = {
   call: ToolCall
   deletes?: boolean
   host?: string
+  id?: string
   kind?: string
+  leader?: string
+  member?: string
+  mode?: string
   path?: string
+  requiredRole?: string
   spec: ToolSpec
 }
 export const PermissionRequestSchema: z.ZodType<PermissionRequest> = z.lazy(() =>
@@ -609,8 +810,13 @@ export const PermissionRequestSchema: z.ZodType<PermissionRequest> = z.lazy(() =
     call: ToolCallSchema,
     deletes: z.boolean().optional(),
     host: z.string().optional(),
+    id: z.string().optional(),
     kind: z.string().optional(),
+    leader: z.string().optional(),
+    member: z.string().optional(),
+    mode: z.string().optional(),
     path: z.string().optional(),
+    requiredRole: z.string().optional(),
     spec: ToolSpecSchema,
   }),
 )
@@ -624,6 +830,7 @@ export type ProfileProduct = {
   env?: Record<string, string>
   kind: string
   model?: string
+  remote?: ProfileRemoteSource | null
 }
 export const ProfileProductSchema: z.ZodType<ProfileProduct> = z.lazy(() =>
   z.strictObject({
@@ -632,35 +839,46 @@ export const ProfileProductSchema: z.ZodType<ProfileProduct> = z.lazy(() =>
     env: z.record(z.string(), z.string()).optional(),
     kind: z.string(),
     model: z.string().optional(),
+    remote: z.union([ProfileRemoteSourceSchema, z.null()]).optional(),
   }),
 )
 export type ProfileProfile = {
+  budget?: SessionBudget
   duties: string
   id: string
+  memory?: string[] | null
   mode?: string
   model: ProfileModelRef
   name: string
   network?: string[] | null
   product?: ProfileProduct | null
   role: string
+  shared?: boolean
   summary: string
   system?: string
   toolPool: string
 }
 export const ProfileProfileSchema: z.ZodType<ProfileProfile> = z.lazy(() =>
   z.strictObject({
+    budget: SessionBudgetSchema.optional(),
     duties: z.string(),
     id: z.string(),
+    memory: z.union([z.array(z.string()), z.null()]).optional(),
     mode: z.string().optional(),
     model: ProfileModelRefSchema,
     name: z.string(),
     network: z.union([z.array(z.string()), z.null()]).optional(),
     product: z.union([ProfileProductSchema, z.null()]).optional(),
     role: z.string(),
+    shared: z.boolean().optional(),
     summary: z.string(),
     system: z.string().optional(),
     toolPool: z.string(),
   }),
+)
+export type ProfileRemoteSource = { caps: WorkerCaps; connection: string; group: string; member: string }
+export const ProfileRemoteSourceSchema: z.ZodType<ProfileRemoteSource> = z.lazy(() =>
+  z.strictObject({ caps: WorkerCapsSchema, connection: z.string(), group: z.string(), member: z.string() }),
 )
 export type ProtocolBlobReadParams = { limit?: number; offset?: number; ref: string }
 export const ProtocolBlobReadParamsSchema: z.ZodType<ProtocolBlobReadParams> = z.lazy(() =>
@@ -678,9 +896,46 @@ export type ProtocolClientInfo = { name: string; version: string }
 export const ProtocolClientInfoSchema: z.ZodType<ProtocolClientInfo> = z.lazy(() =>
   z.strictObject({ name: z.string(), version: z.string() }),
 )
+export type ProtocolCloudLoginParams = { dev?: boolean; endpoint?: string }
+export const ProtocolCloudLoginParamsSchema: z.ZodType<ProtocolCloudLoginParams> = z.lazy(() =>
+  z.strictObject({ dev: z.boolean().optional(), endpoint: z.string().optional() }),
+)
+export type ProtocolCloudStatus = { account?: string; device?: string; endpoint?: string; online: boolean }
+export const ProtocolCloudStatusSchema: z.ZodType<ProtocolCloudStatus> = z.lazy(() =>
+  z.strictObject({
+    account: z.string().optional(),
+    device: z.string().optional(),
+    endpoint: z.string().optional(),
+    online: z.boolean(),
+  }),
+)
 export type ProtocolConnectionInfo = { endpoint: string; pid: number; protocol: number; token: string }
 export const ProtocolConnectionInfoSchema: z.ZodType<ProtocolConnectionInfo> = z.lazy(() =>
   z.strictObject({ endpoint: z.string(), pid: z.number().int(), protocol: z.number().int(), token: z.string() }),
+)
+export type ProtocolDeviceAssignment = {
+  cause?: string
+  claim: TaskClaim
+  member: string
+  packet: string
+  scope: EventScope
+  session: string
+  sourceGroup: string
+}
+export const ProtocolDeviceAssignmentSchema: z.ZodType<ProtocolDeviceAssignment> = z.lazy(() =>
+  z.strictObject({
+    cause: z.string().optional(),
+    claim: TaskClaimSchema,
+    member: z.string(),
+    packet: z.string(),
+    scope: EventScopeSchema,
+    session: z.string(),
+    sourceGroup: z.string(),
+  }),
+)
+export type ProtocolDeviceMessage = { claim: string; input: LoopInput }
+export const ProtocolDeviceMessageSchema: z.ZodType<ProtocolDeviceMessage> = z.lazy(() =>
+  z.strictObject({ claim: z.string(), input: LoopInputSchema }),
 )
 export type ProtocolDiagnosticsParams = { days?: number; group?: string; session?: string; withConfig?: boolean }
 export const ProtocolDiagnosticsParamsSchema: z.ZodType<ProtocolDiagnosticsParams> = z.lazy(() =>
@@ -698,6 +953,28 @@ export const ProtocolDiagnosticsResultSchema: z.ZodType<ProtocolDiagnosticsResul
 export type ProtocolDirectoryParams = { directory?: string }
 export const ProtocolDirectoryParamsSchema: z.ZodType<ProtocolDirectoryParams> = z.lazy(() =>
   z.strictObject({ directory: z.string().optional() }),
+)
+export type ProtocolDocReadParams = { group: string; key: string }
+export const ProtocolDocReadParamsSchema: z.ZodType<ProtocolDocReadParams> = z.lazy(() =>
+  z.strictObject({ group: z.string(), key: z.string() }),
+)
+export type ProtocolDocWriteParams = {
+  group: string
+  human: string
+  key: string
+  rev: number
+  text: string
+  title: string
+}
+export const ProtocolDocWriteParamsSchema: z.ZodType<ProtocolDocWriteParams> = z.lazy(() =>
+  z.strictObject({
+    group: z.string(),
+    human: z.string(),
+    key: z.string(),
+    rev: z.number().int(),
+    text: z.string(),
+    title: z.string(),
+  }),
 )
 export type ProtocolError = { code: number; data: ProtocolErrorData; message: string }
 export const ProtocolErrorSchema: z.ZodType<ProtocolError> = z.lazy(() =>
@@ -721,13 +998,23 @@ export type ProtocolFileParams = { directory?: string; path: string }
 export const ProtocolFileParamsSchema: z.ZodType<ProtocolFileParams> = z.lazy(() =>
   z.strictObject({ directory: z.string().optional(), path: z.string() }),
 )
-export type ProtocolGroupAddMemberParams = { group: string; member: GroupMember; profile?: ProfileProfile | null }
+export type ProtocolGroupAddMemberParams = {
+  group: string
+  human: string
+  member: GroupMember
+  profile?: ProfileProfile | null
+}
 export const ProtocolGroupAddMemberParamsSchema: z.ZodType<ProtocolGroupAddMemberParams> = z.lazy(() =>
   z.strictObject({
     group: z.string(),
+    human: z.string(),
     member: GroupMemberSchema,
     profile: z.union([ProfileProfileSchema, z.null()]).optional(),
   }),
+)
+export type ProtocolGroupControlParams = { group: string; human: string; thread?: string }
+export const ProtocolGroupControlParamsSchema: z.ZodType<ProtocolGroupControlParams> = z.lazy(() =>
+  z.strictObject({ group: z.string(), human: z.string(), thread: z.string().optional() }),
 )
 export type ProtocolGroupCreateParams = {
   brief?: GroupBrief
@@ -757,6 +1044,10 @@ export type ProtocolGroupIDParams = { group: string }
 export const ProtocolGroupIDParamsSchema: z.ZodType<ProtocolGroupIDParams> = z.lazy(() =>
   z.strictObject({ group: z.string() }),
 )
+export type ProtocolGroupRemoveMemberParams = { group: string; human: string; member: string }
+export const ProtocolGroupRemoveMemberParamsSchema: z.ZodType<ProtocolGroupRemoveMemberParams> = z.lazy(() =>
+  z.strictObject({ group: z.string(), human: z.string(), member: z.string() }),
+)
 export type ProtocolGroupSayParams = { group: string; human: string; task?: string; text: string; to?: string[] | null }
 export const ProtocolGroupSayParamsSchema: z.ZodType<ProtocolGroupSayParams> = z.lazy(() =>
   z.strictObject({
@@ -767,9 +1058,21 @@ export const ProtocolGroupSayParamsSchema: z.ZodType<ProtocolGroupSayParams> = z
     to: z.union([z.array(z.string()), z.null()]).optional(),
   }),
 )
-export type ProtocolGroupUpdateParams = { group: string; human: string; settings: GroupSettings }
+export type ProtocolGroupUpdateParams = {
+  brief?: GroupBrief | null
+  defaultLeader?: string | null
+  group: string
+  human: string
+  settings?: GroupSettings | null
+}
 export const ProtocolGroupUpdateParamsSchema: z.ZodType<ProtocolGroupUpdateParams> = z.lazy(() =>
-  z.strictObject({ group: z.string(), human: z.string(), settings: GroupSettingsSchema }),
+  z.strictObject({
+    brief: z.union([GroupBriefSchema, z.null()]).optional(),
+    defaultLeader: z.union([z.string(), z.null()]).optional(),
+    group: z.string(),
+    human: z.string(),
+    settings: z.union([GroupSettingsSchema, z.null()]).optional(),
+  }),
 )
 export type ProtocolHelloParams = { capabilities?: ProtocolCapabilities; client: ProtocolClientInfo; protocol: number }
 export const ProtocolHelloParamsSchema: z.ZodType<ProtocolHelloParams> = z.lazy(() =>
@@ -791,18 +1094,33 @@ export type ProtocolModelDiscoverParams = { provider: ConfigProvider }
 export const ProtocolModelDiscoverParamsSchema: z.ZodType<ProtocolModelDiscoverParams> = z.lazy(() =>
   z.strictObject({ provider: ConfigProviderSchema }),
 )
+export type ProtocolModelListParams = { overrides?: CatalogOverride[] | null }
+export const ProtocolModelListParamsSchema: z.ZodType<ProtocolModelListParams> = z.lazy(() =>
+  z.strictObject({ overrides: z.union([z.array(CatalogOverrideSchema), z.null()]).optional() }),
+)
 export type ProtocolModelRefreshParams = { provider?: string }
 export const ProtocolModelRefreshParamsSchema: z.ZodType<ProtocolModelRefreshParams> = z.lazy(() =>
   z.strictObject({ provider: z.string().optional() }),
 )
-export type ProtocolPermissionReplyParams = { decision: string; human?: string; remember?: string; request: string }
+export type ProtocolPermissionReplyParams = {
+  decision: string
+  human?: string
+  leader?: string
+  remember?: string
+  request: string
+}
 export const ProtocolPermissionReplyParamsSchema: z.ZodType<ProtocolPermissionReplyParams> = z.lazy(() =>
   z.strictObject({
     decision: z.string(),
     human: z.string().optional(),
+    leader: z.string().optional(),
     remember: z.string().optional(),
     request: z.string(),
   }),
+)
+export type ProtocolProfileDeleteParams = { human: string; profile: string }
+export const ProtocolProfileDeleteParamsSchema: z.ZodType<ProtocolProfileDeleteParams> = z.lazy(() =>
+  z.strictObject({ human: z.string(), profile: z.string() }),
 )
 export type ProtocolProfileListParams = { human: string }
 export const ProtocolProfileListParamsSchema: z.ZodType<ProtocolProfileListParams> = z.lazy(() =>
@@ -821,6 +1139,78 @@ export const ProtocolQuestionReplyParamsSchema: z.ZodType<ProtocolQuestionReplyP
     text: z.string().optional(),
   }),
 )
+export type ProtocolRemoteConnection = { endpoint: string; id: string; members: ProtocolRemoteMember[] | null }
+export const ProtocolRemoteConnectionSchema: z.ZodType<ProtocolRemoteConnection> = z.lazy(() =>
+  z.strictObject({
+    endpoint: z.string(),
+    id: z.string(),
+    members: z.union([z.array(ProtocolRemoteMemberSchema), z.null()]),
+  }),
+)
+export type ProtocolRemoteConnectParams = { endpoint: string; token: string }
+export const ProtocolRemoteConnectParamsSchema: z.ZodType<ProtocolRemoteConnectParams> = z.lazy(() =>
+  z.strictObject({ endpoint: z.string(), token: z.string() }),
+)
+export type ProtocolRemoteControlParams = {
+  cancel?: string | null
+  lookup?: ProtocolRemoteLookupReply | null
+  message?: ProtocolDeviceMessage | null
+  questionReply?: ProtocolQuestionReplyParams | null
+  reply?: ProtocolPermissionReplyParams | null
+}
+export const ProtocolRemoteControlParamsSchema: z.ZodType<ProtocolRemoteControlParams> = z.lazy(() =>
+  z.strictObject({
+    cancel: z.union([z.string(), z.null()]).optional(),
+    lookup: z.union([ProtocolRemoteLookupReplySchema, z.null()]).optional(),
+    message: z.union([ProtocolDeviceMessageSchema, z.null()]).optional(),
+    questionReply: z.union([ProtocolQuestionReplyParamsSchema, z.null()]).optional(),
+    reply: z.union([ProtocolPermissionReplyParamsSchema, z.null()]).optional(),
+  }),
+)
+export type ProtocolRemoteDelivery = { branch: string }
+export const ProtocolRemoteDeliverySchema: z.ZodType<ProtocolRemoteDelivery> = z.lazy(() =>
+  z.strictObject({ branch: z.string() }),
+)
+export type ProtocolRemoteDeliveryParams = { claim: string; host: string; release?: boolean }
+export const ProtocolRemoteDeliveryParamsSchema: z.ZodType<ProtocolRemoteDeliveryParams> = z.lazy(() =>
+  z.strictObject({ claim: z.string(), host: z.string(), release: z.boolean().optional() }),
+)
+export type ProtocolRemoteLookupReply = { request: string; result: ToolResult }
+export const ProtocolRemoteLookupReplySchema: z.ZodType<ProtocolRemoteLookupReply> = z.lazy(() =>
+  z.strictObject({ request: z.string(), result: ToolResultSchema }),
+)
+export type ProtocolRemoteMember = { caps: WorkerCaps; member: GroupMember }
+export const ProtocolRemoteMemberSchema: z.ZodType<ProtocolRemoteMember> = z.lazy(() =>
+  z.strictObject({ caps: WorkerCapsSchema, member: GroupMemberSchema }),
+)
+export type ProtocolRemoteStartParams = {
+  assignment: ProtocolDeviceAssignment
+  events: EventEvent[] | null
+  host: string
+}
+export const ProtocolRemoteStartParamsSchema: z.ZodType<ProtocolRemoteStartParams> = z.lazy(() =>
+  z.strictObject({
+    assignment: ProtocolDeviceAssignmentSchema,
+    events: z.union([z.array(EventEventSchema), z.null()]),
+    host: z.string(),
+  }),
+)
+export type ProtocolRemoteStartResult = {
+  answered?: string[] | null
+  completed?: boolean
+  cursors: Record<string, number>
+}
+export const ProtocolRemoteStartResultSchema: z.ZodType<ProtocolRemoteStartResult> = z.lazy(() =>
+  z.strictObject({
+    answered: z.union([z.array(z.string()), z.null()]).optional(),
+    completed: z.boolean().optional(),
+    cursors: z.record(z.string(), z.number().int()),
+  }),
+)
+export type ProtocolRemoteSyncParams = { events: EventEvent[] | null; group: string; host: string }
+export const ProtocolRemoteSyncParamsSchema: z.ZodType<ProtocolRemoteSyncParams> = z.lazy(() =>
+  z.strictObject({ events: z.union([z.array(EventEventSchema), z.null()]), group: z.string(), host: z.string() }),
+)
 export type ProtocolRepoCheckoutParams = { branch: string; directory?: string }
 export const ProtocolRepoCheckoutParamsSchema: z.ZodType<ProtocolRepoCheckoutParams> = z.lazy(() =>
   z.strictObject({ branch: z.string(), directory: z.string().optional() }),
@@ -829,15 +1219,29 @@ export type ProtocolRepoDiffParams = { base?: string; directory?: string; sessio
 export const ProtocolRepoDiffParamsSchema: z.ZodType<ProtocolRepoDiffParams> = z.lazy(() =>
   z.strictObject({ base: z.string().optional(), directory: z.string().optional(), session: z.string().optional() }),
 )
-export type ProtocolSandboxStatusParams = { mode?: string; session?: string; workdir?: string }
+export type ProtocolSandboxStatusParams = {
+  group?: string
+  member?: string
+  mode?: string
+  session?: string
+  workdir?: string
+}
 export const ProtocolSandboxStatusParamsSchema: z.ZodType<ProtocolSandboxStatusParams> = z.lazy(() =>
-  z.strictObject({ mode: z.string().optional(), session: z.string().optional(), workdir: z.string().optional() }),
+  z.strictObject({
+    group: z.string().optional(),
+    member: z.string().optional(),
+    mode: z.string().optional(),
+    session: z.string().optional(),
+    workdir: z.string().optional(),
+  }),
 )
 export type ProtocolSessionCancelParams = { session: string }
 export const ProtocolSessionCancelParamsSchema: z.ZodType<ProtocolSessionCancelParams> = z.lazy(() =>
   z.strictObject({ session: z.string() }),
 )
 export type ProtocolSessionCreateParams = {
+  budget?: SessionBudget
+  mcpServers?: Record<string, ConfigMCPServer>
   mode?: string
   model?: string
   provider?: string
@@ -846,6 +1250,8 @@ export type ProtocolSessionCreateParams = {
 }
 export const ProtocolSessionCreateParamsSchema: z.ZodType<ProtocolSessionCreateParams> = z.lazy(() =>
   z.strictObject({
+    budget: SessionBudgetSchema.optional(),
+    mcpServers: z.record(z.string(), ConfigMCPServerSchema).optional(),
     mode: z.string().optional(),
     model: z.string().optional(),
     provider: z.string().optional(),
@@ -858,12 +1264,14 @@ export const ProtocolSessionCreateResultSchema: z.ZodType<ProtocolSessionCreateR
   z.strictObject({ session: z.string() }),
 )
 export type ProtocolSessionSendParams = {
+  extendBudget?: boolean
   parts: ModelPart[] | null
   selection?: SessionSelection | null
   session: string
 }
 export const ProtocolSessionSendParamsSchema: z.ZodType<ProtocolSessionSendParams> = z.lazy(() =>
   z.strictObject({
+    extendBudget: z.boolean().optional(),
     parts: z.union([z.array(ModelPartSchema), z.null()]),
     selection: z.union([SessionSelectionSchema, z.null()]).optional(),
     session: z.string(),
@@ -912,6 +1320,7 @@ export const ProtocolTaskCancelParamsSchema: z.ZodType<ProtocolTaskCancelParams>
 export type ProtocolTaskCreateParams = {
   acceptance?: string[] | null
   areas?: string[] | null
+  budget?: TaskBudget
   description?: string
   group: string
   human?: string
@@ -927,6 +1336,7 @@ export const ProtocolTaskCreateParamsSchema: z.ZodType<ProtocolTaskCreateParams>
   z.strictObject({
     acceptance: z.union([z.array(z.string()), z.null()]).optional(),
     areas: z.union([z.array(z.string()), z.null()]).optional(),
+    budget: TaskBudgetSchema.optional(),
     description: z.string().optional(),
     group: z.string(),
     human: z.string().optional(),
@@ -943,9 +1353,23 @@ export type ProtocolTaskReviewParams = { decision: string; feedback?: string; hu
 export const ProtocolTaskReviewParamsSchema: z.ZodType<ProtocolTaskReviewParams> = z.lazy(() =>
   z.strictObject({ decision: z.string(), feedback: z.string().optional(), human: z.string(), task: z.string() }),
 )
-export type ProtocolTaskUpdateParams = { human: string; leader?: string; phase?: string; task: string }
+export type ProtocolTaskUpdateParams = {
+  budget?: TaskBudgetIncrease | null
+  human: string
+  leader?: string
+  phase?: string
+  reason?: string
+  task: string
+}
 export const ProtocolTaskUpdateParamsSchema: z.ZodType<ProtocolTaskUpdateParams> = z.lazy(() =>
-  z.strictObject({ human: z.string(), leader: z.string().optional(), phase: z.string().optional(), task: z.string() }),
+  z.strictObject({
+    budget: z.union([TaskBudgetIncreaseSchema, z.null()]).optional(),
+    human: z.string(),
+    leader: z.string().optional(),
+    phase: z.string().optional(),
+    reason: z.string().optional(),
+    task: z.string(),
+  }),
 )
 export type ProtocolTerminalIDParams = { id: string }
 export const ProtocolTerminalIDParamsSchema: z.ZodType<ProtocolTerminalIDParams> = z.lazy(() =>
@@ -962,6 +1386,10 @@ export const ProtocolTerminalUpdateParamsSchema: z.ZodType<ProtocolTerminalUpdat
 export type ProtocolUnsubscribeParams = { subscription: string }
 export const ProtocolUnsubscribeParamsSchema: z.ZodType<ProtocolUnsubscribeParams> = z.lazy(() =>
   z.strictObject({ subscription: z.string() }),
+)
+export type ProtocolWorkerRunParams = { packet: string; profile: ProfileProfile; session: string; workdir: string }
+export const ProtocolWorkerRunParamsSchema: z.ZodType<ProtocolWorkerRunParams> = z.lazy(() =>
+  z.strictObject({ packet: z.string(), profile: ProfileProfileSchema, session: z.string(), workdir: z.string() }),
 )
 export type QuestionAnswer = { cancelled?: boolean; human?: string; text?: string }
 export const QuestionAnswerSchema: z.ZodType<QuestionAnswer> = z.lazy(() =>
@@ -1001,6 +1429,15 @@ export const SandboxStatusSchema: z.ZodType<SandboxStatus> = z.lazy(() =>
     waitingAccount: z.boolean().optional(),
   }),
 )
+export type SessionBudget = { maxCost?: number; maxSteps?: number; maxTokens?: number; maxWallClock?: number }
+export const SessionBudgetSchema: z.ZodType<SessionBudget> = z.lazy(() =>
+  z.strictObject({
+    maxCost: z.number().optional(),
+    maxSteps: z.number().int().optional(),
+    maxTokens: z.number().int().optional(),
+    maxWallClock: z.number().int().optional(),
+  }),
+)
 export type SessionChildResult = { code?: string; id: string; report?: ModelPart[] | null; stop?: string }
 export const SessionChildResultSchema: z.ZodType<SessionChildResult> = z.lazy(() =>
   z.strictObject({
@@ -1019,6 +1456,7 @@ export type SessionCompletion = {
   interrupted?: boolean
   parts: ModelPart[] | null
   role: string
+  step?: boolean | null
   usage: ModelUsage
 }
 export const SessionCompletionSchema: z.ZodType<SessionCompletion> = z.lazy(() =>
@@ -1027,10 +1465,13 @@ export const SessionCompletionSchema: z.ZodType<SessionCompletion> = z.lazy(() =
     interrupted: z.boolean().optional(),
     parts: z.union([z.array(ModelPartSchema), z.null()]),
     role: z.string(),
+    step: z.union([z.boolean(), z.null()]).optional(),
     usage: ModelUsageSchema,
   }),
 )
 export type SessionConfig = {
+  budget?: SessionBudget
+  budgetDeadline?: string
   member?: string
   mode?: string
   model: string
@@ -1042,6 +1483,8 @@ export type SessionConfig = {
 }
 export const SessionConfigSchema: z.ZodType<SessionConfig> = z.lazy(() =>
   z.strictObject({
+    budget: SessionBudgetSchema.optional(),
+    budgetDeadline: z.string().optional(),
     member: z.string().optional(),
     mode: z.string().optional(),
     model: z.string(),
@@ -1052,9 +1495,29 @@ export const SessionConfigSchema: z.ZodType<SessionConfig> = z.lazy(() =>
     workdir: z.string(),
   }),
 )
+export type SessionDiagnostic = { code: string; server?: string }
+export const SessionDiagnosticSchema: z.ZodType<SessionDiagnostic> = z.lazy(() =>
+  z.strictObject({ code: z.string(), server: z.string().optional() }),
+)
 export type SessionInfo = { config: SessionConfig; createdAt: string; id: string }
 export const SessionInfoSchema: z.ZodType<SessionInfo> = z.lazy(() =>
   z.strictObject({ config: SessionConfigSchema, createdAt: z.string(), id: z.string() }),
+)
+export type SessionInput = { parts: ModelPart[] | null; role: string; sources?: string[] | null }
+export const SessionInputSchema: z.ZodType<SessionInput> = z.lazy(() =>
+  z.strictObject({
+    parts: z.union([z.array(ModelPartSchema), z.null()]),
+    role: z.string(),
+    sources: z.union([z.array(z.string()), z.null()]).optional(),
+  }),
+)
+export type SessionMCPChoice = { hash: string; name: string; user?: boolean }
+export const SessionMCPChoiceSchema: z.ZodType<SessionMCPChoice> = z.lazy(() =>
+  z.strictObject({ hash: z.string(), name: z.string(), user: z.boolean().optional() }),
+)
+export type SessionMCPSelection = { servers: SessionMCPChoice[] | null }
+export const SessionMCPSelectionSchema: z.ZodType<SessionMCPSelection> = z.lazy(() =>
+  z.strictObject({ servers: z.union([z.array(SessionMCPChoiceSchema), z.null()]) }),
 )
 export type SessionRebuild = {
   from: number
@@ -1086,38 +1549,46 @@ export const SessionStartedSchema: z.ZodType<SessionStarted> = z.lazy(() =>
 )
 export type SessionState = {
   baseCommit?: string
+  budgetExtensions?: number
   causes?: Record<string, string>
   children?: Record<string, SessionChildState>
   config: SessionConfig
   id: string
   lastSeq: number
   loaded?: string[] | null
+  mcp?: SessionMCPSelection | null
   messages: ModelMessage[] | null
   open?: Record<string, ModelToolCall>
+  permissions?: Record<string, PermissionPending>
   scope: EventScope
   status: string
   summaryId?: string
   system: string
   tools?: ToolSpec[] | null
   usage: ModelUsage
+  warnings?: SessionDiagnostic[] | null
 }
 export const SessionStateSchema: z.ZodType<SessionState> = z.lazy(() =>
   z.strictObject({
     baseCommit: z.string().optional(),
+    budgetExtensions: z.number().int().optional(),
     causes: z.record(z.string(), z.string()).optional(),
     children: z.record(z.string(), SessionChildStateSchema).optional(),
     config: SessionConfigSchema,
     id: z.string(),
     lastSeq: z.number().int(),
     loaded: z.union([z.array(z.string()), z.null()]).optional(),
+    mcp: z.union([SessionMCPSelectionSchema, z.null()]).optional(),
     messages: z.union([z.array(ModelMessageSchema), z.null()]),
     open: z.record(z.string(), ModelToolCallSchema).optional(),
+    permissions: z.record(z.string(), PermissionPendingSchema).optional(),
     scope: EventScopeSchema,
     status: z.string(),
     summaryId: z.string().optional(),
     system: z.string(),
     tools: z.union([z.array(ToolSpecSchema), z.null()]).optional(),
     usage: ModelUsageSchema,
+    warnings: z.union([z.array(SessionDiagnosticSchema), z.null()]).optional(),
   }),
 )
 export type StoreBufferState = { connected: boolean; limit: number; pending: number }
@@ -1163,15 +1634,34 @@ export type TaskArtifact = { mediaType?: string; path: string; title?: string }
 export const TaskArtifactSchema: z.ZodType<TaskArtifact> = z.lazy(() =>
   z.strictObject({ mediaType: z.string().optional(), path: z.string(), title: z.string().optional() }),
 )
+export type TaskBudget = { maxCost?: number; maxSteps?: number; maxTokens?: number; maxWallClock?: number }
+export const TaskBudgetSchema: z.ZodType<TaskBudget> = z.lazy(() =>
+  z.strictObject({
+    maxCost: z.number().optional(),
+    maxSteps: z.number().int().optional(),
+    maxTokens: z.number().int().optional(),
+    maxWallClock: z.number().int().optional(),
+  }),
+)
+export type TaskBudgetIncrease = { cost?: number; tokens?: number; wallClock?: number }
+export const TaskBudgetIncreaseSchema: z.ZodType<TaskBudgetIncrease> = z.lazy(() =>
+  z.strictObject({
+    cost: z.number().optional(),
+    tokens: z.number().int().optional(),
+    wallClock: z.number().int().optional(),
+  }),
+)
 export type TaskCard = {
   acceptance: string[] | null
   areas?: string[] | null
   base?: string
+  budget?: TaskBudget
   claims: TaskClaim[] | null
   createdBy: EventActor
   deps?: string[] | null
   description: string
   discussion?: string[] | null
+  grants?: TaskGrant[] | null
   group: string
   id: string
   inputs?: string[] | null
@@ -1179,6 +1669,7 @@ export type TaskCard = {
   lastReview?: TaskReviewResult | null
   leader?: string
   parent?: string
+  participants?: string[] | null
   phase?: string
   planPending?: boolean
   previousPhase?: string
@@ -1194,11 +1685,13 @@ export const TaskCardSchema: z.ZodType<TaskCard> = z.lazy(() =>
     acceptance: z.union([z.array(z.string()), z.null()]),
     areas: z.union([z.array(z.string()), z.null()]).optional(),
     base: z.string().optional(),
+    budget: TaskBudgetSchema.optional(),
     claims: z.union([z.array(TaskClaimSchema), z.null()]),
     createdBy: EventActorSchema,
     deps: z.union([z.array(z.string()), z.null()]).optional(),
     description: z.string(),
     discussion: z.union([z.array(z.string()), z.null()]).optional(),
+    grants: z.union([z.array(TaskGrantSchema), z.null()]).optional(),
     group: z.string(),
     id: z.string(),
     inputs: z.union([z.array(z.string()), z.null()]).optional(),
@@ -1206,6 +1699,7 @@ export const TaskCardSchema: z.ZodType<TaskCard> = z.lazy(() =>
     lastReview: z.union([TaskReviewResultSchema, z.null()]).optional(),
     leader: z.string().optional(),
     parent: z.string().optional(),
+    participants: z.union([z.array(z.string()), z.null()]).optional(),
     phase: z.string().optional(),
     planPending: z.boolean().optional(),
     previousPhase: z.string().optional(),
@@ -1254,6 +1748,16 @@ export const TaskClaimSchema: z.ZodType<TaskClaim> = z.lazy(() =>
 export type TaskFileChange = { added: number; kind: string; path: string; removed: number }
 export const TaskFileChangeSchema: z.ZodType<TaskFileChange> = z.lazy(() =>
   z.strictObject({ added: z.number().int(), kind: z.string(), path: z.string(), removed: z.number().int() }),
+)
+export type TaskGrant = { at: string; by: EventActor; cost?: number; tokens?: number; wallClock?: number }
+export const TaskGrantSchema: z.ZodType<TaskGrant> = z.lazy(() =>
+  z.strictObject({
+    at: z.string(),
+    by: EventActorSchema,
+    cost: z.number().optional(),
+    tokens: z.number().int().optional(),
+    wallClock: z.number().int().optional(),
+  }),
 )
 export type TaskProgress = { claim: string; summary: string }
 export const TaskProgressSchema: z.ZodType<TaskProgress> = z.lazy(() =>
@@ -1378,6 +1882,36 @@ export const ToolCompletionSchema: z.ZodType<ToolCompletion> = z.lazy(() =>
 )
 export type ToolProgress = { raw: unknown }
 export const ToolProgressSchema: z.ZodType<ToolProgress> = z.lazy(() => z.strictObject({ raw: z.unknown() }))
+export type ToolResult = {
+  childId?: string
+  code?: string
+  deniedHost?: string
+  deniedSource?: string
+  exitCode?: number | null
+  full?: string
+  isError?: boolean
+  jobId?: string
+  memberName?: string
+  parts: ModelPart[] | null
+  running?: boolean
+  truncated?: boolean
+}
+export const ToolResultSchema: z.ZodType<ToolResult> = z.lazy(() =>
+  z.strictObject({
+    childId: z.string().optional(),
+    code: z.string().optional(),
+    deniedHost: z.string().optional(),
+    deniedSource: z.string().optional(),
+    exitCode: z.union([z.number().int(), z.null()]).optional(),
+    full: z.string().optional(),
+    isError: z.boolean().optional(),
+    jobId: z.string().optional(),
+    memberName: z.string().optional(),
+    parts: z.union([z.array(ModelPartSchema), z.null()]),
+    running: z.boolean().optional(),
+    truncated: z.boolean().optional(),
+  }),
+)
 export type ToolSpec = { description: string; effect: string; input: unknown; name: string }
 export const ToolSpecSchema: z.ZodType<ToolSpec> = z.lazy(() =>
   z.strictObject({ description: z.string(), effect: z.string(), input: z.unknown(), name: z.string() }),
@@ -1410,9 +1944,9 @@ export const WindowReportSchema: z.ZodType<WindowReport> = z.lazy(() =>
     window: z.number().int(),
   }),
 )
-export type WorkerCaps = { permission: boolean; steer: boolean }
+export type WorkerCaps = { mcp: boolean; permission: boolean; steer: boolean }
 export const WorkerCapsSchema: z.ZodType<WorkerCaps> = z.lazy(() =>
-  z.strictObject({ permission: z.boolean(), steer: z.boolean() }),
+  z.strictObject({ mcp: z.boolean(), permission: z.boolean(), steer: z.boolean() }),
 )
 export type WorkerProductInfo = {
   available: boolean
@@ -1478,8 +2012,10 @@ export type WorkspaceWorkspace = {
   id: string
   kind: string
   member: string
+  pooled?: boolean
   project: string
   released?: boolean
+  setupId?: string
   task: string
 }
 export const WorkspaceWorkspaceSchema: z.ZodType<WorkspaceWorkspace> = z.lazy(() =>
@@ -1493,8 +2029,10 @@ export const WorkspaceWorkspaceSchema: z.ZodType<WorkspaceWorkspace> = z.lazy(()
     id: z.string(),
     kind: z.string(),
     member: z.string(),
+    pooled: z.boolean().optional(),
     project: z.string(),
     released: z.boolean().optional(),
+    setupId: z.string().optional(),
     task: z.string(),
   }),
 )
@@ -1531,6 +2069,28 @@ export type EngineEvent =
       stream: string
       time: string
       type: "child.started"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: TaskClaim
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "claim.interrupted"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: TaskReport
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "claim.reported"
     }
   | {
       actor: EventActor
@@ -1602,6 +2162,28 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
+      payload: GroupControl
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "group.paused"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: GroupControl
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "group.resumed"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
       payload: GroupGroup
       scope: EventScope
       seq?: number
@@ -1652,6 +2234,17 @@ export type EngineEvent =
       stream: string
       time: string
       type: "member.asked"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: GroupMember
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "member.removed"
     }
   | {
       actor: EventActor
@@ -1734,7 +2327,7 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
-      payload: ModelMessage
+      payload: SessionInput
       scope: EventScope
       seq?: number
       stream: string
@@ -1751,6 +2344,17 @@ export type EngineEvent =
       stream: string
       time: string
       type: "notice.sent"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: PermissionRequest
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "permission.escalated"
     }
   | {
       actor: EventActor
@@ -1773,6 +2377,17 @@ export type EngineEvent =
       stream: string
       time: string
       type: "permission.requested"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: PermissionRequest
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "permission.routed"
     }
   | {
       actor: EventActor
@@ -1811,6 +2426,17 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
+      payload: ToolCall
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "reference.requested"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
       payload: EngineRepoChanges
       scope: EventScope
       seq?: number
@@ -1822,7 +2448,7 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
-      payload: EngineWatchOverload
+      payload: LeaderFinding
       scope: EventScope
       seq?: number
       stream: string
@@ -1844,6 +2470,17 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
+      payload: SessionBudget
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "session.budget_extended"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
       payload: SessionState
       scope: EventScope
       seq?: number
@@ -1855,12 +2492,34 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
+      payload: SessionMCPSelection
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "session.mcp_configured"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
       payload: SessionRebuild
       scope: EventScope
       seq?: number
       stream: string
       time: string
       type: "session.rebuilt"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: SessionDiagnostic
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "session.warning"
     }
   | {
       actor: EventActor
@@ -2137,6 +2796,17 @@ export type EngineEvent =
       time: string
       type: "workspace.resumed"
     }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: EngineworkspaceSetup
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "workspace.setup"
+    }
 export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
   z.strictObject({
     actor: EventActorSchema,
@@ -2170,6 +2840,28 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("child.started"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: TaskClaimSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("claim.interrupted"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: TaskReportSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("claim.reported"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -2247,6 +2939,28 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: GroupControlSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("group.paused"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: GroupControlSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("group.resumed"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: GroupGroupSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -2297,6 +3011,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("member.asked"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: GroupMemberSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("member.removed"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -2379,7 +3104,7 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
-    payload: ModelMessageSchema,
+    payload: SessionInputSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
     stream: z.string(),
@@ -2396,6 +3121,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("notice.sent"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: PermissionRequestSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("permission.escalated"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -2418,6 +3154,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("permission.requested"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: PermissionRequestSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("permission.routed"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -2456,6 +3203,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: ToolCallSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("reference.requested"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: EngineRepoChangesSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -2467,7 +3225,7 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
-    payload: EngineWatchOverloadSchema,
+    payload: LeaderFindingSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
     stream: z.string(),
@@ -2489,6 +3247,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: SessionBudgetSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("session.budget_extended"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: SessionStateSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -2500,12 +3269,34 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: SessionMCPSelectionSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("session.mcp_configured"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: SessionRebuildSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
     stream: z.string(),
     time: z.string(),
     type: z.literal("session.rebuilt"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: SessionDiagnosticSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("session.warning"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -2782,12 +3573,30 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     time: z.string(),
     type: z.literal("workspace.resumed"),
   }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: EngineworkspaceSetupSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("workspace.setup"),
+  }),
 ])
 export type Methods = {
   "blob.read": { params: ProtocolBlobReadParams; result: ProtocolBlobReadResult }
+  "cloud.login": { params: ProtocolCloudLoginParams; result: ProtocolCloudStatus }
+  "cloud.logout": { params: {}; result: {} }
+  "cloud.members": { params: {}; result: GroupMember[] | null }
+  "cloud.status": { params: {}; result: ProtocolCloudStatus }
   "config.get": { params: {}; result: ConfigValue }
   "config.set": { params: ConfigPatch; result: ConfigValue }
   "diagnostics.bundle": { params: ProtocolDiagnosticsParams; result: ProtocolDiagnosticsResult }
+  "doc.list": { params: ProtocolGroupIDParams; result: GroupDocumentInfo[] | null }
+  "doc.read": { params: ProtocolDocReadParams; result: GroupDocument }
+  "doc.write": { params: ProtocolDocWriteParams; result: GroupDocument }
   "engine.stop": { params: {}; result: {} }
   "event.emit": { params: ProtocolEventEmitParams; result: EventEvent }
   "events.find": { params: StoreQuery; result: EventEvent[] | null }
@@ -2799,24 +3608,36 @@ export type Methods = {
   "file.read": { params: ProtocolFileParams; result: EngineFileContent }
   "group.addMember": { params: ProtocolGroupAddMemberParams; result: GroupMember }
   "group.create": { params: ProtocolGroupCreateParams; result: GroupGroup }
+  "group.pause": { params: ProtocolGroupControlParams; result: {} }
+  "group.removeMember": { params: ProtocolGroupRemoveMemberParams; result: {} }
+  "group.resume": { params: ProtocolGroupControlParams; result: {} }
   "group.say": { params: ProtocolGroupSayParams; result: string }
   "group.state": { params: ProtocolGroupIDParams; result: LeaderView }
   "group.update": { params: ProtocolGroupUpdateParams; result: GroupGroup }
   hello: { params: ProtocolHelloParams; result: ProtocolHelloResult }
   "member.catalog": { params: {}; result: WorkerProductInfo[] | null }
   "member.register": { params: ProtocolMemberRegisterParams; result: GroupMember }
+  "member.remove": { params: ProtocolGroupRemoveMemberParams; result: {} }
   "member.test": { params: ProtocolProfileSaveParams; result: WorkerCaps }
   "model.discover": { params: ProtocolModelDiscoverParams; result: CatalogModel[] | null }
-  "model.list": { params: {}; result: CatalogModel[] | null }
+  "model.list": { params: ProtocolModelListParams; result: CatalogModel[] | null }
   "model.refresh": { params: ProtocolModelRefreshParams; result: CatalogModel[] | null }
   "permission.reply": { params: ProtocolPermissionReplyParams; result: {} }
+  "profile.delete": { params: ProtocolProfileDeleteParams; result: {} }
   "profile.list": { params: ProtocolProfileListParams; result: ProfileProfile[] | null }
   "profile.save": { params: ProtocolProfileSaveParams; result: ProfileProfile }
   "question.reply": { params: ProtocolQuestionReplyParams; result: {} }
+  "remote.connect": { params: ProtocolRemoteConnectParams; result: ProtocolRemoteConnection }
+  "remote.control": { params: ProtocolRemoteControlParams; result: {} }
+  "remote.deliver": { params: ProtocolRemoteDeliveryParams; result: ProtocolRemoteDelivery }
+  "remote.members": { params: {}; result: ProtocolRemoteMember[] | null }
+  "remote.start": { params: ProtocolRemoteStartParams; result: ProtocolRemoteStartResult }
+  "remote.sync": { params: ProtocolRemoteSyncParams; result: {} }
   "repo.branches": { params: ProtocolDirectoryParams; result: GitBranch[] | null }
   "repo.checkout": { params: ProtocolRepoCheckoutParams; result: {} }
   "repo.diff": { params: ProtocolRepoDiffParams; result: GitChange[] | null }
   "repo.status": { params: ProtocolDirectoryParams; result: GitState }
+  "sandbox.setup": { params: {}; result: {} }
   "sandbox.status": { params: ProtocolSandboxStatusParams; result: SandboxStatus }
   "session.cancel": { params: ProtocolSessionCancelParams; result: {} }
   "session.create": { params: ProtocolSessionCreateParams; result: ProtocolSessionCreateResult }
@@ -2840,12 +3661,20 @@ export type Methods = {
   "terminal.list": { params: ProtocolDirectoryParams; result: TerminalInfo[] | null }
   "terminal.remove": { params: ProtocolTerminalIDParams; result: {} }
   "terminal.update": { params: ProtocolTerminalUpdateParams; result: TerminalInfo }
+  "worker.run": { params: ProtocolWorkerRunParams; result: TaskReport }
 }
 export const methodSchemas = {
   "blob.read": { params: ProtocolBlobReadParamsSchema, result: ProtocolBlobReadResultSchema },
+  "cloud.login": { params: ProtocolCloudLoginParamsSchema, result: ProtocolCloudStatusSchema },
+  "cloud.logout": { params: z.strictObject({}), result: z.strictObject({}) },
+  "cloud.members": { params: z.strictObject({}), result: z.union([z.array(GroupMemberSchema), z.null()]) },
+  "cloud.status": { params: z.strictObject({}), result: ProtocolCloudStatusSchema },
   "config.get": { params: z.strictObject({}), result: ConfigValueSchema },
   "config.set": { params: ConfigPatchSchema, result: ConfigValueSchema },
   "diagnostics.bundle": { params: ProtocolDiagnosticsParamsSchema, result: ProtocolDiagnosticsResultSchema },
+  "doc.list": { params: ProtocolGroupIDParamsSchema, result: z.union([z.array(GroupDocumentInfoSchema), z.null()]) },
+  "doc.read": { params: ProtocolDocReadParamsSchema, result: GroupDocumentSchema },
+  "doc.write": { params: ProtocolDocWriteParamsSchema, result: GroupDocumentSchema },
   "engine.stop": { params: z.strictObject({}), result: z.strictObject({}) },
   "event.emit": { params: ProtocolEventEmitParamsSchema, result: EventEventSchema },
   "events.find": { params: StoreQuerySchema, result: z.union([z.array(EventEventSchema), z.null()]) },
@@ -2857,33 +3686,45 @@ export const methodSchemas = {
   "file.read": { params: ProtocolFileParamsSchema, result: EngineFileContentSchema },
   "group.addMember": { params: ProtocolGroupAddMemberParamsSchema, result: GroupMemberSchema },
   "group.create": { params: ProtocolGroupCreateParamsSchema, result: GroupGroupSchema },
+  "group.pause": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
+  "group.removeMember": { params: ProtocolGroupRemoveMemberParamsSchema, result: z.strictObject({}) },
+  "group.resume": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
   "group.say": { params: ProtocolGroupSayParamsSchema, result: z.string() },
   "group.state": { params: ProtocolGroupIDParamsSchema, result: LeaderViewSchema },
   "group.update": { params: ProtocolGroupUpdateParamsSchema, result: GroupGroupSchema },
   hello: { params: ProtocolHelloParamsSchema, result: ProtocolHelloResultSchema },
   "member.catalog": { params: z.strictObject({}), result: z.union([z.array(WorkerProductInfoSchema), z.null()]) },
   "member.register": { params: ProtocolMemberRegisterParamsSchema, result: GroupMemberSchema },
+  "member.remove": { params: ProtocolGroupRemoveMemberParamsSchema, result: z.strictObject({}) },
   "member.test": { params: ProtocolProfileSaveParamsSchema, result: WorkerCapsSchema },
   "model.discover": {
     params: ProtocolModelDiscoverParamsSchema,
     result: z.union([z.array(CatalogModelSchema), z.null()]),
   },
-  "model.list": { params: z.strictObject({}), result: z.union([z.array(CatalogModelSchema), z.null()]) },
+  "model.list": { params: ProtocolModelListParamsSchema, result: z.union([z.array(CatalogModelSchema), z.null()]) },
   "model.refresh": {
     params: ProtocolModelRefreshParamsSchema,
     result: z.union([z.array(CatalogModelSchema), z.null()]),
   },
   "permission.reply": { params: ProtocolPermissionReplyParamsSchema, result: z.strictObject({}) },
+  "profile.delete": { params: ProtocolProfileDeleteParamsSchema, result: z.strictObject({}) },
   "profile.list": {
     params: ProtocolProfileListParamsSchema,
     result: z.union([z.array(ProfileProfileSchema), z.null()]),
   },
   "profile.save": { params: ProtocolProfileSaveParamsSchema, result: ProfileProfileSchema },
   "question.reply": { params: ProtocolQuestionReplyParamsSchema, result: z.strictObject({}) },
+  "remote.connect": { params: ProtocolRemoteConnectParamsSchema, result: ProtocolRemoteConnectionSchema },
+  "remote.control": { params: ProtocolRemoteControlParamsSchema, result: z.strictObject({}) },
+  "remote.deliver": { params: ProtocolRemoteDeliveryParamsSchema, result: ProtocolRemoteDeliverySchema },
+  "remote.members": { params: z.strictObject({}), result: z.union([z.array(ProtocolRemoteMemberSchema), z.null()]) },
+  "remote.start": { params: ProtocolRemoteStartParamsSchema, result: ProtocolRemoteStartResultSchema },
+  "remote.sync": { params: ProtocolRemoteSyncParamsSchema, result: z.strictObject({}) },
   "repo.branches": { params: ProtocolDirectoryParamsSchema, result: z.union([z.array(GitBranchSchema), z.null()]) },
   "repo.checkout": { params: ProtocolRepoCheckoutParamsSchema, result: z.strictObject({}) },
   "repo.diff": { params: ProtocolRepoDiffParamsSchema, result: z.union([z.array(GitChangeSchema), z.null()]) },
   "repo.status": { params: ProtocolDirectoryParamsSchema, result: GitStateSchema },
+  "sandbox.setup": { params: z.strictObject({}), result: z.strictObject({}) },
   "sandbox.status": { params: ProtocolSandboxStatusParamsSchema, result: SandboxStatusSchema },
   "session.cancel": { params: ProtocolSessionCancelParamsSchema, result: z.strictObject({}) },
   "session.create": { params: ProtocolSessionCreateParamsSchema, result: ProtocolSessionCreateResultSchema },
@@ -2907,4 +3748,5 @@ export const methodSchemas = {
   "terminal.list": { params: ProtocolDirectoryParamsSchema, result: z.union([z.array(TerminalInfoSchema), z.null()]) },
   "terminal.remove": { params: ProtocolTerminalIDParamsSchema, result: z.strictObject({}) },
   "terminal.update": { params: ProtocolTerminalUpdateParamsSchema, result: TerminalInfoSchema },
+  "worker.run": { params: ProtocolWorkerRunParamsSchema, result: TaskReportSchema },
 }

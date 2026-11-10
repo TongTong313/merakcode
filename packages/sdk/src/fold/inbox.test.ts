@@ -15,6 +15,55 @@ function notice(seq: number, kind: string, to: string[], cause?: string): Engine
   }
 }
 
+test("ignores old checkpoint notices after review and accepts a later review", () => {
+  const card = {
+    id: "task",
+    group: "group",
+    title: "Task",
+    description: "",
+    acceptance: [],
+    claims: [],
+    priority: 0,
+    status: "review",
+    phase: "review",
+    createdBy: { kind: "human", id: "me" },
+  }
+  const reviewed: EngineEvent = { ...notice(1, "info", ["me"]), type: "task.reviewed", payload: card }
+  let inbox = applyToInbox(emptyInbox(), reviewed, "me")
+  inbox = applyToInbox(inbox, { ...notice(8, "review", ["me"], "old-review"), stream: "inbox:account" }, "me")
+  expect(inbox.todo).toEqual([])
+  inbox = applyToInbox(
+    inbox,
+    { ...notice(2, "info", ["me"]), id: "new-review", type: "phase.changed", payload: card },
+    "me",
+  )
+  inbox = applyToInbox(inbox, { ...notice(9, "review", ["me"], "old-review"), stream: "inbox:account" }, "me")
+  expect(inbox.todo).toEqual([])
+  inbox = applyToInbox(inbox, { ...notice(10, "review", ["me"], "new-review"), stream: "inbox:account" }, "me")
+  expect(inbox.todo.map((item) => item.request)).toEqual(["new-review"])
+})
+
+test("folds device inbox notices without consuming the group sequence or restoring answered requests", () => {
+  const delivered: EngineEvent = { ...notice(7, "permission", ["me"], "request"), stream: "inbox:account" }
+  const pending = applyToInbox(emptyInbox(), delivered, "me")
+  expect(pending.todo.map((item) => item.request)).toEqual(["request"])
+  expect(pending.lastSeq).toBe(0)
+  const answered = applyToInbox(
+    pending,
+    {
+      ...notice(1, "info", ["me"]),
+      id: "reply",
+      cause: "request",
+      type: "permission.replied",
+      payload: { decision: "allow" },
+    },
+    "me",
+  )
+  expect(answered.todo).toEqual([])
+  expect(applyToInbox(answered, delivered, "me").todo).toEqual([])
+  expect(applyToInbox(answered, { ...delivered, id: "late-copy", seq: 8 }, "me").todo).toEqual([])
+})
+
 test("shows only my notices and removes answered requests while retaining information", () => {
   const initial = emptyInbox()
   const asked = applyToInbox(initial, notice(1, "permission", ["me"], "request"), "me")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -13,15 +14,43 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
-	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"github.com/TongTong313/merakcode/merak/engine/window"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.Assignment) (worker.Run, error) {
+	a.Scope.Session = a.Session
+	if p.Product != nil && p.Product.Kind == worker.KindRemote {
+		// The source engine enforces its own profile; the host enforces task totals.
+		p.Budget = profile.Budget{}
+	}
 	if err := validateProfileNetwork(p); err != nil {
 		return nil, err
+	}
+	packetSources, err := e.prepareTaskPacket(ctx, &p, &a)
+	if err != nil {
+		return nil, err
+	}
+	if a.Scope.Group != "" && a.Scope.Task != "" && !a.Leader {
+		card, err := e.Tasks.Get(ctx, a.Scope.Task)
+		if err != nil {
+			return nil, err
+		}
+		if card.Budget.MaxSteps > 0 && (p.Budget.MaxSteps == 0 || card.Budget.MaxSteps < p.Budget.MaxSteps) {
+			p.Budget.MaxSteps = card.Budget.MaxSteps
+		}
+	}
+	if p.Product != nil && p.Product.Kind != worker.KindBuiltin {
+		limit, _, err := e.executionBudget(ctx, a.Scope, a.Claim.Member, p.Budget)
+		if err != nil {
+			return nil, err
+		}
+		if limit != "" {
+			e.blockBudgetTask(ctx, a.Scope)
+			return nil, worker.BudgetExceeded{Limit: limit}
+		}
 	}
 	a.Mode = p.Mode
 	if a.Claim.ID != "" {
@@ -29,19 +58,32 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	}
 	if p.Product != nil {
 		switch p.Product.Kind {
-		case worker.KindBuiltin, worker.KindClaudeCode, worker.KindCodex, worker.KindOpenCode, worker.KindPi, worker.KindACP, worker.KindCommand:
+		case worker.KindBuiltin, worker.KindClaudeCode, worker.KindCodex, worker.KindOpenCode, worker.KindPi, worker.KindACP, worker.KindCommand, worker.KindRemote:
 		default:
 			return nil, errors.New("unsupported worker product")
 		}
 	}
-	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
+	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" && !(a.Leader && p.Role == profile.Leader && p.ToolPool == "leader.default") {
 		return nil, errors.New("unsupported worker tool pool")
 	}
-	if a.ReadOnly || p.ToolPool == "worker.readonly" {
+	if a.ReadOnly || p.ToolPool == "worker.readonly" || a.Leader {
 		a.ReadOnly, p.ToolPool = true, "worker.readonly"
 	}
+	var binding *memberMCP
+	if p.Product != nil && p.Product.Kind != worker.KindRemote && a.Claim.Task != "" && e.runnerFor(p, nil).Caps().MCP {
+		var err error
+		binding, err = e.bindWorkerMCP(ctx, &a)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if binding != nil {
+				binding.endpoint.Close()
+			}
+		}()
+	}
 	var launcher *sandbox.Launcher
-	if p.Product != nil {
+	if p.Product != nil && p.Product.Kind != worker.KindRemote {
 		a.SandboxProfile.EnvAllow = append(append([]string(nil), a.SandboxProfile.EnvAllow...), "PATH")
 		for name := range p.Product.Env {
 			a.SandboxProfile.EnvAllow = append(a.SandboxProfile.EnvAllow, name)
@@ -81,25 +123,71 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 		}
 		launcher = e.keepSandbox(a.Session, launcher)
 	}
+	release, err := e.acquireMember(ctx, a.Scope, a.Claim.Member)
+	if err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			release()
+		}
+	}()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.ctx.Err() != nil {
 		return nil, e.ctx.Err()
 	}
+	preparing := e.claimPreparing[a.Claim.ID]
+	if preparing != nil {
+		var extra []window.Excerpt
+		for _, input := range preparing.inputs {
+			if input.Cause != "" && slices.Contains(packetSources, input.Cause) {
+				continue
+			}
+			var text strings.Builder
+			for _, part := range input.Parts {
+				text.WriteString(part.Text)
+			}
+			extra = append(extra, window.Excerpt{ID: input.Cause, Actor: input.Actor, Text: text.String()})
+			if input.Cause != "" {
+				packetSources = append(packetSources, input.Cause)
+			}
+		}
+		if len(extra) > 0 {
+			body, err := json.Marshal(extra)
+			if err != nil {
+				return nil, err
+			}
+			a.Packet += "\nAdditional instructions received during preparation:\n" + string(body)
+		}
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(e.ctx, cancel)
+	ctx, stopBudget := e.workerBudget(ctx, p, a)
 	done := launcher.Hold()
 	run, err := e.runnerFor(p, launcher).Start(ctx, a)
 	if err != nil {
+		stopBudget()
 		done()
 		stop()
 		cancel()
 		return nil, err
 	}
+	if binding != nil {
+		run = &mcpWorkerRun{Run: run, binding: binding}
+		binding = nil
+	}
+	if preparing != nil {
+		e.claimRuns[a.Claim.ID] = claimRun{run: run, caps: e.runnerFor(p, nil).Caps(), sources: packetSources}
+	}
 	if a.Scope.Group != "" {
 		e.groupSessions[a.Session] = true
 	}
+	started = true
 	e.workers.Go(func() {
+		defer stopBudget()
+		defer release()
 		defer done()
 		if a.Scope.Group != "" {
 			defer e.releaseSandbox(a.Session)
@@ -125,7 +213,7 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 		}
 		c, err = e.conversationFor(priorState)
 	} else {
-		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Mode: p.Mode, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool})
+		c, err = e.newConversation(ctx, SessionOptions{ID: a.Session, Scope: a.Scope, Member: a.Claim.Member, Mode: p.Mode, Provider: p.Model.Provider, Model: p.Model.Model, Thinking: p.Model.Thinking, Workdir: a.Workdir, System: p.System, ToolPool: p.ToolPool, Budget: p.Budget})
 	}
 	if err != nil {
 		return loop.Outcome{}, err
@@ -138,14 +226,7 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 	c.runner.Steer = joinedSteer{steer, c.runner.Steer}
 	var report *task.Report
 	if a.Claim.Task != "" {
-		c.runner.Tools = c.runner.Tools.With(e.askLeaderTool(a))
-		c.runner.Tools = c.runner.Tools.With(tool.AskUser{Bus: e.Bus, Ask: e.askQuestion})
-		c.runner.Tools = c.runner.Tools.With(tool.SubmitReport{Claim: a.Claim.ID, Submit: func(_ context.Context, value task.Report) error { report = &value; return nil }})
-		c.runner.Tools = c.runner.Tools.With(tool.ReportProgress{Report: func(ctx context.Context, summary string) error {
-			body, _ := json.Marshal(task.Progress{Claim: a.Claim.ID, Summary: summary})
-			_, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + a.Scope.Group), Scope: a.Scope, Type: task.Progressed, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Payload: body})
-			return err
-		}})
+		c.runner.Tools = c.runner.Tools.With(e.workerTools(a, func(_ context.Context, value task.Report) error { report = &value; return nil })...)
 		c.state.Tools = c.runner.Tools.Specs()
 		c.runner.Finish = func() []model.Part {
 			if report == nil {
@@ -161,9 +242,9 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 			return loop.Outcome{}, err
 		}
 	}
-	input := loop.Input{Parts: []model.Part{{Text: a.Packet}}, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Cause: a.Cause}
+	input := loop.Input{Parts: []model.Part{{Text: a.Packet}}, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Cause: a.Cause, Sources: a.Sources}
 	outcome, err := e.runInput(ctx, c, input)
-	if err != nil || a.Claim.Task == "" || report != nil {
+	if err != nil || a.Claim.Task == "" || report != nil || outcome.Stop != loop.Answered {
 		return outcome, err
 	}
 	input.Parts = []model.Part{{Text: "Please submit your report with submit_report. Include what you did and how you verified it."}}

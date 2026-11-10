@@ -12,11 +12,68 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
+	"github.com/TongTong313/merakcode/merak/engine/model/fake"
+	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
+
+func TestConfiguredPermissionModeAppliesOnlyToNewSessions(t *testing.T) {
+	ctx := t.Context()
+	home := t.TempDir()
+	e, err := engine.New(engine.Deps{Workdir: home, Providers: map[string]model.Provider{"fixture": fake.New(t)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	c, err := protocol.Connect(ctx, s.Info.Endpoint, s.Info.Token, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	var first event.ID
+	for _, mode := range []string{"ask", "auto", "takeover"} {
+		var settings map[string]any
+		if err := c.Call(ctx, "config.set", map[string]string{"mode": mode}, &settings); err != nil {
+			t.Fatal(err)
+		}
+		if settings["mode"] != mode {
+			t.Fatalf("settings=%v", settings)
+		}
+		var created protocol.SessionCreateResult
+		if err := c.Call(ctx, "session.create", map[string]any{"provider": "fixture"}, &created); err != nil {
+			t.Fatal(err)
+		}
+		var saved session.State
+		if err := c.Call(ctx, "session.snapshot", map[string]any{"session": created.Session}, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.Config.Mode != permission.Mode(mode) {
+			t.Fatalf("mode=%s", saved.Config.Mode)
+		}
+		if first == "" {
+			first = created.Session
+		}
+	}
+	var original session.State
+	if err := c.Call(ctx, "session.snapshot", map[string]any{"session": first}, &original); err != nil {
+		t.Fatal(err)
+	}
+	if original.Config.Mode != permission.ModeAsk {
+		t.Fatalf("existing mode=%s", original.Config.Mode)
+	}
+	if err := c.Call(ctx, "config.set", map[string]string{"mode": "invalid"}, new(config.Value)); err == nil {
+		t.Fatal("accepted invalid mode")
+	}
+}
 
 func TestConfigRPCPersistsRelayAndUsesItForNewConversations(t *testing.T) {
 	home := t.TempDir()
@@ -39,7 +96,7 @@ func TestConfigRPCPersistsRelayAndUsesItForNewConversations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	for restart := range 2 {
-		e, err := engine.New(engine.Deps{Workdir: home})
+		e, err := engine.New(engine.Deps{Workdir: home, Providers: map[string]model.Provider{"fixture": fake.New(t)}})
 		if err != nil {
 			t.Fatal(err)
 		}

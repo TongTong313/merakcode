@@ -27,6 +27,24 @@ function taskEvent(seq: number, value: TaskCard): Extract<EngineEvent, { type: "
   }
 }
 
+test("folds remote progress without changing the host group cursor", () => {
+  const initial = applyToBoard(emptyBoard(), taskEvent(1, card))
+  const progress: EngineEvent = {
+    ...taskEvent(9, card),
+    id: "remote-progress",
+    stream: "device:remote:connection:group:group",
+    type: "task.progress",
+    payload: { claim: "claim", summary: "Checked remotely" },
+  }
+  const current = applyToBoard(initial, progress)
+  expect(current.columns.open[0]?.progress).toEqual({ claim: "Checked remotely" })
+  expect(current.lastSeq).toBe(1)
+  expect(applyToBoard(current, progress)).toBe(current)
+  expect(applyToBoard(current, taskEvent(2, { ...card, status: "review" })).columns.review[0]?.progress).toEqual({
+    claim: "Checked remotely",
+  })
+})
+
 test("replays task columns and goal rows without changing previous snapshots", () => {
   const initial = emptyBoard()
   const opened = applyToBoard(initial, taskEvent(1, card))

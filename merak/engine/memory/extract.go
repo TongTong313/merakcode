@@ -21,10 +21,6 @@ type Extraction struct {
 
 func init() { event.Register[Extraction](Extracted) }
 
-type Extractor interface {
-	Extract(context.Context, []model.Message) ([]Note, error)
-}
-
 type ModelExtractor struct {
 	Provider model.Provider
 	Model    string

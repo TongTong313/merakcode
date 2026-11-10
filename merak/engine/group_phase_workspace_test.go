@@ -6,6 +6,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
@@ -40,6 +41,7 @@ func TestGoalReviewRetainsChildFilesForReworkAndReleasesThemAfterDelivery(t *tes
 	lead := profile.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
 	worker := profile.DefaultWorker()
+	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
@@ -187,6 +189,7 @@ func TestIntegratedWorktreeSurvivesGoalReviewAndReworksOnTheSameBranch(t *testin
 	lead := profile.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
 	worker := profile.DefaultWorker()
+	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},

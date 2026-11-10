@@ -1,4 +1,4 @@
-import type { GroupGroup, ProfileProfile, WorkerProductInfo } from "@merakcode/sdk"
+import type { GroupGroup, GroupMember, ProfileProfile, ProtocolCloudStatus, WorkerProductInfo } from "@merakcode/sdk"
 import { createEffect, createSignal, For, on, Show } from "solid-js"
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
@@ -8,6 +8,8 @@ import { localHuman } from "../../state/groups"
 import { Dialog } from "../../ui/dialog"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
+
+const cloudMemberKey = (member: GroupMember) => JSON.stringify([member.device, member.group, member.id])
 
 export function GroupCreate(props: {
   directory: string
@@ -24,6 +26,10 @@ export function GroupCreate(props: {
   const [busy, setBusy] = createSignal(false)
   const [loading, setLoading] = createSignal(true)
   const [created, setCreated] = createSignal<GroupGroup>()
+  const [kind, setKind] = createSignal<"local" | "cloud">("local")
+  const [cloud, setCloud] = createSignal<ProtocolCloudStatus>()
+  const [cloudMembers, setCloudMembers] = createSignal<GroupMember[]>([])
+  const [sharing, setSharing] = createSignal(false)
   const added = new Set<string>()
   const fail = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
   createEffect(
@@ -32,6 +38,10 @@ export function GroupCreate(props: {
       (open) => {
         if (!open) return
         setCreated(undefined)
+        setKind("local")
+        setCloud(undefined)
+        setCloudMembers([])
+        setSharing(false)
         setLeader("builtin-leader")
         added.clear()
         setName("")
@@ -40,36 +50,55 @@ export function GroupCreate(props: {
         setLoading(true)
         void client()
           .then(async (connection) => {
-            const [list, catalog] = await Promise.all([
+            const [list, catalog, status] = await Promise.all([
               connection.profile.list({ human: localHuman }),
               connection.member.catalog(),
+              connection.cloud.status(),
             ])
             setProfiles(list ?? [])
             setProducts(catalog ?? [])
+            setCloud(status)
+            setLoading(false)
+            const members = status.account ? await connection.cloud.members() : []
+            setCloudMembers((members ?? []).filter((member) => member.agentRole === "worker"))
           })
           .catch(fail)
           .finally(() => setLoading(false))
       },
     ),
   )
-  const choices = () => [
-    ...profiles().filter((profile) => profile.role === "worker"),
-    ...products()
-      .filter((product) => product.kind !== "builtin" && product.available)
-      .map((product): ProfileProfile => ({
-        id: `product:${product.kind}`,
-        name: product.name,
-        role: "worker",
-        summary: "Implement and verify assigned work.",
-        duties: "",
-        model: { provider: "", model: "" },
-        toolPool: "worker.default",
-        product: { kind: product.kind, binary: product.binary ?? "" },
-      })),
-  ]
+  const choices = (): ProfileProfile[] =>
+    kind() === "cloud"
+      ? cloudMembers().map((member) => ({
+          id: cloudMemberKey(member),
+          name: member.name,
+          role: "worker",
+          shared: true,
+          summary: member.summary ?? "",
+          duties: "",
+          model: { provider: "", model: "" },
+          toolPool: "worker.default",
+        }))
+      : [
+          ...profiles().filter((profile) => profile.role === "worker"),
+          ...products()
+            .filter((product) => product.kind !== "builtin" && product.available)
+            .map((product): ProfileProfile => ({
+              id: `product:${product.kind}`,
+              name: product.name,
+              role: "worker",
+              shared: true,
+              summary: "Implement and verify assigned work.",
+              duties: "",
+              model: { provider: "", model: "" },
+              toolPool: "worker.default",
+              product: { kind: product.kind, binary: product.binary ?? "" },
+            })),
+        ]
   const selectedLeader = () => profiles().find((profile) => profile.id === leader())
   const model = () => choice(undefined, directory()).model
   const ready = () =>
+    (kind() === "local" || (!!cloud()?.account && sharing())) &&
     !!directory().trim() &&
     !!selectedLeader() &&
     !!(selectedLeader()?.model.provider || model()) &&
@@ -100,7 +129,7 @@ export function GroupCreate(props: {
         setCreated(
           await connection.group.create({
             id: "",
-            kind: "local",
+            kind: kind(),
             name: name().trim() || t("group.title"),
             project: { directory: directory().trim() },
             defaultLeader: id,
@@ -117,17 +146,30 @@ export function GroupCreate(props: {
                 status: "idle",
               },
             ],
-            profiles: [],
+            profiles: kind() === "cloud" ? [profile] : [],
           }),
         )
       }
       for (const id of workers()) {
         if (added.has(id)) continue
+        if (kind() === "cloud") {
+          const member = cloudMembers().find((member) => cloudMemberKey(member) === id)
+          if (member) {
+            await connection.group.addMember({
+              group: created()!.id,
+              human: localHuman,
+              member,
+            })
+            added.add(id)
+          }
+          continue
+        }
         const draft = choices().find((profile) => profile.id === id)
         if (!draft) continue
         const profile = await save(draft)
         await connection.group.addMember({
           group: created()!.id,
+          human: localHuman,
           member: {
             id: crypto.randomUUID(),
             group: created()!.id,
@@ -173,6 +215,43 @@ export function GroupCreate(props: {
       }
     >
       <div class="dialog-body form">
+        <fieldset class="field" disabled={busy() || !!created()}>
+          <legend>{t("group.kind")}</legend>
+          <For each={["local", "cloud"] as const}>
+            {(value) => (
+              <label class="row">
+                <input
+                  type="radio"
+                  name="group-kind"
+                  aria-label={t(`group.kind.${value}`)}
+                  checked={kind() === value}
+                  disabled={value === "cloud" && !cloud()?.account}
+                  onChange={() => {
+                    setKind(value)
+                    setWorkers([])
+                  }}
+                />
+                <span>{t(`group.kind.${value}`)}</span>
+              </label>
+            )}
+          </For>
+          <Show when={!cloud()?.account}>
+            <p class="subtle">{t("group.cloud.loginRequired")}</p>
+          </Show>
+        </fieldset>
+        <Show when={kind() === "cloud"}>
+          <label class="row">
+            <input
+              type="checkbox"
+              checked={sharing()}
+              disabled={busy() || !!created()}
+              aria-label={t("group.cloud.consent")}
+              onChange={(event) => setSharing(event.currentTarget.checked)}
+            />
+            <span>{t("group.cloud.consent")}</span>
+          </label>
+          <p class="subtle">{t("group.cloud.data")}</p>
+        </Show>
         <label class="field">
           <span>{t("group.name")}</span>
           <input

@@ -66,7 +66,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 		}
 		switch calls.Add(1) {
 		case 1:
-			return call("create", "create_task", map[string]any{"title": "Check README", "description": "Check the project documentation", "acceptance": []string{"Report the findings"}, "areas": []string{"README.md"}, "workspace": "none", "inputs": []string{"README.md"}, "priority": 4})
+			return call("create", "create_task", map[string]any{"title": "Check README", "description": "Check the project documentation", "acceptance": []string{"Report the findings"}, "areas": []string{"README.md"}, "workspace": "none", "inputs": []string{"README.md"}, "priority": 4, "budget": map[string]any{"maxTokens": 100000}})
 		case 2:
 			last := req.Messages[len(req.Messages)-1]
 			var card task.Card
@@ -78,6 +78,9 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 				t.Error(err)
 			}
 			child = card.ID
+			if card.Budget.MaxTokens != 100000 {
+				t.Errorf("task budget=%+v", card.Budget)
+			}
 			if card.Workspace != "none" || card.Priority != 4 || !reflect.DeepEqual(card.Inputs, []string{"README.md"}) {
 				t.Errorf("task workspace settings=%+v", card)
 			}
@@ -116,6 +119,11 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 		close(started)
 		if !strings.Contains(fmt.Sprint(req.Messages), "Check the project documentation") {
 			return fmt.Errorf("task packet omitted the description")
+		}
+		return nil
+	}}, fake.Reply{Text: "[]", Expect: func(req model.Request) error {
+		if !strings.Contains(req.System, "Extract durable project facts") {
+			return fmt.Errorf("unexpected worker request after submitting its report")
 		}
 		return nil
 	}})

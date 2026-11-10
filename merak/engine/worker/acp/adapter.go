@@ -29,7 +29,7 @@ type Runner struct {
 	System  string
 }
 
-func (*Runner) Caps() worker.Caps { return worker.Caps{Permission: true} }
+func (*Runner) Caps() worker.Caps { return worker.Caps{Permission: true, MCP: true} }
 
 type run struct{ worker.Run }
 
@@ -76,6 +76,7 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment) (report task.
 			return report, err
 		}
 	}
+	j.Sandbox, j.Assignment = r.Sandbox, a
 	child, err := stdio.Start(ctx, a, r.Product, r.Product.Args, r.Sandbox)
 	if err != nil {
 		return report, err
@@ -133,6 +134,13 @@ func (r *Runner) execute(ctx context.Context, a worker.Assignment) (report task.
 					}
 					method := "session/new"
 					params := map[string]any{"cwd": cwd, "mcpServers": []any{}}
+					if a.MCP != nil {
+						environment := []map[string]string{}
+						for name, value := range a.MCP.Env {
+							environment = append(environment, map[string]string{"name": name, "value": value})
+						}
+						params["mcpServers"] = []any{map[string]any{"name": "merak", "command": a.MCP.Command, "args": a.MCP.Args, "env": environment}}
+					}
 					if previous != "" {
 						if !result.AgentCapabilities.LoadSession {
 							return report, errors.New("ACP agent cannot reload the existing session")

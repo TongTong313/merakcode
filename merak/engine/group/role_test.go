@@ -42,3 +42,37 @@ func TestTheFirstLocalHumanReceivesAllRoles(t *testing.T) {
 		})
 	}
 }
+
+func TestHumanRolesAreValidatedAndDefaultToMember(t *testing.T) {
+	for _, role := range []string{"owner", "admin", "approver", "member", "observer", "", "root"} {
+		t.Run(role, func(t *testing.T) {
+			storage := memory.New()
+			manager := group.New(storage, event.NewBus(storage, time.Now, event.NewID), event.NewID)
+			g, err := manager.Create(t.Context(), group.Group{Name: "Roles", Kind: group.KindLocal, Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
+				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
+				{ID: "human", Name: "Human", Kind: group.MemberHuman, Role: role},
+			})
+			if role == "root" {
+				if err == nil {
+					t.Fatal("unknown role accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, err := manager.Get(t.Context(), g.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := role
+			if want == "" {
+				want = "member"
+			}
+			if state.Members[2].Role != want {
+				t.Fatalf("role=%s want=%s", state.Members[2].Role, want)
+			}
+		})
+	}
+}

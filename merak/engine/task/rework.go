@@ -19,13 +19,17 @@ func (p *Pool) Rework(ctx context.Context, id event.ID, feedback string) error {
 	if !ok {
 		return store.ErrNotFound
 	}
-	if card.Claims[index].Status != ClaimReported || card.Claims[index].Integrated != "" || strings.TrimSpace(feedback) == "" {
+	if card.Claims[index].Status != ClaimReported && card.Claims[index].Status != ClaimInterrupted || card.Claims[index].Integrated != "" || strings.TrimSpace(feedback) == "" {
 		return ErrState
 	}
 	card = clone(card)
 	claim := &card.Claims[index]
 	claim.Status, claim.Report, claim.Feedback = ClaimQueued, nil, feedback
 	card.LastReview = nil
-	card.Status = claimStatus(card.Claims)
+	if card.Status == Blocked {
+		card.PreviousStatus = claimStatus(card.Claims)
+	} else {
+		card.Status = claimStatus(card.Claims)
+	}
 	return p.emit(ctx, Updated, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader})
 }

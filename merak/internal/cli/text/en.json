@@ -1,4 +1,7 @@
 {
+  "allowOnce": "Allow once",
+  "rejectOnce": "Reject",
+  "answer": "Answer (EOF cancels): ",
   "thinking": "Thinking: ",
   "estimatedCost": "Estimated cost: %s %.6f\n",
   "unknownCost": "Cost: unknown\n",

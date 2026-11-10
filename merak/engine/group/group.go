@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 
@@ -15,6 +16,7 @@ import (
 type Kind string
 
 const KindLocal Kind = "local"
+const KindCloud Kind = "cloud"
 
 type MemberKind string
 
@@ -41,8 +43,11 @@ const (
 
 type Project struct {
 	Directory string `json:"directory"`
+	Remote    string `json:"remote,omitempty"`
 }
 type Brief struct {
+	Goal         string `json:"goal,omitempty"`
+	Conventions  string `json:"conventions,omitempty"`
 	TargetBranch string `json:"targetBranch,omitempty"`
 	Check        string `json:"check,omitempty"`
 }
@@ -56,35 +61,43 @@ type Group struct {
 	Settings      Settings `json:"settings,omitempty"`
 }
 type Member struct {
-	Unconfined bool       `json:"unconfined,omitempty"`
-	Hosts      []string   `json:"hosts,omitempty"`
-	ID         event.ID   `json:"id"`
-	Group      event.ID   `json:"group"`
-	Kind       MemberKind `json:"kind"`
-	Name       string     `json:"name"`
-	Role       string     `json:"role,omitempty"`
-	AgentRole  AgentRole  `json:"agentRole,omitempty"`
-	Owner      event.ID   `json:"owner,omitempty"`
-	Profile    event.ID   `json:"profile,omitempty"`
-	Status     Status     `json:"status"`
-	Current    event.ID   `json:"current,omitempty"`
-	Queue      []event.ID `json:"queue,omitempty"`
+	Remote     bool              `json:"remote,omitempty"`
+	Checkouts  map[string]string `json:"checkouts,omitempty"`
+	Device     string            `json:"device,omitempty"`
+	Account    string            `json:"account,omitempty"`
+	Summary    string            `json:"summary,omitempty"`
+	Unconfined bool              `json:"unconfined,omitempty"`
+	Hosts      []string          `json:"hosts,omitempty"`
+	ID         event.ID          `json:"id"`
+	Group      event.ID          `json:"group"`
+	Kind       MemberKind        `json:"kind"`
+	Name       string            `json:"name"`
+	Role       string            `json:"role,omitempty"`
+	AgentRole  AgentRole         `json:"agentRole,omitempty"`
+	Owner      event.ID          `json:"owner,omitempty"`
+	Profile    event.ID          `json:"profile,omitempty"`
+	Status     Status            `json:"status"`
+	Current    event.ID          `json:"current,omitempty"`
+	Queue      []event.ID        `json:"queue,omitempty"`
 }
 type State struct {
-	Group   Group    `json:"group"`
-	Members []Member `json:"members"`
+	PausedThreads []event.ID `json:"pausedThreads,omitempty"`
+	Group         Group      `json:"group"`
+	Members       []Member   `json:"members"`
 }
 
 const (
 	Created       event.Type = "group.created"
 	MemberAdded   event.Type = "member.added"
 	MemberUpdated event.Type = "member.updated"
+	MemberRemoved event.Type = "member.removed"
 )
 
 func init() {
 	event.Register[State](Created)
 	event.Register[Member](MemberAdded)
 	event.Register[Member](MemberUpdated)
+	event.Register[Member](MemberRemoved)
 }
 
 type Manager struct {
@@ -145,6 +158,11 @@ func (m *Manager) Create(ctx context.Context, g Group, members []Member) (Group,
 	if humans == 1 && copy[humanIndex].Role == "" {
 		copy[humanIndex].Role = RoleOwner
 	}
+	for i := range copy {
+		if copy[i].Kind == MemberHuman && copy[i].Role == "" {
+			copy[i].Role = RoleMember
+		}
+	}
 	if err := m.emit(ctx, g.ID, Created, State{Group: g, Members: copy}); err != nil {
 		return Group{}, err
 	}
@@ -155,7 +173,7 @@ func validMember(member Member) bool {
 		return false
 	}
 	if member.Kind == MemberHuman {
-		return member.AgentRole == ""
+		return member.AgentRole == "" && (member.Role == "" || member.Can(RoleObserver))
 	}
 	return member.Kind == MemberAgent && (member.AgentRole == AgentLeader || member.AgentRole == AgentWorker)
 }
@@ -187,6 +205,8 @@ func (m *Manager) AddMember(ctx context.Context, id event.ID, member Member) (Me
 		}
 		if first {
 			member.Role = RoleOwner
+		} else {
+			member.Role = RoleMember
 		}
 	}
 	member.Group, member.Status = id, Idle
@@ -213,6 +233,11 @@ func (m *Manager) get(ctx context.Context, id event.ID) (State, error) {
 		for _, fact := range facts {
 			sequence = fact.Seq
 			switch fact.Type {
+			case Paused, Resumed:
+				state.PausedThreads, err = FoldPauses(state.PausedThreads, fact)
+				if err != nil {
+					return state, err
+				}
 			case Created:
 				if err := json.Unmarshal(fact.Payload, &state); err != nil {
 					return state, err
@@ -234,6 +259,12 @@ func (m *Manager) get(ctx context.Context, id event.ID) (State, error) {
 						break
 					}
 				}
+			case MemberRemoved:
+				member, err := event.Decode[Member](fact)
+				if err != nil {
+					return state, err
+				}
+				state.Members = slices.DeleteFunc(state.Members, func(item Member) bool { return item.ID == member.ID })
 			case Updated:
 				updated, err := event.Decode[Group](fact)
 				if err != nil {
@@ -251,6 +282,37 @@ func (m *Manager) get(ctx context.Context, id event.ID) (State, error) {
 	}
 	m.bus.Resume(stream, sequence)
 	return state, nil
+}
+
+func (m *Manager) RemoveMember(ctx context.Context, id, human, memberID event.ID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, err := m.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	var actor, target Member
+	owners := 0
+	for _, member := range state.Members {
+		if member.ID == human {
+			actor = member
+		}
+		if member.ID == memberID {
+			target = member
+		}
+		if member.Can(RoleOwner) {
+			owners++
+		}
+	}
+	if !actor.Can(RoleAdmin) || target.ID == "" || memberID == state.Group.DefaultLeader {
+		return errors.New("member cannot be removed")
+	}
+	if target.Can(RoleOwner) && (!actor.Can(RoleOwner) || owners <= 1) {
+		return errors.New("the last owner cannot be removed")
+	}
+	body, _ := json.Marshal(target)
+	_, err = m.bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + id), Scope: event.Scope{Group: id}, Type: MemberRemoved, Actor: event.Actor{Kind: event.ActorHuman, ID: human}, Payload: body})
+	return err
 }
 func (m *Manager) emit(ctx context.Context, id event.ID, kind event.Type, value any) error {
 	body, err := json.Marshal(value)

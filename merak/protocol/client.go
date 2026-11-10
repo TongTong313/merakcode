@@ -14,20 +14,32 @@ import (
 )
 
 type Client struct {
-	Hello   HelloResult
-	conn    *websocket.Conn
-	Events  chan event.Event
-	mu      sync.Mutex
-	next    uint64
-	pending map[string]chan Message
-	done    chan struct{}
-	failure error
-	store   store.Store
-	ctx     context.Context
-	cancel  context.CancelFunc
+	ordered       bool
+	Notifications chan Message
+	Hello         HelloResult
+	conn          *websocket.Conn
+	Events        chan event.Event
+	mu            sync.Mutex
+	next          uint64
+	pending       map[string]chan Message
+	done          chan struct{}
+	failure       error
+	store         store.Store
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 func Connect(ctx context.Context, endpoint, token string, hello HelloParams, hosts ...store.Store) (*Client, error) {
+	return connect(ctx, endpoint, token, hello, false, hosts...)
+}
+
+// ConnectOrdered delivers every notification through Notifications in wire order.
+// Events remains empty; responses and storage requests retain their normal behavior.
+func ConnectOrdered(ctx context.Context, endpoint, token string, hello HelloParams, hosts ...store.Store) (*Client, error) {
+	return connect(ctx, endpoint, token, hello, true, hosts...)
+}
+
+func connect(ctx context.Context, endpoint, token string, hello HelloParams, ordered bool, hosts ...store.Store) (*Client, error) {
 	conn, err := websocket.Dial(ctx, endpoint, token)
 	if err != nil {
 		return nil, &Error{Code: -32000, Message: "Connection failed", Data: ErrorData{Code: "MRK-1001"}}
@@ -65,12 +77,17 @@ func Connect(ctx context.Context, endpoint, token string, hello HelloParams, hos
 		conn.Close()
 		return nil, reply.Error
 	}
-	c := &Client{conn: conn, Events: make(chan event.Event, 1024), pending: make(map[string]chan Message), done: make(chan struct{}), next: 1}
+	c := &Client{ordered: ordered, conn: conn, Events: make(chan event.Event, 1024), Notifications: make(chan Message, 1024), pending: make(map[string]chan Message), done: make(chan struct{}), next: 1}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	if err = json.Unmarshal(reply.Result, &c.Hello); err != nil {
 		conn.Close()
 		c.cancel()
 		return nil, err
+	}
+	if c.Hello.Protocol != Version {
+		conn.Close()
+		c.cancel()
+		return nil, &Error{Code: -32000, Message: "Protocol version is unsupported", Data: ErrorData{Code: "MRK-1001"}}
 	}
 	if len(hosts) > 0 && c.Hello.Store == "accepted" {
 		c.store = hosts[0]
@@ -135,6 +152,7 @@ func (c *Client) read() {
 		c.failure = failure
 		c.mu.Unlock()
 		close(c.Events)
+		close(c.Notifications)
 		close(c.done)
 	}()
 	for {
@@ -157,7 +175,7 @@ func (c *Client) read() {
 			}(message)
 			continue
 		}
-		if message.Method == "event" || message.Method == "events.lagged" {
+		if !c.ordered && (message.Method == "event" || message.Method == "events.lagged") {
 			var fact event.Event
 			if err = json.Unmarshal(message.Params, &fact); err != nil {
 				failure = err
@@ -165,6 +183,15 @@ func (c *Client) read() {
 			}
 			select {
 			case c.Events <- fact:
+			default:
+				failure = errors.New("MRK-1001")
+				return
+			}
+			continue
+		}
+		if message.Method != "" {
+			select {
+			case c.Notifications <- message:
 			default:
 				failure = errors.New("MRK-1001")
 				return

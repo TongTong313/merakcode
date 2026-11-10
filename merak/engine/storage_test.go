@@ -232,7 +232,17 @@ func TestEngineResumesPersistedConversationAfterRestart(t *testing.T) {
 	defer second.Close()
 	run(second, "Second")
 	facts, err := storage.Read(ctx, event.Stream("session:"+id), 1, 100)
-	if err != nil || len(facts) != 11 || facts[0].Type != "session.created" || facts[10].Seq != 11 {
+	if err != nil || len(facts) == 0 || facts[0].Type != session.Created {
 		t.Fatalf("fact count = %d, %v", len(facts), err)
+	}
+	counts := map[event.Type]int{}
+	for index, fact := range facts {
+		if fact.Seq != uint64(index+1) {
+			t.Fatalf("event sequence changed at %d: %+v", index, fact)
+		}
+		counts[fact.Type]++
+	}
+	if counts[session.Created] != 1 || counts[session.MCPConfigured] != 1 || counts["turn.finished"] != 2 {
+		t.Fatalf("resumed event counts=%v", counts)
 	}
 }

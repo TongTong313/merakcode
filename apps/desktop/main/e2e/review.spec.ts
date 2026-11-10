@@ -412,6 +412,7 @@ test("resuming and remounting a relocated draft preserves a newer source draft",
 })
 
 test.describe("task artifact review", () => {
+  test.use({ modelWindow: 128000 })
   let rpc: Awaited<ReturnType<typeof connect>>
   let taskID = ""
   let claimID = ""
@@ -543,6 +544,7 @@ test.describe("task artifact review", () => {
 })
 
 test.describe("task worktree review", () => {
+  test.use({ modelWindow: 128000 })
   let rpc: Awaited<ReturnType<typeof connect>>
   let groupID = ""
   let fixture: Kit
@@ -639,9 +641,18 @@ test.describe("task worktree review", () => {
           ),
       ).toBe(true)
       await review.getByRole("button", { name: "通过", exact: true }).click()
+      const reviewURL = kit.page.url()
+      await kit.page.removeLocatorHandler(kit.approval())
+      await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
+      await kit.page
+        .getByRole("region", { name: "要我做的", exact: true })
+        .getByRole("button", { name: "request_merge", exact: true })
+        .click()
+      await kit.page.getByRole("dialog").getByRole("button", { name: "允许这一次", exact: true }).click()
       await expect
         .poll(async () => (await events()).some((event) => event.type === "merge.done" && event.scope.task === card.id))
         .toBe(true)
+      await kit.page.goto(reviewURL)
       await rpc.task.update({ task: card.id, human: "local-human", phase: "doing" })
       await rpc.task.update({ task: card.id, human: "local-human", phase: "integrating" })
       await expect(review.getByRole("button", { name: "打回规划", exact: true })).toBeVisible()

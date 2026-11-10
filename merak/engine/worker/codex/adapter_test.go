@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
@@ -18,9 +19,129 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestLeaderRecoversInputBeforeNativeAcknowledgement(t *testing.T) {
+	binary := fakeBinary(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	storage := memory.New()
+	runner := &codex.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "recovery-fail"}}}
+	a := worker.Assignment{Leader: true, Session: "recover", Workdir: t.TempDir(), Packet: "Original instruction"}
+	run, err := runner.Start(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = run.Wait(ctx); err == nil {
+		t.Fatal("fixture should fail before acknowledging input")
+	}
+	initial, _ := storage.Read(ctx, "session:recover", 1, 0)
+	sent := false
+	for _, fact := range initial {
+		sent = sent || fact.Type == session.MessageSent
+	}
+	if !sent {
+		t.Fatalf("fixture failed before receiving input: %v events=%+v", err, initial)
+	}
+	runner.Product.Env["MERAKCODE_FIXTURE_MODE"] = "recovery-echo"
+	a.Packet = "Continue after failure"
+	run, err = runner.Start(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Cancel(context.Background())
+	restored := false
+	for {
+		select {
+		case fact, ok := <-run.Events():
+			if !ok {
+				_, err := run.Wait(ctx)
+				t.Fatalf("recovery stopped: %v", err)
+			}
+			if fact.Type == session.MessageCompleted {
+				completion, _ := event.Decode[session.Completion](fact)
+				for _, part := range completion.Parts {
+					restored = restored || strings.Contains(part.Text, "Original instruction") && strings.Contains(part.Text, "Continue after failure")
+				}
+			}
+			if fact.Type == loop.TurnFinished {
+				if !restored {
+					t.Fatal("recovery lost unacknowledged input")
+				}
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+}
+
+func TestLeaderRetriesInputRejectedAfterThePreviousTurnCompleted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	directory := t.TempDir()
+	boundary := filepath.Join(directory, "continue")
+	turn := worker.NewLeaderTurn()
+	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: fakeBinary(t), Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary", "MERAKCODE_FIXTURE_BOUNDARY_WAIT": boundary}}}
+	run, err := runner.Start(ctx, worker.Assignment{Leader: true, LeaderTurn: turn, Session: "leader", Workdir: directory, Packet: "First"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Cancel(context.Background())
+	if err := run.Send(ctx, loop.Input{Parts: []model.Part{{Text: "Second"}}, Cause: "cause"}); err != nil {
+		t.Fatal(err)
+	}
+	completed, inputs := false, 0
+	for {
+		select {
+		case fact, ok := <-run.Events():
+			if !ok {
+				_, err := run.Wait(ctx)
+				t.Fatalf("leader stopped: %v", err)
+			}
+			if fact.Type == session.MessageSent {
+				inputs++
+				if inputs == 2 && fact.Cause != "cause" {
+					t.Fatal("lost input cause")
+				}
+				if inputs == 2 {
+					turn.Finish("Finished old turn")
+					if err := os.WriteFile(boundary, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if fact.Type == session.MessageCompleted {
+				completed = true
+				release, err := turn.Enter(ctx)
+				if err != nil {
+					t.Fatalf("retry did not reopen orchestration: %v", err)
+				}
+				release()
+				if err := os.WriteFile(boundary+".second", nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if fact.Scope.Turn == "" {
+					t.Fatal("response lost its turn")
+				}
+			}
+			if fact.Type == loop.TurnFinished {
+				if !completed {
+					t.Fatal("finished the batch before retrying its pending input")
+				}
+				if inputs != 2 {
+					t.Fatalf("inputs=%d", inputs)
+				}
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("leader lost the rejected input")
+		}
+	}
+}
 
 func TestProductInterruptionRetainsPartialAnswerAndCancelsTheTurn(t *testing.T) {
 	binary := fakeBinary(t)
@@ -59,6 +180,42 @@ func fakeBinary(t *testing.T) string {
 	}
 	return binary
 }
+
+func TestCodexPermissionModeControlsNewAndResumedProductThreads(t *testing.T) {
+	binary := fakeBinary(t)
+	for _, tc := range []struct {
+		name, sandbox, approval string
+		mode                    permission.Mode
+		readOnly                bool
+	}{
+		{"takeover", "danger-full-access", "never", permission.ModeTakeover, false},
+		{"ask", "workspace-write", "untrusted", permission.ModeAsk, false},
+		{"read only takeover", "read-only", "never", permission.ModeTakeover, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			storage := memory.New()
+			runner := &codex.Runner{Bus: event.NewBus(storage, time.Now, event.NewID), Store: storage,
+				Product: profile.Product{Binary: binary, Env: map[string]string{
+					"MERAKCODE_FIXTURE_MODE": "history", "MERAKCODE_FIXTURE_SANDBOX": tc.sandbox,
+					"MERAKCODE_FIXTURE_APPROVAL": tc.approval,
+				}}}
+			assignment := worker.Assignment{Session: "session", Workdir: t.TempDir(), Mode: tc.mode, ReadOnly: tc.readOnly}
+			for _, packet := range []string{"Original brief", "Continue"} {
+				assignment.Packet = packet
+				run, err := runner.Start(ctx, assignment)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := run.Wait(ctx); err != nil {
+					t.Fatalf("packet=%q policy=%s sandbox=%s: %v", packet, tc.approval, tc.sandbox, err)
+				}
+			}
+		})
+	}
+}
+
 func TestCodexRoutesApprovalsAndEmitsSharedEvents(t *testing.T) {
 	binary := fakeBinary(t)
 	for _, decision := range []permission.Decision{permission.Allow, permission.Deny} {

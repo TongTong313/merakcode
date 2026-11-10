@@ -2,10 +2,10 @@
 package config
 
 import (
-	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -46,31 +46,45 @@ type Picker struct {
 }
 
 type Value struct {
-	Unconfined   []LaunchDecision    `json:"unconfined,omitempty"`
-	AllowedHosts []string            `json:"allowedHosts,omitempty"`
-	DeniedHosts  []string            `json:"deniedHosts,omitempty"`
-	Model        string              `json:"model,omitempty"`
-	Thinking     string              `json:"thinking,omitempty"`
-	Locale       string              `json:"locale,omitempty"`
-	Log          string              `json:"log,omitempty"`
-	Providers    map[string]Provider `json:"providers"`
+	Cloud            Cloud                `json:"cloud,omitempty"`
+	Mode             string               `json:"mode,omitempty"`
+	MCPServers       map[string]MCPServer `json:"mcpServers,omitempty"`
+	WorkspaceTrust   []Trust              `json:"workspaceTrust,omitempty"`
+	PermissionRules  []PermissionRule     `json:"permissionRules,omitempty"`
+	PermissionGrants []PermissionGrant    `json:"permissionGrants,omitempty"`
+	Unconfined       []LaunchDecision     `json:"unconfined,omitempty"`
+	AllowedHosts     []string             `json:"allowedHosts,omitempty"`
+	DeniedHosts      []string             `json:"deniedHosts,omitempty"`
+	Model            string               `json:"model,omitempty"`
+	Thinking         string               `json:"thinking,omitempty"`
+	Locale           string               `json:"locale,omitempty"`
+	Log              string               `json:"log,omitempty"`
+	Providers        map[string]Provider  `json:"providers"`
 }
 
 type Patch struct {
-	Unconfined   *[]LaunchDecision    `json:"unconfined,omitempty"`
-	AllowedHosts *[]string            `json:"allowedHosts,omitempty"`
-	DeniedHosts  *[]string            `json:"deniedHosts,omitempty"`
-	Model        *string              `json:"model,omitempty"`
-	Thinking     *string              `json:"thinking,omitempty"`
-	Locale       *string              `json:"locale,omitempty"`
-	Log          *string              `json:"log,omitempty"`
-	Providers    map[string]*Provider `json:"providers,omitempty"`
+	Cloud            *Cloud               `json:"cloud,omitempty"`
+	Mode             *string              `json:"mode,omitempty"`
+	PermissionRules  *[]PermissionRule    `json:"permissionRules,omitempty"`
+	PermissionGrants *[]PermissionGrant   `json:"permissionGrants,omitempty"`
+	Unconfined       *[]LaunchDecision    `json:"unconfined,omitempty"`
+	AllowedHosts     *[]string            `json:"allowedHosts,omitempty"`
+	DeniedHosts      *[]string            `json:"deniedHosts,omitempty"`
+	Model            *string              `json:"model,omitempty"`
+	Thinking         *string              `json:"thinking,omitempty"`
+	Locale           *string              `json:"locale,omitempty"`
+	Log              *string              `json:"log,omitempty"`
+	Providers        map[string]*Provider `json:"providers,omitempty"`
 }
 
 type Store struct {
 	mu    sync.Mutex
 	path  string
 	value Value
+}
+
+type Cloud struct {
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 func Open(path string) (*Store, error) {
@@ -82,13 +96,8 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&s.value); err != nil {
-		return nil, errors.New("invalid configuration")
-	}
-	if decoder.Decode(new(any)) != io.EOF {
-		return nil, errors.New("expected one configuration object")
+	if err := decodeConfiguration(data, &s.value); err != nil {
+		return nil, err
 	}
 	if err := Validate(s.value); err != nil {
 		return nil, err
@@ -115,6 +124,15 @@ func (s *Store) Update(patch Patch) (Value, error) {
 
 func (s *Store) update(patch Patch) (Value, error) {
 	next := clone(s.value)
+	if patch.Cloud != nil {
+		next.Cloud = *patch.Cloud
+	}
+	if patch.PermissionRules != nil {
+		next.PermissionRules = append([]PermissionRule(nil), (*patch.PermissionRules)...)
+	}
+	if patch.PermissionGrants != nil {
+		next.PermissionGrants = append([]PermissionGrant(nil), (*patch.PermissionGrants)...)
+	}
 	if patch.Unconfined != nil {
 		next.Unconfined = append([]LaunchDecision(nil), (*patch.Unconfined)...)
 	}
@@ -127,7 +145,7 @@ func (s *Store) update(patch Patch) (Value, error) {
 	for _, field := range []struct {
 		update *string
 		value  *string
-	}{{patch.Model, &next.Model}, {patch.Thinking, &next.Thinking}, {patch.Locale, &next.Locale}, {patch.Log, &next.Log}} {
+	}{{patch.Mode, &next.Mode}, {patch.Model, &next.Model}, {patch.Thinking, &next.Thinking}, {patch.Locale, &next.Locale}, {patch.Log, &next.Log}} {
 		if field.update != nil {
 			*field.value = *field.update
 		}
@@ -154,6 +172,10 @@ func (s *Store) update(patch Patch) (Value, error) {
 		provider.HasKey, provider.ClearKey = false, false
 		next.Providers[id] = provider
 	}
+	return s.save(next)
+}
+
+func (s *Store) save(next Value) (Value, error) {
 	if err := Validate(next); err != nil {
 		return Value{}, err
 	}
@@ -191,6 +213,11 @@ func (s *Store) update(patch Patch) (Value, error) {
 }
 
 func public(value Value) Value {
+	for _, server := range value.MCPServers {
+		for name := range server.Env {
+			server.Env[name] = ""
+		}
+	}
 	for id, provider := range value.Providers {
 		provider.HasHeaders = len(provider.Headers) > 0
 		provider.Headers, provider.ClearHeaders = nil, false
@@ -212,6 +239,29 @@ func clone(value Value) Value {
 }
 
 func Validate(value Value) error {
+	if endpoint := value.Cloud.Endpoint; endpoint != "" {
+		parsed, err := url.Parse(endpoint)
+		if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Scheme != "wss" && (parsed.Scheme != "ws" || parsed.Hostname() != "localhost" && !net.ParseIP(parsed.Hostname()).IsLoopback()) {
+			return errors.New("invalid cloud endpoint")
+		}
+	}
+	if value.Mode != "" && value.Mode != "ask" && value.Mode != "auto" && value.Mode != "takeover" {
+		return errors.New("invalid permission mode")
+	}
+	if err := ValidateMCPServers(value.MCPServers); err != nil {
+		return err
+	}
+	for _, entry := range value.WorkspaceTrust {
+		if !filepath.IsAbs(entry.Project) || !strings.HasPrefix(entry.Item, "mcpServers/") || !serverName.MatchString(strings.TrimPrefix(entry.Item, "mcpServers/")) || entry.Decision != "allow" && entry.Decision != "deny" {
+			return errors.New("invalid workspace trust")
+		}
+		if hash, err := hex.DecodeString(entry.Hash); err != nil || len(hash) != 32 {
+			return errors.New("invalid workspace trust hash")
+		}
+	}
+	if err := validatePermissions(value); err != nil {
+		return err
+	}
 	for _, launch := range value.Unconfined {
 		if strings.TrimSpace(launch.Member) == "" || !filepath.IsAbs(launch.Project) || strings.ContainsRune(launch.Project, '\x00') || launch.Decision != "allow" && launch.Decision != "deny" {
 			return errors.New("invalid unrestricted startup decision")

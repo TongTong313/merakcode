@@ -126,9 +126,18 @@ func (m *Manager) previous(ctx context.Context, claim event.ID) (Workspace, erro
 
 // EndClaim releases execution leases while retaining files for review and rework.
 func (m *Manager) EndClaim(ctx context.Context, workspace Workspace) error {
+	return m.endLease(ctx, workspace.ID, Idle)
+}
+
+// ReleaseLease repairs a stale execution lease without deleting review resources.
+func (m *Manager) ReleaseLease(ctx context.Context, id event.ID) error {
+	return m.endLease(ctx, id, Released)
+}
+
+func (m *Manager) endLease(ctx context.Context, id event.ID, kind event.Type) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	ws, err := m.Get(ctx, workspace.ID)
+	ws, err := m.Get(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -139,7 +148,7 @@ func (m *Manager) EndClaim(ctx context.Context, workspace Workspace) error {
 	if err := m.save(ctx, ws); err != nil {
 		return err
 	}
-	if err := m.emit(ctx, ws, Idle, ws); err != nil {
+	if err := m.emit(ctx, ws, kind, ws); err != nil {
 		return err
 	}
 	close(m.changed)

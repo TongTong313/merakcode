@@ -7,6 +7,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/session"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 )
 
 const Version = 1
@@ -35,6 +36,7 @@ type Capabilities struct {
 }
 
 type PermissionReplyParams struct {
+	Leader   event.ID            `json:"leader,omitempty"`
 	Remember string              `json:"remember,omitempty"`
 	Human    event.ID            `json:"human,omitempty"`
 	Request  event.ID            `json:"request"`
@@ -55,14 +57,20 @@ type HelloResult struct {
 }
 
 type SessionCreateParams struct {
-	Mode     permission.Mode `json:"mode,omitempty"`
-	Provider string          `json:"provider,omitempty"`
-	Model    string          `json:"model,omitempty"`
-	Thinking model.Thinking  `json:"thinking,omitempty"`
-	Workdir  string          `json:"workdir,omitempty"`
+	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+	Budget     session.Budget       `json:"budget,omitempty"`
+	Mode       permission.Mode      `json:"mode,omitempty"`
+	Provider   string               `json:"provider,omitempty"`
+	Model      string               `json:"model,omitempty"`
+	Thinking   model.Thinking       `json:"thinking,omitempty"`
+	Workdir    string               `json:"workdir,omitempty"`
 }
 
+type MCPServer = config.MCPServer
+
 type SandboxStatusParams struct {
+	Group   event.ID        `json:"group,omitempty"`
+	Member  event.ID        `json:"member,omitempty"`
 	Session event.ID        `json:"session,omitempty"`
 	Workdir string          `json:"workdir,omitempty"`
 	Mode    permission.Mode `json:"mode,omitempty"`
@@ -73,9 +81,10 @@ type SessionCreateResult struct {
 }
 
 type SessionSendParams struct {
-	Selection *session.Selection `json:"selection,omitempty"`
-	Session   event.ID           `json:"session"`
-	Parts     []model.Part       `json:"parts"`
+	ExtendBudget bool               `json:"extendBudget,omitempty"`
+	Selection    *session.Selection `json:"selection,omitempty"`
+	Session      event.ID           `json:"session"`
+	Parts        []model.Part       `json:"parts"`
 }
 
 type SessionCancelParams struct {

@@ -24,6 +24,7 @@ const KindInplace Kind = "inplace"
 const KindNone Kind = "none"
 
 type Workspace struct {
+	SetupID   event.ID `json:"setupId,omitempty"`
 	ID        event.ID `json:"id"`
 	Kind      Kind     `json:"kind"`
 	Group     event.ID `json:"group"`
@@ -36,6 +37,7 @@ type Workspace struct {
 	Base      string   `json:"base"`
 	Released  bool     `json:"released,omitempty"`
 	Active    bool     `json:"active"`
+	Pooled    bool     `json:"pooled,omitempty"`
 }
 
 type Integration struct {
@@ -131,6 +133,31 @@ func (m *Manager) forWorktree(ctx context.Context, project string, claim task.Cl
 		}
 	}
 	ws := Workspace{ID: m.newID(), Active: true, Kind: KindWorktree, Group: card.Group, Task: card.ID, Claim: claim.ID, Member: claim.Member, Project: root, Directory: filepath.Join(parent, string(card.ID)+"-"+string(claim.Member)), Branch: "merak/" + string(card.ID) + "/" + string(claim.Member), Base: card.Base}
+	pooled, err := m.reusable(ctx, root)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if pooled.ID != "" {
+		if err := validatePooledPath(pooled); err != nil {
+			return Workspace{}, err
+		}
+		if err := git.ReuseWorktree(ctx, pooled.Directory, pooled.Branch, ws.Branch, ws.Base); err != nil {
+			return Workspace{}, err
+		}
+		pooled.Pooled = false
+		if err := m.save(ctx, pooled); err != nil {
+			return Workspace{}, err
+		}
+		ws.Directory = pooled.Directory
+		ws.SetupID = pooled.SetupID
+		if ws.SetupID == "" {
+			ws.SetupID = pooled.ID
+		}
+		if err := m.save(ctx, ws); err != nil {
+			return Workspace{}, err
+		}
+		return ws, m.emit(ctx, ws, Created, ws)
+	}
 	if _, err := os.Lstat(ws.Directory); !os.IsNotExist(err) {
 		return Workspace{}, errors.New("worktree directory already exists or is inaccessible")
 	}
@@ -184,6 +211,11 @@ func (m *Manager) emit(ctx context.Context, ws Workspace, kind event.Type, value
 	}
 	_, err = m.bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + ws.Group), Scope: event.Scope{Group: ws.Group, Task: ws.Task}, Actor: event.Actor{Kind: event.ActorAgent, ID: ws.Member}, Type: kind, Payload: body})
 	return err
+}
+
+// ObserveProject excludes a target update until its integration event is durable.
+func (m *Manager) ObserveProject(ctx context.Context, project string, observe func(context.Context) error) error {
+	return m.queue.Do(ctx, project, observe)
 }
 
 func (m *Manager) Integrate(ctx context.Context, workspace Workspace, target, check string) (Integration, error) {
@@ -267,7 +299,16 @@ func (m *Manager) Release(ctx context.Context, workspace Workspace) error {
 			return err
 		}
 	} else if ws.Kind == KindWorktree {
-		if err := git.RemoveWorktree(ctx, ws.Project, ws.Directory); err != nil {
+		if err := validatePooledPath(ws); err != nil {
+			return err
+		}
+		count, err := m.pooledCount(ctx, ws.Project)
+		if err != nil {
+			return err
+		}
+		if count < 2 {
+			ws.Pooled = true
+		} else if err := git.DiscardWorktree(ctx, ws.Project, ws.Directory); err != nil {
 			return err
 		}
 	}

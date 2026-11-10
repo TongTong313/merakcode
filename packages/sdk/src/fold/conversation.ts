@@ -24,6 +24,20 @@ export type Conversation = {
 
 /** Restores display data from the canonical snapshot without changing the snapshot. */
 export function createConversation(state: SessionState): Conversation {
+  const permissions: Conversation["permissions"] = {}
+  for (const [id, pending] of Object.entries(state.permissions ?? {})) {
+    if (pending.request.leader) continue
+    permissions[id] = {
+      id,
+      type: "permission.requested",
+      stream: `session:${state.id}`,
+      scope: pending.scope,
+      time: pending.time,
+      seq: pending.seq,
+      actor: { kind: "agent", id: pending.request.member },
+      payload: pending.request,
+    }
+  }
   const tools: Conversation["tools"] = {}
   for (const message of state.messages ?? []) {
     for (const part of message.parts ?? []) {
@@ -41,7 +55,7 @@ export function createConversation(state: SessionState): Conversation {
       }
     }
   }
-  return { state, tools, permissions: {}, questions: {} }
+  return { state, tools, permissions, questions: {} }
 }
 
 /** Folds live display data alongside the durable, Go-compatible session state. */
@@ -58,7 +72,7 @@ export function foldConversation(previous: Conversation, event: EngineEvent): Co
       next.live = collect(previous.live, event.payload)
       break
     case "message.completed":
-      delete next.live
+      if (event.payload.parts?.length) delete next.live
       for (const part of event.payload.parts ?? []) {
         if (!part.toolCall) continue
         const call = part.toolCall
@@ -101,7 +115,15 @@ export function foldConversation(previous: Conversation, event: EngineEvent): Co
       break
     }
     case "permission.requested":
-      next.permissions = { ...previous.permissions, [event.id]: event }
+      if (!event.payload.leader) next.permissions = { ...previous.permissions, [event.id]: event }
+      break
+    case "permission.escalated":
+      if (event.cause) {
+        next.permissions = {
+          ...previous.permissions,
+          [event.cause]: { ...event, id: event.cause, type: "permission.requested" },
+        }
+      }
       break
     case "permission.replied":
       next.permissions = { ...previous.permissions }
@@ -122,7 +144,9 @@ export function foldConversation(previous: Conversation, event: EngineEvent): Co
       break
     case "turn.finished":
       delete next.live
-      next.permissions = {}
+      next.permissions = Object.fromEntries(
+        Object.entries(previous.permissions).filter(([, request]) => request.payload.kind === "workspace"),
+      )
       next.questions = {}
       next.error = event.payload.code
       break

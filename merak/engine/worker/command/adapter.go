@@ -58,11 +58,7 @@ func (r *Runner) execute(ctx context.Context, binary string, a worker.Assignment
 	var output strings.Builder
 	stop := loop.Answered
 	defer func() {
-		if ctx.Err() != nil {
-			stop, runErr = loop.Cancelled, ctx.Err()
-		} else if runErr != nil {
-			stop = loop.Failed
-		}
+		stop, runErr = worker.Termination(ctx, runErr, stop)
 		report = worker.SynthesizeReport(a.Claim.ID, output.String(), stop, runErr)
 		ending, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
