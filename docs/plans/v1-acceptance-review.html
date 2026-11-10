@@ -1,0 +1,4434 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>MerakCode v1.0.0 当前分支验收复核与整改方案</title>
+    <style>
+      :root {
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --code: #f6f8fa;
+        --warn: #fff8c5;
+        --note: #ddf4ff;
+        --ok: #dafbe1;
+      }
+      body {
+        font:
+          15px/1.7 -apple-system,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        color: var(--fg);
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 26px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+      h2 {
+        font-size: 20px;
+        margin-top: 40px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 6px;
+      }
+      h3 {
+        font-size: 16px;
+        margin-top: 24px;
+      }
+      code {
+        font:
+          13px/1.5 Consolas,
+          "Cascadia Code",
+          monospace;
+        background: var(--code);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+      pre {
+        background: var(--code);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px 14px;
+        overflow-x: auto;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+      }
+      .file {
+        font-weight: 600;
+        margin: 16px 0 4px;
+      }
+      .box {
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 12px 0;
+      }
+      .warn {
+        background: var(--warn);
+        border: 1px solid #d4a72c;
+      }
+      .note {
+        background: var(--note);
+        border: 1px solid #54aeff;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 6px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--code);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .toc {
+        columns: 2;
+      }
+      .toc a {
+        text-decoration: none;
+        color: #0969da;
+      }
+      .figure {
+        margin: 18px 0 22px;
+      }
+      .figure svg {
+        width: 100%;
+        height: auto;
+        display: block;
+        font:
+          13px/1.3 -apple-system,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      .figure .cap {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+        margin-top: 6px;
+      }
+      .figure rect.b {
+        fill: #fff;
+        stroke: #1f2328;
+        stroke-width: 1.2;
+      }
+      .figure rect.blue {
+        fill: var(--note);
+        stroke: #54aeff;
+      }
+      .figure rect.green {
+        fill: var(--ok);
+        stroke: #4ac26b;
+      }
+      .figure rect.yellow {
+        fill: var(--warn);
+        stroke: #d4a72c;
+      }
+      .figure rect.grey {
+        fill: var(--code);
+        stroke: #8c959f;
+      }
+      .figure rect.zone {
+        fill: none;
+        stroke: #8c959f;
+        stroke-dasharray: 5 4;
+      }
+      .figure text {
+        fill: #1f2328;
+      }
+      .figure text.s {
+        font-size: 11.5px;
+        fill: var(--muted);
+      }
+      .figure text.t {
+        font-weight: 600;
+      }
+      .figure path.f {
+        stroke: #59636e;
+        stroke-width: 1.4;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .figure path.back {
+        stroke-dasharray: 5 4;
+      }
+      .figure line.lane {
+        stroke: var(--line);
+        stroke-dasharray: 4 4;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      .sidebar {
+        display: none;
+      }
+      @media (min-width: 1100px) {
+        body {
+          margin-left: max(296px, calc(50vw - 514px));
+        }
+        .sidebar {
+          display: block;
+          position: fixed;
+          top: 0;
+          bottom: 0;
+          left: 0;
+          width: 256px;
+          box-sizing: border-box;
+          overflow-y: auto;
+          padding: 24px 12px 24px 16px;
+          border-right: 1px solid var(--line);
+          background: #fff;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+      }
+      .sidebar .title {
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .sidebar ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .sidebar ul ul {
+        display: none;
+        margin: 2px 0 6px 12px;
+        border-left: 1px solid var(--line);
+      }
+      .sidebar li.open > ul {
+        display: block;
+      }
+      .sidebar a {
+        display: block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        color: var(--fg);
+        text-decoration: none;
+      }
+      .sidebar ul ul a {
+        color: var(--muted);
+      }
+      .sidebar a:hover {
+        background: var(--code);
+      }
+      .sidebar a.active {
+        color: #0969da;
+        background: var(--note);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <marker
+          id="arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" fill="#59636e" />
+        </marker>
+      </defs>
+    </svg>
+    <nav class="sidebar" aria-label="目录">
+      <a class="title" href="#">目录（回到顶部）</a>
+    </nav>
+
+    <h1>MerakCode v1.0.0 当前分支验收复核与整改方案</h1>
+
+    <h2 id="summary">概要</h2>
+    <div class="box warn">
+      <strong>结论：不通过验收。</strong>引擎和 SDK 的单元测试、静态检查全部通过，问题在四处：
+      <ol>
+        <li><strong>产品模型和要做的产品不一致</strong>，方案在几个根本点上偏离了愿景文档（第 2、6 节）。</li>
+        <li>
+          <strong>相对 v0.x 大面积倒退，违反“基本功能不能阉割”的底线。</strong>桌面端重写缩水（消息列表 921 → 284
+          行，设置页 1272 → 216 行，少了 26 个文件、23 个 e2e spec）；模型目录只剩 11
+          个内置模型，打开只看得到一家一两个模型；MCP
+          远程和登录、技能、插件、斜杠命令、计划、LSP、网页搜索、定时任务等十几项能力没有；系统提示词只有一句话（4.5、4.6
+          节）。
+        </li>
+        <li><strong>测试不真实。</strong>88 个桌面端 e2e 里 20 个失败，失败的用例被移出了 CI（5.4 节）。</li>
+        <li><strong>20 项基础功能缺陷</strong>，引擎内部分层也偏离了方案 3.3 节（第 3、5 节）。</li>
+      </ol>
+      引擎内核（循环、会话、工具门、模型客户端、沙箱、存储契约）质量合格，保留。整改按第 9 节的 29 份施工单（R0 到
+      R26）进行：先修地基和模型目录，再按新的产品模型改协作群和任务，同时补齐 v0.x 的全部能力，然后以 UI
+      分支为基线恢复桌面端，最后做首页、智能体、协作群、任务的新页面。
+    </div>
+    <p>
+      复核对象是 <code>dev-v1.0.0</code> 的提交 <code>f195bc2</code>（S0 到 S31、D1 到 D10），对照设计方案
+      <code>docs/plans/v1-agent-engine.html</code>、最初的愿景文档 <code>docs/智能体架构思考.md</code>、<code
+        >AGENTS.md</code
+      >
+      和产品负责人 2026-11-10 的三轮答复（第三轮的思路已补进愿景文档第 5 节）。第 7 节的决定已经吸收了这些答复；第 9、10
+      节是写给执行模型的施工单和执行规则，可以直接交出去。
+    </p>
+    <div class="box note">
+      复核方式：读代码，在 Windows 本机上跑全量测试（结果见 1.1 节），用 git 对照
+      <code>dev-v0.3.1</code>。没有修改产品代码。第 3
+      节标“代码确认”的结论可以直接从代码读出，标“需复现”的是代码推断，要在真实应用里确认后果。
+    </div>
+
+    <h3>目录</h3>
+    <ul class="toc">
+      <li><a href="#verdict">1. 验收结论</a></li>
+      <li><a href="#product">2. 产品逻辑的问题</a></li>
+      <li><a href="#bugs">3. 基础功能缺陷</a></li>
+      <li><a href="#ui">4. 界面、文案与模型配置</a></li>
+      <li><a href="#conform">5. 架构、冗余、TDD 与测试</a></li>
+      <li><a href="#conflict">6. 方案的矛盾</a></li>
+      <li><a href="#redesign">7. 整改方案</a></li>
+      <li><a href="#slices">8. 整改切片总表</a></li>
+      <li><a href="#orders">9. 施工单</a></li>
+      <li><a href="#rules">10. 执行规则</a></li>
+      <li><a href="#revise">11. 方案修订清单</a></li>
+    </ul>
+
+    <h2 id="verdict">1. 验收结论</h2>
+    <table>
+      <tr>
+        <th style="width: 22%">检查项</th>
+        <th style="width: 16%">结论</th>
+        <th>依据</th>
+      </tr>
+      <tr>
+        <td>符合产品要求</td>
+        <td>不符合</td>
+        <td>
+          没有智能体入口；群绑死在项目目录下；一个群只有一个群聊；收件箱在群里（第 2 节）；与最初愿景有 6 处偏离（6.3
+          节）
+        </td>
+      </tr>
+      <tr>
+        <td>符合设计方案</td>
+        <td>部分不符合</td>
+        <td>3.3 节的包结构被打破；9.4 节的个人收件箱做成了群内页签；方案列出的 Gemini 客户端没有实现（第 5 节）</td>
+      </tr>
+      <tr>
+        <td>基础功能正确</td>
+        <td>不符合</td>
+        <td>20 项缺陷（第 3 节），其中 B15、B17 由实测发现，B19、B20 由对照 v0.3.1 发现</td>
+      </tr>
+      <tr>
+        <td>没有过度设计和冗余</td>
+        <td>不符合</td>
+        <td>同一操作两套方法、一个结构三种用途、名单写三份、死文案键、阶段 5 提前完成（5.2 节）</td>
+      </tr>
+      <tr>
+        <td>TDD</td>
+        <td>无从查证</td>
+        <td>42 个切片落成 4 个提交，红测试先行无法从历史验证；测试写法测真实行为、不用 mock（5.4 节）</td>
+      </tr>
+      <tr>
+        <td>产品能力只经 SDK</td>
+        <td>客户端符合，内部不符合</td>
+        <td>渲染进程、主进程、Go 命令行都只经协议；但产品逻辑留在渲染进程，调用者身份由参数自报（5.1 节）</td>
+      </tr>
+      <tr>
+        <td>全量测试</td>
+        <td>单元测试通过，e2e 不通过</td>
+        <td>
+          本次在 Windows 本机执行全部命令（1.1 节）：单元测试和 SDK 集成测试全部通过；桌面端 e2e 88 个用例 20 个失败
+        </td>
+      </tr>
+      <tr>
+        <td>相对 v0.x 不倒退</td>
+        <td>不符合</td>
+        <td>桌面端、模型目录、工具和扩展能力大面积缺失（4.5、4.6、7.5 节）</td>
+      </tr>
+      <tr>
+        <td>测试的真实性</td>
+        <td>不符合</td>
+        <td>失败的 e2e 被排除在 CI 之外，其中 6 个设置用例是从 CI 里的文件挪到不进 CI 的新文件（5.4 节）</td>
+      </tr>
+      <tr>
+        <td><strong>总结论</strong></td>
+        <td><strong>不通过</strong></td>
+        <td>TDD 一项按约定可以放宽；产品逻辑、基础功能、不倒退、架构、测试真实性五项不能放宽，必须整改后重新验收</td>
+      </tr>
+    </table>
+
+    <h3 id="verdict-tests">1.1 本次实测</h3>
+    <p>2026-11-10 在 Windows（MSYS）本机执行，提交 <code>f195bc2</code>，Go 和 turbo 都关掉缓存重跑过一次。</p>
+    <table>
+      <tr>
+        <th style="width: 44%">命令</th>
+        <th style="width: 18%">结果</th>
+        <th>说明</th>
+      </tr>
+      <tr>
+        <td><code>pnpm check</code></td>
+        <td>失败 1 项</td>
+        <td>
+          只有 <code>format:check</code> 因 <code>docs/智能体架构思考.md</code> 未格式化而失败（这是产品负责人的原文，R0
+          处理）；其余 9 项全部通过
+        </td>
+      </tr>
+      <tr>
+        <td><code>turbo typecheck --force</code></td>
+        <td>通过</td>
+        <td>6 个包，含 Go 的 gofmt 和三平台 <code>go vet</code></td>
+      </tr>
+      <tr>
+        <td><code>go test -count=1 ./...</code></td>
+        <td>通过</td>
+        <td>48 个包通过，13 个包没有测试，0 失败；根包 <code>engine</code> 单独耗时 293 秒</td>
+      </tr>
+      <tr>
+        <td>
+          <code>pnpm test:script</code>；<code>packages/util</code>、<code>log</code>、<code>sdk</code> 的
+          <code>pnpm test</code>
+        </td>
+        <td>通过</td>
+        <td>42、54、43、27 个用例</td>
+      </tr>
+      <tr>
+        <td><code>pnpm --dir packages/sdk test:e2e</code></td>
+        <td>通过</td>
+        <td>5 个文件、6 个用例，对真实 <code>merak serve</code></td>
+      </tr>
+      <tr>
+        <td><code>apps/desktop/main</code>、<code>apps/desktop/renderer</code> 的 <code>pnpm test</code></td>
+        <td>通过</td>
+        <td>27 个、161 个用例；渲染进程用真实引擎夹具</td>
+      </tr>
+      <tr>
+        <td><code>pnpm --dir apps/desktop/main run build</code></td>
+        <td>失败</td>
+        <td>
+          开发版 MerakCode 开着时，<code>better-sqlite3</code>
+          的原生模块被锁，EPERM（B15）；改到临时目录构建后拷回才能继续
+        </td>
+      </tr>
+      <tr>
+        <td><code>pnpm --dir apps/desktop/main test:e2e</code>（全部 28 个 spec）</td>
+        <td>失败</td>
+        <td>
+          88 个用例，68 通过，20 失败：<code>settings-tools</code> 7、<code>conversation-actions</code> 3、<code
+            >branch-guards</code
+          >
+          3、<code>branch-recovery</code> 3、<code>branch-editor-race</code> 1、<code>onboarding</code> 1、<code
+            >settings</code
+          >
+          1、<code>worktree</code> 1。前 7 个 spec 本来就不在 CI 里；<code>worktree</code> 在 CI 里，但它的失败只在
+          Windows 上出现（B17）
+        </td>
+      </tr>
+    </table>
+
+    <h2 id="product">2. 产品逻辑的问题</h2>
+
+    <h3 id="product-model">2.1 现在的模型和目标模型</h3>
+    <!-- prettier-ignore -->
+    <figure class="figure">
+      <svg viewBox="0 0 960 400" role="img" aria-label="现在的模型和目标模型">
+        <rect class="zone" x="20" y="20" width="440" height="360" rx="8" />
+        <text class="t" x="40" y="44" dominant-baseline="middle">现在：一个“群”同时是项目、名册、聊天和任务池</text>
+        <rect class="b" x="40" y="64" width="400" height="40" rx="6" />
+        <text x="240" y="84" text-anchor="middle" dominant-baseline="middle">协作群：绑定一个项目目录，创建时选本地或云端</text>
+        <rect class="b grey" x="40" y="116" width="400" height="40" rx="6" />
+        <text x="240" y="136" text-anchor="middle" dominant-baseline="middle">成员：人 + 多个 Leader + 多个 Worker</text>
+        <rect class="b blue" x="40" y="168" width="400" height="40" rx="6" />
+        <text x="240" y="188" text-anchor="middle" dominant-baseline="middle">群线程：默认 Leader，全群只有这一个群聊</text>
+        <rect class="b blue" x="40" y="220" width="190" height="56" rx="6" />
+        <text x="135" y="240" text-anchor="middle" dominant-baseline="middle">顶层任务 A</text>
+        <text class="s" x="135" y="260" text-anchor="middle" dominant-baseline="middle">一条任务线程，自己的 Leader</text>
+        <rect class="b blue" x="250" y="220" width="190" height="56" rx="6" />
+        <text x="345" y="240" text-anchor="middle" dominant-baseline="middle">顶层任务 B</text>
+        <text class="s" x="345" y="260" text-anchor="middle" dominant-baseline="middle">一条任务线程，自己的 Leader</text>
+        <rect class="b yellow" x="40" y="292" width="400" height="40" rx="6" />
+        <text x="240" y="312" text-anchor="middle" dominant-baseline="middle">智能体（档案）藏在设置里，只能复制内置档案再改</text>
+        <text class="s" x="240" y="354" text-anchor="middle" dominant-baseline="middle">多个 Leader 的发言混在同一个消息流里</text>
+
+        <rect class="zone" x="500" y="20" width="440" height="360" rx="8" />
+        <text class="t" x="520" y="44" dominant-baseline="middle">目标：对话、智能体、协作群、任务</text>
+        <rect class="b green" x="520" y="62" width="160" height="44" rx="6" />
+        <text x="600" y="78" text-anchor="middle" dominant-baseline="middle">智能体库</text>
+        <text class="s" x="600" y="96" text-anchor="middle" dominant-baseline="middle">首页可添加</text>
+        <path class="f" d="M600 106 V124" />
+        <rect class="zone" x="516" y="124" width="408" height="216" rx="8" />
+        <text class="s" x="532" y="140" dominant-baseline="middle">工作空间（项目文件夹）</text>
+        <rect class="b blue" x="532" y="152" width="170" height="44" rx="6" />
+        <text x="617" y="168" text-anchor="middle" dominant-baseline="middle">协作群 A</text>
+        <text class="s" x="617" y="186" text-anchor="middle" dominant-baseline="middle">Leader 甲</text>
+        <rect class="b blue" x="716" y="152" width="120" height="44" rx="6" />
+        <text x="776" y="168" text-anchor="middle" dominant-baseline="middle">协作群 B</text>
+        <text class="s" x="776" y="186" text-anchor="middle" dominant-baseline="middle">Leader 乙</text>
+        <rect class="b yellow" x="532" y="236" width="80" height="44" rx="6" />
+        <text x="572" y="258" text-anchor="middle" dominant-baseline="middle">任务 X</text>
+        <rect class="b yellow" x="622" y="236" width="80" height="44" rx="6" />
+        <text x="662" y="258" text-anchor="middle" dominant-baseline="middle">任务 Y</text>
+        <rect class="b yellow" x="716" y="236" width="120" height="44" rx="6" />
+        <text x="776" y="258" text-anchor="middle" dominant-baseline="middle">任务 Z</text>
+        <rect class="b yellow" x="848" y="236" width="64" height="44" rx="6" />
+        <text x="880" y="252" text-anchor="middle" dominant-baseline="middle">任务 W</text>
+        <text class="s" x="880" y="270" text-anchor="middle" dominant-baseline="middle">未启动</text>
+        <path class="f" d="M572 196 V236" />
+        <path class="f" d="M662 196 V236" />
+        <path class="f" d="M776 196 V236" />
+        <rect class="b grey" x="532" y="292" width="150" height="36" rx="6" />
+        <text x="607" y="310" text-anchor="middle" dominant-baseline="middle">对话（单聊）</text>
+        <text class="s" x="800" y="310" text-anchor="middle" dominant-baseline="middle">项目组以后再设计</text>
+        <text class="s" x="720" y="362" text-anchor="middle" dominant-baseline="middle">一个协作群做多个任务，一个任务只属于一个协作群</text>
+      </svg>
+      <figcaption class="cap">图 1 现在的模型（左）和目标模型（右）</figcaption>
+    </figure>
+    <p>
+      现在的“群”把四件事合在一起：项目、成员名册、聊天、任务池。Leader
+      绑在任务上（每个顶层任务一条线程），群只有一条群线程，所以一个群只有一个聊天流，任务也离不开群。目标模型里能直接新建四样东西：对话、智能体、协作群、任务，都要选工作空间。协作群和任务一对多：一个协作群有且只有一个
+      Leader，可以做多个任务；一个任务最多属于一个协作群，Leader 就是这个群的 Leader。单独建的任务（图里的
+      W）要新建或选择一个协作群才会开始。项目组是更高层级的设计，以后再定。
+    </p>
+
+    <h3 id="product-issues">2.2 问题清单</h3>
+    <table>
+      <tr>
+        <th style="width: 6%">编号</th>
+        <th style="width: 60%">现象</th>
+        <th>依据</th>
+      </tr>
+      <tr>
+        <td>P1</td>
+        <td>
+          没有“智能体”入口。首页和侧栏都没有，档案藏在设置的“成员与档案”里；页面没有“新建”按钮，只能复制内置档案再改；本机探测到的产品只是只读列表，不能一键添加
+        </td>
+        <td><code>settings/profiles.tsx:116-186</code></td>
+      </tr>
+      <tr>
+        <td>P2</td>
+        <td>没有首页。启动后 <code>/</code> 直接跳到最近项目的新对话；没有项目时只有一个“打开文件夹”按钮</td>
+        <td><code>app.tsx:85-110</code></td>
+      </tr>
+      <tr>
+        <td>P3</td>
+        <td>
+          群挂在目录下。路由是 <code>/:dir/group/:id</code>；没打开目录时侧栏的“新建协作群”是灰的；群列在目录分组里
+        </td>
+        <td><code>app.tsx:146</code>、<code>shell/sidebar.tsx:257</code></td>
+      </tr>
+      <tr>
+        <td>P4</td>
+        <td>
+          一个群只有一个群聊。线程的键是群 id 或顶层任务
+          id；界面在输入框上方放了一个“讨论位置”下拉框，在群聊和各个任务之间切换
+        </td>
+        <td><code>leader/thread.go:317-343</code>、<code>conversation/group-page.tsx:245-261</code></td>
+      </tr>
+      <tr>
+        <td>P5</td>
+        <td>多个 Leader 的发言混在同一个消息流；找不到作者时一律显示“群主”</td>
+        <td><code>conversation/group-page.tsx:125</code></td>
+      </tr>
+      <tr>
+        <td>P6</td>
+        <td>收件箱是群页的一个页签，不是个人的；跨群的待办要一个个群点进去看</td>
+        <td><code>conversation/group-page.tsx:162</code>，与方案 9.4 节不一致</td>
+      </tr>
+      <tr>
+        <td>P7</td>
+        <td>
+          引擎已有、界面没有的操作：移出成员、删除档案、暂停和恢复群。群不能改名、归档或删除，协议里也没有
+          <code>group.list</code>
+        </td>
+        <td><code>internal/server/server.go:365、395-406</code>，界面无调用</td>
+      </tr>
+    </table>
+
+    <h2 id="bugs">3. 基础功能缺陷</h2>
+    <table>
+      <tr>
+        <th style="width: 5%">编号</th>
+        <th style="width: 22%">位置</th>
+        <th style="width: 33%">问题</th>
+        <th style="width: 28%">后果</th>
+        <th>确认</th>
+      </tr>
+      <tr>
+        <td>B1</td>
+        <td><code>conversation/group-create.tsx:107-120</code></td>
+        <td>每次建群都把内置 Leader 和选中的外部产品另存为新档案（id 置空）</td>
+        <td>档案越建越多，同名的“MerakCode Leader”“Claude Code”反复出现</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B2</td>
+        <td><code>engine/member_probe.go:36</code>、<code>sdk/src/client.ts:108</code></td>
+        <td>“测试连通”在引擎侧有 30 秒超时，并且真的调用一次模型；SDK 对所有调用统一 10 秒超时</td>
+        <td>外部产品稍慢就报 MRK-1001，引擎还在跑；每测一次花一次模型调用</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B3</td>
+        <td><code>sdk/src/client.ts:108-111</code></td>
+        <td>
+          所有方法共用一个 10 秒超时，包括
+          <code>model.refresh</code>、<code>model.discover</code>、<code>diagnostics.bundle</code>、<code
+            >remote.connect</code
+          >
+        </td>
+        <td>网络慢或日志大时失败</td>
+        <td>代码确认，频率需复现</td>
+      </tr>
+      <tr>
+        <td>B4</td>
+        <td><code>conversation/group-page.tsx:119-141、274</code></td>
+        <td>
+          群聊只在 <code>message.completed</code>
+          之后显示 Leader 的话，没有流式、工具卡、头像和时间；输入框的忙碌状态恒为 false
+        </td>
+        <td>Leader 思考期间群聊没有任何反馈，也无法停止</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B5</td>
+        <td><code>state/groups.ts:182-244、313-315</code></td>
+        <td>
+          每个群把全部历史事件放进一个数组，每来一条事件复制整个数组并线性查重；队列里任何一次处理出错就关闭全局共享的连接
+        </td>
+        <td>群越用越卡；一个群的折叠异常会打断单聊的流式输出</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B6</td>
+        <td><code>state/groups.ts:94-114、253</code></td>
+        <td>
+          群列表靠 <code>events.find</code> 扫全部 <code>group.created</code> 得到；每个群又扫一遍不带群范围的全部
+          <code>notice.sent</code>
+        </td>
+        <td>启动时间随历史增长；群无法删除或归档</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B7</td>
+        <td><code>internal/server/server.go:731-765</code>；<code>settings/profiles.tsx:29</code> 等 6 处</td>
+        <td>
+          服务端按方法前缀把所有错误折成一个码（群和任务一律 MRK-6001），真实原因丢失；界面又不看返回的码，直接写死
+          MRK-6001
+        </td>
+        <td>用户看到的永远是“请求失败 MRK-6001”</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B8</td>
+        <td><code>settings/models.tsx:43-45、52-54</code></td>
+        <td>保存密钥时把 <code>config.get</code> 的公开视图（默认名、从环境变量读到的地址、hasKey）整个回写进配置</td>
+        <td>环境变量里的服务地址被固化进配置文件</td>
+        <td>代码确认，后果需复现</td>
+      </tr>
+      <tr>
+        <td>B9</td>
+        <td><code>settings/profiles.tsx:189-342</code></td>
+        <td>
+          档案表单的服务商和模型是手填文本框，不用模型选择器；不能选角色；外部产品只在 Worker
+          下可选；工具池、预算、分享不能改；没有删除
+        </td>
+        <td>填错一个字母要到运行时才失败</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B10</td>
+        <td><code>settings/profiles.tsx:35-55</code>、<code>engine/profiles.go:34-55</code></td>
+        <td>
+          外部产品的环境变量（通常是 API key）明文存进档案文档，<code>profile.list</code> 原样返回，编辑时明文显示
+        </td>
+        <td>密钥进了数据库和界面</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B11</td>
+        <td><code>conversation/group-create.tsx:99、110-118</code></td>
+        <td>内置 Leader 的模型取自“这个目录新对话输入框上次选的模型”，建群表单里看不到</td>
+        <td>用户不知道 Leader 用的是什么模型</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B12</td>
+        <td><code>conversation/group-create.tsx:285-287</code></td>
+        <td>Leader 下拉框过滤掉了所有外部产品</td>
+        <td>引擎已支持的外部 Leader（S28）在界面上选不到</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B13</td>
+        <td><code>conversation/group-page.tsx:495-510</code></td>
+        <td>“添加成员”弹窗直接嵌入设置里整页的档案管理，不标出谁已经在群里</td>
+        <td>添加和管理混在一起，用户找不到要点哪里</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B14</td>
+        <td>
+          <code>internal/server/server.go</code> 各方法的 <code>params.Human</code>；<code>state/groups.ts:21</code>
+        </td>
+        <td>每个请求由客户端自报“我是谁”，界面写死 <code>local-human</code></td>
+        <td>角色检查可被任意客户端绕过；多人时身份不可信</td>
+        <td>代码确认；云端转发时是否改写未核实</td>
+      </tr>
+      <tr>
+        <td>B15</td>
+        <td><code>apps/desktop/main/script/build.ts:51-73</code></td>
+        <td>
+          桌面端主进程当存储宿主，要把 <code>better-sqlite3</code> 的原生模块复制进 <code>dist</code>；构建开头先删整个
+          <code>dist</code>
+        </td>
+        <td>
+          开发版 MerakCode 开着时 Windows 锁住 <code>.node</code> 文件，主进程构建以 EPERM 失败，<code>dist</code>
+          只剩半截
+        </td>
+        <td>本次复核实测</td>
+      </tr>
+      <tr>
+        <td>B16</td>
+        <td><code>apps/desktop/renderer/src/state/models.ts</code></td>
+        <td>
+          和 dev-v0.3.1 的同名文件（172 行，现在 105
+          行）相比丢了四项：小模型设置、跳过已弃用模型、每个服务商的默认模型、每个模型的默认思考强度
+        </td>
+        <td>没配默认模型时直接取列表第一个，可能是已弃用的模型；思考强度总是落在第一档</td>
+        <td>git 对照确认</td>
+      </tr>
+      <tr>
+        <td>B17</td>
+        <td><code>e2e/worktree.spec.ts</code> 的 alternate 用例</td>
+        <td>用同一目录的另一种写法（正斜杠、末尾斜杠）建群后刷新</td>
+        <td>整个应用只剩“连不上本地服务”和一个重试按钮，什么都用不了；UI 分支专门修过这类问题，当前分支没有这些修复</td>
+        <td>本次实测（Windows）</td>
+      </tr>
+      <tr>
+        <td>B18</td>
+        <td><code>state/store.ts:242-250</code></td>
+        <td>对话改名、删除只写进渲染进程的本地存储，引擎不知道；“删除”实际是隐藏</td>
+        <td>命令行和另一台客户端看不到改名；重装后标题丢失</td>
+        <td>代码确认</td>
+      </tr>
+      <tr>
+        <td>B19</td>
+        <td><code>engine/model/catalog/builtin.go</code>、<code>refresh.go:76-110</code></td>
+        <td>
+          模型目录只有手写的 11 个内置模型；在线刷新只在手动点“获取”或带
+          <code>--refresh-models</code> 启动时运行，结果只在内存里，重启就没了；没有公开目录补全，也没有过滤
+        </td>
+        <td>只配了通义的密钥，打开只有 <code>qwen3.5-plus</code> 一个模型；其他服务商也只有一到三个</td>
+        <td>代码确认，4.6 节</td>
+      </tr>
+      <tr>
+        <td>B20</td>
+        <td><code>engine/prompt/templates/leader.md</code>、<code>worker.md</code></td>
+        <td>Leader 和 Worker 的系统提示词各只有一句话（Worker 18 个词）；v0.3.1 的提示词每份 1200 到 2300 词</td>
+        <td>智能体不知道工具使用规则、工作方式和安全要求，干活质量明显下降</td>
+        <td>代码确认</td>
+      </tr>
+    </table>
+
+    <h2 id="ui">4. 界面、文案与模型配置</h2>
+
+    <h3 id="ui-ia">4.1 现在的信息架构</h3>
+    <pre>
+启动 → 最近项目的新对话（没有项目：打开文件夹）
+侧栏
+├── 新对话 ⌘N
+├── 新建协作群 ⌘G（没打开目录时禁用）
+├── 搜索 ⌘K
+├── 项目目录 A
+│   ├── 群 1 → 群页：群聊 | 任务看板（审核藏在里面）| 收件箱 | 用量
+│   │          右栏只列智能体；群设置折叠在右栏里；“添加成员”弹出设置页
+│   └── 单聊 …
+└── 设置（弹窗）→ 成员与档案 · 模型 · 权限 · 云端 · 远程成员 …</pre>
+
+    <h3 id="ui-visual">4.2 视觉</h3>
+    <ul>
+      <li>
+        设计令牌只有颜色、字号、圆角（<code>styles/tokens.css</code>），没有间距和层级；间距在 4 个 CSS
+        文件里直接写像素。
+      </li>
+      <li>
+        <code>styles/app.css</code> 2205 行，群相关样式从 1536
+        行起按开发先后追加；为了不溢出给多处按钮统一打补丁（<code>app.css:1620-1631</code>）。
+      </li>
+      <li>
+        已有 <code>ui/select</code>、<code>ui/segmented</code>、<code>ui/switch</code>，群页、建群、档案表单仍用原生
+        <code>select</code
+        >、radio、checkbox（<code>group-page.tsx:247、381</code>、<code>group-create.tsx:223、292</code>、<code>profiles.tsx:192</code>）。
+      </li>
+      <li>群聊消息是灰色圆角块加粗体名字（<code>app.css:1594-1607</code>），和单聊不是同一套消息组件。</li>
+      <li><code>group-page.tsx</code> 是一个 515 行的组件，四个页签用五层嵌套的 <code>Show</code> 实现。</li>
+    </ul>
+
+    <h3 id="ui-copy">4.3 文案</h3>
+    <ul>
+      <li>
+        同一个角色叫“群主”（<code>group.leader</code>）、“队长”（<code>task.review.unpublished</code>、<code>task.assignee</code>）和
+        Leader。
+      </li>
+      <li>工程用语直接给用户看：“档案”“成员与档案”“线程每分钟次数”“讨论位置”。</li>
+      <li>
+        v0.3.1
+        群界面的文案键还在，但已没有任何代码引用：<code>group.seatName</code>、<code>group.roleTemplate</code>、<code>group.copyFrom</code>、<code>group.join</code>、<code>group.removeTitle</code>、<code>group.outdated</code>、<code>group.someUnavailable</code>、<code>group.defaultLeader</code>、<code
+          >group.elapsed</code
+        >
+        等。它们对应的能力（改成员名字、角色模板、从已有群复制成员、移出成员、产品版本提示、运行时长）在新界面里都没有了，违反方案
+        14 节“v0.3.1 已有的能力一项不少”。
+      </li>
+    </ul>
+
+    <h3 id="ui-model">4.4 模型配置</h3>
+    <ul>
+      <li>
+        模型设置页沿用
+        v0.3.1，但保存时回写公开视图（B8）；八家官方服务商的名单写了三份：<code>internal/server/config.go:46</code>、<code>state/models.ts:7</code>、<code>settings/models.tsx:16</code>。
+      </li>
+      <li>
+        单聊用模型选择器；档案用手填文本框（B9）；群 Leader 的模型从输入框的选择隐式带入（B11）。同一件事三种做法。
+      </li>
+      <li>
+        方案 3.3 节列了 <code>model/gemini</code> 子包，实际没有，Gemini 按 OpenAI
+        协议接（<code>internal/server/config.go:51-56</code>）。
+      </li>
+    </ul>
+
+    <h3 id="ui-regression">4.5 桌面端相对 UI 分支的退化</h3>
+    <p>
+      <code>origin/tt/refactor/ui-side-panel</code> 基于 dev-v0.3.1 的最新提交，另有 16
+      个提交（每个对话自己的侧边面板标签页、统一的侧栏状态、同一目录不同写法的修复、退出和关窗的修复），是现有最完整的桌面端。当前分支从
+      dev-v0.3.1 分出，没有这 16 个提交，并且在迁到新引擎时重写了大量组件。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 40%">指标</th>
+        <th style="width: 20%">UI 分支</th>
+        <th style="width: 20%">当前</th>
+        <th>差</th>
+      </tr>
+      <tr>
+        <td>渲染进程源文件（不含测试）</td>
+        <td>114 个，23694 行</td>
+        <td>113 个，18064 行</td>
+        <td>少 5630 行；UI 分支的 26 个文件不存在</td>
+      </tr>
+      <tr>
+        <td>桌面端 e2e</td>
+        <td>51 个 spec，约 205 个用例</td>
+        <td>28 个 spec，88 个用例</td>
+        <td>23 个 spec 不存在，20 个用例失败</td>
+      </tr>
+    </table>
+    <p>缩水最多的文件（行数）：</p>
+    <table>
+      <tr>
+        <th style="width: 36%">文件</th>
+        <th style="width: 16%">UI 分支 → 当前</th>
+        <th>丢掉的部分</th>
+      </tr>
+      <tr>
+        <td><code>features/settings/settings.tsx</code></td>
+        <td>1272 → 216</td>
+        <td>模型、权限、MCP、技能、插件、规则、记忆七个页面（只剩“通用”和“关于”）</td>
+      </tr>
+      <tr>
+        <td><code>features/conversation/messages.tsx</code></td>
+        <td>921 → 284</td>
+        <td>回合操作（撤回、编辑重发、重试、复制）、错误卡、附件、用时和步数、协作群的座位气泡和群回复</td>
+      </tr>
+      <tr>
+        <td><code>features/panel/panel.tsx</code>、<code>panel/*</code></td>
+        <td>543 → 109</td>
+        <td>每个对话自己的面板标签页、关闭确认、工作区状态</td>
+      </tr>
+      <tr>
+        <td><code>features/conversation/page.tsx</code></td>
+        <td>486 → 103</td>
+        <td>合并回主分支、首条消息迁到 worktree</td>
+      </tr>
+      <tr>
+        <td><code>features/code/state.ts</code> 和 <code>code/*</code></td>
+        <td>472 → 92</td>
+        <td>草稿保护、文件身份、跨对话的文件引用</td>
+      </tr>
+      <tr>
+        <td><code>features/conversation/composer.tsx</code>、<code>send.ts</code>、<code>dock.tsx</code></td>
+        <td>556 → 256 等</td>
+        <td>附件、斜杠命令、接管确认、待审批和待回答的停靠栏细节</td>
+      </tr>
+      <tr>
+        <td><code>features/git/*</code></td>
+        <td>210 → 84 等</td>
+        <td>提交、推送、AI 写提交信息（<code>git/commit.tsx</code> 整个不存在）</td>
+      </tr>
+      <tr>
+        <td><code>state/models.ts</code></td>
+        <td>172 → 105</td>
+        <td>B16</td>
+      </tr>
+    </table>
+    <p>
+      UI 分支独有的 23 个 spec
+      覆盖：浏览器（地址、标签页、重启恢复）、编辑器（文件状态、布局、草稿）、文件身份、终端（输入重连、停止进程树）、审核保护、各类目录恢复（删除、离线、非
+      git、改名）、首条消息迁移、面板错误、存储损坏、与外部产品单聊（<code>direct.spec.ts</code>）、计划模式。
+    </p>
+
+    <h3 id="ui-models">4.6 模型和工具为什么变少了</h3>
+    <p>
+      不是 Go 的问题，是执行方没有把 v0.3.1 的模型目录做完。v0.3.1
+      的目录由五部分组成，新实现只做了第一部分的一个极简版本：
+    </p>
+    <table>
+      <tr>
+        <th style="width: 26%">部分</th>
+        <th style="width: 40%">v0.3.1</th>
+        <th>v1 现在</th>
+      </tr>
+      <tr>
+        <td>各服务商的实时列表</td>
+        <td>每家一个适配器，用用户的密钥拉列表并过滤掉不能对话的模型；启动时和每小时自动刷新</td>
+        <td>能拉，但只在手动点“获取”时；不过滤</td>
+      </tr>
+      <tr>
+        <td>缓存</td>
+        <td>每家一个缓存文件，离线和重启后照样有完整列表</td>
+        <td>没有，重启后回到 11 个</td>
+      </tr>
+      <tr>
+        <td>公开目录</td>
+        <td>OpenRouter 免密钥列表，补上下文、输出上限、价格；中转站的模型按 id 匹配</td>
+        <td>没有</td>
+      </tr>
+      <tr>
+        <td>兜底表</td>
+        <td>按服务商和模型族给思考档位、默认档位、能否关闭思考，标了官方文档出处</td>
+        <td>11 个模型各自写死</td>
+      </tr>
+      <tr>
+        <td>失败提示</td>
+        <td>刷新失败发事件，界面按服务商只提示一次</td>
+        <td>没有</td>
+      </tr>
+    </table>
+    <p>
+      工具也一样：v0.3.1 注册了 31 个工具，v1 缺网页抓取、网页搜索、代码搜索、多处编辑、LSP、Word 和 Excel
+      的读写、待办、计划、技能、定时任务。整改见 7.5 节的对照表和 7.6 节。
+    </p>
+
+    <h2 id="conform">5. 架构、冗余、TDD 与测试</h2>
+
+    <h3 id="conform-arch">5.1 架构</h3>
+    <p>符合的部分：</p>
+    <ul>
+      <li>
+        渲染进程只经 <code>@merakcode/sdk</code> 的 <code>connect</code>（<code>state/client.ts:28</code>），没有直连。
+      </li>
+      <li>
+        主进程启动 <code>merak serve --store remote</code>，以 SDK
+        当存储宿主（<code>main/src/backend.ts:156-200</code>）。
+      </li>
+      <li>Go 命令行有 <code>internal/cli/architecture_test.go</code> 守住“产品命令只经协议”，例外只有宿主入口。</li>
+    </ul>
+    <p>不符合的部分：</p>
+    <ol>
+      <li>
+        根包 <code>engine</code> 有六十多个非测试文件、一万行以上（<code>group.go</code> 907 行、<code>sandbox.go</code>
+        521 行、<code>device_worker.go</code> 417 行等）。快速通道、Leader
+        运行、哨兵、工作周期、合并、云端转发、远程成员都在这里；方案 3.3 节规定
+        <code>engine.go</code> 只做装配，这些分别归
+        <code>leader/</code>、<code>workspace/</code>、<code>worker/remote</code>。<code>leader/</code>
+        包实际只有调度器、群状态、触发规则和限流。
+      </li>
+      <li>
+        <code>internal/server/server.go</code> 的 <code>ServeHTTP</code> 约 720 行，近 70 个方法写在一个
+        <code>switch</code> 里，错误码按方法前缀猜（B7）。
+      </li>
+      <li>
+        产品逻辑留在渲染进程：群列表、未读数、成员忙闲在 <code>state/groups.ts</code> 里用原始事件自己拼，而方案 14
+        节要求界面状态由 SDK 的折叠函数算出。
+      </li>
+      <li>调用者身份由参数自报（B14）。</li>
+    </ol>
+
+    <h3 id="conform-redundant">5.2 过度设计与冗余</h3>
+    <ul>
+      <li>
+        同一件事两条路：<code>member.register</code> 和 <code>group.addMember</code>；<code>group.removeMember</code>
+        和别名 <code>member.remove</code>（<code>server.go:359、383、395</code>）。
+      </li>
+      <li>
+        <code>group.create</code> 可以内联档案，走
+        <code>saveGroupProfile</code>，只校验网络、不校验名字和工具池（<code>engine/group.go:161-183</code>），和
+        <code>profile.save</code> 的 <code>validateProfile</code> 不一致。
+      </li>
+      <li>
+        <code>config.Provider</code>
+        一个结构同时当持久化值、公开视图和补丁命令（<code>HasKey</code>、<code>ClearKey</code>、<code>HasHeaders</code>、<code
+          >ClearHeaders</code
+        >
+        混在一起，<code>internal/platform/config/config.go:25-41</code>），B8 由此而来。
+      </li>
+      <li>官方服务商名单三份（4.4 节）；死文案键（4.3 节）。</li>
+      <li>
+        阶段 5 的云端群和远程成员（S30、S31、<code>internal/testcloud</code>）在本地产品还不能用时就做完了；方案 15
+        节要求阶段之间停下来使用一段时间，再调整后面的切片。
+      </li>
+    </ul>
+
+    <h3 id="conform-tdd">5.3 TDD 与提交</h3>
+    <ul>
+      <li>
+        分支历史：<code>f95425f</code> 一个提交包含 S1 到 S24 和 D1 到 D8；<code>86b4649</code>、<code>d6d0652</code> 是
+        S25；<code>f195bc2</code> 一个提交包含 S26 到 S31。方案 15
+        节要求一片一提交，红测试先行无法查证，按事后评估处理。
+      </li>
+      <li>
+        测试写法符合 16 节：渲染进程测试用真实引擎夹具和假模型（<code>group-page.test.tsx:14-21</code>），Go
+        测试用假模型和内存存储，不用 mock。
+      </li>
+      <li>
+        测试没有挡住第 3 节的缺陷：B1、B5、B7
+        都是应当有测试覆盖的行为（“建两个群后档案数不变”“折叠出错不断开连接”“错误码保留原因”）。
+      </li>
+    </ul>
+
+    <h3 id="conform-test">5.4 测试执行与 CI</h3>
+    <ul>
+      <li>全量命令的结果见 1.1 节。</li>
+      <li>
+        <code>.github/workflows/ci.yml:3-6</code> 只在 <code>pull_request</code> 和推送到 <code>main</code> 时触发，往
+        <code>dev-v1.0.0</code> 推送不跑 CI；没开 PR 时“CI 全绿”无从验证。
+      </li>
+      <li>
+        e2e-desktop 写死了 20 个 spec（<code>ci.yml:235</code>），另外 8 个不进 CI，正好是 1.1 节里失败的那几个（<code
+          >worktree</code
+        >
+        除外）。
+      </li>
+      <li>
+        <strong>失败的测试被移出了 CI。</strong>dev-v0.3.1 的 <code>tools.spec.ts</code> 有 6
+        个设置用例（MCP、技能、插件、个人规则、项目规则、记忆）；<code>f95425f</code> 把它们挪进新文件
+        <code>settings-tools.spec.ts</code>，原文件只留一个新写的用例。原文件在 CI 列表里，新文件不在，所以 CI
+        显示全绿，而这 6 项能力实际都不可用。施工单的执行规则第 3 条禁止这种做法。
+      </li>
+    </ul>
+
+    <h2 id="conflict">6. 方案的矛盾</h2>
+
+    <h3 id="conflict-internal">6.1 方案内部</h3>
+    <table>
+      <tr>
+        <th style="width: 5%">编号</th>
+        <th style="width: 32%">一处</th>
+        <th style="width: 32%">另一处</th>
+        <th>后果</th>
+      </tr>
+      <tr>
+        <td>C1</td>
+        <td>核心设计决定 5：本地群只能加本机成员</td>
+        <td>S31、D10：局域网另一台电脑的成员能拉进本地群</td>
+        <td>实现照 S31 做了，前一条名存实亡</td>
+      </tr>
+      <tr>
+        <td>C2</td>
+        <td>1.3 节：桌面端不重新设计；14 节：v0.3.1 能力一项不少</td>
+        <td>14.1 节：协作群界面按新模型重建；14.2 节：新增六类视图</td>
+        <td>既没有重新设计，也没保住 v0.3.1 的群能力</td>
+      </tr>
+      <tr>
+        <td>C3</td>
+        <td>术语表、9.4 节：收件箱是每个人自己的</td>
+        <td>D7：每个群有收件箱</td>
+        <td>实现按 D7，收件箱成了群页签</td>
+      </tr>
+      <tr>
+        <td>C4</td>
+        <td>10.2 节：角色检查是真的</td>
+        <td>11.2 节：协议没有定义调用者身份从哪来</td>
+        <td>实现只能让客户端自报 human</td>
+      </tr>
+      <tr>
+        <td>C5</td>
+        <td>5.2 节：环境变量的值不进事件和日志；13 节：令牌进系统凭据库</td>
+        <td>5.2 节：<code>Env</code> 是档案里的普通字段，档案是普通文档</td>
+        <td>外部产品的密钥明文入库、明文回传</td>
+      </tr>
+      <tr>
+        <td>C6</td>
+        <td>3.3 节：<code>engine.go</code> 只做装配</td>
+        <td>15 节的切片只写行为，不写代码放在哪个包</td>
+        <td>编排代码全进了根包</td>
+      </tr>
+      <tr>
+        <td>C7</td>
+        <td>1.3 节：插件、技能、斜杠命令、LSP 排在阶段 4 之后；14.1 节：删除计划模式</td>
+        <td>14 节：v0.3.1 已有的能力一项不少</td>
+        <td>执行方两头都“符合”：删了能力，又把测它们的用例移出 CI</td>
+      </tr>
+    </table>
+
+    <h3 id="conflict-owner">6.2 与产品负责人的思路</h3>
+    <table>
+      <tr>
+        <th style="width: 5%">编号</th>
+        <th style="width: 34%">产品负责人的思路</th>
+        <th style="width: 37%">方案和实现</th>
+        <th>处理</th>
+      </tr>
+      <tr>
+        <td>U1</td>
+        <td>能直接新建对话、智能体、协作群、任务四样；项目组以后再设计</td>
+        <td>群 = 项目 + 名册 + 聊天 + 任务池</td>
+        <td>D-1</td>
+      </tr>
+      <tr>
+        <td>U2</td>
+        <td>一个协作群有且只有一个 Leader，群里的任务都由它负责</td>
+        <td>群里可以有多个 Leader，Leader 按顶层任务分</td>
+        <td>D-4、D-7</td>
+      </tr>
+      <tr>
+        <td>U3</td>
+        <td>一个协作群可以做多个任务，一个任务只属于一个协作群；任务要启动必须有协作群</td>
+        <td>任务必须建在群里，一个顶层任务一条线程</td>
+        <td>D-5</td>
+      </tr>
+      <tr>
+        <td>U4</td>
+        <td>
+          智能体里只有 Leader 能创建任务，建出的任务属于它所在的协作群；人也能手动创建任务，再新建或选择协作群来启动
+        </td>
+        <td>任务必须建在群里</td>
+        <td>D-5、D-6</td>
+      </tr>
+      <tr>
+        <td>U5</td>
+        <td>Leader 的拆解和分配要在界面上显示</td>
+        <td>群页没有拆解视图，Leader 没有待办工具</td>
+        <td>D-8</td>
+      </tr>
+      <tr>
+        <td>U6</td>
+        <td>侧栏是首页、新建对话、新建智能体、新建协作群、新建任务，下面按项目文件夹</td>
+        <td>智能体藏在设置里；新建对话不能选产品</td>
+        <td>7.3 节</td>
+      </tr>
+      <tr>
+        <td>U7</td>
+        <td>界面对标之前的版本，尤其是对话界面</td>
+        <td>1.3 节说不重新设计，实际重写缩水</td>
+        <td>D-20</td>
+      </tr>
+      <tr>
+        <td>U8</td>
+        <td>桌面端可以照搬 dev-v0.3.1 和 UI 分支 <code>tt/refactor/ui-side-panel</code></td>
+        <td><code>AGENTS.md</code> 没写</td>
+        <td>R0</td>
+      </tr>
+      <tr>
+        <td>U9</td>
+        <td>相比 v0.x 基本功能不能阉割</td>
+        <td>1.3 节把插件、技能、斜杠命令、LSP、定时任务推到阶段 4 以后；14.1 节删计划</td>
+        <td>D-16</td>
+      </tr>
+      <tr>
+        <td>U10</td>
+        <td>对话、协作群、任务都必须有工作空间</td>
+        <td>协作群要目录；任务跟群走</td>
+        <td>D-2</td>
+      </tr>
+      <tr>
+        <td>U11</td>
+        <td>收件箱是首页的栏目，右下角弹窗提醒</td>
+        <td>群页的一个页签</td>
+        <td>D-13</td>
+      </tr>
+      <tr>
+        <td>U12</td>
+        <td>一个全局任务看板，结束的、过时的不再显示</td>
+        <td>每个群一个看板，不清理</td>
+        <td>D-14</td>
+      </tr>
+    </table>
+    <h3 id="conflict-vision">6.3 与愿景文档</h3>
+    <p>
+      <code>docs/智能体架构思考.md</code> 第 1 到 4 节是最初的设想，第 5 节是 2026-11-10
+      的补充。方案和实现在下面几处偏离了它。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 5%">编号</th>
+        <th style="width: 34%">愿景</th>
+        <th style="width: 31%">方案和实现</th>
+        <th>处理</th>
+      </tr>
+      <tr>
+        <td>V1</td>
+        <td>
+          最初：人只和编排者对话。补充：人的指令最高，可以直接给任何成员下达，被安排的智能体必须及时响应，Leader
+          同步更新状态
+        </td>
+        <td>@ 直达已经有，但不能中途收消息的成员收不到；Leader 只被记一笔、不被唤醒；提示词里没有“人的指令优先”</td>
+        <td>D-9、R9</td>
+      </tr>
+      <tr>
+        <td>V2</td>
+        <td>以新建任务为主，可以在任务上拉很多群聊，也可以先建群聊再绑定任务</td>
+        <td>先建群再开任务，一个顶层任务恰好一条线程</td>
+        <td>
+          产品负责人 2026-11-10 简化为一对多：可以先建任务，要启动就新建或选择一个协作群；也可以先建协作群，由 Leader
+          在群里生成任务（D-5）
+        </td>
+      </tr>
+      <tr>
+        <td>V3</td>
+        <td>编排者能拿到所有注册的智能体，每个都能配角色和提示词</td>
+        <td>注册是群内操作，智能体藏在设置里</td>
+        <td>D-1、R22</td>
+      </tr>
+      <tr>
+        <td>V4</td>
+        <td>编排者收到消息立即反应，不排队；补充：这就是全双工的范式</td>
+        <td>引擎层能打断，但界面在 Leader 说完之前没有任何反馈，输入框不显示送达</td>
+        <td>D-10、R9、R23</td>
+      </tr>
+      <tr>
+        <td>V5</td>
+        <td>每个人可以决定分享了哪些智能体、对哪些人开放</td>
+        <td>分享只有一个布尔值</td>
+        <td>本地阶段够用，按人开放放进云端阶段</td>
+      </tr>
+      <tr>
+        <td>V6</td>
+        <td>是不是每个使用者都要有守护进程</td>
+        <td>引擎随启动者生死</td>
+        <td>产品负责人答复：要守护进程（D-12）</td>
+      </tr>
+      <tr>
+        <td>V7</td>
+        <td>揭榜挂帅：智能体可以揭榜</td>
+        <td>方案明确不做主动揭榜</td>
+        <td>D-11</td>
+      </tr>
+    </table>
+
+    <h3 id="conflict-tradeoff">6.4 守护进程带来的取舍</h3>
+    <p>
+      方案 2.3
+      节的存算分离是“引擎只算，连上来的客户端负责落盘”。引擎变成守护进程后，桌面端会关掉，但任务要接着推进、事件要接着落盘，所以落盘只能由守护进程自己完成。处理办法：
+    </p>
+    <ul>
+      <li>
+        包的层面不变：<code>engine/</code> 下的代码仍然不碰磁盘，只通过 <code>store.Store</code> 契约读写；落盘由
+        <code>internal/localstore</code> 实现，这正是现有
+        <code>merak serve --store local</code> 的做法，命令行已经在用。
+      </li>
+      <li>进程的层面改变：本机存储宿主和引擎跑在同一个进程里；桌面端不再当存储宿主。</li>
+      <li>云端宿主不受影响，仍是一份独立的 <code>store.Store</code> 实现。</li>
+    </ul>
+    <p>
+      这样愿景里“只负责智能体的执行过程，落盘由宿主完成”在代码边界上仍然成立，同时满足“没有守护进程怎么时刻更新任务状态”。顺带删掉一整条远程存储链路和桌面端的原生依赖（7.4
+      节）。
+    </p>
+
+    <h2 id="redesign">7. 整改方案</h2>
+
+    <h3 id="redesign-decisions">7.1 决策一览</h3>
+    <table>
+      <tr>
+        <th style="width: 7%">编号</th>
+        <th style="width: 14%">决定</th>
+        <th>内容</th>
+      </tr>
+      <tr>
+        <td>D-1</td>
+        <td>能新建的东西</td>
+        <td>
+          四样：对话（单聊）、智能体、协作群、任务。项目组是更高层级的设计，这一轮不做，代码里也不为它预留。代码里协作群仍叫
+          <code>group</code>，智能体叫 <code>agent</code>
+        </td>
+      </tr>
+      <tr>
+        <td>D-2</td>
+        <td>工作空间必填</td>
+        <td>
+          对话、协作群、任务各有一个工作空间（项目文件夹），新建时必须选。侧栏按工作空间分组。协作群里的任务和协作群用同一个工作空间（D-6）
+        </td>
+      </tr>
+      <tr>
+        <td>D-3</td>
+        <td>对话（单聊）</td>
+        <td>
+          本人和一个智能体一对一，智能体可以是 MerakCode 自己，也可以是纳管的产品（Claude Code、Codex 等）；没有 Leader
+        </td>
+      </tr>
+      <tr>
+        <td>D-4</td>
+        <td>协作群</td>
+        <td>成员来自智能体库，加上本人；有且只有一个 Leader；可以做多个任务，群里的任务都由这个 Leader 负责</td>
+      </tr>
+      <tr>
+        <td>D-5</td>
+        <td>任务</td>
+        <td>
+          一个任务最多属于一个协作群，一个协作群可以有多个任务（一对多）。任务有两个来源：人在“新建任务”里手动创建，这时它还不属于任何协作群；Leader
+          在协作群里创建（人在群里提出问题、Leader 判断要做），这时它属于这个群。智能体里只有 Leader 能创建任务，Worker
+          不能。任务属于某个协作群后才会被推进，所以单独建的任务要启动，必须新建一个协作群或选择一个已有协作群来处理它。任务的归属定下后不再换群；子任务和父任务属于同一个群
+        </td>
+      </tr>
+      <tr>
+        <td>D-6</td>
+        <td>工作空间和 Leader 从协作群来</td>
+        <td>
+          任务没有自己的 Leader，它的 Leader 就是所属协作群的 Leader；换群的
+          Leader，群里的任务一起换。工作空间按来源定：
+          <ul>
+            <li>协作群里创建的任务：工作空间是协作群的。</li>
+            <li>先建的任务新建协作群：协作群的工作空间取任务的，表单里已填好、不能改。</li>
+            <li>
+              先建的任务交给已有协作群：两边相同就直接归入；不同时协作群的工作空间改成任务的，群里没结束的其他任务一起改。群里还有进行中或排队的认领时不能改，界面提示为这个任务新建一个协作群。
+            </li>
+          </ul>
+          直接改协作群的工作空间也一样：群里没结束的任务一起改，有进行中或排队的认领时不能改
+        </td>
+      </tr>
+      <tr>
+        <td>D-7</td>
+        <td>Leader 线程</td>
+        <td>
+          每个协作群一条 Leader 线程，群就是 Leader
+          和人对话的地方；去掉原方案“每个顶层任务一条线程”。群里所有任务（包括子任务）的事件都进这个群的线程；还没有协作群的任务不唤醒任何线程。不设每分钟回合上限：现有的群设置
+          <code>turnsPerMinute</code> 和它的实现在 R8 删除
+        </td>
+      </tr>
+      <tr>
+        <td>D-8</td>
+        <td>拆解看得见</td>
+        <td>Leader 拆出的子任务、指派、进度和它的待办列表，在协作群右栏实时显示：谁在做哪一项、做到哪一步</td>
+      </tr>
+      <tr>
+        <td>D-9</td>
+        <td>人的指令最高</td>
+        <td>
+          人可以在群里 @
+          任何成员说话，或直接给任何成员派任务。消息直达这个成员并抢占它当前的一步：能中途收消息的产品立刻送达，不能的停下当前运行、带着人的要求重新开始这次认领。Worker
+          的提示词规定人的指令优先于 Leader 的安排；同一条消息同时唤醒 Leader，由它更新自己的计划和任务状态。Leader
+          不得推翻人的指令，有冲突时问人。执行者之间仍不直接通信
+        </td>
+      </tr>
+      <tr>
+        <td>D-10</td>
+        <td>全双工</td>
+        <td>
+          Leader 和 Worker
+          干活时都能收消息，新消息在下一个推理边界处理，人的消息可以打断正在进行的模型调用。界面的输入框在回合进行中不锁，发出的消息立刻标“已送达”，处理时标“处理中”
+        </td>
+      </tr>
+      <tr>
+        <td>D-11</td>
+        <td>认领</td>
+        <td>
+          三条路：Leader 派工、人点名、Worker 主动认领。Leader 拆出的卡可以不指派，留作待认领；空闲的内置 Worker
+          在它所在的群出现待认领卡时收到一次邀约（一个短回合，认领或放过，每张卡每个 Worker 一次）；任何 Worker
+          交完报告时能看到所在群的待认领卡并认领；外部 Worker 经 MCP 工具 <code>claim_task</code> 认领
+        </td>
+      </tr>
+      <tr>
+        <td>D-12</td>
+        <td>守护进程</td>
+        <td>
+          引擎是每个用户一个的后台守护进程，桌面端和命令行都是客户端：谁先启动谁把它拉起来，退出时不带走它；只有显式停止（托盘“停止后台引擎并退出”或
+          <code>merak stop</code>）才退出。本机存储宿主在守护进程里（<code>--store local</code
+          >），引擎包仍然不碰磁盘；桌面端主进程不再当存储宿主
+        </td>
+      </tr>
+      <tr>
+        <td>D-13</td>
+        <td>收件箱</td>
+        <td>
+          首页的一个栏目，列出这个客户端收到的所有状态消息：任务完成、待我决策（审批、问题、审核）、受阻、哨兵提醒。新消息在右下角弹窗提醒，点击跳到对应位置；窗口不在前台时同时发系统通知
+        </td>
+      </tr>
+      <tr>
+        <td>D-14</td>
+        <td>任务看板</td>
+        <td>
+          一个全局看板，列出这个客户端的所有任务，按状态分列。清理沿用 GitHub Projects、Jira、Trello 的通行做法：
+          <ul>
+            <li>
+              已完成、已取消、失败的任务留在完成列，状态变为结束满 3 天后自动归档；天数在设置里可选 1、3、7、14
+              天或不自动归档，默认 3 天。
+            </li>
+            <li>每张卡有“归档”：已结束的直接归档；还没结束的先确认，再取消并归档。完成列标题上有“全部归档”。</li>
+            <li>归档的任务不在看板上，在“已归档”视图里能搜索、恢复，数据不删。</li>
+            <li>自动归档由守护进程执行，所有客户端看到的一致。</li>
+          </ul>
+        </td>
+      </tr>
+      <tr>
+        <td>D-15</td>
+        <td>计划</td>
+        <td>
+          不再有单独的计划模式。任何权限模式下，智能体都能写计划（工具
+          <code>write_plan</code
+          >），用户也能要求这条消息先出计划；计划在侧边面板里审阅、编辑，点“执行”或在对话里回复后开始执行
+        </td>
+      </tr>
+      <tr>
+        <td>D-16</td>
+        <td>底线：不倒退</td>
+        <td>
+          v0.x 能做的 v1 都要能做，以 UI 分支
+          <code>origin/tt/refactor/ui-side-panel</code> 为对照，一项不少：模型目录、MCP（含远程和
+          OAuth）、技能、插件、斜杠命令、计划、LSP、网页抓取和搜索、代码搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发、对话界面。只有两处变化：计划不再是单独的模式（D-15）；不再提供
+          v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP
+          或纯命令行适配器，不用写代码。对照范围包括 v0.3.1 引擎的文件约定：<code>.merakcode/</code>
+          下的规则、命令、智能体、技能目录（消解 C7）
+        </td>
+      </tr>
+      <tr>
+        <td>D-17</td>
+        <td>改名</td>
+        <td>
+          只把 <code>profile</code>（档案）改成 <code>agent</code>（智能体）；<code>group</code>
+          不改名，它就是协作群。产品未发布，不保留旧方法名
+        </td>
+      </tr>
+      <tr>
+        <td>D-18</td>
+        <td>调用者身份</td>
+        <td>由连接决定：本机连接是本机用户，云端连接是账号；协议参数里去掉 <code>human</code>（消解 C4）</td>
+      </tr>
+      <tr>
+        <td>D-19</td>
+        <td>密钥</td>
+        <td>外部产品的环境变量值、服务商密钥、MCP 的 OAuth 令牌进系统凭据库，文档和配置文件里只存名字（消解 C5）</td>
+      </tr>
+      <tr>
+        <td>D-20</td>
+        <td>界面基线</td>
+        <td>
+          以 UI 分支为桌面端基线：先恢复它的组件、样式、文案和 e2e，只把数据层改接新
+          SDK（R20、R21）；首页、智能体、协作群、任务这些新页面在恢复后的外壳上用同样的风格做，优先复用它的协作群组件（R22
+          到 R24）。协作群和对话共用一套消息组件（消解 C2）
+        </td>
+      </tr>
+      <tr>
+        <td>D-21</td>
+        <td>远程成员</td>
+        <td>本地协作群的成员可以是本机的，也可以是局域网另一台 <code>merak serve</code> 名下的 Worker（消解 C1）</td>
+      </tr>
+      <tr>
+        <td>D-22</td>
+        <td>云端</td>
+        <td>云端群、云端登录保留现有代码和测试，跟着改名，不扩展，不进主流程；本地产品验收通过后再排</td>
+      </tr>
+      <tr>
+        <td>D-23</td>
+        <td>系统提示词</td>
+        <td>
+          Leader、Worker
+          各写一份完整的英文系统提示词，所有服务商共用，不按服务商分模板（B20）。结构：角色、工作方式、工具使用规则、人的指令优先、安全、输出格式
+        </td>
+      </tr>
+      <tr>
+        <td>D-24</td>
+        <td>流程</td>
+        <td>
+          一片一提交，每片开 PR 跑 CI；界面切片附真实应用的浅色、深色截图；每片写明代码放在哪个包（消解 C6）。R7
+          之后可以分两条轨道并行（8 节）
+        </td>
+      </tr>
+      <tr>
+        <td>D-25</td>
+        <td>配置格式</td>
+        <td>
+          v1 直接用 v0.3 的配置格式：全局 <code>~/.merakcode/merakcode.json(c)</code>，项目根和项目
+          <code>.merakcode/</code> 下的 <code>merakcode.json(c)</code>，键名和结构以 v0.3.1 的
+          <code>schema/config.json</code> 为准。v0.3 用户的配置不用转换就能用。v1 新增的设置用 v0.3
+          没有的顶层键名（<code>permissionMode</code>、<code>board</code>、<code>workspaceTrust</code>、<code
+            >cloud</code
+          >
+          等），不得和 v0.3 的任何顶层键重名。不认识的键不报错，在 <code>config.get</code> 的
+          <code>warnings</code> 里列出。原方案 10.5 节的 <code>mcpServers</code> 字段改用 v0.3 的 <code>mcp</code>
+        </td>
+      </tr>
+      <tr>
+        <td>D-26</td>
+        <td>一个根目录</td>
+        <td>
+          所有东西放在 v0.3 的根目录 <code>~/.merakcode</code> 下（<code>MERAKCODE_HOME</code> 可改），布局和 v0.3
+          一致：全局配置和
+          <code>AGENTS.md</code>、<code>skills/</code>、<code>commands/</code>、<code>agents/</code>、<code
+            >rules/</code
+          >
+          在根下，v1 的存储是 <code>data/merak.db</code>，守护进程的 <code>data/engine.json</code>，还有
+          <code>worktrees/</code>、<code>logs/</code>、<code>cache/</code>、<code>clients/</code>。v0.3 的
+          <code>data/merakcode.db</code> 不改不删，只供迁移读取。去掉各系统惯例目录（<code>%APPDATA%</code>
+          等）的写法；现有开发版数据直接丢弃，不写转换
+        </td>
+      </tr>
+      <tr>
+        <td>D-27</td>
+        <td>命令行不倒退</td>
+        <td>
+          v0.3.0 命令行的能力 v1 一项不少：每个能力切片顺带加它的命令（施工单里“命令行”一段），剩下的
+          <code>stats</code
+          >、<code>upgrade</code>、<code>doctor</code>、<code>logs</code>、<code>bug-report</code>、<code>sandbox</code>、<code
+            >generate</code
+          >
+          在 R27 补齐。<code>merak mcp</code>
+          的管理子命令和它现有的 MCP 服务模式（<code>--claim</code>、<code>--thread</code>）并存
+        </td>
+      </tr>
+      <tr>
+        <td>D-28</td>
+        <td>从 v0.x 迁移</td>
+        <td>
+          配置靠 D-25、D-26 直接沿用；密钥在 R4 从
+          <code>data/auth.json</code> 复制进凭据库；历史对话、外部产品连接、角色模板、协作群记录、计划、记忆、待办在 R28
+          导入，尽可能完整：对话导入后能继续聊；v0.3 的协作群模型和 v1
+          不同，导入成只读的已归档协作群。导入一次，重复运行不重复；结果进收件箱。v0.3 里用
+          <code>adapter-generator</code> 自写的 JS 适配器（<code>adapter: "member"</code
+          >）不能导入，列出名字并提示改用内置适配器
+        </td>
+      </tr>
+    </table>
+
+    <h3 id="redesign-engine">7.2 引擎与协议</h3>
+    <!-- prettier-ignore -->
+    <figure class="figure">
+      <svg viewBox="0 0 960 270" role="img" aria-label="协作群、任务和 Leader 线程">
+        <rect class="b yellow" x="40" y="30" width="200" height="50" rx="6" />
+        <text x="140" y="48" text-anchor="middle" dominant-baseline="middle">任务 X（人新建）</text>
+        <text class="s" x="140" y="66" text-anchor="middle" dominant-baseline="middle">未启动，不唤醒线程</text>
+        <path class="f" d="M140 80 V140" />
+        <text class="s" x="150" y="112" dominant-baseline="middle">新建或选择协作群</text>
+        <rect class="b blue" x="40" y="140" width="200" height="50" rx="6" />
+        <text x="140" y="158" text-anchor="middle" dominant-baseline="middle">协作群 A · Leader 甲</text>
+        <text class="s" x="140" y="176" text-anchor="middle" dominant-baseline="middle">一条 Leader 线程</text>
+        <text class="s" x="140" y="212" text-anchor="middle" dominant-baseline="middle">工作空间取任务 X 的</text>
+        <rect class="b blue" x="320" y="30" width="220" height="50" rx="6" />
+        <text x="430" y="48" text-anchor="middle" dominant-baseline="middle">协作群 B · Leader 乙</text>
+        <text class="s" x="430" y="66" text-anchor="middle" dominant-baseline="middle">一条 Leader 线程</text>
+        <path class="f" d="M380 80 V140" />
+        <path class="f" d="M480 80 V140" />
+        <text class="s" x="492" y="112" dominant-baseline="middle">Leader 在群里创建</text>
+        <rect class="b yellow" x="320" y="140" width="100" height="50" rx="6" />
+        <text x="370" y="158" text-anchor="middle" dominant-baseline="middle">任务 Y</text>
+        <text class="s" x="370" y="176" text-anchor="middle" dominant-baseline="middle">属于 B</text>
+        <rect class="b yellow" x="440" y="140" width="100" height="50" rx="6" />
+        <text x="490" y="158" text-anchor="middle" dominant-baseline="middle">任务 Z</text>
+        <text class="s" x="490" y="176" text-anchor="middle" dominant-baseline="middle">属于 B</text>
+        <path class="f" d="M370 190 V220" />
+        <rect class="b grey" x="320" y="220" width="100" height="36" rx="6" />
+        <text x="370" y="238" text-anchor="middle" dominant-baseline="middle">子任务 Y.1</text>
+        <text class="s" x="600" y="60" dominant-baseline="middle">一个任务最多属于一个协作群，一个群可以有多个任务</text>
+        <text class="s" x="600" y="88" dominant-baseline="middle">群里创建的任务：工作空间取群的</text>
+        <text class="s" x="600" y="116" dominant-baseline="middle">先建的任务：协作群的工作空间取任务的</text>
+        <text class="s" x="600" y="144" dominant-baseline="middle">任务的 Leader 就是所属协作群的 Leader</text>
+        <text class="s" x="600" y="172" dominant-baseline="middle">群里所有任务的事件进这个群的线程</text>
+        <text class="s" x="600" y="200" dominant-baseline="middle">子任务和父任务属于同一个群</text>
+      </svg>
+      <figcaption class="cap">图 2 协作群和任务一对多；每个群一条 Leader 线程</figcaption>
+    </figure>
+    <p class="file">数据（只列变化的字段）</p>
+    <pre><code>// engine/group/member.go
+type Group struct {
+	ID       event.ID `json:"id"`
+	Kind     Kind     `json:"kind"`
+	Name     string   `json:"name"`
+	Project  Project  `json:"project"`  // the workspace; required, the directory must exist
+	Leader   event.ID `json:"leader"`   // exactly one; was DefaultLeader
+	Brief    Brief    `json:"brief"`
+	Settings Settings `json:"settings"`
+}
+
+// engine/task/task.go: Leader is removed from the card; the card's Leader is its group's Leader.
+type Card struct {
+	// ...existing fields...
+	Group    event.ID `json:"group,omitempty"`    // the owning group; empty until a group takes the card, then fixed
+	Project  string   `json:"project"`            // the workspace directory; equals the group's once the card has one
+	Archived bool     `json:"archived,omitempty"` // hidden from the board; set by the user or by auto-archive
+}</code></pre>
+    <ul>
+      <li>
+        事件流：属于协作群的卡写在群的流 <code>group:&lt;id&gt;</code>；还没有协作群的卡写在
+        <code>task:&lt;id&gt;</code>。任务归入一个群时，在群的流里发
+        <code>task.bound</code>（正文是整张卡），之后它的事件都写在群的流里。
+      </li>
+      <li>
+        路由：线程的键改为群
+        id。群里的卡和它们的子卡的事件进这个群的线程；还没有协作群的卡不唤醒任何线程。组装群状态时，群里的卡从任务池读当前值。
+      </li>
+      <li>
+        Leader 的工具：<code>create_task</code> 建出的卡属于当前群，工作空间是群的；<code>assign_task</code>、<code
+          >read_report</code
+        >
+        等只接受当前群的卡；<code>say</code> 只发到当前群。Worker 的工具里没有 <code>create_task</code>。
+      </li>
+    </ul>
+    <table>
+      <tr>
+        <th style="width: 46%">现在</th>
+        <th>改为</th>
+      </tr>
+      <tr>
+        <td><code>profile.list/save/delete</code>、<code>member.test</code>、<code>member.catalog</code></td>
+        <td><code>agent.list/save/delete/test</code>、<code>agent.catalog</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>group.addMember</code> 和 <code>member.register</code>；<code>group.removeMember</code> 和
+          <code>member.remove</code>
+        </td>
+        <td>只留 <code>group.addMember</code>（引用已有智能体）和 <code>group.removeMember</code></td>
+      </tr>
+      <tr>
+        <td><code>group.create</code> 的内联档案和多个 Leader</td>
+        <td>
+          <code>group.create {group, members, task?}</code>：恰好一个 Leader；给了
+          <code>task</code> 时工作空间取任务的（参数里的工作空间必须为空或相同），建完任务归入这个群
+        </td>
+      </tr>
+      <tr>
+        <td><code>task.create</code> 必须带群</td>
+        <td>
+          <code>task.create {project, group?, ...}</code>：可以不带群；带群时工作空间取群的，不填 <code>project</code>
+        </td>
+      </tr>
+      <tr>
+        <td>（没有）</td>
+        <td>
+          <code>group.bind {group, task}</code>（把还没有协作群的任务交给已有协作群，工作空间规则见 D-6）、<code
+            >task.list {project?, archived?}</code
+          >、<code>task.archive {tasks, archived}</code>（批量归档和恢复）
+        </td>
+      </tr>
+      <tr>
+        <td>各方法的 <code>human</code> 参数</td>
+        <td>删除，由连接决定（D-18）</td>
+      </tr>
+    </table>
+    <p>
+      错误一律带 <code>MRK</code> 码原样返回；SDK 按方法设超时；根包 <code>engine</code> 只留装配，编排代码进
+      <code>leader/</code>，合并进 <code>workspace/</code>，远程进 <code>worker/remote</code>。这三条分别在 R1、R5
+      落地。
+    </p>
+
+    <h3 id="redesign-ui">7.3 界面</h3>
+    <!-- prettier-ignore -->
+    <figure class="figure">
+      <svg viewBox="0 0 960 470" role="img" aria-label="目标信息架构">
+        <rect class="b" x="20" y="20" width="220" height="430" rx="6" />
+        <text class="t" x="40" y="46" dominant-baseline="middle">MerakCode</text>
+        <text x="40" y="76" dominant-baseline="middle">首页</text>
+        <text x="40" y="100" dominant-baseline="middle">新建对话</text>
+        <text x="40" y="124" dominant-baseline="middle">新建智能体</text>
+        <text x="40" y="148" dominant-baseline="middle">新建协作群</text>
+        <text x="40" y="172" dominant-baseline="middle">新建任务</text>
+        <line class="lane" x1="36" y1="190" x2="224" y2="190" />
+        <text class="t" x="40" y="212" dominant-baseline="middle">app（工作空间）</text>
+        <text x="56" y="236" dominant-baseline="middle">协作群 · 登录重构</text>
+        <text x="56" y="260" dominant-baseline="middle">任务 · 支付接口</text>
+        <text x="56" y="284" dominant-baseline="middle">对话 · 修样式</text>
+        <text class="t" x="40" y="312" dominant-baseline="middle">docs（工作空间）</text>
+        <text x="56" y="336" dominant-baseline="middle">协作群 · 写手册</text>
+        <text class="s" x="40" y="364" dominant-baseline="middle">+ 打开文件夹</text>
+        <text x="40" y="426" dominant-baseline="middle">设置</text>
+
+        <rect class="b" x="270" y="20" width="320" height="200" rx="6" />
+        <text class="t" x="290" y="46" dominant-baseline="middle">首页</text>
+        <text x="290" y="76" dominant-baseline="middle">收件箱：任务完成、待我决策</text>
+        <text x="290" y="102" dominant-baseline="middle">任务看板：这个客户端的全部任务</text>
+        <text x="290" y="128" dominant-baseline="middle">最近的协作群和对话</text>
+        <text class="s" x="290" y="160" dominant-baseline="middle">新消息右下角弹窗，点击直达</text>
+        <text class="s" x="290" y="182" dominant-baseline="middle">结束满 3 天自动归档</text>
+
+        <rect class="b green" x="620" y="20" width="320" height="200" rx="6" />
+        <text class="t" x="640" y="46" dominant-baseline="middle">智能体</text>
+        <text x="640" y="76" dominant-baseline="middle">本机探测到的产品：一键添加</text>
+        <text x="640" y="102" dominant-baseline="middle">我的智能体：编辑、复制、测试、删除</text>
+        <text x="640" y="128" dominant-baseline="middle">新建向导：产品、模型、职责、权限</text>
+        <text class="s" x="640" y="160" dominant-baseline="middle">模型一步用对话里的模型选择器</text>
+
+        <rect class="b blue" x="270" y="240" width="320" height="210" rx="6" />
+        <text class="t" x="290" y="266" dominant-baseline="middle">协作群</text>
+        <text x="290" y="296" dominant-baseline="middle">顶部：Leader、成员、群里的任务</text>
+        <text x="290" y="322" dominant-baseline="middle">消息流：和对话同一套组件</text>
+        <text x="290" y="348" dominant-baseline="middle">右栏：任务拆解、谁在做什么</text>
+        <text x="290" y="374" dominant-baseline="middle">@ 成员直达，Leader 同步更新</text>
+        <text class="s" x="290" y="404" dominant-baseline="middle">回合进行中照样能发消息</text>
+
+        <rect class="b yellow" x="620" y="240" width="320" height="210" rx="6" />
+        <text class="t" x="640" y="266" dominant-baseline="middle">任务</text>
+        <text x="640" y="296" dominant-baseline="middle">所属协作群、Leader、工作空间</text>
+        <text x="640" y="322" dominant-baseline="middle">启动：新建或选择协作群</text>
+        <text x="640" y="348" dominant-baseline="middle">子任务、认领、报告、diff、审核</text>
+        <text x="640" y="374" dominant-baseline="middle">归档：从看板收起，可恢复</text>
+      </svg>
+      <figcaption class="cap">图 3 目标信息架构：侧栏顶部五项，下面按工作空间分组</figcaption>
+    </figure>
+    <table>
+      <tr>
+        <th style="width: 12%">页面</th>
+        <th style="width: 46%">内容</th>
+        <th>来源</th>
+      </tr>
+      <tr>
+        <td>对话</td>
+        <td>选工作空间、选智能体（MerakCode 或纳管产品）、模型、权限；消息、工具卡、撤回、编辑重发、计划、侧边面板</td>
+        <td>R20、R21 从 UI 分支恢复</td>
+      </tr>
+      <tr>
+        <td>首页</td>
+        <td>收件箱栏目、任务看板（全部任务）、最近的协作群和对话、空状态时的快速开始</td>
+        <td>R22 新写，用恢复后的卡片和列表样式</td>
+      </tr>
+      <tr>
+        <td>智能体</td>
+        <td>本机探测到的产品卡片、我的智能体、新建向导</td>
+        <td>R22；照搬 UI 分支 <code>agent-connections.tsx</code>、<code>collaboration.tsx</code></td>
+      </tr>
+      <tr>
+        <td>协作群</td>
+        <td>新建（工作空间、成员、唯一 Leader；从任务发起时工作空间取任务的）；消息流；右栏任务拆解和成员状态；名册</td>
+        <td>R23；消息流用对话的组件，名册照搬 UI 分支 <code>member-column.tsx</code>、<code>members.tsx</code></td>
+      </tr>
+      <tr>
+        <td>任务</td>
+        <td>新建（工作空间、描述、验收标准、是否审核）；详情；启动（新建或选择协作群）；全局看板</td>
+        <td>R24；看板、报告、审核用现有 <code>features/group/*</code></td>
+      </tr>
+      <tr>
+        <td>设置</td>
+        <td>通用、模型与服务商、权限、MCP、技能、插件、规则、记忆、后台引擎、关于、云端（不在主流程）</td>
+        <td>R20 从 UI 分支恢复，加“后台引擎”</td>
+      </tr>
+    </table>
+    <p>视觉与文案规则：</p>
+    <ul>
+      <li>新页面沿用恢复后的设计令牌和组件；补间距令牌（4、8、12、16、20、24、32、40）。</li>
+      <li>表单一律用 <code>ui/</code> 里的组件，不写原生 select、radio、checkbox。</li>
+      <li>术语：Leader 在中英文界面都叫 Leader；“档案”改为“智能体”；“线程”“讨论位置”不出现在界面上。</li>
+      <li>
+        错误一律用 <code>state/error.ts</code> 的 <code>explain()</code> 和
+        <code>summary()</code> 显示返回的码，不写死码。
+      </li>
+    </ul>
+
+    <h3 id="redesign-daemon">7.4 守护进程与存储</h3>
+    <!-- prettier-ignore -->
+    <figure class="figure">
+      <svg viewBox="0 0 960 250" role="img" aria-label="守护进程与存储">
+        <rect class="b" x="40" y="30" width="200" height="50" rx="6" />
+        <text x="140" y="55" text-anchor="middle" dominant-baseline="middle">桌面端（客户端）</text>
+        <rect class="b" x="40" y="110" width="200" height="50" rx="6" />
+        <text x="140" y="135" text-anchor="middle" dominant-baseline="middle">命令行 merak（客户端）</text>
+        <path class="f" d="M240 55 H340" />
+        <path class="f" d="M240 135 H340" />
+        <text class="s" x="290" y="45" text-anchor="middle">SDK / 协议</text>
+        <rect class="zone" x="340" y="20" width="400" height="200" rx="8" />
+        <text class="t" x="360" y="42" dominant-baseline="middle">merak serve：每个用户一个守护进程</text>
+        <rect class="b blue" x="360" y="62" width="170" height="60" rx="6" />
+        <text x="445" y="84" text-anchor="middle" dominant-baseline="middle">引擎 engine/</text>
+        <text class="s" x="445" y="104" text-anchor="middle" dominant-baseline="middle">只算，不碰磁盘</text>
+        <path class="f" d="M530 92 H550" />
+        <rect class="b green" x="550" y="62" width="170" height="60" rx="6" />
+        <text x="635" y="84" text-anchor="middle" dominant-baseline="middle">本机存储宿主</text>
+        <text class="s" x="635" y="104" text-anchor="middle" dominant-baseline="middle">internal/localstore</text>
+        <rect class="b grey" x="360" y="142" width="360" height="60" rx="6" />
+        <text x="540" y="164" text-anchor="middle" dominant-baseline="middle">桌面端退出它照常运行，任务状态持续更新</text>
+        <text class="s" x="540" y="184" text-anchor="middle" dominant-baseline="middle">只有托盘“停止后台引擎”或 merak stop 才退出</text>
+        <path class="f" d="M720 92 H800" />
+        <rect class="b yellow" x="800" y="67" width="140" height="50" rx="6" />
+        <text x="870" y="92" text-anchor="middle" dominant-baseline="middle">merak.db</text>
+      </svg>
+      <figcaption class="cap">图 4 守护进程：客户端只经协议，落盘由守护进程里的本机存储宿主完成</figcaption>
+    </figure>
+    <ul>
+      <li>
+        守护进程就是现有的 <code>merak serve</code>（默认 <code>--store local</code>）。命令行的
+        <code>ensureEngine</code
+        >（<code>internal/cli/run.go:201-248</code>）已经按这种方式拉起后台引擎，桌面端改成同样的做法。
+      </li>
+      <li>
+        <code>engine.json</code> 保证单实例；桌面端和命令行先读它连现有引擎，连不上再拉起。桌面端写数据的位置与
+        <code>dataHome()</code> 相同，旧数据不用迁移。
+      </li>
+      <li>
+        桌面端不再当存储宿主，下面这条链路随之删除：<code>--store remote</code>、<code>internal/server/storage.go</code>
+        的 <code>RemoteStore</code>、<code>engine/storage.go</code>
+        的三个远程钩子、<code>store.NewBuffered</code>（如果没有别的用处）、握手里的 <code>store</code> 能力、SDK 的
+        <code>store.ts</code>、<code>store-host.ts</code>、<code>store-schema.gen.ts</code>，主进程的
+        <code>SqliteStore</code> 和 <code>better-sqlite3</code>。B15 随之消失。
+      </li>
+      <li>
+        存算分离保留在包的层面：<code>engine/</code>
+        仍然只产出事件和文档，落盘由宿主完成；变化的是宿主和引擎跑在同一个进程里。这是守护进程决定带来的取舍（6.4 节）。
+      </li>
+    </ul>
+
+    <h3 id="redesign-restore">7.5 不倒退：能力对照</h3>
+    <p>
+      以 UI 分支为对照，把 v0.3.x 的每项能力对到新协议。“缺”的由 R2 到 R19、R27、R28 补上，R20、R21
+      恢复界面时按这张表接线。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 30%">v0.3.x 的能力</th>
+        <th style="width: 34%">v1 现在</th>
+        <th>补在</th>
+      </tr>
+      <tr>
+        <td>会话列表、新建、发送、取消、读消息</td>
+        <td>有</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>改名、删除会话</td>
+        <td>只在渲染进程本地存储（B18）</td>
+        <td>R11 <code>session.update</code></td>
+      </tr>
+      <tr>
+        <td>撤回到某条消息并还原文件（包括命令改的）、恢复；编辑重发；重试</td>
+        <td>缺</td>
+        <td>R11</td>
+      </tr>
+      <tr>
+        <td>手动压缩、中途换权限模式和接管、全文搜索</td>
+        <td>缺</td>
+        <td>R11</td>
+      </tr>
+      <tr>
+        <td>和外部产品单聊</td>
+        <td>只有命令行用的 <code>worker.run</code></td>
+        <td>R11 <code>session.create {agent}</code></td>
+      </tr>
+      <tr>
+        <td>待办列表（<code>todowrite</code>）</td>
+        <td>缺</td>
+        <td>R9 <code>todo_write</code></td>
+      </tr>
+      <tr>
+        <td>计划（生成、审阅、编辑、执行）</td>
+        <td>缺</td>
+        <td>R16，不再是单独模式</td>
+      </tr>
+      <tr>
+        <td>模型目录：各服务商实时列表、公开目录补全、兜底表、缓存、刷新失败提示</td>
+        <td>内置 11 个模型，只有手动刷新，没有缓存（B19）</td>
+        <td>R3</td>
+      </tr>
+      <tr>
+        <td>源代码管理：提交、推送、切分支、AI 写提交信息</td>
+        <td>只读的 <code>repo.*</code> 和切分支</td>
+        <td>R12</td>
+      </tr>
+      <tr>
+        <td>对话迁到 worktree、合并回主分支、删除</td>
+        <td>缺</td>
+        <td>R12</td>
+      </tr>
+      <tr>
+        <td>文件状态、文件身份、查找文件；同一目录的不同写法</td>
+        <td>缺（B17）</td>
+        <td>R12</td>
+      </tr>
+      <tr>
+        <td>MCP：本地、远程（HTTP）、OAuth 登录、状态和工具数</td>
+        <td>只有本地 stdio，设置里改不了</td>
+        <td>R13</td>
+      </tr>
+      <tr>
+        <td>
+          规则：个人规则、<code>AGENTS.md</code>、<code>.mdc</code> 规则（总是生效、按文件匹配、按说明取）、兼容
+          <code>.cursor/rules</code>
+        </td>
+        <td>只读工作目录的 <code>AGENTS.md</code></td>
+        <td>R13</td>
+      </tr>
+      <tr>
+        <td>记忆：列出、打开、删除，自动记忆开关；配置告警</td>
+        <td>协议没有方法</td>
+        <td>R13</td>
+      </tr>
+      <tr>
+        <td>技能：发现、按需加载、按消息推荐、从网址或 git 仓库安装、卸载、内置技能</td>
+        <td>缺</td>
+        <td>R14</td>
+      </tr>
+      <tr>
+        <td>
+          斜杠命令：内置（<code>/init</code>、<code>/review</code>、<code>/context</code>）、配置和
+          <code>command(s)/*.md</code> 里的命令、MCP prompt、技能；文件里定义的智能体
+        </td>
+        <td>缺</td>
+        <td>R14</td>
+      </tr>
+      <tr>
+        <td>插件：本地文件或 npm 包，钩子和自定义工具</td>
+        <td>缺</td>
+        <td>R15</td>
+      </tr>
+      <tr>
+        <td>网页抓取、网页搜索、代码搜索、多处编辑、Word 和 Excel 解析、Excel 写入、客户端注册的工具</td>
+        <td>缺（PDF 由 <code>read_file</code> 读）</td>
+        <td>R17</td>
+      </tr>
+      <tr>
+        <td>LSP：35 种语言服务器、跳转和引用等操作、改文件后的诊断、自动下载</td>
+        <td>缺</td>
+        <td>R18</td>
+      </tr>
+      <tr>
+        <td>定时任务（<code>loop</code> 技能和定时工具）</td>
+        <td>缺</td>
+        <td>R19，靠守护进程</td>
+      </tr>
+      <tr>
+        <td>系统提示词</td>
+        <td>Leader、Worker 各一句话（B20）</td>
+        <td>R9 写 Leader 的，R11 写 Worker 的</td>
+      </tr>
+      <tr>
+        <td>配置文件和目录：<code>~/.merakcode</code>，<code>merakcode.json(c)</code> 的格式</td>
+        <td>自己的格式，数据在系统惯例目录</td>
+        <td>R2</td>
+      </tr>
+      <tr>
+        <td>会话标题自动生成、物理删除会话、撤回快照开关、关掉自动压缩、按天清理旧会话</td>
+        <td>缺</td>
+        <td>R11</td>
+      </tr>
+      <tr>
+        <td>额外说明文件（<code>instructions</code>）、记忆开关、额外技能目录、内置智能体的模型覆盖、默认智能体</td>
+        <td>缺</td>
+        <td>R13、R14</td>
+      </tr>
+      <tr>
+        <td>按名字开关工具；改完文件自动格式化（24 种格式化工具）</td>
+        <td>缺</td>
+        <td>R17、R18</td>
+      </tr>
+      <tr>
+        <td>
+          命令行：agent、session、export、import、provider、skill、plugin、mcp
+          管理、sandbox、stats、upgrade、doctor、logs、bug-report、generate
+        </td>
+        <td>缺</td>
+        <td>各能力切片和 R27</td>
+      </tr>
+      <tr>
+        <td>升级后保留历史对话和设置</td>
+        <td>缺</td>
+        <td>R2、R4、R28</td>
+      </tr>
+      <tr>
+        <td>终端、沙箱状态和初始化、权限规则</td>
+        <td>有</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>协作群、角色模板、产品接入</td>
+        <td><code>group.*</code>、<code>profile.*</code>、<code>member.*</code></td>
+        <td>R7 改名，R8 到 R10 改模型，R22、R23 接界面</td>
+      </tr>
+    </table>
+
+    <h3 id="redesign-models">7.6 模型目录</h3>
+    <p>新的模型目录把 v0.3.1 的做法用 Go 原样补上：</p>
+    <ol>
+      <li>
+        <strong>自动刷新。</strong
+        >守护进程启动后在后台刷新：每个配了密钥或地址的服务商（含中转站）拉一次自己的模型列表，公开目录（OpenRouter
+        免密钥列表）拉一次；之后每小时一次；改了某个服务商的密钥或地址后立刻刷新它。缓存不到 1 小时不重复拉。环境变量
+        <code>MERAKCODE_DISABLE_CATALOG_FETCH=1</code> 时不联网（e2e 夹具已经设了它）。
+      </li>
+      <li>
+        <strong>缓存。</strong>每个服务商的列表和公开目录各存一份文档（kind
+        <code>catalog</code>），带抓取时间；启动先读缓存，离线也有完整列表。
+      </li>
+      <li>
+        <strong>合并顺序。</strong>用户覆盖 &gt; 服务商实时列表 &gt; 公开目录（按模型 id
+        补上下文、输出上限、价格、能力、是否弃用）&gt; 兜底表（按服务商和模型族前缀给思考档位、默认档位）&gt; 现有的 11
+        条内置。
+      </li>
+      <li><strong>过滤。</strong>每家服务商一条规则，去掉嵌入、重排、语音、图像、审核这类不能对话的模型。</li>
+      <li>
+        <strong>字段。</strong>模型加 <code>deprecated</code> 和
+        <code>defaultThinking</code>；界面跳过已弃用模型，思考强度默认取 <code>defaultThinking</code>（B16）。
+      </li>
+      <li>
+        <strong>失败提示。</strong>刷新成功发 <code>catalog.refreshed</code>，失败发 <code>catalog.failed</code>（带 MRK
+        码）；界面重读模型列表，同一服务商同一个错误只提示一次（UI 分支 <code>state/catalog-refresh.ts</code> 的行为）。
+      </li>
+    </ol>
+
+    <h2 id="slices">8. 整改切片总表</h2>
+    <p>
+      一片一个分支、一个 PR、一次合并，前一片的 CI 全绿后才开始下一片。R0 到 R7
+      按顺序做；之后分两条轨道，可以交给两个执行者并行：轨道 A 是协作（R8 到 R10），轨道 B 是对话和能力（R11 到
+      R19）。R20、R21 等轨道 B 完成，R22 起两条轨道都要完成。R27 在 R19 之后、R28 在 R22
+      之后随时可以做，不阻塞别的切片。R1 到 R19 只动引擎、协议、SDK
+      和主进程；渲染进程在这期间只做让它能编译、测试能过的最小改动，因为 R20 会用 UI 分支整体替换它。
+    </p>
+    <!-- prettier-ignore -->
+    <figure class="figure">
+      <svg viewBox="0 0 960 200" role="img" aria-label="切片顺序">
+        <rect class="b grey" x="20" y="80" width="150" height="44" rx="6" />
+        <text x="95" y="102" text-anchor="middle" dominant-baseline="middle">R0 到 R7 地基</text>
+        <path class="f" d="M170 102 H200 V50 H230" />
+        <path class="f" d="M170 102 H200 V154 H230" />
+        <rect class="b blue" x="230" y="28" width="280" height="44" rx="6" />
+        <text x="370" y="50" text-anchor="middle" dominant-baseline="middle">轨道 A：R8 到 R10 协作</text>
+        <rect class="b green" x="230" y="132" width="280" height="44" rx="6" />
+        <text x="370" y="154" text-anchor="middle" dominant-baseline="middle">轨道 B：R11 到 R19 对话与能力</text>
+        <path class="f" d="M510 154 H550" />
+        <rect class="b yellow" x="550" y="132" width="170" height="44" rx="6" />
+        <text x="635" y="154" text-anchor="middle" dominant-baseline="middle">R20、R21 恢复界面</text>
+        <path class="f" d="M720 154 H760 V108 H780" />
+        <path class="f" d="M510 50 H760 V96 H780" />
+        <rect class="b" x="780" y="80" width="160" height="44" rx="6" />
+        <text x="860" y="102" text-anchor="middle" dominant-baseline="middle">R22 到 R26 新页面</text>
+        <text class="s" x="860" y="146" text-anchor="middle">R27、R28 随后</text>
+      </svg>
+      <figcaption class="cap">图 5 切片顺序</figcaption>
+    </figure>
+    <table>
+      <tr>
+        <th style="width: 7%">切片</th>
+        <th style="width: 40%">做完以后</th>
+        <th style="width: 9%">依赖</th>
+        <th>解决</th>
+      </tr>
+      <tr>
+        <td>R0</td>
+        <td>CI 在本分支推送时运行；<code>pnpm check</code> 通过；AGENTS.md 准确；失败的 e2e 有待办清单</td>
+        <td>—</td>
+        <td>5.4 节、U8、D-24</td>
+      </tr>
+      <tr>
+        <td>R1</td>
+        <td>SDK 按方法设超时；错误码保留真实原因；配置补丁按字段合并；内置智能体用默认模型</td>
+        <td>R0</td>
+        <td>B2、B3、B7，B1、B11 的引擎侧根因</td>
+      </tr>
+      <tr>
+        <td>R2</td>
+        <td>配置用 v0.3 的格式，所有文件统一到 <code>~/.merakcode</code></td>
+        <td>R1</td>
+        <td>D-25、D-26、B8</td>
+      </tr>
+      <tr>
+        <td>R3</td>
+        <td>模型目录恢复：自动刷新、缓存、公开目录补全、兜底表、过滤、失败提示</td>
+        <td>R2</td>
+        <td>B19、B16 的引擎侧</td>
+      </tr>
+      <tr>
+        <td>R4</td>
+        <td>调用者身份由连接决定；密钥进凭据库</td>
+        <td>R3</td>
+        <td>B10、B14、D-18、D-19</td>
+      </tr>
+      <tr>
+        <td>R5</td>
+        <td>服务端方法表；根包 <code>engine</code> 不再新增文件</td>
+        <td>R4</td>
+        <td>5.1 节第 1、2 条，C6</td>
+      </tr>
+      <tr>
+        <td>R6</td>
+        <td>引擎是守护进程，桌面端退出不停；远程存储宿主删除</td>
+        <td>R5</td>
+        <td>D-12、V6、B15</td>
+      </tr>
+      <tr>
+        <td>R7</td>
+        <td>profile 改名 agent；协作群恰好一个 Leader；工作空间必填；重复方法合并</td>
+        <td>R6</td>
+        <td>D-2、D-4、D-17、D-21、D-22、5.2 节</td>
+      </tr>
+      <tr>
+        <td>R8</td>
+        <td>任务归属协作群（一对多）；单独建的任务交给协作群后启动；工作空间和 Leader 从协作群来；每个群一条线程</td>
+        <td>R7</td>
+        <td>D-5、D-6、D-7、U2、U3、U4</td>
+      </tr>
+      <tr>
+        <td>R9</td>
+        <td>人的指令最高；全双工送达回执；待办工具；拆解数据；Leader 提示词</td>
+        <td>R8</td>
+        <td>D-8、D-9、D-10、D-23、B20 的 Leader 部分</td>
+      </tr>
+      <tr>
+        <td>R10</td>
+        <td>Worker 主动认领</td>
+        <td>R9</td>
+        <td>D-11</td>
+      </tr>
+      <tr>
+        <td>R11</td>
+        <td>会话能力：撤回与恢复、编辑重发、重试、改名归档、手动压缩、换模式、搜索、和外部产品单聊；Worker 提示词</td>
+        <td>R7</td>
+        <td>D-3、D-23、B18、B20 的 Worker 部分</td>
+      </tr>
+      <tr>
+        <td>R12</td>
+        <td>代码与工作区：提交、推送、写提交信息、对话 worktree、文件状态与身份、目录规范化</td>
+        <td>R11</td>
+        <td>B17</td>
+      </tr>
+      <tr>
+        <td>R13</td>
+        <td>设置：MCP（本地、远程、OAuth）、规则、记忆、配置告警</td>
+        <td>R12</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R14</td>
+        <td>技能与斜杠命令</td>
+        <td>R13</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R15</td>
+        <td>插件</td>
+        <td>R14</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R16</td>
+        <td>计划（任何模式）</td>
+        <td>R15</td>
+        <td>D-15</td>
+      </tr>
+      <tr>
+        <td>R17</td>
+        <td>工具补齐：网页抓取、网页搜索、代码搜索、多处编辑、Word 和 Excel</td>
+        <td>R16</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R18</td>
+        <td>LSP</td>
+        <td>R17</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R19</td>
+        <td>定时任务</td>
+        <td>R18</td>
+        <td>D-16、7.5 节</td>
+      </tr>
+      <tr>
+        <td>R20</td>
+        <td>桌面端恢复（一）：外壳、对话、设置、引导，数据层接新 SDK</td>
+        <td>R19</td>
+        <td>4.5 节、D-20、B9、B16</td>
+      </tr>
+      <tr>
+        <td>R21</td>
+        <td>桌面端恢复（二）：代码、git、审核、终端、浏览器面板和各类恢复</td>
+        <td>R20</td>
+        <td>4.5 节</td>
+      </tr>
+      <tr>
+        <td>R22</td>
+        <td>侧栏五项、首页（收件箱栏目、右下角弹窗、任务看板）、智能体页</td>
+        <td>R10、R21</td>
+        <td>D-1、P1、P2、P3、P6、B13、D-13、U6、V3</td>
+      </tr>
+      <tr>
+        <td>R23</td>
+        <td>新建协作群、协作群页（任务拆解面板、@ 直达、全双工）</td>
+        <td>R22</td>
+        <td>B1、B4、B5、B6、B11、B12、P4、P5、P7、D-8、V4</td>
+      </tr>
+      <tr>
+        <td>R24</td>
+        <td>新建任务、任务详情、启动（新建或选择协作群）、全局看板与归档</td>
+        <td>R23</td>
+        <td>D-14、C3</td>
+      </tr>
+      <tr>
+        <td>R25</td>
+        <td>视觉与文案统一；全部 e2e 进 CI</td>
+        <td>R24</td>
+        <td>第 4 节、U7、5.4 节</td>
+      </tr>
+      <tr>
+        <td>R26</td>
+        <td>登录时自动启动后台引擎</td>
+        <td>R25</td>
+        <td>D-12 的后半</td>
+      </tr>
+      <tr>
+        <td>R27</td>
+        <td>命令行收尾：stats、upgrade、doctor、logs、bug-report、sandbox、generate</td>
+        <td>R19</td>
+        <td>D-27</td>
+      </tr>
+      <tr>
+        <td>R28</td>
+        <td>从 v0.x 迁移：历史对话、外部产品连接、角色模板、协作群记录、计划、记忆、待办</td>
+        <td>R19、R22</td>
+        <td>D-28</td>
+      </tr>
+    </table>
+    <div class="box note">
+      重新验收的标准：第 3 节 20 项缺陷都有测试且通过；UI 分支的 51 个 spec 全部通过并进 CI；7.5
+      节每一行都有测试；从首页添加智能体、新建任务并新建协作群启动它、在另一个协作群里由 Leader 生成两个任务、人直接给
+      Worker 下指令、Worker
+      主动认领、交报告、审核通过、在看板上归档任务，全程在界面里完成，附浅色和深色截图；关闭桌面端后任务继续推进，重新打开能看到最新状态；v0.3
+      的配置不改就能用，历史对话导入后能继续聊；v0.3.0 命令行的命令 v1 都有；PR 上 CI 全绿。
+    </div>
+
+    <h2 id="orders">9. 施工单</h2>
+    <p>
+      每份施工单的结构相同：做完以后、依赖、先读、先写的测试（按顺序一个一个红、绿）、实现步骤、不做、验证。文件路径都相对仓库根目录。施工单和
+      <code>docs/plans/v1-agent-engine.html</code> 冲突时以施工单为准。
+    </p>
+
+    <h3 id="wo-r0">R0 流程与文档</h3>
+    <p>
+      <strong>做完以后：</strong>往 <code>dev-v1.0.0</code> 推送会跑 CI；<code>pnpm check</code>
+      在不改愿景文档的前提下通过；AGENTS.md 描述的是当前仓库；现在失败的 e2e 有一份待办清单，写明由哪一片修。
+    </p>
+    <p>
+      <strong>先读：</strong
+      ><code>.github/workflows/ci.yml</code>、<code>AGENTS.md</code>、<code>CONTRIBUTING.md</code>。
+    </p>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li><code>ci.yml</code> 的 <code>on.push.branches</code> 改为 <code>[main, dev-v1.0.0]</code>。</li>
+      <li>
+        新建 <code>apps/desktop/main/e2e/PENDING.md</code>：列出当前不进 CI 的 8 个 spec 和 20 个失败用例（1.1
+        节），每条写负责的切片（<code>conversation-actions</code>、<code>onboarding</code>、<code>settings</code>、<code
+          >settings-tools</code
+        >
+        → R20；<code>branch-*</code>、<code>worktree</code> → R21）。每片修好一条就从清单删一条，R25
+        结束时这个文件删除。
+      </li>
+      <li>
+        AGENTS.md 的“v1.0.0 rebuild”一节：把“the SDK (<code>packages/sdk</code>) are deleted”改为“<code
+          >packages/sdk</code
+        >
+        is the new TypeScript SDK; its types are generated from <code>merak/protocol</code>”；Layout 加一条
+        <code>packages/sdk</code>；加两条规则（英文原文如下）。
+      </li>
+    </ol>
+    <pre><code>- The desktop baseline is `origin/tt/refactor/ui-side-panel` (it contains all of `dev-v0.3.1`). Copy its
+  `apps/desktop` components, styles, i18n entries and e2e specs instead of rewriting them; only the data layer
+  changes to the new SDK. The ban on reading the v0.3 engine, command line and SDK is unchanged.
+- Nothing that v0.x could do may be missing in v1. Compared with `origin/tt/refactor/ui-side-panel`, every
+  feature must keep working; the only change allowed is that planning is no longer a separate mode.
+- Never move, skip or weaken a failing test to get CI green. Fix it, or list it in
+  `apps/desktop/main/e2e/PENDING.md` with the slice that fixes it.
+- `docs/plans/v1-acceptance-review.html` sections 9 and 10 are the current work order. Where it differs from
+  `docs/plans/v1-agent-engine.html`, follow the work order.</code></pre>
+    <p><strong>不做：</strong>不改任何代码；不格式化 <code>docs/智能体架构思考.md</code>。</p>
+    <p><strong>验证：</strong><code>pnpm check</code> 退出码为 0；推送后 GitHub Actions 出现本分支的 CI 运行。</p>
+
+    <h3 id="wo-r1">R1 SDK 与服务端缺陷</h3>
+    <p>
+      <strong>做完以后：</strong>慢方法不再被 SDK 提前判失败；用户看到的错误码说明真实原因；内置 Leader 和 Worker
+      不配模型也能跑（用默认模型）。
+    </p>
+    <p class="muted">依赖：R0。解决：B2、B3、B7，以及 B1、B11 在引擎侧的根因。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>packages/sdk/src/client.ts</code
+      >、<code>packages/sdk/test/connection.test.ts</code>（真实引擎的测试写法）、<code>merak/internal/server/server.go:731-765</code>、<code>merak/internal/server/config.go</code>、<code>merak/internal/platform/config/config.go</code>、<code>merak/engine/engine.go:300-360</code>、<code>merak/engine/model/catalog/refresh.go</code>、<code>packages/util/errors.json</code>、<code>apps/desktop/renderer/src/state/error.ts</code>。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>packages/sdk/test/timeout.test.ts</code>：用 <code>node:http</code> 起一个本地服务，按
+        <code>refresh.go</code> 实际请求的路径在 12 秒后返回模型列表；以 <code>OPENAI_BASE_URL</code> 指向它、<code
+          >OPENAI_API_KEY=test</code
+        >
+        启动真实 <code>merak serve</code>；断言 <code>model.refresh({ provider: "openai" })</code> 成功返回而不是抛出
+        <code>MRK-1001</code>。
+      </li>
+      <li>
+        同一文件：<code>member.test</code> 用 <code>command</code> 产品，命令是 <code>node</code>，参数让它 15 秒后输出
+        OK 再退出；断言调用成功返回能力表。
+      </li>
+      <li>
+        <code>merak/internal/server</code> 新测试：<code>group.addMember</code> 传入角色和档案不符的成员，断言错误的
+        <code>data.code</code> 是新码 <code>MRK-6003</code>，不是 <code>MRK-6001</code>。再分别覆盖
+        <code>profile.delete</code>
+        删除仍在群里的档案（<code>MRK-6004</code>）、非拥有者编辑档案（<code>MRK-6005</code>）。
+      </li>
+      <li>
+        <code>merak/engine</code> 新测试：配置默认模型为假模型，建一个本地群，成员用内置档案
+        <code>builtin-leader</code>（不复制、不设模型），人发言后 Leader 用默认模型回复。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>client.ts</code> 的 <code>call()</code>：把固定的 <code>10000</code> 换成按方法的表，默认 10 秒；<code
+          >member.test</code
+        >
+        40 秒，<code>model.refresh</code>、<code>model.discover</code>、<code>remote.connect</code>、<code
+          >group.create</code
+        >
+        30 秒，<code>diagnostics.bundle</code> 120 秒。表是模块内常量，不导出、不做成配置。
+      </li>
+      <li>
+        错误码：在 <code>merak/engine/errors.go</code> 定义
+        <code>type Error struct { Code string; Err error }</code>，实现 <code>Error()</code> 和
+        <code>Unwrap()</code>，加一个小函数 <code>coded(code string, err error) error</code>。把
+        <code>group.go</code>、<code>profiles.go</code>、<code>group_queue.go</code> 里用户可见的失败改为
+        <code>coded(errorcode.X, ...)</code>。<code>server.go</code> 先用 <code>errors.As</code> 取出
+        <code>*engine.Error</code> 的码，取不到再走现在的按前缀映射。
+      </li>
+      <li>
+        在 <code>packages/util/errors.json</code> 的 task 域（6 字头）加：<code>MRK-6003</code>
+        成员角色和智能体不符、<code>MRK-6004</code> 智能体还在协作群里、<code>MRK-6005</code> 只有拥有者能修改、<code
+          >MRK-6006</code
+        >
+        目标分支无效、<code>MRK-6007</code> 外部 Leader 需要 MCP 和中途消息。每条写中英文 <code>title</code> 和
+        <code>hint</code>，然后 <code>pnpm generate:errors</code>。
+      </li>
+      <li>
+        默认模型：服务端在 <code>applyConfiguration</code> 时把 <code>config.Model</code> 和
+        <code>config.Thinking</code> 交给引擎（<code>engine.SetDefaultModel(provider, model, thinking)</code>）；<code
+          >group.go</code
+        >
+        启动 Leader 和 <code>worker.go</code> 启动内置 Worker 时，档案没有
+        <code>Model.Provider</code> 就用默认模型；默认模型也没有时返回带码的错误。
+      </li>
+    </ol>
+    <p>
+      <strong>不做：</strong>不改界面（错误显示、模型设置页在 R20 随恢复的界面一起改，建群界面在 R23
+      重做）；不加超时配置项；“测试连通”仍然真实调用一次，这样才能验证密钥可用。
+    </p>
+    <p>
+      <strong>验证：</strong><code>pnpm check</code>、<code>pnpm --dir merak test</code>、<code
+        >cd packages/sdk &amp;&amp; pnpm test</code
+      >、<code>pnpm --dir packages/sdk test:e2e</code>、<code>cd apps/desktop/renderer &amp;&amp; pnpm test</code>。
+    </p>
+
+    <h3 id="wo-r2">R2 配置格式与目录统一</h3>
+    <p>
+      <strong>做完以后：</strong>v1 的全部文件在 <code>~/.merakcode</code> 下，布局和 v0.3 一致；v0.3
+      用户的全局配置和项目配置不用改就能被 v1
+      读懂；在设置里改一项只改这一项，文件里的注释和其他内容不变；环境变量里的地址不再被写进配置（B8）。
+    </p>
+    <p class="muted">依赖：R1。解决：D-25、D-26、B8。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/internal/platform/config/*.go</code
+      >、<code>merak/internal/server/config.go</code>、<code>merak/internal/cli/serve.go</code>（<code>dataHome</code>）、<code>merak/internal/platform/log/log.go</code>（<code>Root</code>，已经用
+      <code>~/.merakcode</code
+      >）、<code>apps/desktop/main/src/backend.ts</code>（<code>dataDirectory</code>）、<code>apps/desktop/main/src/index.ts</code>（<code>Paths.clients</code>）。v0.3.1
+      的 <code>schema/config.json</code> 是配置格式的依据，<code>packages/util/src/paths.ts</code>
+      是目录布局的依据；两者只取格式和布局（<code>git show origin/dev-v0.3.1:&lt;路径&gt;</code>）。
+    </p>
+    <p><strong>v0.3 配置键在 v1 里的处理：</strong></p>
+    <table>
+      <tr>
+        <th style="width: 34%">键</th>
+        <th style="width: 40%">v1</th>
+        <th>在哪片</th>
+      </tr>
+      <tr>
+        <td><code>locale</code>、<code>logLevel</code>、<code>model</code>、<code>small_model</code></td>
+        <td>原样支持</td>
+        <td>R2</td>
+      </tr>
+      <tr>
+        <td><code>provider</code>、<code>enabled_providers</code>、<code>disabled_providers</code></td>
+        <td>原样支持；<code>apiKey</code> 读出后进凭据库</td>
+        <td>R2 格式、R3 目录刷新、R4 密钥</td>
+      </tr>
+      <tr>
+        <td><code>permission</code>、<code>sandbox</code>、<code>watcher</code></td>
+        <td>映射到 v1 的权限规则、沙箱设置、文件监视器的忽略列表</td>
+        <td>R2</td>
+      </tr>
+      <tr>
+        <td><code>server</code></td>
+        <td>
+          <code>port</code>、<code>hostname</code> 作为 <code>merak serve</code> 的默认值；<code>mdns</code>、<code
+            >cors</code
+          >
+          忽略并告警
+        </td>
+        <td>R2</td>
+      </tr>
+      <tr>
+        <td><code>snapshot</code>、<code>compaction.auto</code>、<code>storage.retention_days</code></td>
+        <td>撤回快照开关、关掉自动压缩、按天删除不活跃的会话（默认不删）</td>
+        <td>R11</td>
+      </tr>
+      <tr>
+        <td><code>mcp</code>、<code>rules</code>、<code>instructions</code>、<code>memory</code></td>
+        <td>
+          原样支持（<code>memory</code> 支持
+          <code>auto_extract</code>、<code>auto_recall</code>、<code>model</code>，其余子键忽略并告警）
+        </td>
+        <td>R13</td>
+      </tr>
+      <tr>
+        <td><code>command</code>、<code>skills</code>、<code>agent</code>、<code>default_agent</code></td>
+        <td>原样支持；<code>agent</code> 里的内置项映射到 v1 的内置智能体和内部任务（见 R14）</td>
+        <td>R14</td>
+      </tr>
+      <tr>
+        <td><code>plugin</code>、<code>plugin_options</code></td>
+        <td>原样支持</td>
+        <td>R15</td>
+      </tr>
+      <tr>
+        <td><code>tools</code></td>
+        <td>按名字开关工具</td>
+        <td>R17</td>
+      </tr>
+      <tr>
+        <td><code>formatter</code>、<code>lsp</code></td>
+        <td>原样支持</td>
+        <td>R18</td>
+      </tr>
+      <tr>
+        <td><code>ui</code></td>
+        <td>原样保存，<code>config.get</code> 原样返回，给桌面端用</td>
+        <td>R2、R20</td>
+      </tr>
+      <tr>
+        <td><code>agentConnections</code>、<code>collaboration</code></td>
+        <td>外部产品连接和角色模板，导入成智能体和向导里的模板</td>
+        <td>R28、R22</td>
+      </tr>
+      <tr>
+        <td>
+          <code>mode</code>、<code>layout</code>（v0.3
+          已废弃）、<code>enterprise</code>、<code>tool_discovery</code>、<code>experimental</code>、<code
+            >compaction</code
+          >
+          的其余子键
+        </td>
+        <td>忽略并在 <code>warnings</code> 里列出</td>
+        <td>R2</td>
+      </tr>
+    </table>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/internal/platform/config</code>：把一份带注释和尾逗号、含 <code>provider</code>（带
+        <code>baseURL</code>、<code>apiKey</code>
+        和模型覆盖）、<code>model</code>、<code>small_model</code>、<code>mcp</code>、<code>rules.user</code>、<code
+          >experimental</code
+        >
+        的 v0.3 格式 <code>merakcode.jsonc</code> 放进 <code>t.TempDir()</code> 当根目录；读出的值和文件一致，<code
+          >experimental</code
+        >
+        出现在 <code>warnings</code> 里，不报错。
+      </li>
+      <li>改 <code>model</code> 一项后，文件里只有这一项的值变了，注释、空行、键的顺序和其他项都不变。</li>
+      <li>
+        项目根的 <code>merakcode.json</code> 和项目
+        <code>.merakcode/merakcode.jsonc</code> 都读；项目配置覆盖全局配置；项目配置里的未知键只告警，不让整份配置失效。
+      </li>
+      <li>
+        设置环境变量 <code>OPENAI_BASE_URL=http://env.example</code>，经 <code>config.set</code> 只改
+        <code>openai</code> 的密钥；读回配置文件，没有 <code>baseURL</code>，原有的模型覆盖还在（B8）。
+      </li>
+      <li>
+        一个测试列出 v0.3 的全部顶层键（从 <code>schema/config.json</code> 抄成常量），断言 v1 新增的顶层键都不在其中。
+      </li>
+      <li>
+        <code>merak/internal/cli</code>：设 <code>MERAKCODE_HOME</code> 为临时目录后启动 <code>serve</code>，存储在
+        <code>&lt;根&gt;/data/merak.db</code>，<code>engine.json</code> 在 <code>&lt;根&gt;/data/</code>，日志在
+        <code>&lt;根&gt;/logs/</code>；不设时根目录是 <code>~/.merakcode</code>。
+      </li>
+      <li><code>apps/desktop/main</code>：主进程找 <code>engine.json</code> 的位置和引擎写的位置一致。</li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>internal/platform/config</code> 的值类型改成 v0.3 的结构（只写 v1 用到的键，其余整体保留成原始 JSON
+        以便原样写回）；JSONC 解析沿用现有的解析器；写回时只替换改动键的文本片段，自己实现，不加依赖。
+      </li>
+      <li>
+        公开视图和补丁分开：<code>config.get</code> 返回不含密钥值的视图，<code>config.set</code> 只收改动的字段；R1
+        原来列在这里的 Provider 三种用途拆分在这一片按新格式做。
+      </li>
+      <li>
+        现有的 v1
+        键（<code>providers</code>、<code>mcpServers</code>、<code>allowedHosts</code>、<code>deniedHosts</code>、<code>permissionRules</code>、<code>permissionGrants</code>、<code>unconfined</code>、<code>workspaceTrust</code>、<code>mode</code>、<code>cloud</code>）：v0.3
+        有对应的改用 v0.3 的键，没有的保留为 v1 新键（<code>mode</code> 改名为 <code>permissionMode</code>，因为 v0.3 的
+        <code>mode</code> 另有含义）。
+      </li>
+      <li>
+        <code>dataHome</code> 改为 <code>MERAKCODE_HOME</code> 或 <code>~/.merakcode</code>，存储和
+        <code>engine.json</code> 放在 <code>data/</code> 下；主进程的 <code>dataDirectory</code> 改用同一个根；删掉
+        <code>%APPDATA%</code>、<code>Application Support</code>、XDG 的分支。
+      </li>
+      <li><code>pnpm generate:protocol</code>；渲染进程只改到能编译、测试能过为止。</li>
+    </ol>
+    <p><strong>不做：</strong>表里写在后面切片的键的行为（这一片只负责读出、保存、写回）；迁移 v0.3 的数据（R28）。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r3">R3 模型目录恢复</h3>
+    <p>
+      <strong>做完以后：</strong
+      >配了一家服务商的密钥，打开就能看到这家的完整模型列表，不用手动刷新；重启和离线后列表还在；上下文、价格、思考档位齐全；刷新失败时有一次提示。行为见
+      7.6 节。
+    </p>
+    <p class="muted">依赖：R2。解决：B19，B16 的引擎侧。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/model/catalog/*.go</code
+      >、<code>merak/engine/configuration.go</code>、<code>merak/internal/server/config.go</code>（<code>applyConfiguration</code>）、<code>merak/internal/cli/serve.go</code>（<code>--refresh-models</code>）、<code>apps/desktop/main/e2e/fixture.ts</code>（<code>MERAKCODE_DISABLE_CATALOG_FETCH</code>）。可以读
+      dev-v0.3.1 的
+      <code>packages/engine/src/agent/model/catalog/fallback.ts</code>
+      取兜底表的数据（服务商、模型族、思考档位、默认档位），按数据原创实现，不翻译代码。
+    </p>
+    <p>
+      <strong>先写的测试</strong>（<code>merak/engine/model/catalog</code> 和 <code>merak/internal/server</code>，用
+      <code>net/http/httptest</code> 起假服务）：
+    </p>
+    <ol>
+      <li>
+        假的 OpenAI 兼容服务在 <code>/models</code> 返回 30 个模型，其中 3 个 id 含
+        <code>embedding</code>、<code>rerank</code>、<code>tts</code>；以它作为
+        <code>dashscope</code> 的地址并配上密钥启动服务端；不调用 <code>model.refresh</code>，5 秒内
+        <code>model.list</code> 里有 27 个 <code>dashscope</code> 模型。
+      </li>
+      <li>
+        假公开目录（<code>catalog.Options</code> 新增 <code>PublicURL</code>，只给测试和开发用）给其中一个模型上下文
+        128000、价格和 <code>deprecated: true</code>；合并后这个模型带上这些值。
+      </li>
+      <li>服务商列表没给思考档位的 <code>claude-*</code> 模型，从兜底表拿到档位和默认档位 <code>high</code>。</li>
+      <li>
+        关掉两个假服务后重启服务端（同一个数据目录）：<code>model.list</code> 仍有 27 个模型；两个服务各发一次
+        <code>catalog.failed</code>，带 <code>MRK-2001</code>。
+      </li>
+      <li>缓存不到 1 小时时重启不发请求（假服务记录请求次数为 0）。</li>
+      <li><code>config.set</code> 改 <code>moonshot</code> 的密钥后，只有 <code>moonshot</code> 被刷新。</li>
+      <li><code>MERAKCODE_DISABLE_CATALOG_FETCH=1</code> 时不发任何请求。</li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>catalog.Model</code> 加 <code>Deprecated bool</code>、<code>DefaultThinking model.Thinking</code>；<code
+          >pnpm generate:protocol</code
+        >。
+      </li>
+      <li>
+        新文件 <code>catalog/public.go</code>（拉公开目录并按 id
+        匹配，中转站的模型去掉前缀后再匹配）、<code>catalog/fallback.go</code>（兜底表，按服务商和模型族前缀）、<code>catalog/filter.go</code>（每家服务商一条排除规则，常量表）。
+      </li>
+      <li>
+        缓存：<code>engine</code> 读写 kind <code>catalog</code> 的文档（key 是服务商 id，公开目录是
+        <code>public</code>），正文是列表和抓取时间；<code>engine.New</code>
+        先读缓存再起后台刷新。
+      </li>
+      <li>
+        后台刷新在 <code>engine</code> 里用现有的
+        <code>e.workers</code> 起一个循环：启动时刷新过期的来源，之后每小时一次；<code>applyConfiguration</code>
+        发现某服务商的密钥或地址变了就刷新它。每个来源成功发 <code>catalog.refreshed</code>，失败发
+        <code>catalog.failed</code>。
+      </li>
+      <li><code>serve</code> 的 <code>--refresh-models</code> 参数删掉，它已经被后台刷新取代。</li>
+    </ol>
+    <p>
+      <strong>命令行：</strong><code>merak models refresh [服务商]</code> 立刻刷新；<code>merak models</code>
+      的列表带来源和是否弃用。
+    </p>
+    <p><strong>不做：</strong>界面（R20 恢复 UI 分支的模型设置和提示时接上这两个事件）；按模型的价格换算。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r4">R4 身份与密钥</h3>
+    <p>
+      <strong>做完以后：</strong
+      >客户端无法冒充别人；外部产品的环境变量值和服务商密钥不再明文写进数据库和配置文件，界面也不再显示。
+    </p>
+    <p class="muted">依赖：R3。解决：B10、B14，D-18、D-19。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/protocol/*.go</code
+      >（参数类型）、<code>merak/internal/server/server.go</code>、<code>merak/internal/platform/credential/credential.go</code>、<code>merak/engine/remote.go:40-50、165-180</code>（凭据库的现有用法）、<code>merak/engine/profiles.go</code>、<code>merak/engine/worker.go</code>（外部产品启动时拼环境变量的地方）、<code>apps/desktop/renderer/src/state/groups.ts:21</code>。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/internal/server</code>：请求参数里带 <code>human</code> 字段时被拒（<code>decodeParams</code>
+        禁止未知字段，字段删掉后自然被拒）；不带时，建出的群的拥有者和发言人是连接的身份。
+      </li>
+      <li><code>merak/internal/server</code>：<code>hello</code> 的结果带 <code>human</code>，值是本机用户的 id。</li>
+      <li>
+        <code>merak/engine</code>：保存一个带 <code>OPENAI_API_KEY=secret</code> 的外部产品档案后，存储里的档案文档不含
+        <code>secret</code>；<code>profile.list</code> 返回的值为空；启动这个成员时，子进程拿到的环境变量值是
+        <code>secret</code>（用 <code>command</code> 产品让它打印环境变量来断言）。
+      </li>
+      <li>
+        <code>merak/internal/server</code>：<code>config.set</code>
+        保存服务商密钥后，配置文件里没有密钥；重启服务后模型调用仍能拿到密钥。旧配置文件里已有的
+        <code>apiKey</code> 在加载时迁进凭据库并从文件里删掉。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        所有协议参数类型删掉 <code>Human</code>；服务端用连接的身份调用引擎。本机连接的身份是常量
+        <code>local-human</code>，在 Go 里定义一次，经 <code>hello</code> 结果告诉客户端；渲染进程删掉写死的
+        <code>localHuman</code>，改读 <code>hello.human</code>。云端转发的身份不在本片处理，保持现状。
+      </li>
+      <li>
+        档案的 <code>Product.Env</code>：保存时把非空的值写进凭据库，键为
+        <code>agent:&lt;档案 id&gt;:&lt;变量名&gt;</code
+        >，文档里只留变量名、值为空；值为空表示保留已存的值；启动成员时从凭据库取值。
+      </li>
+      <li>
+        服务商密钥：同样进凭据库，键为 <code>provider:&lt;服务商 id&gt;</code>；加载时把配置文件里的
+        <code>apiKey</code> 和 v0.3 的
+        <code>&lt;根&gt;/data/auth.json</code> 里的密钥复制进凭据库，成功后从配置文件里删掉 <code>apiKey</code>、删掉
+        <code>auth.json</code>（加一条测试：放一份 v0.3 格式的
+        <code>auth.json</code>，启动后模型调用拿到密钥、文件已删）。测试里用
+        <code>credential.NewFile(t.TempDir())</code>，不碰系统钥匙串。
+      </li>
+      <li>界面：渲染进程只改到能编译为止，密码框和“已保存，留空不修改”在 R20 做。</li>
+    </ol>
+    <p>
+      <strong>命令行：</strong><code>merak provider list</code>（列出服务商、是否已有密钥）、<code
+        >merak provider login &lt;服务商&gt;</code
+      >（读入密钥存进凭据库）、<code>merak provider logout &lt;服务商&gt;</code>、<code
+        >merak provider relay add|remove</code
+      >（中转站）。
+    </p>
+    <p><strong>不做：</strong>云端账号身份；多用户；凭据库的界面管理。</p>
+    <p>
+      <strong>验证：</strong><code>pnpm check</code>、<code>pnpm --dir merak test</code>、SDK 和渲染进程测试、<code
+        >pnpm --dir packages/sdk test:e2e</code
+      >。
+    </p>
+
+    <h3 id="wo-r5">R5 服务端方法表与根包冻结</h3>
+    <p>
+      <strong>做完以后：</strong>行为不变；<code>ServeHTTP</code> 只做连接管理；每个协议方法有一个处理函数；根包
+      <code>engine</code> 不能再加文件。
+    </p>
+    <p class="muted">依赖：R4。解决：5.1 节第 1、2 条，C6。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/internal/server/server.go</code>、<code>merak/protocol/gen/main.go</code>（协议方法从哪里生成）。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/internal/server</code
+        >：协议生成器里的每个方法都有处理函数，处理函数表里没有协议之外的方法（两个集合相等）。
+      </li>
+      <li>
+        <code>merak/engine/architecture_test.go</code>：列出根包所有非测试
+        <code>.go</code> 文件，和测试里写死的清单（现有文件）比较，多出文件就失败。后面的切片删文件时同步删清单。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        定义
+        <code>type handler func(ctx context.Context, c *connection, params json.RawMessage) (any, error)</code
+        >，按领域拆成
+        <code>methods_session.go</code
+        >、<code>methods_group.go</code>、<code>methods_task.go</code>、<code>methods_files.go</code>、<code>methods_config.go</code>、<code>methods_events.go</code>、<code>methods_cloud.go</code>，每个文件导出一个
+        <code>map[string]handler</code> 片段，在 <code>server.go</code> 合并。
+      </li>
+      <li>原 <code>switch</code> 的每个分支原样搬进处理函数；错误映射搬进 <code>errors.go</code>。</li>
+    </ol>
+    <p><strong>不做：</strong>不移动引擎代码；不改任何方法的行为和参数。</p>
+    <p><strong>验证：</strong><code>pnpm --dir merak test</code> 全绿，且除新增的两个测试外没有改动任何测试。</p>
+
+    <h3 id="wo-r6">R6 守护进程</h3>
+    <p>
+      <strong>做完以后：</strong
+      >关闭桌面端后引擎继续运行，任务照常推进；再打开桌面端连上同一个引擎；托盘“停止后台引擎并退出”或
+      <code>merak stop</code> 停止它；桌面端不再当存储宿主。
+    </p>
+    <p class="muted">依赖：R5。解决：D-12、V6、B15。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>apps/desktop/main/src/backend.ts</code
+      >、<code>apps/desktop/main/src/index.ts</code>、<code>apps/desktop/main/src/tray.ts</code>、<code>apps/desktop/main/e2e/engine-lifecycle.spec.ts</code>、<code>merak/internal/cli/run.go:201-260</code>、<code>merak/internal/cli/serve.go</code>、<code>merak/internal/server/instance.go</code>、<code>merak/internal/server/storage.go</code>、<code>merak/engine/storage.go</code>、<code>packages/sdk/src/store*.ts</code>、<code>apps/desktop/main/script/build.ts</code>、<code>apps/desktop/main/script/package.ts</code>。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>engine-lifecycle.spec.ts</code>：关闭应用后，<code>engine.json</code> 里的进程仍在，能用 SDK
+        连上并读到会话。
+      </li>
+      <li>同一文件：重新启动应用，连上的是同一个进程（pid 不变），之前的会话在侧栏里。</li>
+      <li>同一文件：托盘“停止后台引擎并退出”之后，<code>engine.json</code> 被删除，进程退出。</li>
+      <li>
+        <code>merak/internal/server</code>：客户端连上、建群、派一个任务给假模型驱动的
+        Worker，然后断开；断开后任务仍然走到 <code>task.reported</code>，事件写进了本地存储。
+      </li>
+      <li><code>merak/internal/cli</code>：<code>serve --store remote</code> 返回退出码 2。</li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>backend.ts</code>：先读 <code>engine.json</code> 连现有引擎；连不上就以 <code>serve</code>（不带
+        <code>--store</code>）拉起，<code>detached: true</code>、<code>stdio: "ignore"</code>、<code
+          >windowsHide: true</code
+        >，然后 <code>child.unref()</code>；连接时不传 <code>store</code>。应用退出时只关连接，不调
+        <code>engine.stop()</code>。
+      </li>
+      <li>托盘和菜单加“停止后台引擎并退出”，先 <code>engine.stop()</code> 再退出；中英文文案。</li>
+      <li>
+        删除远程存储链路（7.4 节列出的全部文件和代码）；<code>serve</code> 删掉 <code>--store</code> 参数；<code
+          >script/generate-store.ts</code
+        >
+        只生成 Go 侧；<code>package.json</code> 去掉 <code>better-sqlite3</code>；<code>build.ts</code> 删掉
+        <code>nativeRuntime</code>；<code>package.ts</code> 和 <code>ci.yml</code> 的 desktop-package 去掉对
+        <code>better-sqlite3</code> 的检查。
+      </li>
+    </ol>
+    <div class="box warn">
+      Windows 上 Electron 的子进程可能随作业对象一起被结束，必须用 <code>detached: true</code> 并在 e2e
+      里实测“关闭后仍在”。开发时先关掉正在运行的开发版 MerakCode，否则构建会因为文件被锁而失败。
+    </div>
+    <p>
+      <strong>命令行：</strong><code>merak status</code> 显示守护进程是否在跑、进程 id、端口、根目录、已连接的客户端数。
+    </p>
+    <p><strong>不做：</strong>登录时自动启动（R26）；系统服务安装。</p>
+    <p>
+      <strong>验证：</strong><code>pnpm check</code>、<code>pnpm --dir merak test</code>、SDK 测试和
+      e2e、主进程测试、<code>pnpm --dir apps/desktop/main test:e2e e2e/engine-lifecycle.spec.ts</code>。
+    </p>
+
+    <h3 id="wo-r7">R7 智能体改名、协作群唯一 Leader、工作空间必填</h3>
+    <p>
+      <strong>做完以后：</strong>代码、协议、事件里的“档案”改为“智能体”（<code>agent</code>）；协作群有且只有一个
+      Leader；协作群和对话都必须有存在的工作空间；重复的方法合并。
+    </p>
+    <p class="muted">依赖：R6。解决：D-2、D-4、D-17，5.2 节的重复方法。</p>
+    <table>
+      <tr>
+        <th style="width: 44%">现在</th>
+        <th>改为</th>
+      </tr>
+      <tr>
+        <td>Go 包 <code>engine/profile</code>、类型 <code>profile.Profile</code>、文档 kind <code>profile</code></td>
+        <td><code>engine/agent</code>、<code>agent.Agent</code>、kind <code>agent</code></td>
+      </tr>
+      <tr>
+        <td>方法 <code>profile.*</code>、<code>member.test</code>、<code>member.catalog</code></td>
+        <td><code>agent.list/save/delete/test</code>、<code>agent.catalog</code></td>
+      </tr>
+      <tr>
+        <td><code>member.register</code> 和 <code>group.addMember</code></td>
+        <td>只留 <code>group.addMember</code>：成员加已有智能体的 id；不再接受内联档案</td>
+      </tr>
+      <tr>
+        <td><code>member.remove</code></td>
+        <td>删除，用 <code>group.removeMember</code></td>
+      </tr>
+      <tr>
+        <td><code>group.create</code> 的 <code>profiles</code> 参数、<code>saveGroupProfile</code></td>
+        <td>删除；云端群的创建改为引用智能体 id（<code>internal/cloud</code> 的测试跟着改）</td>
+      </tr>
+      <tr>
+        <td><code>Group.DefaultLeader</code>，群里可以有多个 Leader 角色的智能体</td>
+        <td><code>Group.Leader</code>；名册里 Leader 角色的智能体恰好一个，就是它</td>
+      </tr>
+    </table>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/internal/server</code>：<code>member.register</code>、<code>member.remove</code>、<code
+          >profile.list</code
+        >
+        返回“方法不存在”。
+      </li>
+      <li><code>group.addMember</code> 只给智能体 id 就能加入；带内联智能体被拒。</li>
+      <li>
+        <code>group.create</code> 拒绝：没有 Leader；两个 Leader 角色的智能体；<code>leader</code> 指向
+        Worker；工作空间为空或目录不存在。每种一个新码（<code>MRK-6008</code>
+        起）。
+      </li>
+      <li>
+        <code>group.addMember</code> 再加一个 Leader 角色的智能体被拒。换 Leader 是一步完成的：<code
+          >group.update {leader: &lt;智能体 id&gt;}</code
+        >
+        把名册里的 Leader 成员换成这个智能体（旧 Leader 成员移出，新的加入），走交接；给的是 Worker
+        角色的智能体被拒；<code>group.removeMember</code> 移出 Leader 被拒，要先换 Leader。
+      </li>
+      <li><code>session.create</code> 的 <code>workdir</code> 为空或目录不存在时被拒。</li>
+      <li>
+        <code>merak/internal/localstore</code>：打开含 <code>profile</code> 文档的旧库返回
+        <code>MRK-1008</code>（新码：数据格式已升级，提示删除数据目录下的 <code>merak.db</code>）。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>git mv</code> 移动包目录，然后改 import 和标识符，靠编译器找漏改处；<code>gofmt</code>、<code
+          >go vet</code
+        >
+        通过为准。
+      </li>
+      <li>存储格式版本加一（<code>internal/localstore</code> 里的版本号，没有就加一个）；开发版数据不迁移。</li>
+      <li>
+        <code>pnpm generate:protocol</code>、<code>pnpm generate:errors</code
+        >；SDK、渲染进程和测试里的引用改到能编译、测试能过为止。
+      </li>
+    </ol>
+    <p>
+      <strong>命令行：</strong><code>merak member catalog</code> 改名 <code>merak agent catalog</code>；新增
+      <code>merak agent list|add|remove|test</code>（<code>add</code> 可以从探测到的产品一键添加）。
+    </p>
+    <p><strong>不做：</strong>任务和群的绑定（R8）；界面文案（R20 起）。</p>
+    <p><strong>验证：</strong>全量命令全绿；<code>git grep -n "engine/profile\b"</code> 没有结果。</p>
+
+    <h3 id="wo-r8">R8 任务归属协作群</h3>
+    <p>
+      <strong>做完以后：</strong>任务可以单独创建，也可以由 Leader
+      在协作群里创建；一个协作群可以有多个任务，一个任务最多属于一个协作群；单独建的任务新建或选择协作群后才开始推进；工作空间和
+      Leader 按 D-5、D-6 的规则从协作群来；每个协作群一条 Leader 线程；任务能归档。
+    </p>
+    <p class="muted">依赖：R7。解决：D-5、D-6、D-7、D-14 的引擎侧，U2、U3、U4。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/task/task.go</code
+      >、<code>task/pool.go</code>、<code>merak/engine/leader/thread.go</code>（<code>Threads.Route</code>）、<code>leader/state.go</code>、<code
+        >merak/engine/group.go</code
+      >
+      的事件循环（约 300 到 590
+      行）、<code>group_handover.go</code>、<code>group_tools.go</code>、<code>group_say.go</code>、<code>packages/sdk/src/fold/board.ts</code>。
+    </p>
+    <p><strong>先写的测试</strong>（<code>merak/engine</code>，假模型驱动，按顺序）：</p>
+    <ol>
+      <li>
+        <code>task.create</code> 不带群：卡的 <code>Group</code> 为空，事件在 <code>task:&lt;id&gt;</code> 流，没有任何
+        Leader 线程被唤醒；缺 <code>project</code> 被拒。
+      </li>
+      <li>
+        <code>group.create {task}</code>：群的工作空间是任务的；参数里给了不同的工作空间被拒（新码）；建完卡的
+        <code>Group</code> 是这个群，群的流里有 <code>task.bound</code>，群的线程被唤醒，第一批输入里有这张卡。
+      </li>
+      <li><code>group.bind</code> 把没有群的任务交给工作空间相同的已有群：卡归入这个群，群的线程被唤醒。</li>
+      <li>
+        <code>group.bind</code> 给工作空间不同、没有进行中工作的群：群的工作空间改成任务的（发
+        <code>group.updated</code>），群里没结束的其他任务的 <code>project</code> 一起改，群的 Leader
+        换一条新会话（走交接）。
+      </li>
+      <li>同上，但群有进行中或排队的认领：被拒（新码），群和任务都不变。</li>
+      <li>已经属于某个群的任务再 <code>group.bind</code> 到别的群：被拒（新码）。</li>
+      <li>
+        云端群暂不接任务（D-22）：<code>group.bind</code> 和 <code>group.create {task}</code> 用于云端群时被拒（新码）。
+      </li>
+      <li>
+        Leader 在群 A 里调 <code>create_task</code>：新卡属于 A，工作空间是 A 的，A 的流里有 <code>task.bound</code>；带
+        <code>parent</code> 时是子任务，也属于 A。Worker 的工具池里没有 <code>create_task</code>。
+      </li>
+      <li>
+        群 A 有任务 X、Y：X 交报告只唤醒 A 的线程；<code>group.update {leader}</code> 换 A 的 Leader 后，读出来的 X、Y
+        的 Leader 都是新的，A 一次交接。
+      </li>
+      <li>
+        <code>group.update {project}</code>：没有进行中工作时，群和群里没结束的任务一起改；有进行中或排队的认领时被拒。
+      </li>
+      <li><code>assign_task</code>、<code>read_report</code> 对不属于当前群的卡返回错误。</li>
+      <li>
+        <code>group.list</code> 返回这个客户端的全部协作群和各自的任务 id；<code>task.list</code> 返回全部任务，可以按
+        <code>project</code>
+        过滤，默认不含已归档的。
+      </li>
+      <li>
+        <code>task.archive {tasks, archived: true}</code> 批量归档已结束的卡，发
+        <code>task.archived</code>；含没结束的卡时整批被拒；<code>archived: false</code>
+        恢复。
+      </li>
+      <li>
+        自动归档（时钟可注入）：结束满 3 天的卡被守护进程归档，发起者是系统；配置
+        <code>board.autoArchiveDays</code> 改成 7 后，结束 3 天的不归档；设为 0 时不自动归档。
+      </li>
+      <li>引擎重启（本地存储 <code>Recover</code>）后，任务的归属和线程从事件恢复，继续按上面的规则路由。</li>
+      <li>
+        <code>packages/sdk/src/fold/board.test.ts</code>：折叠出全局看板，已归档的卡不在默认视图里，在归档视图里。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        任务卡按 7.2 节改字段（删 <code>Leader</code>，加
+        <code>Group</code>、<code>Project</code>、<code>Archived</code>）；<code>Pool.emit</code> 的流：有群写
+        <code>group:&lt;群&gt;</code>，否则写 <code>task:&lt;id&gt;</code>；<code>Pool.List</code> 不再要求群 id。
+      </li>
+      <li>
+        <code>Threads.Route</code> 的键改为群 id，删掉按顶层任务开线程的分支；读卡的 Leader 的地方改为读群的
+        Leader；事件循环里原来按 <code>card.Leader</code> 触发交接的地方删掉，只在群的 Leader 或工作空间变了时调用现有的
+        <code>beginHandOver</code>。
+      </li>
+      <li>组装群状态时，把属于这个群的卡从任务池读出来放进任务表。</li>
+      <li>
+        删除每分钟回合上限：<code>engine/leader/limits.go</code> 和
+        <code>limits_test.go</code>、<code>engine/group_limits_test.go</code>、调度器的 <code>SetAdmission</code> 和它在
+        <code>group.go</code> 里的调用、群设置的 <code>TurnsPerMinute</code> 和
+        <code>TurnLimits</code>（<code>engine/group/role.go</code>、<code>settings.go</code> 及测试里的用例）；<code
+          >pnpm generate:protocol</code
+        >；渲染进程删掉 <code>features/group/turn-limits.tsx</code> 和 <code>settings.test.tsx</code> 里对应的用例。
+      </li>
+      <li>
+        自动归档在守护进程里每小时检查一次，复用 <code>e.workers</code>；<code>config.Patch</code> 加
+        <code>board.autoArchiveDays</code>（默认 3）。
+      </li>
+      <li>
+        新代码放进 <code>engine/task</code>（数据、归属规则）和
+        <code>engine/leader</code>（路由）；根包里被改写的函数顺手搬过去，并从 R5 的文件清单里删掉对应文件。
+      </li>
+    </ol>
+    <p>
+      <strong>命令行：</strong><code>merak task create</code>（可带 <code>--group</code>）、<code>merak task list</code
+      >、<code>merak task archive</code>、<code>merak group create --task</code>、<code
+        >merak group bind &lt;群&gt; &lt;任务&gt;</code
+      >，规则和协议方法相同。
+    </p>
+    <p><strong>不做：</strong>任务换群；一个任务属于多个协作群；跨工作空间的任务；项目组；界面（R23、R24）。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r9">R9 人的指令最高、全双工、拆解可见</h3>
+    <p>
+      <strong>做完以后：</strong>人 @ 某个成员或直接给它派任务，它立刻停下手头这一步处理人的要求，Leader
+      同时被唤醒更新状态；每次送达都有回执；Leader 和 Worker 都有待办工具；Leader 的拆解和指派能被界面折叠出来；Leader
+      有完整的系统提示词。
+    </p>
+    <p class="muted">依赖：R8。解决：D-8、D-9、D-10，B20 的 Leader 部分。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/fastlane.go</code
+      >（<code>forwardHuman</code>、<code>sendClaimInput</code>）、<code>merak/engine/worker/builtin/adapter.go</code>（人的输入已经会抢占）、<code>merak/engine/loop/preempt.go</code>、<code
+        >merak/engine/group.go</code
+      >
+      里人的发言被直达后只
+      <code>Inform</code>
+      的两个分支、<code>merak/engine/prompt/templates/*.md</code>、<code>merak/engine/tool/report.go</code>。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        人在群里 @ 一个正在干活的内置 Worker：它当前的模型调用被中断，下一次请求的最后一条输入是人的话；Leader
+        线程有一个新回合（不是只记一笔）。
+      </li>
+      <li>
+        对不能中途收消息的成员（<code>command</code>
+        产品）重复上一条：当前运行被取消，同一个认领带着人的话重新开始，工作区不变；Leader 线程被唤醒。
+      </li>
+      <li>
+        人 @ 一个空闲的 Worker：它收到一个任务（标题是消息第一行，最长 80 字，全文进描述，属于这个群），Leader 被唤醒。
+      </li>
+      <li>
+        交给 Worker 模型的人的消息带固定前缀
+        <code>Message from &lt;name&gt; (a human; this overrides the Leader's instructions):</code>；Leader
+        转达的消息不带。
+      </li>
+      <li>
+        每次把输入送达一个运行中的成员，发 <code>input.delivered {claim, cause}</code>；被模型读到时发
+        <code>input.consumed</code>。
+      </li>
+      <li>
+        工具 <code>todo_write {items: [{content, status}]}</code>（状态
+        <code>pending</code>、<code>in_progress</code>、<code>done</code>）发 <code>todo.updated</code>，会话快照的
+        <code>todos</code> 和最后一次调用一致；Leader 和 Worker 的工具池都有它。
+      </li>
+      <li>
+        <code>packages/sdk/src/fold/assignments.test.ts</code
+        >：从一个群的事件折叠出拆解视图：群里的任务、每个子任务的认领人、状态、最近一条进度，以及 Leader 的待办。
+      </li>
+      <li>
+        <code>merak/engine/prompt</code> 的黄金测试：Leader 提示词包含下面列出的各节，Worker
+        提示词包含“人的指令优先”这一条。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        事件循环里“人点名直达”和“人已指派”的两个分支，把 <code>Inform</code> 改为
+        <code>EnqueuePriority(fact, leader.PriorityNormal)</code> 再 <code>startLeader</code>。
+      </li>
+      <li>
+        <code>sendClaimInput</code>
+        对不能中途收消息的成员：取消当前运行，把人的话作为下一次运行的第一条输入，重新启动这个认领。
+      </li>
+      <li>
+        重写 <code>prompt/templates/leader.md</code>（英文，600 到 900
+        词），分节：你是谁和你负责哪些协作群；只有你能建任务，人提出的问题要变成任务；先拆解再指派，用
+        <code>todo_write</code>
+        维护你的待办并随时更新；人的指令优先于你的安排，不要推翻，有冲突时问人；每批事件只做必要的动作，回合要短；用编号引用，不复述全文；交付前检查报告和合并。
+      </li>
+      <li><code>worker.md</code> 加“人的指令优先于 Leader 的安排”一条；Worker 提示词的其余部分在 R11 重写。</li>
+    </ol>
+    <p><strong>不做：</strong>主动认领（R10）；界面（R23）。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r10">R10 主动认领</h3>
+    <p><strong>做完以后：</strong>任务的认领有三条路：Leader 派工、人点名、Worker 主动认领。</p>
+    <p class="muted">依赖：R9。解决：D-11。</p>
+    <p>
+      <strong>先读：</strong><code>merak/engine/group_mcp.go:22-40</code>（<code>workerTools</code>，内置和外部 Worker
+      共用）、<code>merak/engine/task/pool.go:194-330</code>（<code>AssignAs</code>、冲突规则）、<code>merak/engine/worker.go</code>（内置
+      Worker 的运行）、<code>merak/engine/tool/report.go</code>。
+    </p>
+    <p><strong>先写的测试</strong>（<code>merak/engine</code>）：</p>
+    <ol>
+      <li>
+        <code>claim_task</code>：Worker 认领它所在协作群里的一张待认领卡，生成的认领的发起者是这个 Worker 自己；Leader
+        线程被唤醒。
+      </li>
+      <li>
+        <code>claim_task</code> 拒绝：卡不属于 Worker 所在的协作群；卡已完成或取消；卡已有负责人且未给出不重叠的范围。
+      </li>
+      <li>Worker 忙时认领：进它的队列（沿用现有排队规则）。</li>
+      <li>Worker 交完报告时，如果它所在的协作群有待认领卡，它多一个回合看到这份清单；清单为空时不多跑回合。</li>
+      <li>
+        Leader 的回合结束后仍未指派的新卡，所在协作群里空闲的内置 Worker 各收到一次邀约（一个短回合，只有
+        <code>claim_task</code> 和只读工具）；同一张卡对同一个 Worker 只邀约一次（记
+        <code>task.offered</code> 事件，重启后也不重复）。
+      </li>
+      <li>
+        外部 Worker 经 MCP 调 <code>claim_task</code>，效果和内置相同（用 <code>internal/testmcp</code> 或假 Claude
+        驱动）。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        在 <code>workerTools</code> 里加 <code>claim_task {task, scope?}</code>，内部调
+        <code>Tasks.AssignAs</code>，发起者是 Worker 自己。
+      </li>
+      <li>交报告后的清单：在提交报告成功的路径上查待认领卡，非空才追加一次输入。</li>
+      <li>
+        邀约：Leader 回合结束时检查；邀约回合复用内置 Worker 的运行器，工具池只给 <code>claim_task</code> 和只读工具。
+      </li>
+    </ol>
+    <p><strong>不做：</strong>竞价和打分；给空闲的外部 Worker 发邀约（启动外部产品代价太高）；自动指派的启发式规则。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r11">R11 会话能力补齐</h3>
+    <p>
+      <strong>做完以后：</strong>UI
+      分支单聊依赖的会话能力在新协议里都有：撤回到某条消息并把文件改回去、恢复撤回、编辑重发、重试、改名和归档存在引擎里、待办列表、手动压缩、中途换权限模式、全文搜索、和外部产品单聊。
+    </p>
+    <p class="muted">依赖：R7（和 R8 到 R10 可以由另一个执行者并行做）。解决：7.5 节，B18、B20。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/session/*.go</code
+      >、<code>merak/engine/loop/loop.go</code>、<code>merak/engine/tool/write_file.go</code>、<code>edit_file.go</code>、<code>merak/engine/window/*.go</code>、<code>merak/engine/store/store.go</code>、<code>merak/engine/store/storetest/contract.go</code>、<code>merak/internal/localstore/store.go</code>、<code>packages/sdk/src/fold/session.ts</code>；UI
+      分支的
+      <code>apps/desktop/main/e2e/conversation-actions.spec.ts</code
+      >、<code>direct.spec.ts</code>、<code>apps/desktop/renderer/src/features/conversation/messages.tsx</code>（<code>TurnActions</code>）、<code>features/palette/palette.tsx</code>（用
+      <code>git show origin/tt/refactor/ui-side-panel:&lt;路径&gt;</code>
+      读）。这些 spec 就是本片行为的验收标准。
+    </p>
+    <p><strong>方法和事件：</strong></p>
+    <table>
+      <tr>
+        <th style="width: 34%">方法</th>
+        <th>行为</th>
+      </tr>
+      <tr>
+        <td><code>session.revert {session, message}</code></td>
+        <td>
+          发
+          <code>session.reverted</code
+          >：这条用户消息和它之后的消息在折叠后的状态里隐藏，不再进模型上下文；这些回合里改过的文件，不论是哪个工具改的（包括
+          <code>bash</code>），都改回这条消息之前的样子：每个会话在数据目录里有一个影子 git 仓库（<code>GIT_DIR</code>
+          在数据目录，工作树是工作空间，遵守 <code>.gitignore</code>），每一步工具调用前记一次快照（<code
+            >git add -A</code
+          >
+          加 <code>write-tree</code>），撤回时把变了的路径恢复到这条消息之前的快照；只用现有的 <code>platform/git</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>session.unrevert {session}</code></td>
+        <td>发 <code>session.unreverted</code>：隐藏的消息重新出现，文件改回撤回前的样子</td>
+      </tr>
+      <tr>
+        <td>撤回后再 <code>session.send</code></td>
+        <td>
+          撤回生效，不能再恢复。编辑重发 = 撤回到这条消息再发新内容；重试 =
+          撤回到最后一条用户消息再发原内容；两者都由界面组合，不加方法
+        </td>
+      </tr>
+      <tr>
+        <td><code>session.update {session, title?, archived?, mode?}</code></td>
+        <td>
+          发 <code>session.updated</code>；<code>session.list</code> 返回
+          <code>title</code>、<code>archived</code>；换成接管模式要求 <code>confirm: true</code>，否则报错
+        </td>
+      </tr>
+      <tr>
+        <td><code>session.compact {session}</code></td>
+        <td>立刻做一次上下文重建（复用 <code>window</code> 的重建），不等阈值</td>
+      </tr>
+      <tr>
+        <td><code>session.search {query, limit}</code></td>
+        <td>
+          按消息文本匹配，返回会话 id、标题和一段包含匹配的片段。<code>store.Query</code> 加
+          <code>Text</code>：内存存储做子串匹配，<code>localstore</code> 用 SQL <code>LIKE</code>，并补进存储契约测试
+        </td>
+      </tr>
+      <tr>
+        <td><code>session.create {agent}</code></td>
+        <td>
+          <code>agent</code>
+          是外部产品的智能体时，这条会话由它的运行器驱动：能中途收消息的产品续在同一个进程里，不能的每条消息启动一次新运行；会话事件和内置单聊相同
+        </td>
+      </tr>
+    </table>
+    <p><strong>先写的测试</strong>（<code>merak/engine</code> 和 <code>packages/sdk/test</code>，假模型驱动）：</p>
+    <ol>
+      <li>
+        假模型第二回合调 <code>write_file</code> 新建
+        <code>made.txt</code>；撤回到第二条用户消息后文件不存在，快照里只剩第一回合；恢复后文件回来，内容一致。
+      </li>
+      <li>
+        假模型调
+        <code>bash</code> 新建一个文件并改一个已有文件；撤回后新文件不存在、已有文件回到原内容；恢复后两者回来。
+      </li>
+      <li>撤回后发新消息：模型收到的上下文里没有被撤回的回合；再调 <code>session.unrevert</code> 返回错误码。</li>
+      <li><code>edit_file</code> 改过的已有文件，撤回后内容回到修改前的字节。</li>
+      <li>
+        <code>session.update</code> 改标题后，新连接上的 <code>session.list</code> 返回新标题；归档后默认列表不含它，带
+        <code>archived: true</code> 能列出。
+      </li>
+      <li>换成接管模式不带 <code>confirm</code> 被拒；带上后下一回合按接管模式运行。</li>
+      <li><code>session.compact</code> 后发出上下文重建事件，下一回合的上下文以摘要开头。</li>
+      <li>
+        <code>session.search</code> 能按第二条消息里的词找到会话，片段含这个词；存储契约测试覆盖 <code>Text</code>。
+      </li>
+      <li>
+        用假
+        Claude（<code>engine/worker/claudecode/testdata/fakeclaude</code>）建单聊，发两条消息，两条回复都出现在同一条会话流里。
+      </li>
+    </ol>
+    <p>
+      <strong>Worker 的系统提示词（B20）：</strong>重写 <code>prompt/templates/worker.md</code>（英文，1200 到 1800
+      词，所有服务商共用），分节：你是谁；先理解再动手，改之前读相关文件；工具使用规则（读用
+      <code>read_file</code>、搜用 <code>grep</code> 和 <code>glob</code>、改用 <code>edit_file</code> 和
+      <code>multi_edit</code>、长命令放后台）；多步工作用
+      <code>todo_write</code
+      >；人的指令优先；安全（不碰凭据、不做破坏性命令、不确定就问）；回答简洁、引用文件和行号。黄金测试检查各节存在，另加一条测试：同一个会话里换服务商时系统提示词不变。
+    </p>
+    <p>
+      <strong>对照 v0.3 补齐：</strong
+      >第一轮回答后用小模型（<code>small_model</code>，没配就用默认模型）给会话起一个不超过 50
+      字的标题，用户改过的标题不覆盖；<code>session.delete</code> 物理删除一条会话和它的子会话（存储契约加
+      <code>DeleteStream</code>，内存存储和本机存储都实现并补契约测试）；配置
+      <code>snapshot: false</code> 关掉撤回快照（撤回时只隐藏消息，不还原文件，界面说明）；<code
+        >compaction.auto: false</code
+      >
+      关掉自动压缩（到窗口上限时返回带码的错误，提示手动压缩）；<code>storage.retention_days</code>
+      设了以后守护进程每天删除不活跃超过这么多天的会话，默认不删。各加一条测试，标题生成用假模型。
+    </p>
+    <p>
+      <strong>命令行：</strong><code>merak session list|show|rename|archive|delete</code>；<code
+        >merak export [会话]</code
+      >
+      把一条会话导出成 JSON 文件，<code>merak import &lt;文件&gt;</code> 导入它（往返测试：导出再导入，内容一致）。
+    </p>
+    <p>
+      <strong>不做：</strong>撤回 被 <code>.gitignore</code> 忽略的文件（和 git 的规则一致，界面上说明）；计划（R16）。
+    </p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r12">R12 代码与工作区能力补齐</h3>
+    <p>
+      <strong>做完以后：</strong>UI 分支的源代码管理、编辑器、审核面板、单聊迁到 worktree
+      依赖的方法在新协议里都有；同一个目录的不同写法在任何入口都被当成同一个目录。
+    </p>
+    <p class="muted">依赖：R11。解决：7.5 节，B17。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/internal/platform/git/*.go</code
+      >、<code>merak/engine/workspace/*.go</code>、<code>merak/engine/files.go</code>、<code
+        >merak/internal/server/server.go</code
+      >
+      的 <code>file.*</code>、<code>repo.*</code>；UI 分支的
+      <code>features/git/*.ts(x)</code
+      >、<code>features/code/identity.ts</code>、<code>features/panel/workspace.ts</code>、<code>e2e/branch-recovery.spec.ts</code>、<code>file-identity.spec.ts</code>、<code>editor.spec.ts</code>，以及
+      UI 分支里提交信息带 “path spellings” 的 4 个提交（<code
+        >git log origin/dev-v0.3.1..origin/tt/refactor/ui-side-panel</code
+      >）。
+    </p>
+    <p><strong>方法：</strong></p>
+    <ul>
+      <li><code>repo.commit {directory, message, paths?}</code>、<code>repo.push {directory}</code>。</li>
+      <li>
+        <code>repo.commitMessage {directory}</code>：用默认模型根据暂存的 diff 写一条提交信息，只返回文本，不提交。
+      </li>
+      <li>
+        <code>worktree.create {directory, key, branch?}</code>、<code>worktree.list {directory}</code>、<code
+          >worktree.merge {path}</code
+        >、<code>worktree.remove {path}</code>。<code>key</code> 由客户端给，同一个 <code>key</code> 再调返回同一个
+        worktree；<code>session.create</code> 同样加 <code>key</code>。UI 分支的“首条消息失败后迁到
+        worktree”和“丢了响应后重试”靠这个保证不重复创建。
+      </li>
+      <li>
+        <code>file.status {directory, path}</code>、<code>file.identity {directory, path}</code>（返回规范化路径和 git
+        根）、<code>file.find {directory, query, limit}</code>。字段照 UI 分支 <code>features/code/identity.ts</code> 和
+        <code>features/git</code> 里实际读到的写，不多加。
+      </li>
+      <li>
+        目录规范化：所有带 <code>directory</code> 的方法和建协作群、任务时，先
+        <code>filepath.Clean</code>、去掉末尾分隔符、解析符号链接，Windows 上统一分隔符并按不区分大小写比较。
+      </li>
+    </ul>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/internal/platform/git</code>：提交后
+        <code>git log</code> 有这条提交；推送到一个本地裸仓库后对方有这个提交。
+      </li>
+      <li><code>merak/engine</code>：<code>repo.commitMessage</code> 用假模型，返回假模型的文本。</li>
+      <li>
+        同一个 <code>key</code> 调两次 <code>worktree.create</code>，返回同一个路径，<code>git worktree list</code>
+        只多一个。<code>session.create</code> 同理。
+      </li>
+      <li>
+        取 <code>t.TempDir()</code> 的路径，改成正斜杠并在末尾加一个斜杠后建协作群；再用原路径调
+        <code>group.list</code> 和 <code>file.list</code>，结果都指向同一个协作群。Windows
+        上再覆盖盘符大小写不同的写法，Linux 上覆盖末尾斜杠和符号链接；
+      </li>
+      <li>
+        <code>apps/desktop/main/e2e/worktree.spec.ts</code> 的 “alternate project path” 用例在 Windows 上通过（B17）。
+      </li>
+    </ol>
+    <p><strong>不做：</strong>拉取和合并远端；冲突解决界面。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r13">R13 设置：MCP、规则、记忆</h3>
+    <p>
+      <strong>做完以后：</strong>UI 分支设置页里 MCP、规则、记忆三页依赖的方法都有；MCP
+      支持本地（stdio）和远程（HTTP），远程服务器需要登录时走 OAuth。
+    </p>
+    <p class="muted">依赖：R12。解决：7.5 节。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/internal/platform/config/config.go</code
+      >、<code>merak/engine/mcp/*.go</code>、<code>merak/engine/workspace_mcp.go</code>、<code>merak/engine/memory/*.go</code>、<code>merak/engine/engine.go:330-345</code>（读
+      <code>AGENTS.md</code> 的地方）、<code>merak/internal/platform/credential/credential.go</code>；UI 分支
+      <code>features/settings/settings.tsx</code> 的 <code>Mcp</code>、<code>Rules</code>、<code>Memory</code>，<code
+        >e2e/tools.spec.ts</code
+      >
+      的 MCP、规则、记忆四个用例；MCP 规范的 Streamable HTTP 传输和 Authorization 两章。
+    </p>
+    <p><strong>配置：</strong></p>
+    <pre><code>"mcp": {
+  "local":  { "type": "local", "command": ["node", "server.js"], "environment": { "TOKEN": "" } },
+  "remote": { "type": "remote", "url": "https://mcp.example.com/mcp", "headers": { "X-Team": "a" } }
+}</code></pre>
+    <ul>
+      <li>
+        格式和 v0.3 相同（<code>schema/config.json</code> 的 <code>mcp</code>，含
+        <code>enabled</code>、<code>timeout</code>、<code>deferred</code>、远程的 <code>oauth</code>）；<code
+          >config.set</code
+        >
+        增删服务器，值为 <code>null</code> 表示删除。工作区配置里的远程服务器和本地的一样要经工作区信任确认（S27）。
+      </li>
+      <li>
+        远程传输：Streamable HTTP（POST JSON-RPC，响应是 JSON 或 SSE 流，带
+        <code>Mcp-Session-Id</code>）；服务器不支持时退回旧的 HTTP+SSE 传输。只用标准库。
+      </li>
+      <li>
+        OAuth：收到 401 时读 <code>WWW-Authenticate</code> 的资源元数据，发现授权服务器（RFC 9728、RFC
+        8414），没有客户端 id 时做动态注册（RFC 7591），授权码加 PKCE；回调地址是守护进程临时监听的
+        <code>http://127.0.0.1:&lt;随机端口&gt;/callback</code>；访问令牌和刷新令牌进凭据库，键
+        <code>mcp:&lt;服务器名&gt;</code>；过期自动刷新。
+      </li>
+      <li>
+        方法：<code>mcp.status {directory?}</code>
+        返回每个服务器的状态（<code>connected</code>、<code>needs_auth</code>、<code>failed</code>
+        带码、<code>disabled</code>）和工具数；<code>mcp.authenticate {server}</code>
+        返回授权网址，客户端打开浏览器，完成后发 <code>mcp.changed</code>；<code>mcp.logout {server}</code>
+        删除令牌。
+      </li>
+      <li>
+        规则：<code>rules.read {directory}</code> 返回个人规则（配置里的
+        <code>rules.user: string[]</code>）和项目规则文件；<code>rules.change {directory, change}</code>
+        增删改其中一项。项目规则文件有两种，和 v0.3.1 一致：
+        <ul>
+          <li>说明文件：项目根的 <code>AGENTS.md</code>，整份进系统提示词。</li>
+          <li>
+            规则文件：<code>.merakcode/rule(s)/**/*.mdc</code>，兼容读 <code>.cursor/rules/**/*.mdc</code>；YAML 头部有
+            <code>description</code>、<code>globs</code>、<code>alwaysApply</code>。<code>alwaysApply: true</code>
+            的进系统提示词；有 <code>globs</code> 的在模型读到匹配的文件时附在工具结果后面（每条会话每个规则一次）；只有
+            <code>description</code> 的由模型经工具 <code>rule {name}</code> 主动取。每个规则最多 32
+            KB，超过截断并标出。
+          </li>
+        </ul>
+        从工作空间根往上找到 git 根为止；子目录里的 <code>.merakcode/rules</code> 不扫，范围用
+        <code>globs</code> 表达。组装提示词时个人规则在项目规则之前。规则文件在会话进行中变化时，下一个会话生效。
+      </li>
+      <li>
+        记忆：<code>memory.list {directory, scope?}</code>、<code>memory.read {id}</code>、<code
+          >memory.delete {id}</code
+        >；配置加 <code>memory.auto</code>（默认关）。
+      </li>
+      <li>
+        <code>config.get</code> 的结果加 <code>warnings</code>：加载配置时跳过的条目，每条带 <code>MRK</code> 码和位置。
+      </li>
+    </ul>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>merak/engine/mcp</code>：用 <code>httptest</code> 写一个 Streamable HTTP 的假服务器，列出 2
+        个工具并调用其中一个，结果正确；SSE 响应和会话 id 都覆盖到。
+      </li>
+      <li>
+        假服务器返回 401：状态变为 <code>needs_auth</code>；假授权服务器走完发现、注册、授权码和
+        PKCE，令牌存进凭据库（测试用
+        <code>credential.NewFile(t.TempDir())</code>），之后调用成功；令牌过期后用刷新令牌续上。
+      </li>
+      <li><code>mcp.logout</code> 后状态回到 <code>needs_auth</code>，凭据库里没有这个键。</li>
+      <li>工作区配置里新增的远程服务器在信任确认前不连接。</li>
+      <li><code>config.set</code> 增删 <code>mcp</code> 里的服务器后，<code>mcp.status</code> 立刻反映。</li>
+      <li>改个人规则后，下一回合的系统提示词里有这条规则；规则文件的增删改落到磁盘。</li>
+      <li>
+        三种 <code>.mdc</code> 规则各一条：<code>alwaysApply</code> 的在系统提示词里；<code>globs: "**/*.go"</code>
+        的在读 <code>.go</code> 文件后附上、读 <code>.md</code> 不附；只有说明的经 <code>rule</code> 工具取到；<code
+          >.cursor/rules</code
+        >
+        里的也能读到。
+      </li>
+      <li>
+        删一条记忆后 <code>recall</code> 找不到它；配置里有一个非法 MCP 条目时 <code>config.get</code> 的
+        <code>warnings</code> 有一条。
+      </li>
+    </ol>
+    <p>
+      <strong>对照 v0.3 补齐：</strong><code>instructions</code> 里列出的额外说明文件（路径或 glob，相对项目根）和
+      <code>AGENTS.md</code> 一样进系统提示词；<code>memory.auto_extract</code>、<code>memory.auto_recall</code>、<code
+        >memory.model</code
+      >
+      控制任务结束时提取记忆、会话开始时召回、用哪个模型。各加一条测试。
+    </p>
+    <p>
+      <strong>命令行：</strong><code>merak mcp list|add|remove|auth|logout</code>，和现有的服务模式（<code
+        >merak mcp --claim</code
+      >、<code>--thread</code>）并存：带这两个参数时是服务模式，否则是管理子命令。
+    </p>
+    <p><strong>不做：</strong>界面（R20）；MCP 的 resources 和 sampling（v0.3.x 也没有）。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r14">R14 技能与斜杠命令</h3>
+    <p>
+      <strong>做完以后：</strong>智能体能发现和按需加载技能；能从网址或 git 仓库安装、卸载技能；内置 Word、Excel、PDF
+      三个技能；输入框打 <code>/</code>
+      列出内置命令、配置里的命令、MCP prompt 和技能，选中后展开模板发送。
+    </p>
+    <p class="muted">依赖：R13。解决：7.5 节。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/prompt/prompt.go</code
+      >、<code>merak/engine/tool/pool.go</code>、<code>tool/deferred.go</code>、<code>merak/engine/mcp/client.go</code>（MCP
+      prompts）；UI 分支 <code>e2e/tools.spec.ts</code> 的技能用例、<code>features/settings/settings.tsx</code> 的
+      <code>Skills</code>、<code>features/conversation/composer.tsx</code>
+      的斜杠菜单。
+    </p>
+    <p><strong>技能：</strong></p>
+    <ul>
+      <li>
+        一个技能是一个目录，里面有 <code>SKILL.md</code>（YAML 头部有
+        <code>name</code>、<code>description</code>）和任意附带文件。发现位置：项目的
+        <code>.merakcode/skills/&lt;名字&gt;/</code>、全局的 <code>~/.merakcode/skills/&lt;名字&gt;/</code>、内置（用
+        <code>embed</code> 打进二进制）。同名时项目优先。
+      </li>
+      <li>
+        系统提示词里固定一节列出可用技能的名字和说明（会话开始时定下，回合中不变，不破坏缓存）；工具
+        <code>skill {name}</code> 返回 <code>SKILL.md</code> 正文和附带文件的路径。
+      </li>
+      <li>
+        安装来源两种：网址（读 <code>&lt;网址&gt;/index.json</code>，格式
+        <code>{skills: [{name, description, files}]}</code>，逐个下载文件）；git 仓库（浅克隆到缓存目录，找出含
+        <code>SKILL.md</code> 的目录；克隆时关掉凭据助手和交互提示，私有仓库用用户给的令牌）。
+      </li>
+      <li>
+        方法：<code>skill.list {directory}</code>、<code>skill.discover {source}</code>、<code
+          >skill.install {source, names, scope, directory}</code
+        >（<code>scope</code> 为 <code>project</code> 或 <code>global</code>）、<code
+          >skill.uninstall {name, scope, directory}</code
+        >。
+      </li>
+      <li>
+        内置技能：<code>docx</code>、<code>excel</code>、<code>pdf</code>，正文原创，配合 R17 的文档工具使用。<code
+          >loop</code
+        >
+        技能在 R19 随定时任务一起加。
+      </li>
+    </ul>
+    <p><strong>斜杠命令：</strong></p>
+    <ul>
+      <li>
+        内置三个：<code>/init</code>（创建或更新项目根的
+        <code>AGENTS.md</code
+        >）、<code>/review</code>（审查当前改动）、<code>/context</code>（显示上下文花在哪了）；模板英文、原创。
+      </li>
+      <li>
+        配置里的命令：<code>command: {name: {template, description?, agent?, model?}}</code>；文件里的命令：项目和全局
+        <code>.merakcode/command(s)/**/*.md</code>，文件名是命令名，YAML 头部同上，正文是模板。模板里的
+        <code>$ARGUMENTS</code> 换成用户输入。
+      </li>
+      <li>MCP 服务器的 prompts 和每个技能也作为命令出现，标出来源。</li>
+      <li>
+        文件里的智能体：项目和全局 <code>.merakcode/agent(s)/**/*.md</code> 和 <code>mode(s)/*.md</code>，YAML
+        头部给名字、说明、模型、工具、权限，正文是系统提示词。它们出现在智能体库里（标“来自文件”，在界面上只读，改文件生效），能用于对话、协作群成员和
+        <code>spawn {agent}</code>。
+      </li>
+      <li>
+        技能推荐：每条用户消息按词和每个技能的名字、说明做匹配（中英文分词，去停用词），得分过阈值的最多 3
+        个，以一段固定格式的提示附在这条消息后面给模型；同一组推荐在一条会话里只出现一次。
+      </li>
+      <li>
+        方法：<code>command.list {directory}</code>（每项带
+        <code>name</code>、<code>description</code>、<code>source</code>）、<code
+          >session.command {session, name, arguments}</code
+        >。
+      </li>
+    </ul>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>项目里放一个技能，新会话的系统提示词列出它；假模型调用 <code>skill</code> 后拿到正文。</li>
+      <li>
+        用 <code>httptest</code> 提供 <code>index.json</code> 和 <code>SKILL.md</code>：安装到项目后文件存在，<code
+          >skill.list</code
+        >
+        有它；卸载后目录删除。
+      </li>
+      <li>用 <code>t.TempDir()</code> 里的本地 git 仓库安装：克隆后找到其中两个技能。</li>
+      <li>
+        <code>command.list</code> 含三个内置命令、一个配置命令、一个 MCP prompt（用
+        <code>internal/testmcp</code>）和一个技能；<code>session.command</code> 把 <code>$ARGUMENTS</code> 展开后发送。
+      </li>
+      <li><code>/init</code> 在没有 <code>AGENTS.md</code> 的项目里让假模型写出这个文件。</li>
+      <li><code>.merakcode/commands/deploy.md</code> 出现在 <code>command.list</code> 里，执行时展开正文模板。</li>
+      <li>
+        <code>.merakcode/agents/reviewer.md</code> 出现在 <code>agent.list</code>（来源是文件）；<code
+          >spawn {agent: "reviewer"}</code
+        >
+        起的子会话用它的提示词和工具。
+      </li>
+      <li>
+        项目里有名为 <code>pdf</code> 的技能时，消息“帮我把这个 PDF
+        的表格抽出来”后，模型的输入里有推荐它的提示；同一条会话里再说一次不重复推荐。
+      </li>
+    </ol>
+    <p>
+      <strong>对照 v0.3 补齐：</strong><code>skills.paths</code> 是额外的技能目录，<code>skills.urls</code>
+      是默认的安装来源；<code>agent</code> 里的内置项映射到 v1：<code>build</code> 覆盖内置 Worker
+      的模型、提示词、工具和权限，<code>general</code>、<code>explore</code> 是
+      <code>spawn</code> 可选的子智能体，<code>title</code>、<code>summary</code>、<code>compaction</code>、<code
+        >memory-extractor</code
+      >
+      指定这几件内部任务用的模型，<code>plan</code>
+      因为不再有计划模式而忽略并告警，其他名字和文件里的智能体一样成为智能体；<code>default_agent</code>
+      是新建对话默认选中的智能体。各加一条测试。
+    </p>
+    <p><strong>命令行：</strong><code>merak skill list|install|uninstall</code>、<code>merak command list</code>。</p>
+    <p><strong>不做：</strong>技能市场；在界面上编辑文件里的智能体。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r15">R15 插件</h3>
+    <p>
+      <strong>做完以后：</strong>v0.3.x 格式的插件（本地 <code>.js</code>、<code>.mjs</code> 文件或 npm
+      包，导出一个返回钩子的异步函数）照样能加载；设置里能添加、看状态、删除。
+    </p>
+    <p class="muted">依赖：R14。解决：7.5 节。</p>
+    <p>
+      <strong>做法：</strong>Go 引擎不能直接运行 JavaScript，所以插件跑在一个单独的插件宿主进程里：一段内置的
+      JavaScript（用 <code>embed</code>
+      打进二进制，启动时写到缓存目录）由 Node 运行，加载每个插件，通过 stdio 上的 JSON-RPC 和引擎往来。Node
+      的来源：桌面端把 Electron 自带的 Node 交给引擎（环境变量
+      <code>MERAKCODE_NODE</code> 指向 Electron，加 <code>ELECTRON_RUN_AS_NODE=1</code>）；命令行用
+      <code>PATH</code> 里的 <code>node</code>；都没有时插件状态显示新码“需要 Node.js”。插件宿主和 MCP
+      服务器一样跑在沙箱里，工作区配置里的插件要经工作区信任确认。
+    </p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/mcp/process.go</code
+      >（子进程和沙箱的写法）、<code>merak/engine/tool/pool.go</code>、<code>merak/engine/loop/loop.go</code>、<code>merak/engine/permission/gate.go</code>；UI
+      分支 <code>e2e/tools.spec.ts</code> 的插件用例、<code>settings.tsx</code> 的 <code>Plugins</code>。可以读
+      dev-v0.3.1 的
+      <code>packages/sdk/js/src/plugin/index.ts</code> 取钩子的名字和参数形状，插件作者写的代码要能不改就加载。
+    </p>
+    <p><strong>支持的钩子</strong>（引擎在这些点调用，插件可以改 <code>output</code>）：</p>
+    <table>
+      <tr>
+        <th style="width: 34%">钩子</th>
+        <th>调用点</th>
+      </tr>
+      <tr>
+        <td><code>config</code>、<code>event</code></td>
+        <td>加载配置后；每条引擎事件（只通知，不等返回）</td>
+      </tr>
+      <tr>
+        <td><code>tool</code></td>
+        <td>
+          插件声明的自定义工具，以延迟工具注册，名字 <code>plugin__&lt;插件&gt;__&lt;工具&gt;</code>，效果按执行类处理
+        </td>
+      </tr>
+      <tr>
+        <td><code>chat.message</code>、<code>chat.params</code>、<code>chat.headers</code></td>
+        <td>用户消息入史前；发模型请求前改参数和请求头</td>
+      </tr>
+      <tr>
+        <td><code>permission.ask</code></td>
+        <td>权限门判定后、问人前，可以改成允许或拒绝</td>
+      </tr>
+      <tr>
+        <td><code>tool.execute.before</code>、<code>tool.execute.after</code>、<code>tool.definition</code></td>
+        <td>工具执行前后；工具说明发给模型前</td>
+      </tr>
+      <tr>
+        <td><code>shell.env</code>、<code>command.execute.before</code></td>
+        <td><code>bash</code> 启动前补环境变量；斜杠命令展开前</td>
+      </tr>
+      <tr>
+        <td><code>auth</code></td>
+        <td>服务商的密钥或请求头由插件提供</td>
+      </tr>
+    </table>
+    <p>
+      插件拿到的上下文：<code>directory</code>、<code>worktree</code>、<code>project</code>，一个已连上守护进程的新 SDK
+      客户端，以及在工作区里运行命令的
+      <code>$</code>。每次钩子调用最多 10 秒，超时或出错只记日志并发 <code>plugin.failed</code>，不影响回合。<code
+        >experimental.*</code
+      >
+      钩子不支持，加载时在状态里列出被忽略的钩子。
+    </p>
+    <p>
+      <strong>方法：</strong><code>plugin.list {directory}</code>（每个插件的来源、状态 <code>loaded</code> 或
+      <code>failed</code> 带码、钩子和工具清单）、<code>plugin.add {spec, scope, directory}</code>（写进项目或全局配置的
+      <code>plugin</code> 数组；npm 包装进 <code>~/.merakcode/cache/plugins</code>）、<code
+        >plugin.remove {spec, scope, directory}</code
+      >。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        测试里写一个 <code>.mjs</code> 插件，导出的函数返回 <code>tool.execute.before</code>：把
+        <code>bash</code> 的命令改成 <code>echo hooked</code>；假模型调 <code>bash</code> 后结果是 <code>hooked</code>。
+      </li>
+      <li>
+        插件声明一个自定义工具；假模型经 <code>load_tools</code> 和 <code>call_tool</code> 调用它，拿到插件返回的结果。
+      </li>
+      <li><code>chat.params</code> 改温度，假模型收到的请求里温度是新值。</li>
+      <li>钩子抛异常和超时：回合正常完成，有一条 <code>plugin.failed</code>。</li>
+      <li>
+        <code>plugin.add</code> 一个本地文件后 <code>plugin.list</code> 显示 <code>loaded</code>，配置文件里有它；<code
+          >plugin.remove</code
+        >
+        后都没有了（UI 分支插件用例的引擎侧）。
+      </li>
+      <li>
+        没有 Node 时 <code>plugin.list</code> 显示“需要 Node.js”的码，回合不受影响。测试需要 Node，CI 的 Go 任务装上
+        Node。
+      </li>
+    </ol>
+    <p><strong>命令行：</strong><code>merak plugin list|add|remove</code>。</p>
+    <p><strong>不做：</strong><code>experimental.*</code> 钩子；插件市场。</p>
+    <p><strong>验证：</strong>全量命令全绿；<code>ci.yml</code> 的 go 任务加 <code>actions/setup-node</code>。</p>
+
+    <h3 id="wo-r16">R16 计划（任何模式）</h3>
+    <p>
+      <strong>做完以后：</strong
+      >在每次询问、仅询问危险行为、全面接管三种模式下，智能体都能写计划；用户能让这条消息先出计划；计划在侧边面板里审阅、编辑，点“执行”或在对话里回复后按计划执行，执行中用待办列表跟踪。
+    </p>
+    <p class="muted">依赖：R15。解决：D-15。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/tool/*.go</code
+      >、<code>merak/engine/loop/loop.go</code>、<code>merak/engine/session/*.go</code>；UI 分支的
+      <code>features/conversation/plan.tsx</code
+      >、<code>e2e/plan.spec.ts</code>、<code>e2e/panel-errors.spec.ts</code>（计划保存被拒的用例）。v0.3.1
+      的做法是每个根会话一份可编辑的计划文档，状态有草稿、待审阅、执行中、已完成、已停止，执行时用一份固定的快照；这里沿用这个模型，去掉单独的计划模式。
+    </p>
+    <ul>
+      <li>
+        工具 <code>write_plan {content}</code>（markdown）：所有模式下 Worker
+        的工具池都有；写完这一回合结束，计划状态为“待审阅”。
+      </li>
+      <li>
+        发送时可以带 <code>plan: true</code>：这条消息前面加一句固定的英文说明，要求先调用
+        <code>write_plan</code>、不改文件。
+      </li>
+      <li>
+        计划是一份文档（kind <code>plan</code>，key 是根会话 id），带 <code>revision</code>；事件
+        <code>plan.updated</code>。
+      </li>
+      <li>
+        方法：<code>plan.get {session}</code>；<code>plan.save {session, content, revision}</code
+        >（版本不符返回新码，界面保留编辑并阻止执行）；<code>plan.execute {session}</code
+        >（固定当前内容为快照，发一条执行消息，状态“执行中”）；<code>plan.stop {session}</code>。执行中智能体用
+        <code>todo_write</code> 跟踪步骤，全部完成后状态“已完成”。
+      </li>
+      <li>子会话（子智能体）没有自己的计划，读父会话的计划。</li>
+    </ul>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>三种模式下假模型都能调 <code>write_plan</code>，回合结束，<code>plan.get</code> 状态“待审阅”。</li>
+      <li><code>plan: true</code> 的消息，模型收到的输入带固定说明。</li>
+      <li><code>plan.save</code> 带旧版本号被拒并返回新码；带正确版本号保存成功，版本号加一。</li>
+      <li><code>plan.execute</code> 后执行消息的内容是快照；执行中再改计划不影响这次执行。</li>
+      <li>执行中假模型把待办全部标为完成后，计划状态“已完成”。</li>
+    </ol>
+    <p><strong>不做：</strong>计划的多版本历史；Leader 的计划（Leader 的拆解就是它的计划，见 R9）。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r17">R17 工具补齐</h3>
+    <p>
+      <strong>做完以后：</strong>v0.3.1 的这些工具在 v1 都有：网页抓取、网页搜索、代码搜索、一次改多处、读 Word、读
+      Excel、写 Excel。PDF 已经由 <code>read_file</code> 读，模型支持 PDF 时原样交给模型，扫描件也能看。
+    </p>
+    <p class="muted">依赖：R16。解决：7.5 节。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/tool/*.go</code
+      >、<code>merak/engine/tool/pool.go</code>（工具池）、<code>merak/engine/permission/policy.go</code>、<code>merak/internal/platform/pdf</code>、R13
+      的远程 MCP 客户端。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 18%">工具</th>
+        <th>行为</th>
+      </tr>
+      <tr>
+        <td><code>web_fetch</code></td>
+        <td>
+          GET 一个网址，跟随最多 5 次重定向，正文最多 5 MB；HTML
+          转成纯文本加链接（只用标准库，去掉脚本和样式，保留标题、列表、链接），超长时按现有的入史前截断规则落盘。需要网络权限，按目标主机走权限门
+        </td>
+      </tr>
+      <tr>
+        <td><code>web_search</code>、<code>code_search</code></td>
+        <td>
+          和 v0.3.1 一样经 Exa 的公共 MCP 服务（<code>https://mcp.exa.ai/mcp</code>）调用，复用 R13 的远程 MCP
+          客户端；配置项 <code>tools.exa: false</code> 可以关掉
+        </td>
+      </tr>
+      <tr>
+        <td><code>multi_edit</code></td>
+        <td>
+          对一个文件按顺序做多处 <code>oldText</code> →
+          <code>newText</code> 替换，任何一处找不到或不唯一就整体不改；权限和撤回与 <code>edit_file</code> 相同
+        </td>
+      </tr>
+      <tr>
+        <td><code>docx_read</code></td>
+        <td>
+          用 <code>archive/zip</code> 和 <code>encoding/xml</code> 读
+          <code>word/document.xml</code>，输出段落、标题级别、表格
+        </td>
+      </tr>
+      <tr>
+        <td><code>excel_read</code>、<code>excel_write</code></td>
+        <td>
+          读：每个工作表的行（共享字符串、数字、布尔、日期）；写：给工作表名和行数组，生成新的
+          <code>.xlsx</code>（最小的合法包结构）
+        </td>
+      </tr>
+      <tr>
+        <td>客户端工具</td>
+        <td>
+          v0.3.1 的“远程工具”：连上来的客户端经
+          <code>tool.register {name, description, schema}</code>
+          注册工具，模型调用时引擎经同一条连接把调用发给它（<code>tool.call</code>），结果原样交回模型；<code
+            >tool.unregister</code
+          >
+          或连接断开时工具消失。以延迟工具注册，名字 <code>client__&lt;名字&gt;</code>，效果按执行类走权限门
+        </td>
+      </tr>
+    </table>
+    <p>
+      <strong>先写的测试：</strong>每个工具至少一条：<code>web_fetch</code> 用 <code>httptest</code> 返回
+      HTML，结果里有标题和链接、没有脚本；<code>web_search</code> 用假 MCP 服务器；<code>multi_edit</code>
+      的全部成功和一处失败不改；<code>docx_read</code>、<code>excel_read</code> 用测试里现生成的文件；<code
+        >excel_write</code
+      >
+      写出后 <code>excel_read</code> 读回一致；客户端工具：SDK
+      客户端注册一个工具，假模型调用后拿到客户端返回的结果，客户端断开后再调用返回“工具不存在”。
+    </p>
+    <p>
+      <strong>对照 v0.3 补齐：</strong>配置 <code>tools</code> 按名字开关工具，例如
+      <code>{"bash": false, "mcp__docs__*": false}</code
+      >；关掉的工具不出现在给模型的工具列表里（会话开始时定下，不破坏缓存）。名字支持末尾的 <code>*</code>。加一条测试。
+    </p>
+    <p><strong>不做：</strong>浏览器渲染网页；写 Word。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r18">R18 LSP</h3>
+    <p>
+      <strong>做完以后：</strong>改完文件后智能体能看到语言服务器报的错误；工具
+      <code>lsp</code> 支持跳到定义、找引用、悬停、文档符号、工作区符号、跳到实现、调用方和被调用方；v0.3.1 支持的 35
+      种语言服务器都能用，能自动下载的照样自动下载。
+    </p>
+    <p class="muted">依赖：R17。解决：7.5 节。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/engine/tool/edit_file.go</code
+      >、<code>write_file.go</code>、<code>merak/internal/platform/process</code>；LSP 3.17
+      规范的初始化、<code>textDocument/*</code>、<code>publishDiagnostics</code>。服务器清单（id、扩展名、项目根标记、启动命令、安装方式）可以读
+      dev-v0.3.1 的 <code>packages/engine/src/infra/lsp/server.ts</code> 取数据，id 保持一致：
+    </p>
+    <pre><code>astro bash biome clangd clojure-lsp csharp dart deno dockerfile elixir-ls eslint fsharp gleam gopls
+haskell-language-server jdtls kotlin-ls lua-ls nixd ocaml-lsp oxlint prisma pyright ruby-lsp rust
+sourcekit-lsp svelte terraform texlab tinymist ty typescript vue yaml-ls zls</code></pre>
+    <ul>
+      <li>
+        新包 <code>engine/lsp</code>：stdio 上的 JSON-RPC
+        客户端（只用标准库），按扩展名和项目根标记选服务器，每个工作区每种服务器一个进程，空闲 10 分钟关闭。
+      </li>
+      <li>
+        <code>write_file</code>、<code>edit_file</code>、<code>multi_edit</code> 成功后，等已就绪的服务器最多 3
+        秒拿诊断，附在工具结果后面；没有就绪的服务器就不等。
+      </li>
+      <li>
+        安装：PATH 里有就用；没有时按清单的安装方式下载到 <code>~/.merakcode/cache/bin</code>；<code
+          >MERAKCODE_DISABLE_LSP_DOWNLOAD=1</code
+        >
+        时不下载。配置 <code>lsp: {id: {disabled?, command?}}</code> 可以关掉或换命令。
+      </li>
+    </ul>
+    <p>
+      <strong>先写的测试：</strong>在 <code>engine/lsp/testdata</code> 写一个假语言服务器（Go
+      程序），对固定输入返回定义位置和一条诊断；测 <code>lsp</code> 工具的跳到定义；测
+      <code>edit_file</code> 之后结果里有诊断；测服务器退出后下一次调用自动重启；测关闭下载时不发网络请求。
+    </p>
+    <p>
+      <strong>对照 v0.3 补齐：</strong>改完文件自动格式化。<code>write_file</code>、<code>edit_file</code>、<code
+        >multi_edit</code
+      >
+      成功后，按文件扩展名找一个可用的格式化工具跑一次（工作目录是工作空间，在沙箱里），结果附在工具结果后面。清单和
+      v0.3.1
+      相同：gofmt、mix、prettier、oxfmt、biome、zig、clang-format、ktlint、ruff、air、uv、rubocop、standardrb、htmlbeautifier、dart、ocamlformat、terraform、latexindent、gleam、shfmt、nixfmt、rustfmt、pint、ormolu；每个工具的扩展名、启用条件（项目里有它的配置文件或依赖）、命令可以读
+      dev-v0.3.1 的 <code>packages/engine/src/infra/process/formatter.ts</code> 取数据。配置
+      <code>formatter: false</code> 全部关掉，<code>formatter.&lt;名字&gt;</code>
+      可以关掉一个、换命令、加环境变量或扩展名。测试用假格式化程序（Go 写的测试夹具）验证调用和关闭。
+    </p>
+    <p><strong>不做：</strong>代码补全；重命名和代码操作。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r19">R19 定时任务</h3>
+    <p>
+      <strong>做完以后：</strong>在对话里说“每天 9
+      点检查一下部署”，智能体能建一个定时任务；守护进程到点在指定工作空间开一个对话执行；结果进收件箱；能列出和删除。
+    </p>
+    <p class="muted">依赖：R18、R6（守护进程）。解决：7.5 节。</p>
+    <ul>
+      <li>
+        工具 <code>schedule_create {cron, prompt, agent?}</code>（五段 cron
+        表达式，按本机时区，工作空间是当前会话的）、<code>schedule_list</code>、<code>schedule_delete {id}</code>。
+      </li>
+      <li>
+        定时任务存为文档（kind <code>schedule</code>）；守护进程每分钟检查一次，到点用
+        <code>session.create</code>
+        在这个工作空间新开对话，标题“定时：…”，完成后发收件箱通知。守护进程不在运行时错过的时间点不补跑，下次启动时发一条“错过了
+        N 次”的通知。
+      </li>
+      <li>内置技能 <code>loop</code>：说明如何把自然语言的周期变成 cron、何时先列出再删除。</li>
+      <li>方法 <code>schedule.list</code>、<code>schedule.delete</code>，给 R22 首页和设置用。</li>
+    </ul>
+    <p>
+      <strong>先写的测试：</strong>cron
+      解析的表格测试（常见写法和非法写法）；用可注入的时钟让一个定时任务到点触发，生成一条对话和一条通知；删除后不再触发；守护进程停了两个时间点后启动，发一条“错过
+      2 次”的通知。
+    </p>
+    <p><strong>命令行：</strong><code>merak schedule list|delete</code>。</p>
+    <p><strong>不做：</strong>秒级精度；补跑错过的时间点。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r20">R20 桌面端恢复（一）：外壳、单聊、设置、引导</h3>
+    <p>
+      <strong>做完以后：</strong>桌面端的外观和行为回到 UI
+      分支的水平：侧栏、单聊（消息、工具卡、撤回、编辑重发、重试、复制、改名）、输入框、权限与接管、沙箱控制、设置的全部页面（技能和插件除外）、引导页、与外部产品单聊；数据全部经新
+      SDK。
+    </p>
+    <p class="muted">依赖：R19。解决：4.5 节、D-20、B9、B16。</p>
+    <p>
+      <strong>先读：</strong>UI 分支的 <code>apps/desktop/renderer/src</code> 全部文件和
+      <code>apps/desktop/main/e2e</code>；当前的
+      <code>state/client.ts</code>、<code>state/store.ts</code>、<code>packages/sdk/src/index.ts</code>。
+    </p>
+    <p>
+      <strong>先写的测试：</strong>把下列 UI 分支的 spec 原样拷进 <code>apps/desktop/main/e2e</code>（夹具用当前的
+      <code>fixture.ts</code>，它已经启动真实的 Go 引擎），一个一个变绿：
+    </p>
+    <pre><code>chat  composer  permission  tools（全部 6 个用例）  plan
+conversations  conversation-actions  connect  reconnect  onboarding  settings
+about  background  shutdown  engine-lifecycle  direct  storage-recovery  ipc-validation  layout</code></pre>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>state/types.ts</code>：列出 UI 分支组件从 <code>@merakcode/sdk/client</code> 导入的类型（36 处
+        <code>import type</code>），按组件实际读的字段定义成渲染进程本地类型；<code>state/adapt.ts</code>
+        把新 SDK 的折叠状态转换成这些类型。类型只写组件用到的字段。
+      </li>
+      <li>
+        从 UI 分支拷贝 <code>apps/desktop/renderer/src</code> 下除以下文件外的全部文件：<code
+          >features/conversation/</code
+        >
+        下的
+        <code>group-*</code
+        >、<code>member-column.tsx</code>、<code>members.tsx</code>、<code>product.fixture.ts</code>，<code>features/settings/agent-connections.tsx</code>、<code>collaboration.tsx</code>，<code>state/agent-connections.ts</code>（这些在
+        R22、R23 用）。组件里的导入换成 <code>state/types.ts</code>；<code>@merakcode/sdk/errors</code> 换成
+        <code>state/error.ts</code>；<code>@merakcode/sdk/store</code> 的 <code>applyEvent</code> 换成新 SDK 的
+        <code>foldSession</code>。
+      </li>
+      <li>
+        重写 <code>state/client.ts</code>、<code>state/store.ts</code>、<code>state/git.ts</code>、<code
+          >state/models.ts</code
+        >
+        的内部，接新 SDK 的单条连接；对外导出的函数名和签名保持 UI 分支的样子，组件不改逻辑。旧接口和新方法的对应关系见
+        7.5 节。
+      </li>
+      <li>
+        当前分支只为新引擎写、UI 分支没有的文件，按下表处理：<code>features/group/*</code>、<code>ui/avatar.tsx</code>
+        留着给
+        R23、R24；<code>settings/models.tsx</code>、<code>settings/profiles.tsx</code>、<code>conversation/group-page.tsx</code>、<code>group-create.tsx</code>、<code
+          >state/groups.ts</code
+        >
+        删除；<code>settings/cloud.tsx</code>、<code>remote.tsx</code>、<code>cloud-members.tsx</code>
+        放进设置里一个“云端”页，不进主流程；<code>conversation/context-budget.tsx</code>、<code>sandbox-status.tsx</code>、<code
+          >permission-mode.tsx</code
+        >
+        被 UI 分支对应的组件替代后删除，它们的测试改写成针对替代组件的。
+      </li>
+      <li>
+        错误显示一律用 <code>state/error.ts</code> 的 <code>explain()</code> 和
+        <code>summary()</code>，不写死码；模型设置只发改动的字段（R1
+        的补丁格式）；外部产品环境变量的值用密码框，已保存的显示“已保存，留空不修改”（R4）。
+      </li>
+      <li>
+        主进程：把
+        <code>git diff origin/dev-v0.3.1 origin/tt/refactor/ui-side-panel -- apps/desktop/main/src</code> 的改动（6
+        个文件）移植到当前主进程，保留 R6 的守护进程逻辑。
+      </li>
+      <li>
+        i18n：以 UI 分支的 <code>zh.ts</code>、<code>en.ts</code> 为底，补上 R20
+        新增的键；当前分支只为已删除界面写的键删掉。
+      </li>
+    </ol>
+    <p><strong>不做：</strong>协作群和任务界面（R22 到 R24）；视觉调整（照 UI 分支原样）。</p>
+    <p>
+      <strong>验证：</strong>全量命令全绿，上面列的 spec 全部通过并加进
+      <code>ci.yml</code>；附单聊、设置各页的浅色、深色截图，和 UI 分支同一页面的截图并排。
+    </p>
+
+    <h3 id="wo-r21">R21 桌面端恢复（二）：面板与恢复</h3>
+    <p>
+      <strong>做完以后：</strong
+      >侧边面板（每个对话自己的标签页）、代码编辑器、源代码管理、审核、终端、浏览器，以及各类重启、离线、目录改名后的恢复，都回到
+      UI 分支的水平。
+    </p>
+    <p class="muted">依赖：R20。解决：4.5 节。</p>
+    <p><strong>先写的测试：</strong>拷进并逐个变绿的 UI 分支 spec：</p>
+    <pre><code>review  review-guards  review-only-recovery  review-terminal-layout  git  branch  branch-guards
+branch-recovery  branch-editor-race  draft-branch  editor  editor-file-state  editor-layout  file-identity
+panels  panel-errors  panel-pending-recovery  terminal-input  terminal-stop
+browser-address  browser-restore  browser-tabs  browser-terminal  promotion-open  promotion-delete
+promotion-recovery  directory-recovery  deleted-directory-recovery  nongit-directory-recovery
+offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
+    <p>
+      <strong>实现步骤：</strong>和 R20 相同：组件从 UI 分支拷贝，只重写数据层；文件、git、worktree 用 R12
+      的方法，终端用现有的 <code>terminal.*</code>；审核里“已看过的文件”“未提交的评论”这类界面状态照 UI
+      分支存在主进程的本地存储里。
+    </p>
+    <p><strong>不做：</strong>新功能；视觉调整。</p>
+    <p><strong>验证：</strong>全量命令全绿，上面列的 spec 全部通过并加进 <code>ci.yml</code>。</p>
+
+    <h3 id="wo-r22">R22 侧栏、首页、智能体页</h3>
+    <p>
+      <strong>做完以后：</strong
+      >侧栏顶部是首页、新建对话、新建智能体、新建协作群、新建任务五项，下面按工作空间分组列出协作群、任务、对话；首页有收件箱栏目、全局任务看板和最近的会话；新消息右下角弹窗；智能体页能一键添加本机探测到的产品，能新建、编辑、复制、测试、删除智能体。
+    </p>
+    <p class="muted">依赖：R10、R21。解决：P1、P2、P3、P6、B13、D-13、U6、V3。</p>
+    <p>
+      <strong>先读：</strong>R21 之后的
+      <code>app.tsx</code
+      >、<code>features/shell/sidebar.tsx</code>、<code>features/shell/notify.ts</code>、<code>ui/toast.tsx</code>、<code>features/conversation/model-picker.tsx</code>；UI
+      分支的
+      <code>features/settings/agent-connections.tsx</code
+      >、<code>collaboration.tsx</code>、<code>state/agent-connections.ts</code>；当前分支的
+      <code>features/group/inbox.tsx</code>、<code>board.tsx</code>；SDK 的
+      <code>fold/inbox.ts</code>、<code>fold/board.ts</code>。
+    </p>
+    <p><strong>路由：</strong></p>
+    <pre><code>/                          首页
+/agents                    智能体（侧栏“新建智能体”打开这里的向导）
+/tasks                     全局任务看板（首页看板的“展开”）
+/task/:id                  任务详情（R24）
+/:dir/group/:id            协作群（R23）
+/:dir/session/:id?         对话（R20 恢复的，不变）</code></pre>
+    <p><strong>先写的测试</strong>（渲染进程，对真实引擎）：</p>
+    <ol>
+      <li>
+        侧栏顶部按顺序是这五项；“新建对话”打开 R20 恢复的新对话页，能选 MerakCode
+        或纳管产品；“新建协作群”“新建任务”打开各自的表单（R23、R24 实现，本片只验证入口）。
+      </li>
+      <li>
+        侧栏下面按工作空间分组，每组里协作群、任务、对话三类按最近更新排序；没有打开任何工作空间时显示“打开文件夹”。
+      </li>
+      <li>
+        首页收件箱栏目：引擎发出一条“任务完成”和一条“待审批”后，栏目里有两条，按时间倒序；点“待审批”跳到对应的审批。
+      </li>
+      <li>
+        新收件箱消息到达时右下角弹出一条提醒，几秒后自动收起，点击跳转；同一条只弹一次；窗口不在前台时发系统通知（复用
+        <code>notify.ts</code>）。
+      </li>
+      <li>首页任务看板显示这个客户端的全部未结束任务，按状态分列；点“展开”进 <code>/tasks</code>。</li>
+      <li>
+        智能体页列出
+        <code>agent.catalog</code> 里可用的产品；点“添加”后“我的智能体”多一条，再点不重复添加，按钮变为“已添加”。
+      </li>
+      <li>
+        新建向导选 MerakCode
+        时，模型一步是对话里的模型选择器组件；选外部产品时没有模型选择器，有命令、参数、环境变量（值用密码框）。
+      </li>
+      <li>删除仍在某个协作群里的智能体：显示 <code>MRK-6004</code> 的标题和提示，列表不变。</li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        新文件 <code>features/start/page.tsx</code>（首页）、<code>features/start/inbox.tsx</code>（收件箱栏目，复用
+        <code>features/group/inbox.tsx</code>
+        的条目组件）、<code>features/agents/agents.tsx</code>、<code>features/agents/wizard.tsx</code>。
+      </li>
+      <li>
+        收件箱数据：订阅本人的 <code>inbox:</code> 流（不带协作群范围），用 SDK 的
+        <code>applyToInbox</code> 折叠；右下角弹窗用 <code>ui/toast</code>，新增一种带跳转的样式。
+      </li>
+      <li>
+        智能体卡片、探测状态、版本过低提示、连通测试从 UI 分支的 <code>agent-connections.tsx</code> 照搬，角色模板从
+        <code>collaboration.tsx</code> 照搬，数据换成 <code>agent.*</code>。
+      </li>
+      <li>
+        侧栏在 R20 恢复的 <code>sidebar.tsx</code> 上改：顶部五项，下面的分组从“目录 → 对话”扩成“目录 →
+        协作群、任务、对话”。
+      </li>
+      <li>新文案进 <code>i18n/zh.ts</code>、<code>i18n/en.ts</code>，用“智能体”“协作群”，不用“档案”。</li>
+    </ol>
+    <p><strong>不做：</strong>协作群页（R23）；任务详情和看板清理（R24）。</p>
+    <p><strong>验证：</strong>全量命令全绿；附首页、智能体页、右下角弹窗的浅色和深色截图。</p>
+
+    <h3 id="wo-r23">R23 协作群</h3>
+    <p>
+      <strong>做完以后：</strong>能新建协作群（工作空间、成员、唯一的
+      Leader、可选绑定一个任务）；群页的消息流和对话同一套组件，Leader
+      的回复流式显示、有工具卡、能停止；右栏显示任务拆解：群里的任务、子任务、谁在做、做到哪一步、Leader 的待办；@
+      成员直达并显示回执；回合进行中照样能发消息。
+    </p>
+    <p class="muted">依赖：R22。解决：B1、B4、B5、B6、B11、B12、P4、P5、P7、D-8、V4。</p>
+    <p>
+      <strong>先读：</strong>R20 恢复的
+      <code>features/conversation/messages.tsx</code
+      >、<code>page.tsx</code>、<code>tools.tsx</code>、<code>composer.tsx</code>；UI 分支的
+      <code>member-column.tsx</code
+      >、<code>members.tsx</code>、<code>group-create.tsx</code>、<code>group-copy.ts</code>、<code>group-state.ts</code>、<code>group-todo.tsx</code>；SDK
+      的 <code>fold/assignments.ts</code>（R9）。
+    </p>
+    <p><strong>先写的测试</strong>（渲染进程，对真实引擎）：</p>
+    <ol>
+      <li>
+        新建协作群：选工作空间、名字、成员；Leader 下拉框只列 Leader
+        角色的智能体，必须选一个；从任务发起时工作空间取任务的、不能改。建完跳到群页。再建一个群后
+        <code>agent.list</code> 的数量不变（B1）。
+      </li>
+      <li>
+        Leader 是 MerakCode 时表单里有它的模型选择器，默认是设置里的默认模型（B11）；纳管产品也能被选为 Leader（B12）。
+      </li>
+      <li>
+        人发言后 Leader
+        的回复逐字出现；回合进行中输入框不锁，再发一条立刻标“已送达”，被读到后标“处理中”；停止按钮能结束回合（B4、V4）。
+      </li>
+      <li>@ 一个正在干活的 Worker：消息旁边显示“已送达 X”；右栏里 X 的状态更新；Leader 随后有回复。</li>
+      <li>Leader 调 <code>create_task</code> 后消息流里出现任务卡片，右栏任务拆解多一项；点卡片进任务详情。</li>
+      <li>
+        右栏任务拆解：每个子任务一行，显示认领人头像、状态、最近一条进度；Leader 的待办列在下面，随
+        <code>todo.updated</code> 实时变化。
+      </li>
+      <li>名册：改成员在群里的名字、移出成员（P7）、从已有协作群复制成员（照搬 UI 分支）。</li>
+      <li>
+        一个群的折叠出错时只重载这个群，对话的流式输出不中断（B5）；3 个群各 2000 条事件时，启动后侧栏 2
+        秒内出现（B6）。
+      </li>
+      <li>UI 分支的 <code>group.spec.ts</code>、<code>agents.spec.ts</code> 改成新流程后通过。</li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>state/groups.ts</code> 重写：群列表来自 R8 的 <code>group.list</code>，不再扫全部
+        <code>group.created</code>；每个群一份视图，事件按 id 存进
+        <code>Map</code> 去重；折叠出错时只重建这个群，不关连接。
+      </li>
+      <li>
+        消息流：对 Leader 线程的会话用 <code>watchConversation</code> 和对话同一套 <code>messages</code>、<code
+          >tools</code
+        >
+        组件；人的发言、成员的进度摘要、送达回执插在对应位置。
+      </li>
+      <li>
+        右栏：<code>fold/assignments.ts</code> 的结果渲染成任务拆解；名册和成员列从 UI 分支照搬，数据换成
+        <code>group.*</code> 事件和 <code>agent.list</code>。
+      </li>
+      <li>删掉当前 <code>group-page.tsx</code> 里的四个页签和“讨论位置”下拉框；用量挪进群设置。</li>
+    </ol>
+    <p><strong>不做：</strong>任务详情和看板（R24）。</p>
+    <p><strong>验证：</strong>全量命令全绿；附群页的浅色和深色截图。</p>
+
+    <h3 id="wo-r24">R24 任务</h3>
+    <p>
+      <strong>做完以后：</strong>能单独新建任务（工作空间、标题、描述、验收标准、要不要审核）；任务详情显示所属协作群和
+      Leader、子任务、认领（包括主动认领）、报告、diff、审核；没有协作群的任务能“新建协作群”或“选择协作群”来启动；全局看板能归档任务。
+    </p>
+    <p class="muted">依赖：R23。解决：D-14、C3。</p>
+    <p>
+      <strong>先读：</strong>当前分支的
+      <code>features/group/board.tsx</code
+      >、<code>create-task.tsx</code>、<code>review.tsx</code>、<code>report.tsx</code>、<code>usage.tsx</code>；SDK 的
+      <code>fold/board.ts</code>（R8 加了归档）。
+    </p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        新建任务不选协作群：建完显示“任务要交给协作群才会开始”和“新建协作群”“选择协作群”两个按钮；点“新建协作群”打开新建表单，工作空间已填成任务的、不能改，建完任务归入这个群并跳到群页。
+      </li>
+      <li>
+        “选择协作群”列出所有协作群；工作空间和任务不同的群旁边提示“选了以后这个群的工作空间会改成任务的”；这样的群如果有进行中的工作，灰掉并说明原因。
+      </li>
+      <li>任务详情显示所属协作群和它的 Leader，点击跳到群页；属于协作群的任务不再显示这两个按钮。</li>
+      <li>Worker 主动认领的卡片显示“X 主动认领”。</li>
+      <li>看板：每张卡有“归档”；已结束的卡点了以后从看板消失，出现在“已归档”视图，在那里能搜到、能恢复。</li>
+      <li>没结束的卡点“归档”先弹确认，确认后任务取消并归档。</li>
+      <li>完成列的“全部归档”一次归档列里所有卡。</li>
+      <li>设置里改自动归档天数后，看板按新天数收起卡片（由引擎归档，界面只跟着事件变化）。</li>
+      <li>
+        <code>board.spec.ts</code>、<code>review.spec.ts</code> 的任务审核部分、<code>notify.spec.ts</code>
+        改成新流程后通过。
+      </li>
+    </ol>
+    <p>
+      <strong>实现步骤：</strong>看板、报告、审核、用量组件换数据源（<code>task.list</code>
+      和全局看板折叠）和入口，样式按 R20 恢复后的风格调整；“新建协作群”调
+      <code>group.create {task}</code>，“选择协作群”调 <code>group.bind</code>；“归档”和“全部归档”调
+      <code>task.archive</code>，没结束的卡先调 <code>task.cancel</code>；设置的“任务看板”一项改
+      <code>board.autoArchiveDays</code>。
+    </p>
+    <p><strong>不做：</strong>拖拽改状态；时间线视图。</p>
+    <p><strong>验证：</strong>全量命令全绿；附看板和任务详情的截图。</p>
+
+    <h3 id="wo-r25">R25 视觉、文案与 e2e 全量</h3>
+    <p>
+      <strong>做完以后：</strong>R22 到 R24 的新页面和恢复的页面风格一致；第 4 节的文案问题解决；<code
+        >apps/desktop/main/e2e</code
+      >
+      下全部 spec 进 CI，<code>PENDING.md</code> 删除。
+    </p>
+    <p class="muted">依赖：R24。解决：第 4 节、U7、5.4 节。</p>
+    <p><strong>先写的测试：</strong></p>
+    <ol>
+      <li>
+        <code>i18n/i18n.test.ts</code>：<code>zh.ts</code> 的每个键在
+        <code>src</code> 下至少被引用一次（用模板字符串拼出的键前缀列成白名单）。
+      </li>
+      <li>
+        <code>script/check-css.ts</code>：<code>styles/</code> 下除 <code>tokens.css</code> 外不出现十六进制颜色和
+        <code>rgb(</code>。
+      </li>
+    </ol>
+    <p><strong>实现步骤：</strong></p>
+    <ol>
+      <li>
+        <code>tokens.css</code> 补 <code>--space-1</code> 到 <code>--space-8</code>（4、8、12、16、20、24、32、40）和
+        <code>--z-*</code>，新页面的像素间距换成令牌。
+      </li>
+      <li>
+        新页面里的原生 <code>select</code>、radio、checkbox 换成
+        <code>ui/select</code>、<code>ui/segmented</code>、<code>ui/switch</code>。
+      </li>
+      <li>术语统一（7.3 节）；删掉没有引用的文案键。</li>
+      <li><code>ci.yml</code> 的 e2e-desktop 改为跑 <code>e2e/</code> 下全部 spec，删掉写死的列表。</li>
+    </ol>
+    <p><strong>不做：</strong>新主题、新配色、动画。</p>
+    <p><strong>验证：</strong>全量命令和全部 e2e；每个主页面附浅色和深色截图，和 UI 分支同一页面的截图并排。</p>
+
+    <h3 id="wo-r26">R26 登录时自动启动</h3>
+    <p><strong>做完以后：</strong>设置的“后台引擎”页有“登录时启动”开关，默认关；打开后用户登录系统时引擎自动启动。</p>
+    <p class="muted">依赖：R25。</p>
+    <p>
+      <strong>实现：</strong><code>merak service install</code> 和 <code>merak service uninstall</code>：macOS 写
+      LaunchAgent，Linux 写 systemd user unit，Windows 写当前用户的
+      <code>Run</code> 注册表项；桌面端开关调用它们。先写的测试：三个平台各一个生成内容的单元测试，不真的安装。
+    </p>
+    <p><strong>不做：</strong>系统级服务；开机（而不是登录）启动。</p>
+
+    <h3 id="wo-r27">R27 命令行收尾</h3>
+    <p>
+      <strong>做完以后：</strong>v0.3.0 命令行剩下的命令在 v1
+      都有。能力切片已经各自加了命令（R3、R4、R7、R8、R11、R13、R14、R15、R19 的“命令行”一段），这一片补其余的。
+    </p>
+    <p class="muted">依赖：R19。解决：D-27。</p>
+    <p>
+      <strong>先读：</strong
+      ><code>merak/internal/cli/*.go</code
+      >、<code>merak/internal/cli/text</code>（中英文文案表）、<code>merak/internal/cli/diagnose.go</code>；v0.3.0
+      命令行的命令名和说明（<code>git ls-tree v0.3.0 apps/cli/src/cli/cmd</code>，只看命令名、参数和说明）。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 30%">命令</th>
+        <th>做什么</th>
+      </tr>
+      <tr>
+        <td><code>merak stats</code></td>
+        <td>
+          按天、服务商和模型、智能体汇总 token 和费用，<code>--json</code> 机器可读；数据来自
+          <code>turn.finished</code> 的用量
+        </td>
+      </tr>
+      <tr>
+        <td><code>merak upgrade [版本]</code></td>
+        <td>
+          下载对应平台的二进制，校验后替换自己；守护进程在跑时先提示停止。桌面端安装的版本只提示用桌面端更新。下载地址和校验文件的格式随发布流程定，在这之前命令返回带码的“尚未提供”
+        </td>
+      </tr>
+      <tr>
+        <td><code>merak doctor</code></td>
+        <td>逐项检查并给出结论：守护进程、数据目录、默认模型能否连通、沙箱、git、已配置的 MCP 服务器、语言服务器</td>
+      </tr>
+      <tr>
+        <td><code>merak logs [-f]</code></td>
+        <td>打印最近的日志，<code>-f</code> 跟随；按组件过滤</td>
+      </tr>
+      <tr>
+        <td><code>merak bug-report</code></td>
+        <td>生成诊断包（复用 <code>merak diagnose</code>），打印包的位置和提交问题的网址</td>
+      </tr>
+      <tr>
+        <td><code>merak sandbox status|setup|reset</code></td>
+        <td>查看沙箱状态；Windows 的一次性初始化；清除初始化</td>
+      </tr>
+      <tr>
+        <td><code>merak generate</code></td>
+        <td>打印协议的 JSON Schema（v0.3 打印 OpenAPI，v1 的协议是 JSON-RPC）</td>
+      </tr>
+    </table>
+    <p>
+      <strong>先写的测试：</strong>每个命令一条，对真实的 <code>merak serve</code>（假模型）：<code>stats</code>
+      的数字和事件里的用量一致；<code>doctor</code> 在没有默认模型时那一项失败、其他项通过；<code>logs</code>
+      能读到刚写的一行；<code>bug-report</code> 生成的包存在；<code>sandbox status</code> 的结论和
+      <code>sandbox.status</code> 一致；<code>generate</code> 的输出是合法 JSON 且含 <code>hello</code> 方法；<code
+        >upgrade</code
+      >
+      返回“尚未提供”的码。中英文文案都有。
+    </p>
+    <p><strong>不做：</strong>发布流程和下载服务器。</p>
+    <p><strong>验证：</strong>全量命令全绿。</p>
+
+    <h3 id="wo-r28">R28 从 v0.x 迁移</h3>
+    <p>
+      <strong>做完以后：</strong>装过 v0.3 的用户第一次启动 v1 时，守护进程在后台导入 v0.3
+      的数据：历史对话（导入后能继续聊）、外部产品连接、角色模板、协作群记录、计划、记忆、待办；桌面端显示进度，完成后收件箱里有一条结果（导入了多少、跳过了多少、为什么）。命令行
+      <code>merak import --from v0.3</code> 手动触发。导入只做一次，再运行不重复。
+    </p>
+    <p class="muted">依赖：R19（会话、智能体、计划、记忆、待办都已就位）、R22（收件箱）。解决：D-28。</p>
+    <p>
+      <strong>先读：</strong>v1 的
+      <code>merak/engine/session</code>、<code>engine/agent</code>、<code>engine/memory</code>、计划（R16）和
+      <code>internal/localstore</code>。v0.3 的数据格式（只取格式，不读实现）：<code>origin/dev-v0.3.1</code> 的
+      <code>packages/engine/src/infra/storage/db.ts</code
+      >（表结构）、<code>packages/engine/src/agent/session/message.ts</code>（消息和片段的结构）、<code>packages/util/src/paths.ts</code>（目录）、<code>schema/config.json</code>（<code>agentConnections</code>、<code>collaboration</code>）。
+    </p>
+    <p><strong>要导入的数据：</strong></p>
+    <table>
+      <tr>
+        <th style="width: 26%">v0.3 里</th>
+        <th>导入成</th>
+      </tr>
+      <tr>
+        <td><code>data/merakcode.db</code> 的 <code>session</code>、<code>message</code>、<code>part</code></td>
+        <td>
+          v1
+          的会话事件，时间、标题、父子会话保留；工作空间取会话的目录，目录已经不存在也导入，标“目录不存在”；每条用户消息的服务商和模型写进会话配置。片段：文本
+          → 文本；推理 → 思考；工具（输入、输出、出错）→ 工具调用和结果；文件 → 附件（内联数据存成
+          blob，路径的保留路径）；压缩 → 摘要消息；其余（步骤边界、快照、补丁、重试）不导入
+        </td>
+      </tr>
+      <tr>
+        <td><code>record</code> 表里的待办和协作群记录</td>
+        <td>
+          待办进对应会话的
+          <code>todos</code
+          >；协作群成为已归档、只读的协作群：成员按名字对应到导入的智能体或内置智能体，消息按时间导入，界面上不能继续发言，提示新建协作群
+        </td>
+      </tr>
+      <tr>
+        <td><code>data/plans/</code>、<code>data/memory/</code></td>
+        <td>计划成为对应会话的计划文档（状态“已完成”或“已停止”）；记忆按作用域导入，过密钥扫描</td>
+      </tr>
+      <tr>
+        <td>
+          配置里的 <code>agentConnections</code>、<code>collaboration.roleTemplates</code>，<code>config.json</code>
+          里的产品
+        </td>
+        <td>
+          智能体和角色模板。<code>adapter: "member"</code> 这类自写的 JS 适配器不导入，结果里列出名字，提示改用内置的
+          Claude Code、Codex、opencode、pi、ACP 或命令行适配器
+        </td>
+      </tr>
+      <tr>
+        <td>不导入</td>
+        <td>
+          <code>review_baseline</code
+          >、<code>worktrees/</code>（留在原处）、<code>cache/</code>、<code>logs/</code>、<code>tool-output/</code>
+        </td>
+      </tr>
+    </table>
+    <ul>
+      <li>
+        只读 v0.3 的文件，不改不删（<code>auth.json</code> 在 R4 已处理）。用 v1 已有的纯 Go SQLite
+        驱动读，打开时设成只读。
+      </li>
+      <li>
+        导入完写一份文档（kind <code>import</code>，key <code>v0.3</code>）记下已导入的会话
+        id；重复运行跳过已导入的，新出现的照导。
+      </li>
+      <li>导入在后台跑，每导完一个会话发一次 <code>import.progress</code>；会话很多时不阻塞守护进程的其他请求。</li>
+      <li>单个会话导入失败只跳过这一个，原因记进结果；结果发一条 <code>notice.sent</code> 进收件箱。</li>
+    </ul>
+    <p>
+      <strong>先写的测试</strong>（<code>merak/internal/migrate</code>，测试里按 v0.3
+      的表结构现建一个库，不需要全文索引表）：
+    </p>
+    <ol>
+      <li>
+        两条会话（一条有子会话），消息含文本、推理、工具调用和结果、内联图片：导入后 v1
+        有三条会话，标题、时间、父子关系一致，工具结果的内容一致，图片成为 blob 附件。
+      </li>
+      <li>用假模型继续一条导入的会话：模型收到的上下文里有导入的历史。</li>
+      <li>会话目录已不存在：照样导入，标“目录不存在”。</li>
+      <li>一条坏掉的片段 JSON：这条会话跳过，其他照导，结果里有原因。</li>
+      <li>再运行一次：不重复导入；在 v0.3 库里新加一条会话后再运行，只导这一条。</li>
+      <li>一条协作群记录：导入成已归档的只读协作群，<code>group.say</code> 被拒（新码）。</li>
+      <li>
+        <code>agentConnections</code> 里一个 Claude Code、一个
+        <code>adapter: "member"</code>：前者成为智能体，后者在结果里列出。
+      </li>
+      <li>计划和记忆各一份：导入后能读到；记忆里含一个假密钥的那条被拦下。</li>
+      <li>v0.3 的文件在导入前后字节相同。</li>
+    </ol>
+    <p>
+      <strong>实现步骤：</strong>新包 <code>internal/migrate</code>（宿主侧，读 v0.3 文件、经引擎的公开接口写 v1
+      数据）；守护进程启动时发现 <code>data/merakcode.db</code> 且没有导入记录就在后台开始；命令行
+      <code>merak import --from v0.3</code>；桌面端首页显示进度条，完成后结果进收件箱（R22 的收件箱组件）。
+    </p>
+    <p><strong>不做：</strong>把 v1 的数据导回 v0.3；导入 v0.3 的审核基线。</p>
+    <p>
+      <strong>验证：</strong>全量命令全绿；拿产品负责人本机的 <code>~/.merakcode</code> 复制一份（不碰原件）跑一次
+      <code>merak import --from v0.3</code>，在回报里附导入结果。
+    </p>
+
+    <h2 id="rules">10. 执行规则</h2>
+    <p>写给执行模型。每片开工前把本节读一遍。</p>
+    <ol>
+      <li>
+        一次只做一片。开工前在 PR
+        描述里列出要动的公开接口和要测的行为，然后按施工单“先写的测试”的顺序，一次写一个会失败的测试，运行看到它失败，再写最少的代码让它通过。
+      </li>
+      <li>施工单里没写的东西不做。需要施工单没提到的字段、方法、配置、依赖时停下来问，不要自己加。</li>
+      <li>
+        <strong>不倒退。</strong>v0.x 能做的必须还能做。发现施工单没覆盖到的 v0.x 能力，停下来报告，不要删掉或跳过。
+      </li>
+      <li>
+        <strong>不许为了让 CI 变绿而移走、跳过或改弱测试。</strong>测试失败只有两种处理：修好代码；或者在 PR
+        描述里写明它由哪一片修，并把它列进 R0 建立的待办清单。把用例挪到不进 CI 的文件，和删掉断言一样，都算违规。
+      </li>
+      <li>
+        测试对真实行为：Go 用假模型和内存存储或本地存储；渲染进程用 <code>src/test/engine.ts</code> 的真实引擎夹具；不用
+        mock。
+      </li>
+      <li>
+        用户能看到的错误都有 <code>MRK-xxxx</code> 码，中英文的标题和提示写在
+        <code>packages/util/errors.json</code>，然后 <code>pnpm generate:errors</code>。
+      </li>
+      <li>
+        生成的文件不手改：协议类型 <code>pnpm generate:protocol</code>，存储 <code>pnpm generate:store</code>，错误码
+        <code>pnpm generate:errors</code>。
+      </li>
+      <li>
+        新代码不进根包 <code>merak/engine</code>（R5 的架构测试会拦）；产品逻辑在引擎里，界面只渲染 SDK 折叠出来的状态。
+      </li>
+      <li>
+        桌面端以 <code>origin/tt/refactor/ui-side-panel</code> 为基线，用
+        <code>git show origin/tt/refactor/ui-side-panel:&lt;路径&gt;</code>
+        读、照搬；能拷的组件就拷，不重写。
+      </li>
+      <li>
+        不读、不复制 v0.3 的引擎、命令行、SDK，只有施工单点名的几个文件例外（R2 的 <code>schema/config.json</code> 和
+        <code>paths.ts</code>，R3 的兜底表，R15 的插件钩子定义，R18 的语言服务器和格式化工具清单，R27 的命令名，R28
+        的表结构和消息结构），而且只取格式、数据和行为，代码原创。
+      </li>
+      <li>Go 模块只用标准库和已批准的依赖；需要新依赖时停下来问。</li>
+      <li>
+        不改 <code>docs/智能体架构思考.md</code>；不改 <code>docs/plans/</code> 下的方案；发现施工单有问题就停下来报告。
+      </li>
+      <li>用户能感知的改动在 <code>CHANGELOG.md</code> 的 Unreleased 下中英文各写一行。</li>
+      <li>提交信息按 CONTRIBUTING.md；不加 <code>Co-authored-by</code> 等署名行。</li>
+      <li>
+        每片结束时运行全量命令，全部通过才提交：
+        <pre><code>pnpm check
+pnpm test:script
+pnpm --dir merak test
+(cd packages/util &amp;&amp; pnpm test)
+(cd packages/log &amp;&amp; pnpm test)
+(cd packages/sdk &amp;&amp; pnpm test)
+pnpm --dir packages/sdk test:e2e
+(cd apps/desktop/main &amp;&amp; pnpm test)
+(cd apps/desktop/renderer &amp;&amp; pnpm test)
+(cd merak &amp;&amp; go build -o dist/&lt;平台&gt;/merak ./cmd/merak)
+pnpm --dir apps/desktop/renderer run build
+pnpm --dir apps/desktop/main run build
+pnpm --dir apps/desktop/main test:e2e     # 本片涉及的 spec；R25 起跑全部</code></pre>
+        Windows 上构建主进程前先关掉正在运行的开发版 MerakCode（B15，R6 之后不再需要）。
+      </li>
+      <li>
+        两条轨道并行时，各自从最新的 <code>dev-v1.0.0</code> 开分支；合并冲突集中在
+        <code>internal/server/methods_*.go</code> 和生成的协议类型，先合并的一方不动对方的文件。
+      </li>
+      <li>
+        回报格式：做完以后的行为逐条对照；每条测试的名字；全量命令的输出摘要；截图（界面切片）；偏离施工单的地方（应当没有）。
+      </li>
+    </ol>
+
+    <h2 id="revise">11. 方案修订清单</h2>
+    <p>
+      施工单优先于设计方案（R0 写进 AGENTS.md）。<code>docs/plans/v1-agent-engine.html</code>
+      已按下表修订，执行模型不改它。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 22%">方案的位置</th>
+        <th>改为</th>
+      </tr>
+      <tr>
+        <td>概要、图 1、术语表</td>
+        <td>注明以愿景文档为源头；加对话、智能体、协作群、任务的关系和工作空间</td>
+      </tr>
+      <tr>
+        <td>核心设计决定 2、5、8、10</td>
+        <td>D-4 到 D-7（Leader 属于协作群，协作群和任务一对多）；D-21；D-11；D-12（守护进程）</td>
+      </tr>
+      <tr>
+        <td>1.3 节</td>
+        <td>删“桌面端不重新设计”和“插件、技能、斜杠命令、LSP、定时任务排在阶段 4 之后”，换成 D-16</td>
+      </tr>
+      <tr>
+        <td>2.3、2.5、3.4、12.2 节</td>
+        <td>存储宿主在守护进程里；引擎不再随启动者生死</td>
+      </tr>
+      <tr>
+        <td>4.3、4.4、4.8 节</td>
+        <td>模型目录按 7.6 节；工具集按 7.5 节补齐；系统提示词按 D-23</td>
+      </tr>
+      <tr>
+        <td>5.1、5.2 节</td>
+        <td>协作群唯一 Leader；<code>Agent</code> 取代 <code>Profile</code>；密钥进凭据库</td>
+      </tr>
+      <tr>
+        <td>6.1 到 6.5 节</td>
+        <td>
+          每个协作群一条线程，任务的事件进所属群的线程；人直达成员时 Leader 也被唤醒；<code>create_task</code>
+          的归属和工作空间规则；<code>todo_write</code>
+        </td>
+      </tr>
+      <tr>
+        <td>7.1 到 7.3 节</td>
+        <td>任务可以单独建、交给协作群后启动、工作空间和 Leader 从协作群来、主动认领、归档和自动归档</td>
+      </tr>
+      <tr>
+        <td>9.4、10.2、10.5、11.2 节</td>
+        <td>首页收件箱和弹窗；身份由连接决定；远程 MCP 和 OAuth；方法表（7.2 节和各施工单）</td>
+      </tr>
+      <tr>
+        <td>14、15 节</td>
+        <td>14 节改为以 UI 分支为基线的恢复方案和 7.5 节的能力对照；15 节换成 R0 到 R28，阶段 4、5 剩余工作冻结</td>
+      </tr>
+    </table>
+
+    <script>
+      const nav = document.querySelector(".sidebar")
+      const labels = new Map([...document.querySelectorAll(".toc a")].map((a) => [a.hash.slice(1), a.textContent]))
+      const root = document.createElement("ul")
+      const entries = []
+      let group
+
+      for (const heading of document.querySelectorAll("body > h2, body > h3")) {
+        const major = heading.tagName === "H2"
+        if (!major && !group) continue
+        if (!heading.id) heading.id = `${group.heading.id}-${group.list.children.length + 1}`
+        const item = document.createElement("li")
+        const link = document.createElement("a")
+        link.href = `#${heading.id}`
+        link.textContent = labels.get(heading.id) ?? heading.textContent.trim()
+        item.append(link)
+        if (major) {
+          group = { heading, item, list: document.createElement("ul") }
+          item.append(group.list)
+          root.append(item)
+        } else group.list.append(item)
+        entries.push({ heading, link, group: group.item })
+      }
+      nav.append(root)
+
+      function current() {
+        const bottom = innerHeight + scrollY >= document.documentElement.scrollHeight - 2
+        if (bottom) return entries.at(-1)
+        return entries.findLast((entry) => entry.heading.getBoundingClientRect().top <= 96) ?? entries[0]
+      }
+
+      function update() {
+        const active = current()
+        for (const entry of entries) {
+          entry.link.classList.toggle("active", entry === active)
+          entry.group.classList.toggle("open", entry.group === active.group)
+        }
+        const box = active.link.getBoundingClientRect()
+        if (box.top < 0 || box.bottom > innerHeight) nav.scrollTop += box.top - innerHeight / 3
+      }
+
+      let pending = false
+      addEventListener(
+        "scroll",
+        () => {
+          if (pending) return
+          pending = true
+          requestAnimationFrame(() => {
+            pending = false
+            update()
+          })
+        },
+        { passive: true },
+      )
+      update()
+    </script>
+  </body>
+</html>

@@ -287,10 +287,15 @@
     <h2 id="summary">概要</h2>
     <p>
       MerakCode v1.0.0 把一个 AI 编程工具升级为<strong>纳管所有智能体 Harness 的入口</strong>：用 Go
-      原创一套智能体引擎，同一套引擎装上不同档案就成为编排者 Leader 或执行者 Worker；Claude Code、Codex、opencode、pi
-      等外部产品经适配器成为 Worker，也可以担任
-      Leader；人和智能体在协作群里以任务驱动、事件触发的方式协同；引擎只算不存，桌面端、命令行、云端三种产品形态共用一套协议、SDK
-      和存储格式。本文是设计方案和施工依据，第 3.9 节是地基施工单，第 15 节是切片表。
+      原创一套智能体引擎，同一套引擎装上不同的智能体配置就成为编排者 Leader 或执行者 Worker；Claude
+      Code、Codex、opencode、pi 等外部产品经适配器成为 Worker，也可以担任
+      Leader。用户能直接新建四样东西：对话（单聊）、智能体、协作群、任务。一个协作群有一个
+      Leader，可以做多个任务；任务在协作群里被推进，人和智能体以任务驱动、事件触发的方式协同。引擎是每个用户一个的守护进程，引擎代码只算不存，桌面端、命令行、云端三种产品形态共用一套协议、SDK
+      和存储格式。v0.x 已有的能力一项不少。
+    </p>
+    <p>
+      本文是设计方案。S0 到 S31、D1 到 D10 已经实现，验收未通过；当前的施工单和执行规则在
+      <code>docs/plans/v1-acceptance-review.html</code> 第 9、10 节，两者冲突时以施工单为准。第 15 节是切片总表。
     </p>
 
     <h3>总体架构</h3>
@@ -307,10 +312,10 @@
         <path class="f" d="M390 64 V110" />
         <text class="s" x="275" y="90" text-anchor="middle">SDK 和协议：客户端只连本机引擎</text>
         <rect class="zone" x="40" y="110" width="620" height="310" rx="8" />
-        <text class="t" x="60" y="132" dominant-baseline="middle">merak serve：本机 Go 引擎进程，每台电脑一个，随启动者生死</text>
+        <text class="t" x="60" y="132" dominant-baseline="middle">merak serve：每个用户一个守护进程，客户端退出它不停</text>
         <rect class="b blue" x="60" y="155" width="240" height="120" rx="6" />
-        <text class="t" x="180" y="177" text-anchor="middle" dominant-baseline="middle">Leader（引擎 + 编排档案）</text>
-        <text class="s" x="180" y="200" text-anchor="middle" dominant-baseline="middle">群线程 + 每个顶层任务一个线程</text>
+        <text class="t" x="180" y="177" text-anchor="middle" dominant-baseline="middle">Leader（引擎 + 编排智能体配置）</text>
+        <text class="s" x="180" y="200" text-anchor="middle" dominant-baseline="middle">每个协作群一条线程</text>
         <text x="180" y="226" text-anchor="middle" dominant-baseline="middle">调度器：快速通道 / 慢速通道</text>
         <text x="180" y="250" text-anchor="middle" dominant-baseline="middle">群状态 · 任务池 · 合并队列</text>
         <rect class="b green" x="350" y="155" width="140" height="52" rx="6" />
@@ -334,7 +339,7 @@
         <text class="s" x="190" y="447" text-anchor="end">事件、文档（只追加）</text>
         <text class="s" x="250" y="447">读历史、读文档</text>
         <rect class="b" x="60" y="470" width="360" height="50" rx="6" />
-        <text x="240" y="488" text-anchor="middle" dominant-baseline="middle">存储宿主：桌面端主进程或命令行</text>
+        <text x="240" y="488" text-anchor="middle" dominant-baseline="middle">本机存储宿主：在守护进程里</text>
         <text class="s" x="240" y="507" text-anchor="middle" dominant-baseline="middle">同一种 SQLite 存储格式；云端群的宿主是云端</text>
         <rect class="b blue" x="740" y="200" width="200" height="130" rx="6" />
         <text class="t" x="840" y="224" text-anchor="middle" dominant-baseline="middle">云端服务</text>
@@ -354,33 +359,45 @@
     <ol>
       <li>
         <strong>一套引擎，两种角色。</strong>代码里编排者叫 <code>Leader</code>，执行者叫
-        <code>Worker</code>。两者是同一套引擎装上两份不同的档案；Leader 多一个调度器和一套管任务的工具，Worker
+        <code>Worker</code>。两者是同一套引擎装上两份不同的智能体配置；Leader 多一个调度器和一套管任务的工具，Worker
         多一套改代码的工具。外部产品经适配器成为 Worker，经 MCP 拿到编排工具后也能担任 Leader。
       </li>
       <li>
-        <strong>Leader 是任务级别的。</strong>每个顶层任务指定一个 Leader，默认是群的默认 Leader，也可以是群里任何一个
-        Leader 角色的成员。每个顶层任务一条 Leader
-        线程，群级别另有一条群线程处理没有任务归属的事。线程之间并发，线程内一次只跑一个回合。
+        <strong>四样能新建的东西。</strong>对话（单聊，和 MerakCode
+        或任何纳管产品一对一）、智能体、协作群、任务。对话、协作群、任务都必须选一个工作空间（项目文件夹）。项目组是更高层级的设计，不在本方案里。
+      </li>
+      <li>
+        <strong>协作群和任务一对多，Leader 属于协作群。</strong>一个协作群有且只有一个
+        Leader，可以做多个任务；一个任务最多属于一个协作群，它的 Leader 就是这个群的
+        Leader。任务可以由人单独新建，要启动就新建或选择一个协作群来处理；也可以由 Leader
+        在协作群里创建，这时它属于这个群。智能体里只有 Leader 能创建任务。
+      </li>
+      <li>
+        <strong>工作空间跟着协作群。</strong
+        >群里创建的任务用群的工作空间；先建的任务新建协作群时，协作群用任务的工作空间；先建的任务交给已有协作群时，协作群改成任务的工作空间，群里有进行中的认领时不能改。
       </li>
       <li>
         <strong>事件是唯一的事实来源，而且事件是通用的。</strong
         >模型输出、工具调用、任务状态变化、仓库里的新提交、一个文件被改动，都是带固定字段的事件。事件不假设在写代码。会话状态、任务池、群状态都从事件算出来。
       </li>
       <li>
-        <strong>存算分离。</strong
-        >引擎只产出事件和文档，落盘由连上来的存储宿主完成并确认。桌面端、命令行、云端三种宿主用同一种存储格式。
+        <strong>存算分离，引擎是守护进程。</strong
+        >引擎代码只产出事件和文档，落盘由存储宿主完成并确认。本机的宿主在守护进程里，桌面端和命令行都是客户端，退出时不带走引擎，任务照常推进；云端群的宿主是云端。三种场景用同一种存储格式。
       </li>
       <li>
-        <strong>群在创建时选本地或云端。</strong>本地群的宿主是本机，只能加本机成员；云端群的宿主是云端，Leader
-        在云端跑，成员可以来自任何设备，即使全是本机成员也走云端。客户端永远只连本机引擎，本机引擎连云端。云端服务可以在本机以开发模式部署。
+        <strong>群在创建时选本地或云端。</strong>本地群的宿主是本机，成员是本机的智能体，或局域网里另一台
+        <code>merak serve</code> 名下的 Worker；云端群的宿主是云端，Leader
+        在云端跑，成员可以来自任何设备。客户端永远只连本机引擎，本机引擎连云端。
       </li>
       <li>
-        <strong>Leader 线程是全双工的通道、单线程的推理。</strong
-        >回合很短且从不在回合里等待；新事件在步与步之间插入；人的发言可以打断正在进行的模型调用；明确有执行方的事走快速通道不经过模型；事件多了就合并、批处理、限流。
+        <strong>全双工，人的指令最高。</strong>Leader 和 Worker
+        干活时都能收消息，新输入在下一个推理边界处理，人的发言可以打断正在进行的模型调用。人可以直接给任何成员下指令，消息直达这个成员并同时唤醒
+        Leader 更新状态；Leader 不推翻人的指令。Worker 之间不直接通信。
       </li>
       <li><strong>Leader 的上下文靠三件事保持可控：</strong>群状态、只给编号不给全文、定长的任务报告。</li>
       <li>
-        <strong>群是长期的，任务是群里的工作项；认领得到一块工作区，形态按任务定。</strong>写代码用 git
+        <strong>认领有三条路：Leader 派工、人点名、Worker 主动认领。</strong>认领得到一块工作区，形态按任务定：写代码用
+        git
         worktree，做文档用普通目录，只读任务不需要工作区。成员可排队认领多个任务，一次只做一个。子智能体不是成员，不能认领任务。
       </li>
       <li>
@@ -392,7 +409,8 @@
         <code>load_tools</code> 和 <code>call_tool</code> 使用，任何服务商都不会因此失效缓存。
       </li>
       <li>
-        <strong>引擎随启动者生死。</strong>桌面端彻底退出，本机引擎也退出，本地任务标为中断并记录进度；云端群继续跑。
+        <strong>不倒退。</strong>v0.x 能做的 v1 都能做：模型目录、MCP（含远程和
+        OAuth）、技能、插件、斜杠命令、计划、LSP、网页抓取和搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发。计划不再是单独的模式，任何模式下都能写计划。
       </li>
     </ol>
 
@@ -409,17 +427,43 @@
         </td>
       </tr>
       <tr>
+        <td>守护进程</td>
+        <td>
+          <code>merak serve</code
+          >，每个用户一个，后台运行。里面是引擎、协议服务和本机存储宿主。桌面端和命令行谁先启动谁把它拉起来，只有显式停止才退出。
+        </td>
+      </tr>
+      <tr>
         <td>Harness</td>
         <td>
           一个能独立接任务、干活、交结果的智能体运行体。Claude Code、Codex 是外部 Harness；MerakCode
-          引擎装上档案也是一个 Harness。
+          引擎装上智能体配置也是一个 Harness。
+        </td>
+      </tr>
+      <tr>
+        <td>智能体、智能体配置</td>
+        <td>
+          用户在“新建智能体”里建的东西。描述它的数据叫智能体配置，代码里叫
+          <code>Agent</code>：角色说明、职责、系统提示词、模型、工具池、权限模式、预算；外部产品还有启动方式。内置的
+          Leader 和 Worker 有默认配置。
+        </td>
+      </tr>
+      <tr>
+        <td>对话（单聊）</td>
+        <td>本人和一个智能体一对一，没有 Leader。智能体可以是 MerakCode 自己，也可以是纳管的产品。</td>
+      </tr>
+      <tr>
+        <td>协作群（群）</td>
+        <td>
+          人和智能体一起干活的地方，创建时选本地或云端，有一个工作空间和恰好一个
+          Leader。一个群有成员、任务、群简介、共享文档、一条群事件流，可以做多个任务。
         </td>
       </tr>
       <tr>
         <td>Leader（编排者）</td>
         <td>
-          负责一个顶层任务（或群的日常事务）的编排者：理解目标、拆任务、派工、收报告、向人请示和汇报。群有一个默认
-          Leader，每个顶层任务可以指定别的 Leader。默认是 MerakCode 自带的，也可以是外部产品。
+          负责一个协作群的编排者：理解人的需求、建任务、拆子任务、派工、收报告、向人请示和汇报。默认是 MerakCode
+          自带的，也可以是外部产品。
         </td>
       </tr>
       <tr>
@@ -428,10 +472,7 @@
       </tr>
       <tr>
         <td>线程</td>
-        <td>
-          一条 Leader 会话加它的调度器。群线程处理没有任务归属的事；每个顶层任务一条任务线程。一个 Leader
-          成员可以同时领导多条线程。
-        </td>
+        <td>一条 Leader 会话加它的调度器。每个协作群一条。</td>
       </tr>
       <tr>
         <td>成员</td>
@@ -441,34 +482,22 @@
         </td>
       </tr>
       <tr>
-        <td>档案</td>
-        <td>
-          代码里叫
-          <code>Profile</code
-          >。描述一个智能体成员是谁的数据：角色说明、职责、系统提示词、模型、工具池、权限模式、预算。内置成员用默认档案；外部产品必须有一份。
-        </td>
-      </tr>
-      <tr>
-        <td>协作群（群）</td>
-        <td>
-          人和成员一起干活的长期单位，创建时选本地或云端。一个群有默认
-          Leader、任务池、群简介、共享文档、一条群事件流，可以开很多任务。
-        </td>
-      </tr>
-      <tr>
         <td>任务、任务卡</td>
         <td>
-          任务池里的一条工作项及其描述：要做什么、怎么算做完、碰哪些文件、依赖、工作区形态、要不要人审核、谁是
-          Leader。人建的是顶层任务，Leader 拆出的是子任务。
+          一条工作项及其描述：要做什么、怎么算做完、碰哪些文件、依赖、工作区形态、要不要人审核。最多属于一个协作群；人单独建的或
+          Leader 在群里建的是顶层任务，Leader 拆出的是子任务，子任务和父任务属于同一个群。
+        </td>
+      </tr>
+      <tr>
+        <td>工作空间、工作区</td>
+        <td>
+          工作空间是对话、协作群、任务所在的项目文件夹，新建时必须选。工作区是一次认领干活的地方，从工作空间派生，四种形态：git
+          worktree、普通目录、原地（带租约）、无。
         </td>
       </tr>
       <tr>
         <td>认领</td>
         <td>一个成员接下一个任务。一次认领对应一条会话和一块工作区。成员可以排队认领多个，一次只做一个。</td>
-      </tr>
-      <tr>
-        <td>工作区</td>
-        <td>一次认领干活的地方，四种形态：git worktree、普通目录、原地（带租约）、无。</td>
       </tr>
       <tr>
         <td>会话、回合</td>
@@ -477,17 +506,17 @@
       <tr>
         <td>事件、事件流</td>
         <td>
-          一件发生了的事实，有统一的公共字段，只追加不改不删。来源三类：引擎内部、项目环境的变化、外部系统。每条会话一本流，每个群一本流。
+          一件发生了的事实，有统一的公共字段，只追加不改不删。来源三类：引擎内部、项目环境的变化、外部系统。每条会话一本流，每个群一本流，还没有协作群的任务一本流。
         </td>
       </tr>
       <tr>
         <td>存储宿主</td>
-        <td>连上引擎并声明负责存盘的客户端：桌面端主进程、命令行、云端服务。一个引擎同一时刻只有一个宿主。</td>
+        <td>负责把事件和文档落盘的实现：本机是守护进程里的 <code>internal/localstore</code>，云端群是云端服务。</td>
       </tr>
       <tr>
         <td>群状态</td>
         <td>
-          一份压缩过的群的状态：目标表、任务表、成员表、做过的决定、等人回答的问题。它是每条 Leader 线程上下文的主体。
+          一份压缩过的群的状态：目标表、任务表、成员表、做过的决定、等人回答的问题。它是 Leader 线程上下文的主体。
         </td>
       </tr>
       <tr>
@@ -504,7 +533,8 @@
       <tr>
         <td>半双工、全双工</td>
         <td>
-          半双工：智能体一旦开始干活就听不见新消息，像对讲机。全双工：操作进行中仍然有响应，新输入在下一个推理边界被处理，像电话。本方案的线程是全双工的，模型一次只处理一批事件。
+          半双工：智能体一旦开始干活就听不见新消息，像对讲机。全双工：操作进行中仍然有响应，新输入在下一个推理边界被处理，像电话。本方案的
+          Leader 和 Worker 都是全双工的，模型一次只处理一批输入。
         </td>
       </tr>
       <tr>
@@ -512,12 +542,14 @@
         <td>
           代码里叫
           <code>Sentinel</code
-          >。引擎里按固定规则巡检的代码：卡住的认领、死掉的进程、原地打转的工具调用、失联的宿主、烧得太快的预算。它只发事件和通知，不调模型。
+          >。引擎里按固定规则巡检的代码：卡住的认领、死掉的进程、原地打转的工具调用、失联的客户端、烧得太快的预算。它只发事件和通知，不调模型。
         </td>
       </tr>
       <tr>
         <td>收件箱、任务看板</td>
-        <td>每个人自己的待办和通知；按状态排列的任务卡。两者都从事件折叠出来。</td>
+        <td>
+          收件箱是首页的一栏，列出这个客户端收到的所有状态消息（任务完成、待我决策、受阻），新消息右下角弹窗；任务看板列出这个客户端的全部任务，结束的任务按期自动归档。两者都从事件折叠出来。
+        </td>
       </tr>
       <tr>
         <td>任务材料包、任务报告</td>
@@ -544,7 +576,7 @@
       <li><a href="#arch">2. 总体架构</a></li>
       <li><a href="#golayout">3. Go 工程布局与地基</a></li>
       <li><a href="#core">4. 引擎内核的十个模块</a></li>
-      <li><a href="#member">5. 成员与档案</a></li>
+      <li><a href="#member">5. 智能体</a></li>
       <li><a href="#leader">6. 编排者 Leader</a></li>
       <li><a href="#task">7. 任务、认领与工作区</a></li>
       <li><a href="#context">8. 群聊的上下文管理</a></li>
@@ -553,8 +585,8 @@
       <li><a href="#protocol">11. 协议与 SDK</a></li>
       <li><a href="#storage">12. 存储宿主与产品形态</a></li>
       <li><a href="#cloud">13. 云端</a></li>
-      <li><a href="#desktop">14. 桌面端：复用现有界面，新增群视图</a></li>
-      <li><a href="#roadmap">15. 实施路线：5 个阶段、32 个引擎切片和 10 个桌面端切片</a></li>
+      <li><a href="#desktop">14. 桌面端：以 UI 分支为基线</a></li>
+      <li><a href="#roadmap">15. 实施路线：整改切片 R0 到 R28</a></li>
       <li><a href="#tdd">16. 测试怎么做</a></li>
       <li><a href="#yagni">17. 防止过度设计的清单</a></li>
     </ul>
@@ -565,17 +597,19 @@
     <p>
       MerakCode v1.0.0 是<strong>纳管所有智能体 Harness 的入口</strong
       >：用户既可以用自带的智能体干活，也可以把电脑上装的 Claude Code、Codex、opencode、pi 和任何支持 ACP
-      或命令行的智能体拉进来，让它们在一个群里被同一个编排者指挥、受同一套权限和沙箱管束、向同一个任务看板汇报。四条产品线：
+      或命令行的智能体拉进来，让它们在协作群里被同一个编排者指挥、受同一套权限和沙箱管束、向同一个任务看板汇报。产品线：
     </p>
     <ul>
-      <li><strong>单聊</strong>：和一个 Worker 一对一。它是引擎内核的试金石。</li>
       <li>
-        <strong>协作群</strong>：多人多智能体协同，以任务驱动、以事件触发。人拉群、加成员、开任务；Leader
-        拆解、派工、汇总；人随时插话、在关键节点审批。
+        <strong>对话（单聊）</strong>：和一个智能体一对一，可以是 MerakCode，也可以是纳管的产品。它是引擎内核的试金石。
+      </li>
+      <li>
+        <strong>协作群</strong>：多人多智能体协同，以任务驱动、以事件触发。人建协作群、加成员；人或 Leader
+        建任务；Leader 拆解、派工、汇总；人随时插话、直接给成员下指令、在关键节点审批。
       </li>
       <li>
         <strong>本地优先，云端增强</strong
-        >：一台电脑、一个用户，不依赖任何云端就能完整使用，包括本地群。云端群提供跨设备、多人和账号。
+        >：一台电脑、一个用户，不依赖任何云端就能完整使用，包括本地协作群。云端群提供跨设备、多人和账号。
       </li>
       <li>
         <strong>编码为主，兼顾其他</strong>：事件、任务、工作区的模型不假设一定有 git 仓库，团队做一份 PPT
@@ -589,25 +623,28 @@
         用 Go 原创一套智能体引擎，能力对标 Claude Code、Codex、opencode、pi 的内核：agent
         循环、上下文管理、记忆、会话、事件总线、工具调用、模型服务、权限与沙箱。不复制任何一家的代码。
       </li>
-      <li>同一套引擎装上不同档案得到 Leader 和 Worker；外部产品经适配器成为 Worker，经 MCP 也能成为 Leader。</li>
       <li>
-        协作群以任务驱动、事件触发：先建群，再开任务；每个顶层任务有自己的
-        Leader；人随时干预；一切变化都是事件，包括不经 MerakCode 发生的变化。
+        同一套引擎装上不同的智能体配置得到 Leader 和 Worker；外部产品经适配器成为 Worker，经 MCP 也能成为 Leader。
       </li>
-      <li>引擎存算分离，只算不存。三种宿主共用一种存储格式。</li>
+      <li>
+        协作群以任务驱动、事件触发：任务可以先建再交给协作群，也可以在协作群里由 Leader
+        生成；人随时干预；一切变化都是事件，包括不经 MerakCode 发生的变化。
+      </li>
+      <li>引擎代码存算分离，只算不存；引擎作为守护进程常驻，客户端退出不影响任务推进。</li>
       <li>桌面端、命令行、云端都通过同一套协议和 SDK 使用引擎，任何一种都不直接调用引擎内部。</li>
+      <li>
+        不倒退：v0.x 已有的能力一项不少，桌面端的界面和体验对标 v0.x，命令行对标 v0.3.0 的命令。v0.x
+        用户升级后配置不用改，历史对话导入后能继续聊。
+      </li>
       <li>日志、诊断包和 CI 从第一天就有：问题能一键打包，每次提交在三个系统上验证。</li>
     </ol>
 
     <h3 id="goal-not">1.3 不做什么</h3>
     <ul>
       <li>云端服务本身的代码。它在单独的仓库里；本文只定本地引擎和云端之间的接口以及云端的概念模型。</li>
-      <li>
-        桌面端的重新设计。桌面端复用现有代码，只换数据来源并新增群相关的视图，见第 14 节的复用地图和第 15 节的 D
-        切片；新视图沿用现有的设计令牌和组件。
-      </li>
+      <li>项目组。它是比协作群和任务更高一层的组织方式，以后单独设计，代码里不为它预留。</li>
+      <li>一个任务同时属于多个协作群；任务在协作群之间换归属。</li>
       <li>网页端和手机端。它们是云端的客户端。</li>
-      <li>插件、技能、斜杠命令、LSP、定时任务。工具池和提示词组装为它们留了位置，排在阶段 4 之后。MCP 在阶段 4 做。</li>
     </ul>
 
     <h2 id="arch">2. 总体架构</h2>
@@ -615,26 +652,26 @@
     <h3 id="arch-roles">2.1 一套引擎，两种角色</h3>
     <p>
       Leader 和 Worker 九成的机制相同：都跑 agent
-      循环、都调模型、都发事件、都管会话和上下文。不同的只有角色说明、工具池和调度方式，所以它们是同一套引擎配上两份档案。
+      循环、都调模型、都发事件、都管会话和上下文。不同的只有角色说明、工具池和调度方式，所以它们是同一套引擎配上两份智能体配置。
     </p>
     <table>
       <tr>
-        <th style="width: 14%">档案项</th>
+        <th style="width: 14%">智能体配置项</th>
         <th>Leader</th>
         <th>Worker</th>
       </tr>
       <tr>
         <td>用在哪</td>
         <td>
-          只用在协作群里。群有一个默认 Leader；每个顶层任务指定一个 Leader；一个 Leader
-          成员可以同时领导多个任务，每个任务一条线程
+          只用在协作群里。每个协作群恰好一个 Leader、一条线程，群里所有任务都由它负责；同一个智能体可以在多个群里当
+          Leader
         </td>
         <td>单聊和协作群</td>
       </tr>
       <tr>
         <td>模型</td>
         <td>最强的模型，思考强度高；调用次数少，每次上下文大</td>
-        <td>按档案配置，可以用便宜的模型</td>
+        <td>按智能体配置配置，可以用便宜的模型</td>
       </tr>
       <tr>
         <td>工具池</td>
@@ -655,7 +692,7 @@
           不改代码，不需要文件权限。派任务、关任务、请求合并按群设置可能需要人确认。仅询问危险行为模式下可代 Worker
           批常规申请（第 10 节）
         </td>
-        <td>按档案里的权限模式：每次询问、仅询问危险行为、全面接管</td>
+        <td>按智能体配置里的权限模式：每次询问、仅询问危险行为、全面接管</td>
       </tr>
       <tr>
         <td>记忆</td>
@@ -685,7 +722,7 @@
       </tr>
       <tr>
         <td>存储宿主</td>
-        <td>本机：桌面端主进程或命令行</td>
+        <td>本机守护进程里的本机存储宿主</td>
         <td>云端服务。本机引擎只转发和缓存最近一段用于显示</td>
       </tr>
       <tr>
@@ -695,7 +732,7 @@
       </tr>
       <tr>
         <td>成员来源</td>
-        <td>只有本机的智能体和本机用户</td>
+        <td>本机的智能体和本机用户；局域网另一台 <code>merak serve</code> 名下的 Worker（5.5 节）</td>
         <td>任何已连云端的设备上的成员；任何账号的人</td>
       </tr>
       <tr>
@@ -705,7 +742,7 @@
       </tr>
       <tr>
         <td>本机退出时</td>
-        <td>群停下，任务标为中断</td>
+        <td>客户端退出不影响；守护进程停止时群停下，进行中的认领标为中断</td>
         <td>群继续跑；本机名下的认领标为中断，云端 Leader 决定等还是改派</td>
       </tr>
     </table>
@@ -732,7 +769,7 @@
         <rect class="b green" x="320" y="213" width="390" height="34" rx="6" />
         <text x="515" y="230" text-anchor="middle" dominant-baseline="middle">适配器 → opencode acp · pi --mode rpc · 其他</text>
         <rect class="b" x="40" y="200" width="180" height="60" rx="6" />
-        <text x="130" y="221" text-anchor="middle" dominant-baseline="middle">存储宿主 = 桌面端主进程</text>
+        <text x="130" y="221" text-anchor="middle" dominant-baseline="middle">存储宿主 = 本机守护进程</text>
         <text class="s" x="130" y="242" text-anchor="middle" dominant-baseline="middle">存储请求从同一条连接发回</text>
         <path class="f" d="M300 222 H220" />
         <path class="f" d="M220 240 H300" />
@@ -799,32 +836,32 @@
         <text class="s" x="200" y="192" text-anchor="middle" dominant-baseline="middle">改用户文件、建 worktree 不算引擎状态</text>
         <rect class="b green" x="600" y="40" width="320" height="170" rx="6" />
         <text class="t" x="760" y="64" text-anchor="middle" dominant-baseline="middle">存储宿主：只存</text>
-        <text x="760" y="94" text-anchor="middle" dominant-baseline="middle">握手时声明 capabilities.store</text>
+        <text x="760" y="94" text-anchor="middle" dominant-baseline="middle">实现 store.Store 契约</text>
         <text x="760" y="118" text-anchor="middle" dominant-baseline="middle">写盘后回确认</text>
         <text x="760" y="142" text-anchor="middle" dominant-baseline="middle">只按公共字段建索引，不懂正文</text>
         <text x="760" y="166" text-anchor="middle" dominant-baseline="middle">格式自定，三种宿主同一格式</text>
-        <text class="s" x="760" y="192" text-anchor="middle" dominant-baseline="middle">桌面端、命令行 SQLite · 云端 PostgreSQL</text>
+        <text class="s" x="760" y="192" text-anchor="middle" dominant-baseline="middle">本机守护进程里 SQLite · 云端 PostgreSQL</text>
         <path class="f" d="M360 92 H600" />
-        <text class="s" x="480" y="83" text-anchor="middle">store.append / store.put</text>
+        <text class="s" x="480" y="83" text-anchor="middle">Append / Put</text>
         <path class="f" d="M600 122 H360" />
         <text class="s" x="480" y="113" text-anchor="middle">确认（已写盘）</text>
         <path class="f" d="M360 160 H600" />
-        <text class="s" x="480" y="151" text-anchor="middle">store.read / find / get / fetch / list</text>
+        <text class="s" x="480" y="151" text-anchor="middle">Read / Find / Get / Fetch / List</text>
         <path class="f" d="M600 190 H360" />
         <text class="s" x="480" y="181" text-anchor="middle">结果</text>
         <text class="s" x="480" y="236" text-anchor="middle">确认返回之前，引擎不把事件分发给任何订阅者：客户端看到的事件都已经在盘上</text>
       </svg>
-      <figcaption class="cap">图 4 存算分离：引擎向宿主提出七类请求，宿主只认公共字段</figcaption>
+      <figcaption class="cap">图 4 存算分离：引擎经存储契约的七个方法读写，宿主只认公共字段</figcaption>
     </figure>
     <ul>
       <li>
-        “不落盘”指引擎自身的状态：事件、会话、任务、记忆、群状态、档案、配置。工具改用户仓库的文件、建
+        “不落盘”指引擎自身的状态：事件、会话、任务、记忆、群状态、智能体配置、配置。工具改用户仓库的文件、建
         worktree、写沙箱配置是干活的产物，不算。
       </li>
       <li>工具的超大输出既是产物又要按 id 找回，当作一种 <code>blob</code> 文档交给宿主，引擎只拿到引用（4.9 节）。</li>
       <li>
-        一个引擎同一时刻只认一个宿主，第二个声明的被拒绝但仍可作普通客户端。宿主意外断开时，引擎用一层有上限的缓冲兜住（<code>store.Buffered</code>，4.2
-        节）。
+        本机的宿主是守护进程里的
+        <code>internal/localstore</code>，客户端不当宿主；云端群的宿主是云端服务，它用同一套存储契约的另一份实现。
       </li>
     </ul>
 
@@ -876,37 +913,47 @@
       <li>每个对象都有地址，形如 <code>mrk://group/G/task/T</code>，可以写进提示词、报告和界面链接。</li>
     </ul>
 
-    <h3 id="arch-lifecycle">2.5 引擎的生命周期：随启动者生死</h3>
+    <h3 id="arch-lifecycle">2.5 引擎的生命周期：每个用户一个守护进程</h3>
     <table>
       <tr>
-        <th style="width: 22%">谁启动的</th>
-        <th>什么时候退出</th>
-        <th style="width: 34%">退出时做什么</th>
+        <th style="width: 24%">情形</th>
+        <th>行为</th>
       </tr>
       <tr>
-        <td>桌面端</td>
-        <td>桌面端彻底退出时（托盘菜单的“退出”）。关窗口进托盘不退出，桌面端继续当宿主</td>
-        <td rowspan="3">
-          固定顺序：停止唤醒 Leader 的模型；向正在跑的本地认领发取消；每个认领记一条
-          <code>task.updated</code>，状态为“中断”，附进度；等宿主确认全部事件写盘；存会话快照；发
-          <code>engine.shutdown</code>；退出。超过 10 秒强制退出，没写完的事件下次启动时按宿主的最后序号补对账
+        <td>启动</td>
+        <td>
+          桌面端或命令行先读数据目录里的 <code>engine.json</code> 连现有的守护进程；连不上就以
+          <code>merak serve</code> 把它拉起来（脱离父进程运行）。一个数据目录一个守护进程，<code>engine.json</code>
+          只有当前用户能读
         </td>
       </tr>
       <tr>
-        <td>命令行 <code>merak serve</code></td>
-        <td>Ctrl-C 或 <code>merak stop</code></td>
+        <td>客户端退出</td>
+        <td>只关连接。守护进程照常运行，任务继续推进，事件继续落盘，下次打开看到最新状态</td>
       </tr>
       <tr>
-        <td>系统服务（以后 <code>merak service install</code>）</td>
-        <td>随系统。人不在电脑前也要接活的用户用这个</td>
+        <td>显式停止</td>
+        <td>
+          托盘“停止后台引擎并退出”或 <code>merak stop</code>。固定顺序：停止唤醒 Leader
+          的模型；向正在跑的认领发取消；每个认领记一条
+          <code>task.updated</code>，状态为“中断”，附进度；等全部事件写盘；存会话快照；发
+          <code>engine.shutdown</code>；退出。超过 10 秒强制退出，下次启动时按存储的最后序号对账
+        </td>
+      </tr>
+      <tr>
+        <td>崩溃</td>
+        <td>
+          下一个连接的客户端发现连不上就重新拉起。重启后从快照和事件恢复，没跑完的工具调用补一条“被中断”的完成事件
+        </td>
+      </tr>
+      <tr>
+        <td>登录时启动</td>
+        <td>
+          可选：<code>merak service install</code> 写当前用户的登录启动项（macOS LaunchAgent、Linux systemd user
+          unit、Windows <code>Run</code> 注册表项）
+        </td>
       </tr>
     </table>
-    <ul>
-      <li>
-        启动：桌面端先尝试连接，连不上就启动一个。一个数据目录一个引擎进程，端口和令牌写在数据目录里一个只有当前用户能读的文件中。
-      </li>
-      <li>崩溃：桌面端主进程负责重新拉起。重启后从快照和事件恢复，没跑完的工具调用补一条“被中断”的完成事件。</li>
-    </ul>
 
     <h2 id="golayout">3. Go 工程布局与地基</h2>
 
@@ -1007,7 +1054,7 @@
 package engine
 
 type Deps struct {
-	Store     store.Store        // the connected storage host, wrapped in store.Buffered
+	Store     store.Store        // the storage host: internal/localstore in the daemon, the cloud's own store in the cloud
 	Providers map[string]model.Provider
 	Catalog   *catalog.Catalog
 	Sandbox   sandbox.Launcher   // platform/sandbox; sandbox.Disabled in takeover mode
@@ -1045,16 +1092,16 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
 ├── model/           模型接口、消息、片段、流。子包 catalog、fake、openai、anthropic、gemini
 ├── tool/            工具接口和工具池。子包 fs、shell、web、mcp、groupkit、leaderkit
 ├── permission/      三档模式、策略、权限门、审批路由            依赖 tool
-├── profile/         成员档案和两份内置默认档案                  纯数据
+├── agent/           智能体配置和两份内置默认配置                纯数据
 ├── session/         会话状态、Fold、管理器                     依赖 event、store、model
-├── prompt/          系统提示词的组装，模板用 embed 嵌进去        依赖 profile
+├── prompt/          系统提示词的组装，模板用 embed 嵌进去        依赖 agent
 ├── memory/          记忆：三个作用域、召回、提取、密钥扫描       依赖 store
 ├── task/            任务卡、认领、报告、任务池、状态机           依赖 event
 ├── window/          上下文窗口：预算、截断落盘、重建、材料包     依赖 session、task、memory
 ├── loop/            agent 循环：跑一个回合、中途插话            依赖上面各包
 ├── workspace/       四种工作区形态、合并队列、集成              依赖 task、platform/git
 ├── worker/          运行器接口和适配器。子包 builtin、claudecode、codex、opencode、pi、acp、command、remote
-├── group/           群、成员、人的角色、群设置                  依赖 profile、worker
+├── group/           群、成员、人的角色、群设置                  依赖 agent、worker
 └── leader/          线程、调度器、快速通道、群状态、编排工具、触发规则、工作周期、哨兵   最上层</code></pre>
     <p>
       <code>window</code> 这个包名是为了避开标准库的 <code>context</code>。每种事件的正文类型定义在发出它的包里，<code
@@ -1065,7 +1112,7 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
 
     <h3 id="go-processes">3.4 两个进程、一个 SDK</h3>
     <ol>
-      <li>桌面端启动时运行 <code>merak serve</code>，Go 引擎作为单独进程在后台运行。</li>
+      <li>桌面端启动时连上守护进程 <code>merak serve</code>，没有就把它拉起来；引擎作为单独进程在后台常驻。</li>
       <li>用户在界面输入；界面代码调用 TypeScript SDK 的函数；SDK 把调用变成协议消息，经本机连接发给引擎。</li>
       <li>引擎接口层收到消息交给引擎，跑 agent 循环；每做一步发一条事件回去；SDK 收到后交给界面显示。</li>
     </ol>
@@ -1077,12 +1124,12 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
       </tr>
       <tr>
         <td>Go 程序 <code>merak</code></td>
-        <td>全部业务逻辑：会话、模型、工具、权限、沙箱、协作群、配置；命令行界面；命令行场景下的存储宿主；诊断包</td>
+        <td>全部业务逻辑：会话、模型、工具、权限、沙箱、协作群、任务、配置；本机存储宿主；命令行界面；诊断包</td>
         <td>图形界面</td>
       </tr>
       <tr>
         <td>Electron 主进程</td>
-        <td>窗口、托盘、通知、自动更新、文件对话框、启动和拉起引擎、桌面端场景下的存储宿主</td>
+        <td>窗口、托盘、通知、自动更新、文件对话框、连接和拉起守护进程</td>
         <td>业务逻辑</td>
       </tr>
       <tr>
@@ -1092,7 +1139,7 @@ func (e *Engine) Run(ctx context.Context) error</code></pre>
       </tr>
       <tr>
         <td><code>@merakcode/sdk</code></td>
-        <td>协议的 TypeScript 客户端，类型从 Go 生成；存储宿主接口和 SQLite 参考实现；看板和收件箱的折叠函数</td>
+        <td>协议的 TypeScript 客户端，类型从 Go 生成；会话、群、看板和收件箱的折叠函数</td>
         <td>业务逻辑</td>
       </tr>
     </table>
@@ -2152,7 +2199,7 @@ type Filter struct {
       <tr>
         <td><code>human.said</code></td>
         <td>group</td>
-        <td>人在群里说了一句话。@ 了谁、提到哪个任务、在哪个任务的讨论串里</td>
+        <td>人在群里说了一句话。@ 了谁、提到哪个任务</td>
       </tr>
       <tr>
         <td><code>state.updated</code> / <code>decision.recorded</code></td>
@@ -2162,7 +2209,7 @@ type Filter struct {
       <tr>
         <td><code>group.paused</code> / <code>group.resumed</code></td>
         <td>leader</td>
-        <td>人暂停、恢复了群；某条线程的回合出错后暂停，人从客户端恢复。每分钟次数超了不发事件</td>
+        <td>人暂停、恢复了群；某条线程的回合出错后暂停，人从客户端恢复</td>
       </tr>
       <tr>
         <td><code>workspace.created</code> / <code>workspace.released</code></td>
@@ -2240,7 +2287,7 @@ type Query struct {
 // Doc is a versioned blob. Rev makes concurrent writers safe: Put fails with ErrConflict when the stored Rev differs
 // from doc.Rev, and the caller re-reads and retries.
 type Doc struct {
-	Kind string            `json:"kind"` // "snapshot", "memory", "document", "state", "profile", "blob"
+	Kind string            `json:"kind"` // "snapshot", "memory", "document", "state", "agent", "catalog", "plan", "schedule", "blob"
 	Key  string            `json:"key"`
 	Rev  uint64            `json:"rev"`
 	Body []byte            `json:"body"`
@@ -2252,9 +2299,7 @@ var (
 	ErrConflict = errors.New("store: revision conflict")
 )
 
-// Buffered wraps any Store for the time the host is away: Append queues in memory up to Limit, reads fail with
-// ErrUnavailable, and Reconnect replays the queue in order. Beyond Limit the engine pauses new turns.
-type Buffered struct { /* inner, queue, Limit = 4096 */ }</code></pre>
+// The daemon's host runs in the same process, so there is no buffer for an absent host; a failed write is an error.</code></pre>
     <table>
       <tr>
         <th style="width: 46%">宿主必须建的索引</th>
@@ -2599,29 +2644,47 @@ func (c *Collector) Message() (Message, Usage, StopReason)</code></pre>
     </table>
     <h4>模型目录</h4>
     <p class="file">engine/model/catalog/catalog.go</p>
-    <pre><code>// Package catalog knows what each model costs and can do. It merges a built-in table, live data from providers that
-// publish it, and the user's overrides; relays are matched by model name.
+    <pre><code>// Package catalog knows what each model costs and can do. It merges, in order of precedence: user overrides, each
+// provider's live list, the public catalog, a fallback table keyed by provider and model family, and built-ins.
 package catalog
 
 type Model struct {
-	Provider  string
-	ID        string
-	Window    int        // context size in tokens
-	MaxOutput int
-	Price     Price      // per million tokens: input, output, cache read, cache write; currency
-	Caps      Caps       // tools, vision, pdf
-	Thinking  []model.Thinking // levels this model accepts, e.g. [low medium high xhigh max]
-	Source    string     // builtin, live, override
-}
-
-// Refresh pulls what providers publish: Anthropic's models API returns the window, output cap and capabilities;
-// OpenRouter's returns prices and windows; OpenAI-compatible endpoints return ids only. Missing fields fall back to
-// the built-in table, then to a conservative default (a 128k window, no price) that the UI shows as "unknown".
-func (c *Catalog) Refresh(ctx context.Context) error</code></pre>
-    <p>
-      内置表随版本发布，在线刷新补最新模型，用户可以覆盖任何字段，中转站的模型按名字匹配到内置表取窗口和能力。价格用于
-      <code>Usage.Cost</code> 和预算；窗口用于上下文管理；能力决定要不要发图片、能选哪几档思考。
-    </p>
+	Provider        string
+	ID              string
+	Window          int              // context size in tokens
+	MaxOutput       int
+	Price           Price            // per million tokens: input, output, cache read, cache write; currency
+	Caps            Caps             // tools, vision, pdf
+	Thinking        []model.Thinking // levels this model accepts, e.g. [low medium high xhigh max]
+	DefaultThinking model.Thinking   // the level the UI picks first
+	Deprecated      bool             // hidden from pickers
+	Source          string           // builtin, fallback, public, live, override
+}</code></pre>
+    <ul>
+      <li>
+        <strong>自动刷新。</strong
+        >守护进程启动后在后台刷新：每个配了密钥或地址的服务商（含中转站）拉一次自己的模型列表，公开目录（OpenRouter
+        免密钥列表）拉一次；之后每小时一次；改了某个服务商的密钥或地址后立刻刷新它。缓存不到 1 小时不重复拉；<code
+          >MERAKCODE_DISABLE_CATALOG_FETCH=1</code
+        >
+        时不联网。
+      </li>
+      <li>
+        <strong>缓存。</strong>每个服务商的列表和公开目录各存一份文档（kind
+        <code>catalog</code>），带抓取时间；启动先读缓存，离线也有完整列表。
+      </li>
+      <li>
+        <strong>合并。</strong>用户覆盖 &gt; 服务商实时列表 &gt; 公开目录（按模型 id
+        补窗口、输出上限、价格、能力、是否弃用；中转站的模型去掉前缀后匹配）&gt;
+        兜底表（按服务商和模型族前缀给思考档位和默认档位，标官方文档出处）&gt; 内置表。
+      </li>
+      <li><strong>过滤。</strong>每家服务商一条规则，去掉嵌入、重排、语音、图像、审核这类不能对话的模型。</li>
+      <li>
+        <strong>失败提示。</strong>每个来源刷新成功发 <code>catalog.refreshed</code>，失败发
+        <code>catalog.failed</code>（带 MRK 码）；界面重读模型列表，同一服务商同一个错误只提示一次。
+      </li>
+    </ul>
+    <p>价格用于 <code>Usage.Cost</code> 和预算；窗口用于上下文管理；能力决定要不要发图片、能选哪几档思考。</p>
     <h4>假模型与包装层</h4>
     <p class="file">engine/model/fake/fake.go</p>
     <pre><code>// Package fake is a scripted provider for tests: the n-th request receives the n-th reply.
@@ -2645,7 +2708,7 @@ func New(t testing.TB, replies ...Reply) model.Provider</code></pre>
       每个工具声明自己最坏能做什么（只读、写文件、跑命令、联网、改群状态），权限判断、并行执行和沙箱配置都据此决定。工具列表在会话开始时定下，整个会话不变。
     </p>
     <p class="file">engine/tool/tool.go</p>
-    <pre><code>// Package tool defines what the loop can call. Tools are grouped into named pools; a profile names its pool.
+    <pre><code>// Package tool defines what the loop can call. Tools are grouped into named pools; an agent names its pool.
 package tool
 
 type Spec struct {
@@ -2771,9 +2834,59 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         <td>超时、输出上限、非零退出码进结果、后台运行后用 <code>bash_output</code> 取结果。在沙箱里跑</td>
       </tr>
       <tr>
-        <td><code>web_fetch</code> / <code>web_search</code></td>
+        <td><code>multi_edit</code></td>
+        <td>write</td>
+        <td>对一个文件按顺序做多处替换，任何一处找不到或不唯一就整体不改</td>
+      </tr>
+      <tr>
+        <td><code>web_fetch</code></td>
         <td>network</td>
-        <td>取网页转成文字；搜索走配置的搜索服务</td>
+        <td>取网页转成文字，跟随最多 5 次重定向，正文最多 5 MB；按目标主机走权限门</td>
+      </tr>
+      <tr>
+        <td><code>web_search</code> / <code>code_search</code></td>
+        <td>network</td>
+        <td>经 Exa 的公共 MCP 服务搜索网页和代码，复用远程 MCP 客户端；配置里可以关掉</td>
+      </tr>
+      <tr>
+        <td><code>lsp</code></td>
+        <td>read</td>
+        <td>
+          跳到定义、找引用、悬停、文档符号、工作区符号、跳到实现、调用方和被调用方；改文件后自动附上已就绪语言服务器的诊断
+        </td>
+      </tr>
+      <tr>
+        <td><code>docx_read</code> / <code>excel_read</code> / <code>excel_write</code></td>
+        <td>read / write</td>
+        <td>只用标准库读 Word 和 Excel，写最小合法的 <code>.xlsx</code>；延迟加载</td>
+      </tr>
+      <tr>
+        <td><code>rule</code></td>
+        <td>read</td>
+        <td>按名字取一条只有说明的规则（4.8 节）</td>
+      </tr>
+      <tr>
+        <td>客户端工具 <code>client__*</code></td>
+        <td>exec</td>
+        <td>
+          连上来的客户端经
+          <code>tool.register</code> 注册的工具，调用经同一条连接交给客户端执行；连接断开时消失。延迟加载
+        </td>
+      </tr>
+      <tr>
+        <td><code>skill</code></td>
+        <td>read</td>
+        <td>按名字取一个技能的 <code>SKILL.md</code> 正文和附带文件路径（4.8 节）</td>
+      </tr>
+      <tr>
+        <td><code>write_plan</code></td>
+        <td>-</td>
+        <td>写本会话的计划（markdown），这一回合结束，计划进入“待审阅”。任何权限模式下都有</td>
+      </tr>
+      <tr>
+        <td><code>schedule_create</code> / <code>schedule_list</code> / <code>schedule_delete</code></td>
+        <td>-</td>
+        <td>五段 cron 表达式的定时任务，到点由守护进程在当前工作空间新开对话执行，结果进收件箱</td>
       </tr>
       <tr>
         <td><code>ask_user</code></td>
@@ -2781,15 +2894,18 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         <td>问人一个问题，可以带选项。界面渲染成对话框</td>
       </tr>
       <tr>
-        <td><code>todo</code></td>
+        <td><code>todo_write</code></td>
         <td>-</td>
-        <td>自己的小计划清单，只在会话内有效</td>
+        <td>
+          自己的待办清单（内容和 pending、in_progress、done 三种状态），发
+          <code>todo.updated</code>，界面实时显示。Leader 和 Worker 都有
+        </td>
       </tr>
       <tr>
         <td><code>spawn</code> / <code>wait_child</code></td>
         <td>-</td>
         <td>
-          子智能体：<code>spawn</code> 用只读或执行档案起一条临时会话，立刻返回子
+          子智能体：<code>spawn</code> 用只读或执行智能体配置起一条临时会话，立刻返回子
           id，子智能体在后台跑；完成时它的报告作为一条追加的消息插进父会话。<code>wait_child</code>
           阻塞到指定的子智能体完成。子智能体不是成员，不能认领任务（5.3 节）
         </td>
@@ -2800,7 +2916,13 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         <td>上面的按需加载</td>
       </tr>
     </table>
-    <p>git 操作第一轮走 <code>bash</code>，合并由工作区模块做，不给模型单独的 git 工具。</p>
+    <p>
+      git 操作第一轮走 <code>bash</code>，合并由工作区模块做，不给模型单独的 git
+      工具。<code>write_file</code>、<code>edit_file</code>、<code>multi_edit</code>
+      成功后按扩展名跑一次可用的格式化工具（gofmt、prettier、ruff、rustfmt 等 24 种，和 v0.3.1
+      相同），结果附在工具结果后面，配置 <code>formatter</code> 可以关掉或换命令。配置
+      <code>tools</code> 按名字开关工具，关掉的不进给模型的工具列表。
+    </p>
     <h4>什么该是工具</h4>
     <p>
       <strong>模型主动发起的动作做成工具；引擎替模型做的内务不做成工具。</strong
@@ -2808,7 +2930,7 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         >submit_report</code
       >
       做成工具而不是让模型输出 JSON，因为参数有 Schema
-      可校验、不合格可退回。模式切换（比如“只规划不动手”）不做成工具，用档案和工具池控制。
+      可校验、不合格可退回。模式切换（比如“只规划不动手”）不做成工具，用智能体配置和工具池控制。
     </p>
     <h4>工具池</h4>
     <table>
@@ -2818,7 +2940,7 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
       </tr>
       <tr>
         <td><code>worker.default</code></td>
-        <td>基础工具集；延迟：文档解析（docx、excel）、MCP 服务器的工具</td>
+        <td>基础工具集；延迟：文档工具、MCP 服务器的工具、插件的工具</td>
       </tr>
       <tr>
         <td><code>worker.readonly</code></td>
@@ -2826,11 +2948,13 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
       </tr>
       <tr>
         <td><code>groupkit</code>，认领会话时叠加</td>
-        <td>汇报进度、交报告、问 Leader、按 id 查资料、读共享文档、写记忆（8.3 节）</td>
+        <td>
+          汇报进度、交报告、问 Leader、主动认领 <code>claim_task</code>、按 id 查资料、读共享文档、写记忆（8.3 节）
+        </td>
       </tr>
       <tr>
         <td><code>leader.default</code></td>
-        <td>编排工具（6.5 节）加 <code>worker.readonly</code> 的读代码工具</td>
+        <td>编排工具（6.5 节）加 <code>worker.readonly</code> 的读代码工具和 <code>todo_write</code></td>
       </tr>
     </table>
 
@@ -2914,7 +3038,7 @@ const (
 type State struct {
 	ID       event.ID
 	Scope    event.Scope
-	Profile  event.ID        // the profile this session runs with
+	Agent    event.ID        // the agent this session runs with
 	System   string          // frozen at creation; never changes within the session (section 4.8)
 	Tools    []tool.Spec     // frozen at creation: the pool plus load_tools and call_tool
 	Loaded   []string        // deferred tools the model has loaded, for call_tool validation
@@ -2934,7 +3058,7 @@ func Fold(s *State, e event.Event) error
 // Manager keeps hot sessions in memory and loads cold ones from the latest snapshot plus the events after it.
 type Manager struct { /* store, bus, hot sessions, mutex */ }
 
-func (m *Manager) Create(ctx context.Context, scope event.Scope, profile event.ID) (*State, error)
+func (m *Manager) Create(ctx context.Context, scope event.Scope, agent event.ID) (*State, error)
 func (m *Manager) Load(ctx context.Context, id event.ID) (*State, error)
 
 // Snapshot stores the state as a document so Load does not replay the whole stream. Called every N events and
@@ -2944,6 +3068,13 @@ func (m *Manager) Snapshot(ctx context.Context, s *State) error
 // Reconcile runs at startup: every call still in Open gets a synthetic tool.completed with an "interrupted" error,
 // so the model is told what happened instead of seeing a dangling call.
 func (m *Manager) Reconcile(ctx context.Context, s *State) error</code></pre>
+    <p>
+      会话标题在第一轮回答后由小模型（配置 <code>small_model</code>，没配用默认模型）生成，用户改过的不覆盖。<code
+        >session.delete</code
+      >
+      物理删除一条会话和它的子会话（存储契约的 <code>DeleteStream</code>）；配置
+      <code>storage.retention_days</code> 设了以后，守护进程每天删除不活跃超过这么多天的会话，默认不删。
+    </p>
 
     <h3 id="core-loop">4.7 loop：agent 循环</h3>
     <p>
@@ -3015,7 +3146,7 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input, steer St
       <li>被打断的那次模型调用已花掉的 token 照样记账，已吐出的文字作为一条标了“被打断”的消息留在事件流里。</li>
       <li>
         一步里的多个工具结果合成一条消息送回。<code>Limits</code>
-        来自档案预算，超了就停，由调用方决定继续还是放弃：单聊里是人，群里是任务的 Leader（怎么继续见 10.2
+        来自智能体配置预算，超了就停，由调用方决定继续还是放弃：单聊里是人，群里是协作群的 Leader（怎么继续见 10.2
         节“超预算”）。
       </li>
       <li>
@@ -3024,37 +3155,76 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input, steer St
       </li>
     </ul>
 
-    <h3 id="core-prompt">4.8 prompt：系统提示词的组装</h3>
+    <h3 id="core-prompt">4.8 prompt：系统提示词、规则、技能和斜杠命令</h3>
     <p>
-      系统提示词在会话创建时组装一次，之后冻结。只放整个会话都不变的东西：身份模板（按角色）、档案里的角色说明和用户的系统提示词、环境（系统、shell、工作目录、git
-      分支）、群简介（带修订号）、项目规则文件（AGENTS.md
-      一类）、工具使用说明、延迟工具的名字和一句说明。会变的东西不进系统提示词：日期时间和召回的记忆放第一条用户消息，Leader
+      系统提示词在会话创建时组装一次，之后冻结。只放整个会话都不变的东西：身份模板（按角色）、智能体配置里的角色说明和用户的系统提示词、环境（系统、shell、工作目录、git
+      分支）、群简介（带修订号）、个人规则和项目规则、可用技能的名字和说明、工具使用说明、延迟工具的名字和一句说明。会变的东西不进系统提示词：日期时间和召回的记忆放第一条用户消息，Leader
       的群状态放每批事件的摘要消息。
     </p>
     <p class="file">engine/prompt/prompt.go</p>
     <pre><code>// Package prompt composes the system prompt once per session. Templates are English and embedded; user-written
-// parts come from the profile and the project's instruction files. Nothing that changes during a session goes here.
+// parts come from the agent, the rules and the project's instruction files. Nothing that changes during a session
+// goes here.
 package prompt
 
 //go:embed templates/*.md
 var templates embed.FS // leader.md, worker.md, readonly.md, tools.md
 
 type Situation struct {
-	Profile      profile.Profile
-	Environment  Environment // os, shell, workdir, git branch; no date
-	GroupBrief   string      // empty in a single chat; carries the brief's revision number
-	Instructions []string    // AGENTS.md and similar files found in the workdir, read by the caller
-	Deferred     []tool.Spec // name and description of deferred tools, rendered as a list for load_tools
+	Agent        agent.Agent
+	Environment  Environment  // os, shell, workdir, git branch; no date
+	GroupBrief   string       // empty in a single chat; carries the brief's revision number
+	Rules        []string     // personal rules first, then AGENTS.md and .merakcode/rules/*.md from the workdir
+	Skills       []skill.Info // name and description of each available skill
+	Deferred     []tool.Spec  // name and description of deferred tools, rendered as a list for load_tools
 }
 
-// System returns: identity (by Profile.Role) -&gt; role line -&gt; Profile.System -&gt; environment -&gt; group brief -&gt;
-// instructions -&gt; tool notes -&gt; deferred tool list. Output is deterministic for equal input, so the cache prefix
-// is stable across sessions of the same member in the same group.
 func (c Composer) System(sit Situation) string
-
-// Opening returns the first user message: date and time, recalled memory, and for a claim the rendered packet.
 func (c Composer) Opening(ctx context.Context, sit Situation, memory []memory.Note, packet *window.Packet) model.Message</code></pre>
-    <p>模板按角色分（Leader、Worker、只读子智能体），不按服务商分。队长模板也是外部产品当 Leader 时用的那份。</p>
+    <ul>
+      <li>
+        <strong>模板</strong>按角色分（Leader、Worker、只读子智能体），不按服务商分，英文、完整：Leader 600 到 900
+        词，Worker 1200 到 1800 词。两份都写明“人的指令优先于 Leader 的安排”。Leader 模板也是外部产品当 Leader
+        时用的那份。
+      </li>
+      <li>
+        <strong>规则</strong>：个人规则在用户配置的 <code>rules.user</code>；项目规则是项目根的
+        <code>AGENTS.md</code>，以及 <code>.merakcode/rule(s)/**/*.mdc</code>（兼容 <code>.cursor/rules</code>），头部的
+        <code>alwaysApply</code>、<code>globs</code>、<code>description</code>
+        决定它总是进系统提示词、在读到匹配的文件时附上，还是由模型经 <code>rule</code> 工具主动取；经
+        <code>rules.read</code>、<code>rules.change</code> 增删改。
+      </li>
+      <li>
+        <strong>技能</strong>：一个目录，里面有 <code>SKILL.md</code>（YAML 头部有
+        <code>name</code>、<code>description</code>）和附带文件。发现位置：项目的
+        <code>.merakcode/skills/</code>、全局的 <code>~/.merakcode/skills/</code>、内置（<code>embed</code>
+        打进二进制：docx、excel、pdf、loop）。同名时项目优先。从网址（<code>index.json</code>）或 git
+        仓库安装、卸载。每条用户消息按词匹配技能的名字和说明，得分过阈值的最多 3
+        个作为推荐提示给模型，同一组推荐在一条会话里只出现一次。
+      </li>
+      <li>
+        <strong>斜杠命令</strong>：内置 <code>/init</code>、<code>/review</code>、<code>/context</code>；配置里的
+        <code>command</code> 和 <code>.merakcode/command(s)/**/*.md</code>（模板里
+        <code>$ARGUMENTS</code> 换成用户输入）；MCP 服务器的 prompts；每个技能。经 <code>command.list</code> 列出，<code
+          >session.command</code
+        >
+        展开后发送。
+      </li>
+      <li>
+        <strong>文件里的智能体</strong>：<code>.merakcode/agent(s)/**/*.md</code> 和
+        <code>mode(s)/*.md</code>
+        读成智能体（头部给名字、说明、模型、工具、权限，正文是系统提示词），出现在智能体库里并标“来自文件”，能用于对话、协作群成员和
+        <code>spawn {agent}</code>。
+      </li>
+      <li>
+        <strong>插件</strong>：v0.x 格式的 JavaScript 插件（本地文件或 npm 包，导出返回钩子的异步函数）跑在一个 Node
+        插件宿主进程里，经 stdio 上的 JSON-RPC 和引擎往来；桌面端用 Electron 自带的 Node，命令行用
+        <code>PATH</code> 里的
+        <code>node</code
+        >。支持的钩子：<code>config</code>、<code>event</code>、<code>tool</code>、<code>chat.message</code>、<code>chat.params</code>、<code>chat.headers</code>、<code>permission.ask</code>、<code>tool.execute.before</code>、<code>tool.execute.after</code>、<code>tool.definition</code>、<code>shell.env</code>、<code>command.execute.before</code>、<code>auth</code>；每次调用最多
+        10 秒，出错只记日志并发 <code>plugin.failed</code>。插件宿主在沙箱里跑。
+      </li>
+    </ul>
 
     <h3 id="core-window">4.9 window：上下文窗口管理</h3>
     <p>让会话装得进模型的上下文窗口，同时平时省 token、压缩时不丢关键信息、缓存命中率高。</p>
@@ -3283,12 +3453,12 @@ type Extractor interface {
       向量检索第一版不做。记忆整理（合并重复、淘汰过时）放到后面的切片。所有进入存储的笔记和所有发给人的文字都过密钥扫描。
     </p>
 
-    <h2 id="member">5. 成员与档案</h2>
+    <h2 id="member">5. 智能体</h2>
 
     <h3 id="member-kinds">5.1 成员：人和智能体都是成员</h3>
     <p>
       群里的参与者统称成员。人类成员有群角色，决定能批什么、能审什么；智能体成员有 Leader 或 Worker
-      角色、拥有者、所在设备和档案。一个群可以有多个 Leader 角色的成员，其中一个是群的默认 Leader。
+      角色、拥有者、所在设备和智能体配置。一个协作群有且只有一个 Leader 角色的智能体成员，群里所有任务都由它负责。
     </p>
     <p class="file">engine/group/member.go</p>
     <pre><code>// Package group holds groups, their members and their settings. Humans and agents are both members.
@@ -3305,10 +3475,10 @@ type Group struct {
 	ID            event.ID   `json:"id"`
 	Kind          Kind       `json:"kind"`          // chosen at creation, never changes
 	Name          string     `json:"name"`
-	Project       Project    `json:"project"`       // repo (remote url + local checkout per device) or folder
-	DefaultLeader event.ID   `json:"defaultLeader"` // member with AgentRole leader; runs the group thread
+	Project       Project    `json:"project"`       // the workspace: repo (remote url + local checkout per device) or folder; required
+	Leader        event.ID   `json:"leader"`        // the one member with AgentRole leader; runs the group's thread
 	Brief         Brief      `json:"brief"`         // goal, conventions, check command, target branch; has a revision
-	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, allowed and denied hosts, turns per minute, setup
+	Settings      Settings   `json:"settings"`      // proactivity, review required, merge approval, allowed and denied hosts, setup
 }
 
 type MemberKind string
@@ -3329,7 +3499,7 @@ const (
 	RoleObserver Role = "observer" // reads only
 )
 
-// AgentRole is an agent member's role. A group may have several Leaders; each top-level task names one.
+// AgentRole is an agent member's role. A group has exactly one Leader.
 type AgentRole string
 
 const (
@@ -3339,7 +3509,8 @@ const (
 
 type Member struct {
 	ID      event.ID   `json:"id"`
-	Group   event.ID   `json:"group"`
+	Group        event.ID       `json:"group,omitempty"`  // the owning group; empty until a group takes the card, then fixed
+	Project      string         `json:"project"`          // the workspace directory; equals the group's once the card has one
 	Kind    MemberKind `json:"kind"`
 	Name    string     `json:"name"`
 	// Humans
@@ -3349,12 +3520,12 @@ type Member struct {
 	AgentRole AgentRole  `json:"agentRole,omitempty"`
 	Owner     event.ID   `json:"owner,omitempty"`   // the human who registered it
 	Device    string     `json:"device,omitempty"`  // the merak serve it runs on
-	Profile   event.ID   `json:"profile,omitempty"` // section 5.2
+	Agent     event.ID   `json:"agent,omitempty"`   // section 5.2
 	Status    Status     `json:"status"`            // offline, idle, busy, waiting
 	Current   event.ID   `json:"current,omitempty"` // Workers: the claim being worked on
 	Queue     []event.ID `json:"queue,omitempty"`   // Workers: claims waiting behind it (section 7.3)
-	Threads   []event.ID `json:"threads,omitempty"` // Leaders: the threads it is running (section 6.2)
-	Hosts     []string   `json:"hosts,omitempty"`   // Agents: profile Network hosts an admin accepted for this group (section 10.3)
+	Groups    []event.ID `json:"groups,omitempty"`  // Leaders: the groups it leads, one thread each (section 6.1)
+	Hosts     []string   `json:"hosts,omitempty"`   // Agents: agent Network hosts an admin accepted for this group (section 10.3)
 	Unconfined bool      `json:"unconfined,omitempty"` // Agents: runs without a sandbox on its device; Leaders avoid it for sensitive tasks
 }</code></pre>
     <table>
@@ -3364,11 +3535,11 @@ type Member struct {
       </tr>
       <tr>
         <td>owner</td>
-        <td>所有事。独有的：删群、换默认 Leader、批准合并到目标分支、批准超预算、改权限模式</td>
+        <td>所有事。独有的：删群、换 Leader、批准合并到目标分支、批准超预算、改权限模式</td>
       </tr>
       <tr>
         <td>admin</td>
-        <td>加人加成员、改群设置、建改删任务、给任务换 Leader、审核任务、批工作区外的写入和新的网络目标</td>
+        <td>加人加成员、改群设置、建改删任务、把任务交给本群、审核任务、批工作区外的写入和新的网络目标</td>
       </tr>
       <tr>
         <td>approver</td>
@@ -3385,75 +3556,56 @@ type Member struct {
     </table>
     <p>本地单人使用时，这个人同时是 owner、admin、approver：角色检查是真的，只是所有角色落在同一个人头上。</p>
 
-    <h3 id="member-profile">5.2 档案</h3>
+    <h3 id="member-profile">5.2 智能体配置</h3>
     <p>
       内置 Leader 和 Worker
-      用默认档案，不需要配置文件；用户可以复制一份改名字和模型。外部产品必须有一份档案，最重要的字段是一句话的角色说明和几行职责说明，Leader
-      派工时靠它们判断谁适合做什么。
+      有默认配置，不配模型时用设置里的默认模型；用户可以复制一份改名字和模型。外部产品必须有一份配置，最重要的字段是一句话的角色说明和几行职责说明，Leader
+      派工时靠它们判断谁适合做什么。用户在“新建智能体”里建它们，本机探测到的产品可以一键添加。
     </p>
-    <p class="file">engine/profile/profile.go</p>
-    <pre><code>// Package profile describes what makes an agent member who it is: role, duties, prompt, model, tools, permission
-// mode and budget. It is plain data, stored as a document and editable from the clients.
-package profile
+    <p class="file">engine/agent/agent.go</p>
+    <pre><code>// Package agent describes what makes an agent who it is: role, duties, prompt, model, tools, permission mode and
+// budget. It is plain data, stored as a document and editable from the clients.
+package agent
 
-type Profile struct {
+type Agent struct {
 	ID       event.ID        `json:"id"`
 	Name     string          `json:"name"`
 	Role     group.AgentRole `json:"role"`     // leader or worker
 	Summary  string          `json:"summary"`  // one line the Leader uses to decide who does what
 	Duties   string          `json:"duties"`   // a few lines: what it is good at, what it should not be given
 	System   string          `json:"system"`   // extra system prompt written by the user, any language
-	Model    ModelRef        `json:"model"`    // provider, model, thinking level; builtin only
+	Model    ModelRef        `json:"model"`    // provider, model, thinking level; builtin only; empty uses the default model
 	ToolPool string          `json:"toolPool"` // worker.default, worker.readonly, leader.default or a user pool; builtin only
 	Mode     permission.Mode `json:"mode"`     // ask, auto, takeover
 	Budget   Budget          `json:"budget"`
 	Memory   []memory.Scope  `json:"memory"`   // scopes to recall and write
 	Product  *Product        `json:"product,omitempty"` // external only
-	Network  []string        `json:"network,omitempty"` // hosts of the services this member itself connects to, such as its model API or relay; exact hostnames or IPs; external only
+	Network  []string        `json:"network,omitempty"` // hosts the member itself connects to; external only
 	Shared   bool            `json:"shared"`   // false: only the owner may assign to it; true: the whole group may
-}
-
-type ModelRef struct {
-	Provider string         `json:"provider"` // anthropic, openai, deepseek, ...
-	Model    string         `json:"model"`
-	Thinking model.Thinking `json:"thinking"` // off, low, medium, high, xhigh, max; clamped to what the catalog allows
 }
 
 // Product is how an external agent is started. Kind picks the adapter.
 type Product struct {
-	Kind   worker.Kind       `json:"kind"`   // claude-code, codex, opencode, pi, acp, command
+	Kind   worker.Kind       `json:"kind"`   // claude-code, codex, opencode, pi, acp, command, remote
 	Binary string            `json:"binary"`
 	Args   []string          `json:"args"`
-	Env    map[string]string `json:"env"`    // names only in events and logs, never values
+	Env    map[string]string `json:"env"`    // values live in the credential store under agent:&lt;id&gt;:&lt;name&gt;; documents keep names only
 	Model  string            `json:"model"`  // passed through the product's own flag when it has one
 }
 
-type Budget struct {
-	MaxSteps     int           `json:"maxSteps"`     // per turn
-	MaxTokens    int           `json:"maxTokens"`    // per task or chat
-	MaxCost      float64       `json:"maxCost"`      // per task or chat
-	MaxWallClock time.Duration `json:"maxWallClock"` // per task
-}
-
-func DefaultLeader() Profile
-func DefaultWorker() Profile</code></pre>
-    <p>一份外部产品的档案：</p>
-    <pre><code>{
-  "id": "01JC5A...", "name": "Codex", "role": "worker",
-  "summary": "Backend and test-heavy coding tasks in this repository",
-  "duties": "Good at: Go and TypeScript implementation, writing tests, refactors with clear acceptance criteria.\nAvoid: UI work, tasks without a check command.",
-  "system": "",
-  "mode": "auto",
-  "budget": { "maxSteps": 60, "maxTokens": 400000, "maxCost": 5, "maxWallClock": "45m" },
-  "memory": ["member", "project"],
-  "product": { "kind": "codex", "binary": "codex", "args": ["app-server"], "env": { "OPENAI_API_KEY": "" }, "model": "gpt-5.5" },
-  "network": ["api.openai.com"],
-  "shared": true
-}</code></pre>
-    <p>
-      分享范围只有一个布尔值
-      <code>Shared</code>：不分享只有拥有者能派任务给它，分享就是全群都能派。改档案永远只有拥有者能做。
-    </p>
+func DefaultLeader() Agent
+func DefaultWorker() Agent</code></pre>
+    <ul>
+      <li>
+        外部产品的环境变量值、服务商密钥、MCP 的 OAuth 令牌都进系统凭据库；<code>agent.list</code>
+        返回的配置里值为空，界面显示“已保存，留空不修改”。
+      </li>
+      <li>
+        分享范围只有一个布尔值
+        <code>Shared</code>：不分享只有拥有者能派任务给它，分享就是全群都能派。改配置永远只有拥有者能做。
+      </li>
+      <li>删除仍在某个协作群里的智能体被拒，返回带码的错误。</li>
+    </ul>
 
     <h3 id="member-builtin">5.3 内置 Worker 运行器和子智能体</h3>
     <p>
@@ -3466,7 +3618,7 @@ func DefaultWorker() Profile</code></pre>
     <ul>
       <li>
         <code>spawn</code> 就是一个
-        <code>Runner.Start</code>，用只读或执行档案开一条临时会话，在后台跑；父会话立刻拿到子 id 继续干活。
+        <code>Runner.Start</code>，用只读或执行智能体配置开一条临时会话，在后台跑；父会话立刻拿到子 id 继续干活。
       </li>
       <li>
         子智能体完成时发 <code>child.finished</code>，运行器把它变成一条追加消息经
@@ -3633,7 +3785,7 @@ func translate(line []byte, scope event.Scope, actor event.Actor) ([]event.Event
     <p>
       外部 Worker 的群工具（汇报进度、交报告、问 Leader、按 id 查资料、读文档、记忆）经
       <code>merak mcp --claim C --as worker</code> 这个 MCP 服务挂载，调用进入引擎后和内置 Worker 走同一条路。没有 MCP
-      能力的产品：进度从它的输出流翻译，报告合成，问人不支持，档案里标出。
+      能力的产品：进度从它的输出流翻译，报告合成，问人不支持，智能体配置里标出。
     </p>
 
     <h3 id="member-remote">5.5 远程的 MerakCode 成员</h3>
@@ -3645,8 +3797,8 @@ func translate(line []byte, scope event.Scope, actor event.Actor) ([]event.Event
     <ul>
       <li>
         只当 Worker。Leader
-        线程是群宿主引擎里的调度器、群状态和快速通道，本地群的宿主是本机引擎，云端群的是云端。远程成员不能做默认
-        Leader，也不能做任务的 Leader，这两种请求被拒。要让编排跑在别处，建云端群。
+        线程是群宿主引擎里的调度器、群状态和快速通道，本地群的宿主是本机引擎，云端群的是云端。远程成员不能做协作群的
+        Leader，这种请求被拒。要让编排跑在别处，建云端群。
       </li>
       <li>
         在对方的检出里干活。对方成员注册时声明了本机检出（远端地址到路径，13.2
@@ -3662,11 +3814,11 @@ func translate(line []byte, scope event.Scope, actor event.Actor) ([]event.Event
         worktree。
       </li>
       <li>
-        权限门和沙箱在对方引擎里，按对方成员的档案和对方设备的用户配置（<code>DeniedHosts</code>
+        权限门和沙箱在对方引擎里，按对方成员的智能体配置和对方设备的用户配置（<code>DeniedHosts</code>
         是对方设备主人的否决权，10.3 节）；审批请求转到本群，按 10.2 节路由，回答送回对方。
       </li>
       <li>
-        报告、进度、问题、会话事件原样转发进本群的流；对方断线时它名下进行中的认领标为中断，任务线程决定等还是改派。
+        报告、进度、问题、会话事件原样转发进本群的流；对方断线时它名下进行中的认领标为中断，Leader 线程决定等还是改派。
       </li>
     </ul>
 
@@ -3702,60 +3854,45 @@ func runMCP(ctx context.Context, args []string) int</code></pre>
     </p>
     <h2 id="leader">6. 编排者 Leader</h2>
 
-    <h3 id="leader-duty">6.1 线程：群线程和任务线程</h3>
-    <p>Leader 的工作以线程为单位。一条线程是一条很长的 Leader 会话加一个调度器。两种线程：</p>
-    <table>
-      <tr>
-        <th style="width: 12%">线程</th>
-        <th style="width: 18%">谁跑</th>
-        <th>管什么</th>
-        <th style="width: 22%">不管什么</th>
-      </tr>
-      <tr>
-        <td>群线程</td>
-        <td>群的默认 Leader</td>
-        <td>
-          没有任务归属的事：人在群里随口说的话、新建的顶层任务该不该拆成几个目标、成员进出、不落在任何任务范围里的环境变化、人没指定时给顶层任务挑
-          Leader
-        </td>
-        <td>任何已有 Leader 的任务的内部事务</td>
-      </tr>
-      <tr>
-        <td>任务线程</td>
-        <td>这个顶层任务的 Leader</td>
-        <td>
-          这个任务的全部：拆子任务、派工、收报告、判断合格与否、推进工作周期、回答它的 Worker
-          的问题、代批常规审批、在任务讨论串里回复人、写这个任务的计划文档、任务完成后向发起人交总结
-        </td>
-        <td>别的任务；群设置和成员管理</td>
-      </tr>
-    </table>
+    <h3 id="leader-duty">6.1 线程：每个协作群一条</h3>
     <p>
-      事件按 <code>Scope.Task</code> 的顶层祖先路由到任务线程，没有任务归属的进群线程。一个 Leader
-      成员可以同时跑多条线程，每条线程有自己的会话；线程之间并发，线程内一次只跑一个回合。顶层任务换 Leader 时（admin 或
-      owner 调
-      <code>task.update</code
-      >），旧线程交出一段交接摘要（<code>thread.handed_over</code>），新线程用任务卡、群状态和这段摘要开始。
+      Leader 的工作以线程为单位。一条线程是一条很长的 Leader 会话加一个调度器，每个协作群一条，由群的 Leader
+      跑。它管这个群的全部：人在群里说的话、人提出的问题要不要变成任务、建任务和拆子任务、派工、收报告、判断合格与否、推进每个顶层任务的工作周期、回答
+      Worker 的问题、代批常规审批、任务完成后向人交总结。
     </p>
+    <ul>
+      <li>事件按 <code>Scope.Group</code> 路由到群的线程；群里所有任务（包括子任务）的事件都进这条线程。</li>
+      <li>
+        还没有协作群的任务，事件写在
+        <code>task:&lt;id&gt;</code>
+        流里，不唤醒任何线程；它被交给某个协作群（<code>task.bound</code>）后，这个群的线程被唤醒，第一批输入里有这张卡。
+      </li>
+      <li>同一个智能体可以在多个群里当 Leader，每个群一条线程、一条会话；线程之间并发，线程内一次只跑一个回合。</li>
+      <li>
+        群换 Leader 时（owner 调
+        <code>group.update</code
+        >），旧线程交出一段交接摘要（<code>thread.handed_over</code>），新线程用群状态和这段摘要开始。群换工作空间时同样交接。
+      </li>
+    </ul>
     <p>
       Leader 不做四件事：不改代码、不跑命令（可以只读地看代码）；不持有 Worker
-      的全部过程，只持有报告和群状态；不替人做需要人决定的事；不直接合并代码，只向合并队列发请求。
+      的全部过程，只持有报告和群状态；不替人做需要人决定的事，也不推翻人的指令；不直接合并代码，只向合并队列发请求。
     </p>
     <p class="file">engine/leader/thread.go</p>
-    <pre><code>// Thread is one Leader session with its scheduler. Key is the group id for the group thread or the top-level task
-// id for a task thread. Threads of one group run concurrently; inside a thread one turn runs at a time.
+    <pre><code>// Thread is one Leader session with its scheduler. There is one thread per group; threads of different groups run
+// concurrently, and inside a thread one turn runs at a time.
 type Thread struct {
-	Key       event.ID      // group id or top-level task id
-	Leader    event.ID      // member with AgentRole leader; the group's DefaultLeader for the group thread
+	Group     event.ID      // the group this thread leads
+	Leader    event.ID      // the group's Leader member
 	Session   *session.State
 	Scheduler *Scheduler
 }
 
-// Route picks the thread for an event: the top-level ancestor of Scope.Task, or the group thread when Task is empty.
+// Route picks the thread for an event: the thread of Scope.Group. Events of cards without a group return nil.
 func (g *Threads) Route(e event.Event) *Thread
 
 // HandOver ends t, asks its Leader for a handover summary (one short model call with a fixed template), emits
-// thread.handed_over, and starts a new thread for the same key with the new Leader seeded by the summary.
+// thread.handed_over, and starts a new thread for the same group with the new Leader seeded by the summary.
 func (g *Threads) HandOver(ctx context.Context, t *Thread, leader event.ID) (*Thread, error)</code></pre>
 
     <h3 id="leader-scheduler">6.2 调度器：全双工的通道，单线程的推理</h3>
@@ -3779,7 +3916,7 @@ func (g *Threads) HandOver(ctx context.Context, t *Thread, leader event.ID) (*Th
         <path class="f" d="M370 130 V80 H490" />
         <rect class="b green" x="490" y="40" width="230" height="80" rx="6" />
         <text class="t" x="605" y="62" text-anchor="middle" dominant-baseline="middle">快速通道（代码）</text>
-        <text class="s" x="605" y="84" text-anchor="middle" dominant-baseline="middle">@ 直达 · 任务讨论串直达</text>
+        <text class="s" x="605" y="84" text-anchor="middle" dominant-baseline="middle">@ 直达成员 · 同时唤醒 Leader</text>
         <text class="s" x="605" y="102" text-anchor="middle" dominant-baseline="middle">审批路由 · 触发规则 · 回执</text>
         <path class="f" d="M720 80 H760" />
         <rect class="b" x="760" y="40" width="170" height="80" rx="6" />
@@ -3788,9 +3925,9 @@ func (g *Threads) HandOver(ctx context.Context, t *Thread, leader event.ID) (*Th
         <text class="s" x="845" y="102" text-anchor="middle" dominant-baseline="middle">不唤醒模型</text>
         <path class="f" d="M470 200 H490" />
         <rect class="b" x="490" y="160" width="230" height="80" rx="6" />
-        <text class="t" x="605" y="182" text-anchor="middle" dominant-baseline="middle">攒批与节流</text>
+        <text class="t" x="605" y="182" text-anchor="middle" dominant-baseline="middle">攒批</text>
         <text class="s" x="605" y="204" text-anchor="middle" dominant-baseline="middle">静默窗口 3 s · 每批 30 条</text>
-        <text class="s" x="605" y="222" text-anchor="middle" dominant-baseline="middle">线程每分钟 6 次 · 群 30 次</text>
+        <text class="s" x="605" y="222" text-anchor="middle" dominant-baseline="middle">同一个人连发合成一条</text>
         <path class="f" d="M720 200 H760" />
         <rect class="b" x="760" y="160" width="170" height="80" rx="6" />
         <text class="t" x="845" y="182" text-anchor="middle" dominant-baseline="middle">摘要消息</text>
@@ -3825,7 +3962,7 @@ func (g *Threads) HandOver(ctx context.Context, t *Thread, leader event.ID) (*Th
       </li>
     </ol>
     <p>
-      结论：<strong>通道是全双工的，推理在一条线程内是单线程的。</strong>同一条线程里同一时刻只有一个回合在跑；不同线程并发。不在一条线程里并发跑多个回合，因为并发回合看到的是同一份状态的两个快照，会把同一任务派给两个人或互相关掉对方正在处理的任务，输出合并回同一条会话后历史也会错位。线程按顶层任务切分，天然不打架：每条线程只动自己任务子树的状态，群级别的变化只在群线程里发生。
+      结论：<strong>通道是全双工的，推理在一条线程内是单线程的。</strong>同一条线程里同一时刻只有一个回合在跑；不同线程并发。不在一条线程里并发跑多个回合，因为并发回合看到的是同一份状态的两个快照，会把同一任务派给两个人或互相关掉对方正在处理的任务，输出合并回同一条会话后历史也会错位。线程按协作群切分，天然不打架：每条线程只动自己群里任务的状态，一个任务只属于一个群。
     </p>
     <p class="file">engine/leader/scheduler.go</p>
     <pre><code>// Priority orders the Leader's queue. Higher runs first; at or above the preempt level it interrupts the step in flight.
@@ -3840,49 +3977,37 @@ const (
 
 // Scheduler drives one Leader thread. Turns are short and never wait inside: asking a human or a Worker means
 // emitting an event and ending the step; the answer arrives through the queue. A human is never queued behind a
-// model call. One thread, one Leader session, one turn at a time; the threads of a group run concurrently.
+// model call. One thread per group, one Leader session, one turn at a time; threads of different groups run
+// concurrently.
 type Scheduler struct {
 	thread  *Thread
 	queue   *queue         // priority queue fed by Threads.Route from the group stream and every claim session
 	fast    *FastLane      // code-level routing (section 6.3) and trigger rules (section 9.2); runs before the model
 	loop    *loop.Loop
 	session *session.State // the thread's one long session
-	state   *State         // group state (section 6.4), shared by every thread of the group
-	digest  Digester       // renders a batch into one message: the state focused on this thread, then the events
+	state   *State         // group state (section 6.4) of this thread's group
+	digest  Digester       // renders a batch into one message: the group state, then the events
 	limits  Limits
 }
 
 type Limits struct {
 	Preempt        Priority      // Urgent
 	QuietWindow    time.Duration // low-priority events wait this long so a batch forms; 3s
-	Coalesce       time.Duration // messages from one human within this window merge into one input; 2s
-	MaxBatch       int           // events per digest; the rest wait for the next turn; 30
-	TurnsPerMinute TurnLimits    // from group settings; beyond either limit the queue keeps batching and the fast
-	                             // lane keeps answering; no event is emitted
-}
-
-// TurnLimits caps how often Leader threads wake the model, over a sliding 60 seconds; slots are given first come,
-// first served. It is the group setting "turnsPerMinute". A missing field takes its default; a value must be a
-// positive integer. A change applies from the next wake.
-type TurnLimits struct {
-	Thread int `json:"thread"` // each thread of the group; default 6
-	Group  int `json:"group"`  // all threads of the group together; default 30
+	Coalesce       time.Duration // messages from one human within this window merge into one input; 2s	MaxBatch       int           // events per digest; the rest wait for the next turn; 30
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
 	var pending []event.Event // events that need the model; kept across iterations, never dropped
-	for {
-		// Wait returns as soon as events arrive and drains what is already there. With pending events and no free
-		// slot it also returns, empty, at the moment the oldest turn leaves the 60-second window of the thread or
-		// the group; with nothing pending it has no deadline.
+	for {		// Wait returns as soon as events arrive and drains what is already there; low-priority events also wait for
+		// the quiet window so a batch forms.
 		arrived, err := s.queue.Wait(ctx, s.wakeAt(pending))
 		if err != nil {
 			return err
 		}
-		arrived = s.fast.Handle(ctx, arrived)            // runs even while over the limit: receipts, routing, delivery
+		arrived = s.fast.Handle(ctx, arrived)            // receipts, routing, delivery without the model
 		pending = s.coalesce(append(pending, arrived...)) // keep the newest progress per task, merge one human's burst
-		if len(pending) == 0 || !s.limits.take(s.thread) {
-			continue // nothing needs the model, or no slot in the thread or the group yet: no cost
+		if len(pending) == 0 {
+			continue // nothing needs the model: no cost
 		}
 		var batch []event.Event
 		batch, pending = s.split(pending) // MaxBatch events by priority; the rest wait for the next turn
@@ -3896,7 +4021,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 // Digester renders one batch. The output is a single user message shaped like this, so the model sees the state
 // first and every event with its id:
 //
-//	## Group state (rev 418)                 &lt;- State.Render(budget, thread.Key)
+//	## Group state (rev 418)                 &lt;- State.Render(budget)
 //	## New events (7, 2 coalesced)
 //	### Task 01JC5… "Add login tests" (running, Codex)
 //	- 01JC6A… task.progress: "wrote 3 of 5 cases"
@@ -3930,14 +4055,7 @@ func (s *Scheduler) Preempt() &lt;-chan struct{} { return s.queue.Above(s.limits
         <td>批大小</td>
         <td>一次摘要最多 30 条事件，按任务分组、每条带 id、按优先级排；多出来的下一个回合处理</td>
       </tr>
-      <tr>
-        <td>限流</td>
-        <td>
-          一条线程每分钟最多唤醒模型 6 次，一个群的所有线程合计每分钟最多 30 次，两个数都在群设置的
-          <code>turnsPerMinute</code> 里可改；按滑动的 60
-          秒算，名额按到达顺序给；超过后事件继续攒着，快速通道继续发回执和路由，不发事件
-        </td>
-      </tr>
+
       <tr>
         <td>空闲零成本</td>
         <td>没有事件就没有模型调用；快速通道处理掉的事件不唤醒模型</td>
@@ -3945,8 +4063,8 @@ func (s *Scheduler) Preempt() &lt;-chan struct{} { return s.queue.Above(s.limits
     </table>
     <p>
       一台电脑一个
-      <code>merak serve</code>，进程里每个群若干条线程，群之间、线程之间天然并行；一条线程里的多个子任务靠事件上的任务
-      id 区分，摘要按任务分组，群状态里每个任务一行。
+      <code>merak serve</code>，进程里每个群一条线程，群之间天然并行；一条线程里的多个任务和子任务靠事件上的任务 id
+      区分，摘要按任务分组，群状态里每个任务一行。
     </p>
     <h4>哨兵</h4>
     <p>
@@ -3962,22 +4080,22 @@ func (s *Scheduler) Preempt() &lt;-chan struct{} { return s.queue.Above(s.limits
       <tr>
         <td>认领卡住</td>
         <td>进行中的认领超过 15 分钟没有任何事件</td>
-        <td>提醒任务线程和成员拥有者</td>
+        <td>提醒Leader 线程和成员拥有者</td>
       </tr>
       <tr>
         <td>进程死了</td>
         <td>运行器进程退出但没有交报告</td>
-        <td>认领标为中断，任务受阻，任务线程决定重派</td>
+        <td>认领标为中断，任务受阻，Leader 线程决定重派</td>
       </tr>
       <tr>
         <td>原地打转</td>
         <td>同一会话里同一工具、相同输入连续出现 3 次，或 10 步内没有新的文件改动和新的工具种类</td>
-        <td>提醒任务线程，建议发消息纠偏或取消</td>
+        <td>提醒Leader 线程，建议发消息纠偏或取消</td>
       </tr>
       <tr>
         <td>预算烧得太快</td>
         <td>一次认领在 5 分钟内用掉任务预算的一半以上</td>
-        <td>提醒任务线程和拥有者</td>
+        <td>提醒Leader 线程和拥有者</td>
       </tr>
       <tr>
         <td>审批无人应答</td>
@@ -4032,20 +4150,19 @@ func (s *Sentinel) Run(ctx context.Context) error</code></pre>
       </tr>
       <tr>
         <td>人 @ 某个成员说话</td>
-        <td>成员正在跑且支持中途消息：直接转给它的认领；空闲：建任务并派给它</td>
+        <td>
+          直达这个成员，人的指令优先：正在跑且能中途收消息的立刻送达并打断当前一步；不能中途收消息的取消当前运行，带着人的话重新开始这次认领；空闲的建一个本群的任务派给它。每次送达发
+          <code>input.delivered</code>。同一条事件以普通优先级唤醒 Leader，由它更新计划和任务状态
+        </td>
       </tr>
       <tr>
-        <td>人在某个任务的讨论串里说话（任务卡下的评论、对某条进度的回复，事件带任务 id）</td>
-        <td>直接送给这个任务当前的认领；没有进行中的认领就记进任务卡，Leader 下次派工时带上</td>
-      </tr>
-      <tr>
-        <td>人建任务时指定了执行成员</td>
-        <td>直接排队、建工作区、启动运行器</td>
+        <td>人直接给任务指定执行成员</td>
+        <td>直接排队、建工作区、启动运行器；同样唤醒 Leader</td>
       </tr>
       <tr>
         <td>Worker 的审批请求</td>
         <td>
-          按 10.2 节的路由表送到有对应角色的人的收件箱；仅询问危险行为模式下常规类别先送给任务线程的
+          按 10.2 节的路由表送到有对应角色的人的收件箱；仅询问危险行为模式下常规类别先送给所在协作群的
           Leader（进慢速通道）。超时转为任务受阻
         </td>
       </tr>
@@ -4055,7 +4172,7 @@ func (s *Sentinel) Run(ctx context.Context) error</code></pre>
       </tr>
       <tr>
         <td>Worker 问 Leader</td>
-        <td>进它所属任务线程的慢速通道</td>
+        <td>进所在协作Leader 线程的慢速通道</td>
       </tr>
       <tr>
         <td>合并冲突</td>
@@ -4078,7 +4195,7 @@ func (s *Sentinel) Run(ctx context.Context) error</code></pre>
         <td>低优先级进慢速通道攒批；落在某个进行中任务范围里的提升到普通优先级并标“可能冲突”</td>
       </tr>
     </table>
-    <p>快速通道是引擎，不是成员和成员之间的直接通信，所以“所有交流经过 Leader”的结构不变。</p>
+    <p>快速通道是引擎，不是成员之间的通信：Worker 之间仍然不直接说话；人直达成员的话 Leader 也会收到并被唤醒。</p>
     <p class="file">engine/leader/fastlane.go</p>
     <pre><code>// FastLane handles the events a rule can settle without the model. Handle returns the events that still need the
 // model; every handled event is re-queued at PriorityLow so the Leader stays informed through the next digest.
@@ -4093,10 +4210,9 @@ type FastLane struct {
 func (f *FastLane) Handle(ctx context.Context, batch []event.Event) (rest []event.Event) {
 	for _, e := range batch {
 		switch {
-		case isMention(e):            // human.said with @member
+		case isMention(e):            // human.said with @member: deliver or assign, then wake the Leader
 			f.deliverOrAssign(ctx, e)
-		case inTaskThread(e):         // human.said inside a task's discussion thread
-			f.deliverToClaim(ctx, e)
+			rest = append(rest, e)
 		case e.Type == permission.Requested:
 			f.router.Route(ctx, e)    // section 10.2; auto mode hands routine ones to the thread's Leader first
 		case e.Type == workspace.MergeConflicted:
@@ -4172,8 +4288,8 @@ func (s *State) Render(budget int, focus event.ID) string</code></pre>
 
     <h3 id="leader-tools">6.5 编排工具</h3>
     <p>
-      所有编排工具都立刻返回：改群状态、发事件，不等任何人。等待发生在调度器里。群线程和任务线程用同一个工具池，引擎按线程限制范围：任务线程只能在自己的任务子树里建、派、关任务；换
-      Leader 和成员管理只有群线程能做。
+      所有编排工具都立刻返回：改群状态、发事件，不等任何人。等待发生在调度器里。工具只作用于本群：只能建、派、关本群的任务，读本群的报告。换
+      Leader 和成员管理由人做。
     </p>
     <table>
       <tr>
@@ -4183,13 +4299,14 @@ func (s *State) Render(budget int, focus event.ID) string</code></pre>
       <tr>
         <td><code>create_task</code> / <code>update_task</code></td>
         <td>
-          写任务卡：标题、描述、验收标准、碰的文件、依赖、工作区形态、要不要人审核、参与者、预算。群线程建的是顶层任务，任务线程建的是自己子树里的子任务。从草稿到发布发
+          写任务卡：标题、描述、验收标准、碰的文件、依赖、工作区形态、要不要人审核、参与者、预算。建出的卡属于本群，工作空间是本群的；不带
+          <code>parent</code> 是顶层任务，带了是子任务。智能体里只有 Leader 有这个工具。从草稿到发布发
           <code>task.opened</code>。给进行中的任务加预算要 owner 批（10.2 节“超预算”）
         </td>
       </tr>
       <tr>
-        <td><code>set_task_leader</code></td>
-        <td>只有群线程：给一个顶层任务指定或更换 Leader，触发线程交接（6.1 节）</td>
+        <td><code>todo_write</code></td>
+        <td>维护 Leader 自己的待办：拆解计划、下一步要做的事。和子任务、指派、进度一起在协作群右栏显示</td>
       </tr>
       <tr>
         <td><code>assign_task</code></td>
@@ -4350,17 +4467,49 @@ func (s *State) Render(budget int, focus event.ID) string</code></pre>
 
     <h2 id="task">7. 任务、认领与工作区</h2>
 
-    <h3 id="task-group">7.1 群是长期的，任务是群里的工作项</h3>
+    <h3 id="task-group">7.1 协作群和任务：一对多</h3>
     <ul>
-      <li>群有自己的生命：目标仓库或目录、成员、Leader、共享文档、群记忆、群简介，可以存在几个月。</li>
-      <li>任务是群里的工作项。人建的是顶层任务（一个目标），Leader 拆出的是子任务。每个顶层任务有自己的工作周期。</li>
-      <li>任务卡上可以写参与者（哪些成员可以被派、哪些人收通知）和审核人，不写就是全群。</li>
+      <li>协作群有自己的生命：工作空间、成员、Leader、共享文档、群记忆、群简介，可以存在几个月，可以做多个任务。</li>
       <li>
-        每个顶层任务有一个 Leader：建任务的人指定，不指定就是群的默认 Leader；admin 或 owner
-        可以中途更换，任务线程随之交接（6.1 节）。子任务跟随顶层任务的 Leader。
+        任务最多属于一个协作群，归属定下后不再换群。来源两种：人在“新建任务”里单独建，这时它不属于任何群；Leader
+        在协作群里建（人提出问题、Leader 判断要做），这时它属于这个群。智能体里只有 Leader 能建任务。
       </li>
+      <li>
+        单独建的任务要启动，必须交给一个协作群：新建一个（<code>group.create {task}</code
+        >）或选一个已有的（<code>group.bind</code>）。没有协作群的任务不被推进。
+      </li>
+      <li>
+        任务没有自己的 Leader，它的 Leader 就是所属群的 Leader。人建的和 Leader 不带
+        <code>parent</code> 建的是顶层任务，每个顶层任务有自己的工作周期；子任务和父任务属于同一个群。
+      </li>
+      <li>任务卡上可以写参与者（哪些成员可以被派、哪些人收通知）和审核人，不写就是全群。</li>
       <li>加人、加成员、分享成员都在群里做。只有成员能认领任务；子智能体不是成员。</li>
     </ul>
+    <table>
+      <tr>
+        <th style="width: 34%">情形</th>
+        <th>工作空间</th>
+      </tr>
+      <tr>
+        <td>Leader 在协作群里建任务</td>
+        <td>用群的工作空间</td>
+      </tr>
+      <tr>
+        <td>单独建的任务新建协作群</td>
+        <td>协作群用任务的工作空间，表单里已填好、不能改</td>
+      </tr>
+      <tr>
+        <td>单独建的任务交给已有协作群</td>
+        <td>
+          两边相同就直接归入；不同时协作群改成任务的工作空间，群里没结束的其他任务一起改，群的 Leader
+          换一条新会话。群里有进行中或排队的认领时不能改，提示为这个任务新建一个协作群
+        </td>
+      </tr>
+      <tr>
+        <td>直接改协作群的工作空间</td>
+        <td>群里没结束的任务一起改；有进行中或排队的认领时不能改</td>
+      </tr>
+    </table>
 
     <h3 id="task-card">7.2 任务卡和任务状态机</h3>
     <p class="file">engine/task/task.go</p>
@@ -4385,7 +4534,6 @@ type Card struct {
 	ID           event.ID       `json:"id"`
 	Group        event.ID       `json:"group"`
 	Parent       event.ID       `json:"parent,omitempty"` // empty for a top-level task
-	Leader       event.ID       `json:"leader,omitempty"` // top-level only: the member whose thread runs this task
 	Phase        Phase          `json:"phase,omitempty"`  // top-level only (section 6.6)
 	Title        string         `json:"title"`
 	Description  string         `json:"description"`
@@ -4398,9 +4546,10 @@ type Card struct {
 	Base         string         `json:"base,omitempty"` // git ref worktrees start from
 	Review       bool           `json:"review"`       // a human must approve before Done
 	Participants []event.ID     `json:"participants,omitempty"` // members and humans; empty means the whole group
-	Budget       profile.Budget `json:"budget"`
+	Budget       agent.Budget `json:"budget"`
 	Claims       []Claim        `json:"claims"`
 	CreatedBy    event.Actor    `json:"createdBy"`
+	Archived     bool           `json:"archived,omitempty"` // hidden from the board; set by the user or by auto-archive
 }</code></pre>
     <!-- prettier-ignore -->
     <figure class="figure">
@@ -4497,8 +4646,11 @@ type Card struct {
 
     <h3 id="task-claim">7.3 认领与成员队列</h3>
     <p>
-      任务只有两条路被认领：Leader 派工，人点名。认领的主体只能是群里的 Worker 成员；Leader 或 Worker 开的子智能体没有
-      member id，任务池直接拒绝。一个成员一次只执行一个任务，但可以排队认领多个。
+      任务有三条路被认领：Leader 派工、人点名、Worker 主动认领。Leader 拆出的卡可以不指派，留作待认领；空闲的内置 Worker
+      在它所在的群出现待认领卡时收到一次邀约（一个短回合，认领或放过，每张卡每个 Worker 一次）；任何 Worker
+      交完报告时能看到所在群的待认领卡；外部 Worker 经 MCP 工具 <code>claim_task</code> 认领。认领的主体只能是群里的
+      Worker 成员；Leader 或 Worker 开的子智能体没有 member
+      id，任务池直接拒绝。一个成员一次只执行一个任务，但可以排队认领多个。
     </p>
     <p class="file">engine/task/claim.go</p>
     <pre><code>type ClaimRole string
@@ -4526,7 +4678,8 @@ type Pool struct{ ... }
 // Assign puts a task into a member's queue. Rules: memberID is a group member with AgentRole worker (sub-agents have
 // no member id and are refused with ErrNotMember); the task is Open; every dependency is Done; a second claim on the
 // same task needs the reviewer role or a Scope disjoint from existing claims. The queue is ordered by task priority,
-// then by assignment time; the task's Leader may reorder or withdraw. One claim per member is active at a time.
+// then by assignment time; the group's Leader may reorder or withdraw. One claim per member is active at a time. A
+// Worker claiming for itself (claim_task) passes itself as the actor and is held to the same rules.
 func (p *Pool) Assign(ctx context.Context, taskID, memberID event.ID, role ClaimRole, scope []string) (Claim, error)
 
 // Next starts the member's first queued claim when it has no active one: workspace, session, runner.
@@ -4777,7 +4930,7 @@ type Queue struct{ ... }</code></pre>
       </tr>
       <tr>
         <td><code>ask_leader</code></td>
-        <td>向本任务线程的 Leader 提问并等回答。成员之间没有互发消息的工具，“所有交流经过 Leader”是结构保证的</td>
+        <td>向本Leader 线程的 Leader 提问并等回答。成员之间没有互发消息的工具，“所有交流经过 Leader”是结构保证的</td>
       </tr>
       <tr>
         <td><code>ask_user</code></td>
@@ -4924,14 +5077,16 @@ type Action struct {
     <h3 id="trigger-awareness">9.3 Leader 的主动意识</h3>
     <p>
       规则能确定的事快速通道做；规则确定不了的事，比如“这句话是闲聊还是需求”“这次提交要不要跟进”，才由 Leader
-      的模型判断：没有任务归属的在群线程，有的在任务线程。线程看到一批事件后有四种反应：回复（<code>say</code>）；建任务并派工（群线程建顶层任务，任务线程建子任务）；问人；不反应，记进群状态的“观察”里。
+      的模型判断：没有任务归属的在Leader 线程，有的在Leader
+      线程。线程看到一批事件后有四种反应：回复（<code>say</code>）；建任务并派工（Leader 线程建顶层任务，Leader
+      线程建子任务）；问人；不反应，记进群状态的“观察”里。
     </p>
     <p>
       主动的边界由两样东西划：权限模式和审批路由（Leader
       主动建的任务和派的工和人建的一样要过审批）；群设置里的主动程度，<code>passive</code>（只在被问到时反应，环境事件只记录）、<code>normal</code>（默认）、<code>eager</code>（环境事件也积极跟进，比如有人提交了代码就主动检查对进行中任务的影响，必要时让相关认领变基）。
     </p>
 
-    <h3 id="trigger-human">9.4 人能从哪些地方介入；任务看板和收件箱</h3>
+    <h3 id="trigger-human">9.4 人能从哪些地方介入；收件箱和任务看板</h3>
     <table>
       <tr>
         <th style="width: 18%">人的动作</th>
@@ -4941,12 +5096,24 @@ type Action struct {
       <tr>
         <td>在群里说话</td>
         <td><code>human.said</code></td>
-        <td>立刻收到回执；紧急级进队列，可以打断 Leader 手头的一步。带 @ 的直达那个成员</td>
+        <td>
+          立刻收到回执；紧急级进队列，可以打断 Leader 手头的一步。带 @ 的直达那个成员（6.3 节），Leader 同时被唤醒
+        </td>
       </tr>
       <tr>
-        <td>添加、修改、取消任务</td>
-        <td><code>task.created</code> / <code>task.updated</code> / <code>task.closed</code></td>
-        <td>人建的任务直接是开放；指定了成员的直接排队。Leader 被唤醒决定要不要拆解</td>
+        <td>新建任务</td>
+        <td><code>task.created</code></td>
+        <td>不选协作群：只记事件，不唤醒任何线程，等交给协作群；选了协作群：Leader 被唤醒决定要不要拆解</td>
+      </tr>
+      <tr>
+        <td>把任务交给协作群</td>
+        <td><code>task.bound</code></td>
+        <td>新建或选择一个协作群后，这个群的 Leader 被唤醒，任务开始推进</td>
+      </tr>
+      <tr>
+        <td>修改、取消任务；直接指派成员</td>
+        <td><code>task.updated</code> / <code>task.closed</code> / <code>task.queued</code></td>
+        <td>指派的成员直接开工；Leader 被唤醒更新计划</td>
       </tr>
       <tr>
         <td>审核产物</td>
@@ -4964,21 +5131,29 @@ type Action struct {
         <td>调度器不再唤醒模型，正在跑的认领收到暂停请求</td>
       </tr>
       <tr>
-        <td>只是看着</td>
-        <td>订阅事件流</td>
-        <td>看板、每个认领的实时过程、群状态、花费，都从事件折叠显示</td>
+        <td>归档任务</td>
+        <td><code>task.archived</code></td>
+        <td>从看板收起，“已归档”视图里能找回、恢复</td>
       </tr>
     </table>
     <ul>
       <li>
-        <strong>任务看板</strong>：按状态（或按顶层任务的阶段）分列的任务卡，从 <code>task.*</code> 和
-        <code>phase.changed</code> 折叠。每张卡显示认领人、队列位置、最近进度、最后一份报告的结论。
+        <strong>收件箱</strong
+        >是首页的一栏，列出这个客户端收到的所有状态消息：要我做的（审批、问题、审核）和告诉我的（任务完成或受阻、@
+        我、哨兵提醒、定时任务的结果），从发给我的
+        <code>notice.sent</code>
+        折叠，回答了的条目自动消失。新消息在右下角弹窗提醒，点击跳到对应位置；窗口不在前台时同时发系统通知。跨设备时
+        <code>notice.sent</code> 经云端送到收件人所在设备的引擎再到客户端。
       </li>
       <li>
-        <strong>收件箱</strong>：每个人的待办和通知，从发给我的
-        <code>notice.sent</code> 折叠，分“要我做的”（审批、问题、审核）和“告诉我的”（@
-        我、我建的任务完成或受阻、我的成员被派了任务）。跨设备时
-        <code>notice.sent</code> 经云端送到收件人所在设备的引擎再到客户端。回答了的条目自动消失。
+        <strong>任务看板</strong
+        >是全局的，列出这个客户端的全部任务，按状态分列，每张卡显示所属协作群、认领人、队列位置、最近进度、最后一份报告的结论。已完成、已取消、失败的任务结束满
+        3 天后由守护进程自动归档（设置里可选 1、3、7、14
+        天或不自动归档）；每张卡能手动归档，没结束的先确认再取消并归档；完成列有“全部归档”。归档的任务在“已归档”视图里能搜索、恢复，数据不删。
+      </li>
+      <li>
+        <strong>任务拆解</strong>在协作群右栏：群里的任务、每个子任务的认领人、状态、最近一条进度，以及 Leader
+        的待办，从群的事件和 <code>todo.updated</code> 折叠，实时更新。
       </li>
     </ul>
 
@@ -4989,7 +5164,7 @@ type Action struct {
 
     <h3 id="sec-modes">10.1 三档模式</h3>
     <p>
-      模式是每个成员档案上的字段（单聊里是每次对话的设置），只有 owner
+      模式是每个成员智能体配置上的字段（单聊里是每次对话的设置），只有 owner
       能把群里成员的模式调高。选了仅询问危险行为或全面接管，出了问题由选的人负责，界面明示。
     </p>
     <table>
@@ -5015,7 +5190,9 @@ type Action struct {
         </td>
         <td>工作区内的写文件、用户规则里标“允许”的命令、已允许过的网络目标、包管理器缓存目录的写入</td>
         <td>开。本机没有可用沙箱时退化为逐次询问；不能转发审批的成员改为启动前问 admin（10.3 节）</td>
-        <td>常规类别在群里先给任务线程的 Leader 代答（拿不准问人）；需要 admin 或 owner 的直接给人。单聊里直接问人</td>
+        <td>
+          常规类别在群里先给Leader 线程的 Leader 代答（拿不准问人）；需要 admin 或 owner 的直接给人。单聊里直接问人
+        </td>
       </tr>
       <tr>
         <td>全面接管 <code>takeover</code></td>
@@ -5037,7 +5214,7 @@ type Action struct {
       </tr>
       <tr>
         <td>工作区内写文件、跑用户规则没列的命令</td>
-        <td>approver（仅询问危险行为模式下先给任务线程的 Leader 代答，有人在线也一样；Leader 拿不准再找人）</td>
+        <td>approver（仅询问危险行为模式下先给Leader 线程的 Leader 代答，有人在线也一样；Leader 拿不准再找人）</td>
       </tr>
       <tr>
         <td>审核标了“需要审核”的任务；“计划先经人确认”</td>
@@ -5051,7 +5228,7 @@ type Action struct {
         <td>admin</td>
       </tr>
       <tr>
-        <td>合并到目标分支（群设置可关掉这项审批）、超预算、改权限模式、换默认 Leader</td>
+        <td>合并到目标分支（群设置可关掉这项审批）、超预算、改权限模式、换Leader</td>
         <td>owner</td>
       </tr>
       <tr>
@@ -5094,8 +5271,8 @@ func (r *Router) Route(ctx context.Context, req Request) (Answerer, error)</code
     </p>
     <h4>超预算</h4>
     <p>
-      预算有两层：成员档案的预算限制这个成员在一个任务（单聊里是一条会话）上的用量，任务卡的预算限制整个任务所有认领的合计；两层都只能由
-      owner 放宽。认领撞到任何一层的 token、费用或时长上限就停下并交一份“受阻”报告，任务受阻。任务线程的 Leader
+      预算有两层：成员智能体配置的预算限制这个成员在一个任务（单聊里是一条会话）上的用量，任务卡的预算限制整个任务所有认领的合计；两层都只能由
+      owner 放宽。认领撞到任何一层的 token、费用或时长上限就停下并交一份“受阻”报告，任务受阻。Leader 线程的 Leader
       决定下一步：拆细、改派、取消，或者申请加预算。
     </p>
     <ul>
@@ -5105,24 +5282,24 @@ func (r *Router) Route(ctx context.Context, req Request) (Answerer, error)</code
         给任务卡加预算，写的是增量，token、费用、时长至少一项大于零；步数是每回合的限制，不在此列。非 owner
         提出的加预算是一个 Kind 为 <code>budget</code> 的请求，路由给 owner，任务卡在批准前不变；owner 自己经
         <code>task.update</code> 改预算直接生效。请求带任务 id、Leader
-        的一句话理由、已用量（token、费用、已用时长）、现在的上限（任务卡的和受阻成员档案的）和增量。
+        的一句话理由、已用量（token、费用、已用时长）、现在的上限（任务卡的和受阻成员智能体配置的）和增量。
       </li>
       <li>
-        批准：增量记进任务卡的 <code>Grants</code>，不改档案，不影响别的任务。任务的合计上限是任务卡预算加所有
-        grant；每个成员在这个任务上的个人上限是它档案的预算加所有 grant；时长上限同样顺延。任务回到受阻前的状态，Leader
-        重新派工：派回原成员则原会话继续，派给别人按接力规则。
+        批准：增量记进任务卡的 <code>Grants</code>，不改智能体配置，不影响别的任务。任务的合计上限是任务卡预算加所有
+        grant；每个成员在这个任务上的个人上限是它智能体配置的预算加所有
+        grant；时长上限同样顺延。任务回到受阻前的状态，Leader 重新派工：派回原成员则原会话继续，派给别人按接力规则。
       </li>
       <li>拒绝：任务保持受阻，Leader 拆细、改派或取消；引擎不会自动重新申请。</li>
       <li>
         单聊：没有 owner 审批。<code>turn.finished</code> 带预算类停止原因时客户端提示人；人下一次
         <code>session.send</code> 带
         <code>extendBudget: true</code>
-        就给这条会话再加一份档案预算（token、费用、时长各加档案里的数），不带的发送被拒并返回同一个错误码。
+        就给这条会话再加一份智能体配置预算（token、费用、时长各加智能体配置里的数），不带的发送被拒并返回同一个错误码。
       </li>
     </ul>
     <p class="file">engine/task/task.go</p>
     <pre><code>// Grant is one approved budget increase for this task (section 10.2). Limits are checked against the card's
-// budget plus every grant, and against each member's profile budget plus every grant.
+// budget plus every grant, and against each member's agent budget plus every grant.
 type Grant struct {
 	Tokens    int           `json:"tokens,omitempty"`
 	Cost      float64       `json:"cost,omitempty"` // same currency as MaxCost
@@ -5338,12 +5515,12 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
     <h4>网络白名单从哪来</h4>
     <ul>
       <li>
-        一次运行的白名单是成员档案的 <code>Network</code>（这个成员自己要连的服务，比如它的模型服务或中转站，5.2
+        一次运行的白名单是成员智能体配置的 <code>Network</code>（这个成员自己要连的服务，比如它的模型服务或中转站，5.2
         节）并上群设置的
         <code>AllowedHosts</code
         >（这个群批准过的目标）；单聊再并上用户配置里“以后都允许”记下的主机。拒绝列表只有两处：用户配置的
         <code>DeniedHosts</code> 对本机上的每次运行都生效，包括群里的，是设备主人的否决权；群设置的
-        <code>DeniedHosts</code> 由 admin 维护，对群里每次运行生效。一次运行合并两处拒绝列表。档案的
+        <code>DeniedHosts</code> 由 admin 维护，对群里每次运行生效。一次运行合并两处拒绝列表。智能体配置的
         <code>Network</code>
         只放允许规则。
       </li>
@@ -5358,12 +5535,13 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       </li>
       <li>
         引擎不替任何产品加默认域名。代理拒绝一个目标时，<code>tool.completed</code>
-        的错误带被拒的主机名和成员名，错误码的提示指向成员档案的网络列表。桌面端的档案表单可以按产品种类和环境变量里的地址预填建议，引擎不参与。
+        的错误带被拒的主机名和成员名，错误码的提示指向成员智能体配置的网络列表。桌面端的智能体配置表单可以按产品种类和环境变量里的地址预填建议，引擎不参与。
       </li>
       <li>适配器关掉产品的非必要流量，比如 Claude Code 的遥测和错误上报；否则用户会看到一串域名被拒，然后盲目放行。</li>
       <li>
-        群里 admin 加成员时看到并接受档案当时的主机列表，记在群成员记录的 <code>Hosts</code>
-        里。之后拥有者改档案新增的主机，在这个群里算新的网络目标，问 admin，同意后更新成员记录。改档案仍只有拥有者能做。
+        群里 admin 加成员时看到并接受智能体配置当时的主机列表，记在群成员记录的 <code>Hosts</code>
+        里。之后拥有者改智能体配置新增的主机，在这个群里算新的网络目标，问
+        admin，同意后更新成员记录。改智能体配置仍只有拥有者能做。
       </li>
       <li>
         代理遇到不在白名单的目标时发起审批并挂住连接，最多等两分钟，超时拒绝，审批请求保持打开；同意后记进群的
@@ -5390,7 +5568,7 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
         <code>tool.completed</code> 的错误，有自己的错误码；群里这条任务回到看板等人改派。全面接管下照旧不问。
       </li>
       <li>
-        不能转发的产品只有沙箱这一道闸，档案里标出；沙箱不可用时成员记录再标 <code>Unconfined</code>，Leader
+        不能转发的产品只有沙箱这一道闸，智能体配置里标出；沙箱不可用时成员记录再标 <code>Unconfined</code>，Leader
         派敏感任务时避开。
       </li>
     </ul>
@@ -5430,51 +5608,54 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
 
     <h3 id="sec-workspace-config">10.5 工作区配置与 MCP 服务器</h3>
     <p>
-      MCP 服务器有两个来源：用户配置（数据目录里的 <code>merakcode.json</code>）和工作区配置（工作区根目录的
-      <code>merakcode.json</code> 或 <code>merakcode.jsonc</code>）；<code>merak acp</code>
-      的会话多一个来源，编辑器传进来的，见下面“ACP 客户端”一条。两处用同一个 <code>mcpServers</code>
-      字段，同名时用户配置的生效，工作区那一项不启动也不问。用户配置是用户自己写的，不用确认；工作区配置可能是克隆来的，按
+      配置文件用 v0.3 的格式和位置（以 v0.3.1 的 <code>schema/config.json</code> 为准）：用户配置是
+      <code>~/.merakcode/merakcode.json(c)</code>，工作区配置是工作区根目录和工作区 <code>.merakcode/</code> 下的
+      <code>merakcode.json(c)</code>。MCP 服务器写在 <code>mcp</code> 字段里；<code>merak acp</code>
+      的会话多一个来源，编辑器传进来的，见下面“ACP
+      客户端”一条。同名时用户配置的生效，工作区那一项不启动也不问。用户配置是用户自己写的，不用确认；工作区配置可能是克隆来的，按
       10.4 节逐项确认。
     </p>
-    <pre><code>// merakcode.jsonc at the workspace root
+    <pre><code>// merakcode.jsonc at the workspace root (the v0.3 format)
 {
-  // stdio servers only
-  "mcpServers": {
+  "mcp": {
     "docs": {
-      "command": "node",
-      "args": ["./tools/docs-mcp.js", "--stdio"],
-      "env": { "DOCS_ROOT": "docs" },
+      "type": "local",
+      "command": ["node", "./tools/docs-mcp.js", "--stdio"],
+      "environment": { "DOCS_ROOT": "docs" },
     },
+    "search": { "type": "remote", "url": "https://mcp.example.com/mcp" },
   },
 }</code></pre>
     <ul>
       <li>
         文件：读会话工作区的根目录，群里是认领的工作区，单聊是会话的工作目录。两个文件用同一个解析器：标准 JSON
-        加注释和尾逗号，自己写，不加依赖。两个文件同时存在、解析失败或有未知字段时整份不用，发一个 config 域（3xxx）的
-        MRK 码，会话照常开始。现在只有 <code>mcpServers</code> 一个字段；<code>.merakcode/</code> 目录留给以后。
+        加注释和尾逗号，自己写，不加依赖。同一层的两个文件同时存在或解析失败时整份不用，发一个 config 域（3xxx）的 MRK
+        码，会话照常开始；不认识的键只在 <code>warnings</code> 里列出，不让整份失效。
       </li>
       <li>
-        字段：服务器名由 1 到 32 个字母、数字、<code>_</code>、<code>-</code> 组成；<code>command</code> 必填，含
-        <code>/</code> 的相对路径按工作区根解析，否则在 PATH 里找；<code>args</code> 是字符串数组；<code>env</code>
-        是变量名到字面值，不做 <code>${VAR}</code> 展开，要密钥的服务器写进用户配置。只支持 stdio，<code>url</code>
-        这类远程字段现在算未知字段。
+        字段：服务器名由 1 到 32 个字母、数字、<code>_</code>、<code>-</code> 组成；<code>type</code> 是
+        <code>local</code> 或 <code>remote</code>。本地的 <code>command</code> 是命令加参数的数组，第一项含
+        <code>/</code> 的相对路径按工作区根解析，否则在 PATH 里找；<code>environment</code> 是变量名到字面值，不做
+        <code>${VAR}</code> 展开，要密钥的服务器写进用户配置；<code>enabled</code>、<code>timeout</code>（毫秒，默认
+        5000）、<code>deferred</code> 和 v0.3 一致。远程的见本节末。
       </li>
       <li>
         确认：单位是一台服务器。哈希是这一项解析后重新编码成 JSON 的
         SHA-256，注释、空白、键的顺序和别的服务器都不影响它。请求的 Kind 是 <code>workspace</code>，需要 admin，Leader
-        批不了；单聊直接问人。请求里有项目、服务器名、<code>command</code>、<code>args</code> 和
-        <code>env</code> 的变量名，不带变量值。回答一律记进用户配置的
+        批不了；单聊直接问人。请求里有项目、服务器名、<code>command</code> 和
+        <code>environment</code> 的变量名，不带变量值。回答一律记进用户配置的
         <code>workspaceTrust</code
-        >，按（项目、条目、哈希）一条，旧的不删，来回切分支不会反复问。同一个（项目、条目、哈希）同时只有一个未答的请求。这种请求不挂在任务上，不超时、不让任务受阻，留在收件箱等人回答。
+        >，按（项目、条目、哈希）一条，旧的不删，来回切分支不会反复问。同一个（项目、条目、哈希）同时只有一个未答的请求。条目名形如
+        <code>mcp/docs</code>。这种请求不挂在任务上，不超时、不让任务受阻，留在收件箱等人回答。
       </li>
       <li>
         生效：会话第一轮开始前定下这条会话的服务器。已确认的启动，被拒绝的跳过，没确认过的这次不启动，同时发出确认请求；确认后下一次会话生效。项目按
         10.3 节取：群里是群的项目目录，单聊是会话的工作目录，都解析成真实路径，所以同一个项目的各个工作树共用确认记录。
       </li>
       <li>
-        进程：服务器经 <code>platform/sandbox.Command</code>
-        启动，用这条会话的沙箱配置，工作目录是工作区根，环境是 EnvAllow 放行的变量加上
-        <code>env</code
+        进程：服务器经 <code>platform/sandbox.Command</code> 启动，用这条会话的沙箱配置，工作目录是工作区根，环境是
+        EnvAllow 放行的变量加上
+        <code>environment</code
         >，联网走同一个代理和白名单；全面接管下不加限制。会话开始时启动并取工具列表，会话结束时停掉。启动或取列表失败（10
         秒没完成也算失败）就跳过这台，发一个 tool 域（5xxx）的 MRK 码，会话照常继续。
       </li>
@@ -5489,41 +5670,48 @@ func (l *Launcher) Command(ctx context.Context, p Profile, name string, args ...
       <li>
         ACP 客户端：<code>merak acp</code> 的 <code>session/new</code> 可以带
         <code>mcpServers</code
-        >。客户端是用户自己的编辑器，它替用户回答审批请求，所以它传的服务器按用户配置对待：不确认，这条会话就启动。字段规则同上，只收
-        stdio；<code>initialize</code> 回的 <code>mcpCapabilities</code> 里 <code>http</code> 和 <code>sse</code> 都是
-        false，客户端仍传了这两种就拒绝整个 <code>session/new</code>（-32602）；与用户配置同名时用户配置的生效。<code
-          >env</code
-        >
+        >。客户端是用户自己的编辑器，它替用户回答审批请求，所以它传的服务器按用户配置对待：不确认，这条会话就启动。字段按
+        ACP 的格式（名字、命令、参数、环境变量），只收 stdio；<code>initialize</code> 回的
+        <code>mcpCapabilities</code> 里 <code>http</code> 和 <code>sse</code> 都是 false，客户端仍传了这两种就拒绝整个
+        <code>session/new</code>（-32602）；与用户配置同名时用户配置的生效。<code>env</code>
         的值按密钥处理。用户配置和工作区的服务器在 ACP 会话里照常生效；工作区的确认请求像别的审批一样以
         <code>session/request_permission</code> 发给编辑器，回答记进 <code>workspaceTrust</code>，下一次
         <code>session/new</code> 生效。
       </li>
       <li>
-        用户配置里 <code>env</code> 的值按密钥处理：<code>config.get</code> 只给变量名，诊断包脱敏。<code
+        用户配置里 <code>environment</code> 的值按密钥处理：<code>config.get</code> 只给变量名，诊断包脱敏；<code
           >config.set</code
         >
-        暂不支持这个字段，用户手改文件。
+        增删服务器，值为 <code>null</code> 表示删除。
       </li>
     </ul>
     <p class="file">internal/platform/config/workspace.go</p>
-    <pre><code>// MCPServer is one stdio MCP server. The user configuration and the workspace file use the same shape.
+    <pre><code>// MCPServer is one entry of "mcp", in the v0.3 format: type local runs Command over stdio, type remote speaks
+// Streamable HTTP to URL. The user configuration and the workspace files use the same shape.
 type MCPServer struct {
-	Command string            `json:"command"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"` // literal values; never logged or put in events
+	Type        string            `json:"type"`                  // local or remote
+	Command     []string          `json:"command,omitempty"`     // local: program and arguments
+	Environment map[string]string `json:"environment,omitempty"` // local: literal values; never logged or put in events
+	URL         string            `json:"url,omitempty"`         // remote
+	Headers     map[string]string `json:"headers,omitempty"`     // remote
+	Enabled     *bool             `json:"enabled,omitempty"`
+	Timeout     int               `json:"timeout,omitempty"`     // milliseconds; 5000 when zero
+	Deferred    bool              `json:"deferred,omitempty"`
 }
 
-// Workspace is the workspace file. An unknown field makes the whole file unusable.
+// Workspace is what MerakCode reads from a workspace's merakcode.json(c) files. Unknown keys are reported as
+// warnings and do not make the file unusable.
 type Workspace struct {
-	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+	MCP      map[string]MCPServer `json:"mcp,omitempty"`
+	Warnings []string             `json:"-"`
 }
 
-// ReadWorkspace reads merakcode.json or merakcode.jsonc at root; comments and trailing commas are allowed in both.
-// Neither file present returns an empty Workspace; both present is an error.
+// ReadWorkspace reads merakcode.json(c) at root and in root/.merakcode, the latter overriding the former; comments
+// and trailing commas are allowed. No file returns an empty Workspace; json and jsonc side by side is an error.
 func ReadWorkspace(root string) (Workspace, error)
 
 // Trust is one answer to a workspace confirmation, kept in the user configuration under workspaceTrust. Item names
-// the entry, for example "mcpServers/docs"; Hash is the hex SHA-256 of the entry re-encoded as JSON. Permission
+// the entry, for example "mcp/docs"; Hash is the hex SHA-256 of the entry re-encoded as JSON. Permission
 // rules and setup commands from the workspace will use the same record.
 type Trust struct {
 	Project  string `json:"project"`
@@ -5531,27 +5719,53 @@ type Trust struct {
 	Hash     string `json:"hash"`
 	Decision string `json:"decision"` // allow or deny
 }</code></pre>
+    <h4>远程 MCP 服务器和 OAuth</h4>
+    <ul>
+      <li>
+        远程传输用 Streamable HTTP（POST JSON-RPC，响应是 JSON 或 SSE 流，带
+        <code>Mcp-Session-Id</code>）；服务器不支持时退回旧的 HTTP+SSE
+        传输。只用标准库。工作区配置里的远程服务器和本地的一样要经工作区信任确认。
+      </li>
+      <li>
+        收到 401 时按 MCP 授权规范发现授权服务器（RFC 9728、RFC 8414），没有客户端 id 时做动态注册（RFC 7591），授权码加
+        PKCE；回调地址是守护进程临时监听的
+        <code>http://127.0.0.1:&lt;随机端口&gt;/callback</code>。访问令牌和刷新令牌进凭据库，键
+        <code>mcp:&lt;服务器名&gt;</code>，过期自动刷新。
+      </li>
+      <li>
+        协议方法 <code>mcp.status</code>（每个服务器的状态
+        <code>connected</code>、<code>needs_auth</code>、<code>failed</code>、<code>disabled</code>
+        和工具数）、<code>mcp.authenticate</code>（返回授权网址，完成后发
+        <code>mcp.changed</code>）、<code>mcp.logout</code>。<code>config.set</code> 的
+        <code>mcp</code> 增删服务器，值为 <code>null</code> 表示删除。
+      </li>
+    </ul>
+
     <h2 id="protocol">11. 协议与 SDK</h2>
 
     <h3 id="proto-transport">11.1 传输方式和握手</h3>
     <p>
-      存算分离要求引擎能反过来请求客户端，连接必须是双向的。协议用 JSON-RPC 2.0，跑在 127.0.0.1 随机端口的 WebSocket
+      引擎要向客户端推事件、转发审批，连接必须是双向的。协议用 JSON-RPC 2.0，跑在 127.0.0.1 随机端口的 WebSocket
       上，令牌放在连接头里，校验 Origin。连上以后第一条消息必须是 <code>hello</code>。
     </p>
     <pre><code>→ {"jsonrpc":"2.0","id":1,"method":"hello","params":{
      "protocol":1,
      "client":{"name":"desktop","version":"1.0.0"},
-     "capabilities":{"store":true,"terminal":true,"approve":true}}}
+     "capabilities":{"terminal":true,"approve":true}}}
 
 ← {"jsonrpc":"2.0","id":1,"result":{
      "protocol":1,"engine":"1.0.0","device":"01J...",
-     "store":"accepted"}}          // or "declined": another host is connected</code></pre>
+     "human":"local-human"}}       // the caller's identity, decided by the connection</code></pre>
     <p>
       协议版本对不上时引擎回错误并断开，错误码提示升级。<code>approve</code>
       表示这个客户端能替用户回答审批和问题。终端的字节流走单独的 WebSocket 二进制帧。
     </p>
 
     <h3 id="proto-methods">11.2 方法</h3>
+    <p>
+      调用者身份由连接决定：本机连接是本机用户，<code>hello</code>
+      的结果里带这个身份；云端连接是账号。方法参数里没有“我是谁”。错误一律带 <code>MRK</code> 码原样返回。
+    </p>
     <table>
       <tr>
         <th style="width: 42%">方法</th>
@@ -5562,7 +5776,7 @@ type Trust struct {
       </tr>
       <tr>
         <td><code>hello</code></td>
-        <td>交换版本和能力</td>
+        <td>交换版本、能力和调用者身份</td>
       </tr>
       <tr>
         <td><code>events.subscribe</code> / <code>events.unsubscribe</code></td>
@@ -5570,50 +5784,74 @@ type Trust struct {
       </tr>
       <tr>
         <td><code>events.read</code> / <code>events.find</code> / <code>events.get</code> / <code>event.emit</code></td>
-        <td>读历史（非宿主客户端也经引擎读，引擎再问宿主，客户端不直接碰存储）；外部系统发事件</td>
+        <td>读历史；外部系统发事件</td>
       </tr>
       <tr>
         <td>
           <code>session.create</code> / <code>session.send</code> / <code>session.cancel</code> /
-          <code>session.list</code>
+          <code>session.list</code> / <code>session.snapshot</code> / <code>session.update</code>
         </td>
-        <td>单聊和认领会话的生命周期。<code>send</code> 立刻返回，过程看事件</td>
+        <td>
+          对话和认领会话的生命周期。<code>create</code> 必须带工作空间，可带
+          <code>agent</code>（外部产品的对话由它的运行器驱动）和幂等的 <code>key</code>；<code>send</code>
+          立刻返回，过程看事件，可带 <code>plan: true</code> 先出计划；<code>update</code>
+          改标题、归档、中途换权限模式（换成接管要 <code>confirm</code>）
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <code>session.revert</code> / <code>session.unrevert</code> / <code>session.compact</code> /
+          <code>session.search</code> / <code>session.command</code>
+        </td>
+        <td>
+          撤回到某条消息并还原文件、恢复（每个会话一个影子 git
+          仓库，每步工具调用前记快照，命令改的文件也能还原）；手动压缩；按消息文本搜索；执行斜杠命令
+        </td>
+      </tr>
+      <tr>
+        <td><code>plan.get</code> / <code>plan.save</code> / <code>plan.execute</code> / <code>plan.stop</code></td>
+        <td>会话的计划，带版本号；执行时固定一份快照</td>
       </tr>
       <tr>
         <td><code>permission.reply</code> / <code>question.reply</code></td>
         <td>回答审批和问题，带被回答事件的 id</td>
       </tr>
       <tr>
-        <td><code>profile.list</code> / <code>profile.save</code> / <code>profile.delete</code></td>
-        <td>档案增删改查，档案作为文档存</td>
-      </tr>
-      <tr>
         <td>
-          <code>member.catalog</code> / <code>member.register</code> / <code>member.remove</code> /
-          <code>member.test</code>
+          <code>agent.list</code> / <code>agent.save</code> / <code>agent.delete</code> / <code>agent.test</code> /
+          <code>agent.catalog</code>
         </td>
-        <td>探测本机装了哪些产品；把产品或档案注册成某个群的成员；测连通</td>
+        <td>智能体配置增删改查、测连通；探测本机装了哪些产品。配置作为文档存，密钥进凭据库</td>
       </tr>
       <tr>
         <td>
-          <code>group.create</code> / <code>group.update</code> / <code>group.addMember</code> /
-          <code>group.removeMember</code> / <code>group.pause</code> / <code>group.resume</code> /
+          <code>group.create</code> / <code>group.list</code> / <code>group.update</code> /
+          <code>group.addMember</code> / <code>group.removeMember</code> / <code>group.bind</code> /
+          <code>group.pause</code> / <code>group.resume</code> /
           <code>group.say</code>
         </td>
         <td>
-          群的生命周期。<code>create</code> 带 <code>kind: local | cloud</code> 和默认
-          Leader；云端群的每个请求由本机引擎经设备链接 <code>Forward</code> 到云端，云端是宿主。<code>say</code>
-          是人在群里发言，可带任务 id 表示在该任务的讨论串里
+          协作群的生命周期。<code>create</code> 带 <code>kind: local | cloud</code>、工作空间、恰好一个 Leader，可带
+          <code>task</code>（这时工作空间取任务的，建完任务归入本群；云端群暂不接任务）；<code>bind</code>
+          把没有协作群的任务交给本群（7.1 节的工作空间规则）；<code>update</code>
+          <code>update {leader}</code> 一步把名册里的 Leader 换成另一个 Leader 角色的智能体，换 Leader
+          或工作空间时整群交接；<code>say</code> 是人在群里发言，可 @ 成员。云端群的每个请求由本机引擎经设备链接
+          <code>Forward</code> 到云端
         </td>
       </tr>
       <tr>
         <td>
-          <code>task.create</code> / <code>task.update</code> / <code>task.cancel</code> / <code>task.review</code> /
-          <code>task.assign</code>
+          <code>task.create</code> / <code>task.list</code> / <code>task.update</code> / <code>task.cancel</code> /
+          <code>task.review</code> / <code>task.assign</code> / <code>task.archive</code>
         </td>
         <td>
-          人对任务的操作。<code>create</code> 和 <code>update</code> 可带 <code>leader</code>（顶层任务的 Leader
-          成员，更换触发线程交接）；<code>assign</code> 是人直接指定执行成员，走快速通道
+          人对任务的操作。<code>create</code> 必须带工作空间，可带 <code>group</code>（这时用群的工作空间）；<code
+            >list</code
+          >
+          返回这个客户端的全部任务，默认不含已归档的；<code>assign</code> 是人直接指定执行成员，走快速通道；<code
+            >archive</code
+          >
+          批量归档和恢复
         </td>
       </tr>
       <tr>
@@ -5622,13 +5860,76 @@ type Trust struct {
       </tr>
       <tr>
         <td>
-          <code>model.list</code> / <code>model.refresh</code> / <code>config.get</code> / <code>config.set</code>
+          <code>file.list</code> / <code>file.read</code> / <code>file.status</code> / <code>file.identity</code> /
+          <code>file.find</code>
         </td>
-        <td>模型目录和配置</td>
+        <td>只读的文件访问；目录在入口统一规范化，同一目录的不同写法指向同一个对象</td>
       </tr>
       <tr>
-        <td><code>diagnostics.bundle</code></td>
-        <td>生成诊断包（3.7 节），返回一个 blob 引用，客户端取回后让用户保存</td>
+        <td>
+          <code>repo.status</code> / <code>repo.diff</code> / <code>repo.branches</code> / <code>repo.checkout</code> /
+          <code>repo.commit</code> / <code>repo.push</code> / <code>repo.commitMessage</code>
+        </td>
+        <td>源代码管理；<code>commitMessage</code> 用默认模型根据暂存的 diff 写提交信息</td>
+      </tr>
+      <tr>
+        <td>
+          <code>worktree.create</code> / <code>worktree.list</code> / <code>worktree.merge</code> /
+          <code>worktree.remove</code>
+        </td>
+        <td>对话的 worktree，<code>create</code> 带幂等 <code>key</code></td>
+      </tr>
+      <tr>
+        <td><code>terminal.*</code></td>
+        <td>终端（11.1 节的二进制帧）</td>
+      </tr>
+      <tr>
+        <td>
+          <code>model.list</code> / <code>model.refresh</code> / <code>model.discover</code> / <code>config.get</code> /
+          <code>config.set</code>
+        </td>
+        <td>
+          模型目录（4.3 节）和配置；<code>config.get</code> 带加载时的 <code>warnings</code>，<code>config.set</code>
+          只发改动的字段
+        </td>
+      </tr>
+      <tr>
+        <td><code>mcp.status</code> / <code>mcp.authenticate</code> / <code>mcp.logout</code></td>
+        <td>MCP 服务器状态和 OAuth 登录（10.5 节）</td>
+      </tr>
+      <tr>
+        <td>
+          <code>rules.read</code> / <code>rules.change</code> / <code>memory.list</code> / <code>memory.read</code> /
+          <code>memory.delete</code>
+        </td>
+        <td>个人规则和项目规则文件；记忆</td>
+      </tr>
+      <tr>
+        <td>
+          <code>skill.list</code> / <code>skill.discover</code> / <code>skill.install</code> /
+          <code>skill.uninstall</code> /
+          <code>command.list</code>
+        </td>
+        <td>技能和斜杠命令（4.8 节）</td>
+      </tr>
+      <tr>
+        <td><code>tool.register</code> / <code>tool.unregister</code></td>
+        <td>客户端注册自己执行的工具；引擎调用时向这个客户端发 <code>tool.call</code> 请求</td>
+      </tr>
+      <tr>
+        <td><code>plugin.list</code> / <code>plugin.add</code> / <code>plugin.remove</code></td>
+        <td>插件（4.8 节），写进项目或全局配置</td>
+      </tr>
+      <tr>
+        <td><code>schedule.list</code> / <code>schedule.delete</code></td>
+        <td>定时任务</td>
+      </tr>
+      <tr>
+        <td>
+          <code>sandbox.status</code> / <code>sandbox.setup</code> / <code>diagnostics.bundle</code> /
+          <code>engine.stop</code>
+        </td>
+        <td>沙箱状态和初始化；诊断包（3.7 节）；停止守护进程</td>
       </tr>
       <tr>
         <th colspan="2">引擎发给客户端的通知</th>
@@ -5643,30 +5944,25 @@ type Trust struct {
       </tr>
       <tr>
         <td><code>engine.shutdown</code></td>
-        <td>引擎要退出了，附原因</td>
-      </tr>
-      <tr>
-        <th colspan="2">引擎发给存储宿主的请求</th>
-      </tr>
-      <tr>
-        <td>
-          <code>store.append</code> / <code>store.read</code> / <code>store.find</code> / <code>store.get</code> /
-          <code>store.put</code> / <code>store.fetch</code> / <code>store.list</code>
-        </td>
-        <td>和存储契约的七个方法一一对应</td>
+        <td>守护进程要退出了，附原因</td>
       </tr>
     </table>
+    <p>
+      SDK 按方法设超时：默认 10 秒；<code>agent.test</code> 40
+      秒；<code>model.refresh</code>、<code>model.discover</code>、<code>group.create</code> 30 秒；<code
+        >diagnostics.bundle</code
+      >
+      120 秒。
+    </p>
 
     <h3 id="proto-store">11.3 存储宿主要遵守什么</h3>
     <ul>
-      <li>同一时刻只有一个宿主。第二个声明的收到“拒绝”，仍可作普通客户端。</li>
-      <li><code>store.append</code> 返回代表已写盘。引擎在它返回前不分发事件。宿主应批量写，一次请求可带多条事件。</li>
-      <li>宿主只给公共字段建索引，正文是不透明 JSON。公共字段的变化走协议版本，宿主不需要迁移逻辑。</li>
       <li>
-        宿主断开后引擎切到缓冲模式；重连后先补写缓冲，再恢复。缓冲超上限时引擎暂停新回合并发
-        <code>engine.storage</code>。
+        本机的宿主是守护进程里的 <code>internal/localstore</code>，云端是云端服务；两者实现同一个
+        <code>store.Store</code> 契约，跑同一套契约测试。
       </li>
-      <li>三种宿主用同一份存储格式说明和同一套一致性测试（第 12 节）。</li>
+      <li><code>Append</code> 返回代表已写盘。引擎在它返回前不分发事件。宿主应批量写，一次可带多条事件。</li>
+      <li>宿主只给公共字段建索引，正文是不透明 JSON。公共字段的变化走存储格式版本，旧版本的库返回带码的错误。</li>
     </ul>
 
     <h3 id="proto-gen">11.4 类型只写一遍</h3>
@@ -5696,21 +5992,18 @@ type Trust struct {
       生成器自己写：协议类型里没有泛型和接口字段，基于反射几百行够用。
     </p>
     <p class="file">packages/sdk 的用法</p>
-    <pre><code>import { connect, SqliteStore, type StorageHost } from "@merakcode/sdk"
+    <pre><code>import { connect } from "@merakcode/sdk"
 
-// Only the client that owns the data directory passes a store; everyone else connects without one.
-const client = await connect({
-  endpoint: info.endpoint,
-  token: info.token,
-  store: new SqliteStore(dataDir) satisfies StorageHost,
-})
+// Every client connects the same way; the daemon owns storage.
+const client = await connect({ endpoint: info.endpoint, token: info.token })
 
 const stop = client.events.subscribe({ streams: [`group:${groupId}`] }, (e) =&gt; board.apply(e))
 
-const { session } = await client.session.create({ profile: profileId, workdir })
+const { session } = await client.session.create({ agent: agentId, workdir })
 await client.session.send({ session, parts: [{ text: "帮我修这个 bug" }] })
 
-await client.task.create({ group: groupId, title: "补齐登录接口的单元测试", review: true })</code></pre>
+const task = await client.task.create({ project: workdir, title: "补齐登录接口的单元测试", review: true })
+await client.group.create({ group: { name: "登录测试", project: { directory: workdir }, leader: leaderId }, members, task: task.id })</code></pre>
     <p>
       错误码沿用 <code>MRK-xxxx</code>：域 1 引擎和连接、2 模型、3 配置、4 会话、5 工具和权限，新加 6 任务和协作群、7
       存储宿主和云端。目录源文件改成 JSON（<code>packages/util/errors.json</code>），Go 和 TypeScript 各自生成，<code
@@ -5730,13 +6023,13 @@ await client.task.create({ group: groupId, title: "补齐登录接口的单元�
       </tr>
       <tr>
         <td>桌面端</td>
-        <td>Electron 主进程里 SDK 的 <code>SqliteStore</code></td>
+        <td>守护进程里的 <code>internal/localstore</code>；桌面端只是客户端</td>
         <td>数据目录里的 SQLite 文件 <code>merak.db</code>，加 <code>blobs/</code> 目录放大文件</td>
       </tr>
       <tr>
         <td>命令行</td>
-        <td>Go 客户端层的 <code>internal/localstore</code>，没有桌面端时由 <code>merak serve</code> 自己挂上</td>
-        <td>同一个文件、同一个 schema。桌面端和命令行共用一个数据目录，谁先启动引擎谁当宿主</td>
+        <td>同一个守护进程</td>
+        <td>同一个文件、同一个 schema。桌面端和命令行共用一个数据目录和一个守护进程</td>
       </tr>
       <tr>
         <td>云端</td>
@@ -5748,16 +6041,19 @@ await client.task.create({ group: groupId, title: "补齐登录接口的单元�
     <ol>
       <li>
         <code>schema/store.sql</code>：一份建表语句，事件表、文档表、索引，对应 4.2 节的索引表。Go 的
-        <code>localstore</code> 和 TypeScript 的 <code>SqliteStore</code> 嵌入同一个文件执行。
+        <code>localstore</code> 嵌入执行，云端映射到 PostgreSQL。
       </li>
       <li>
-        一套一致性测试：Go 版和 TypeScript 版测同样的行为，加一组黄金数据库文件，Go 宿主写出的
-        <code>merak.db</code> TypeScript 宿主必须能原样读出，反之亦然。
+        一套契约测试（<code>engine/store/storetest</code>）：内存存储、<code>localstore</code> 和云端的实现都要通过。
       </li>
       <li>
-        数据目录布局：<code>&lt;data&gt;/merak.db</code>、<code>&lt;data&gt;/blobs/&lt;hash&gt;</code>、<code>&lt;data&gt;/engine.json</code>（端口、令牌、进程
-        id，只有当前用户可读）。默认位置按系统惯例：macOS <code>~/Library/Application Support/MerakCode</code>，Windows
-        <code>%APPDATA%\MerakCode</code>，Linux <code>~/.local/share/merakcode</code>。
+        目录布局和 v0.3 相同，根目录是 <code>~/.merakcode</code>（<code>MERAKCODE_HOME</code> 可改）：全局配置
+        <code>merakcode.json(c)</code>、<code>AGENTS.md</code> 和
+        <code>skills/</code>、<code>commands/</code>、<code>agents/</code>、<code>rules/</code>
+        在根下；<code>data/merak.db</code>、<code>data/blobs/&lt;hash&gt;</code>、<code>data/engine.json</code>（端口、令牌、进程
+        id，只有当前用户可读）。还有
+        <code>worktrees/</code>、<code>logs/</code>、<code>cache/</code>、<code>clients/</code>。v0.3 的
+        <code>data/merakcode.db</code> 不改不删，只供迁移读取。
       </li>
     </ol>
     <p class="file">schema/store.sql（骨架）</p>
@@ -5790,46 +6086,78 @@ CREATE TABLE docs (
       的实现。Go 侧用 <code>modernc.org/sqlite</code>（纯 Go）。
     </p>
 
-    <h3 id="storage-desktop">12.2 桌面端宿主</h3>
+    <h3 id="storage-desktop">12.2 桌面端</h3>
     <p>
-      <code>SqliteStore</code> 用 Node 自带的 <code>node:sqlite</code>，不加 npm 依赖；实现前在 Electron 44 里核实
-      <code>process.versions.node</code> 含稳定版，不含则退回 <code>better-sqlite3</code>。主进程在
-      <code>hello</code> 里声明 <code>store: true</code>；关窗口进托盘时继续当宿主；彻底退出时先等引擎优雅退出再关库。
+      桌面端主进程不当存储宿主，不依赖原生数据库模块。它启动时连上守护进程，连不上就拉起来；关窗口进托盘、彻底退出都只关连接；托盘“停止后台引擎并退出”才调
+      <code>engine.stop</code>。设置里有“后台引擎”一页：运行状态、数据目录、登录时启动开关。
     </p>
 
-    <h3 id="storage-cli">12.3 命令行宿主和命令行产品</h3>
+    <h3 id="storage-cli">12.3 命令行</h3>
     <p>
-      命令行是和桌面端平级的产品形态：有自己的存储宿主 <code>internal/localstore</code>（客户端层，引擎里一行 SQL
-      都没有）、自己的中英双语文案表（<code>internal/cli/locale/{zh,en}.json</code>，加一条键一致检查）、机器可读的输出模式。
+      命令行是和桌面端平级的产品形态：连同一个守护进程，有自己的中英双语文案表、机器可读的输出模式（<code>--json</code>）。v0.3.0
+      命令行的命令 v1 都有。
     </p>
     <table>
       <tr>
-        <th style="width: 34%">命令</th>
+        <th style="width: 40%">命令</th>
         <th>做什么</th>
       </tr>
       <tr>
-        <td><code>merak serve</code></td>
-        <td>启动引擎。没有别的宿主时自己挂上 <code>localstore</code></td>
+        <td><code>merak serve</code> / <code>merak stop</code> / <code>merak status</code></td>
+        <td>启动、停止、查看守护进程</td>
       </tr>
       <tr>
         <td><code>merak run "..."</code></td>
-        <td>单聊：连到引擎（没有就启动），发一条消息，边生成边打印；<code>--json</code> 每行一个事件</td>
+        <td>对话：连到守护进程（没有就启动），发一条消息，边生成边打印；<code>--json</code> 每行一个事件</td>
+      </tr>
+      <tr>
+        <td>
+          <code>merak session list|show|rename|archive|delete</code> / <code>merak export</code> /
+          <code>merak import</code>
+        </td>
+        <td>会话管理；导出一条会话为 JSON、导入它；<code>merak import --from v0.3</code> 导入 v0.3 的数据</td>
+      </tr>
+      <tr>
+        <td><code>merak agent list|add|remove|test|catalog</code></td>
+        <td>智能体；探测本机装了哪些产品</td>
       </tr>
       <tr>
         <td><code>merak group ...</code> / <code>merak task ...</code></td>
-        <td>建群、加成员、建任务、看看板、看收件箱、审核</td>
+        <td>建协作群、加成员、建任务、交给协作群、看看板、看收件箱、审核、归档</td>
       </tr>
       <tr>
-        <td><code>merak member catalog</code></td>
-        <td>探测本机装了哪些产品</td>
+        <td><code>merak models [refresh]</code> / <code>merak provider list|login|logout|relay</code></td>
+        <td>模型目录；服务商、密钥和中转站</td>
       </tr>
       <tr>
-        <td><code>merak event emit</code></td>
-        <td>外部系统发事件</td>
+        <td><code>merak mcp list|add|remove|auth|logout</code></td>
+        <td>MCP 服务器管理；带 <code>--claim</code> 或 <code>--thread</code> 时是给外部产品用的 MCP 服务模式</td>
       </tr>
       <tr>
-        <td><code>merak mcp</code> / <code>merak acp</code></td>
-        <td>把编排工具作为 MCP 服务暴露；把内置 Worker 作为 ACP 智能体对外提供</td>
+        <td>
+          <code>merak skill ...</code> / <code>merak command list</code> / <code>merak plugin ...</code> /
+          <code>merak schedule ...</code>
+        </td>
+        <td>技能、斜杠命令、插件、定时任务</td>
+      </tr>
+      <tr>
+        <td><code>merak sandbox status|setup|reset</code></td>
+        <td>沙箱状态、Windows 的一次性初始化、清除初始化</td>
+      </tr>
+      <tr>
+        <td>
+          <code>merak stats</code> / <code>merak doctor</code> / <code>merak logs</code> /
+          <code>merak bug-report</code> / <code>merak diagnose</code>
+        </td>
+        <td>用量统计；逐项自检；看日志；诊断包</td>
+      </tr>
+      <tr>
+        <td><code>merak upgrade</code> / <code>merak generate</code></td>
+        <td>升级自己；打印协议的 JSON Schema</td>
+      </tr>
+      <tr>
+        <td><code>merak event emit</code> / <code>merak acp</code></td>
+        <td>外部系统发事件；把内置 Worker 作为 ACP 智能体对外提供</td>
       </tr>
       <tr>
         <td><code>merak debug chat --script</code></td>
@@ -5857,7 +6185,7 @@ package cloud
 type Link interface {
 	// Connect opens the outbound connection and keeps it alive with reconnects; it returns when ctx ends.
 	Connect(ctx context.Context, creds Credentials) error
-	// Announce tells the cloud which members this device offers, with their profiles' summaries and status.
+	// Announce tells the cloud which members this device offers, with their agents' summaries and status.
 	Announce(ctx context.Context, members []group.Member) error
 	// Forward sends a client's request about a cloud group upward unchanged: group.create with kind cloud,
 	// group.say, task.create, permission.reply ... The cloud is the host and answers.
@@ -5903,7 +6231,7 @@ type Null struct{}</code></pre>
         <path class="f" d="M360 145 H580" />
         <text class="s" x="470" y="135" text-anchor="middle">2 各设备 Announce 自己的成员，A 把 B 设备上的成员加进群</text>
         <path class="f" d="M580 195 H800" />
-        <text class="s" x="690" y="185" text-anchor="middle">3 开任务；云端的任务线程拆解、派工到 B 的成员</text>
+        <text class="s" x="690" y="185" text-anchor="middle">3 开任务；云端的Leader 线程拆解、派工到 B 的成员</text>
         <path class="f" d="M800 245 H580" />
         <text class="s" x="690" y="235" text-anchor="middle">4 B 在本机工作区运行，事件和报告经 Publish 上传</text>
         <path class="f" d="M580 295 H140" />
@@ -5924,7 +6252,7 @@ type Null struct{}</code></pre>
         云端 Leader 的只读代码工具作为 <code>Inbound.ToolCall</code> 下发到有检出的设备，在那台设备的沙箱里执行，结果经
         <code>Publish</code> 回传。
       </li>
-      <li>设备离线时它名下正在跑的认领标为中断，任务线程决定等还是改派。</li>
+      <li>设备离线时它名下正在跑的认领标为中断，Leader 线程决定等还是改派。</li>
     </ul>
 
     <h3 id="cloud-model">13.3 账号、群组、权限的概念模型</h3>
@@ -5943,11 +6271,11 @@ type Null struct{}</code></pre>
       </tr>
       <tr>
         <td>成员</td>
-        <td>有拥有者、所在设备、种类、档案摘要。拥有者决定分不分享给群。改档案只有拥有者能做</td>
+        <td>有拥有者、所在设备、种类、智能体配置摘要。拥有者决定分不分享给群。改智能体配置只有拥有者能做</td>
       </tr>
       <tr>
         <td>群</td>
-        <td>有拥有者。人的角色是 5.1 节的五种。有默认 Leader、目标仓库或目录、任务池、共享文档、产物库</td>
+        <td>有拥有者。人的角色是 5.1 节的五种。有Leader、目标仓库或目录、任务池、共享文档、产物库</td>
       </tr>
       <tr>
         <td>任务权限</td>
@@ -5981,1203 +6309,251 @@ type Null struct{}</code></pre>
         结束）、开发模式跑过一轮真实使用再公开。
       </li>
     </ul>
-    <h2 id="desktop">14. 桌面端：复用现有界面，新增群视图</h2>
+    <h2 id="desktop">14. 桌面端：以 UI 分支为基线</h2>
     <p>
-      桌面端不重写。复用的基线是 <code>dev-v0.3.1</code>（当前工作区里的 <code>apps/desktop</code>
-      就是它的最新提交）：Electron 主进程、SolidJS 界面、组件库、样式、中英文案、55 个组件测试和 28
-      个端到端用例全部保留；要换的只是数据从哪来：主进程改为启动 Go 引擎并当存储宿主，界面进程从 REST 客户端换成协议
-      SDK，界面状态由 SDK 的折叠函数从事件算出来。新增的只有协作群相关的视图。实施步骤是第 15 节里编号 D1 到 D10
-      的切片。功能上的要求是：v0.3.1 桌面端已有的能力一项不少，每个 D 切片的“做完以后”都以 v0.3.1 为对照。
+      桌面端的基线是 <code>origin/tt/refactor/ui-side-panel</code>：它包含 dev-v0.3.1
+      的全部桌面端，另有每个对话自己的侧边面板标签页、统一的侧栏状态、同一目录不同写法的修复等 16 个提交，51 个 e2e
+      spec。先把它的组件、样式、文案和 e2e 原样恢复，只把数据层改接新
+      SDK；首页、智能体、协作群、任务这些新页面在恢复后的外壳上用同样的风格做。界面状态由 SDK
+      的折叠函数从事件算出来，界面不自己拼业务状态。
     </p>
 
-    <h3 id="desktop-reuse">14.1 复用地图</h3>
-    <table>
-      <tr>
-        <th style="width: 40%">现有部分</th>
-        <th style="width: 48%">怎么处理</th>
-        <th>切片</th>
-      </tr>
-      <tr>
-        <td>主进程：窗口、托盘、菜单、系统通知、自动更新、文件对话框、浏览器面板、设置与本地存储</td>
-        <td>原样复用</td>
-        <td>—</td>
-      </tr>
-      <tr>
-        <td>主进程：<code>engine.ts</code>、<code>backend.ts</code>、<code>auth.ts</code></td>
-        <td>
-          改：找到并启动 <code>merak</code> 二进制，从数据目录的 <code>engine.json</code>
-          读端口和令牌，连上后当存储宿主。令牌仍由主进程注入到窗口发出的请求和 WebSocket 握手头里，界面进程不碰令牌
-        </td>
-        <td>D1</td>
-      </tr>
-      <tr>
-        <td>打包：<code>script/package.ts</code></td>
-        <td>改：<code>extraResources</code> 改为带对应平台的 Go 二进制，不再带 Node 和 JS 包</td>
-        <td>D1</td>
-      </tr>
-      <tr>
-        <td>界面：<code>state/client.ts</code>、<code>state/store.ts</code></td>
-        <td>换：协议 SDK 的 WebSocket 客户端和会话折叠函数；旧的 REST 调用包装删除</td>
-        <td>D2</td>
-      </tr>
-      <tr>
-        <td>
-          界面：单聊部分的
-          conversation（消息列表、输入框、工具显示、审批、模型选择、附件、建议、回合折叠、发送）、shell（侧栏、框架、启动页、通知）、onboarding、palette、update，settings
-          的外观、更新、服务商和模型页
-        </td>
-        <td>组件保留，换数据源和事件类型</td>
-        <td>D2、D5</td>
-      </tr>
-      <tr>
-        <td>界面：review（diff、文件树、评论）、code（编辑器）、git（源代码管理面板）</td>
-        <td>组件保留；协议新增只读的文件和仓库方法作为数据源</td>
-        <td>D3</td>
-      </tr>
-      <tr>
-        <td>界面：terminal</td>
-        <td>组件保留；接协议的终端通道（11.1 节的二进制帧）</td>
-        <td>D4</td>
-      </tr>
-      <tr>
-        <td>界面：browser</td>
-        <td>原样复用，它只和主进程说话</td>
-        <td>—</td>
-      </tr>
-      <tr>
-        <td>
-          界面：协作群部分的 conversation（建群、群状态、群待办、成员列、成员头像、座位气泡）、settings
-          的协作和产品接入页、<code>state/agent-connections.ts</code>
-        </td>
-        <td>按新的群、任务、Leader 模型重建；复用建群流程、成员头像、座位气泡、产品探测表单这些组件</td>
-        <td>D6</td>
-      </tr>
-      <tr>
-        <td>界面：plan（v0.3.1 的官方计划）</td>
-        <td>删除，新引擎没有对应机制</td>
-        <td>D2</td>
-      </tr>
-      <tr>
-        <td>e2e：夹具里的 OpenAI 兼容假模型服务器、假 Claude 二进制、28 个 spec</td>
-        <td>复用：夹具改为启动真实的 <code>merak serve</code> 并把模型指向假服务器；spec 随切片逐个恢复</td>
-        <td>D1 到 D8</td>
-      </tr>
-      <tr>
-        <td>i18n：<code>zh.ts</code>、<code>en.ts</code></td>
-        <td>复用，新键随切片加，键一致性测试照旧</td>
-        <td>全部</td>
-      </tr>
-    </table>
-    <p>
-      切换期间桌面端不能处在半编译状态，所以 D2、D3、D4 连着做，中间不插别的切片。最后一个依赖旧协议的面板（终端）在 D4
-      迁完，三个开关在 D4 做完时一起打开：根目录
-      <code>pnpm typecheck</code> 重新包含桌面端，<code>knip.json</code> 里对桌面端的 ignore 去掉，CI 的 test-ts
-      加上渲染进程、新增 Linux 上的 e2e-desktop（先 <code>go build</code> 出引擎，再构建主进程和界面，再跑
-      Playwright）；AGENTS.md
-      里“桌面端不编译”的那条删除。在那之前，依赖旧协议的文件要么改好，要么删掉，不留注释掉的代码；D2 和 D3
-      做完时用本地的桌面端 tsc 衡量进度：报错只剩还没迁的面板和只被它们引用的文件。
-    </p>
-
-    <h3 id="desktop-views">14.2 新增的视图</h3>
-    <p>只列新增视图和它们从哪些事件算出来。视觉上沿用现有的设计令牌、组件和布局。</p>
-    <table>
-      <tr>
-        <th style="width: 14%">视图</th>
-        <th style="width: 46%">显示什么</th>
-        <th>从哪些事件折叠</th>
-      </tr>
-      <tr>
-        <td>群聊</td>
-        <td>人的发言、Leader 的回复、成员的进度摘要、系统通知。每个群默认就有</td>
-        <td>
-          <code>human.said</code>、Leader 的 <code>message.completed</code>、<code>task.*</code>、<code
-            >notice.sent</code
-          >
-        </td>
-      </tr>
-      <tr>
-        <td>任务看板</td>
-        <td>按状态分列的任务卡；按顶层任务切换视角看阶段；点开看报告、diff、产物、实时过程</td>
-        <td><code>task.*</code>、<code>phase.changed</code>、<code>merge.*</code>、<code>artifact.*</code></td>
-      </tr>
-      <tr>
-        <td>收件箱</td>
-        <td>要我做的（审批、问题、审核）和告诉我的（@ 我、我建的任务有结果、我的成员被派了任务）</td>
-        <td>发给我的 <code>notice.sent</code>，减去已回答的</td>
-      </tr>
-      <tr>
-        <td>审核</td>
-        <td>
-          报告渲染、工作区相对起点的 diff（复用现有 diff 显示）、产物预览、通过或写意见；“方向不对”可把顶层任务打回规划
-        </td>
-        <td><code>task.reported</code> 里的报告、经协议读的 diff</td>
-      </tr>
-      <tr>
-        <td>成员与档案</td>
-        <td>本机探测到的产品、已注册的成员、档案编辑、分享开关、权限模式（选自动或接管时的风险提示）</td>
-        <td><code>member.*</code>、档案文档</td>
-      </tr>
-      <tr>
-        <td>上下文与花费</td>
-        <td>每个会话“上下文花在哪了”、缓存命中、每个任务和成员的 token 和费用</td>
-        <td><code>session.budget</code>、<code>turn.finished</code> 的用量</td>
-      </tr>
-    </table>
-    <p>
-      两条界面原则：用能力驱动界面，不能中途接收消息的成员，“发消息”按钮灰掉并提示会作为新任务派发；审核界面以报告为主，过程是可展开的附件。
-    </p>
-    <p class="file">packages/sdk/src/fold/board.ts（折叠函数的形状）</p>
-    <pre><code>// Pure folds over events: the UI keeps one Board per group and applies every event it receives, in order. Replaying
-// the group stream from seq 1 yields the same Board, so a reconnect only needs events.read from the last seq.
-export type Board = { columns: Record&lt;TaskStatus, TaskCard[]&gt;; goals: GoalRow[]; lastSeq: number }
-
-export function emptyBoard(): Board
-export function applyToBoard(board: Board, e: Event): Board   // task.*, phase.changed, merge.*, artifact.*
-
-export type Inbox = { todo: Notice[]; info: Notice[]; lastSeq: number }
-export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // notice.sent minus answered ones</code></pre>
-
-    <h2 id="roadmap">15. 实施路线：5 个阶段、32 个引擎切片和 10 个桌面端切片</h2>
-    <p>
-      每个切片从入口（命令行或协议）一直切到引擎底层，做完就多一个用户看得见的能力。切片内部按 TDD
-      推进：<strong>一次只写一个会失败的测试，让它通过，再写下一个</strong>，不把一个切片的测试全写完再写实现。每个切片列的是“按顺序逐个实现的行为”，每一行是一轮红、绿、整理。
-    </p>
+    <h3 id="desktop-reuse">14.1 恢复</h3>
     <ul>
-      <li>一个切片一份施工单，格式照 3.9 节，一次提交或一个很短的分支。切片之间按顺序做。</li>
-      <li>每个切片只加“只实现”里列的东西。第 4 到 10 节的代码是最终形状，不是当前切片的清单。</li>
       <li>
-        切片完成标准：列出的行为全部有测试且通过，<code>go test ./...</code> 和 <code>pnpm check</code> 通过，CI
-        全绿，用户能感知的改动在 <code>CHANGELOG.md</code> 里有中英各一行，第 17 节清单对过一遍。
+        组件、样式、文案、e2e 从 UI 分支拷贝，不重写；组件导入的旧 SDK
+        类型换成渲染进程本地类型，按组件实际读的字段定义。
       </li>
       <li>
-        阶段之间停下来用一段时间，再调整后面的切片。阶段 1 做完命令行能用，阶段 2 做完桌面端能切过来，阶段 3
-        做完本地协作群能用，阶段 4 是主动性和安全，阶段 5 是云端。
+        数据层（<code>state/client.ts</code>、<code>state/store.ts</code>、<code>state/git.ts</code>、<code>state/models.ts</code>）重写内部、接新
+        SDK 的单条连接，对外的函数名和签名保持 UI 分支的样子。
       </li>
-      <li>每个切片开始前，执行模型先列出要动的公开接口和要测的行为清单，确认后再动手。</li>
       <li>
-        桌面端切片编号 D1 到
-        D10，穿插在各阶段里，每片开头写明依赖的引擎切片。它们的规则一样：先写会失败的测试（渲染进程用 vitest
-        和引擎测试产出的黄金事件日志当夹具，主进程用 vitest，整条链路用 Playwright
-        对真实引擎），再写最少的实现。引擎切片和桌面端切片可以由两个人或两个执行模型并行做，桌面端切片做到它依赖的引擎切片完成为止。
+        恢复要用到的协议能力（撤回、编辑重发、提交推送、对话
+        worktree、文件身份、MCP、规则、记忆、技能、插件、计划、斜杠命令、定时任务、和外部产品单聊）都在第 11.2
+        节的方法表里；逐项对照见验收报告 7.5 节。
       </li>
+      <li>
+        不恢复的只有一项：v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP 或纯命令行适配器。
+      </li>
+      <li>UI 分支的 51 个 spec 全部恢复并进 CI，验收标准就是它们通过。</li>
     </ul>
 
-    <h3 id="phase-1">阶段 1：地基与单聊内核，命令行能用</h3>
-
-    <p class="file">S0 地基与 CI</p>
-    <p>做完以后：<code>merak --version</code> 能跑，<code>pnpm check</code> 和 CI 覆盖 Go 代码。施工单在 3.9 节。</p>
-
-    <p class="file">S1 和假模型说上话</p>
-    <p>做完以后：<code>merak debug chat --script testdata/hello.json "你好"</code> 打印出假模型按剧本给的回答。</p>
-    <ol>
-      <li>总线：发布一条事件，订阅者收到它，序号从 1 开始连续。</li>
-      <li>假模型：第一次请求得到剧本的第一条回复，多出的请求让测试失败。</li>
-      <li>
-        会话：应用一条 <code>message.sent</code> 和一条 <code>message.completed</code> 后，消息列表是 user 和 assistant
-        两条。
-      </li>
-      <li>
-        循环：给一条输入，假模型回一句话，发布的事件依次是
-        <code>turn.started</code
-        >、<code>message.sent</code>、<code>message.completed</code>、<code>turn.finished</code>。
-      </li>
-      <li>命令行：命令打印回答并返回 0；没给剧本时返回 2。</li>
-    </ol>
+    <h3 id="desktop-views">14.2 信息架构和新页面</h3>
     <p>
-      只实现：事件包（事件结构、总线的发布和订阅，先不接存储）、模型包（接口、请求、消息、Part、Chunk、流、Collector，加假模型）、会话状态和
-      Fold（只处理消息事件）、循环（没有工具、没有插话）、debug 命令、<code>platform/log</code>
-      的最小配置。不做：存储、工具、权限、窗口、提示词组装（系统提示词先是一个常量）、订阅过滤。
+      侧栏顶部五项：首页、新建对话、新建智能体、新建协作群、新建任务；下面按工作空间（项目文件夹）分组，每组列出协作群、任务、对话，按最近更新排序。
     </p>
+    <table>
+      <tr>
+        <th style="width: 12%">页面</th>
+        <th style="width: 50%">显示什么</th>
+        <th>从哪来</th>
+      </tr>
+      <tr>
+        <td>首页</td>
+        <td>收件箱栏目（右下角弹窗提醒）、全局任务看板、最近的协作群和对话；空状态时的快速开始</td>
+        <td>本人的 <code>inbox:</code> 流用 <code>applyToInbox</code> 折叠；<code>task.list</code> 和看板折叠</td>
+      </tr>
+      <tr>
+        <td>智能体</td>
+        <td>本机探测到的产品卡片（一键添加、版本提示、连通测试）、我的智能体、新建向导（产品、模型、职责、权限）</td>
+        <td><code>agent.*</code>；卡片和表单照搬 UI 分支的产品接入页，模型一步用对话的模型选择器</td>
+      </tr>
+      <tr>
+        <td>对话</td>
+        <td>选工作空间、选智能体（MerakCode 或纳管产品）、模型、权限；消息、工具卡、撤回、编辑重发、计划、侧边面板</td>
+        <td>UI 分支原样恢复</td>
+      </tr>
+      <tr>
+        <td>协作群</td>
+        <td>
+          顶部 Leader、成员、群里的任务；消息流（和对话同一套组件，Leader
+          流式回复、工具卡、能停止，回合进行中照样能发消息并显示送达）；右栏任务拆解（子任务、谁在做、做到哪一步、Leader
+          的待办）和成员状态；名册（改名、移出、从已有群复制成员）
+        </td>
+        <td>群的事件、Leader 会话、<code>todo.updated</code>；名册照搬 UI 分支的成员列</td>
+      </tr>
+      <tr>
+        <td>任务</td>
+        <td>
+          新建（工作空间、描述、验收标准、是否审核、可选协作群）；详情（所属协作群和
+          Leader、子任务、认领、报告、diff、审核）；没有协作群时“新建协作群”“选择协作群”；归档
+        </td>
+        <td><code>task.*</code>、<code>group.create {task}</code>、<code>group.bind</code></td>
+      </tr>
+      <tr>
+        <td>设置</td>
+        <td>通用、模型与服务商、权限、MCP、技能、插件、规则、记忆、任务看板（自动归档天数）、后台引擎、关于、云端</td>
+        <td>UI 分支原样恢复，加“任务看板”和“后台引擎”</td>
+      </tr>
+    </table>
+    <p>
+      两条界面原则：用能力驱动界面，不能中途接收消息的成员，“发消息”会提示将重新开始它这次认领；审核界面以报告为主，过程是可展开的附件。文案里
+      Leader 中英文都叫 Leader，不出现“智能体配置”“线程”。
+    </p>
+    <p class="file">packages/sdk/src/fold/board.ts（折叠函数的形状）</p>
+    <pre><code>// Pure folds over events. Replaying from seq 1 yields the same result, so a reconnect only needs events.read from
+// the last seq. The board covers every task of this client; archived cards are kept apart.
+export type Board = { columns: Record&lt;TaskStatus, TaskCard[]&gt;; archived: TaskCard[]; lastSeq: number }
+export function emptyBoard(): Board
+export function applyToBoard(board: Board, e: Event): Board
 
-    <p class="file">S2 模型能读文件</p>
-    <p>做完以后：让模型总结 README，它先调用 <code>read_file</code>，再给出总结。</p>
-    <ol>
-      <li>工具：<code>read_file</code> 返回文件内容；文件不存在时结果标为出错。</li>
-      <li>
-        循环：模型回了一个工具调用，工具被执行，结果作为下一条消息送回，第二次请求的
-        <code>Expect</code> 能看到文件内容。
-      </li>
-      <li>事件：<code>tool.called</code> 和 <code>tool.completed</code> 成对，后者的 <code>Cause</code> 指向前者。</li>
-      <li>重放等于实时：把全部事件从头 Fold 一遍得到的会话状态，和实时得到的完全相同。</li>
-    </ol>
-    <p>
-      只实现：工具包（接口、说明、调用、结果、环境里只有工作目录）、<code>read_file</code>、循环里的工具步骤（串行）、Fold
-      处理工具事件。不做：工具池（先用一个切片装工具）、并行执行、副作用枚举（先用一个“是否只读”的布尔值）、截断。
-    </p>
+export type Inbox = { todo: Notice[]; info: Notice[]; lastSeq: number }
+export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // notice.sent minus answered ones
 
-    <p class="file">S3 改文件之前先问人</p>
-    <p>做完以后：模型要改文件时，终端问“允许写入 x 吗？[y/n]”。</p>
-    <ol>
-      <li>策略：每次询问模式下，读允许，写要问。</li>
-      <li>权限门：工具被挡住直到收到回复；允许后运行；拒绝后结果标为出错，模型知道被拒绝了。</li>
-      <li>
-        事件：<code>permission.requested</code> 和 <code>permission.replied</code> 成对，<code>Cause</code> 对得上。
-      </li>
-      <li><code>write_file</code> 写入；<code>edit_file</code> 要求被替换的文字唯一，匹配到两处就报错。</li>
-      <li>命令行从 stdin 读答案。</li>
-    </ol>
-    <p>
-      只实现：权限包（三种判断、每次询问模式、问人的接口、权限门）、两个写工具、stdin
-      答题。不做：记住选择、另外两档模式、路由、沙箱。
-    </p>
+export type Assignments = { tasks: TaskLine[]; todos: Todo[]; lastSeq: number } // a group's right panel
+export function applyToAssignments(view: Assignments, e: Event): Assignments</code></pre>
 
-    <p class="file">S4 接上真模型，边生成边打印</p>
-    <p>做完以后：设好环境变量就能和真实模型对话，文字一边生成一边打印。</p>
-    <ol>
-      <li>OpenAI 兼容客户端：对一个 <code>httptest</code> 服务器回放录好的 SSE 样例，解析出文字、工具调用和用量。</li>
-      <li>工具定义被正确转成它的格式。</li>
-      <li><code>message.delta</code> 按到达顺序发出，拼起来等于 <code>message.completed</code> 的全文。</li>
-      <li>
-        delta 是瞬时事件：没有序号，不到达 Sink；一条流式回复之后，Sink 收到的事件序号仍然从 1 开始连续（<code
-          >message.completed</code
-        >
-        紧接 <code>message.sent</code>）。
-      </li>
-      <li>命令行流式打印；冒烟测试没有密钥时跳过。</li>
-    </ol>
+    <h2 id="roadmap">15. 实施路线：整改切片 R0 到 R28</h2>
     <p>
-      只实现：OpenAI 兼容客户端（Chat Completions、流式、工具）、delta
-      事件、流式打印、从环境变量读地址和密钥。不做：其他服务商、重试、价格、目录、配置文件、缓存标记。
+      阶段 1 到 5 的 S0 到 S31、D1 到 D10 已经实现（到提交 <code>f195bc2</code>），验收未通过。之后按下面的 R
+      切片推进。每片的施工单（做完以后、先读、先写的测试、实现步骤、不做、验证）和执行规则在
+      <code>docs/plans/v1-acceptance-review.html</code> 第 9、10 节。
     </p>
-
-    <p class="file">S5 模型能跑命令，并遵守项目的 AGENTS.md</p>
-    <p>做完以后：模型可以跑 <code>go test</code> 这样的命令，系统提示词里带着项目的规则文件。</p>
-    <ol>
-      <li><code>bash</code>：超时被杀掉；非零退出码进结果；跑命令要审批。</li>
+    <ul>
       <li>
-        提示词：各段顺序是身份、角色、用户的系统提示词、环境、项目规则；工作目录里没有 AGENTS.md
-        时就没有那一段；日期在第一条用户消息里而不在系统提示词里。
+        一片一个分支、一个 PR、一次合并；前一片的 CI 全绿后才开始下一片。切片内部按 TDD 推进，一次一个会失败的测试。
       </li>
-      <li>副作用枚举：有了只读、写、执行三个使用者，从布尔值升级成枚举。</li>
-    </ol>
+      <li>
+        R0 到 R7 按顺序做；之后分两条轨道可以并行：轨道 A 是协作（R8 到 R10），轨道 B 是对话和能力（R11 到
+        R19）。R20、R21 等轨道 B 完成，R22 起两条轨道都要完成。R27 在 R19 之后、R28 在 R22 之后随时可以做。
+      </li>
+      <li>
+        R1 到 R19 只动引擎、协议、SDK 和主进程；渲染进程只做能编译、测试能过的最小改动，R20 起以 UI 分支为基线恢复。
+      </li>
+      <li>不许为了让 CI 变绿而移走、跳过或改弱测试。</li>
+    </ul>
+    <table>
+      <tr>
+        <th style="width: 8%">切片</th>
+        <th>做完以后</th>
+      </tr>
+      <tr>
+        <td>R0</td>
+        <td>CI 在开发分支推送时运行；<code>pnpm check</code> 通过；AGENTS.md 准确；失败的 e2e 有待办清单</td>
+      </tr>
+      <tr>
+        <td>R1</td>
+        <td>SDK 按方法设超时；错误码保留真实原因；配置补丁按字段合并；内置智能体用默认模型</td>
+      </tr>
+      <tr>
+        <td>R2</td>
+        <td>配置用 v0.3 的格式，所有文件统一到 <code>~/.merakcode</code>（12.1 节）</td>
+      </tr>
+      <tr>
+        <td>R3</td>
+        <td>模型目录：自动刷新、缓存、公开目录补全、兜底表、过滤、失败提示（4.3 节）</td>
+      </tr>
+      <tr>
+        <td>R4</td>
+        <td>调用者身份由连接决定；密钥进凭据库</td>
+      </tr>
+      <tr>
+        <td>R5</td>
+        <td>服务端方法表；根包 <code>engine</code> 只留装配，不再新增文件</td>
+      </tr>
+      <tr>
+        <td>R6</td>
+        <td>引擎是守护进程，桌面端退出不停；远程存储宿主删除（2.5 节、12.2 节）</td>
+      </tr>
+      <tr>
+        <td>R7</td>
+        <td><code>profile</code> 改名 <code>agent</code>；协作群恰好一个 Leader；工作空间必填；重复方法合并</td>
+      </tr>
+      <tr>
+        <td>R8</td>
+        <td>
+          任务归属协作群（一对多）；单独建的任务交给协作群后启动；工作空间和 Leader
+          从协作群来；每个群一条线程；归档（7.1 节、6.1 节）
+        </td>
+      </tr>
+      <tr>
+        <td>R9</td>
+        <td>人的指令最高、全双工送达回执、待办工具、拆解数据、Leader 提示词（6.3 节）</td>
+      </tr>
+      <tr>
+        <td>R10</td>
+        <td>Worker 主动认领（7.3 节）</td>
+      </tr>
+      <tr>
+        <td>R11</td>
+        <td>会话能力：撤回与恢复、编辑重发、重试、改名归档、手动压缩、换模式、搜索、和外部产品单聊；Worker 提示词</td>
+      </tr>
+      <tr>
+        <td>R12</td>
+        <td>代码与工作区：提交、推送、写提交信息、对话 worktree、文件状态与身份、目录规范化</td>
+      </tr>
+      <tr>
+        <td>R13</td>
+        <td>MCP（本地、远程、OAuth）、规则、记忆、配置告警</td>
+      </tr>
+      <tr>
+        <td>R14</td>
+        <td>技能与斜杠命令</td>
+      </tr>
+      <tr>
+        <td>R15</td>
+        <td>插件</td>
+      </tr>
+      <tr>
+        <td>R16</td>
+        <td>计划（任何模式）</td>
+      </tr>
+      <tr>
+        <td>R17</td>
+        <td>网页抓取、网页搜索、代码搜索、多处编辑、Word 和 Excel</td>
+      </tr>
+      <tr>
+        <td>R18</td>
+        <td>LSP</td>
+      </tr>
+      <tr>
+        <td>R19</td>
+        <td>定时任务</td>
+      </tr>
+      <tr>
+        <td>R20</td>
+        <td>桌面端恢复（一）：外壳、对话、设置、引导</td>
+      </tr>
+      <tr>
+        <td>R21</td>
+        <td>桌面端恢复（二）：代码、git、审核、终端、浏览器面板和各类恢复</td>
+      </tr>
+      <tr>
+        <td>R22</td>
+        <td>侧栏五项、首页（收件箱栏目、右下角弹窗、任务看板）、智能体页</td>
+      </tr>
+      <tr>
+        <td>R23</td>
+        <td>新建协作群、协作群页（任务拆解、@ 直达、全双工）</td>
+      </tr>
+      <tr>
+        <td>R24</td>
+        <td>新建任务、任务详情、交给协作群启动、全局看板与归档</td>
+      </tr>
+      <tr>
+        <td>R25</td>
+        <td>视觉与文案统一；全部 e2e 进 CI</td>
+      </tr>
+      <tr>
+        <td>R26</td>
+        <td>登录时自动启动后台引擎</td>
+      </tr>
+      <tr>
+        <td>R27</td>
+        <td>命令行收尾：stats、upgrade、doctor、logs、bug-report、sandbox、generate（12.3 节）</td>
+      </tr>
+      <tr>
+        <td>R28</td>
+        <td>从 v0.x 迁移：历史对话、外部产品连接、角色模板、协作群记录、计划、记忆、待办</td>
+      </tr>
+    </table>
     <p>
-      只实现：<code>bash</code>、提示词组装（一个嵌入的模板）、找
-      AGENTS.md、副作用枚举。不做：沙箱、后台运行、输出截断、其他名字的规则文件。
-    </p>
-
-    <p class="file">S6 基础工具集补齐，大输出入史前截断，工具按需加载</p>
-    <p>
-      做完以后：模型有 glob、grep、list_dir、后台
-      bash；一条几万行的命令输出不会撑爆上下文，模型能按行号范围读回完整输出；很少用的工具只占一行，用到时再加载，服务商看到的工具列表全程不变。
-    </p>
-    <ol>
-      <li>
-        <code>glob</code>、<code>grep</code>、<code>list_dir</code> 各自的基本行为；只读工具并行执行且事件顺序确定。
-      </li>
-      <li><code>edit_file</code> 的时效检查：文件自上次读取后被改过就拒绝。</li>
-      <li>
-        截断：超过上限的工具输出被存成 blob（先用内存存储），结果里只有头尾和引用；<code>tool.completed</code>
-        标记被截断并带引用。
-      </li>
-      <li><code>lookup</code> 按引用和行号范围读回完整输出。</li>
-      <li>后台 bash：启动后立刻返回，<code>bash_output</code> 取到目前的输出。</li>
-      <li>工具池：有了“全部”和“只读”两个池。</li>
-      <li>
-        按需加载：一个延迟工具不在请求的工具列表里；<code>load_tools</code> 返回它的 Schema；<code>call_tool</code>
-        校验输入后执行，未加载的被拒；整个会话发出的每个请求的工具列表字节相同。
-      </li>
-    </ol>
-    <p>
-      只实现：三个搜索工具、时效检查、Spill 和 blob 文档（内存实现）、lookup、后台 bash、工具池、两个元工具。不做：web
-      工具、噪音过滤、MCP。
-    </p>
-
-    <p class="file">S7 模型目录、思考档位、价格与重试：OpenAI 兼容系的服务商都能用</p>
-    <p>
-      做完以后：DeepSeek、Moonshot、智谱、阿里和任何中转站、本地模型都能对话；推理模型的思考过程能看到；能选的思考档位按模型显示；能看到这次花了多少钱；网络抖动自动重试。
-    </p>
-    <ol>
-      <li>
-        往返黄金测试：一段含文字、思考、工具调用、工具结果的样例对话，经“引擎 → OpenAI 兼容客户端 → 引擎”一圈 Part
-        列表不变。这是通用消息格式的第一道验收。
-      </li>
-      <li>
-        推理模型：<code>reasoning_content</code> 解析成 Reasoning
-        Part（字段名放各家配置）；是否回传按各家配置；换服务商时思考 Part 被过滤掉。
-      </li>
-      <li>
-        服务商配置：DeepSeek、Moonshot、智谱、阿里各一份内置配置（地址、思考参数的写法）和一个录制样例测试；思考六档按
-        4.3 节的映射表发出，目录里不支持的档被夹到最近的档。
-      </li>
-      <li>
-        目录：内置表给出窗口、输出上限、价格、支持的思考档；<code>Usage.Cost</code>
-        按价格表算出；未知模型得到保守默认值并标记；中转站的模型按名字匹配到内置表。
-      </li>
-      <li>并行工具调用的多个结果合成一条 <code>RoleTool</code> 消息，客户端编码时拆成多条 <code>role: tool</code>。</li>
-      <li><code>model.Retrying</code>：对 429 和 5xx 按退避重试，用量累计；对 4xx 不重试。</li>
-    </ol>
-    <p>
-      只实现：往返测试、Reasoning Part
-      的解析与过滤、四家配置和映射、目录的内置表和价格计算、工具结果合并、重试包装。不做：Anthropic、Gemini、OpenRouter（S12）、目录在线刷新、多模态输入。
-    </p>
-
-    <h3 id="phase-2">阶段 2：变成服务，存算分离，桌面端可以切过来</h3>
-
-    <p class="file">S8 merak serve 跑起来，SDK 能连上</p>
-    <p>
-      做完以后：<code>merak serve</code> 能启动，一个 TypeScript 脚本通过 SDK 发消息、收事件；<code>merak run</code>
-      通过协议连到它；CI 多了 <code>e2e-sdk</code>。
-    </p>
-    <ol>
-      <li>Go：在随机端口起真实服务端；<code>hello</code> 版本不匹配被拒绝；令牌错误被拒绝。</li>
-      <li><code>session.create</code> 加 <code>session.send</code> 之后，事件通知按顺序到达。</li>
-      <li>类型生成：改了 Go 类型没重新生成时 <code>check:protocol</code> 失败。</li>
-      <li>
-        TypeScript：对真实启动的 <code>merak serve</code> 连接、建会话、发消息、订阅，收到
-        <code>message.completed</code>。
-      </li>
-      <li><code>merak run</code>：连不上就先启动引擎，再通过协议发消息并打印。</li>
-    </ol>
-    <p>
-      只实现：协议包（hello、session 三个方法、events.subscribe、event
-      通知）、服务端（WebSocket、JSON-RPC、令牌、端口文件）、serve 和 run 命令、类型生成器、<code>packages/sdk</code>
-      最小客户端、Go 协议客户端、CI 的 <code>e2e-sdk</code> 和 <code>test-ts</code> 加
-      sdk。不做：存储、群和任务的方法、终端通道、读历史。
-    </p>
-
-    <p class="file">S9 存储宿主：命令行和桌面端共用一个 SQLite 格式</p>
-    <p>做完以后：重启引擎历史还在；命令行写的数据桌面端能读，反过来也行。</p>
-    <ol>
-      <li>
-        存储一致性测试（一个函数，所有实现都跑）：追加时序号断档被拒、按顺序读、按归属查、按 id 取、文档版本冲突、blob
-        存取。内存实现通过。
-      </li>
-      <li>总线接上存储：订阅者看到事件时，它已经在存储里。</li>
-      <li>远程实现（经协议连到测试里的宿主）通过同一套测试。</li>
-      <li>Go <code>localstore</code>（SQLite，执行 <code>schema/store.sql</code>）通过同一套测试。</li>
-      <li>
-        TypeScript <code>SqliteStore</code> 通过同一套测试的 TS 版本；Go 宿主写出的黄金数据库文件能被 TS
-        宿主原样读出，反之亦然。
-      </li>
-      <li>会话管理器从快照加重放恢复；读历史的三个协议方法。</li>
-      <li>杀掉引擎，重启，<code>session.list</code> 和 <code>events.read</code> 完整。</li>
-    </ol>
-    <p>
-      只实现：存储包（契约、内存、远程）、总线接存储、schema 文件、两个 SQLite 宿主、握手时的 store
-      能力、快照与加载、读历史方法。不做：缓冲、崩溃对账、文档列表界面。
-    </p>
-
-    <p class="file">S10 长对话不撑爆窗口</p>
-    <p>做完以后：几百步的长对话也能继续，界面能看到“这里重建过”的标记和每次请求的预算分配。</p>
-    <ol>
-      <li>token 估算器对一组样本的误差在阈值以内，并能按服务商报回的用量校准。</li>
-      <li>
-        超过 <code>Trigger</code> 时重建：最老的一段换成摘要，保留最近 <code>KeepTurns</code> 轮原文且去掉思考块；<code
-          >session.rebuilt</code
-        >
-        记下范围；重放后消息列表相同。
-      </li>
-      <li>重建后估算低于 <code>Target</code>；没超阈值时历史一个字节都不变。</li>
-      <li>最新一条输入自己就放不下：返回带错误码的错误。</li>
-      <li>每次请求发 <code>session.budget</code>。</li>
-      <li>重建是同步的，不会发生在一轮工具调用的中间。</li>
-    </ol>
-    <p>
-      只实现：窗口包（预算、估算、重建、拒绝）、假摘要器和真摘要器（一次模型调用，复用父会话的前缀）、两个事件。不做：材料包、服务端压缩、每模型的参数表。
-    </p>
-
-    <p class="file">S11 崩溃能恢复，彻底退出有序，宿主短暂离线不丢事件</p>
-    <p>
-      做完以后：工具跑到一半杀掉引擎，重启后会话显示“被中断”并能继续；桌面端崩溃再拉起，事件一条不丢；<code
-        >merak stop</code
+      阶段 5
+      的云端群和远程成员保留现有代码和测试，跟着改名，不扩展，本地产品验收通过后再排；之后再排：云端的正式部署、<code
+        >release.yml</code
       >
-      让引擎按 2.5 节的顺序退出。
-    </p>
-    <ol>
-      <li>对账：没执行完的调用得到合成的 <code>tool.completed</code>，错误是“被中断”。</li>
-      <li>缓冲：宿主离线时追加进队列，重连后按顺序补写；超过上限后新回合报错；读请求返回“存储不可用”。</li>
-      <li>
-        优雅退出：收到停止信号后，正在跑的会话被取消并记录状态，等宿主确认，发 <code>engine.shutdown</code>，10
-        秒内退出。
-      </li>
-    </ol>
-    <p>
-      只实现：对账、<code>store.Buffered</code>、<code>engine.storage</code>、退出序列、stop
-      命令。不做：系统服务安装、桌面端的重新拉起。
-    </p>
-
-    <p class="file">S12 第二种线协议：Anthropic、Gemini、OpenRouter 与多模态输入</p>
-    <p>
-      做完以后：八家服务商都能用；Anthropic 的思考块正确往返、缓存命中；智谱、Moonshot、DeepSeek 的 Anthropic
-      兼容端点也能走这条线；可以给模型发图片和 PDF；<code>read_file</code> 读图片时模型能看到图。
-    </p>
-    <ol>
-      <li>Anthropic 客户端对录好的流解析出文字、思考、工具调用、用量（含缓存读写）和停止原因（含拒绝）。</li>
-      <li>
-        往返黄金测试：S7 的样例对话经“引擎 → Anthropic → 引擎”一圈 Part
-        列表不变。这是通用消息格式的第二道验收：两种线协议共用同一份样例。
-      </li>
-      <li>思考块的 <code>Opaque</code> 原样传回；思考六档映射到自适应思考加 effort；系统提示词末尾带缓存断点。</li>
-      <li>依赖边界测试：除 <code>model/anthropic</code> 外没有包依赖 <code>anthropic-sdk-go</code>。</li>
-      <li>Gemini 经 OpenAI 兼容端点可用；OpenRouter 一份配置，参数透传。</li>
-      <li>
-        Image 和 Document Part 在两种线协议里正确编码；<code>read_file</code> 对图片返回 Image Part；没有对应块的内容进
-        <code>dropped</code> 列表；兼容接口把 PDF 抽成文字；PDF 损坏或没有文字时丢掉 Document，记入
-        <code>dropped</code>，请求继续。
-      </li>
-      <li>目录在线刷新：从 Anthropic 和 OpenRouter 的模型接口补窗口和价格；用户覆盖优先。</li>
-    </ol>
-    <p>
-      只实现：Anthropic 客户端（官方 Go SDK，依赖在这一片才加进 <code>go.mod</code>）、Gemini 和 OpenRouter
-      的配置、多模态 Part 编码、目录刷新与覆盖。不做：Gemini 原生接口、音频。
-    </p>
-
-    <p class="file">S13 记忆</p>
-    <p>
-      做完以后：成员记得项目的坑：新会话开始时第一条消息里有以前学到的笔记；读到有笔记的文件时笔记跟着出现；对话结束时自动提炼几条。
-    </p>
-    <ol>
-      <li>召回按标签和关键词排序；<code>remember</code> 写入后立刻能召回。</li>
-      <li>密钥扫描拦住样例里的密钥，这条笔记不落盘。</li>
-      <li>提取器用假模型从对话里产出笔记。</li>
-      <li>读到标签里带这个路径的文件时，工具结果末尾附上笔记。</li>
-    </ol>
-    <p>
-      只实现：记忆包（笔记、第一版召回、提取器、密钥扫描）、<code>remember</code> 和
-      <code>recall</code> 工具、第一条消息的记忆段、文件标签联动。不做：向量检索、整理、界面。
-    </p>
-
-    <p class="file">S14 错误码目录改 JSON，命令行有双语文案</p>
-    <p>
-      做完以后：Go 和 TypeScript 从同一份
-      <code>errors.json</code> 生成错误码；命令行的提示是中文或英文，由系统语言或参数决定。
-    </p>
-    <ol>
-      <li><code>check:errors</code> 对两边的生成物都查，改了 JSON 没重新生成时失败；新域 6 和 7 可用。</li>
-      <li>命令行文案表键一致检查：<code>zh</code> 和 <code>en</code> 缺一个键就失败。</li>
-      <li><code>merak run</code> 的错误按语言渲染。</li>
-    </ol>
-    <p>只实现：JSON 目录和两个生成器、文案表和检查、命令行渲染。不做：桌面端的切换。</p>
-
-    <p class="file">S15 子智能体在后台运行</p>
-    <p>
-      做完以后：模型可以
-      <code>spawn</code> 一个只读子智能体去调研，自己继续干活，子智能体的报告完成后自动出现在对话里；需要时用
-      <code>wait_child</code> 等。
-    </p>
-    <ol>
-      <li><code>spawn</code> 立刻返回子 id，发 <code>child.started</code>；父会话下一步照常进行。</li>
-      <li>
-        子智能体完成时发 <code>child.finished</code>，运行器经
-        <code>Steer.Poll</code> 把报告作为追加消息插入父会话，只插一次（重放后一致）。
-      </li>
-      <li><code>wait_child</code> 阻塞到完成；子智能体用只读池时写工具不存在；权限继承父会话的授权。</li>
-      <li>子智能体没有 member id：任务池的 <code>Assign</code> 拒绝它。</li>
-    </ol>
-    <p>
-      只实现：<code>spawn</code>、<code>wait_child</code>、内置运行器的
-      Steer（子结果通道）、两个事件、只读档案。不做：子智能体的子智能体限制以外的嵌套策略（先允许一层）。
-    </p>
-
-    <p class="file">S16 日志与诊断包</p>
-    <p>
-      做完以后：引擎日志按 3.7 节的位置和格式落盘并轮转；<code>merak diagnose --out x.zip</code>
-      一键打包；桌面端设置页有“导出诊断包”。
-    </p>
-    <ol>
-      <li>
-        日志处理器：每行带 component 和 scope 字段；一条含密钥的日志写出来是
-        <code>[redacted]</code>；超过上限轮转且最多留 5 个文件。
-      </li>
-      <li>
-        诊断包：zip 里有 versions.json、脱敏的 engine.json、最近 3 天的日志；不带
-        <code>--session</code> 时没有任何对话内容；带了时 events/ 里是该会话的 JSONL。
-      </li>
-      <li>协议方法 <code>diagnostics.bundle</code> 返回 blob 引用，SDK 能取回。</li>
-    </ol>
-    <p>
-      只实现：<code>platform/log</code> 完整版、<code>internal/diagnose</code>、命令和协议方法、SDK
-      方法。不做：桌面端按钮本身（D5）。
-    </p>
-
-    <p class="file">D1 主进程：启动 Go 引擎，当存储宿主，打包进安装包</p>
-    <p>
-      做完以后：桌面端启动时拉起 <code>merak serve</code>（开发时用 <code>merak/</code> 里编出来的二进制，安装包里是
-      <code>resources/merak/</code>
-      下对应平台的二进制），主进程连上去并被接受为存储宿主；关窗口进托盘后引擎和群继续跑；彻底退出时引擎按 2.5
-      节的顺序退出；安装包不再带 Node。
-    </p>
-    <p class="muted">依赖：S9 存储宿主、S11 退出序列。</p>
-    <ol>
-      <li>
-        <code>engine.ts</code>：安装包和源码两种布局都能找到 <code>merak</code> 二进制；缺文件时 <code>missing()</code>
-        把它列出来。
-      </li>
-      <li>
-        <code>backend.ts</code>：启动 serve 后从数据目录的 <code>engine.json</code>
-        读到端口和令牌；已经有引擎在跑时直接连，不再启动；引擎意外退出后重启并沿用端口，重试用完进入 failed。
-      </li>
-      <li>
-        宿主：主进程用 SDK 的 <code>SqliteStore</code> 连上，<code>hello</code> 里声明 <code>store: true</code>
-        得到 accepted；被 declined 时（命令行先占了宿主）以普通客户端继续工作。
-      </li>
-      <li>托盘：关窗口不退出，事件继续落盘。e2e 的 background.spec 复用。</li>
-      <li>
-        退出：彻底退出时让引擎优雅退出，收到 <code>engine.shutdown</code> 后再关数据库；10 秒没退出就强杀。e2e 的
-        shutdown.spec 复用。
-      </li>
-      <li>
-        打包：<code>script/package.ts</code> 的 <code>extraResources</code> 改为
-        <code>merak/dist</code> 里对应平台的二进制；安装后的 <code>merak --version</code> 等于产品版本。CI 的 go-build
-        之后加一个桌面端打包冒烟（Linux）。
-      </li>
-    </ol>
-    <p>
-      只实现：<code>engine.ts</code>、<code>backend.ts</code>、<code>auth.ts</code> 的最小改动、<code>SqliteStore</code>
-      接线、<code>package.ts</code>、打包冒烟。不做：界面进程的任何改动、引擎单独自动更新。
-    </p>
-
-    <p class="file">D2 界面进程切到新 SDK，单聊闭环</p>
-    <p>
-      做完以后：桌面端能开项目、新建对话、和真实模型流式对话、审批、回答问题、切模型、看历史，引擎重启后自动重连；本地对桌面端跑
-      tsc，报错只剩 review、code、git、terminal 四个面板和只被它们引用的文件。桌面端重新进入检查和 CI 在 D4 做完时（14.1
-      节）。
-    </p>
-    <p class="muted">依赖：D1、S7 模型目录、S10 预算和重建事件。</p>
-    <ol>
-      <li>
-        客户端层：<code>state/client.ts</code> 换成 SDK 的 WebSocket 客户端，一条连接多路复用；旧的 REST 调用包装删除。
-      </li>
-      <li>
-        状态层：<code>state/store.ts</code> 用 SDK 的会话折叠替代旧的
-        applyEvent；用引擎测试产出的黄金事件日志当夹具，折叠出的消息列表和 Go 侧的快照一致。
-      </li>
-      <li>
-        消息流：<code>message.delta</code> 边到边显示，<code>message.completed</code> 替换成全文；<code>turn.*</code>
-        驱动状态条；<code>tool.called</code> 和 <code>tool.completed</code> 复用现有的工具卡片。
-      </li>
-      <li>
-        审批与提问：<code>permission.requested</code> 弹现有的审批卡，回答走 <code>permission.reply</code>；问题同理。
-      </li>
-      <li>
-        历史与重连：打开旧会话用 <code>events.read</code> 从快照之后补；收到 <code>events.lagged</code> 从上次的 seq
-        补读；引擎重启后自动重连，reconnect 测试复用。
-      </li>
-      <li>
-        模型与配置：模型选择器用 <code>model.list</code>；设置页的服务商表单用 <code>config.get</code> 和
-        <code>config.set</code>，中转站逻辑保留。
-      </li>
-      <li>
-        窗口标记：<code>session.rebuilt</code> 显示“这里重建过”；<code>session.budget</code>
-        在对话头部显示本次请求的预算分配。
-      </li>
-      <li>
-        e2e 夹具：启动真实的
-        <code>merak serve</code
-        >，模型指向夹具里现有的假服务器；chat、composer、permission、tools、conversations、connect 这些 spec
-        改到新协议，D4 打开 e2e-desktop 时和 D3、D4 的 spec 一起进 CI。
-      </li>
-    </ol>
-    <p>
-      只实现：客户端层、状态层、单聊部分的 conversation、settings 的服务商和模型页、shell、onboarding、palette、新的
-      i18n 键。删除：依赖 v0.3.1 协作协议的界面文件（建群、群状态、群待办、成员列、成员头像、座位气泡、settings
-      的协作和产品接入页、<code>state/agent-connections.ts</code>）和 plan；D6 到 D8 按新模型重建协作群界面时从 git
-      历史里取回可复用的组件。不做：review、code、git、terminal（D3、D4）、工程开关（D4）、协作群。
-    </p>
-
-    <p class="file">D3 审核、代码、git 面板复用；协议加只读的文件和仓库方法</p>
-    <p>做完以后：对话里的改动审核（diff、文件树、评论）、代码查看器、源代码管理面板都能用，数据从新引擎来。</p>
-    <p class="muted">
-      依赖：D2。<code>platform/git</code> 在这一片新建，只放这一片用到的方法；S19 再补 worktree、建分支和合并。
-    </p>
-    <ol>
-      <li>
-        <code>platform/git</code>（<code>git</code>
-        命令的薄封装，不用库）：工作区状态、相对某个提交的 diff、分支列表、切分支、读取当前提交；表格测试在
-        <code>t.TempDir()</code> 里的真实仓库上跑。
-      </li>
-      <li>
-        引擎：协议方法 <code>file.read</code>、<code>file.list</code>
-        走和工具一样的路径限制；<code>repo.status</code>、<code>repo.diff</code>、<code>repo.branches</code>、<code
-          >repo.checkout</code
-        >
-        是 <code>platform.Git</code> 的薄封装，表格测试在临时仓库里跑。
-      </li>
-      <li>基线：<code>session.created</code> 记下会话开始时的提交，审核的 diff 是工作区相对这个提交的改动。</li>
-      <li>review：diff 来源换成 <code>repo.diff</code>；文件树、选区、评论组件原样复用，评论发回对话复用输入框。</li>
-      <li>code：编辑器用 <code>file.read</code> 打开文件。</li>
-      <li>
-        git：源代码管理面板用 <code>repo.status</code> 和 <code>repo.branches</code>，切分支走
-        <code>repo.checkout</code>。
-      </li>
-      <li>
-        e2e：review、git、branch 几个 spec 在本地跑通，D4 时进 CI；worktree.spec 留到 D6，因为 worktree 现在属于认领。
-      </li>
-    </ol>
-    <p>
-      只实现：<code>platform/git</code> 的上面五个方法、六个协议方法和 SDK
-      对应方法、基线提交、三个面板的数据源替换。不做：worktree
-      和合并（S19）、从界面暂存和提交（用终端或让智能体做）、文件改动推送（S24 之后由
-      <code>repo.changed</code> 事件驱动刷新）。
-    </p>
-
-    <p class="file">D4 终端面板，桌面端重新进入检查和 CI</p>
-    <p>
-      做完以后：终端面板和 v0.3.1 完全一样：每个目录一组标签页，一个标签一个
-      shell；收起面板不杀进程，重新打开时回放输出；关闭标签才结束进程；在终端就绪前敲的键不丢；拖动改高度并记住。变化只在引擎里：v0.3.1
-      用的 node-pty 原生模块和它的补丁换成 Go 实现。最后一个依赖旧协议的面板迁完，<code>pnpm typecheck</code>
-      重新包含桌面端，knip 的 ignore 去掉，渲染进程测试和 Linux 上的 e2e 进 CI。
-    </p>
-    <p class="muted">依赖：D2、D3（工程开关要等 review、code、git 面板迁完）。</p>
-    <p>
-      v0.3.1 的实现要点，Go 侧逐条保留：shell 的选择（Windows 优先 Git Bash，按 <code>git.exe</code> 的位置或
-      <code>MERAKCODE_GIT_BASH_PATH</code> 找，找不到用 <code>COMSPEC</code>；macOS 用 <code>/bin/zsh</code>；Linux 用
-      <code>$SHELL</code>，没有就找 bash）；sh 系的 shell 加 <code>-l</code> 当登录
-      shell；环境变量继承引擎的，去掉引擎自己的令牌等敏感项，加上 <code>TERM=xterm-256color</code> 和
-      <code>MERAKCODE_TERMINAL=1</code>，Windows 上把 locale 设成 UTF-8；每个终端 2 MB
-      的输出环形缓冲，带累计字节数做光标；附着时从客户端给的光标回放，再发一条带当前光标的控制消息；一个终端可以有多个订阅者；标题和大小可改；项目关闭或引擎退出时终端进程一起结束。
-    </p>
-    <ol>
-      <li>
-        <code>platform/pty</code>（Unix 用 <code>creack/pty</code>，Windows 用 <code>golang.org/x/sys/windows</code>
-        调 ConPTY）：起一个交互 shell，写一行，读到回显；改大小；关闭。v0.3.1 为 node-pty
-        写的四个绕过逻辑变成测试用例：子进程退出后宿主进程能自己退出；退出后再 kill、write、resize
-        不报错；刚启动就写入并 kill 不会让引擎崩溃；输出管道报错不会让引擎崩溃。表格测试在 CI 的三个系统上跑。
-      </li>
-      <li>
-        <code>engine/terminal</code>：shell 选择和环境变量按上面的规则；2 MB 环形缓冲和光标；按光标回放；多订阅者；事件
-        <code>terminal.created</code
-        >、<code>terminal.updated</code>、<code>terminal.exited</code>、<code>terminal.deleted</code>；项目关闭时全部结束。v0.3.1
-        的“复用 WebSocket 对象不会串输出”和“终端在请求结束后退出不会抛到外面”两个用例照搬。
-      </li>
-      <li>
-        协议：<code>terminal.list</code>、<code>terminal.create</code>（命令、参数、目录、标题、大小）、<code>terminal.get</code>、<code>terminal.update</code>（标题、大小）、<code>terminal.remove</code>；附着走
-        11.1 节说的单独 WebSocket，地址带终端 id 和光标。帧的约定：输出是二进制帧（原始字节，界面侧流式解码
-        UTF-8），输入是文本帧，控制消息是 JSON 文本帧（目前只有光标）。
-      </li>
-      <li>
-        SDK：<code>connectTerminal</code> 在连接建立前把输入排队，建立后按原顺序发出；v0.3.1 的两个 SDK 测试（onOpen
-        里再发输入不乱序；建立前的输入不丢并且能收到输出）照搬。
-      </li>
-      <li>
-        界面：features/terminal 原样复用，只把 <code>pty.*</code> 调用和 <code>connectPty</code> 换成新名字；e2e
-        的终端用例跑通。
-      </li>
-      <li>
-        工程开关（14.1 节）：根目录 typecheck 的过滤去掉，knip 的 ignore 去掉，CI 的 test-ts 加渲染进程，新增
-        e2e-desktop；D2 到 D4 恢复的
-        spec（chat、composer、permission、tools、conversations、connect、review、git、branch 和终端用例）在 CI
-        里跑通；AGENTS.md 里“桌面端不编译”那条删除。
-      </li>
-    </ol>
-    <p>
-      只实现：pty 封装、<code>engine/terminal</code>、五个协议方法和附着通道、SDK
-      方法、面板接线、工程开关。不做：终端会话跨引擎重启持久化（v0.3.1 也没有）、智能体用终端跑命令。
-    </p>
-
-    <p class="file">D5 设置页收尾与诊断</p>
-    <p>
-      做完以后：错误提示的标题和建议来自 JSON 目录生成的
-      TypeScript；设置页有“导出诊断包”按钮；关于页同时显示桌面端和引擎的版本。
-    </p>
-    <p class="muted">依赖：S14 错误码 JSON、S16 诊断包。</p>
-    <ol>
-      <li>错误码：<code>state/error.ts</code> 用生成的目录渲染 <code>MRK-xxxx</code> 的标题和建议，现有测试复用。</li>
-      <li>诊断：按钮调 <code>diagnostics.bundle</code>，SDK 取回 blob，主进程的文件对话框保存 zip。</li>
-      <li>版本：<code>hello</code> 返回的引擎版本显示在关于页；更新检查和自动更新原样复用。</li>
-    </ol>
-    <p>只实现：错误码渲染、诊断导出、版本显示。不做：权限模式选择器（D9）、记忆界面。</p>
-
-    <div class="box note">
-      阶段 2 结束时桌面端的标准：单聊功能和 v0.3.1 持平（协作群除外）；<code>pnpm check</code> 覆盖桌面端；CI
-      跑渲染进程测试和 Linux 上的 e2e；安装包只含 Go 引擎。
-    </div>
-
-    <h3 id="phase-3">阶段 3：纳管外部产品，本地协作群能用</h3>
-
-    <p class="file">S17 Claude Code 当 Worker</p>
-    <p>
-      做完以后：<code>merak debug worker --kind claude-code "修一下 README 的错别字"</code> 启动 Claude Code
-      干活，它产生的事件和内置 Worker 的长得一样。
-    </p>
-    <ol>
-      <li>测试启动时用 <code>go build</code> 编一个假的 <code>claude</code> 二进制，按参数输出录好的 stream-json。</li>
-      <li><code>translate</code> 的黄金测试：每一行 JSON 对应哪些事件。</li>
-      <li>内置运行器和适配器对同一个任务产出的事件类型序列相同（只比类型和 <code>Cause</code> 关系）。</li>
-      <li>没有 JSON 报告时合成一份，标为“合成的”。</li>
-      <li><code>member.catalog</code> 能在 PATH 里找到那个假二进制。</li>
-    </ol>
-    <p>
-      只实现：档案（只有用到的字段）、worker 包（运行器、运行、builtin 和
-      claude-code）、内置运行器、适配器、产品探测、报告（结论、总结、是否合成）。不做：其他适配器；<code>Caps</code>
-      先只有 <code>Steer</code>；材料包先是一个字符串；MCP。
-    </p>
-
-    <p class="file">S18 第一个能跑的协作群</p>
-    <p>
-      做完以后：建一个本地群（一个 Leader、一个内置
-      Worker），开一个任务，就能看着群线程给任务建线程、任务线程建任务卡、派工，Worker 交报告，Leader 给人发总结。
-    </p>
-    <ol>
-      <li>群：建群时 <code>kind</code> 只接受 local；默认 Leader 必须是 Leader 角色的成员。</li>
-      <li>任务池：发布、派工、开工、报告、关闭的状态变化；有进行中认领的成员再派被排进队列而不是拒绝。</li>
-      <li><code>submit_report</code>：总结超长被退回并说明原因。</li>
-      <li>群状态：应用事件后目标表、任务表和成员表正确；渲染不超预算；按线程聚焦。</li>
-      <li>
-        线程与路由：人建顶层任务后出现一条任务线程（Leader 是默认 Leader）；带任务 id 的事件进任务线程，不带的进群线程。
-      </li>
-      <li>调度器（先进先出）：建任务和交报告各唤醒一次模型，中间没有事件时模型调用次数为零。</li>
-      <li>
-        端到端：假的 Leader 剧本加假的 Worker 剧本跑通，群事件流里任务事件的顺序是建卡、发布、排队、开工、交报告、关闭。
-      </li>
-    </ol>
-    <p>
-      只实现：任务包（任务卡含 Leader 字段、认领、队列、用到的状态）、群包（群、成员、kind）、leader
-      包（线程、路由、先进先出的调度器、只有三张表的群状态、摘要器）、四个编排工具（建任务、派任务、读报告、通知人）、两个群工具（交报告、汇报进度）、协议里的建群、加成员、建任务、最小材料包。不做：工作区（直接在项目目录干活）、优先级和打断、快速通道、触发规则、合并、审核、人的发言、换
-      Leader。
-    </p>
-
-    <p class="file">S19 多个成员并行，各在各的 worktree，依次合并</p>
-    <p>做完以后：两个成员同时做两个任务，各在自己的 worktree 里，做完依次合并回目标分支；冲突时出现一个集成任务。</p>
-    <ol>
-      <li>
-        临时目录里的真实 git 仓库：能建出 worktree 和分支；合并快进成功；人为制造冲突时返回冲突文件，目标分支不变。
-      </li>
-      <li>队列：两个认领同时请求合并，一个一个执行。</li>
-      <li>任务池：范围有重叠的第二个协作认领被拒。</li>
-      <li>端到端：两个任务两个成员，最后目标分支包含两份改动；冲突剧本产生集成任务并最终合并。</li>
-    </ol>
-    <p>
-      只实现：工作区包的 worktree 形态（管理器、合并、队列）、给 D3 建好的 <code>platform/git</code> 补
-      worktree、建分支和合并、<code>request_merge</code>、合并事件、冲突时建集成任务（先写死）、任务卡的范围和认领的范围。不做：其他形态、检查命令、复用、安装命令。
-    </p>
-
-    <p class="file">S20 人能随时插话，快速通道，关键节点能审核，成员排队</p>
-    <p>
-      做完以后：人在群里说话立刻有回执且 Leader 很快反应；@
-      一个成员直接到它；在任务讨论串里发言直达做这个任务的成员；标了审核的任务停下来等人看 diff；Worker 能问
-      Leader，Leader 能问人；一个成员可以排着几个任务。
-    </p>
-    <ol>
-      <li>
-        打断：假模型的流可以卡住不动，注入一条人的发言后当前步骤被取消，<code>turn.preempted</code>
-        发出，下一步的请求里有人说的话。
-      </li>
-      <li>优先级：报告和人的发言同时到，人的发言先处理；多条进度合并成一条；同一个人 2 秒内的连发合成一条。</li>
-      <li>
-        快速通道：人 @ 正在跑的成员，消息直达那个认领，Leader
-        低优先级知情；人在任务讨论串里发言直达该任务的认领；人建任务时指定成员，直接排队。
-      </li>
-      <li>回执：人发言后立刻有一条 <code>notice.sent</code> 回执，不等模型。</li>
-      <li>审核：标了审核的任务到待审后不自动完成；人通过后完成；人要求返工后原认领收到意见。</li>
-      <li>
-        <code>ask_leader</code> 到的是该任务线程；<code>ask_human</code> 一问一答走通；<code>say</code>
-        的回复出现在群事件流里。
-      </li>
-      <li>队列：成员做完当前认领后自动开始下一个；Leader 可以撤回排队中的认领。</li>
-    </ol>
-    <p>
-      只实现：队列的优先级和打断、合并与静默窗口、快速通道的前三条、回执、人的发言和 <code>group.say</code>、<code
-        >task.assign</code
-      >
-      和
-      <code>task.review</code
-      >、问答工具、<code>say</code>、成员队列、群的检查命令。不做：触发规则、暂停恢复、仅询问危险行为模式、路由表。
-    </p>
-
-    <p class="file">S21 工作区的四种形态，非代码任务</p>
-    <p>
-      做完以后：一个“整理这组文档”的任务在普通目录里干活，产物发布到产物库等人审核；一个调研任务不建目录；不认工作目录的成员原地干活并持有租约。
-    </p>
-    <ol>
-      <li>
-        <code>folder</code>：建目录、复制输入、<code>publish</code> 把声明的产物复制进产物库并登记为 blob，发
-        <code>artifact.published</code>。
-      </li>
-      <li><code>inplace</code>：持有租约时同项目的其他 inplace 和 folder 认领不能启动，worktree 认领可以。</li>
-      <li><code>none</code>：不建目录，文件工具只读。</li>
-      <li>任务卡的形态默认值：项目是仓库时 worktree，否则 folder。</li>
-    </ol>
-    <p>只实现：三种形态、发布、租约、默认值。不做：产物预览、复用。</p>
-
-    <p class="file">S22 更多种类的成员</p>
-    <p>做完以后：Codex、opencode、pi、任何支持 ACP 的智能体、任何命令行程序都能当 Worker。</p>
-    <ol>
-      <li>
-        每种适配器一个假二进制和一套黄金事件：Codex 的 JSON-RPC、opencode 的 ACP、pi 的 JSONL（含 U+2028
-        在字符串内不切行的用例）、通用 ACP、命令行。
-      </li>
-      <li>
-        <code>Caps</code>：command 类成员 <code>Steer</code> 为假，<code>Send</code> 返回不支持；Codex、opencode、ACP
-        的审批请求进我们的权限门。
-      </li>
-    </ol>
-    <p>
-      只实现：codex、opencode、pi、acp、command 五个适配器，<code>Caps</code> 补上
-      <code>Permission</code>。不做：remote、MCP 挂载（S27）。
-    </p>
-
-    <p class="file">S23 任务看板和收件箱的数据，工作周期，任务级 Leader</p>
-    <p>
-      做完以后：SDK
-      能从事件折叠出看板和收件箱；顶层任务有阶段，审核不通过能回到实施或规划；审批和问题按角色送到人的收件箱；建任务时可以指定别的
-      Leader，中途可以换。
-    </p>
-    <ol>
-      <li>SDK 的看板折叠：一串任务事件得到按状态分列的卡片；收件箱折叠：发给我的通知减去已回答的。</li>
-      <li><code>notice.sent</code> 由快速通道按路由表发出；本地单人持有全部角色时所有通知都到他。</li>
-      <li>
-        阶段：<code>set_phase</code> 和 <code>phase.changed</code>；审核“做得不对”回实施，“方向不对”回规划；受阻和取消。
-      </li>
-      <li>
-        任务级 Leader：建任务带 <code>leader</code> 时任务线程由该成员跑；<code>task.update</code> 换 Leader 后旧线程发
-        <code>thread.handed_over</code>，新线程的第一条消息里有交接摘要；两个 Leader 成员各自跑自己的线程互不影响。
-      </li>
-    </ol>
-    <p>
-      只实现：两个折叠（SDK）、通知事件和路由表的第一版、阶段状态机、<code>set_task_leader</code>
-      和线程交接。不做：界面本身（D7）、多人在线状态。
-    </p>
-
-    <p class="file">D6 协作群：建群、成员与档案、群聊</p>
-    <p>
-      做完以后：从侧栏建一个本地群，把本机探测到的产品和内置档案拉进来当成员，在群聊里说话、@
-      成员、在任务讨论串里发言，看到 Leader 的回复和成员的进度摘要。
-    </p>
-    <p class="muted">依赖：D2、S18 第一个协作群、S20 人的发言和快速通道、S22 更多成员。</p>
-    <ol>
-      <li>
-        建群：复用原来建群流程的组件（选目录、选成员），数据改成 <code>group.create</code>（kind 为 local）加
-        <code>group.addMember</code>；成员来源是 <code>member.catalog</code> 和 <code>profile.list</code>。
-      </li>
-      <li>
-        成员与档案视图：复用产品接入页的探测和连通测试表单、协作页的角色模板表单，数据改成 <code>profile.save</code> 和
-        <code>member.register</code>；能力清单驱动按钮，不能中途接收消息的成员“发消息”灰掉并提示会作为新任务派发。
-      </li>
-      <li>
-        群聊：复用消息列表渲染 <code>human.said</code>、Leader 的 <code>message.completed</code>、合并后的进度摘要和
-        <code>notice.sent</code>；输入框复用，@ 成员和任务讨论串通过
-        <code>group.say</code> 的参数表达；成员列复用座位气泡显示忙闲和当前任务。
-      </li>
-      <li>侧栏：群和单聊并列；群的未读数来自发给我的 <code>notice.sent</code>。</li>
-      <li>e2e：group 和 agents 两个 spec 改成新流程，假 Claude 二进制复用为 claude-code 成员。</li>
-    </ol>
-    <p>只实现：建群、成员与档案、群聊、侧栏。不做：看板、收件箱、审核（D7、D8）、云端群。</p>
-
-    <p class="file">D7 任务看板与收件箱</p>
-    <p>
-      做完以后：每个群有任务看板（按状态分列，按顶层任务看阶段，点开卡片看报告和实时过程）和收件箱（要我做的、告诉我的）；系统通知和托盘角标来自收件箱。
-    </p>
-    <p class="muted">依赖：D6、S23 看板和收件箱的折叠、通知路由。</p>
-    <ol>
-      <li>
-        看板：SDK
-        的看板折叠渲染成列；卡片上的操作只有建任务、取消、指派成员（<code>task.assign</code>）；状态由引擎管，不做拖拽。
-      </li>
-      <li>
-        卡片详情：报告按结构化字段渲染；过程是可展开的附件，用 <code>events.read</code> 读该认领的会话；产物列表。
-      </li>
-      <li>收件箱：SDK 的收件箱折叠；待办项点开跳到审批、问题或审核；信息项的已读状态存在主进程的本地存储里。</li>
-      <li>通知：复用 shell 的通知模块把 <code>notice.sent</code> 变成系统通知和托盘角标，notify.spec 复用。</li>
-      <li>建任务表单：标题、描述、验收标准、要不要审核、指定成员或 Leader，发 <code>task.create</code>。</li>
-    </ol>
-    <p>只实现：两个视图、卡片详情、表单、通知接线。不做：拖拽改状态、多人在线状态、产物预览。</p>
-
-    <p class="file">D8 审核任务产物</p>
-    <p>
-      做完以后：收件箱里的审核项打开一个以报告为主的审核页，有报告、工作区相对起点的
-      diff、产物、检查结果；一键通过，写意见返工，或者“方向不对”打回规划。
-    </p>
-    <p class="muted">依赖：D7、S19 worktree、S21 产物发布、S23 阶段。</p>
-    <ol>
-      <li>
-        审核页：报告在上；diff 复用 review 的 diff、文件树、评论组件，数据源是
-        <code>repo.diff</code>，基线是任务卡的起点提交；产物从 blob 取。
-      </li>
-      <li>
-        决定：通过、返工（带意见）、打回规划对应
-        <code>task.review</code> 的三种结果；返工意见送到原认领，界面上能看到成员收到了。
-      </li>
-      <li>集成任务在看板上有冲突标记，审核页列出冲突文件。</li>
-      <li>e2e：review.spec 扩成任务审核流程。</li>
-    </ol>
-    <p>只实现：审核页和三种决定。不做：行内评论逐条回传给成员（先整段意见）、产物预览。</p>
-
-    <div class="box note">
-      阶段 3 结束时桌面端的标准：本地协作群从建群到交付全程可以在界面里完成，审核以报告为主、过程可展开；v0.3.1
-      的协作群界面文件全部被新实现替代或删除。
-    </div>
-
-    <h3 id="phase-4">阶段 4：主动性、安全、扩展</h3>
-
-    <p class="file">S24 触发规则和环境监视器</p>
-    <p>
-      做完以后：有人在 MerakCode 外面提交了代码，群里知道；“docs 下的 md
-      改了就建一个同步文档的任务”这样的规则能配置、能触发；群里没事时一分钱不花。
-    </p>
-    <ol>
-      <li>git 监视器在临时仓库里检测到新提交并发 <code>repo.changed</code>；文件监视器检测到改动并排除工作区。</li>
-      <li>规则匹配事件类型和路径 glob；冷却时间内不重复触发；被规则处理掉的事件不唤醒模型。</li>
-      <li>用默认规则替换 S19 里写死的“冲突建集成任务”，行为不变。</li>
-      <li><code>event.emit</code> 和 <code>merak event emit</code> 把外部事件送进群。</li>
-    </ol>
-    <p>
-      只实现：两个监视器（轮询）、触发规则、默认规则、外部入口、群设置里的主动程度。不做：表达式语言、定时触发、系统文件通知接口。
-    </p>
-
-    <p class="file">S25 沙箱覆盖所有成员进程</p>
-    <p>
-      做完以后：每次询问和仅询问危险行为两档下，任何成员进程（内置 bash、Claude
-      Code、Codex、opencode、pi）都读不了凭据目录、写不了工作区以外的目录和保护路径、连不了没允许的网络；本机做不到其中某项时
-      <code>Status</code> 如实报告，策略按 10.3 节降级；全面接管模式从这一片起可选，选了就关沙箱；CI
-      多了三个系统的沙箱一致性 job。
-    </p>
-    <ol>
-      <li>
-        每个系统一份一致性测试：在沙箱里跑一个试图写工作区外文件的命令，失败；写工作区内，成功；读
-        <code>~/.ssh</code>，失败；写 <code>.git/hooks</code>，macOS 和 Windows 失败，Linux 断言
-        <code>Status</code>
-        报未强制且退出后文件被还原、错误里列出该路径；不存在的保护路径断言报缺失且没有被预建；访问未允许的网络，有网络强制时失败，没有时断言
-        <code>Status.Network</code> 为 <code>none</code>；通配规则 <code>*.example.com</code> 放行子域、不放行裸 IP
-        和顶域本身，拒绝列表压过允许列表。Windows
-        另加三条：写盘根下的一个目录，失败；同时启动两个认领，一个成员写另一个的工作区，失败；账户用完时第三个认领排队；<code
-          >Status.Limits</code
-        >
-        报 <code>loopback-open</code>，pi 和纯命令成员不因此多问；空闲会话占着的账户被新认领收回，会话下一轮重新租到。
-      </li>
-      <li>
-        三个系统共用的日常工具用例：<code>git --version</code>、<code>git status</code>、node 打印一行、node 往 TEMP
-        写一个文件、读用户资料目录下 ReadDeny 之外的一个普通文件、在工作区里用用户的全局身份
-        <code>git commit</code>，都成功；退出码、UTF-8 输出和参数原样回传。Windows 另加：node
-        用默认管道再起一个子进程成功；管道和 ConPTY
-        两种标准流接法都覆盖；成员进程看不到用户的交互窗口站（读不到剪贴板）；凭据失效后
-        <code>Status</code> 翻为不可用、恢复后翻回；助手自身启动失败和成员退出码 125 区分开，前者让 <code>Status</code>
-        翻为不可用，后者不影响。
-      </li>
-      <li>
-        所有运行器都经 <code>sandbox.Command</code> 启动；环境变量按白名单透传，TEMP 和 TMP 改指私有目录，Windows 上再加
-        git 的 <code>safe.directory</code>；适配器把产品状态目录加进 WriteAllow、其他产品的加进
-        ReadDeny；全面接管下返回不加限制的进程。
-      </li>
-      <li>
-        <code>Status</code>
-        报告不可用时，能转发审批的成员每个非只读调用都问人；不能转发的成员启动前问一次，拒绝则启动失败并有自己的错误码。
-      </li>
-      <li>
-        识别到的沙箱拒绝记进 <code>tool.completed</code> 的错误；代理的拒绝带主机名和成员名；回滚动过的文件列在同一处。
-      </li>
-      <li>
-        一次运行的网络白名单按 10.3 节合成：档案 <code>Network</code>、群 <code>AllowedHosts</code>、单聊的用户配置。
-      </li>
-    </ol>
-    <p>
-      只实现：三个系统的沙箱（macOS 的以 CI 为准，3.8 节）、保护路径回滚、<code>Status</code>、Windows
-      的助手子命令、接入所有运行器、全面接管模式、档案的
-      <code>Network</code> 字段、CI 的 <code>sandbox</code> job（Windows 一次性初始化和重置脚本，并删掉工作流里指向 v0.3
-      沙箱脚本的 <code>external-network</code> 步骤）。不做：Linux 的挂载命名空间和
-      seccomp、没有沙箱机制的系统上的替代方案、工作区配置的确认机制（10.5 节，S27 随 MCP 服务器一起做）。
-    </p>
-
-    <p class="file">S26 仅询问危险行为模式与审批路由</p>
-    <p>
-      做完以后：该模式下工作区内的写入不再问人，工作区外的和保护路径问 admin，合并问 owner；群里常规审批先到任务线程的
-      Leader，Leader 拿不准问人；超时任务受阻。
-    </p>
-    <ol>
-      <li>策略：该模式的允许和要问的类别各一个用例；保护路径；用户规则里的命令前缀。</li>
-      <li>
-        路由：常规类别先到任务线程的 Leader，有 approver 在线也一样；Leader
-        升级后和其他请求一样按角色找人，参与者优先；审核、计划确认和 Leader 自己发起的请求直接给人；admin 和 owner
-        级别的 Leader 批不了。
-      </li>
-      <li>超时从第一次请求算起（Leader 升级不重新计时），到了转受阻并通知 owner；“记住这次选择”写进配置。</li>
-      <li>
-        超预算（10.2 节“超预算”）：认领撞到任务卡或档案的上限后任务受阻；Leader 经 <code>update_task</code> 加预算产生
-        <code>budget</code> 请求到 owner，Leader 自己批不了；批准后任务卡多一条
-        grant，派回原成员后原会话在新上限内继续；拒绝后任务保持受阻；owner 经
-        <code>task.update</code> 加预算直接生效；单聊里 <code>session.send</code> 带
-        <code>extendBudget</code> 再给一份档案预算，不带的被拒。
-      </li>
-    </ol>
-    <p>
-      只实现：该模式的策略、路由算法、<code>approve</code> 工具、超时、记住选择、超预算的申请和 grant、单聊的
-      <code>extendBudget</code>。不做：规则编辑界面、按成员或按群的总预算。
-    </p>
-
-    <p class="file">S27 MCP：客户端与服务端</p>
-    <p>
-      做完以后：用户配置和确认过的工作区配置里的 MCP 服务器，它们的工具成为延迟工具；外部 Worker 经
-      <code>merak mcp --claim C --as worker</code> 拿到群工具并能交结构化报告；<code
-        >merak mcp --thread T --as leader</code
-      >
-      能把编排工具暴露给外部程序。
-    </p>
-    <ol>
-      <li>
-        配置：解析两个文件名、注释和尾逗号、两个文件同时存在、未知字段、字段校验；用户配置与工作区同名时用户的生效；<code
-          >config.get</code
-        >
-        不给 <code>env</code> 的值。
-      </li>
-      <li>
-        确认：工作区的服务器第一次出现时不启动并发出
-        <code>workspace</code>
-        请求；确认后下一次会话启动它；拒绝后不再问；改了这一项会再问，改注释或别的服务器不会；同一项目的另一个工作树不再问。
-      </li>
-      <li>
-        MCP 客户端在沙箱里连一个测试用的 MCP 服务器，它的工具成为延迟工具 <code>mcp__服务器名__工具名</code>，经
-        <code>load_tools</code> 和 <code>call_tool</code> 可用；启动失败的服务器被跳过，会话照常继续。
-      </li>
-      <li>
-        ACP：<code>merak acp</code> 的 <code>session/new</code> 带一台 stdio 服务器，它的工具这条会话就可用；带 http 或
-        sse 的被拒；用户配置里的同名服务器优先；工作区的确认请求以 <code>session/request_permission</code> 送到客户端。
-      </li>
-      <li>
-        MCP 服务端（worker）：一个测试客户端能调 <code>submit_report</code>，报告出现在任务上；Claude Code 假二进制经
-        <code>--mcp-config</code> 连上它。
-      </li>
-      <li>
-        MCP 服务端（leader）：一个测试客户端能调
-        <code>create_task</code>，任务出现在线程的任务子树里；越权（在别的任务下建任务）被拒。
-      </li>
-    </ol>
-    <p>
-      只实现：10.5 节的 <code>mcpServers</code>（用户配置、工作区文件、ACP 客户端传入）、<code>workspaceTrust</code>
-      确认记录、stdio 的 MCP 客户端、MCP 服务端两种角色、各适配器的 MCP 挂载配置、<code>Caps.MCP</code>。不做：远程 MCP
-      服务器、<code>config.set</code>
-      和设置页编辑 MCP 服务器、工作区配置的其他字段、技能、插件。
-    </p>
-
-    <p class="file">S28 外部产品当 Leader</p>
-    <p>做完以后：可以指定 Claude Code 当一个任务的 Leader，它通过 MCP 建子任务、派工、批审批、在讨论串里回复人。</p>
-    <ol>
-      <li>调度器把摘要经 <code>Send</code> 送给外部 Leader（假二进制），它调 MCP 工具，群状态按预期变化。</li>
-      <li>路由给该线程的审批以消息送达，它调 <code>approve</code> 回答。</li>
-      <li>队长提示词作为第一条消息送达，内置 Leader 和外部 Leader 用同一份模板。</li>
-    </ol>
-    <p>只实现：Leader 侧的运行器抽象（内置和外部走同一个调度器）、队长模板。不做：外部 Leader 的上下文管理。</p>
-
-    <p class="file">S29 worktree 优化，限流与哨兵</p>
-    <p>
-      做完以后：认领开始时自动跑安装命令；用过的 worktree 复用，node_modules
-      不用重装；每条线程和每个群都有每分钟次数上限，两个数在群设置里可改；哨兵发现卡住、死进程、原地打转、预算烧得太快时提醒相关的人和线程。
-    </p>
-    <ol>
-      <li><code>setup</code> 命令在工作区建好后运行一次，失败时任务受阻并附日志。</li>
-      <li>复用：释放的 worktree 被下一个认领重置后使用，被 git 忽略的目录保留。</li>
-      <li>
-        限流（6.2 节
-        <code>TurnLimits</code
-        >）：线程超过每分钟次数、群合计超过每分钟次数时事件继续攒着，快速通道照常，不发事件；名额空出来时没有新事件也会自己醒来，攒着的事件一个不丢地进下一批；群设置没写
-        <code>turnsPerMinute</code> 时用 6 和 30；改了以后下一次唤醒就按新值；0、负数和非整数被
-        <code>group.update</code> 拒绝。
-      </li>
-      <li>
-        哨兵：6.2 节表里的每条规则一个测试；发现时发
-        <code>sentinel.flagged</code> 并路由到线程和收件箱；每分钟检查一次，不调模型。
-      </li>
-    </ol>
-    <p>
-      只实现：安装命令、复用池、两项每分钟限制和群设置的 <code>turnsPerMinute</code>、哨兵的八条规则。不做：每小时的
-      token 和费用上限、按成员的预算、用模型判断“是否在原地打转”。
-    </p>
-
-    <p class="file">D9 权限模式、沙箱状态、上下文与花费</p>
-    <p>
-      做完以后：设置里能选三档权限模式并看到风险提示；对话和群里能看到沙箱状态（可用、部分强制、不可用、已关闭）；每条会话有“上下文花在哪了”，每个群有按任务和成员汇总的
-      token 和费用；群设置里能改线程和群的每分钟次数；哨兵的提醒进收件箱。
-    </p>
-    <p class="muted">依赖：D7、S25 沙箱、S26 仅询问危险行为模式、S29 限流与哨兵。</p>
-    <ol>
-      <li>
-        权限模式选择器：复用权限级别组件和接管确认对话框；选全面接管时弹风险提示；经 <code>config.set</code> 生效。
-      </li>
-      <li>
-        沙箱状态：复用沙箱控制组件（含 Windows
-        的一次性初始化入口）显示可用、部分强制（列出未强制的项）、不可用、已关闭四种状态。
-      </li>
-      <li>
-        上下文与花费视图：<code>session.budget</code> 画成分段条；<code>turn.finished</code>
-        的用量按任务和成员汇总成表，费用按币种分列，不换算，未知费用显示“未知”。
-      </li>
-      <li>
-        每分钟次数：群设置里两个数字输入框（线程、群），显示当前值或默认值 6 和 30，经 <code>group.update</code>
-        保存；没有改群设置权限的人只读；引擎拒绝的值显示错误码。
-      </li>
-      <li><code>sentinel.flagged</code> 进收件箱并发系统通知。</li>
-    </ol>
-    <p>
-      只实现：选择器、沙箱状态、花费视图、每分钟次数的两个输入框、哨兵通知。不做：权限规则编辑界面、群设置的其他项、按成员设预算。
-    </p>
-
-    <h3 id="phase-5">阶段 5：云端</h3>
-
-    <p class="file">S30 设备链接与云端群</p>
-    <p>
-      做完以后：有账号时引擎连上云端；建群时选云端，群的请求转发到云端，云端能把任务派到本机成员，本机能跑云端 Leader
-      下发的只读代码工具；没账号时一切照旧；对着本机开发模式部署的云端能跑通。
-    </p>
-    <ol>
-      <li>用 <code>Null</code> 实现时所有现有测试不变；建群选 cloud 而没有账号时返回带错误码的错误。</li>
-      <li>
-        测试里起一个假云端（Go 服务器）：收到本机报告的成员列表；<code>group.create</code>（cloud）被
-        <code>Forward</code> 到它。
-      </li>
-      <li>
-        假云端下发一个任务后，本机成员运行并把事件传上来；下发的审批回复让等待的运行继续；下发的
-        <code>ToolCall</code> 在本机沙箱里跑并回传结果。
-      </li>
-      <li>本机退出前，云端群里的本机认领被标为中断并上传。</li>
-    </ol>
-    <p>
-      只实现：<code>internal/cloud</code>（接口、Null、WebSocket 实现）、<code>Forward</code>、<code>ToolCall</code>
-      代执行、令牌存进系统凭据库、<code>merak cloud login</code>。不做：云端服务本身、账号界面。
-    </p>
-
-    <p class="file">S31 远程 MerakCode 成员</p>
-    <p>
-      做完以后：局域网里另一台电脑上 <code>merak serve</code> 名下的任何成员都能作为 Worker
-      拉进本地群；它改的代码经仓库远端回到本机合并。
-    </p>
-    <ol>
-      <li>
-        两个真实的 <code>merak serve</code> 在随机端口上：A 列出 B 的成员和它们声明的检出；A 把一个 <code>none</code>
-        任务派给 B 的成员，事件和报告在 A 的群流里出现。
-      </li>
-      <li>
-        往返：一个裸仓库当远端，A 和 B 各有检出，A 的群项目是 A 的检出；一个 <code>worktree</code> 任务派给 B 的成员，B
-        在自己的检出里建 worktree 干活，<code>request_merge</code> 时推分支；A fetch
-        后合并队列变基、跑检查命令、快进，<code>merge.done</code> 在 A 的流里出现，远端上的分支被删掉。
-      </li>
-      <li>
-        拒绝：把远程成员设为默认 Leader 或任务 Leader；给远程成员派 <code>folder</code> 任务；群项目没有远端时派
-        <code>worktree</code> 任务。三种都返回错误码。
-      </li>
-      <li>B 断线：它名下进行中的认领在 A 这边标为中断。</li>
-    </ol>
-    <p>
-      只实现：remote 适配器（经 Go 协议客户端）、手动填地址和令牌、注册时声明检出、<code>worktree</code> 和
-      <code>none</code> 两种形态、经远端的往返。不做：自动发现、远程 Leader、远程成员的 <code>folder</code> 和
-      <code>inplace</code> 形态、跨设备传产物文件。
-    </p>
-
-    <p class="file">D10 云端登录与云端群</p>
-    <p>
-      做完以后：设置里登录云端账号；建群时可以选云端；云端群的群聊、看板、收件箱和本地群用同一套界面；局域网里另一台
-      MerakCode 的成员能拉进本地群。
-    </p>
-    <p class="muted">依赖：D7、S30 设备链接、S31 远程成员。</p>
-    <ol>
-      <li>
-        登录：协议方法
-        <code>cloud.login</code>、<code>cloud.logout</code>（令牌只在引擎里）；设置页显示账号和本设备的在线状态。
-      </li>
-      <li>建群：kind 可选 cloud；没登录时灰掉并提示；云端群的事件经本机引擎转发，界面不区分本地群和云端群。</li>
-      <li>
-        远程成员：加成员时可以填另一台 <code>merak serve</code>
-        的地址和令牌，列出对方的成员；没有声明本群项目远端检出的成员标明“只能接不改代码的任务”。
-      </li>
-    </ol>
-    <p>
-      只实现：登录、建群选项、远程成员表单。不做：网页端、手机端、把成员分享给别人的界面（放在云端仓库的网页端里）。
-    </p>
-
-    <p>
-      阶段 2 结束后、与阶段 3 并行：云端服务仓库起步，只做设备链接协议的服务端和 SQLite 宿主（13.4 节）。阶段 5
-      之后再排：云端的正式部署；<code>release.yml</code>
-      和发布流程；网页端；技能、插件、斜杠命令；LSP；定时任务；记忆整理；产物预览；系统文件通知接口；<code
-        >merak service install</code
-      >。
+      和发布流程、网页端、项目组。
     </p>
 
     <h2 id="tdd">16. 测试怎么做</h2>
@@ -7255,7 +6631,7 @@ export function applyToInbox(inbox: Inbox, e: Event, me: MemberId): Inbox // not
       <li>不写规则语言。触发规则的条件只支持路径 glob；权限规则只支持路径前缀和命令前缀。</li>
       <li>不预留。不为“以后”留字段、接口、TODO、空包。能力清单只有三项。</li>
       <li>
-        包从少开始。允许先把 <code>profile</code> 放在 <code>group</code> 里、把材料包放在
+        包从少开始。允许先把 <code>agent</code> 放在 <code>group</code> 里、把材料包放在
         <code>leader</code> 里，有第二个使用者再拆。<code>engine/</code> 下不超过两层。
       </li>
       <li>
