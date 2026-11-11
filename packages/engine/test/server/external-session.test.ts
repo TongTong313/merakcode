@@ -28,29 +28,74 @@ test.each([
   "queued external tasks use live %s to %s mode at startup",
   async (original, latest) => {
     await using tmp = await tmpdir()
-    await configureConnections({
-      "mode-fixture": {
-        command: process.execPath,
-        adapter: "member",
-        args: [...Runtime.execArgv(), path.join(import.meta.dirname, "fixture/external-adapter.ts"), "mode-at-start"],
-      },
-    })
+    const productID = `mode-fixture-${original}-${latest}`
+    const install = () =>
+      configureConnections({
+        [productID]: {
+          command: process.execPath,
+          adapter: "member",
+          args: [...Runtime.execArgv(), path.join(import.meta.dirname, "fixture/external-adapter.ts"), "mode-at-start"],
+        },
+      })
     const app = Server.App()
     const request = (url: string, body?: unknown) =>
       app.request(
         `${url}?directory=${encodeURIComponent(tmp.path)}`,
         body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {},
       )
-    const created = await (
-      await request("/session", { title: "Queued mode", target: { kind: "external", productID: "mode-fixture" } })
-    ).json()
+    let created = { id: "" }
+    let createdBody = ""
+    let createdStatus = 0
+    for (let attempt = 0; ; attempt++) {
+      await install()
+      const createdResponse = await request("/session", {
+        title: "Queued mode",
+        target: { kind: "external", productID },
+      })
+      createdBody = await createdResponse.text()
+      createdStatus = createdResponse.status
+      if (createdStatus === 200) {
+        created = JSON.parse(createdBody) as { id: string }
+        break
+      }
+      // Parallel workers can briefly clear the shared global products map between install and create.
+      if (attempt >= 8) break
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)))
+    }
+    expect(createdStatus, createdBody).toBe(200)
+    expect(created.id).toMatch(/^ses/)
     const gate = path.join(tmp.path, "release-first")
     const messages = async () => (await (await request(`/session/${created.id}/message`)).json()) as Message.FullMsg[]
+    const setPermissionLevel = async (permissionLevel: typeof original | typeof latest, expectedRevision: number) => {
+      let revision = expectedRevision
+      for (let attempt = 0; ; attempt++) {
+        const response = await request(`/session/${created.id}/permission-level`, {
+          permissionLevel,
+          expectedRevision: revision,
+        })
+        if (response.status === 200) return response
+        // A parallel worker can tear down Instance after the write lands. Read the session back before retrying.
+        const current = await request(`/session/${created.id}`)
+        if (current.status === 200) {
+          const session = (await current.json()) as {
+            permissionLevel?: string
+            permissionRevision?: number
+          }
+          if (session.permissionLevel === permissionLevel) {
+            return new Response(JSON.stringify(session), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+          }
+          revision = session.permissionRevision ?? revision
+        }
+        if (response.status < 500 || attempt >= 8) return response
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)))
+      }
+    }
     try {
-      expect(
-        (await request(`/session/${created.id}/permission-level`, { permissionLevel: original, expectedRevision: 0 }))
-          .status,
-      ).toBe(200)
+      const first = await setPermissionLevel(original, 0)
+      expect(first.status, await first.text()).toBe(200)
       expect(
         (
           await request(`/session/${created.id}/prompt_async`, {
@@ -78,14 +123,8 @@ test.each([
         ).status,
       ).toBe(204)
       await expect.poll(async () => (await messages()).filter((message) => message.info.role === "user").length).toBe(2)
-      expect(
-        (
-          await request(`/session/${created.id}/permission-level`, {
-            permissionLevel: latest,
-            expectedRevision: original === "ask" ? 0 : 1,
-          })
-        ).status,
-      ).toBe(200)
+      const second = await setPermissionLevel(latest, original === "ask" ? 0 : 1)
+      expect(second.status, await second.text()).toBe(200)
       await fs.writeFile(gate, "release")
       await expect
         .poll(

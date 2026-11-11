@@ -878,9 +878,13 @@ export namespace Loop {
   export async function cancelAndSettle(sessionID: string) {
     // Capture the owner before cancel removes its entry. Wait for its normal
     // settlement before ACK, subject to awaitLoopStopped's 3s safety limit.
-    const done = state()[sessionID]?.done?.promise
+    const entry = state()[sessionID]
+    const done = entry?.done?.promise
+    const releaseCheckout = entry?.releaseCheckout
     cancel(sessionID)
     await Promise.all([awaitLoopStopped(done), reconciliations().get(sessionID)])
+    // If the owner never settled (stuck shell on Windows), drop its checkout hold so later switches are not blocked.
+    releaseCheckout?.()
   }
 
   /** Interrupt only the active turn, preserving accepted prompts for FIFO execution. */
@@ -922,7 +926,8 @@ export namespace Loop {
     void LoopExecution.run(undefined, async () => {
       // Cancellation ACK has a bounded wait; queue execution requires actual
       // settlement so an old tool or processor cannot overlap the next turn.
-      await Promise.all([previous.done.promise, reconciliation])
+      // Cap the wait: a stuck shell must not keep this replacement owner holding the checkout forever.
+      await Promise.all([awaitLoopStopped(previous.done.promise), reconciliation])
       if (controller.signal.aborted || state()[sessionID] !== self) {
         self.done.resolve()
         self.releaseCheckout()
@@ -3684,16 +3689,18 @@ export namespace Loop {
     using _ = defer(() => {
       // Release loop-stopped waiters: the command body has finished (or settled after abort), so resolving is safe.
       self?.done.resolve()
-      // If no queued callbacks, cancel (the default)
-      const callbacks = state()[input.sessionID]?.callbacks ?? []
-      if (callbacks.length === 0) {
+      // If no queued callbacks, cancel (the default). Pass the owner so a replaced loop is not cancelled.
+      const current = state()[input.sessionID]
+      if (!current || current.abort === controller) {
         self?.releaseCheckout()
-        cancel(input.sessionID)
+        if ((current?.callbacks.length ?? 0) === 0) cancel(input.sessionID, controller)
+        else {
+          run({ sessionID: input.sessionID, resume_existing: true }).catch((error) => {
+            log.error("session loop failed to resume after shell command", { sessionID: input.sessionID, error })
+          })
+        }
       } else {
-        // Otherwise, trigger the session loop to process queued items
-        run({ sessionID: input.sessionID, resume_existing: true }).catch((error) => {
-          log.error("session loop failed to resume after shell command", { sessionID: input.sessionID, error })
-        })
+        self?.releaseCheckout()
       }
     })
 
@@ -3831,6 +3838,8 @@ export namespace Loop {
     const proc = spawn(shell, args, {
       cwd,
       detached: process.platform !== "win32",
+      // CI Windows runners hang when a console window is allocated for the shell child.
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,

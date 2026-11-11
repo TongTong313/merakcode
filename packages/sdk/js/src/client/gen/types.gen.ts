@@ -2233,11 +2233,16 @@ export type File = {
 }
 
 export type FileContent = {
+  baselines?: {
+    head: string
+    index: string
+  }
   checksum?: string
   content: string
   diff?: string
   encoding?: "base64"
   mimeType?: string
+  missing?: boolean
   patch?: {
     hunks: Array<{
       lines: Array<string>
@@ -2271,6 +2276,11 @@ export type FileDiffOutput = {
   deletions: number
   file: string
   status?: "added" | "deleted" | "modified"
+}
+
+export type FileIdentity = {
+  directory: string
+  path: string
 }
 
 export type FileNode = {
@@ -3436,9 +3446,20 @@ export type Pty = {
   command: string
   cwd: string
   id: string
+  owner?: PtyOwnerOutput
   pid: number
   status: "exited" | "running"
   title: string
+}
+
+export type PtyOwner = {
+  sessionID?: string
+  tabID: string
+}
+
+export type PtyOwnerOutput = {
+  sessionID?: string
+  tabID: string
 }
 
 export type QuestionAnswer = Array<string>
@@ -6055,6 +6076,7 @@ export type FileWriteData = {
   body: {
     checksum?: string
     content: string
+    expectedCheckout?: string | null
     path: string
   }
   path?: never
@@ -6074,6 +6096,7 @@ export type FileWriteErrors = {
    */
   409:
     | CheckoutBlockedError
+    | CheckoutStaleError
     | {
         currentChecksum: string
         error: string
@@ -6087,11 +6110,44 @@ export type FileWriteResponses = {
    * File written successfully
    */
   200: {
+    checksum: string
     ok: boolean
   }
 }
 
 export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
+
+export type FileIdentityData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    path: string
+  }
+  url: "/file/identity"
+}
+
+export type FileIdentityErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Internal server error
+   */
+  500: ErrorResponse
+}
+
+export type FileIdentityError = FileIdentityErrors[keyof FileIdentityErrors]
+
+export type FileIdentityResponses = {
+  /**
+   * Resolved file identity
+   */
+  200: FileIdentity
+}
+
+export type FileIdentityResponse = FileIdentityResponses[keyof FileIdentityResponses]
 
 export type FileStatusData = {
   body?: never
@@ -8060,6 +8116,7 @@ export type PtyCreateData = {
     env?: {
       [key: string]: string
     }
+    owner?: PtyOwner
     size?: {
       cols: number
       rows: number
@@ -8090,6 +8147,39 @@ export type PtyCreateResponses = {
 }
 
 export type PtyCreateResponse = PtyCreateResponses[keyof PtyCreateResponses]
+
+export type PtyCloseOwnedData = {
+  body: {
+    owner: PtyOwner
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/pty/close-owned"
+}
+
+export type PtyCloseOwnedErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+}
+
+export type PtyCloseOwnedError = PtyCloseOwnedErrors[keyof PtyCloseOwnedErrors]
+
+export type PtyCloseOwnedResponses = {
+  /**
+   * Terminal owner closed
+   */
+  200: boolean
+}
+
+export type PtyCloseOwnedResponse = PtyCloseOwnedResponses[keyof PtyCloseOwnedResponses]
 
 export type PtyRemoveData = {
   body?: never
@@ -8167,6 +8257,7 @@ export type PtyGetResponse = PtyGetResponses[keyof PtyGetResponses]
 
 export type PtyUpdateData = {
   body?: {
+    owner?: PtyOwner
     size?: {
       cols: number
       rows: number
@@ -8187,6 +8278,10 @@ export type PtyUpdateErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
 }
 
 export type PtyUpdateError = PtyUpdateErrors[keyof PtyUpdateErrors]
@@ -10492,6 +10587,10 @@ export type SkillUninstallErrors = {
    * Bad request
    */
   400: ErrorResponse
+  /**
+   * Forbidden
+   */
+  403: ErrorResponse
 }
 
 export type SkillUninstallError = SkillUninstallErrors[keyof SkillUninstallErrors]

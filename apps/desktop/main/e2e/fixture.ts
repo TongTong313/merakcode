@@ -17,7 +17,7 @@ import {
   type TestInfo,
 } from "@playwright/test"
 import { createServer, type Server } from "node:http"
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
@@ -67,6 +67,8 @@ export type Kit = {
   settings: (section?: RegExp) => Promise<void>
   /** Right-hand side panel */
   panel: () => Locator
+  openPanel: (kind: "file" | "review" | "plan" | "git" | "browser" | "terminal", fresh?: boolean) => Promise<void>
+  restart: (crash?: boolean) => Promise<void>
   /** Runs git in the project directory */
   git: (...args: string[]) => string
 }
@@ -195,6 +197,13 @@ export const test = base.extend<{
   kit: async ({ script, config, git }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
     await seedCatalog(root)
+    // Reuse the installed dependency, as the SDK fixtures do; UI tests must not wait for a registry install.
+    await mkdir(path.join(root, "node_modules"), { recursive: true })
+    await symlink(
+      path.dirname(createRequire(path.join(main, "package.json")).resolve("zod")),
+      path.join(root, "node_modules/zod"),
+      process.platform === "win32" ? "junction" : "dir",
+    )
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
     await writeFile(path.join(project, "notes.txt"), "hello from e2e\n")
@@ -244,26 +253,29 @@ export const test = base.extend<{
           entry[0] !== "ELECTRON_RUN_AS_NODE" && !/_API_KEY$/i.test(entry[0]) && entry[1] !== undefined,
       ),
     )
-    const app = await _electron.launch({
-      executablePath: electron,
-      args: [
-        main,
-        ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
-        `--user-data-dir=${path.join(root, "electron")}`,
-        `merakcode://open-project?directory=${encodeURIComponent(project)}`,
-      ],
-      env: {
-        ...env,
-        MERAKCODE_HOME: root,
-        MERAKCODE_DISABLE_AUTOUPDATE: "1",
-        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
-        MERAKCODE_SANDBOX_MODE: "off",
-        MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
-        MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
-      },
-      timeout: 60_000,
-    })
-    const page = await app.firstWindow()
+    const launch = () =>
+      _electron.launch({
+        executablePath: electron,
+        args: [
+          main,
+          ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
+          `--user-data-dir=${path.join(root, "electron")}`,
+          `merakcode://open-project?directory=${encodeURIComponent(project)}`,
+        ],
+        env: {
+          ...env,
+          MERAKCODE_HOME: root,
+          MERAKCODE_DISABLE_AUTOUPDATE: "1",
+          MERAKCODE_DISABLE_CATALOG_FETCH: "1",
+          MERAKCODE_SANDBOX_MODE: "off",
+          MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
+          MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
+          MERAKCODE_BROWSER_LEAVE_UNLOAD: "1",
+        },
+        timeout: 60_000,
+      })
+    let app = await launch()
+    let page = await app.firstWindow()
     const output: string[] = []
     page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
     page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
@@ -315,13 +327,75 @@ export const test = base.extend<{
       if (section) await page.getByText(section).filter({ visible: true }).first().click()
     }
     const panel = () => page.getByRole("complementary", { name: /^(右侧面板|Side panel)$/ })
+    const openPanel: Kit["openPanel"] = async (kind, fresh = false) => {
+      if (!(await panel().isVisible())) await page.getByRole("button", { name: "右侧面板", exact: true }).click()
+      const names = {
+        file: "打开文件",
+        review: "审阅",
+        plan: "计划",
+        git: "Git 管理",
+        browser: "浏览器",
+        terminal: "终端",
+      }
+      const known = panel()
+        .getByRole("tab", { name: kind === "file" ? /^notes\.txt/ : new RegExp(`^${names[kind]}`) })
+        .last()
+      if (!fresh && (await known.isVisible())) {
+        await known.click()
+        return
+      }
+      await panel().getByRole("button", { name: "新标签页", exact: true }).click()
+      await panel().getByRole("button", { name: names[kind], exact: true }).click()
+    }
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
-    const tracing = app.context().tracing
+    let tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
-    const appProcess = app.process()
+    let appProcess = app.process()
     await use({
-      app,
-      page,
+      get app() {
+        return app
+      },
+      get page() {
+        return page
+      },
+      restart: async (crash = false) => {
+        await tracing.stop()
+        if (crash) {
+          const exited = new Promise<void>((resolve) => appProcess.once("exit", () => resolve()))
+          await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
+          await exited
+        } else {
+          void app.close().catch(() => {})
+          const dialog = page.getByRole("dialog", { name: /^(关闭窗口？|Close window\?)$/ })
+          if (
+            await dialog.waitFor({ timeout: 3000 }).then(
+              () => true,
+              () => false,
+            )
+          )
+            await dialog.getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ }).click()
+          // Do not await Playwright's close promise: a stuck main process can pin that action until test timeout.
+          const deadline = Date.now() + 15_000
+          while (Date.now() < deadline && appProcess.exitCode === null && appProcess.signalCode === null)
+            await new Promise<void>((resolve) => setTimeout(resolve, 250))
+          if (appProcess.exitCode === null && appProcess.signalCode === null) {
+            try {
+              appProcess.kill("SIGKILL")
+            } catch {}
+            const forceDeadline = Date.now() + 5_000
+            while (Date.now() < forceDeadline && appProcess.exitCode === null && appProcess.signalCode === null)
+              await new Promise<void>((resolve) => setTimeout(resolve, 100))
+          }
+        }
+        app = await launch()
+        appProcess = app.process()
+        page = await app.firstWindow()
+        page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
+        page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
+        tracing = app.context().tracing
+        await tracing.start({ screenshots: true, snapshots: true, sources: true })
+        await input().waitFor({ timeout: 120_000 })
+      },
       project,
       root,
       requests: fake.count,
@@ -334,6 +408,7 @@ export const test = base.extend<{
       approval,
       settings,
       panel,
+      openPanel,
       git: run,
     })
     const alreadyExited = appProcess.exitCode !== null || appProcess.signalCode !== null
@@ -342,7 +417,29 @@ export const test = base.extend<{
       await tracing.stop({ path: trace })
       await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
     } else if (!alreadyExited) await tracing.stop()
-    await app.close().catch(() => undefined)
+    void app.close().catch(() => undefined)
+    const closeDialog = page.getByRole("dialog", { name: /^(关闭窗口？|Close window\?)$/ })
+    if (
+      await closeDialog.waitFor({ timeout: 3000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      await closeDialog
+        .getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ })
+        .click()
+        .catch(() => {})
+    const teardownDeadline = Date.now() + 15_000
+    while (Date.now() < teardownDeadline && appProcess.exitCode === null && appProcess.signalCode === null)
+      await new Promise<void>((resolve) => setTimeout(resolve, 250))
+    if (appProcess.exitCode === null && appProcess.signalCode === null) {
+      try {
+        appProcess.kill("SIGKILL")
+      } catch {}
+      const forceDeadline = Date.now() + 5_000
+      while (Date.now() < forceDeadline && appProcess.exitCode === null && appProcess.signalCode === null)
+        await new Promise<void>((resolve) => setTimeout(resolve, 100))
+    }
     fake.close()
     const initializedSandbox = await readFile(path.join(root, "data", "sandbox", "state.json")).then(
       () => true,

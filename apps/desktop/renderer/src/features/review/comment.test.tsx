@@ -5,6 +5,7 @@ import { readFile, writeFile } from "node:fs/promises"
 import { createMerakCode, type MerakCode, type MerakCodeSession } from "@merakcode/sdk"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest"
 import { render } from "solid-js/web"
+import { createSignal, Show } from "solid-js"
 import { engine, sandbox, type Sandbox } from "../../../../../../packages/sdk/js/test/fixture/engine"
 import { fakeModel, type Reply, type Turn } from "../../../../../../packages/sdk/js/test/fixture/model"
 import { setLocale, t } from "../../i18n"
@@ -12,7 +13,14 @@ import { ensureSession, reload, refreshVcs, openFolder } from "../../state/store
 import { ReviewPanel } from "./review"
 import { ReviewFull } from "./full"
 import { SourceControl } from "../git/source-control"
-import { clearComments, openReview, setReview, useReview } from "./state"
+import { clearComments, setReview, useReview } from "./state"
+import { releaseReview as releaseReviewResources } from "./state"
+import { releaseReviewDrafts } from "./compose"
+import { unsavedReason } from "../../state/git"
+import { persistent } from "../../lib/persistence"
+import { Panel } from "../panel/panel"
+import { flushPanels, openPanel, selectPanels } from "../panel/workspace"
+import { commentsSending } from "./comments"
 
 let env: Sandbox
 let merak: MerakCode
@@ -98,7 +106,7 @@ beforeEach(async () => {
   await refreshVcs(env.project)
 })
 
-afterEach(() => {
+afterEach(async () => {
   releaseReview()
   reviewGate = undefined
   releasePrompt()
@@ -109,6 +117,7 @@ afterEach(() => {
   host?.remove()
   clearComments(session.id)
   setReview({ commenting: undefined, selecting: undefined, messageID: undefined })
+  await eventually(async () => (await merak.client.session.status()).data?.[session.id]?.type ?? "idle").toBe("idle")
 })
 
 async function mount(style: "unified" | "split" = "unified", directory = env.project) {
@@ -157,6 +166,20 @@ test("line feedback is added through the real SDK-backed review", async () => {
   expect(host.querySelector(".line-comment")?.textContent).toContain("Use 2 here")
   expect(host.querySelector(".comment-excerpt")?.textContent).toBe("+two")
   expect(await readFile(path.join(env.project, file), "utf8")).toBe(edited)
+})
+
+test("deleting a conversation releases both saved feedback and inline draft ownership", async () => {
+  await mount()
+  await comment()
+  input("Saved feedback before deletion")
+  save()
+  await comment()
+  input("Inline draft before deletion")
+  expect(unsavedReason(env.project)).toBe(t("git.blocked.comments"))
+  dispose()
+  releaseReviewResources(env.project, session.id, true)
+  releaseReviewDrafts(env.project, session.id)
+  expect(unsavedReason(env.project)).toBeUndefined()
 })
 
 test("relocating feedback onto another draft preserves both texts", async () => {
@@ -307,15 +330,15 @@ test("identical code in another turn does not inherit the earlier turn's active 
   await edit("a\nintermediate\nb\n")
   await edit(edited)
   const users = (await session.messages()).filter((message) => message.info.role === "user")
-  openReview({ scope: "turn", messageID: users[0]!.info.id })
+  setReview({ scope: "turn", messageID: users[0]!.info.id })
   await mount()
   await comment()
   input("Feedback for the earlier turn")
-  openReview({ scope: "turn", messageID: users.at(-1)!.info.id })
+  setReview({ scope: "turn", messageID: users.at(-1)!.info.id })
   await eventually(() => box()).toBeNull()
   expect(host.querySelectorAll(".selected-code")).toHaveLength(0)
   expect(host.querySelector(".review-draft")?.textContent).toContain("Feedback for the earlier turn")
-  openReview({ scope: "turn", messageID: users[0]!.info.id })
+  setReview({ scope: "turn", messageID: users[0]!.info.id })
   await eventually(() => box()?.value).toBe("Feedback for the earlier turn")
 })
 
@@ -506,4 +529,57 @@ test("feedback relocated during submission stays pending when the earlier send s
   await eventually(() => button(t("review.send"))?.disabled).not.toBe(true)
   expect(feedback()).toContain("Feedback moves to the other file")
   expect(host.querySelector(".pending-comments")?.textContent).toContain(t("review.pending", { count: 1 }))
+})
+
+test("hiding review while accepted feedback is persisting cannot restore the submitted comments", async () => {
+  const owner = await selectPanels({ directory: env.project, sessionID: session.id })
+  await openPanel({ kind: "review", view: { scope: "session" } })
+  const [visible, setVisible] = createSignal(true)
+  host = document.createElement("div")
+  document.body.append(host)
+  dispose = render(
+    () => (
+      <Show when={visible()}>
+        <Panel sessionID={session.id} directory={env.project} folder={env.project} />
+      </Show>
+    ),
+    host,
+  )
+  await comment().catch((error: unknown) => {
+    throw new Error(`Review was not ready: ${host.textContent}\n${JSON.stringify(traffic.slice(-8))}`, { cause: error })
+  })
+  input("Accepted feedback must stay cleared")
+  save()
+  await owner.flush()
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const originalSet = persistent.set
+  const storage = vi.spyOn(persistent, "set").mockImplementation(async (bucket, key, value) => {
+    if (bucket.startsWith("panels-")) {
+      const layout = JSON.parse(value)
+      const comments = layout.tabs.find((tab: { kind: string }) => tab.kind === "review")?.view?.comments?.[session.id]
+      if (Array.isArray(comments) && comments.length === 0) {
+        entered.resolve()
+        await release.promise
+      }
+    }
+    await originalSet(bucket, key, value)
+  })
+  try {
+    script = () => ({ text: "Feedback received" })
+    button(t("review.send")).click()
+    await entered.promise
+    setVisible(false)
+    release.resolve()
+    await eventually(() => commentsSending(session.id, env.project)).toBe(false)
+    await flushPanels()
+    setVisible(true)
+    await eventually(() => !!host.querySelector(".line-comment-add")).toBe(true)
+    expect(host.querySelector(".pending-comments")).toBeNull()
+  } finally {
+    release.resolve()
+    storage.mockRestore()
+    dispose()
+    await selectPanels({ directory: env.project, sessionID: crypto.randomUUID() })
+  }
 })

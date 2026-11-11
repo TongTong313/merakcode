@@ -72,7 +72,7 @@ import { createReadStream, existsSync, realpathSync } from "fs"
 import { Readable } from "stream"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { dirname, join, resolve, sep, relative } from "path"
-import { rm } from "fs/promises"
+import { rm, stat } from "fs/promises"
 import { connectProvider, disconnectProvider } from "../../agent/model/auth-mutate"
 import { EventStream } from "./event-stream"
 import { appAssetHeaders, isFrontendStaticAssetPath, resolveAssetContentType } from "./app-security"
@@ -376,7 +376,17 @@ export namespace Server {
         // Multi-root: the desktop app sends x-merakcode-workspace-folders; the CLI does not (single root).
         const folders = Workspace.parseFoldersHeader(c.req.header("x-merakcode-workspace-folders"))
         return Instance.provide({
-          resolveProject: discoverProject,
+          async resolveProject(directory) {
+            // An offline root must not create a global project that survives reconnection.
+            if (!(await stat(directory).catch(() => undefined))?.isDirectory())
+              throw new HTTPException(400, {
+                message: await Text.pick({
+                  zh: "工作目录不可用或不是目录，请恢复目录后重试。",
+                  en: "The working directory is unavailable or is not a directory. Restore it and retry.",
+                }),
+              })
+            return discoverProject(directory)
+          },
           directory,
           workspace: folders ? { folders } : undefined,
           init: InstanceBootstrap,

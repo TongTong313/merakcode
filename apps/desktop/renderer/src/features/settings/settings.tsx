@@ -125,11 +125,11 @@ function Models() {
     else toast({ kind: "success", title: t("settings.provider.verified") })
     setEditing(undefined)
     setKey("")
-    await loadProviders(project())
+    await loadProviders()
   }
   const disconnect = async (providerID: string) => {
     await call(client(project()).auth.remove({ providerID })).catch(fail)
-    await loadProviders(project())
+    await loadProviders()
   }
   /** A provider the user added: its config names an API package */
   const custom = (providerID: string) => !!state.config?.provider?.[providerID]?.npm
@@ -137,7 +137,7 @@ function Models() {
     const c = client(project())
     await call(c.global.config.deleteProvider({ providerID }))
     await call(c.auth.remove({ providerID })).catch(() => {})
-    await Promise.all([loadConfig(), loadProviders(project())])
+    await Promise.all([loadConfig(), loadProviders()])
   }
   const options = () =>
     available().map((item) => ({
@@ -303,13 +303,13 @@ function ModelDialog(props: { providerID: string | undefined; onClose: () => voi
     if (!id) return
     const picker = nextPicker(state.config?.provider?.[id]?.picker, modelID, on)
     await updateConfig({ provider: { [id]: { picker } } })
-    await loadProviders(project())
+    await loadProviders()
   }
   const restore = async () => {
     const id = props.providerID
     if (!id) return
     await updateConfig({ provider: { [id]: { picker: { include: [], exclude: [] } } } })
-    await loadProviders(project())
+    await loadProviders()
   }
   return (
     <Dialog

@@ -86,12 +86,7 @@ jobs:
       - name: Install ripgrep
         if: contains(fromJSON('["packages/engine", "apps/cli", "packages/sdk/js"]'), matrix.package)
         shell: bash
-        run: |
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
-            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
-            Windows) choco install ripgrep -y --no-progress ;;
-          esac
+        run: bash .github/scripts/install-ci-packages.sh ripgrep
       - run: pnpm test
         if: matrix.package != 'packages/engine'
         working-directory: ${{ matrix.package }}
@@ -199,12 +194,7 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: Install ripgrep
         shell: bash
-        run: |
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
-            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
-            Windows) choco install ripgrep -y --no-progress ;;
-          esac
+        run: bash .github/scripts/install-ci-packages.sh ripgrep
       - run: pnpm test:e2e
         working-directory: apps/cli
 
@@ -228,12 +218,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install desktop test prerequisites
         shell: bash
-        run: |
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep xvfb libasound2t64 libnss3 libgtk-3-0t64 ;;
-            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
-            Windows) choco install ripgrep -y --no-progress ;;
-          esac
+        run: bash .github/scripts/install-ci-packages.sh ripgrep xvfb libasound2t64 libnss3 libgtk-3-0t64
       # A directory build uses the production asar, fuses, renderer and bundled engine, without installer tooling.
       - run: pnpm --dir apps/desktop/main run package --dir
         id: desktop-package

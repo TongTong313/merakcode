@@ -7,26 +7,34 @@ import { folderOf } from "../../state/store"
 import { openReview, usePendingReview } from "../review/state"
 import { BranchPicker } from "./branch-picker"
 import { Commit } from "./commit"
+import { panels } from "../panel/workspace"
 import { useGitChanges } from "./changes"
 
 type Action = "stage" | "unstage"
-const [views, setViews] = createStore<Record<string, { selected: string[]; closed: string[] }>>({})
 
 /** Git file metadata and index actions; code navigation is supplied by the owning panel. */
 export function GitFiles(props: {
   directory?: string
+  instanceID?: string
   data: GitChangesResult
   pending: string[]
   working: boolean
   onChange: (action: Action, files: GitChangeFile[]) => Promise<void>
   onReview: (file: string) => void
 }) {
-  const key = () => props.directory ?? ""
-  const view = () => views[key()] ?? { selected: [], closed: [] }
+  const owner = panels()
+  const stored = owner?.view(props.instanceID ?? "")
+  const strings = (value: unknown) =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+  const [view, updateView] = createStore({ selected: strings(stored?.selected), closed: strings(stored?.closed) })
+  const setView = (value: typeof view) => {
+    updateView(value)
+    if (props.instanceID) void owner?.patchView(props.instanceID, value)
+  }
   const choose = (id: string, checked: boolean) =>
-    setViews(key(), {
-      ...view(),
-      selected: checked ? [...view().selected, id] : view().selected.filter((value) => value !== id),
+    setView({
+      ...view,
+      selected: checked ? [...view.selected, id] : view.selected.filter((value) => value !== id),
     })
   return (
     <div class="git-files scroll">
@@ -34,17 +42,17 @@ export function GitFiles(props: {
         {(group) => {
           const files = () => props.data[group]
           const action: Action = group === "staged" ? "unstage" : "stage"
-          const selected = () => files().filter((file) => view().selected.includes(`${group}:${file.file}`))
+          const selected = () => files().filter((file) => view.selected.includes(`${group}:${file.file}`))
           return (
             <details
               data-group={group}
               class="git-group"
-              open={!view().closed.includes(group)}
+              open={!view.closed.includes(group)}
               onToggle={(event) => {
                 const closed = event.currentTarget.open
-                  ? view().closed.filter((value) => value !== group)
-                  : [...new Set([...view().closed, group])]
-                setViews(key(), { ...view(), closed })
+                  ? view.closed.filter((value) => value !== group)
+                  : [...new Set([...view.closed, group])]
+                setView({ ...view, closed })
               }}
             >
               <summary>
@@ -78,7 +86,7 @@ export function GitFiles(props: {
                     <input
                       type="checkbox"
                       aria-label={t("git.selectFile", { file: file.file })}
-                      checked={view().selected.includes(`${group}:${file.file}`)}
+                      checked={view.selected.includes(`${group}:${file.file}`)}
                       disabled={props.working}
                       onChange={(event) => choose(`${group}:${file.file}`, event.currentTarget.checked)}
                     />
@@ -121,18 +129,20 @@ export function GitFiles(props: {
   )
 }
 
-export function SourceControl(props: { directory: string; folder: string; sessionID?: string }) {
+export function SourceControl(props: { directory: string; folder: string; sessionID?: string; instanceID?: string }) {
   const enabled = () => folderOf(props.folder)?.project?.vcs === "git"
   return (
     <Show when={enabled()} fallback={<div class="empty-state subtle">{t("git.notRepository")}</div>}>
       <Show when={props.directory} keyed>
-        {(directory) => <GitRepository directory={directory} sessionID={props.sessionID} />}
+        {(directory) => (
+          <GitRepository instanceID={props.instanceID} directory={directory} sessionID={props.sessionID} />
+        )}
       </Show>
     </Show>
   )
 }
 
-function GitRepository(props: { directory: string; sessionID?: string }) {
+function GitRepository(props: { directory: string; sessionID?: string; instanceID?: string }) {
   const data = useGitChanges(() => props.directory)
   const pending = usePendingReview(
     () => props.sessionID,
@@ -173,6 +183,7 @@ function GitRepository(props: { directory: string; sessionID?: string }) {
         {(result) => (
           <>
             <Commit
+              instanceID={props.instanceID}
               directory={props.directory}
               pending={result().staged.length > 0}
               working={data.working()}
@@ -183,6 +194,7 @@ function GitRepository(props: { directory: string; sessionID?: string }) {
               }}
             />
             <GitFiles
+              instanceID={props.instanceID}
               directory={props.directory}
               data={result()}
               working={data.working()}

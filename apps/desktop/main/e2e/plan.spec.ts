@@ -67,7 +67,7 @@ test("a generated plan opens for review and starts execution without a second co
   await editor.click()
   await kit.page.keyboard.press("ControlOrMeta+A")
   await kit.page.keyboard.type("# Plan\nHUMAN_APPROVED_PLAN")
-  await kit.page.keyboard.press("ControlOrMeta+S")
+  await kit.panel().getByRole("tab", { name: "计划", exact: true }).click()
   await kit.page
     .getByRole("button", { name: /开始执行|Start execution/ })
     .filter({ visible: true })

@@ -8,6 +8,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- Replace fixed side-panel tabs with a conversation-owned editor for files, reviews, Git, independent terminals and browser pages. Restore independent layouts and drafts, keep tabs adjacent, open files directly for editing, and preview images safely. Preserve concurrent file changes and late-edited drafts. Closing waits for every window's decision, durable drafts and confirmed terminal process exit.
+
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
 
 - Replace conversation modes with Ask every time (`ask`, the default), Ask only for risky actions (`autoApprove`) and Full takeover (`fullTakeover`). The first two levels require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
@@ -15,6 +17,64 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - After a turn finishes, reasoning and tool steps collapse into a single timing line, keeping the final reply and that turn's changed files. Copy takes only the final reply while folded, and the whole turn once expanded.
 
 ### Fixed
+
+- Concurrent panel view updates keep each other's fields, so a handwritten Git commit draft is not cleared when another control updates the same tab.
+
+- Opening the branch picker forces a fresh branch list, so a local branch created while an earlier lookup is still in flight is not missed.
+
+- Aborting a direct session shell on Windows no longer leaves the checkout marked busy. The shell child hides its console window, a stuck shell drops its checkout hold after the stop timeout, and a late shell exit does not cancel a newer session loop.
+
+- Keep a browser page's document title when the browser only reports the address. Probe that title once per address so quit flush cannot stay busy on title noise. Quit flush gives up after twenty seconds so a stuck draft or panel write cannot keep the window open. Quitting still stops when a page asks to stay open. Automated runs can leave a blocking unload prompt without a sync dialog. A stuck page load cannot block quit, and a page that never answers is detached after five seconds.
+
+- Keep file status marks on the checkout's relative paths when its route spelling and real path differ. A draft that is already stored does not block closing when its other path spellings cannot be cleaned up, and a failed save still stops the close. The first Windows sandbox logon may take longer than five seconds.
+
+- Treat a directory's real path and its other spellings as one directory. Draft recovery no longer asks for confirmation when they match, discarding a draft releases its branch protection, and a file save removes its Git index lock. A process that has already exited counts as stopped, and an unconfirmed Windows stop keeps its job handle for a later check. A removed directory link is not kept as its old target. File reads and writes share one path identity, so an existing file stays in review. Windows installs extract outside a non-ASCII directory before moving the files into place.
+
+- Preserve newer file edits when legacy draft recovery finishes late. Isolate pending panel recovery and damaged transfer records by conversation, retain unconfirmed offline draft records, and wait for accepted opens before shutdown. Serialize browser navigation records with transfer cleanup so closed tabs stay closed. Accept uppercase HTTP(S) addresses and report invalid navigation or restoration with a localized error code.
+
+- Recover interrupted panel transfers only for their source or destination conversation. Keep unrelated conversations usable when a directory or migration write is unavailable. Persist background browser navigation and pending transfers before shutdown without querying offline directories.
+
+- Persist background browser addresses without restoring unrelated offline files after a conversation leaves the layout cache. Retry failed navigation writes before shutdown and retain closed-tab guards.
+
+- Default Windows interactive terminals to PowerShell, preferring `pwsh` when installed. Preserve explicit shell choices and the shell used for agent commands. Git Bash's upstream resize/input defect remains when Git Bash is explicitly selected.
+
+- Persist directory ownership for review-only drafts and comments before a directory goes offline. Reject missing workspace roots during SDK file identity resolution, and recover legacy drafts and owners after directory links reconnect. Ask for an explicit directory choice when an old self-mapping is ambiguous.
+
+- Isolate offline draft directories using saved SDK identities while retaining unresolved recovery data and branch guards. Leave maximized review when another tab becomes active, and preserve error codes and request IDs in editor, plan, terminal and resource-close failures.
+
+- Recover legacy drafts and sleeping file owners from non-Git directory links using SDK-confirmed file directories. Preserve distinct drafts and keep old records until canonical writes succeed. Resolve legacy transfer snapshots before retrying a completed source so restart does not duplicate file tabs.
+
+- Keep fresh conversation tabs usable after a delayed first-send response targets a deleted conversation. Preserve newer transfers and storage-error retries.
+
+- Preserve file identities through existing directory links after file deletion. Recover one selected tab with its draft and branch protection after reload and restart.
+
+- Cancel interrupted panel transfers when their conversation is deleted. Persist cancellation before cleanup, verify recovered targets through the SDK, close transferred terminals and browsers, and preserve file drafts still used by other conversations.
+
+- Preserve a background browser's final address when its tab is activated during pending file opens or after page cache eviction. Keep explicit navigation separate from page restoration, and serialize queued restores with closing so closed pages stay closed. Resource release keeps retained tabs restorable and their later navigation durable.
+
+- Keep a pending terminal input reconnect when its view remounts. Avoid replacing the reconnect with a duplicate connection while preserving queued input order.
+
+- Keep tab opens accepted during first-message panel migration in the original conversation. Preserve file and terminal directories, report failed opens, and allow retry after migration storage failures.
+
+- Preserve pending file opens during the first message's panel transfer, including their original worktree and ownership. Keep delayed opens in the requesting conversation and allow retries after lookup failures.
+
+- Recover sleeping drafts and file owners through sibling directory links before branch switching, without resolving empty draft records. Keep distinct worktrees and their review comments separate using SDK-confirmed directories. Resolve readable files even when an ancestor cannot be listed. Restore valid saved tabs when another descriptor is malformed. Reconnect terminal input without replaying sent commands, and offer retry when its output connection closes.
+
+- Deliver terminal input submitted during startup even when its view closes before the PTY or socket is ready.
+
+- Hold Git's worktree index lock throughout file saves and verify checkout identity after writing. Resolve file spelling through the SDK so aliases share tabs, drafts and references without merging distinct files on case-sensitive volumes. Preserve legacy data when identity lookup fails.
+
+- Keep Git review navigation current when accepting or undoing a review after switching tabs. Discard list responses invalidated while loading, and refresh the original conversation after a background decision completes.
+
+- Keep requested branch switches effective when background refreshes overlap, including directory aliases. Preserve lookup errors and retries when a directory is resolved during a pending refresh.
+
+- Preserve Unicode commands and unfinished native input composition while a terminal starts. Keep the conversation input focused when the user has returned to editing it.
+
+- Record desktop quit stages and retain production smoke failure evidence before browser inspection. Distinguish abnormal process exits from timeouts and include the close request in the original exit deadline.
+
+- Keep background browser addresses when a sleeping conversation's terminal exits after visiting many other chats. Report unreadable editor state with a localized error code and allow retry after storage is repaired.
+
+- Keep one Review, Git and Plan tab per conversation. Preserve legacy comments, commit messages and file drafts during tab migration. Recover interrupted first-message transfers into their original conversation after reload or restart. Restore file and review draft protection for sleeping conversations, verify checkout identity before file saves, persist background browser navigation, restore tab overflow after fullscreen review, and release naturally exited terminals.
 
 - Reject runtime-supplied command arguments, package-manager side effects, indirect file reads and system changes in draft-only tasks. Apply sensitive-file approval to input redirects, file aliases and option values while preserving ordinary literal file reads.
 
@@ -58,6 +118,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 右侧固定面板改为按单聊／群聊独立保存的统一编辑区，文件、审阅、Git、终端和浏览器共用紧邻的标签栏；恢复独立布局和草稿，文件直接编辑，图片安全预览，保护并发文件修改和后来编辑的草稿。退出前先收集各窗口决定、确认草稿持久化，再等待终端进程实际退出。
+
 - 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
 
 - 权限级别改为每次询问（`ask`，默认）、仅询问危险行为（`autoApprove`）和全面接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。全面接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
@@ -65,6 +127,64 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
 
 ### 修复
+
+- 面板视图的并发更新会保留彼此的字段，手写的 Git 提交草稿不会被同一标签上的其他控件清掉。
+
+- 打开分支选择器时强制重新拉取分支列表，这样较早查找还在进行时新建的本地分支不会被漏掉。
+
+- 在 Windows 上中止直接会话 shell 后，检出不再一直保持忙碌。shell 子进程隐藏控制台窗口；卡住的 shell 在停止超时后释放检出占用；迟到的 shell 退出不会取消更新的会话循环。
+
+- 浏览器只回报地址时，仍保存页面标题。每个地址只探测一次标题，避免退出刷新被标题事件拖住。退出刷新最多等待 20 秒，卡住的草稿或面板写入不能一直挡住关闭。页面要求留下时，退出仍会停住。自动化运行可在无同步对话框时直接离开会挡住退出的卸载提示。卡住的页面加载不能挡住退出。页面一直没有回应时，5 秒后卸下该页面。
+
+- 路由写法和真实路径不同时，文件状态标记仍使用检出目录内的相对路径。草稿已经写入后，其他路径写法清理失败不再挡住关闭。保存失败时，关闭仍会停下来并报告错误。Windows 沙箱首次登录可以超过 5 秒。
+
+- 同一目录的真实路径和其他写法视为同一目录。两者相同时，草稿恢复不再要求确认。放弃草稿后解除分支保护。文件保存结束后删除 Git 索引锁。已经退出的进程算作已停止。Windows 上尚未确认的停止保留 job 句柄，供稍后再次确认。删除的目录链接不再继续指向旧目标。文件的读取和写入使用同一路径身份，已有文件仍出现在审阅中。Windows 安装先在不含非 ASCII 字符的目录解压，再移到目标目录。
+
+- 旧草稿恢复迟到时保留较新的文件编辑。按聊天隔离等待中的面板恢复和损坏的迁移记录，保留身份未确认的失联目录记录，退出前等待已接受的打开请求。按顺序写入浏览器导航和清理迁移记录，避免恢复已关闭的标签。接受大写 HTTP(S) 地址，并为无效地址的导航和恢复显示本地化错误码。
+
+- 面板迁移只在源聊天或目标聊天恢复。目录失联或迁移写入失败时，其他聊天仍可使用。退出前保存后台浏览器地址和迁移记录，无需查询失联目录。
+
+- 聊天布局缓存淘汰后，后台浏览器保存地址时不再依赖失联文件的恢复。退出前重试失败的地址写入，并保留关闭标签后的迟到事件保护。
+
+- Windows 交互终端默认使用 PowerShell，已安装时优先使用 `pwsh`。保留显式选择的 shell 和代理命令使用的 shell。显式选择 Git Bash 时，其上游调整尺寸后丢字的问题仍存在。
+
+- 在目录失联前保存仅审阅草稿和评论的目录归属。SDK 文件身份查询拒绝缺失的工作目录根。目录链接恢复后，程序恢复旧草稿及引用。旧记录无法证明目录归属时，程序要求用户明确选择目录。
+
+- 使用已保存的 SDK 身份隔离失联草稿目录，保留归属未明的恢复数据和分支保护。切换其他标签时退出审阅铺满状态。编辑器、计划、终端和资源关闭失败时保留错误码与请求 ID。
+
+- 通过 SDK 确认实际文件目录，恢复非 Git 目录链接下的旧草稿和睡眠聊天引用。保留不同草稿，确认新记录写入成功后才清理旧记录。重试已清理源布局的旧迁移时，先解析快照文件身份，避免重启后产生重复标签。
+
+- 首次发送的迟到响应指向已删除对话时，新对话仍能打开标签。程序保留较新的迁移和存储失败重试。
+
+- 文件删除后，程序仍通过现有目录链接确定文件身份。重载和重启后，程序恢复一个选中标签，并保留草稿和分支保护。
+
+- 删除对话时取消中断的面板迁移。程序先保存取消记录，再清理资源。恢复时通过 SDK 核实目标对话。程序关闭迁移中的终端和浏览器，并保留其他对话仍引用的文件草稿。
+
+- 后台浏览器保留重定向后的地址。文件打开请求等待期间或页面缓存淘汰后，激活标签不再恢复旧地址。主动导航与页面恢复分开处理。排队恢复与关闭按顺序执行，关闭后不再重建页面。仅释放资源时，保留标签恢复与后续地址保存。
+
+- 终端视图重新挂载时保留正在建立的输入连接，避免重复建连，并保留待发送输入的顺序。
+
+- 首次消息的面板迁移保留期间接受的标签打开请求。请求仍归原聊天所有。文件和终端保留原目录。打开失败时返回错误。迁移存储失败后可重试。
+
+- 首次发送消息时保留尚未完成的文件打开请求。面板迁移保留文件原工作树和所属聊天。延迟请求仍归属发起请求的聊天，查询失败后可重试。
+
+- 切换分支前，通过同级目录链接恢复后台聊天的草稿保护和文件归属，跳过空草稿记录。使用 SDK 确认的目录区分工作树及审阅评论。父目录禁止列出内容时，仍可识别可读文件。保存的标签描述损坏时，继续恢复有效标签。终端连接关闭后恢复输入，不重放已发送的命令。终端显示连接关闭后提供重试入口。
+
+- 终端启动期间提交的输入会继续发送。切换页面不会丢弃等待进程或连接就绪的输入。
+
+- 文件保存期间持有工作树的 Git 索引锁，写入后复核分支。桌面通过 SDK 确认文件拼写，让路径别名共用标签、草稿和引用。大小写敏感卷中的不同文件保持独立。文件身份查询失败时保留旧数据。
+
+- 接受或撤销审阅后切换标签，Git 待审入口仍保持正确。读取期间已失效的列表不再覆盖缓存。后台操作完成后刷新原聊天。
+
+- 后台刷新不再取消用户发起的分支切换，并覆盖目录别名。目录解析与刷新并发时，保留读取错误和重试能力。
+
+- 保留终端启动期间输入的中文命令和未完成的输入法组合。用户返回聊天输入框后，终端启动不再抢走焦点。
+
+- 记录桌面退出阶段，并在浏览器取证前保存生产包失败记录。区分异常退出和超时，将关闭请求计入原有退出期限。
+
+- 切换多个聊天后，后台终端退出仍保留浏览器的最新地址。编辑区状态无法读取时显示双语错误码，修复存储后可以重试。
+
+- 每个对话只保留一个审阅、Git 和计划标签。旧标签迁移保留评论、提交文案和文件草稿。首次发送迁移中断后，重载或重启仍恢复到原目标对话。未打开的对话也恢复文件和审阅草稿的分支保护。文件保存前校验工作目录。后台浏览器保存最新地址。审阅铺满返回后恢复标签收纳。终端自然退出后停止心跳。
 
 - 只出稿任务拒绝动态命令参数、包管理器副作用、间接文件读取和系统修改。输入重定向、文件别名和选项值统一检查敏感文件审批。普通文件读取继续可用。
 

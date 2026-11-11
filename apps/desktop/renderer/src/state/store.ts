@@ -29,7 +29,7 @@ import { fromConfig, setLocale, t } from "../i18n"
 import { toast } from "../ui/toast"
 import { providerChanged, type SeenFailures } from "./catalog-refresh"
 import { call, client } from "./client"
-import { checkoutOf, gitDirectory, identityOf, onCheckoutChange, updateCheckout } from "./git"
+import { checkoutOf, identityOf, onCheckoutChange, sameDirectory, updateCheckout } from "./git"
 import { MessageSnapshot } from "./message-snapshot"
 
 type Providers = ProviderListResponses[200]
@@ -94,10 +94,7 @@ export const [state, setState] = createStore<State>({
 const PAGE = 40
 
 onCheckoutChange((directory, current) => {
-  const directories = new Set([
-    directory,
-    ...Object.keys(state.branch).filter((key) => sameDir(gitDirectory(key), directory)),
-  ])
+  const directories = new Set([directory, ...Object.keys(state.branch).filter((key) => sameDirectory(key, directory))])
   for (const key of directories) {
     setState("branch", key, current.branch ?? undefined)
     setState("head", key, current.head)
@@ -150,15 +147,19 @@ function dispatch(directory: string, event: Event) {
     catalogFailures = decision.seen
     if (decision.reload) {
       const notice = decision.toast
-      void loadProviders().then(() => {
-        if (!notice) return
-        const name = state.providers?.all.find((item) => item.id === notice.providerID)?.name ?? notice.providerID
-        toast({
-          kind: "error",
-          title: t("model.catalog.failed", { provider: name, code: notice.code, message: notice.message }),
-          error: event.type === "provider.changed" ? event.properties.error : undefined,
+      void loadProviders()
+        .then(() => {
+          if (!notice) return
+          const name = state.providers?.all.find((item) => item.id === notice.providerID)?.name ?? notice.providerID
+          toast({
+            kind: "error",
+            title: t("model.catalog.failed", { provider: name, code: notice.code, message: notice.message }),
+            error: event.type === "provider.changed" ? event.properties.error : undefined,
+          })
         })
-      })
+        .catch((error: unknown) =>
+          toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+        )
     }
   }
   if (event.type === "project.updated") {
@@ -258,8 +259,12 @@ async function loadWarnings(directory = state.folders[0]?.directory) {
   setState("warnings", await call(client(directory).config.warnings()).catch(() => []))
 }
 
-export async function loadProviders(directory = state.folders[0]?.directory) {
-  const providers = await call(client(directory).provider.list())
+export async function loadProviders(directory?: string) {
+  const context = directory ?? state.folders[0]?.directory
+  const providers = await call(client(context).provider.list()).catch((error: unknown) => {
+    if (directory !== undefined || !context) throw error
+    return call(client().provider.list())
+  })
   setState("providers", providers)
   return providers
 }

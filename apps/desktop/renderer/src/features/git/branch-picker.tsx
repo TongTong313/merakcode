@@ -16,6 +16,7 @@ import {
 } from "../../state/git"
 import { trackOverlay } from "../../ui/overlay"
 import { toast } from "../../ui/toast"
+import { summary } from "../../state/error"
 
 /** A starting point is a selection; switching updates the working checkout. */
 export function BranchPicker(props: {
@@ -59,12 +60,15 @@ export function BranchPicker(props: {
     const options = data()?.options
     if (open() && options) setItems(options.branches)
   })
+  // A refresh sets loading, and switchReason surfaces that as a notice. Keep cached options
+  // clickable so a stale entry can still report that the branch disappeared.
   const disabled = (item: { name: string; worktree?: string }) =>
-    props.purpose === "switch" && (!!reason() || !!item.worktree || item.name === current()?.branch)
-  const refresh = async () => {
+    props.purpose === "switch" &&
+    (!!item.worktree || item.name === current()?.branch || (!!reason() && !data()?.loading))
+  const refresh = async (force = false) => {
     setError(undefined)
     const directory = props.directory
-    const options = await refreshBranches(directory)
+    const options = await refreshBranches(directory, force ? { force: true } : undefined)
     if (alive && directory === props.directory && options) setItems(options.branches)
   }
   const choose = async (name: string) => {
@@ -106,7 +110,8 @@ export function BranchPicker(props: {
         setSelected(0)
         setError(undefined)
         setItems(data()?.options?.branches ?? [])
-        void refresh()
+        // Force a fresh lookup so a create that landed during a coalesced prefetch is not missed.
+        void refresh(true)
       }}
       gutter={6}
       placement="bottom-start"
@@ -163,8 +168,9 @@ export function BranchPicker(props: {
           <Show when={failure()}>
             <p class="branch-notice" role="alert">
               {failure()?.message}
+              <Show when={summary(failure())}>{(line) => <span class="mono"> {line()}</span>}</Show>
             </p>
-            <button class="button ghost sm" onClick={() => void refresh()}>
+            <button class="button ghost sm" onClick={() => void refresh(true)}>
               {t("git.retry")}
             </button>
           </Show>

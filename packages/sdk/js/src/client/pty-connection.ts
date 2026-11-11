@@ -8,11 +8,13 @@ export type PtyConnectionOptions = {
   onData(data: string | ArrayBuffer): void
   onOpen?(): void
   onError?(event: Event): void
+  /** A closed transport does not imply that the PTY process has exited. */
+  onClose?(event: CloseEvent): void
 }
 
 export type PtyConnection = {
-  /** Input is queued until the socket opens, preserving keys typed during terminal startup. */
-  send(data: string): void
+  /** Returns false once closing or closed; true means accepted locally, not acknowledged by the PTY. */
+  send(data: string): boolean
   close(): void
 }
 
@@ -32,7 +34,7 @@ export function connectPty(input: PtyConnectionOptions): PtyConnection {
     try {
       input.onOpen?.()
     } finally {
-      for (const data of queued.splice(0)) socket.send(data)
+      if (!closed && socket.readyState === WebSocket.OPEN) for (const data of queued.splice(0)) socket.send(data)
     }
   })
   socket.addEventListener("message", (event) => {
@@ -41,12 +43,18 @@ export function connectPty(input: PtyConnectionOptions): PtyConnection {
   socket.addEventListener("error", (event) => {
     if (!closed) input.onError?.(event)
   })
+  socket.addEventListener("close", (event) => {
+    closed = true
+    queued.length = 0
+    input.onClose?.(event)
+  })
   return {
     send(data) {
-      if (closed) return
+      if (closed || socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) return false
       // onOpen can send before the existing input queue has drained.
       if (socket.readyState === WebSocket.OPEN && queued.length === 0) socket.send(data)
       else queued.push(data)
+      return true
     },
     close() {
       if (closed) return

@@ -164,7 +164,7 @@ export function CustomDialog(props: {
       provider: { [id]: provider },
       ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
     })
-    await loadProviders(project())
+    await loadProviders()
     props.onClose()
   }
 
@@ -197,7 +197,7 @@ export function CustomDialog(props: {
       },
       ...(enabled ? { enabled_providers: [...enabled, id] } : {}),
     })
-    await loadProviders(project())
+    await loadProviders()
     setCompatibleName("")
     setCompatibleUrl("")
     setCompatibleKey("")

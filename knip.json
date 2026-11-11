@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": ["packages/sdk/js/src/client/gen/**"],
-  "ignoreBinaries": ["icacls", "merak"],
+  "ignoreBinaries": ["icacls", "merak", "subst.exe"],
   "workspaces": {
     ".": {
       "entry": ["script/*.ts", "script/sandbox-spike/**/*.ts"]

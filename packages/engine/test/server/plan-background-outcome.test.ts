@@ -6,6 +6,7 @@ import { Session } from "../../src/agent/session"
 import { SessionPlan } from "../../src/agent/session/plan"
 import { BashJobStore } from "../../src/agent/tools/bash-background"
 import { Instance } from "../../src/infra/project/instance"
+import { Bus } from "../../src/infra/bus"
 import { tmpdir, selectPermissionLevel } from "../fixture/fixture"
 import { fakeModel } from "../../../sdk/js/test/fixture/model"
 
@@ -87,26 +88,33 @@ process.exit(2)`,
             await expect.poll(async () => (await SessionPlan.get(session.id)).status).toBe(outcome)
             expect((await SessionPlan.get(session.id)).buttonLocked).toBe(false)
             const previousID = (await SessionPlan.get(session.id)).execution?.id
-            expect(
-              (
-                await Server.App().request(
-                  `/session/${session.id}/plan/start?directory=${encodeURIComponent(tmp.path)}`,
-                  { method: "POST" },
-                )
-              ).status,
-            ).toBe(200)
-            await expect
-              .poll(async () => ({
-                plan: await SessionPlan.get(session.id),
-                messages: (await Session.messages({ sessionID: session.id })).map((message) => ({
-                  id: message.info.id,
-                  role: message.info.role,
-                  error: message.info.role === "assistant" ? message.info.error : undefined,
-                  texts: message.parts.filter((part) => part.type === "text"),
-                })),
-              }))
-              .toMatchObject({ plan: { status: "completed" } })
-            expect((await SessionPlan.get(session.id)).execution?.id).not.toBe(previousID)
+            const settled = Promise.withResolvers<void>()
+            const unsubscribe = Bus.subscribe(SessionPlan.Updated, ({ properties }) => {
+              if (
+                properties.sessionID !== session.id ||
+                !properties.execution ||
+                properties.execution.id === previousID ||
+                !["completed", "failed", "stopped"].includes(properties.status)
+              )
+                return
+              settled.resolve()
+            })
+            try {
+              expect(
+                (
+                  await Server.App().request(
+                    `/session/${session.id}/plan/start?directory=${encodeURIComponent(tmp.path)}`,
+                    { method: "POST" },
+                  )
+                ).status,
+              ).toBe(200)
+              await settled.promise
+              const result = await SessionPlan.get(session.id)
+              expect(result.status).toBe("completed")
+              expect(result.execution?.id).not.toBe(previousID)
+            } finally {
+              unsubscribe()
+            }
           } finally {
             await BashJobStore.stopAll()
           }

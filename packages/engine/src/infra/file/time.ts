@@ -51,7 +51,11 @@ export namespace FileTime {
   }
 
   export function get(sessionID: string, file: string) {
-    return state().read[sessionID]?.[file]
+    const reads = state().read[sessionID]
+    if (!reads) return
+    if (reads[file]) return reads[file]
+    const wanted = canonical(file)
+    return Object.entries(reads).find(([key]) => canonical(key) === wanted)?.[1]
   }
 
   export async function withLock<T>(filepath: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {

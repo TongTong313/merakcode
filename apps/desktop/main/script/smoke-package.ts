@@ -8,6 +8,8 @@ import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { seedCatalog } from "../../../../script/node/seed-catalog"
+import { closeProcess } from "./close-process"
+import { smokeEvidence } from "./smoke-evidence"
 
 const release = path.resolve(import.meta.dirname, "../release")
 const directory =
@@ -30,6 +32,12 @@ const mainPrompts = new Set<string>()
 let phase = "startup"
 const diagnostics: string[] = []
 const failMain = process.argv.includes("--fail-main")
+const output = path.join(release, "smoke-results", failMain ? "negative-control" : "main")
+const lifecycle: { event: string; elapsed: number; detail?: string }[] = []
+const started = Date.now()
+const record = (event: string, detail?: string) => {
+  lifecycle.push({ event, elapsed: Date.now() - started, detail })
+}
 const model = createServer(async (request, response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(chunk as Buffer)
@@ -110,6 +118,7 @@ try {
       stdio: ["ignore", "pipe", "pipe"],
     },
   )
+  child.once("exit", (code, signal) => record("exit", JSON.stringify({ code, signal })))
   const endpoint = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => finish(new Error("Packaged app did not open its browser endpoint")), 60_000)
     let output = ""
@@ -141,6 +150,7 @@ try {
   child.stdout!.resume()
   child.stderr!.resume()
   browser = await chromium.connectOverCDP(endpoint)
+  browser.once("disconnected", () => record("disconnected"))
   const context = browser.contexts()[0]!
   await context.tracing.start({ screenshots: true, snapshots: true })
   const page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 60_000 }))
@@ -218,58 +228,71 @@ try {
     await expect(page.getByRole("button", { name: /^(停止|Stop)$/, exact: true })).toHaveCount(0)
   }
   phase = "shutdown"
-  await context.tracing.stop()
+  record("close requested")
   // Closing the last window does not quit on macOS. CDP Browser.close uses the app's normal quit lifecycle.
-  await context
-    .newCDPSession(page)
-    .then((session) => session.send("Browser.close"))
-    .catch(() => undefined)
-  await new Promise<void>((resolve, reject) => {
-    if (child!.exitCode !== null)
-      return child!.exitCode === 0 ? resolve() : reject(new Error(`Packaged app exited with ${child!.exitCode}`))
-    const timer = setTimeout(() => reject(new Error("Packaged app did not exit after closing")), 30_000)
-    child!.once("exit", (code) => {
-      clearTimeout(timer)
-      code === 0 ? resolve() : reject(new Error(`Packaged app exited with ${code}`))
-    })
-  })
+  await closeProcess(child, () =>
+    context
+      .newCDPSession(page)
+      .then((session) => session.send("Browser.close"))
+      .then(
+        () => record("close acknowledged"),
+        (error: unknown) => {
+          record("close rejected", String(error))
+          throw error
+        },
+      ),
+  )
+  await mkdir(output, { recursive: true })
+  await cp(path.join(root, "logs"), path.join(output, "logs"), { recursive: true })
+  await writeFile(path.join(output, "lifecycle.json"), JSON.stringify(lifecycle, null, 2))
   process.stdout.write(`Packaged desktop passed: ${process.platform}-${process.arch}\n`)
 } catch (error) {
-  const output = path.join(release, "smoke-results", failMain ? "negative-control" : "main")
   await mkdir(output, { recursive: true })
-  await browser
-    ?.contexts()[0]
-    ?.pages()[0]
-    ?.screenshot({ path: path.join(output, "failure.png") })
-    .catch(() => undefined)
-  await cp(path.join(root, "logs"), path.join(output, "logs"), { recursive: true }).catch(() => undefined)
-  const page = browser?.contexts()[0]?.pages()[0]
-  const state = await page
-    ?.evaluate(() => ({
-      focused: document.hasFocus(),
-      active: document.activeElement?.tagName,
-      keys: (window as unknown as { __smokeKeys?: unknown }).__smokeKeys,
-    }))
-    .catch(() => undefined)
-  await browser
-    ?.contexts()[0]
-    ?.tracing.stop({ path: path.join(output, "trace.zip") })
-    .catch(() => undefined)
-  await writeFile(
+  await smokeEvidence(
     path.join(output, "error.txt"),
-    `${phase}\n${String(error)}\n${JSON.stringify({ diagnostics, state, mainRequests: mainPrompts.size })}`,
+    `${phase}\n${String(error)}\n${JSON.stringify({ diagnostics, lifecycle, exitCode: child?.exitCode, signalCode: child?.signalCode, mainRequests: mainPrompts.size })}`,
+    async () => {
+      await cp(path.join(root, "logs"), path.join(output, "logs"), { recursive: true })
+      const page = browser?.contexts()[0]?.pages()[0]
+      await page?.screenshot({ path: path.join(output, "failure.png"), timeout: 5_000 })
+      const state = await page?.evaluate(() => ({
+        focused: document.hasFocus(),
+        active: document.activeElement?.tagName,
+        keys: (window as unknown as { __smokeKeys?: unknown }).__smokeKeys,
+      }))
+      await browser?.contexts()[0]?.tracing.stop({ path: path.join(output, "trace.zip") })
+      return `\n${JSON.stringify({ state })}`
+    },
   )
   throw error
 } finally {
-  await browser?.close().catch(() => undefined)
-  if (child?.pid && child.exitCode === null) {
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
     if (process.platform === "win32") {
       const kill = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" })
       await new Promise<void>((resolve) => {
-        kill.once("error", () => resolve())
-        kill.once("exit", () => resolve())
+        const finish = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        const timer = setTimeout(() => {
+          kill.kill()
+          finish()
+        }, 5_000)
+        kill.once("error", finish)
+        kill.once("exit", finish)
       })
     } else child.kill("SIGKILL")
+  }
+  let closeTimer: NodeJS.Timeout | undefined
+  try {
+    await Promise.race([
+      browser?.close().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        closeTimer = setTimeout(resolve, 5_000)
+      }),
+    ])
+  } finally {
+    clearTimeout(closeTimer)
   }
   await new Promise<void>((resolve) => model.close(() => resolve()))
   await rm(root, { recursive: true, force: true, maxRetries: 5 })

@@ -7,7 +7,7 @@ test("the composer stays usable beside Git management when the window shrinks an
   await kit.send("Open this conversation")
   await expect(kit.text("Reply: Open this conversation")).toBeVisible()
   await page.getByRole("button", { name: "右侧面板" }).click()
-  await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
+  await kit.openPanel("git")
   const input = page.getByRole("textbox", { name: "消息", exact: true })
   for (const [index, width] of [1440, 1024, 800, 1280, 1024].entries()) {
     await kit.app.evaluate(
@@ -19,9 +19,9 @@ test("the composer stays usable beside Git management when the window shrinks an
     if (width === 800) {
       const close = kit.panel().getByRole("button", { name: "关闭面板" })
       await expect(close).toBeInViewport({ ratio: 1 })
-      await kit.panel().getByRole("tab", { name: "浏览器" }).click()
+      await kit.openPanel("browser")
       await expect(kit.panel().getByRole("tab", { name: "浏览器" })).toHaveAttribute("aria-selected", "true")
-      await kit.panel().getByRole("tab", { name: "Git 管理" }).click()
+      await kit.openPanel("git")
       await close.click()
       await expect(kit.panel()).toBeHidden()
       await page.getByRole("button", { name: "右侧面板" }).click()
