@@ -19,9 +19,9 @@ test("settings and group views contain long content in a small window", async ({
   const rpc = await connect(endpoint)
   const name = "Worker-" + "LongProjectName".repeat(8)
   try {
-    const worker = (await rpc.profile.list({}))!.find((profile) => profile.role === "worker")!
-    await rpc.profile.save({
-      profile: { ...worker, id: "", name, model: { provider: "openai", model: "e2e" } },
+    const worker = (await rpc.agent.list({}))!.find((profile) => profile.role === "worker")!
+    await rpc.agent.save({
+      agent: { ...worker, id: "", name, model: { provider: "openai", model: "e2e" } },
     })
   } finally {
     await rpc.close()

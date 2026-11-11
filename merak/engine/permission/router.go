@@ -112,7 +112,7 @@ func (r *Router) ask(ctx context.Context, req Request, required group.Role, star
 					return Reply{}, err
 				}
 			}
-			pending.root, pending.leader = card.ID, card.Leader
+			pending.root, pending.leader = state.Group.ID, state.Group.Leader
 		}
 		if req.Mode == ModeAuto && req.Kind == "" && pending.role == group.RoleApprover && pending.leader != "" {
 			for _, member := range state.Members {
@@ -350,29 +350,26 @@ func (r *Router) leaderRequest(ctx context.Context, id, groupID, root, leader ev
 	if err := pending.context.Err(); err != nil {
 		return nil, err
 	}
-	card, err := r.Tasks.Get(ctx, root)
-	if err != nil || card.Leader != leader || pending.leader != leader {
+	state, err := r.Groups.Get(ctx, groupID)
+	if err != nil || state.Group.Leader != leader || pending.leader != leader {
 		return nil, errors.New("approval belongs to another Leader")
 	}
 	return pending, nil
 }
 
-// Transfer re-delivers pending requests after the task thread installs its new Leader.
-func (r *Router) Transfer(ctx context.Context, groupID, root event.ID) error {
-	card, err := r.Tasks.Get(ctx, root)
+// Transfer re-delivers the pending requests of a group after its thread installs its new Leader.
+func (r *Router) Transfer(ctx context.Context, groupID event.ID) error {
+	state, err := r.Groups.Get(ctx, groupID)
 	if err != nil {
 		return err
-	}
-	if card.Group != groupID || card.Parent != "" {
-		return errors.New("approval thread is outside this group")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, pending := range r.pending {
-		if pending.request.Call.Env.Scope.Group != groupID || pending.root != root || pending.human || pending.answered || pending.context.Err() != nil {
+		if pending.request.Call.Env.Scope.Group != groupID || pending.human || pending.answered || pending.context.Err() != nil {
 			continue
 		}
-		pending.leader, pending.request.Leader = card.Leader, card.Leader
+		pending.leader, pending.request.Leader = state.Group.Leader, state.Group.Leader
 		if _, err := r.publish(ctx, event.Stream("group:"+groupID), pending.request, Routed, pending.request.ID); err != nil {
 			return err
 		}

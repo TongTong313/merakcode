@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -43,7 +43,7 @@ func (p *RemotePeer) Deliver(ctx context.Context, params protocol.RemoteDelivery
 	return result, git.PushBranch(ctx, ws.Directory, state.Group.Project.Remote, ws.Branch, false)
 }
 
-func (e *Engine) remoteDelivery(ctx context.Context, source profile.RemoteSource, claim task.Claim, release bool) (protocol.RemoteDelivery, error) {
+func (e *Engine) remoteDelivery(ctx context.Context, source agent.RemoteSource, claim task.Claim, release bool) (protocol.RemoteDelivery, error) {
 	var result protocol.RemoteDelivery
 	creds, err := e.remoteCredentials(ctx, source.Connection)
 	if err != nil {
@@ -58,7 +58,7 @@ func (e *Engine) remoteDelivery(ctx context.Context, source profile.RemoteSource
 	return result, err
 }
 
-func (e *Engine) prepareRemoteDelivery(ctx context.Context, card task.Card, claim task.Claim, source profile.RemoteSource) (workspace.Workspace, error) {
+func (e *Engine) prepareRemoteDelivery(ctx context.Context, card task.Card, claim task.Claim, source agent.RemoteSource) (workspace.Workspace, error) {
 	result, err := e.remoteDelivery(ctx, source, claim, false)
 	if err != nil {
 		return workspace.Workspace{}, err

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
@@ -53,7 +53,7 @@ type externalLeader struct {
 	scheduler  *leader.Scheduler
 	digest     leader.Digest
 	engine     *Engine
-	profile    profile.Profile
+	profile    agent.Agent
 	assignment worker.Assignment
 	endpoint   *mcp.Endpoint
 	run        worker.Run
@@ -62,7 +62,7 @@ type externalLeader struct {
 	done       chan struct{}
 }
 
-func (e *Engine) externalLeaderRuntime(ctx context.Context, g *groupRun, thread *leader.Thread, p profile.Profile, fail context.CancelCauseFunc) (leaderRuntime, error) {
+func (e *Engine) externalLeaderRuntime(ctx context.Context, g *groupRun, thread *leader.Thread, p agent.Agent, fail context.CancelCauseFunc) (leaderRuntime, error) {
 	caps := e.runnerFor(p, nil).Caps()
 	if !caps.MCP || !caps.Steer {
 		return nil, errors.New("external leaders require MCP and steering")

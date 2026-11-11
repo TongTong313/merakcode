@@ -17,7 +17,7 @@ export function CreateTask(props: { group: GroupGroup; members: GroupMember[]; o
   const [description, setDescription] = createSignal("")
   const [acceptance, setAcceptance] = createSignal("")
   const [review, setReview] = createSignal(true)
-  const [assignee, setAssignee] = createSignal(props.group.defaultLeader)
+  const [assignee, setAssignee] = createSignal(props.group.leader)
   const [busy, setBusy] = createSignal(false)
   const member = () => props.members.find((member) => member.id === assignee() && member.kind === "agent")
   const create = async () => {
@@ -38,7 +38,7 @@ export function CreateTask(props: { group: GroupGroup; members: GroupMember[]; o
       ).task.create({
         ...input,
         group: props.group.id,
-        ...(member()!.agentRole === "worker" ? { member: assignee() } : { leader: assignee() }),
+        ...(member()!.agentRole === "worker" ? { member: assignee() } : {}),
       })
       props.onCreated()
     } catch (error) {

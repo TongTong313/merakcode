@@ -3,14 +3,12 @@ package protocol
 import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
 type GroupCreateParams struct {
 	group.Group
-	Members  []group.Member    `json:"members"`
-	Profiles []profile.Profile `json:"profiles"`
+	Members []group.Member `json:"members"`
 }
 type GroupIDParams struct {
 	Group event.ID `json:"group"`
@@ -31,9 +29,8 @@ type GroupUpdateParams struct {
 	group.Update
 }
 type GroupAddMemberParams struct {
-	Group   event.ID         `json:"group"`
-	Member  group.Member     `json:"member"`
-	Profile *profile.Profile `json:"profile,omitempty"`
+	Group  event.ID     `json:"group"`
+	Member group.Member `json:"member"`
 }
 type TaskCreateParams struct {
 	Budget      task.Budget `json:"budget,omitempty"`
@@ -43,7 +40,6 @@ type TaskCreateParams struct {
 	Review      bool        `json:"review,omitempty"`
 	Priority    int         `json:"priority,omitempty"`
 	Group       event.ID    `json:"group"`
-	Leader      event.ID    `json:"leader,omitempty"`
 	Title       string      `json:"title"`
 	Description string      `json:"description,omitempty"`
 	Acceptance  []string    `json:"acceptance,omitempty"`

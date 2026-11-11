@@ -38,8 +38,8 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
     setBusy(true)
     try {
       const connection = await client()
-      const profile = await connection.profile.save({
-        profile: {
+      const profile = await connection.agent.save({
+        agent: {
           id: "",
           name: source.member.name,
           summary: source.member.summary ?? "",
@@ -60,7 +60,7 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
           },
         },
       })
-      await connection.member.register({
+      await connection.group.addMember({
         group: props.group,
         member: {
           id: "",
@@ -69,7 +69,7 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
           name: profile.name,
           agentRole: "worker",
           owner: localHuman,
-          profile: profile.id,
+          agent: profile.id,
           status: source.member.status,
         },
       })

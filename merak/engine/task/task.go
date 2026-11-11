@@ -47,7 +47,6 @@ type Card struct {
 	ID             event.ID      `json:"id"`
 	Group          event.ID      `json:"group"`
 	Parent         event.ID      `json:"parent,omitempty"`
-	Leader         event.ID      `json:"leader,omitempty"`
 	Title          string        `json:"title"`
 	Priority       int           `json:"priority"`
 	Description    string        `json:"description"`

@@ -101,7 +101,7 @@ test("opens an integration task from its conflict badge and lists conflicting pa
               kind: "local",
               name: "Delivery",
               project: { directory: "/project" },
-              defaultLeader: "leader",
+              leader: "leader",
             }}
             board={board}
             members={[]}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/store"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 )
 
 type Kind string
@@ -52,13 +53,13 @@ type Brief struct {
 	Check        string `json:"check,omitempty"`
 }
 type Group struct {
-	ID            event.ID `json:"id"`
-	Kind          Kind     `json:"kind"`
-	Name          string   `json:"name"`
-	Project       Project  `json:"project"`
-	DefaultLeader event.ID `json:"defaultLeader"`
-	Brief         Brief    `json:"brief,omitempty"`
-	Settings      Settings `json:"settings,omitempty"`
+	ID       event.ID `json:"id"`
+	Kind     Kind     `json:"kind"`
+	Name     string   `json:"name"`
+	Project  Project  `json:"project"`
+	Leader   event.ID `json:"leader"`
+	Brief    Brief    `json:"brief,omitempty"`
+	Settings Settings `json:"settings,omitempty"`
 }
 type Member struct {
 	Remote     bool              `json:"remote,omitempty"`
@@ -75,7 +76,7 @@ type Member struct {
 	Role       string            `json:"role,omitempty"`
 	AgentRole  AgentRole         `json:"agentRole,omitempty"`
 	Owner      event.ID          `json:"owner,omitempty"`
-	Profile    event.ID          `json:"profile,omitempty"`
+	Agent      event.ID          `json:"agent,omitempty"`
 	Status     Status            `json:"status"`
 	Current    event.ID          `json:"current,omitempty"`
 	Queue      []event.ID        `json:"queue,omitempty"`
@@ -127,7 +128,6 @@ func (m *Manager) Create(ctx context.Context, g Group, members []Member) (Group,
 	}
 	copy := append([]Member(nil), members...)
 	seen := map[event.ID]bool{}
-	leader := false
 	for i := range copy {
 		member := &copy[i]
 		if member.ID == "" {
@@ -139,12 +139,9 @@ func (m *Manager) Create(ctx context.Context, g Group, members []Member) (Group,
 		seen[member.ID] = true
 		member.Group, member.Status = g.ID, Idle
 		member.Current, member.Queue = "", nil
-		if member.ID == g.DefaultLeader && member.Kind == MemberAgent && member.AgentRole == AgentLeader {
-			leader = true
-		}
 	}
-	if !leader {
-		return Group{}, errors.New("default leader must be a leader member of the group")
+	if err := checkLeader(&g, copy); err != nil {
+		return Group{}, err
 	}
 	if err := validateSettings(g.Settings, copy); err != nil {
 		return Group{}, err
@@ -186,6 +183,9 @@ func (m *Manager) AddMember(ctx context.Context, id event.ID, member Member) (Me
 	}
 	if !validMember(member) {
 		return Member{}, errors.New("invalid group member")
+	}
+	if member.Kind == MemberAgent && member.AgentRole == AgentLeader && len(leaders(state.Members)) > 0 {
+		return Member{}, coded(errorcode.GroupLeaderMultiple, "a group has exactly one Leader agent; change the Leader instead")
 	}
 	if member.ID == "" {
 		member.ID = m.newID()
@@ -304,7 +304,10 @@ func (m *Manager) RemoveMember(ctx context.Context, id, human, memberID event.ID
 			owners++
 		}
 	}
-	if !actor.Can(RoleAdmin) || target.ID == "" || memberID == state.Group.DefaultLeader {
+	if memberID == state.Group.Leader && actor.Can(RoleAdmin) {
+		return coded(errorcode.LeaderCannotBeRemoved, "change the Leader before removing it")
+	}
+	if !actor.Can(RoleAdmin) || target.ID == "" {
 		return errors.New("member cannot be removed")
 	}
 	if target.Can(RoleOwner) && (!actor.Can(RoleOwner) || owners <= 1) {

@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
@@ -81,8 +81,8 @@ func TestWindowsEngineReclaimsTheOldestIdleSessionAndResumesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-session-account-fixture"}}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-session-account-fixture"}}
 	runSession := func(id event.ID) string {
 		t.Helper()
 		run, err := e.StartWorker(ctx, p, worker.Assignment{Session: id, Workdir: workspace})
@@ -131,9 +131,9 @@ func TestWindowsEngineSharesAndReturnsTheSessionAccount(t *testing.T) {
 	if status, err := e.SandboxStatus(ctx, workspace, permission.ModeAsk); err != nil || !status.Available {
 		t.Fatalf("engine sandbox status=%+v error=%v", status, err)
 	}
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	path := filepath.Join(workspace, "ordinary.txt")
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", path}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", path}}
 	for range 3 {
 		run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "same-session", Workdir: workspace})
 		if err != nil {

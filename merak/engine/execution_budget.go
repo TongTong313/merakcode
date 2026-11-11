@@ -6,18 +6,18 @@ import (
 	"math"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
 // executionBudget reads durable usage so rework and replacement sessions share a task's limits.
-func (e *Engine) executionBudget(ctx context.Context, scope event.Scope, member event.ID, limits profile.Budget) (loop.StopReason, time.Time, error) {
+func (e *Engine) executionBudget(ctx context.Context, scope event.Scope, member event.ID, limits agent.Budget) (loop.StopReason, time.Time, error) {
 	var card task.Card
 	if scope.Task != "" && scope.Group != "" {
 		var err error
@@ -181,7 +181,7 @@ func (e *Engine) blockBudgetTask(ctx context.Context, scope event.Scope) {
 		}
 	}
 	body, _ := json.Marshal(group.Notice{Kind: "blocked", Text: card.Title, To: to})
-	_, _ = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + card.Group), Scope: scope, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorAgent, ID: card.Leader}, Payload: body})
+	_, _ = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + card.Group), Scope: scope, Type: group.NoticeSent, Actor: e.leaderActor(ctx, card), Payload: body})
 }
 
 func (e *Engine) configureExecutionBudget(ctx context.Context, c *conversation) error {

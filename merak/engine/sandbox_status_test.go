@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 )
 
 func TestIdleGroupMemberSandboxUsesItsEffectiveProfile(t *testing.T) {
@@ -18,11 +18,11 @@ func TestIdleGroupMemberSandboxUsesItsEffectiveProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID = "leader-profile"
 	work.ID = "private-profile"
 	work.Mode = permission.ModeTakeover
-	g, err := e.CreateGroup(ctx, group.Group{Name: "Inline", Kind: group.KindLocal, Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}}, []profile.Profile{lead, work})
+	g, err := createGroup(t, e, ctx, group.Group{Name: "Inline", Kind: group.KindLocal, Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}

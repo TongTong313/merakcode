@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
@@ -23,11 +23,11 @@ func TestGroupLimitKeepsReceiptsLiveAndSettingsWakePendingThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "profile", "leader"
 	one := 1
 	settings := group.Settings{TurnsPerMinute: &group.TurnLimits{Thread: &one, Group: &one}}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Limited", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}, Settings: settings}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{p})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Limited", Leader: "leader", Project: group.Project{Directory: t.TempDir()}, Settings: settings}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}

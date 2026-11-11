@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 )
@@ -72,9 +72,9 @@ func TestNestedFolderGroupDoesNotUseItsParentRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Nested folder", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, []profile.Profile{p})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Nested folder", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +148,8 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 	}
 	providers["leader"] = groupScript{name: "leader", test: t, reply: func(req model.Request) fake.Reply {
 		last := req.Messages[len(req.Messages)-1]
+		// the one Leader thread of the group receives the events of both tasks in its batches: answer each of them
+		var calls []model.ToolCall
 		for _, part := range last.Parts {
 			if part.ToolResult != nil {
 				if part.ToolResult.IsError {
@@ -156,28 +158,31 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 				}
 				return fake.Reply{Text: "Waiting for the next event."}
 			}
-			text := part.Text
-			index := strings.Index(text, "):\n")
-			if index < 0 {
-				continue
-			}
-			if strings.Contains(text, "(task.opened)") || strings.Contains(text, "(task.reported)") {
-				var card task.Card
-				if err := json.NewDecoder(strings.NewReader(text[index+3:])).Decode(&card); err != nil {
-					t.Error(err)
+			// a batch holds several events in one text part
+			for _, text := range strings.Split(part.Text, "Event ") {
+				index := strings.Index(text, "):\n")
+				if index < 0 {
 					continue
 				}
-				if strings.Contains(text, "(task.opened)") {
-					return integrationCall("assign_task", map[string]any{"task": card.ID, "member": card.Title, "role": "owner", "scope": card.Areas})
+				switch {
+				case strings.Contains(text, "(task.opened)"), strings.Contains(text, "(task.reported)"):
+					var card task.Card
+					if err := json.NewDecoder(strings.NewReader(text[index+3:])).Decode(&card); err != nil {
+						t.Error(err)
+						continue
+					}
+					if strings.Contains(text, "(task.opened)") {
+						calls = append(calls, integrationCall("assign_task", map[string]any{"task": card.ID, "member": card.Title, "role": "owner", "scope": card.Areas}).Calls...)
+					} else if !review {
+						calls = append(calls, integrationCall("request_merge", map[string]any{"task": card.ID, "claim": card.Claims[0].ID}).Calls...)
+					}
+				case strings.Contains(text, "(merge.done)"):
+					calls = append(calls, integrationCall("notify_human", map[string]any{"kind": "final", "text": "Integrated and verified."}).Calls...)
 				}
-				if review {
-					return fake.Reply{Text: "Awaiting human review."}
-				}
-				return integrationCall("request_merge", map[string]any{"task": card.ID, "claim": card.Claims[0].ID})
 			}
-			if strings.Contains(text, "(merge.done)") {
-				return integrationCall("notify_human", map[string]any{"kind": "final", "text": "Integrated and verified."})
-			}
+		}
+		if len(calls) > 0 {
+			return fake.Reply{Calls: calls}
 		}
 		return fake.Reply{Text: "Waiting."}
 	}}
@@ -196,23 +201,23 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 	}
 	defer e.Close()
 	members := []group.Member{{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}}
-	var profiles []profile.Profile
+	var profiles []agent.Agent
 	for _, name := range []string{"leader", "a", "b"} {
-		p := profile.DefaultWorker()
+		p := agent.DefaultWorker()
 		role := group.AgentWorker
 		if name == "leader" {
-			p = profile.DefaultLeader()
+			p = agent.DefaultLeader()
 			role = group.AgentLeader
 		}
 		p.ID, p.Model.Provider = event.ID(name+"-profile"), name
 		profiles = append(profiles, p)
-		members = append(members, group.Member{ID: event.ID(name), Name: name, Kind: group.MemberAgent, AgentRole: role, Profile: p.ID, Owner: "human"})
+		members = append(members, group.Member{ID: event.ID(name), Name: name, Kind: group.MemberAgent, AgentRole: role, Agent: p.ID, Owner: "human"})
 	}
 	settings := group.Settings{Review: new(false)}
 	if !ownerApproval {
 		settings.MergeNeedsOwner = new(false)
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: settings}, members, profiles)
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader", Settings: settings}, members, profiles)
 	if err != nil {
 		t.Fatal(err)
 	}

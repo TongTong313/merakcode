@@ -496,7 +496,7 @@ test.describe("task artifact review", () => {
       await rpc.group.say({
         group: groupID,
         task: taskID,
-        to: [created.payload.group.defaultLeader!],
+        to: [created.payload.group.leader!],
         text: "Publish report now",
       })
       await expect(review.getByRole("button", { name: "下载 Review document", exact: true })).toBeVisible()

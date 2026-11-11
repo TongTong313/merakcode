@@ -43,10 +43,10 @@ func TestWorkerTaskPacketIsSizedForTheDefaultModelWindow(t *testing.T) {
 			window := tc.window
 			e.ConfigureModels([]catalog.Override{{Provider: "fake", ID: "default-model", Window: &window}})
 			e.SetDefaultModel("fake", "default-model", "")
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Sizing", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Sizing", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"},
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"},
 			}, nil)
 			if err != nil {
 				t.Fatal(err)

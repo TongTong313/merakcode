@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -28,7 +28,7 @@ func TestLeaderRecoversInputsNotAcknowledgedByTheProduct(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			storage := memory.New()
-			runner := &claudecode.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--recovery-phase", phase}}}
+			runner := &claudecode.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: agent.Product{Binary: binary, Args: []string{"--recovery-phase", phase}}}
 			a := worker.Assignment{Leader: true, Session: "recover", Workdir: t.TempDir(), Packet: "Original instruction"}
 			run, err := runner.Start(ctx, a)
 			if err != nil {
@@ -81,7 +81,7 @@ func TestLeaderErrorResultKeepsFailedOutcome(t *testing.T) {
 	if err := os.WriteFile(fixture, []byte("{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
 	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: dir, Packet: "Fail"})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestLeaderErrorResultKeepsFailedOutcome(t *testing.T) {
 func TestLeaderKeepsUnacknowledgedInputAcrossAnEarlierResult(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
-	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: fakeBinary(t), Args: []string{"--leader-boundary"}}}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: fakeBinary(t), Args: []string{"--leader-boundary"}}}
 	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: t.TempDir(), Packet: "First"})
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestExternalWorkerReceivesSteeringAndCancelsAWaitingProcess(t *testing.T) {
 			if err := os.WriteFile(fixture, []byte("{\"type\":\"result\",\"subtype\":\"success\",\"structured_output\":{\"verdict\":\"done\",\"summary\":\"Follow-up verified\"}}\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--fixture", fixture, "--hold"}}}
+			runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Args: []string{"--fixture", fixture, "--hold"}}}
 			if !runner.Caps().Steer {
 				t.Fatal("steering was not advertised")
 			}
@@ -228,7 +228,7 @@ func TestRepeatedAssistantUsageIsCountedOncePerMessage(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: dir, Packet: "Check"})
 	if err != nil {
 		t.Fatal(err)

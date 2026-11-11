@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -44,7 +44,7 @@ func TestExternalWorkersRestoreProtectionBeforeCompleting(t *testing.T) {
 				}
 			})
 			bus := event.NewBus(memory.New(), time.Now, event.NewID)
-			product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", kind, path}}
+			product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", kind, path}}
 			var runner worker.Runner
 			switch kind {
 			case "codex":

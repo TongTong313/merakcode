@@ -33,16 +33,16 @@ afterAll(async () => {
 
 test("replays group history and sends a mention through the shared composer", async () => {
   const connection = await client()
-  const profiles = await connection.profile.list({})
-  const leader = await connection.profile.save({
-    profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
+  const profiles = await connection.agent.list({})
+  const leader = await connection.agent.save({
+    agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   const group = await connection.group.create({
     id: "",
     kind: "local",
     name: "Coordination",
     project: { directory: engine.project },
-    defaultLeader: "leader",
+    leader: "leader",
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
       {
@@ -51,17 +51,16 @@ test("replays group history and sends a mention through the shared composer", as
         kind: "agent",
         name: "Coordinator",
         agentRole: "leader",
-        profile: leader.id,
+        agent: leader.id,
         owner: localHuman,
         status: "idle",
       },
     ],
-    profiles: [],
   })
-  const batch = await connection.profile.save({
-    profile: { ...profiles![1]!, id: "", name: "Batch tool", product: { kind: "command", binary: "unused-command" } },
+  const batch = await connection.agent.save({
+    agent: { ...profiles![1]!, id: "", name: "Batch tool", product: { kind: "command", binary: "unused-command" } },
   })
-  await connection.member.register({
+  await connection.group.addMember({
     group: group.id,
     member: {
       id: "batch",
@@ -70,7 +69,7 @@ test("replays group history and sends a mention through the shared composer", as
       name: "Batch tool",
       agentRole: "worker",
       owner: localHuman,
-      profile: batch.id,
+      agent: batch.id,
       status: "idle",
     },
   })

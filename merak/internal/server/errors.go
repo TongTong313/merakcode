@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
@@ -34,8 +35,11 @@ func rpcError(method string, callErr error) *protocol.Error {
 		code = "MRK-3001"
 	}
 	var failure *engine.Error
+	var roster *group.Error
 	if errors.As(callErr, &failure) {
 		code = failure.Code
+	} else if errors.As(callErr, &roster) {
+		code = roster.Code
 	}
 	response := &protocol.Error{Code: -32602, Message: "Invalid request parameters", Data: protocol.ErrorData{Code: code}}
 	if callErr.Error() == "MRK-4005" {

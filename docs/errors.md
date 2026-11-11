@@ -35,6 +35,7 @@ what to do.
 | MRK-1005    | 项目文件监视器超出扫描上限 | Project file watcher exceeded its scan limit | 项目超过 50000 个文件或扫描超过 1 秒。请减少项目文件，或使用支持系统文件通知的版本。<br>The project exceeded 50000 files or a scan took over 1 second. Reduce project files or use a version with native file notifications. |
 | MRK-1006    | 云端账号尚未登录           | Cloud sign-in is required                    | 请先登录云端账号，再创建或打开云端群。<br>Sign in to the cloud before creating or opening a cloud group.                                                                                                                     |
 | MRK-1007    | 云端连接不可用             | Cloud connection is unavailable              | 检查云端地址和网络连接。引擎会自动重连。<br>Check the cloud endpoint and network connection. The engine reconnects automatically.                                                                                            |
+| MRK-1008    | 数据格式已升级             | The data format has been upgraded            | 开发版的旧数据不会迁移：关闭引擎后删除数据目录下的 merak.db，再重新启动。<br>Data of earlier development builds is not migrated: stop the engine, delete merak.db in the data folder, and start again.                       |
 
 ## 2xxx 模型服务 · Model providers
 
@@ -77,15 +78,20 @@ what to do.
 
 ## 6xxx 任务和协作群 · Tasks and groups
 
-| 错误码 Code | 说明                      | Meaning                                  | 怎么办 · What to do                                                                                                                                                                               |
-| ----------- | ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MRK-6001    | 群或任务操作失败          | Group or task operation failed           | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state.                                                                                                            |
-| MRK-6002    | 任务需要检查              | Task needs attention                     | 查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。<br>Review the sentinel reason and related events, then resume, reassign or cancel the task.                                                |
-| MRK-6003    | 成员角色和智能体不符      | Member role does not match the agent     | Leader 成员要选 Leader 智能体，Worker 成员要选 Worker 智能体。<br>A Leader member needs a Leader agent, and a Worker member needs a Worker agent.                                                 |
-| MRK-6004    | 智能体还在协作群里        | The agent is still in a group            | 先把它从所有协作群里移除，再删除。<br>Remove it from every group first, then delete it.                                                                                                           |
-| MRK-6005    | 只有拥有者能修改          | Only the owner can change this           | 复制一份再修改，或请拥有者操作。<br>Make a copy and change the copy, or ask the owner to do it.                                                                                                   |
-| MRK-6006    | 目标分支无效              | The target branch is not valid           | 目标分支需要在项目的 git 仓库根目录里存在；游离 HEAD 的仓库要手动指定分支。<br>The target branch must exist in the project's git repository root; a detached repository needs one chosen by hand. |
-| MRK-6007    | 这个外部产品不能当 Leader | This external product cannot be a Leader | 外部 Leader 需要支持 MCP 和中途消息，请换一个产品，或让它当 Worker。<br>An external Leader must support MCP and mid-turn messages. Pick another product, or use it as a Worker.                   |
+| 错误码 Code | 说明                        | Meaning                                  | 怎么办 · What to do                                                                                                                                                                               |
+| ----------- | --------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-6001    | 群或任务操作失败            | Group or task operation failed           | 检查群类型、成员角色及任务状态。<br>Check the group kind, member roles and task state.                                                                                                            |
+| MRK-6002    | 任务需要检查                | Task needs attention                     | 查看哨兵记录的原因和相关事件，再决定恢复、重派或取消。<br>Review the sentinel reason and related events, then resume, reassign or cancel the task.                                                |
+| MRK-6003    | 成员角色和智能体不符        | Member role does not match the agent     | Leader 成员要选 Leader 智能体，Worker 成员要选 Worker 智能体。<br>A Leader member needs a Leader agent, and a Worker member needs a Worker agent.                                                 |
+| MRK-6004    | 智能体还在协作群里          | The agent is still in a group            | 先把它从所有协作群里移除，再删除。<br>Remove it from every group first, then delete it.                                                                                                           |
+| MRK-6005    | 只有拥有者能修改            | Only the owner can change this           | 复制一份再修改，或请拥有者操作。<br>Make a copy and change the copy, or ask the owner to do it.                                                                                                   |
+| MRK-6006    | 目标分支无效                | The target branch is not valid           | 目标分支需要在项目的 git 仓库根目录里存在；游离 HEAD 的仓库要手动指定分支。<br>The target branch must exist in the project's git repository root; a detached repository needs one chosen by hand. |
+| MRK-6007    | 这个外部产品不能当 Leader   | This external product cannot be a Leader | 外部 Leader 需要支持 MCP 和中途消息，请换一个产品，或让它当 Worker。<br>An external Leader must support MCP and mid-turn messages. Pick another product, or use it as a Worker.                   |
+| MRK-6008    | 协作群没有 Leader           | The group has no Leader                  | 每个协作群需要恰好一个 Leader，请在成员里选一个 Leader 智能体。<br>Every group needs exactly one Leader. Pick a Leader agent among the members.                                                   |
+| MRK-6009    | 协作群只能有一个 Leader     | A group can have only one Leader         | 要换 Leader，请使用“更换 Leader”，不要再添加一个。<br>To change the Leader, use the change-Leader action instead of adding another one.                                                           |
+| MRK-6010    | Leader 必须是 Leader 智能体 | The Leader must be a Leader agent        | Worker 智能体不能当 Leader，请选一个 Leader 角色的智能体。<br>A Worker agent cannot lead. Pick an agent with the Leader role.                                                                     |
+| MRK-6011    | 工作空间不存在              | The workspace does not exist             | 工作空间需要是一个已存在的文件夹，请重新选择。<br>The workspace must be an existing folder. Choose it again.                                                                                      |
+| MRK-6012    | 不能直接移出 Leader         | The Leader cannot be removed             | 请先更换 Leader，再移出原来的成员。<br>Change the Leader first, then remove the former one.                                                                                                       |
 
 ## 8xxx 安装与更新 · Install and update
 

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -95,23 +95,28 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 			t.Fatalf("git %v: %s %v", args, output, err)
 		}
 	}
-	create := func(client *protocol.Client, id event.ID, work profile.Profile, checkouts map[string]string) {
+	create := func(client *protocol.Client, id event.ID, work agent.Agent, checkouts map[string]string) {
 		t.Helper()
-		lead := profile.DefaultLeader()
+		lead := agent.DefaultLeader()
 		lead.ID, lead.Model.Provider = "lead-profile", "fake"
 		params := protocol.GroupCreateParams{
-			Group: group.Group{ID: id, Name: string(id), Kind: group.KindLocal, DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}},
+			Group: group.Group{ID: id, Name: string(id), Kind: group.KindLocal, Leader: "leader", Project: group.Project{Directory: t.TempDir()}},
 			Members: []group.Member{
 				{ID: "local-human", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner},
-				{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Profile: work.ID, Checkouts: checkouts},
-			}, Profiles: []profile.Profile{lead, work},
+				{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Agent: work.ID, Checkouts: checkouts},
+			},
+		}
+		for _, a := range []agent.Agent{lead, work} {
+			if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: a}, nil); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if err := client.Call(ctx, "group.create", params, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	work := profile.DefaultWorker()
+	work := agent.DefaultWorker()
 	work.ID, work.Model.Provider, work.Mode = "work-profile", "fake", permission.ModeTakeover
 	create(b.client, "source", work, map[string]string{remoteURL: checkout})
 	var connection protocol.RemoteConnection
@@ -138,7 +143,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 	if err != nil || !os.SameFile(declared, expected) {
 		t.Fatalf("remote checkout changed: %v", err)
 	}
-	work.Product = &profile.Product{Kind: worker.KindRemote, Remote: &profile.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: source.Caps}}
+	work.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: source.Caps}}
 	create(a.client, "host", work, nil)
 	if err := a.client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Group: "host"}}, nil); err != nil {
 		t.Fatal(err)

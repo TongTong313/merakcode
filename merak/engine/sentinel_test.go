@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -121,9 +121,9 @@ func TestSentinelDetectsLoopsInConversationsAndLeaderThreads(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				lead := profile.DefaultLeader()
+				lead := agent.DefaultLeader()
 				lead.ID, lead.Model.Provider = "lead", "loop"
-				g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Loop", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead})
+				g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Loop", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -164,11 +164,11 @@ func TestSentinelInterruptsOrphanClaimAndReleasesItsLease(t *testing.T) {
 	stamp := time.Now().Add(-time.Minute)
 	bus := event.NewBus(storage, func() time.Time { stamp = stamp.Add(time.Millisecond); return stamp }, event.NewID)
 	groups := group.New(storage, bus, event.NewID)
-	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Patrol", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker", Owner: "owner"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Patrol", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker", Owner: "owner"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := groups.AddMember(ctx, g.ID, group.Member{ID: "other", Name: "Other", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"}); err != nil {
+	if _, err := groups.AddMember(ctx, g.ID, group.Member{ID: "other", Name: "Other", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}); err != nil {
 		t.Fatal(err)
 	}
 	pool := task.New(storage, bus, event.NewID, groups)
@@ -255,15 +255,15 @@ func TestExitedWorkerWithoutReportInterruptsClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Mode = "work", permission.ModeTakeover
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	work.Product = &profile.Product{Kind: worker.KindCommand, Binary: binary, Args: []string{"--workspace-setup-fixture", "fail"}}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Exit", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+	work.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Args: []string{"--workspace-setup-fixture", "fail"}}
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Exit", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,10 +301,10 @@ func TestSentinelCountsClaimUsageAgainstTaskBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Model.Provider = "work", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID, Owner: "owner"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID, Owner: "owner"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,10 +350,10 @@ func unansweredQuestionTimeout(t *testing.T, name string) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Timeout", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{ApprovalTimeout: 30 * time.Millisecond}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Timeout", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{ApprovalTimeout: 30 * time.Millisecond}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}

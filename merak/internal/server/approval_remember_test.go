@@ -39,7 +39,7 @@ func TestProtocolRetainsApprovalRememberScope(t *testing.T) {
 	}
 	defer client.Close()
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fixture"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fixture"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Call(ctx, "session.send", protocol.SessionSendParams{Session: created.Session, Parts: []model.Part{{Text: "Write"}}}, nil); err != nil {

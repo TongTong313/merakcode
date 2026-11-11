@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
-func (e *Engine) workerBudget(ctx context.Context, p profile.Profile, a worker.Assignment) (context.Context, func()) {
+func (e *Engine) workerBudget(ctx context.Context, p agent.Agent, a worker.Assignment) (context.Context, func()) {
 	if p.Product == nil || p.Product.Kind == worker.KindBuiltin {
 		return ctx, func() {}
 	}

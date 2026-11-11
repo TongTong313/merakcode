@@ -85,6 +85,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - Keep every MerakCode file under one folder, `~/.merakcode` (`MERAKCODE_HOME` moves it), and read the v0.3 configuration format unchanged. A change in settings now edits only that setting, so the comments and the rest of the file stay as written, and an address taken from an environment variable is no longer copied into the file. `merak serve` takes its port and host from the `server` setting.
 
+- Replace member profiles with agents (`merak agent`, `agent.*` methods): a group member is added by the id of an existing agent, never by an inline definition. A group has exactly one Leader agent and one Leader thread, changed in one step by the owner, and every group and conversation needs an existing workspace folder. Tasks no longer have a Leader of their own: the Leader of the group runs all of its goals. Data written by an earlier development build is refused with MRK-1008 instead of being read wrongly.
+
 ### Fixed
 
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
@@ -226,6 +228,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 在后台拉取每个已配置服务商的模型列表：配了密钥的服务商打开就能看到完整列表，不用手动刷新。列表连同公开目录和兜底表补全的上下文、价格、思考档位一起保存，重启和离线后仍在；不能对话的模型不显示，已弃用的会标出，刷新失败只提示一次。`merak models refresh [服务商]` 立刻刷新，`merak serve --refresh-models` 已删除。
 
 - 所有文件统一放在 `~/.merakcode` 一个目录下（`MERAKCODE_HOME` 可以挪动它），配置沿用 v0.3 的格式，不用改。在设置里改一项只改这一项，文件里的注释和其他内容保持原样；环境变量里的地址不再被写进配置文件。`merak serve` 的端口和地址取自配置里的 `server`。
+
+- 成员配置（profile）改为智能体（agent）（`merak agent`、`agent.*` 方法）：群成员只能按已有智能体的 id 加入，不再内联定义。一个群有且只有一个 Leader 智能体和一条 Leader 线程，只有群主能一步换掉它；每个群和会话都必须有一个已存在的工作区文件夹。任务不再有自己的 Leader，由群的 Leader 统一推进它所有的目标。早期开发版写下的数据会被 MRK-1008 拒绝，不会被读错。
 
 ### 修复
 

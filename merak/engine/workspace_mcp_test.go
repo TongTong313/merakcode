@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
@@ -20,7 +21,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	memorystore "github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -206,7 +206,7 @@ func TestUserMCPOverridesWorkspaceAndStopsWhenTheTakeoverSessionEnds(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Mode, p.Model.Provider = permission.ModeTakeover, "fake"
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: "takeover-session", Workdir: directory, Packet: "List tools"})
 	if err != nil {
@@ -327,13 +327,13 @@ func TestWorkspaceMCPTrustIsSharedByTwoWorktreesOfTheGroupProject(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID = "worker-profile"
 	p.Model.Provider, p.Model.Model = "fake", "fixture"
-	if _, err := e.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := e.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Worktrees", DefaultLeader: "leader", Project: group.Project{Directory: project}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Worktrees", Leader: "leader", Project: group.Project{Directory: project}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 	if err != nil {
 		t.Fatal(err)
 	}

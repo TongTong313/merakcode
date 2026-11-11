@@ -41,7 +41,7 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 			owner := connectAs(t, host, "owner", protocol.Capabilities{})
 			admin := connectAs(t, host, "admin", protocol.Capabilities{})
 			adminApprover := connectAs(t, host, "admin", protocol.Capabilities{Approve: true})
-			g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
+			g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 				{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
@@ -134,7 +134,7 @@ func TestSDKChatRequiresExplicitBudgetExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", map[string]any{"provider": "fixture", "budget": map[string]any{"maxTokens": 10}}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", map[string]any{"workdir": t.TempDir(), "provider": "fixture", "budget": map[string]any{"maxTokens": 10}}, &created); err != nil {
 		t.Fatal(err)
 	}
 	send := func(extend bool) error {

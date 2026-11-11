@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -36,7 +36,7 @@ func TestCommandRestoresProtectionBeforeCompletingItsReport(t *testing.T) {
 	})
 	runner := &command.Runner{
 		Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher,
-		Product: profile.Product{Binary: os.Args[0], Args: []string{"-test.run=^TestProtectionChild$", "--", path}},
+		Product: agent.Product{Binary: os.Args[0], Args: []string{"-test.run=^TestProtectionChild$", "--", path}},
 	}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace,
 		Claim: task.Claim{ID: event.NewID()}, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}, Protect: []string{path}, EnvAllow: []string{"SystemRoot"}},

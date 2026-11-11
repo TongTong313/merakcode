@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -33,7 +33,7 @@ type Runner struct {
 	Bus     *event.Bus
 	Store   store.Store
 	Gate    *permission.Gate
-	Product profile.Product
+	Product agent.Product
 	System  string
 }
 

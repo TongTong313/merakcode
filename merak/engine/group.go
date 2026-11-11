@@ -1,20 +1,20 @@
 package engine
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -56,7 +56,7 @@ type completedLeader struct {
 	run    *leaderRun
 }
 
-func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group.Member, profiles []profile.Profile) (group.Group, error) {
+func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group.Member) (group.Group, error) {
 	if _, err := leader.NewTriggers(append(leader.DefaultTriggers(), g.Settings.Triggers...)); err != nil {
 		return group.Group{}, err
 	}
@@ -66,9 +66,8 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 		}
 		params, _ := json.Marshal(struct {
 			group.Group
-			Members  []group.Member    `json:"members"`
-			Profiles []profile.Profile `json:"profiles"`
-		}{g, members, profiles})
+			Members []group.Member `json:"members"`
+		}{g, members})
 		result, err := e.forwardCloud(ctx, "group.create", params)
 		if err != nil {
 			return group.Group{}, err
@@ -77,8 +76,11 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 		err = json.Unmarshal(result, &created)
 		return created, err
 	}
-	e.profileMu.Lock()
-	defer e.profileMu.Unlock()
+	e.agentMu.Lock()
+	defer e.agentMu.Unlock()
+	if err := workspace.Existing(g.Project.Directory); err != nil {
+		return group.Group{}, coded(errorcode.WorkspaceInvalid, err)
+	}
 	root, rootErr := git.Root(ctx, g.Project.Directory)
 	projectInfo, projectErr := os.Stat(g.Project.Directory)
 	rootInfo, rootStatErr := os.Stat(root)
@@ -116,39 +118,12 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 			members[i].Owner = owner
 		}
 	}
-	for _, p := range profiles {
-		profileOwner := owner
-		for _, member := range members {
-			if member.Profile == p.ID {
-				profileOwner = member.Owner
-				break
-			}
-		}
-		if err := e.saveGroupProfile(ctx, p, profileOwner); err != nil {
-			return group.Group{}, err
-		}
-	}
 	for i, member := range members {
-		if member.Kind != group.MemberAgent {
-			continue
-		}
-		p, err := e.memberProfile(ctx, member)
+		prepared, err := e.prepareAgentMember(ctx, member, true)
 		if err != nil {
 			return group.Group{}, err
 		}
-		if string(p.Role) != string(member.AgentRole) {
-			return group.Group{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
-		}
-		if member.AgentRole == group.AgentLeader && p.Product != nil {
-			caps := e.runnerFor(p, nil).Caps()
-			if !caps.MCP || !caps.Steer {
-				return group.Group{}, coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
-			}
-		}
-		members[i].Hosts = append([]string(nil), p.Network...)
-		if err := e.configureMemberCheckout(ctx, &members[i], p); err != nil {
-			return group.Group{}, err
-		}
+		members[i] = prepared
 	}
 	created, err := e.Groups.Create(ctx, g, members)
 	if err != nil {
@@ -159,34 +134,7 @@ func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group
 	}
 	return created, nil
 }
-func (e *Engine) saveGroupProfile(ctx context.Context, p profile.Profile, owner event.ID) error {
-	if err := validateProfileNetwork(p); err != nil {
-		return err
-	}
-	if p.ID == "" || p.Role != profile.Leader && p.Role != profile.Worker {
-		return errors.New("profile id and role are required")
-	}
-	p, err := e.keepAgentSecrets(ctx, p)
-	if err != nil {
-		return err
-	}
-	body, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	existing, err := e.store.Fetch(ctx, "profile", string(p.ID))
-	if err == nil {
-		if bytes.Equal(existing.Body, body) {
-			return nil
-		}
-		return store.ErrConflict
-	}
-	if !errors.Is(err, store.ErrNotFound) {
-		return err
-	}
-	return e.store.Put(ctx, store.Doc{Kind: "profile", Key: string(p.ID), Body: body, Meta: map[string]string{"owner": string(owner)}})
-}
-func (e *Engine) AddGroupMember(ctx context.Context, id, human event.ID, member group.Member, p *profile.Profile) (group.Member, error) {
+func (e *Engine) AddGroupMember(ctx context.Context, id, human event.ID, member group.Member) (group.Member, error) {
 	actor, err := e.groupMember(ctx, id, human)
 	if err != nil || !actor.Can(group.RoleAdmin) {
 		return group.Member{}, task.ErrNotMember
@@ -197,61 +145,73 @@ func (e *Engine) AddGroupMember(ctx context.Context, id, human event.ID, member 
 	if member.Kind == group.MemberAgent && member.Owner == "" {
 		member.Owner = human
 	}
-	return e.addGroupMember(ctx, id, member, p, true)
+	return e.addGroupMember(ctx, id, member, true)
 }
 
-func (e *Engine) addGroupMember(ctx context.Context, id event.ID, member group.Member, p *profile.Profile, acceptNetwork bool) (group.Member, error) {
-	e.profileMu.Lock()
-	defer e.profileMu.Unlock()
-	member.Hosts = nil
-	if p != nil {
-		if string(p.Role) != string(member.AgentRole) {
-			return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
-		}
-		if err := e.saveGroupProfile(ctx, *p, member.Owner); err != nil {
-			return group.Member{}, err
-		}
-		member.Profile = p.ID
-	}
-	if member.Kind == group.MemberAgent {
-		configured, err := e.memberProfile(ctx, member)
-		if err != nil {
-			return group.Member{}, err
-		}
-		if string(configured.Role) != string(member.AgentRole) {
-			return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its profile"))
-		}
-		if member.AgentRole == group.AgentLeader && configured.Product != nil {
-			caps := e.runnerFor(configured, nil).Caps()
-			if !caps.MCP || !caps.Steer {
-				return group.Member{}, coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
-			}
-		}
-		if acceptNetwork {
-			member.Hosts = append([]string(nil), configured.Network...)
-		}
-		if err := e.configureMemberCheckout(ctx, &member, configured); err != nil {
-			return group.Member{}, err
-		}
+func (e *Engine) addGroupMember(ctx context.Context, id event.ID, member group.Member, acceptNetwork bool) (group.Member, error) {
+	e.agentMu.Lock()
+	defer e.agentMu.Unlock()
+	member, err := e.prepareAgentMember(ctx, member, acceptNetwork)
+	if err != nil {
+		return group.Member{}, err
 	}
 	return e.Groups.AddMember(ctx, id, member)
 }
-func (e *Engine) memberProfile(ctx context.Context, member group.Member) (profile.Profile, error) {
-	for _, p := range defaultProfiles() {
-		if p.ID == member.Profile || member.Profile == "" && string(p.Role) == string(member.AgentRole) {
-			return p, nil
+
+// prepareAgentMember checks that the agent of a member exists, may be used by its owner and has the role of the
+// member, and fills in what the roster keeps of it: the hosts it may reach and its checkouts.
+func (e *Engine) prepareAgentMember(ctx context.Context, member group.Member, acceptNetwork bool) (group.Member, error) {
+	member.Hosts = nil
+	if member.Kind != group.MemberAgent {
+		return member, nil
+	}
+	configured, owner, err := e.loadAgent(ctx, member)
+	if err != nil {
+		return group.Member{}, err
+	}
+	if !configured.Shared && owner != "" && owner != member.Owner {
+		return group.Member{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the owner can use an unshared agent"))
+	}
+	if string(configured.Role) != string(member.AgentRole) {
+		return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its agent"))
+	}
+	if member.AgentRole == group.AgentLeader && configured.Product != nil {
+		caps := e.runnerFor(configured, nil).Caps()
+		if !caps.MCP || !caps.Steer {
+			return group.Member{}, coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
 		}
 	}
-	doc, err := e.store.Fetch(ctx, "profile", string(member.Profile))
+	if acceptNetwork {
+		member.Hosts = append([]string(nil), configured.Network...)
+	}
+	if err := e.configureMemberCheckout(ctx, &member, configured); err != nil {
+		return group.Member{}, err
+	}
+	return member, nil
+}
+
+func (e *Engine) memberAgent(ctx context.Context, member group.Member) (agent.Agent, error) {
+	found, _, err := e.loadAgent(ctx, member)
+	return found, err
+}
+
+// loadAgent reads the agent of a member and the human who owns it; the built-in agents have no owner.
+func (e *Engine) loadAgent(ctx context.Context, member group.Member) (agent.Agent, event.ID, error) {
+	for _, p := range defaultAgents() {
+		if p.ID == member.Agent || member.Agent == "" && string(p.Role) == string(member.AgentRole) {
+			return p, "", nil
+		}
+	}
+	doc, err := e.store.Fetch(ctx, "agent", string(member.Agent))
 	if err != nil {
-		return profile.Profile{}, err
+		return agent.Agent{}, "", err
 	}
 	if doc.Meta["deleted"] == "true" {
-		return profile.Profile{}, store.ErrNotFound
+		return agent.Agent{}, "", store.ErrNotFound
 	}
-	var p profile.Profile
+	var p agent.Agent
 	err = json.Unmarshal(doc.Body, &p)
-	return p, err
+	return p, event.ID(doc.Meta["owner"]), err
 }
 func (e *Engine) CreateTask(ctx context.Context, card task.Card) (task.Card, error) {
 	return e.createTask(ctx, card, "")
@@ -384,17 +344,12 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 		for id, fact := range updates {
 			if id == "" {
 				thread := run.threads.Route(fact)
-				if thread != nil && thread.Leader != g.DefaultLeader {
+				if thread != nil && thread.Leader != g.Leader {
 					e.beginHandOver(run, thread, fact)
 				}
 				continue
 			}
-			card, err := e.Tasks.Get(e.ctx, id)
-			if err != nil || card.Parent != "" || card.Phase == task.PhaseDone || card.Phase == task.PhaseCancelled {
-				continue
-			}
-			thread := run.threads.Route(fact)
-			if thread != nil && thread.Leader != card.Leader {
+			if thread := run.threads.Route(fact); thread != nil && thread.Leader != g.Leader {
 				e.beginHandOver(run, thread, fact)
 			}
 		}
@@ -432,8 +387,11 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 					run.latest.Store(&updated)
 					run.threads.UpdateGroup(updated)
 					thread := run.threads.Route(fact)
-					if thread != nil && thread.Leader != updated.DefaultLeader {
+					if thread != nil && thread.Leader != updated.Leader {
 						e.beginHandOver(run, thread, fact)
+					} else {
+						// No thread of a former Leader is running, so there is nothing to hand over
+						e.dropFormerLeaders(e.ctx, updated)
 					}
 					run.threads.Wake()
 				}
@@ -462,15 +420,6 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 					}
 					e.controlGroupClaims(e.ctx, run, fact, control.Thread)
 					continue
-				}
-				if fact.Type == task.Updated {
-					card, err := event.Decode[task.Card](fact)
-					if err == nil && card.Parent == "" {
-						thread := run.threads.Route(fact)
-						if thread != nil && thread.Leader != card.Leader {
-							e.beginHandOver(run, thread, fact)
-						}
-					}
 				}
 				if err := e.notifyTask(e.ctx, fact); err != nil {
 					continue
@@ -517,8 +466,8 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 						e.workers.Go(func() { e.extractTaskMemory(card, fact.ID) })
 					}
 					if err == nil && card.Status == task.Cancelled {
-						if card.Parent == "" && run.started[card.ID] != nil {
-							run.started[card.ID].cancel()
+						if card.Parent == "" && run.started[run.group.ID] != nil && !e.otherOpenGoal(e.ctx, run.group.ID, card.ID) {
+							run.started[run.group.ID].cancel()
 						}
 						for _, claim := range card.Claims {
 							e.mu.Lock()
@@ -669,7 +618,7 @@ func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
 	if err != nil {
 		return
 	}
-	p, err := e.memberProfile(e.ctx, member)
+	p, err := e.memberAgent(e.ctx, member)
 	if err != nil {
 		return
 	}
@@ -804,7 +753,7 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 		fail(err)
 		return
 	}
-	p, err := e.memberProfile(ctx, member)
+	p, err := e.memberAgent(ctx, member)
 	if err != nil {
 		fail(err)
 		return
@@ -848,14 +797,6 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 		if initial {
 			body, _ := json.Marshal(g.configuration().Brief)
 			text := "## Group brief\n" + string(body)
-			if thread.Session.Scope.Task != "" {
-				card, err := e.Tasks.Get(ctx, thread.Key)
-				if err != nil {
-					return
-				}
-				body, _ := json.Marshal(card)
-				text += "\n## Task\n" + string(body)
-			}
 			if thread.Handover != "" {
 				text += "\n## Handover\n" + thread.Handover
 			}
@@ -872,7 +813,7 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 	}
 }
 
-func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *leader.Thread, p profile.Profile) (leaderRuntime, error) {
+func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *leader.Thread, p agent.Agent) (leaderRuntime, error) {
 	saved, loadErr := e.manager.Load(ctx, thread.Session.ID)
 	if loadErr != nil && !errors.Is(loadErr, store.ErrNotFound) {
 		return nil, loadErr
@@ -882,7 +823,7 @@ func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *
 	if loadErr == nil {
 		c, err = e.conversationFor(saved)
 	} else {
-		var chosen profile.ModelRef
+		var chosen agent.ModelRef
 		if chosen, err = e.memberModel(p.Model); err != nil {
 			return nil, err
 		}
@@ -913,4 +854,15 @@ func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *
 	}
 	thread.Session = c.state
 	return runtime, nil
+}
+
+// otherOpenGoal reports whether the group has a goal besides the given one that is still being worked on.
+func (e *Engine) otherOpenGoal(ctx context.Context, groupID, except event.ID) bool {
+	cards, err := e.Tasks.List(ctx, groupID)
+	if err != nil {
+		return true
+	}
+	return slices.ContainsFunc(cards, func(card task.Card) bool {
+		return card.Parent == "" && card.ID != except && card.Phase != task.PhaseDone && card.Phase != task.PhaseCancelled
+	})
 }

@@ -86,15 +86,15 @@ func (e *Engine) extractTaskMemory(card task.Card, cause event.ID) {
 		if err != nil {
 			return
 		}
-		p, err := e.memberProfile(ctx, member)
+		p, err := e.memberAgent(ctx, member)
 		if err != nil {
 			return
 		}
 		ref := p.Model
 		if e.provider(ref.Provider) == nil {
-			leaderMember, err := e.groupMember(ctx, card.Group, card.Leader)
+			leaderMember, err := e.groupLeader(ctx, card.Group)
 			if err == nil {
-				leaderProfile, err := e.memberProfile(ctx, leaderMember)
+				leaderProfile, err := e.memberAgent(ctx, leaderMember)
 				if err == nil {
 					ref = leaderProfile.Model
 				}

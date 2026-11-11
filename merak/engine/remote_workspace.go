@@ -5,14 +5,14 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/remote"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 )
 
-func (e *Engine) configureMemberCheckout(ctx context.Context, member *group.Member, p profile.Profile) error {
+func (e *Engine) configureMemberCheckout(ctx context.Context, member *group.Member, p agent.Agent) error {
 	member.Remote = p.Product != nil && p.Product.Kind == worker.KindRemote
 	if member.Remote {
 		if member.AgentRole != group.AgentWorker || p.Product.Remote == nil {

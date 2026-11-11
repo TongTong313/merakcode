@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -19,7 +19,7 @@ import (
 )
 
 type Runner struct {
-	Source      profile.RemoteSource
+	Source      agent.RemoteSource
 	Bus         *event.Bus
 	Store       store.Store
 	Credentials func(context.Context) (protocol.RemoteConnectParams, error)

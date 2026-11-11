@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/window"
@@ -20,7 +20,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
-func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.Assignment) (worker.Run, error) {
+func (e *Engine) StartWorker(ctx context.Context, p agent.Agent, a worker.Assignment) (worker.Run, error) {
 	p, err := e.withAgentSecrets(ctx, p)
 	if err != nil {
 		return nil, err
@@ -28,9 +28,9 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	a.Scope.Session = a.Session
 	if p.Product != nil && p.Product.Kind == worker.KindRemote {
 		// The source engine enforces its own profile; the host enforces task totals.
-		p.Budget = profile.Budget{}
+		p.Budget = agent.Budget{}
 	}
-	if err := validateProfileNetwork(p); err != nil {
+	if err := validateAgentNetwork(p); err != nil {
 		return nil, err
 	}
 	packetSources, err := e.prepareTaskPacket(ctx, &p, &a)
@@ -67,7 +67,7 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 			return nil, errors.New("unsupported worker product")
 		}
 	}
-	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" && !(a.Leader && p.Role == profile.Leader && p.ToolPool == "leader.default") {
+	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" && !(a.Leader && p.Role == agent.Leader && p.ToolPool == "leader.default") {
 		return nil, errors.New("unsupported worker tool pool")
 	}
 	if a.ReadOnly || p.ToolPool == "worker.readonly" || a.Leader {
@@ -204,7 +204,7 @@ func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.As
 	return run, nil
 }
 
-func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.Assignment, steer loop.Steer) (loop.Outcome, error) {
+func (e *Engine) runAssignment(ctx context.Context, p agent.Agent, a worker.Assignment, steer loop.Steer) (loop.Outcome, error) {
 	priorState, loadErr := e.manager.Load(ctx, a.Session)
 	if loadErr != nil && !errors.Is(loadErr, store.ErrNotFound) {
 		return loop.Outcome{}, loadErr
@@ -217,7 +217,7 @@ func (e *Engine) runAssignment(ctx context.Context, p profile.Profile, a worker.
 		}
 		c, err = e.conversationFor(priorState)
 	} else {
-		var chosen profile.ModelRef
+		var chosen agent.ModelRef
 		if chosen, err = e.memberModel(p.Model); err != nil {
 			return loop.Outcome{}, err
 		}

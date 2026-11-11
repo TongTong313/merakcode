@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
@@ -121,9 +121,9 @@ func TestEngineSandboxDeniesItsOwnDataDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	marker := filepath.Join(workspace, "completed")
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-private-data-fixture", secret, marker}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-private-data-fixture", secret, marker}}
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -154,8 +154,8 @@ func TestEngineSandboxAsksBeforeNonforwardingStartupWhenNetworkIsUnenforced(t *t
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", filepath.Join(workspace, "output")}}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", filepath.Join(workspace, "output")}}
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: "network-enforcement", Workdir: workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -201,20 +201,20 @@ func TestEngineSandboxMergesUserAndGroupNetworkDenials(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.ID, p.Name = "network-member", "Network member"
-			p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://blocked.example:443/"}}
+			p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://blocked.example:443/"}}
 			a := worker.Assignment{Session: event.NewID(), Workdir: t.TempDir()}
 			if test.grouped {
 				groupSettings := group.Settings{}
 				if !test.userDeny {
 					groupSettings.DeniedHosts = []string{"blocked.example:443"}
 				}
-				g, err := e.CreateGroup(t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: a.Workdir}, DefaultLeader: "leader", Settings: groupSettings}, []group.Member{
+				g, err := createGroup(t, e, t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: a.Workdir}, Leader: "leader", Settings: groupSettings}, []group.Member{
 					{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-					{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
-					{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
-				}, []profile.Profile{p})
+					{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+					{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID},
+				}, []agent.Agent{p})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -271,33 +271,33 @@ func TestEngineSandboxGroupRequiresApprovalForProfileNetworkChanges(t *testing.T
 		t.Fatal(err)
 	}
 	defer e.Close()
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{AllowedHosts: []string{"shared.example"}}}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{AllowedHosts: []string{"shared.example"}}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Network = []string{"original.example"}
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0]}
-	p, err = e.SaveProfile(ctx, "owner", p)
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0]}
+	p, err = e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	member, err := e.RegisterMember(ctx, g.ID, "owner", group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID})
+	member, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Network = append(p.Network, "added.example")
-	p, err = e.SaveProfile(ctx, "owner", p)
+	p, err = e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, host := range []string{"original.example", "shared.example", "added.example"} {
 		t.Run(host, func(t *testing.T) {
-			p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://%s:%d/", host, port)}}
+			p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://%s:%d/", host, port)}}
 			a := worker.Assignment{Session: event.ID(host), Workdir: g.Project.Directory, Scope: event.Scope{Group: g.ID}, Claim: task.Claim{Member: member.ID}, SandboxProfile: sandbox.Profile{Network: sandbox.Network{LocalPorts: []int{port}}}}
 			run, err := e.StartWorker(ctx, p, a)
 			if err != nil {
@@ -395,23 +395,23 @@ func TestEngineSandboxNetworkApprovalPersistsInGroupSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID = "external-profile"
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://approved.example:%d/", port), "2"}}
-	p, err = e.SaveProfile(ctx, "owner", p)
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://approved.example:%d/", port), "2"}}
+	p, err = e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
-		{ID: "member", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "member", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Network = []string{"approved.example"}
-	p, err = e.SaveProfile(ctx, "owner", p)
+	p, err = e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,8 +471,8 @@ func TestEngineSandboxSingleChatRemembersNetworkHostsAfterRestart(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		p := profile.DefaultWorker()
-		p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://remembered.example:%d/", port)}}
+		p := agent.DefaultWorker()
+		p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://remembered.example:%d/", port)}}
 		run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "single-chat", Workdir: t.TempDir(), SandboxProfile: sandbox.Profile{Network: sandbox.Network{LocalPorts: []int{port}}}})
 		if err != nil {
 			_ = e.Close()
@@ -512,8 +512,8 @@ func TestEngineSandboxSingleChatAllowAllStillEnforcesUserDenials(t *testing.T) {
 	}
 	defer e.Close()
 	for _, host := range []string{"unlisted.example", "blocked.example"} {
-		p := profile.DefaultWorker()
-		p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://%s:%d/", host, port)}}
+		p := agent.DefaultWorker()
+		p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", fmt.Sprintf("http://%s:%d/", host, port)}}
 		run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: t.TempDir(), SandboxProfile: sandbox.Profile{Network: sandbox.Network{LocalPorts: []int{port}}}})
 		if err != nil {
 			t.Fatal(err)
@@ -553,8 +553,8 @@ func TestEngineSandboxKeepsLateNetworkApprovalAfterTheWorkerExits(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://late.example/"}}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://late.example/"}}
 	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{permission.Replied}})
 	defer stop()
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "late", Workdir: t.TempDir()})
@@ -616,9 +616,9 @@ func TestEngineSandboxExternalNetworkAsksBeforeConnecting(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Name = "external-profile", "External member"
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://unlisted.example.com/"}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-network-fixture", "http://unlisted.example.com/"}}
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "network", Workdir: t.TempDir(), Claim: task.Claim{Member: "member"}})
 	if err != nil {
 		t.Fatal(err)

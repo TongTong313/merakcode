@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/claudecode"
@@ -34,7 +34,7 @@ func TestWindowsClaudeNewStateAndMigratedConfigurationArePrivate(t *testing.T) {
 	defer launcher.Close()
 	configuration := filepath.Join(home, ".claude", ".claude.json")
 	runner := &claudecode.Runner{Sandbox: launcher, Bus: event.NewBus(memory.New(), time.Now, event.NewID),
-		Product: profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", configuration, "--initial-state", "legacy configuration"}}}
+		Product: agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", configuration, "--initial-state", "legacy configuration"}}}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
 		t.Fatal(err)

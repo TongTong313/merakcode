@@ -171,7 +171,7 @@ func (e *Engine) DeviceMembers(ctx context.Context) ([]group.Member, error) {
 			if member.Kind != group.MemberAgent {
 				continue
 			}
-			p, err := e.memberProfile(ctx, member)
+			p, err := e.memberAgent(ctx, member)
 			if err != nil {
 				return nil, err
 			}

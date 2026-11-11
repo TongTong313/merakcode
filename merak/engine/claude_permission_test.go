@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
@@ -51,9 +51,9 @@ func TestClaudeCodeForwardsToolApprovalsToTheEngine(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.Mode = test.mode
-			p.Product = &profile.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--request-permission"}}
+			p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--request-permission"}}
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "claude-approval", Workdir: workspace, Packet: "Write a file", Claim: task.Claim{Member: "claude-member"}})

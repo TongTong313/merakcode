@@ -55,18 +55,18 @@ export function GroupConversation(props: { id: string; directory: string }) {
   const [sources, { refetch }] = createResource(
     () =>
       view()
-        ?.members.map((member) => member.profile ?? member.id)
+        ?.members.map((member) => member.agent ?? member.id)
         .join(","),
     async () => {
       const connection = await client()
-      const [profiles, products] = await Promise.all([connection.profile.list({}), connection.member.catalog()])
+      const [profiles, products] = await Promise.all([connection.agent.list({}), connection.agent.catalog()])
       return { profiles: profiles ?? [], products: products ?? [] }
     },
   )
   const capabilitiesReady = () => sources.state === "ready"
   const canMessage = (member: GroupMember) => {
     if (!capabilitiesReady()) return false
-    const profile = sources()?.profiles.find((profile) => profile.id === member.profile)
+    const profile = sources()?.profiles.find((profile) => profile.id === member.agent)
     if (profile?.product?.kind === "remote") return !!profile.product.remote?.caps.steer
     return (
       !!profile &&
@@ -453,7 +453,7 @@ export function GroupConversation(props: { id: string; directory: string }) {
                             remote={member.remote}
                             directory={props.directory}
                             sessionID={memberSession(member)}
-                            mode={sources()?.profiles.find((profile) => profile.id === member.profile)?.mode ?? "ask"}
+                            mode={sources()?.profiles.find((profile) => profile.id === member.agent)?.mode ?? "ask"}
                             busy={activity(member).busy}
                           />
                           <For each={activity(member).tasks}>

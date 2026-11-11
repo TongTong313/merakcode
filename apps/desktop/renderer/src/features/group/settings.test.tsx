@@ -17,17 +17,16 @@ test("owners change group initiative and receive later settings updates", async 
     location.href = engine.url
     setLocale("en")
     const connection = await client()
-    const profiles = await connection.profile.list({})
-    const leader = await connection.profile.save({
-      profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
+    const profiles = await connection.agent.list({})
+    const leader = await connection.agent.save({
+      agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const group = await connection.group.create({
       id: "",
       kind: "local",
       name: "Settings",
       project: { directory: engine.project },
-      defaultLeader: "leader",
-      profiles: [],
+      leader: "leader",
       settings: { initiative: "normal", planNeedsApproval: true },
       members: [
         { id: localHuman, group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
@@ -37,7 +36,7 @@ test("owners change group initiative and receive later settings updates", async 
           kind: "agent",
           name: "Leader",
           agentRole: "leader",
-          profile: leader.id,
+          agent: leader.id,
           status: "idle",
         },
       ],

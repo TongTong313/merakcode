@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"os"
@@ -38,16 +38,16 @@ func TestGoalReviewRetainsChildFilesForReworkAndReleasesThemAfterDelivery(t *tes
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := profile.DefaultWorker()
+	worker := agent.DefaultWorker()
 	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: worker.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: worker.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, worker})
+	}, []agent.Agent{lead, worker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,16 +186,16 @@ func TestIntegratedWorktreeSurvivesGoalReviewAndReworksOnTheSameBranch(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := profile.DefaultWorker()
+	worker := agent.DefaultWorker()
 	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: worker.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: worker.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, worker})
+	}, []agent.Agent{lead, worker})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
@@ -34,7 +34,7 @@ func TestExternalEventRPCPreservesPayloadAndCannotForgeEngineFacts(t *testing.T)
 		t.Fatal(err)
 	}
 	defer client.Close()
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "External events", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}})
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "External events", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,13 +103,13 @@ func TestGroupUpdateRPCChangesRunningTriggerSettings(t *testing.T) {
 	as := func(human event.ID) *protocol.Client {
 		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
 	}
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
 		{ID: "owner", Kind: group.MemberHuman, Role: group.RoleOwner, Name: "Owner"},
 		{ID: "approver", Kind: group.MemberHuman, Role: group.RoleApprover, Name: "Approver"},
-		{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Profile: lead.ID},
-	}, []profile.Profile{lead})
+		{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Agent: lead.ID},
+	}, []agent.Agent{lead})
 	if err != nil {
 		t.Fatal(err)
 	}

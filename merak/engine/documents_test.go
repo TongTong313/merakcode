@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 )
 
 func TestLeaderCanWriteAndListSharedDocuments(t *testing.T) {
@@ -35,9 +35,9 @@ func TestLeaderCanWriteAndListSharedDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Docs", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, []profile.Profile{p})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Docs", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}

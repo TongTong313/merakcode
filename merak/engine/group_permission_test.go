@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
@@ -65,15 +65,15 @@ func TestLeaderApprovalToolsResolveWorkerRequests(t *testing.T) {
 			if !status.Available {
 				t.Skip("enforced sandbox is unavailable")
 			}
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider, work.Mode = "worker-profile", "worker", permission.ModeAuto
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
 				{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-			}, []profile.Profile{lead, work})
+			}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}

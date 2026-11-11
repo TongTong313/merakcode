@@ -47,7 +47,7 @@ test("opens a board card's structured report and shows the goal phase", async ()
           kind: "local",
           name: "Delivery",
           project: { directory: "/project" },
-          defaultLeader: "leader",
+          leader: "leader",
         }}
         board={board}
         members={[{ id: "worker", group: "group", kind: "agent", name: "Writer", agentRole: "worker", status: "idle" }]}

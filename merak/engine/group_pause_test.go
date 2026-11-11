@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
@@ -45,13 +45,13 @@ func TestGroupPauseReachesAnActiveWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lp, wp := profile.DefaultLeader(), profile.DefaultWorker()
+	lp, wp := agent.DefaultLeader(), agent.DefaultWorker()
 	lp.ID, lp.Model.Provider, wp.ID, wp.Model.Provider = "lp", "leader", "wp", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Pause", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Pause", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: wp.ID},
-	}, []profile.Profile{lp, wp})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lp.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: wp.ID},
+	}, []agent.Agent{lp, wp})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +82,12 @@ func TestPausedGroupRetainsMessagesAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "lp", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Paused", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Paused", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
-	}, []profile.Profile{p})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,9 +4,9 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/acp"
@@ -20,7 +20,7 @@ type Runner struct {
 	Store   store.Store
 	Bus     *event.Bus
 	Gate    *permission.Gate
-	Product profile.Product
+	Product agent.Product
 	System  string
 }
 

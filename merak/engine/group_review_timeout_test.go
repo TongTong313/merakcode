@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
@@ -23,7 +23,7 @@ func TestRecoverKeepsOriginalPlanAndReviewDeadlines(t *testing.T) {
 			storage := memory.New()
 			bus := event.NewBus(storage, func() time.Time { return time.Now().Add(-time.Minute) }, event.NewID)
 			groups := group.New(storage, bus, event.NewID)
-			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Recover approval", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", ApprovalTimeout: time.Second}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Recover approval", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", ApprovalTimeout: time.Second}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,16 +90,16 @@ func TestRealPlanAndReviewRequestsTimeOutToBlockedTasks(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead := profile.DefaultLeader()
+			lead := agent.DefaultLeader()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
-			work := profile.DefaultWorker()
+			work := agent.DefaultWorker()
 			work.ID, work.Model.Provider = "worker-profile", "worker"
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", Review: new(true)}}, []group.Member{
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", Review: new(true)}}, []group.Member{
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
 				{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-			}, []profile.Profile{lead, work})
+			}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}

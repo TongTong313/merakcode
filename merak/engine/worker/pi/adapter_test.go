@@ -3,10 +3,10 @@ package pi_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -25,7 +25,7 @@ func TestLeaderKeepsPendingPromptAcrossEarlierSettledEvent(t *testing.T) {
 	binary := fakeBinary(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
-	runner := &pi.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary"}}}
+	runner := &pi.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary"}}}
 	run, err := runner.Start(ctx, worker.Assignment{Leader: true, Session: "leader", Workdir: t.TempDir(), Packet: "First"})
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestPiPreservesUnicodeSeparatorsAndSharedEvents(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	runner := &pi.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
+	runner := &pi.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Args: []string{"--fixture", fixture}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 	if err != nil {
 		t.Fatal(err)

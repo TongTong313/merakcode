@@ -27,7 +27,7 @@ func TestSharedDocumentsAreVersionedAndCheckTheWriterRole(t *testing.T) {
 	}
 	defer client.Close()
 	member, observer := connectServerAs(t, handler, host, "member", protocol.Capabilities{}), connectServerAs(t, handler, host, "observer", protocol.Capabilities{})
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "member", Name: "Member", Kind: group.MemberHuman, Role: "member"},
 		{ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"},

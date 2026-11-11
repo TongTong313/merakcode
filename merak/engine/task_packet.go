@@ -6,17 +6,17 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/window"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
-func (e *Engine) prepareTaskPacket(ctx context.Context, p *profile.Profile, a *worker.Assignment) ([]event.ID, error) {
+func (e *Engine) prepareTaskPacket(ctx context.Context, p *agent.Agent, a *worker.Assignment) ([]event.ID, error) {
 	if a.Scope.Group == "" || a.Claim.Task == "" || a.Leader {
 		return nil, nil
 	}

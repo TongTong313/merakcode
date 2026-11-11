@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
@@ -109,7 +109,7 @@ func TestBuiltinWorkerTakeoverUsesTheMemberMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Model.Provider, p.Mode = "fixture", permission.ModeTakeover
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -140,7 +140,7 @@ func TestAutoWorkerWritesLocallyAndFallsBackToHumanWithoutSandbox(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Mode, p.Model.Provider = permission.ModeAuto, "fixture"
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: dir, Packet: "Write"})
 	if err != nil {

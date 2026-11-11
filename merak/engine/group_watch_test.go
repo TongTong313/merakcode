@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -43,17 +43,17 @@ func inplaceCommits(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	if kind == worker.KindCommand {
-		work.Product = &profile.Product{Kind: kind, Binary: "git", Args: []string{"commit", "--allow-empty", "-m", "Member command commit"}}
+		work.Product = &agent.Product{Kind: kind, Binary: "git", Args: []string{"commit", "--allow-empty", "-m", "Member command commit"}}
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Inplace commits", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Inplace commits", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +140,11 @@ func TestWatcherOverloadNotifiesTheOwnerOnce(t *testing.T) {
 	defer e.Close()
 	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{"sentinel.flagged", group.NoticeSent}})
 	defer stop()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "profile", "leader"
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Large project", Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner}, {ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Profile: lead.ID}}, []profile.Profile{lead})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Large project", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner}, {ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Agent: lead.ID}}, []agent.Agent{lead})
 	if err != nil {
 		t.Fatal(err)
 	}

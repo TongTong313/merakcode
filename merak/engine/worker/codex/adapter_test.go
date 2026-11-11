@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -29,7 +29,7 @@ func TestLeaderRecoversInputBeforeNativeAcknowledgement(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	storage := memory.New()
-	runner := &codex.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "recovery-fail"}}}
+	runner := &codex.Runner{Store: storage, Bus: event.NewBus(storage, time.Now, event.NewID), Product: agent.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "recovery-fail"}}}
 	a := worker.Assignment{Leader: true, Session: "recover", Workdir: t.TempDir(), Packet: "Original instruction"}
 	run, err := runner.Start(ctx, a)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestLeaderRetriesInputRejectedAfterThePreviousTurnCompleted(t *testing.T) {
 	directory := t.TempDir()
 	boundary := filepath.Join(directory, "continue")
 	turn := worker.NewLeaderTurn()
-	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: fakeBinary(t), Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary", "MERAKCODE_FIXTURE_BOUNDARY_WAIT": boundary}}}
+	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: fakeBinary(t), Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "leader-boundary", "MERAKCODE_FIXTURE_BOUNDARY_WAIT": boundary}}}
 	run, err := runner.Start(ctx, worker.Assignment{Leader: true, LeaderTurn: turn, Session: "leader", Workdir: directory, Packet: "First"})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestProductInterruptionRetainsPartialAnswerAndCancelsTheTurn(t *testing.T) 
 	binary := fakeBinary(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "interrupted"}}}
+	runner := &codex.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "interrupted"}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestCodexPermissionModeControlsNewAndResumedProductThreads(t *testing.T) {
 			defer cancel()
 			storage := memory.New()
 			runner := &codex.Runner{Bus: event.NewBus(storage, time.Now, event.NewID), Store: storage,
-				Product: profile.Product{Binary: binary, Env: map[string]string{
+				Product: agent.Product{Binary: binary, Env: map[string]string{
 					"MERAKCODE_FIXTURE_MODE": "history", "MERAKCODE_FIXTURE_SANDBOX": tc.sandbox,
 					"MERAKCODE_FIXTURE_APPROVAL": tc.approval,
 				}}}
@@ -231,7 +231,7 @@ func TestCodexRoutesApprovalsAndEmitsSharedEvents(t *testing.T) {
 				}
 				return permission.Reply{Decision: decision}, nil
 			}}
-			runner := &codex.Runner{Bus: bus, Gate: gate, Product: profile.Product{Binary: binary}}
+			runner := &codex.Runner{Bus: bus, Gate: gate, Product: agent.Product{Binary: binary}}
 			if !runner.Caps().Permission || !runner.Caps().Steer {
 				t.Fatal("missing capabilities")
 			}

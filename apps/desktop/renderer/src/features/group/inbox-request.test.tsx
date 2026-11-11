@@ -57,20 +57,19 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
     location.href = engine.url
     setLocale("en")
     const connection = await client()
-    const profiles = await connection.profile.list({})
-    const leader = await connection.profile.save({
-      profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
+    const profiles = await connection.agent.list({})
+    const leader = await connection.agent.save({
+      agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
-    const worker = await connection.profile.save({
-      profile: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
+    const worker = await connection.agent.save({
+      agent: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const group = await connection.group.create({
       id: "",
       kind: "local",
       name: "Decisions",
       project: { directory: engine.project },
-      defaultLeader: "leader",
-      profiles: [],
+      leader: "leader",
       members: [
         { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
         { id: "other", group: "", kind: "human", name: "Other owner", role: "owner", status: "idle" },
@@ -80,7 +79,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
           kind: "agent",
           name: "Coordinator",
           agentRole: "leader",
-          profile: leader.id,
+          agent: leader.id,
           owner: localHuman,
           status: "idle",
         },
@@ -90,7 +89,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
           kind: "agent",
           name: "Writer",
           agentRole: "worker",
-          profile: worker.id,
+          agent: worker.id,
           owner: localHuman,
           status: "idle",
         },

@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -37,12 +37,12 @@ func TestGroupHumanMessageGetsAnImmediateReceiptAndPreemptsTheLeader(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID, Owner: "human"},
-	}, []profile.Profile{p})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID, Owner: "human"},
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,14 +114,14 @@ func TestHumanMessagesReachActiveClaimsWithoutWakingTheLeader(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 				{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-			}, []profile.Profile{lead, work})
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+			}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,14 +197,14 @@ func TestAnIdleMentionOrExplicitAssignmentStartsTheWorkerDirectly(t *testing.T) 
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 				{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-			}, []profile.Profile{lead, work})
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+			}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}

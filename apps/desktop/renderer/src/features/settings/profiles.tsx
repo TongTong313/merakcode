@@ -1,4 +1,4 @@
-import { ProfileProfileSchema, type ProfileProfile, type ProfileProduct } from "@merakcode/sdk"
+import { AgentAgentSchema, type AgentAgent, type AgentProduct } from "@merakcode/sdk"
 import { createEffect, createResource, createSignal, For, Show } from "solid-js"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
@@ -18,9 +18,9 @@ export function Profiles(props: { group?: string; kind?: string } = {}) {
 }
 
 function LocalProfiles(props: { group?: string }) {
-  const [profiles, { refetch }] = createResource(async () => (await (await client()).profile.list({})) ?? [])
-  const [draft, setDraft] = createSignal<ProfileProfile>()
-  const [products, { refetch: detect }] = createResource(async () => (await (await client()).member.catalog()) ?? [])
+  const [profiles, { refetch }] = createResource(async () => (await (await client()).agent.list({})) ?? [])
+  const [draft, setDraft] = createSignal<AgentAgent>()
+  const [products, { refetch: detect }] = createResource(async () => (await (await client()).agent.catalog()) ?? [])
   const [environment, setEnvironment] = createSignal("")
   const [checked, setChecked] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
@@ -30,7 +30,7 @@ function LocalProfiles(props: { group?: string }) {
     environment()
     setChecked(false)
   })
-  const edit = (profile: ProfileProfile) => {
+  const edit = (profile: AgentAgent) => {
     setDraft(profile)
     setEnvironment(
       Object.entries(profile.product?.env ?? {})
@@ -38,8 +38,8 @@ function LocalProfiles(props: { group?: string }) {
         .join("\n"),
     )
   }
-  const payload = (profile: ProfileProfile) => {
-    if (!profile.product) return ProfileProfileSchema.parse(profile)
+  const payload = (profile: AgentAgent) => {
+    if (!profile.product) return AgentAgentSchema.parse(profile)
     const entries = environment()
       .split(/\r?\n/)
       .filter(Boolean)
@@ -49,7 +49,7 @@ function LocalProfiles(props: { group?: string }) {
         return [match[1]!, match[2]!] as const
       })
     if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("MRK-1001")
-    return ProfileProfileSchema.parse({ ...profile, product: { ...profile.product, env: Object.fromEntries(entries) } })
+    return AgentAgentSchema.parse({ ...profile, product: { ...profile.product, env: Object.fromEntries(entries) } })
   }
   const test = async () => {
     const profile = draft()
@@ -57,7 +57,7 @@ function LocalProfiles(props: { group?: string }) {
     const env = environment()
     setBusy(true)
     try {
-      await (await client()).member.test({ profile: payload(profile) })
+      await (await client()).agent.test({ agent: payload(profile) })
       if (draft() === profile && environment() === env) setChecked(true)
     } catch (error) {
       fail(error)
@@ -65,14 +65,14 @@ function LocalProfiles(props: { group?: string }) {
       setBusy(false)
     }
   }
-  const productField = (patch: Partial<ProfileProduct>) =>
+  const productField = (patch: Partial<AgentProduct>) =>
     setDraft((profile) => ({ ...profile!, product: { ...profile!.product!, ...patch } }))
   const save = async () => {
     const profile = draft()
     if (!profile) return
     setBusy(true)
     try {
-      await (await client()).profile.save({ profile: payload(profile) })
+      await (await client()).agent.save({ agent: payload(profile) })
       await refetch()
       setDraft(undefined)
     } catch (error) {
@@ -81,13 +81,13 @@ function LocalProfiles(props: { group?: string }) {
       setBusy(false)
     }
   }
-  const add = async (profile: ProfileProfile) => {
+  const add = async (profile: AgentAgent) => {
     if (!props.group) return
     setBusy(true)
     try {
       await (
         await client()
-      ).member.register({
+      ).group.addMember({
         group: props.group,
         member: {
           id: "",
@@ -95,7 +95,7 @@ function LocalProfiles(props: { group?: string }) {
           kind: "agent",
           name: profile.name,
           agentRole: profile.role,
-          profile: profile.id,
+          agent: profile.id,
           owner: localHuman,
           status: "idle",
         },

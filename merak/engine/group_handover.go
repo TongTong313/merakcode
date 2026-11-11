@@ -12,31 +12,8 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/task"
-	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
-
-func (e *Engine) setTaskLeaderTool(g *groupRun, thread *leader.Thread) tool.Tool {
-	return groupTool{spec: tool.Spec{Name: "set_task_leader", Description: "Set the leader of a top-level task in this group. The previous leader hands over its summary to a new session. Only the group thread may use this tool.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"task":{"type":"string"},"leader":{"type":"string"}},"required":["task","leader"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
-		var input struct {
-			Task   event.ID `json:"task"`
-			Leader event.ID `json:"leader"`
-		}
-		if err := decodeGroupInput(call.Input, &input); err != nil {
-			return nil, err
-		}
-		if thread.Key != g.group.ID {
-			return nil, errors.New("only the group thread can change a task leader")
-		}
-		if _, err := e.scopedTask(ctx, g.group.ID, thread, input.Task); err != nil {
-			return nil, err
-		}
-		if err := e.Tasks.Update(ctx, input.Task, task.Update{Leader: input.Leader}, event.Actor{Kind: event.ActorAgent, ID: thread.Leader}); err != nil {
-			return nil, err
-		}
-		return e.Tasks.Get(ctx, input.Task)
-	}}
-}
 
 type pendingHandover struct {
 	old   *leader.Thread
@@ -91,26 +68,19 @@ func (e *Engine) finishHandOver(ctx context.Context, g *groupRun, result complet
 	delete(g.started, result.key)
 	old, cause := pending.old, pending.cause
 	scope := old.Session.Scope
-	var successor event.ID
-	if scope.Task == "" {
-		state, err := e.Groups.Get(ctx, scope.Group)
-		if err != nil {
-			return err
-		}
-		successor = state.Group.DefaultLeader
-	} else {
-		card, err := e.Tasks.Get(ctx, old.Key)
-		if err != nil {
-			return err
-		}
-		if card.Status == task.Done || card.Status == task.Cancelled {
-			return nil
-		}
-		successor = card.Leader
+	state, err := e.Groups.Get(ctx, scope.Group)
+	if err != nil {
+		return err
 	}
+	successor := state.Group.Leader
 	next, err := g.threads.HandOver(ctx, old, successor, result.summary)
 	if err != nil {
 		return err
+	}
+	if old.Leader != successor {
+		if err := e.Groups.RemoveFormerLeader(ctx, scope.Group, old.Leader); err != nil {
+			return err
+		}
 	}
 	body, _ := json.Marshal(leader.Handover{Key: old.Key, Leader: next.Leader, Previous: old.Session.ID, Session: next.Session.ID, Summary: result.summary})
 	fact, err := e.Bus.Publish(ctx, event.Event{Stream: cause.Stream, Scope: event.Scope{Group: scope.Group, Task: scope.Task}, Type: leader.ThreadHandedOver, Actor: event.Actor{Kind: event.ActorAgent, ID: old.Leader}, Cause: cause.ID, Payload: body})
@@ -118,10 +88,8 @@ func (e *Engine) finishHandOver(ctx context.Context, g *groupRun, result complet
 		return err
 	}
 	old.Scheduler.Transfer(next.Scheduler)
-	if scope.Task != "" {
-		if err := e.permissions.Transfer(ctx, scope.Group, scope.Task); err != nil {
-			return err
-		}
+	if err := e.permissions.Transfer(ctx, scope.Group); err != nil {
+		return err
 	}
 	next.Scheduler.Enqueue(fact)
 	e.startLeader(g, next)
@@ -150,7 +118,7 @@ func (e *Engine) handoverSummary(ctx context.Context, thread *leader.Thread) (st
 	if err != nil {
 		return "", err
 	}
-	p, err := e.memberProfile(ctx, member)
+	p, err := e.memberAgent(ctx, member)
 	if err != nil {
 		return "", err
 	}

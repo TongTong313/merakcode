@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 	"github.com/TongTong313/merakcode/merak/internal/server"
@@ -45,7 +45,7 @@ func TestMemberCatalogFindsAProductOnPATH(t *testing.T) {
 	}
 	defer client.Close()
 	var products []worker.ProductInfo
-	if err := client.Call(ctx, "member.catalog", struct{}{}, &products); err != nil {
+	if err := client.Call(ctx, "agent.catalog", struct{}{}, &products); err != nil {
 		t.Fatal(err)
 	}
 	for _, product := range products {
@@ -86,10 +86,10 @@ func TestMemberProbeChecksTheProtocolInAnIsolatedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.KindClaudeCode, Binary: binary}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary}
 	var caps worker.Caps
-	if err := client.Call(ctx, "member.test", map[string]any{"profile": p}, &caps); err != nil {
+	if err := client.Call(ctx, "agent.test", map[string]any{"agent": p}, &caps); err != nil {
 		t.Fatal(err)
 	}
 	if !caps.Steer {
@@ -105,7 +105,7 @@ func TestMemberProbeChecksTheProtocolInAnIsolatedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Product.Args = []string{"--fixture", invalid}
-	if err := client.Call(ctx, "member.test", map[string]any{"profile": p}, &caps); err == nil {
+	if err := client.Call(ctx, "agent.test", map[string]any{"agent": p}, &caps); err == nil {
 		t.Fatal("invalid protocol was reported as connected")
 	}
 }

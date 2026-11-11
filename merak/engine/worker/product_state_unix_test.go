@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -38,7 +38,7 @@ func TestWorkerCannotReadProductStateCreatedAfterLaunch(t *testing.T) {
 	launcher := new(sandbox.Launcher)
 	defer launcher.Close()
 	runner := &command.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher,
-		Product: profile.Product{Binary: os.Args[0], Args: []string{"--merak-late-state-fixture", path, release}}}
+		Product: agent.Product{Binary: os.Args[0], Args: []string{"--merak-late-state-fixture", path, release}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
 		t.Fatal(err)

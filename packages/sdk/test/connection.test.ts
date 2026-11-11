@@ -49,7 +49,7 @@ it("connects to a real merak serve and receives a completed conversation", async
     if (!info) throw new Error("Engine did not publish connection information")
     const client = await connect(info)
     try {
-      expect(await client.member.catalog()).toContainEqual({
+      expect(await client.agent.catalog()).toContainEqual({
         kind: "builtin",
         name: "MerakCode",
         available: true,
@@ -113,12 +113,23 @@ it("connects to a real merak serve and receives a completed conversation", async
       const commandArchive = await readFile(diagnosticPath)
       expect(commandArchive.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
       expect(commandArchive.includes(Buffer.from(`events/session-${created.session}.jsonl`))).toBe(true)
+      await client.agent.save({
+        agent: {
+          id: "leader-agent",
+          name: "Leader",
+          role: "leader",
+          summary: "Coordinate work",
+          duties: "",
+          model: { provider: "fake", model: "" },
+          toolPool: "leader.default",
+        },
+      })
       const group = await client.group.create({
         id: "",
         kind: "local",
         name: "SDK group",
         project: { directory: home },
-        defaultLeader: "leader",
+        leader: "leader",
         members: [
           { id: "local-human", group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
           {
@@ -127,19 +138,8 @@ it("connects to a real merak serve and receives a completed conversation", async
             kind: "agent",
             name: "Leader",
             agentRole: "leader",
-            profile: "leader-profile",
+            agent: "leader-agent",
             status: "idle",
-          },
-        ],
-        profiles: [
-          {
-            id: "leader-profile",
-            name: "Leader",
-            role: "leader",
-            summary: "Coordinate work",
-            duties: "",
-            model: { provider: "fake", model: "" },
-            toolPool: "leader.default",
           },
         ],
       })
@@ -156,29 +156,29 @@ it("connects to a real merak serve and receives a completed conversation", async
       ])
       const state = await client.group.state({ group: group.id })
       expect(state.goals?.[0]?.id).toBe(task.id)
-      expect(state.tasks?.[0]?.leader).toBe("leader")
       expect(state.lastSeq).toBeGreaterThan(0)
       await stopGroup()
-      await client.group.addMember({
-        group: group.id,
-
-        member: {
-          id: "worker",
-          group: group.id,
-          kind: "agent",
-          name: "Worker",
-          agentRole: "worker",
-          profile: "worker-profile",
-          status: "idle",
-        },
-        profile: {
-          id: "worker-profile",
+      await client.agent.save({
+        agent: {
+          id: "worker-agent",
           name: "Worker",
           role: "worker",
           summary: "Do work",
           duties: "",
           model: { provider: "fake", model: "" },
           toolPool: "worker.default",
+        },
+      })
+      await client.group.addMember({
+        group: group.id,
+        member: {
+          id: "worker",
+          group: group.id,
+          kind: "agent",
+          name: "Worker",
+          agentRole: "worker",
+          agent: "worker-agent",
+          status: "idle",
         },
       })
       const groupEvents: EngineEvent[] = []

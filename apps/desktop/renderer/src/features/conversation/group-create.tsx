@@ -1,4 +1,4 @@
-import type { GroupGroup, GroupMember, ProfileProfile, ProtocolCloudStatus, WorkerProductInfo } from "@merakcode/sdk"
+import type { GroupGroup, GroupMember, AgentAgent, ProtocolCloudStatus, WorkerProductInfo } from "@merakcode/sdk"
 import { createEffect, createSignal, For, on, Show } from "solid-js"
 import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
@@ -19,7 +19,7 @@ export function GroupCreate(props: {
 }) {
   const [name, setName] = createSignal("")
   const [directory, setDirectory] = createSignal(props.directory)
-  const [profiles, setProfiles] = createSignal<ProfileProfile[]>([])
+  const [profiles, setProfiles] = createSignal<AgentAgent[]>([])
   const [products, setProducts] = createSignal<WorkerProductInfo[]>([])
   const [leader, setLeader] = createSignal("builtin-leader")
   const [workers, setWorkers] = createSignal<string[]>([])
@@ -51,8 +51,8 @@ export function GroupCreate(props: {
         void client()
           .then(async (connection) => {
             const [list, catalog, status] = await Promise.all([
-              connection.profile.list({}),
-              connection.member.catalog(),
+              connection.agent.list({}),
+              connection.agent.catalog(),
               connection.cloud.status(),
             ])
             setProfiles(list ?? [])
@@ -67,7 +67,7 @@ export function GroupCreate(props: {
       },
     ),
   )
-  const choices = (): ProfileProfile[] =>
+  const choices = (): AgentAgent[] =>
     kind() === "cloud"
       ? cloudMembers().map((member) => ({
           id: cloudMemberKey(member),
@@ -83,7 +83,7 @@ export function GroupCreate(props: {
           ...profiles().filter((profile) => profile.role === "worker"),
           ...products()
             .filter((product) => product.kind !== "builtin" && product.available)
-            .map((product): ProfileProfile => ({
+            .map((product): AgentAgent => ({
               id: `product:${product.kind}`,
               name: product.name,
               role: "worker",
@@ -104,11 +104,11 @@ export function GroupCreate(props: {
     !!(selectedLeader()?.model.provider || model()) &&
     !loading() &&
     !busy()
-  const save = async (profile: ProfileProfile) => {
+  const save = async (profile: AgentAgent) => {
     if (!profile.id.startsWith("builtin-") && !profile.id.startsWith("product:")) return profile
     const selected = model()
-    return (await client()).profile.save({
-      profile: {
+    return (await client()).agent.save({
+      agent: {
         ...profile,
         id: "",
         model: profile.product
@@ -131,7 +131,7 @@ export function GroupCreate(props: {
             kind: kind(),
             name: name().trim() || t("group.title"),
             project: { directory: directory().trim() },
-            defaultLeader: id,
+            leader: id,
             members: [
               { id: localHuman, group: "", kind: "human", name: t("group.you"), role: "owner", status: "idle" },
               {
@@ -140,12 +140,11 @@ export function GroupCreate(props: {
                 kind: "agent",
                 name: profile.name,
                 agentRole: "leader",
-                profile: profile.id,
+                agent: profile.id,
                 owner: localHuman,
                 status: "idle",
               },
             ],
-            profiles: kind() === "cloud" ? [profile] : [],
           }),
         )
       }
@@ -173,7 +172,7 @@ export function GroupCreate(props: {
             kind: "agent",
             name: profile.name,
             agentRole: "worker",
-            profile: profile.id,
+            agent: profile.id,
             owner: localHuman,
             status: "idle",
           },

@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -53,9 +53,9 @@ func TestUnavailableSandboxKeepsCommandSearchPathAndExplicitMemberEnvironment(t 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	output := filepath.Join(workspace, "environment.json")
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-environment-fixture", output}, Env: map[string]string{"MERAKCODE_ENV_EXPLICIT_FIXTURE": "configured"}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-environment-fixture", output}, Env: map[string]string{"MERAKCODE_ENV_EXPLICIT_FIXTURE": "configured"}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "environment", Workdir: workspace, Packet: "Inspect"})
@@ -97,14 +97,14 @@ func TestUnavailableSandboxLeaderSeesTheMemberRisk(t *testing.T) {
 	defer e.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider, work.ID = "leader-profile", "fixture", "worker-profile"
-	work.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Member risk", Project: group.Project{Directory: workspace}, DefaultLeader: "leader"}, []group.Member{
+	work.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Member risk", Project: group.Project{Directory: workspace}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "unconfined-worker", Name: "Command", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "unconfined-worker", Name: "Command", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +161,9 @@ func TestUnavailableSandboxRemembersStartupDecisionByMemberAndProject(t *testing
 					t.Fatal(err)
 				}
 				marker := filepath.Join(current.workdir, fmt.Sprintf("run-%d.txt", index))
-				p := profile.DefaultWorker()
+				p := agent.DefaultWorker()
 				p.ID = event.ID(current.member)
-				p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
+				p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "launch", Workdir: current.workdir})
 				if err != nil {
@@ -197,9 +197,9 @@ func TestUnavailableSandboxSessionChoiceDoesNotAuthorizeAnotherSession(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID = "command-profile"
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	for index, id := range []event.ID{"first", "first", "second"} {
@@ -236,22 +236,22 @@ func TestUnavailableSandboxGroupStartupRequiresAdmin(t *testing.T) {
 			defer e.Close()
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Launch approval", Project: group.Project{Directory: workspace}, DefaultLeader: "leader"}, []group.Member{
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Launch approval", Project: group.Project{Directory: workspace}, Leader: "leader"}, []group.Member{
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 				{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
 				{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
 			}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := profile.DefaultWorker()
-			p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
-			p, err = e.SaveProfile(ctx, "owner", p)
+			p := agent.DefaultWorker()
+			p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
+			p, err = e.SaveAgent(ctx, "owner", p)
 			if err != nil {
 				t.Fatal(err)
 			}
-			member, err := e.RegisterMember(ctx, g.ID, "owner", group.Member{Name: "Command", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID})
+			member, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{Name: "Command", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -366,9 +366,9 @@ func TestUnavailableSandboxAsksBeforeStartingAnUnconfinedMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Name = "Command member"
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "unconfined", Workdir: workspace})

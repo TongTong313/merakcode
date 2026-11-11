@@ -25,7 +25,7 @@ func TestRoutineWorkerApprovalReachesLeaderEvenWithOnlineApprover(t *testing.T) 
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	groups := group.New(storage, bus, event.NewID)
 	pool := task.New(storage, bus, event.NewID, groups)
-	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
@@ -59,7 +59,7 @@ func TestRoutineWorkerApprovalReachesLeaderEvenWithOnlineApprover(t *testing.T) 
 		if err != nil || req.Leader != "leader" {
 			t.Fatalf("request=%+v err=%v", req, err)
 		}
-		if err := router.Approve(ctx, req.ID, g.ID, card.ID, "leader", permission.Allow); err != nil {
+		if err := router.Approve(ctx, req.ID, g.ID, g.ID, "leader", permission.Allow); err != nil {
 			t.Fatal(err)
 		}
 	case <-ctx.Done():
@@ -103,7 +103,7 @@ func TestOnlyRoutineWorkerRequestsMayBeAnsweredByTheLeader(t *testing.T) {
 				if req.Leader != "" {
 					t.Fatal("human request was delegated")
 				}
-				if err := router.Approve(ctx, req.ID, card.Group, card.ID, "leader", permission.Allow); err == nil {
+				if err := router.Approve(ctx, req.ID, card.Group, card.Group, "leader", permission.Allow); err == nil {
 					t.Fatal("Leader approved a human-only request")
 				}
 				return permission.Reply{Decision: permission.Allow, Human: "owner"}, nil
@@ -185,7 +185,7 @@ func TestEscalationKeepsTheOriginalDeadlineAndTimeoutBlocksTheTask(t *testing.T)
 		if err := router.Approve(ctx, req.ID, card.Group, "another-task", "leader", permission.Allow); err == nil {
 			t.Fatal("another task approved the request")
 		}
-		if err := router.Escalate(ctx, req.ID, card.Group, card.ID, "leader"); err != nil {
+		if err := router.Escalate(ctx, req.ID, card.Group, card.Group, "leader"); err != nil {
 			t.Fatal(err)
 		}
 	case <-ctx.Done():
@@ -252,13 +252,10 @@ func TestTimelyAnswerDoesNotTimeOutWhileItsReplyIsPersisted(t *testing.T) {
 	}
 }
 
-func TestPendingApprovalTransfersToTheNewTaskLeader(t *testing.T) {
+func TestPendingApprovalTransfersToTheNewGroupLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	router, _, card, directory := routingTeam(t)
-	if _, err := router.Groups.AddMember(ctx, card.Group, group.Member{ID: "next", Name: "Next", Kind: group.MemberAgent, AgentRole: group.AgentLeader}); err != nil {
-		t.Fatal(err)
-	}
 	facts, stop := router.Bus.Subscribe(event.Filter{Types: []event.Type{permission.Routed}})
 	defer stop()
 	result := make(chan permission.Reply, 1)
@@ -276,10 +273,10 @@ func TestPendingApprovalTransfersToTheNewTaskLeader(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	if err := router.Tasks.Update(ctx, card.ID, task.Update{Leader: "next"}, event.Actor{Kind: event.ActorHuman, ID: "owner"}); err != nil {
+	if _, err := router.Groups.ReplaceLeader(ctx, card.Group, "owner", group.Member{ID: "next", Name: "Next", Kind: group.MemberAgent, AgentRole: group.AgentLeader}); err != nil {
 		t.Fatal(err)
 	}
-	if err := router.Transfer(ctx, card.Group, card.ID); err != nil {
+	if err := router.Transfer(ctx, card.Group); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -291,10 +288,10 @@ func TestPendingApprovalTransfersToTheNewTaskLeader(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("pending request did not reach the new Leader")
 	}
-	if err := router.Approve(ctx, req.ID, card.Group, card.ID, "leader", permission.Allow); err == nil {
+	if err := router.Approve(ctx, req.ID, card.Group, card.Group, "leader", permission.Allow); err == nil {
 		t.Fatal("previous Leader approved after handover")
 	}
-	if err := router.Approve(ctx, req.ID, card.Group, card.ID, "next", permission.Allow); err != nil {
+	if err := router.Approve(ctx, req.ID, card.Group, card.Group, "next", permission.Allow); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -319,7 +316,7 @@ func routingTeam(t *testing.T, clocks ...func() time.Time) (*permission.Router, 
 	groups := group.New(storage, bus, event.NewID)
 	pool := task.New(storage, bus, event.NewID, groups)
 	directory := t.TempDir()
-	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},

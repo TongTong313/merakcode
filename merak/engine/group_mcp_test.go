@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
@@ -50,19 +50,19 @@ func testProductMCPReport(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader"
 	work.ID, work.Mode = "work-profile", permission.ModeTakeover
-	work.Product = &profile.Product{Kind: kind, Binary: claude, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
+	work.Product = &agent.Product{Kind: kind, Binary: claude, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
 	if kind == worker.KindClaudeCode {
 		work.Product.Args = []string{"--mcp-report"}
 		work.Mode = permission.ModeAsk
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "MCP", Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "MCP", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, work})
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}

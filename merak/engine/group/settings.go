@@ -126,9 +126,10 @@ func (m *Manager) AcceptMemberHost(ctx context.Context, id, human, memberID even
 }
 
 type Update struct {
-	Settings      *Settings `json:"settings,omitempty"`
-	DefaultLeader *event.ID `json:"defaultLeader,omitempty"`
-	Brief         *Brief    `json:"brief,omitempty"`
+	Settings *Settings `json:"settings,omitempty"`
+	// Leader is the id of the agent that becomes the Leader; the engine turns it into a roster change.
+	Leader *event.ID `json:"leader,omitempty"`
+	Brief  *Brief    `json:"brief,omitempty"`
 }
 
 func (m *Manager) Update(ctx context.Context, id, human event.ID, change Update) (Group, error) {
@@ -147,16 +148,8 @@ func (m *Manager) Update(ctx context.Context, id, human event.ID, change Update)
 	if !actor.Can(RoleAdmin) {
 		return Group{}, errors.New("group settings require an admin or owner")
 	}
-	if change.DefaultLeader != nil {
-		if !actor.Can(RoleOwner) {
-			return Group{}, errors.New("changing the default leader requires the owner")
-		}
-		if !slices.ContainsFunc(state.Members, func(member Member) bool {
-			return member.ID == *change.DefaultLeader && member.Kind == MemberAgent && member.AgentRole == AgentLeader && !member.Remote
-		}) {
-			return Group{}, errors.New("default leader must be a local leader in this group")
-		}
-		state.Group.DefaultLeader = *change.DefaultLeader
+	if change.Leader != nil {
+		return Group{}, errors.New("the Leader changes through ReplaceLeader")
 	}
 	if change.Settings != nil {
 		if err := validateSettings(*change.Settings, state.Members); err != nil {

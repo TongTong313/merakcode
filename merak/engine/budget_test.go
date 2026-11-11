@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
@@ -18,7 +19,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -29,13 +29,13 @@ import (
 func TestTaskAndProfileBudgetsAccumulateAcrossClaimSessions(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		profile profile.Budget
+		profile agent.Budget
 		task    task.Budget
 	}{
-		{"task tokens", profile.Budget{}, task.Budget{MaxTokens: 40}},
-		{"profile tokens", profile.Budget{MaxTokens: 40}, task.Budget{}},
-		{"task cost", profile.Budget{}, task.Budget{MaxCost: .03}},
-		{"profile cost", profile.Budget{MaxCost: .03}, task.Budget{}},
+		{"task tokens", agent.Budget{}, task.Budget{MaxTokens: 40}},
+		{"profile tokens", agent.Budget{MaxTokens: 40}, task.Budget{}},
+		{"task cost", agent.Budget{}, task.Budget{MaxCost: .03}},
+		{"profile cost", agent.Budget{MaxCost: .03}, task.Budget{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -57,14 +57,14 @@ func TestTaskAndProfileBudgetsAccumulateAcrossClaimSessions(t *testing.T) {
 			}
 			defer e.Close()
 			e.ConfigureModels([]catalog.Override{{Provider: "fixture", Price: &catalog.Price{Input: 1000, Currency: "USD"}}})
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, work.ID = "lead", "work"
 			lead.Model.Provider, work.Model.Provider, work.Budget = "fixture", "fixture", tc.profile
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-			}, []profile.Profile{lead, work})
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+			}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +131,7 @@ func TestProfileBudgetsStopWorkersWithBlockedReports(t *testing.T) {
 			}
 			defer e.Close()
 			e.ConfigureModels([]catalog.Override{{Provider: "fake", Price: &catalog.Price{Input: 1000, Currency: "USD"}}})
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.Model.Provider = "fake"
 			body, _ := json.Marshal(map[string]any{"budget": map[string]any{tc.field: tc.value}})
 			if err := json.Unmarshal(body, &p); err != nil {
@@ -139,7 +139,7 @@ func TestProfileBudgetsStopWorkersWithBlockedReports(t *testing.T) {
 			}
 			a := worker.Assignment{Session: "budget-session", Claim: task.Claim{ID: "budget-claim", Member: "worker"}, Workdir: dir, Packet: "Read and continue"}
 			if tc.taskBudget {
-				g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Steps", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker}})
+				g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Steps", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -182,9 +182,9 @@ func TestExternalWorkerWallClockBudgetProducesABlockedReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Mode = permission.ModeTakeover
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "hold"}}
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "hold"}}
 	p.Budget.MaxWallClock = 150 * time.Millisecond
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "timed", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Wait"})
 	if err != nil {
@@ -211,12 +211,12 @@ func TestExternalWorkerStopsAtReportedUsageLimits(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name   string
-		budget profile.Budget
+		budget agent.Budget
 		stop   loop.StopReason
 	}{
-		{"steps", profile.Budget{MaxSteps: 1}, loop.MaxSteps},
-		{"tokens", profile.Budget{MaxTokens: 10}, loop.MaxTokens},
-		{"cost", profile.Budget{MaxCost: .01}, loop.MaxCost},
+		{"steps", agent.Budget{MaxSteps: 1}, loop.MaxSteps},
+		{"tokens", agent.Budget{MaxTokens: 10}, loop.MaxTokens},
+		{"cost", agent.Budget{MaxCost: .01}, loop.MaxCost},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -226,9 +226,9 @@ func TestExternalWorkerStopsAtReportedUsageLimits(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.Mode, p.Budget = permission.ModeTakeover, tc.budget
-			p.Product = &profile.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget"}}
+			p.Product = &agent.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget"}}
 			run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Continue"})
 			if err != nil {
 				t.Fatal(err)
@@ -261,9 +261,9 @@ func TestExternalWorkerReworkPreservesTaskBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Mode, p.Budget.MaxTokens = permission.ModeTakeover, 40
-	p.Product = &profile.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget-rework"}}
+	p.Product = &agent.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget-rework"}}
 	a := worker.Assignment{Session: "rework-budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Initial work"}
 	for i := 0; i < 2; i++ {
 		if i == 1 {
@@ -301,9 +301,9 @@ func TestCodexWorkerStopsAtReportedTokenUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Mode, p.Budget = permission.ModeTakeover, profile.Budget{MaxTokens: 10}
-	p.Product = &profile.Product{Kind: worker.KindCodex, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
+	p := agent.DefaultWorker()
+	p.Mode, p.Budget = permission.ModeTakeover, agent.Budget{MaxTokens: 10}
+	p.Product = &agent.Product{Kind: worker.KindCodex, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "codex-budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Continue"})
 	if err != nil {
 		t.Fatal(err)
@@ -332,9 +332,9 @@ func TestClaudeMessageFragmentsDoNotConsumeAdditionalSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Mode, p.Budget = permission.ModeTakeover, profile.Budget{MaxSteps: 2}
-	p.Product = &profile.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--fixture", fixture, "--fixture-hold"}}
+	p := agent.DefaultWorker()
+	p.Mode, p.Budget = permission.ModeTakeover, agent.Budget{MaxSteps: 2}
+	p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--fixture", fixture, "--fixture-hold"}}
 	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{session.MessageCompleted}})
 	defer stop()
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "fragments", Claim: task.Claim{ID: "claim"}, Workdir: dir, Packet: "Continue"})
@@ -370,10 +370,10 @@ func TestGrantedTaskReassignmentContinuesTheOriginalClaimSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Model.Provider = "work", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,13 +432,13 @@ func TestActiveTaskWallClockGrantExtendsRunningWorker(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.Model.Provider, p.Mode = "fixture", permission.ModeTakeover
-			p.Budget = profile.Budget{MaxWallClock: time.Second}
+			p.Budget = agent.Budget{MaxWallClock: time.Second}
 			if external {
-				p.Product = &profile.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget"}}
+				p.Product = &agent.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget"}}
 			}
-			g, err := e.Groups.Create(ctx, group.Group{Name: "Clock", Kind: group.KindLocal, DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+			g, err := e.Groups.Create(ctx, group.Group{Name: "Clock", Kind: group.KindLocal, Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 			if err != nil {
 				t.Fatal(err)
 			}

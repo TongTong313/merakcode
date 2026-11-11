@@ -13,19 +13,19 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
-func TestThreadsRouteToTheTopTaskAndSchedulersWaitForEvents(t *testing.T) {
+func TestSchedulersWaitForEventsAndTheGroupThreadTakesEveryTask(t *testing.T) {
 	var state leader.State
-	for _, card := range []task.Card{{ID: "goal", Leader: "leader"}, {ID: "child", Parent: "goal", Leader: "leader"}} {
+	for _, card := range []task.Card{{ID: "goal"}, {ID: "child", Parent: "goal"}} {
 		body, _ := json.Marshal(card)
 		if err := state.Apply(event.Event{Type: task.Created, Payload: body}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	threads := leader.NewThreads(group.Group{ID: "group", DefaultLeader: "leader"}, &state, event.NewID)
+	threads := leader.NewThreads(group.Group{ID: "group", Leader: "leader"}, &state, event.NewID)
 	groupThread := threads.Route(event.Event{Scope: event.Scope{Group: "group"}})
 	taskThread := threads.Route(event.Event{Scope: event.Scope{Group: "group", Task: "goal"}})
 	childThread := threads.Route(event.Event{Scope: event.Scope{Group: "group", Task: "child"}})
-	if groupThread.Key != "group" || taskThread.Key != "goal" || taskThread != childThread || taskThread.Leader != "leader" || groupThread.Session.ID == taskThread.Session.ID {
+	if groupThread.Key != "group" || taskThread != groupThread || childThread != groupThread || groupThread.Leader != "leader" {
 		t.Fatal("thread attribution was lost")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

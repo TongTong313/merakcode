@@ -49,17 +49,17 @@ func TestAConnectionActsAsTheMachinesPersonAndNamesNobodyElse(t *testing.T) {
 		t.Fatalf("hello human = %q", other.Hello.Human)
 	}
 	// a request that names a person is refused
-	if err := client.Call(ctx, "profile.list", map[string]any{"human": "someone"}, new([]any)); err == nil {
+	if err := client.Call(ctx, "agent.list", map[string]any{"human": "someone"}, new([]any)); err == nil {
 		t.Fatal("a request named a person")
 	}
 	var mine, theirs []struct{ ID string }
-	if err := client.Call(ctx, "profile.save", map[string]any{"profile": map[string]any{"name": "Mine", "role": "worker", "toolPool": "worker.default"}}, new(any)); err != nil {
+	if err := client.Call(ctx, "agent.save", map[string]any{"agent": map[string]any{"name": "Mine", "role": "worker", "toolPool": "worker.default"}}, new(any)); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Call(ctx, "profile.list", struct{}{}, &mine); err != nil {
+	if err := client.Call(ctx, "agent.list", struct{}{}, &mine); err != nil {
 		t.Fatal(err)
 	}
-	if err := other.Call(ctx, "profile.list", struct{}{}, &theirs); err != nil {
+	if err := other.Call(ctx, "agent.list", struct{}{}, &theirs); err != nil {
 		t.Fatal(err)
 	}
 	if len(mine) != len(theirs)+1 {

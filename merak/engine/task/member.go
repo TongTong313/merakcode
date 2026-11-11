@@ -17,9 +17,6 @@ func (p *Pool) RemoveMember(ctx context.Context, groupID, human, member event.ID
 		if card.Group != groupID || card.Status == Done || card.Status == Cancelled || card.Status == Failed {
 			continue
 		}
-		if card.Leader == member {
-			return ErrBusy
-		}
 		for _, claim := range card.Claims {
 			if claim.Member == member && (claim.Status == ClaimActive || claim.Status == ClaimQueued) {
 				return ErrBusy

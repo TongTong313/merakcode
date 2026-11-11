@@ -1,5 +1,161 @@
 {
   "$defs": {
+    "AgentAgent": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "$ref": "#/$defs/SessionBudget"
+        },
+        "duties": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/AgentModelRef"
+        },
+        "name": {
+          "type": "string"
+        },
+        "network": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "product": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentProduct"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "type": "string"
+        },
+        "shared": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "system": {
+          "type": "string"
+        },
+        "toolPool": {
+          "type": "string"
+        }
+      },
+      "required": ["duties", "id", "model", "name", "role", "summary", "toolPool"],
+      "type": "object"
+    },
+    "AgentModelRef": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        }
+      },
+      "required": ["model", "provider"],
+      "type": "object"
+    },
+    "AgentProduct": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "binary": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "remote": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentRemoteSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["binary", "kind"],
+      "type": "object"
+    },
+    "AgentRemoteSource": {
+      "additionalProperties": false,
+      "properties": {
+        "caps": {
+          "$ref": "#/$defs/WorkerCaps"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "member": {
+          "type": "string"
+        }
+      },
+      "required": ["caps", "connection", "group", "member"],
+      "type": "object"
+    },
     "CatalogCaps": {
       "additionalProperties": false,
       "properties": {
@@ -1388,13 +1544,13 @@
         "brief": {
           "$ref": "#/$defs/GroupBrief"
         },
-        "defaultLeader": {
-          "type": "string"
-        },
         "id": {
           "type": "string"
         },
         "kind": {
+          "type": "string"
+        },
+        "leader": {
           "type": "string"
         },
         "name": {
@@ -1407,13 +1563,16 @@
           "$ref": "#/$defs/GroupSettings"
         }
       },
-      "required": ["defaultLeader", "id", "kind", "name", "project"],
+      "required": ["id", "kind", "leader", "name", "project"],
       "type": "object"
     },
     "GroupMember": {
       "additionalProperties": false,
       "properties": {
         "account": {
+          "type": "string"
+        },
+        "agent": {
           "type": "string"
         },
         "agentRole": {
@@ -1457,9 +1616,6 @@
           "type": "string"
         },
         "owner": {
-          "type": "string"
-        },
-        "profile": {
           "type": "string"
         },
         "queue": {
@@ -1935,9 +2091,6 @@
         "lastReport": {
           "type": "string"
         },
-        "leader": {
-          "type": "string"
-        },
         "parent": {
           "type": "string"
         },
@@ -1954,7 +2107,7 @@
           "type": "string"
         }
       },
-      "required": ["id", "leader", "queue", "status", "summary", "title"],
+      "required": ["id", "queue", "status", "summary", "title"],
       "type": "object"
     },
     "LeaderView": {
@@ -2487,160 +2640,29 @@
       "required": ["call", "spec"],
       "type": "object"
     },
-    "ProfileModelRef": {
+    "ProtocolAgentDeleteParams": {
       "additionalProperties": false,
       "properties": {
-        "model": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "thinking": {
+        "agent": {
           "type": "string"
         }
       },
-      "required": ["model", "provider"],
+      "required": ["agent"],
       "type": "object"
     },
-    "ProfileProduct": {
+    "ProtocolAgentListParams": {
       "additionalProperties": false,
-      "properties": {
-        "args": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "binary": {
-          "type": "string"
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "model": {
-          "type": "string"
-        },
-        "remote": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ProfileRemoteSource"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": ["binary", "kind"],
+      "properties": {},
       "type": "object"
     },
-    "ProfileProfile": {
+    "ProtocolAgentSaveParams": {
       "additionalProperties": false,
       "properties": {
-        "budget": {
-          "$ref": "#/$defs/SessionBudget"
-        },
-        "duties": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "memory": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "mode": {
-          "type": "string"
-        },
-        "model": {
-          "$ref": "#/$defs/ProfileModelRef"
-        },
-        "name": {
-          "type": "string"
-        },
-        "network": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "product": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ProfileProduct"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "role": {
-          "type": "string"
-        },
-        "shared": {
-          "type": "boolean"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "system": {
-          "type": "string"
-        },
-        "toolPool": {
-          "type": "string"
+        "agent": {
+          "$ref": "#/$defs/AgentAgent"
         }
       },
-      "required": ["duties", "id", "model", "name", "role", "summary", "toolPool"],
-      "type": "object"
-    },
-    "ProfileRemoteSource": {
-      "additionalProperties": false,
-      "properties": {
-        "caps": {
-          "$ref": "#/$defs/WorkerCaps"
-        },
-        "connection": {
-          "type": "string"
-        },
-        "group": {
-          "type": "string"
-        },
-        "member": {
-          "type": "string"
-        }
-      },
-      "required": ["caps", "connection", "group", "member"],
+      "required": ["agent"],
       "type": "object"
     },
     "ProtocolBlobReadParams": {
@@ -3008,16 +3030,6 @@
         },
         "member": {
           "$ref": "#/$defs/GroupMember"
-        },
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ProfileProfile"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "required": ["group", "member"],
@@ -3042,13 +3054,13 @@
         "brief": {
           "$ref": "#/$defs/GroupBrief"
         },
-        "defaultLeader": {
-          "type": "string"
-        },
         "id": {
           "type": "string"
         },
         "kind": {
+          "type": "string"
+        },
+        "leader": {
           "type": "string"
         },
         "members": {
@@ -3067,19 +3079,6 @@
         "name": {
           "type": "string"
         },
-        "profiles": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/ProfileProfile"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "project": {
           "$ref": "#/$defs/GroupProject"
         },
@@ -3087,7 +3086,7 @@
           "$ref": "#/$defs/GroupSettings"
         }
       },
-      "required": ["defaultLeader", "id", "kind", "members", "name", "profiles", "project"],
+      "required": ["id", "kind", "leader", "members", "name", "project"],
       "type": "object"
     },
     "ProtocolGroupIDParams": {
@@ -3155,7 +3154,10 @@
             }
           ]
         },
-        "defaultLeader": {
+        "group": {
+          "type": "string"
+        },
+        "leader": {
           "anyOf": [
             {
               "type": "string"
@@ -3164,9 +3166,6 @@
               "type": "null"
             }
           ]
-        },
-        "group": {
-          "type": "string"
         },
         "settings": {
           "anyOf": [
@@ -3212,19 +3211,6 @@
         }
       },
       "required": ["engine", "human", "protocol"],
-      "type": "object"
-    },
-    "ProtocolMemberRegisterParams": {
-      "additionalProperties": false,
-      "properties": {
-        "group": {
-          "type": "string"
-        },
-        "member": {
-          "$ref": "#/$defs/GroupMember"
-        }
-      },
-      "required": ["group", "member"],
       "type": "object"
     },
     "ProtocolModelDiscoverParams": {
@@ -3282,31 +3268,6 @@
         }
       },
       "required": ["decision", "request"],
-      "type": "object"
-    },
-    "ProtocolProfileDeleteParams": {
-      "additionalProperties": false,
-      "properties": {
-        "profile": {
-          "type": "string"
-        }
-      },
-      "required": ["profile"],
-      "type": "object"
-    },
-    "ProtocolProfileListParams": {
-      "additionalProperties": false,
-      "properties": {},
-      "type": "object"
-    },
-    "ProtocolProfileSaveParams": {
-      "additionalProperties": false,
-      "properties": {
-        "profile": {
-          "$ref": "#/$defs/ProfileProfile"
-        }
-      },
-      "required": ["profile"],
       "type": "object"
     },
     "ProtocolQuestionReplyParams": {
@@ -3788,9 +3749,6 @@
             }
           ]
         },
-        "leader": {
-          "type": "string"
-        },
         "member": {
           "type": "string"
         },
@@ -3838,9 +3796,6 @@
               "type": "null"
             }
           ]
-        },
-        "leader": {
-          "type": "string"
         },
         "phase": {
           "type": "string"
@@ -3912,7 +3867,7 @@
           "type": "string"
         },
         "profile": {
-          "$ref": "#/$defs/ProfileProfile"
+          "$ref": "#/$defs/AgentAgent"
         },
         "session": {
           "type": "string"
@@ -4670,9 +4625,6 @@
               "type": "null"
             }
           ]
-        },
-        "leader": {
-          "type": "string"
         },
         "parent": {
           "type": "string"
@@ -5664,6 +5616,70 @@
     }
   },
   "x-methods": {
+    "agent.catalog": {
+      "params": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/WorkerProductInfo"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "agent.delete": {
+      "params": {
+        "$ref": "#/$defs/ProtocolAgentDeleteParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "agent.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolAgentListParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/AgentAgent"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "agent.save": {
+      "params": {
+        "$ref": "#/$defs/ProtocolAgentSaveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AgentAgent"
+      }
+    },
+    "agent.test": {
+      "params": {
+        "$ref": "#/$defs/ProtocolAgentSaveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/WorkerCaps"
+      }
+    },
     "blob.read": {
       "params": {
         "$ref": "#/$defs/ProtocolBlobReadParams"
@@ -5978,52 +5994,6 @@
         "$ref": "#/$defs/ProtocolHelloResult"
       }
     },
-    "member.catalog": {
-      "params": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "result": {
-        "anyOf": [
-          {
-            "items": {
-              "$ref": "#/$defs/WorkerProductInfo"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "member.register": {
-      "params": {
-        "$ref": "#/$defs/ProtocolMemberRegisterParams"
-      },
-      "result": {
-        "$ref": "#/$defs/GroupMember"
-      }
-    },
-    "member.remove": {
-      "params": {
-        "$ref": "#/$defs/ProtocolGroupRemoveMemberParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      }
-    },
-    "member.test": {
-      "params": {
-        "$ref": "#/$defs/ProtocolProfileSaveParams"
-      },
-      "result": {
-        "$ref": "#/$defs/WorkerCaps"
-      }
-    },
     "model.discover": {
       "params": {
         "$ref": "#/$defs/ProtocolModelDiscoverParams"
@@ -6086,42 +6056,6 @@
         "additionalProperties": false,
         "properties": {},
         "type": "object"
-      }
-    },
-    "profile.delete": {
-      "params": {
-        "$ref": "#/$defs/ProtocolProfileDeleteParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      }
-    },
-    "profile.list": {
-      "params": {
-        "$ref": "#/$defs/ProtocolProfileListParams"
-      },
-      "result": {
-        "anyOf": [
-          {
-            "items": {
-              "$ref": "#/$defs/ProfileProfile"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "profile.save": {
-      "params": {
-        "$ref": "#/$defs/ProtocolProfileSaveParams"
-      },
-      "result": {
-        "$ref": "#/$defs/ProfileProfile"
       }
     },
     "question.reply": {

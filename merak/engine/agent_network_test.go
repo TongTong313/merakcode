@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
@@ -18,17 +18,17 @@ func TestBuiltinProfileDoesNotAcceptExternalServiceNetworkHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Network = []string{"api.example.com"}
-	if _, err := e.SaveProfile(t.Context(), "owner", p); err == nil {
+	if _, err := e.SaveAgent(t.Context(), "owner", p); err == nil {
 		t.Fatal("builtin profile accepted external service network hosts")
 	}
 	p.ID = "worker-with-network"
-	if _, err := e.CreateGroup(t.Context(), group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	if _, err := createGroup(t, e, t.Context(), group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
-	}, []profile.Profile{p}); err == nil {
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID},
+	}, []agent.Agent{p}); err == nil {
 		t.Error("group accepted a builtin profile with external service network hosts")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -38,7 +38,7 @@ func TestBuiltinProfileDoesNotAcceptExternalServiceNetworkHosts(t *testing.T) {
 		_ = run.Cancel(t.Context())
 		t.Error("worker started with an invalid builtin network profile")
 	}
-	p.Product = &profile.Product{Kind: worker.KindBuiltin}
+	p.Product = &agent.Product{Kind: worker.KindBuiltin}
 	if run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "explicit-builtin-network", Workdir: t.TempDir(), Packet: "Inspect"}); err == nil {
 		cancel()
 		_ = run.Cancel(t.Context())
@@ -54,15 +54,15 @@ func TestProfileNetworkHostsPersistWithoutProductDefaults(t *testing.T) {
 	}
 	defer e.Close()
 	for _, network := range []string{`[]`, `["models.example.com","gateway.example.org"]`} {
-		var p profile.Profile
+		var p agent.Agent
 		if err := json.Unmarshal([]byte(`{"name":"External worker","role":"worker","toolPool":"worker.default","product":{"kind":"codex","binary":"codex"},"network":`+network+`}`), &p); err != nil {
 			t.Fatal(err)
 		}
-		saved, err := e.SaveProfile(ctx, "owner", p)
+		saved, err := e.SaveAgent(ctx, "owner", p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		profiles, err := e.ListProfiles(ctx, "owner")
+		profiles, err := e.ListAgents(ctx, "owner")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,10 +102,10 @@ func TestProfileRejectsInvalidNetworkHosts(t *testing.T) {
 	defer e.Close()
 	for _, host := range []string{"https://models.example.com", "models.example.com:65536", "models.*.com", "*", "", "example.com/path"} {
 		t.Run(host, func(t *testing.T) {
-			p := profile.DefaultWorker()
-			p.Product = &profile.Product{Kind: worker.KindCommand, Binary: "fixture"}
+			p := agent.DefaultWorker()
+			p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "fixture"}
 			p.Network = []string{host}
-			if _, err := e.SaveProfile(context.Background(), "owner", p); err == nil {
+			if _, err := e.SaveAgent(context.Background(), "owner", p); err == nil {
 				t.Fatalf("saved invalid network host %q", host)
 			}
 		})
@@ -119,26 +119,26 @@ func TestAdminAcceptsTheProfileHostsWhenRegisteringAMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Network = []string{"models.example.com"}
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: "fixture"}
-	p, err = e.SaveProfile(ctx, "owner", p)
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "fixture"}
+	p, err = e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	member, err := e.RegisterMember(ctx, g.ID, "owner", group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID})
+	member, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Network = append(p.Network, "new.example.org")
-	if _, err := e.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := e.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
 	state, err := e.Groups.Get(ctx, g.ID)
@@ -172,18 +172,18 @@ func TestGroupMemberHostsComeFromTheAcceptedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Network = "profile", []string{"models.example.com"}
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: "fixture"}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "fixture"}
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
-		{ID: "initial", Name: "Initial worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Hosts: []string{"injected.example"}},
-	}, []profile.Profile{p})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "initial", Name: "Initial worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Hosts: []string{"injected.example"}},
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{ID: "added", Name: "Added worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Hosts: []string{"injected.example"}}, nil); err != nil {
+	if _, err := e.AddGroupMember(ctx, g.ID, "owner", group.Member{ID: "added", Name: "Added worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Hosts: []string{"injected.example"}}); err != nil {
 		t.Fatal(err)
 	}
 	state, err := e.Groups.Get(ctx, g.ID)

@@ -23,7 +23,6 @@ type GoalLine struct {
 type TaskLine struct {
 	ID         event.ID    `json:"id"`
 	Parent     event.ID    `json:"parent,omitempty"`
-	Leader     event.ID    `json:"leader"`
 	Title      string      `json:"title"`
 	Status     task.Status `json:"status"`
 	Assignee   event.ID    `json:"assignee,omitempty"`
@@ -105,7 +104,7 @@ func (s *State) Apply(fact event.Event) error {
 		if err != nil {
 			return err
 		}
-		line := TaskLine{ID: card.ID, Parent: card.Parent, Leader: card.Leader, Title: card.Title, Status: card.Status}
+		line := TaskLine{ID: card.ID, Parent: card.Parent, Title: card.Title, Status: card.Status}
 		for _, claim := range card.Claims {
 			line.Claims = append(line.Claims, ClaimLine{ID: claim.ID, Member: claim.Member, Status: claim.Status})
 		}

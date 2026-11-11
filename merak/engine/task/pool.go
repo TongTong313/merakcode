@@ -115,7 +115,7 @@ func (p *Pool) Create(ctx context.Context, card Card) (Card, error) {
 	if err := p.load(ctx); err != nil {
 		return Card{}, err
 	}
-	state, err := p.groups.Get(ctx, card.Group)
+	_, err := p.groups.Get(ctx, card.Group)
 	if err != nil {
 		return Card{}, err
 	}
@@ -131,24 +131,11 @@ func (p *Pool) Create(ctx context.Context, card Card) (Card, error) {
 	if _, exists := p.cards[card.ID]; exists {
 		return Card{}, store.ErrConflict
 	}
-	if card.Leader == "" {
-		card.Leader = state.Group.DefaultLeader
-	}
 	if card.Parent != "" {
 		parent, ok := p.cards[card.Parent]
 		if !ok || parent.Group != card.Group {
 			return Card{}, store.ErrNotFound
 		}
-		card.Leader = parent.Leader
-	}
-	leader := false
-	for _, member := range state.Members {
-		if member.ID == card.Leader && member.Kind == group.MemberAgent && member.AgentRole == group.AgentLeader {
-			leader = true
-		}
-	}
-	if !leader {
-		return Card{}, errors.New("task leader must be a leader member of its group")
 	}
 	if err := validateAreas(card.Areas); err != nil {
 		return Card{}, err
@@ -225,7 +212,7 @@ func (p *Pool) assign(ctx context.Context, id, memberID event.ID, role ClaimRole
 		return Claim{}, err
 	}
 	if actor.Kind == "" {
-		actor = event.Actor{Kind: event.ActorAgent, ID: card.Leader}
+		actor = event.Actor{Kind: event.ActorAgent, ID: state.Group.Leader}
 		if publish {
 			actor = card.CreatedBy
 		}
@@ -470,11 +457,11 @@ func (p *Pool) Close(ctx context.Context, id event.ID, status Status) error {
 	card.Status = status
 	if status == Done && card.Phase == PhaseReview {
 		card.Phase = PhaseDone
-		if err := p.emit(ctx, PhaseChanged, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader}); err != nil {
+		if err := p.emit(ctx, PhaseChanged, card, p.leaderActor(ctx, card)); err != nil {
 			return err
 		}
 	}
-	return p.emit(ctx, Closed, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader})
+	return p.emit(ctx, Closed, card, p.leaderActor(ctx, card))
 }
 
 func (p *Pool) List(ctx context.Context, groupID event.ID) ([]Card, error) {

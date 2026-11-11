@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +29,38 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := upgrade(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// formatVersion is the number of the data format. Version 2 keeps agents as "agent" documents; earlier builds kept
+// "profile" documents, which are not migrated.
+const formatVersion = 2
+
+// ErrFormatOutdated says that the database holds data of an earlier format that cannot be read; its text is the code
+// MRK-1008, which tells the user to delete the file.
+var ErrFormatOutdated = errors.New("MRK-1008")
+
+func upgrade(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+	if version >= formatVersion {
+		return nil
+	}
+	var old int
+	if err := db.QueryRow("SELECT COUNT(*) FROM docs WHERE kind = 'profile'").Scan(&old); err != nil {
+		return err
+	}
+	if old > 0 {
+		return ErrFormatOutdated
+	}
+	_, err := db.Exec("PRAGMA user_version = " + strconv.Itoa(formatVersion))
+	return err
 }
 
 func (s *Store) Close() error { return s.db.Close() }

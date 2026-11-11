@@ -22,7 +22,11 @@ func enterGoalIntegration(t *testing.T, ctx context.Context, e *engine.Engine, i
 			t.Fatal(err)
 		}
 	}
-	actor := event.Actor{Kind: event.ActorAgent, ID: card.Leader}
+	state, err := e.Groups.Get(ctx, card.Group)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := event.Actor{Kind: event.ActorAgent, ID: state.Group.Leader}
 	if card.Phase == task.PhasePlanning {
 		if err := e.Tasks.SetPhase(ctx, card.ID, task.PhaseDoing, actor); err != nil {
 			t.Fatal(err)

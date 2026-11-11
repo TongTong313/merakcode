@@ -11,7 +11,6 @@ const card: TaskCard = {
   status: "open",
   claims: [],
   createdBy: { kind: "human", id: "owner" },
-  leader: "leader",
 }
 
 function taskEvent(seq: number, value: TaskCard): Extract<EngineEvent, { type: "task.updated" }> {

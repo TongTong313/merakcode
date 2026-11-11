@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/task"
 	"net/url"
 	"slices"
 	"strconv"
@@ -158,7 +160,7 @@ func (e *Engine) memberMemoryOwners(ctx context.Context, directory string, scope
 		if err != nil {
 			return nil
 		}
-		p, err := e.memberProfile(ctx, m)
+		p, err := e.memberAgent(ctx, m)
 		if err != nil {
 			return nil
 		}
@@ -167,4 +169,40 @@ func (e *Engine) memberMemoryOwners(ctx context.Context, directory string, scope
 		}
 	}
 	return owners
+}
+
+// groupLeader returns the roster entry of the Leader of a group.
+func (e *Engine) groupLeader(ctx context.Context, groupID event.ID) (group.Member, error) {
+	state, err := e.Groups.Get(ctx, groupID)
+	if err != nil {
+		return group.Member{}, err
+	}
+	return e.groupMember(ctx, groupID, state.Group.Leader)
+}
+
+// leaderActor is the Leader of the group of a task, as the actor of what it does to the task.
+func (e *Engine) leaderActor(ctx context.Context, card task.Card) event.Actor {
+	state, err := e.Groups.Get(ctx, card.Group)
+	if err != nil {
+		return event.Actor{Kind: event.ActorAgent}
+	}
+	return event.Actor{Kind: event.ActorAgent, ID: state.Group.Leader}
+}
+
+func (e *Engine) leads(ctx context.Context, card task.Card, member event.ID) bool {
+	state, err := e.Groups.Get(ctx, card.Group)
+	return err == nil && state.Group.Leader != "" && state.Group.Leader == member
+}
+
+// dropFormerLeaders takes the Leader agents that are not the Leader of the group out of the roster.
+func (e *Engine) dropFormerLeaders(ctx context.Context, g group.Group) {
+	state, err := e.Groups.Get(ctx, g.ID)
+	if err != nil {
+		return
+	}
+	for _, member := range state.Members {
+		if member.Kind == group.MemberAgent && member.AgentRole == group.AgentLeader && member.ID != g.Leader {
+			_ = e.Groups.RemoveFormerLeader(ctx, g.ID, member.ID)
+		}
+	}
 }

@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
@@ -29,9 +29,9 @@ func TestAHandledPathRuleCreatesOneTaskWithoutWakingTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "profile", "leader"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: group.Settings{Triggers: []group.Trigger{{ID: "docs", When: event.Filter{Types: []event.Type{"file.changed"}}, Where: "docs/**/*.md", Cooldown: time.Minute, Then: group.Action{Kind: group.CreateTask, Template: "Sync English documentation"}}}}}, []group.Member{{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner}, {ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Profile: lead.ID}}, []profile.Profile{lead})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{Triggers: []group.Trigger{{ID: "docs", When: event.Filter{Types: []event.Type{"file.changed"}}, Where: "docs/**/*.md", Cooldown: time.Minute, Then: group.Action{Kind: group.CreateTask, Template: "Sync English documentation"}}}}}, []group.Member{{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner}, {ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Agent: lead.ID}}, []agent.Agent{lead})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,14 +221,14 @@ func triggerGroup(t *testing.T, settings group.Settings, providers map[string]mo
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = e.Close() })
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
-	g, err := e.CreateGroup(context.Background(), group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: settings}, []group.Member{
+	g, err := createGroup(t, e, context.Background(), group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: settings}, []group.Member{
 		{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner},
-		{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Profile: lead.ID},
-		{ID: "worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Name: "Worker", Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Agent: lead.ID},
+		{ID: "worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Name: "Worker", Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestGroupInitiativeControlsEnvironmentalWakeups(t *testing.T) {
 	}
 }
 
-func TestExternalChangesInAnActiveScopeWakeItsTaskThreadWithAConflictNote(t *testing.T) {
+func TestExternalChangesInAnActiveScopeWakeTheGroupThreadWithAConflictNote(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	requests := make(chan model.Request, 4)
@@ -296,7 +296,7 @@ func TestExternalChangesInAnActiveScopeWakeItsTaskThreadWithAConflictNote(t *tes
 	e, g := triggerGroup(t, group.Settings{}, map[string]model.Provider{"leader": provider, "worker": fake.New(t, fake.Reply{Hold: make(chan struct{})})})
 	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}})
 	defer stop()
-	card, err := e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Update documentation", Areas: []string{"docs"}, Workspace: "none", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}}, "worker")
+	_, err := e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Update documentation", Areas: []string{"docs"}, Workspace: "none", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}}, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestExternalChangesInAnActiveScopeWakeItsTaskThreadWithAConflictNote(t *tes
 			if fact.Type != "turn.finished" || fact.Actor.ID != "leader" {
 				continue
 			}
-			if fact.Scope.Task != card.ID {
+			if fact.Scope.Group != g.ID || fact.Scope.Task != "" {
 				t.Fatalf("leader scope=%+v", fact.Scope)
 			}
 			return

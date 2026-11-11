@@ -52,7 +52,7 @@ func TestQuestionReplyContinuesTheModelAndRejectsAnotherConnection(t *testing.T)
 	}
 	owner, other := connect(true), connect(false)
 	var created protocol.SessionCreateResult
-	if err := owner.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+	if err := owner.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if err := owner.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: created.Session}}, nil); err != nil {
@@ -120,7 +120,7 @@ func TestUnansweredQuestionFinishesOnSkipCancellationOrDisconnect(t *testing.T) 
 			}
 			defer owner.Close()
 			var created protocol.SessionCreateResult
-			if err := owner.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+			if err := owner.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 				t.Fatal(err)
 			}
 			facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Session: created.Session}, Types: []event.Type{question.Answered, loop.TurnFinished}})

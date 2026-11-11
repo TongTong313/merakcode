@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -124,12 +124,12 @@ func (e *Engine) runDeviceAssignment(live *deviceRun) error {
 	if member.Kind != group.MemberAgent || member.Remote {
 		return errors.New("assignment requires a local agent")
 	}
-	p, err := e.memberProfile(prepared, member)
+	p, err := e.memberAgent(prepared, member)
 	if err != nil {
 		return err
 	}
-	if p.Role == profile.Leader {
-		p.Role, p.ToolPool = profile.Worker, "worker.default"
+	if p.Role == agent.Leader {
+		p.Role, p.ToolPool = agent.Worker, "worker.default"
 	}
 	card, err := e.Tasks.Get(prepared, a.Claim.Task)
 	if err != nil {
@@ -366,7 +366,9 @@ func (e *Engine) routeDevicePermission(ctx context.Context, req permission.Reque
 					return permission.Reply{}, true, err
 				}
 			}
-			req.Leader = card.Leader
+			if state, err := e.Groups.Get(ctx, card.Group); err == nil {
+				req.Leader = state.Group.Leader
+			}
 		}
 	}
 	replies := make(chan permission.Reply, 1)

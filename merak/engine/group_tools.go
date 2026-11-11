@@ -87,8 +87,9 @@ func (e *Engine) leaderTools(g *groupRun, thread *leader.Thread, finish func(str
 		e.sayTool(g, thread, finish),
 		e.mergeTool(g, thread),
 		e.publishTool(g, thread),
-		groupTool{spec: tool.Spec{Name: "create_task", Description: "Create and publish a task in this thread. Include a clear description, acceptance criteria and project-relative areas.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"acceptance":{"type":"array","items":{"type":"string"}},"areas":{"type":"array","items":{"type":"string"}},"inputs":{"type":"array","items":{"type":"string"}},"workspace":{"type":"string","enum":["worktree","folder","inplace","none"]},"priority":{"type":"integer"},"review":{"type":"boolean"},"budget":{"type":"object","properties":{"maxSteps":{"type":"integer","minimum":0},"maxTokens":{"type":"integer","minimum":0},"maxCost":{"type":"number","minimum":0},"maxWallClock":{"type":"integer","minimum":0}},"additionalProperties":false}},"required":["title"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
+		groupTool{spec: tool.Spec{Name: "create_task", Description: "Create and publish a task in this group; give parent to make it a subtask of one of its tasks. Include a clear description, acceptance criteria and project-relative areas.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"parent":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"acceptance":{"type":"array","items":{"type":"string"}},"areas":{"type":"array","items":{"type":"string"}},"inputs":{"type":"array","items":{"type":"string"}},"workspace":{"type":"string","enum":["worktree","folder","inplace","none"]},"priority":{"type":"integer"},"review":{"type":"boolean"},"budget":{"type":"object","properties":{"maxSteps":{"type":"integer","minimum":0},"maxTokens":{"type":"integer","minimum":0},"maxCost":{"type":"number","minimum":0},"maxWallClock":{"type":"integer","minimum":0}},"additionalProperties":false}},"required":["title"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
 			var input struct {
+				Parent      event.ID    `json:"parent"`
 				Title       string      `json:"title"`
 				Description string      `json:"description"`
 				Acceptance  []string    `json:"acceptance"`
@@ -102,8 +103,12 @@ func (e *Engine) leaderTools(g *groupRun, thread *leader.Thread, finish func(str
 			if err := decodeGroupInput(call.Input, &input); err != nil {
 				return nil, err
 			}
-			parent := thread.Session.Scope.Task
-			return e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: parent, Title: input.Title, Description: input.Description, Acceptance: input.Acceptance, Areas: input.Areas, Inputs: input.Inputs, Workspace: input.Workspace, Priority: input.Priority, Review: input.Review, Budget: input.Budget, CreatedBy: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}})
+			if input.Parent != "" {
+				if _, err := e.scopedTask(ctx, g.group.ID, thread, input.Parent); err != nil {
+					return nil, err
+				}
+			}
+			return e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: input.Parent, Title: input.Title, Description: input.Description, Acceptance: input.Acceptance, Areas: input.Areas, Inputs: input.Inputs, Workspace: input.Workspace, Priority: input.Priority, Review: input.Review, Budget: input.Budget, CreatedBy: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}})
 		}},
 		groupTool{spec: tool.Spec{Name: "assign_task", Description: "Assign a task to a worker member. The first claim owns the task; collaborators require explicit non-overlapping scopes. Busy members queue the task.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"task":{"type":"string"},"member":{"type":"string"},"role":{"type":"string","enum":["owner","collaborator"]},"scope":{"type":"array","items":{"type":"string"}}},"required":["task","member"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
 			var input struct {
@@ -157,7 +162,7 @@ func (e *Engine) leaderTools(g *groupRun, thread *leader.Thread, finish func(str
 				return nil, errors.New("notice requires info or final and text within 1200 characters")
 			}
 			if input.Kind == "final" {
-				if err := e.finishTasks(ctx, g.group.ID, thread); err != nil {
+				if err := e.finishTasks(ctx, g.group.ID); err != nil {
 					return nil, err
 				}
 			}
@@ -173,28 +178,26 @@ func (e *Engine) leaderTools(g *groupRun, thread *leader.Thread, finish func(str
 			}
 			notice := group.Notice{Kind: input.Kind, Text: input.Text, To: recipients}
 			body, _ := json.Marshal(notice)
-			_, err = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + g.group.ID), Scope: event.Scope{Group: g.group.ID, Task: thread.Session.Scope.Task}, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}, Payload: body})
+			_, err = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + g.group.ID), Scope: event.Scope{Group: g.group.ID}, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorAgent, ID: thread.Leader}, Payload: body})
 			if err == nil && input.Kind == "final" {
 				finish(input.Text)
 			}
 			return notice, err
 		}},
 	}
-	if thread.Key == g.group.ID {
-		tools = append(tools, e.setTaskLeaderTool(g, thread))
-	}
 	return tools
 }
-func (e *Engine) finishTasks(ctx context.Context, groupID event.ID, thread *leader.Thread) error {
-	if thread.Session.Scope.Task == "" {
-		return errors.New("final delivery requires a task thread")
-	}
-	card, err := e.Tasks.Get(ctx, thread.Key)
+
+// finishTasks says whether a final notice may be sent: every goal of the group is completed or cancelled.
+func (e *Engine) finishTasks(ctx context.Context, groupID event.ID) error {
+	cards, err := e.Tasks.List(ctx, groupID)
 	if err != nil {
 		return err
 	}
-	if card.Group != groupID || card.Phase != task.PhaseDone || card.Status != task.Done {
-		return errors.New("final delivery requires a completed goal")
+	for _, card := range cards {
+		if card.Parent == "" && card.Status != task.Cancelled && (card.Phase != task.PhaseDone || card.Status != task.Done) {
+			return errors.New("final delivery requires every goal to be completed")
+		}
 	}
 	return nil
 }

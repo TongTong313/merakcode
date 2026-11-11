@@ -13,31 +13,27 @@ func (s *Server) groupMethods() map[string]handler {
 		return done(s.engine.Tasks.RemoveMember(ctx, params.Group, c.human, params.Member))
 	})
 	return map[string]handler{
-		"profile.list": run(func(ctx context.Context, c *connection, _ protocol.ProfileListParams) (any, error) {
-			return s.engine.ListProfiles(ctx, c.human)
+		"agent.list": run(func(ctx context.Context, c *connection, _ protocol.AgentListParams) (any, error) {
+			return s.engine.ListAgents(ctx, c.human)
 		}),
-		"profile.save": run(func(ctx context.Context, c *connection, params protocol.ProfileSaveParams) (any, error) {
-			return s.engine.SaveProfile(ctx, c.human, params.Profile)
+		"agent.save": run(func(ctx context.Context, c *connection, params protocol.AgentSaveParams) (any, error) {
+			return s.engine.SaveAgent(ctx, c.human, params.Agent)
 		}),
-		"profile.delete": run(func(ctx context.Context, c *connection, params protocol.ProfileDeleteParams) (any, error) {
-			return done(s.engine.DeleteProfile(ctx, c.human, params.Profile))
+		"agent.delete": run(func(ctx context.Context, c *connection, params protocol.AgentDeleteParams) (any, error) {
+			return done(s.engine.DeleteAgent(ctx, c.human, params.Agent))
 		}),
-		"member.register": run(func(ctx context.Context, c *connection, params protocol.MemberRegisterParams) (any, error) {
-			return s.engine.RegisterMember(ctx, params.Group, c.human, params.Member)
+		"agent.test": run(func(ctx context.Context, c *connection, params protocol.AgentSaveParams) (any, error) {
+			return s.engine.TestAgent(ctx, c.human, params.Agent)
 		}),
-		"member.test": run(func(ctx context.Context, c *connection, params protocol.ProfileSaveParams) (any, error) {
-			return s.engine.TestMember(ctx, c.human, params.Profile)
-		}),
-		"member.catalog": run(func(ctx context.Context, _ *connection, _ struct{}) (any, error) {
+		"agent.catalog": run(func(ctx context.Context, _ *connection, _ struct{}) (any, error) {
 			return worker.Catalog(ctx), nil
 		}),
-		"member.remove":      removeMember,
 		"group.removeMember": removeMember,
 		"group.create": run(func(ctx context.Context, _ *connection, params protocol.GroupCreateParams) (any, error) {
-			return s.engine.CreateGroup(ctx, params.Group, params.Members, params.Profiles)
+			return s.engine.CreateGroup(ctx, params.Group, params.Members)
 		}),
 		"group.addMember": run(func(ctx context.Context, c *connection, params protocol.GroupAddMemberParams) (any, error) {
-			return s.engine.AddGroupMember(ctx, params.Group, c.human, params.Member, params.Profile)
+			return s.engine.AddGroupMember(ctx, params.Group, c.human, params.Member)
 		}),
 		"group.update": run(func(ctx context.Context, c *connection, params protocol.GroupUpdateParams) (any, error) {
 			return s.engine.UpdateGroup(ctx, params.Group, c.human, params.Update)

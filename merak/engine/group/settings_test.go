@@ -17,7 +17,7 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 	storage := memory.New()
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	manager := group.New(storage, bus, event.NewID)
-	g, err := manager.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Settings", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
+	g, err := manager.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Settings", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
 		{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader"},
 		{ID: "worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Name: "Worker"},
 		{ID: "admin", Kind: group.MemberHuman, Role: group.RoleAdmin, Name: "Admin"},
@@ -71,7 +71,7 @@ func TestAdminNetworkDenialsSurviveReloadAndRejectBareWildcards(t *testing.T) {
 	storage := memory.New()
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	manager := group.New(storage, bus, event.NewID)
-	g, err := manager.Create(t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := manager.Create(t.Context(), group.Group{Kind: group.KindLocal, Name: "Network", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},

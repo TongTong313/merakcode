@@ -37,7 +37,7 @@ func (p *Pool) SetPhase(ctx context.Context, id event.ID, next Phase, actor even
 	if err != nil {
 		return err
 	}
-	allowed := actor.Kind == event.ActorAgent && actor.ID == card.Leader && next != PhaseCancelled && next != PhaseDone
+	allowed := actor.Kind == event.ActorAgent && actor.ID == state.Group.Leader && next != PhaseCancelled && next != PhaseDone
 	if actor.Kind == event.ActorHuman {
 		role := group.RoleApprover
 		if next == PhaseCancelled {

@@ -19,7 +19,7 @@ func TestTaskLifecycleQueuesBusyMembersAndRejectsChildren(t *testing.T) {
 	storage := memory.New()
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	groups := group.New(storage, bus, event.NewID)
-	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
 	})
@@ -31,7 +31,7 @@ func TestTaskLifecycleQueuesBusyMembersAndRejectsChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Status != task.Draft || first.Leader != "leader" {
+	if first.Status != task.Draft {
 		t.Fatalf("card=%+v", first)
 	}
 	if err := pool.Open(ctx, first.ID); err != nil {

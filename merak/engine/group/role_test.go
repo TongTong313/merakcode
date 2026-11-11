@@ -20,7 +20,7 @@ func TestTheFirstLocalHumanReceivesAllRoles(t *testing.T) {
 			if !adding {
 				members = append(members, human)
 			}
-			g, err := manager.Create(ctx, group.Group{Name: "Local", Kind: group.KindLocal, Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, members)
+			g, err := manager.Create(ctx, group.Group{Name: "Local", Kind: group.KindLocal, Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, members)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,7 +48,7 @@ func TestHumanRolesAreValidatedAndDefaultToMember(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			storage := memory.New()
 			manager := group.New(storage, event.NewBus(storage, time.Now, event.NewID), event.NewID)
-			g, err := manager.Create(t.Context(), group.Group{Name: "Roles", Kind: group.KindLocal, Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+			g, err := manager.Create(t.Context(), group.Group{Name: "Roles", Kind: group.KindLocal, Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
 				{ID: "human", Name: "Human", Kind: group.MemberHuman, Role: role},

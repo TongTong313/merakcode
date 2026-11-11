@@ -3,12 +3,12 @@ package engine_test
 import (
 	"context"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -54,17 +54,17 @@ func TestGroupPermissionsNotifyQualifiedHumansAndRejectLowerRoles(t *testing.T) 
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead := profile.DefaultLeader()
+			lead := agent.DefaultLeader()
 			lead.ID, lead.Model.Provider = "leader-profile", "fake"
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.ID, p.Model.Provider = "worker-profile", "fake"
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Review", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Review", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID},
 				{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 				{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-			}, []profile.Profile{lead, p})
+			}, []agent.Agent{lead, p})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,17 +109,17 @@ func TestTaskReviewAndCompletionReachTheHumanInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Owner: "owner"},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Owner: "owner"},
 		{ID: "viewer", Name: "Viewer", Kind: group.MemberHuman},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, p})
+	}, []agent.Agent{lead, p})
 	if err != nil {
 		t.Fatal(err)
 	}

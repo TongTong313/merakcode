@@ -7,23 +7,23 @@ import (
 	"os"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
-func defaultProfiles() []profile.Profile {
-	leader, worker := profile.DefaultLeader(), profile.DefaultWorker()
+func defaultAgents() []agent.Agent {
+	leader, worker := agent.DefaultLeader(), agent.DefaultWorker()
 	leader.ID, worker.ID = "builtin-leader", "builtin-worker"
-	return []profile.Profile{leader, worker}
+	return []agent.Agent{leader, worker}
 }
 
 func (e *Engine) authorizeMemberAssignment(ctx context.Context, member group.Member, actor event.Actor) error {
-	p, err := e.memberProfile(ctx, member)
+	p, err := e.memberAgent(ctx, member)
 	if err != nil {
 		return err
 	}
@@ -33,9 +33,9 @@ func (e *Engine) authorizeMemberAssignment(ctx context.Context, member group.Mem
 	return nil
 }
 
-func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Profile, error) {
-	result := defaultProfiles()
-	docs, err := e.store.List(ctx, "profile", "")
+func (e *Engine) ListAgents(ctx context.Context, human event.ID) ([]agent.Agent, error) {
+	result := defaultAgents()
+	docs, err := e.store.List(ctx, "agent", "")
 	if err != nil {
 		return nil, err
 	}
@@ -43,11 +43,11 @@ func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Pr
 		if meta.Meta["owner"] != string(human) || human == "" || meta.Meta["deleted"] == "true" {
 			continue
 		}
-		doc, err := e.store.Fetch(ctx, "profile", meta.Key)
+		doc, err := e.store.Fetch(ctx, "agent", meta.Key)
 		if err != nil {
 			return nil, err
 		}
-		var p profile.Profile
+		var p agent.Agent
 		if err := json.Unmarshal(doc.Body, &p); err != nil {
 			return nil, err
 		}
@@ -56,15 +56,15 @@ func (e *Engine) ListProfiles(ctx context.Context, human event.ID) ([]profile.Pr
 	return result, nil
 }
 
-func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
-	e.profileMu.Lock()
-	defer e.profileMu.Unlock()
-	doc, err := e.store.Fetch(ctx, "profile", string(id))
+func (e *Engine) DeleteAgent(ctx context.Context, human, id event.ID) error {
+	e.agentMu.Lock()
+	defer e.agentMu.Unlock()
+	doc, err := e.store.Fetch(ctx, "agent", string(id))
 	if err != nil {
 		return err
 	}
 	if human == "" || doc.Meta["owner"] != string(human) {
-		return coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can delete it"))
+		return coded(errorcode.ProfileOwnerOnly, errors.New("only the agent owner can delete it"))
 	}
 	facts, err := e.store.Find(ctx, store.Query{Types: []event.Type{group.Created}})
 	if err != nil {
@@ -76,8 +76,8 @@ func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
 			return err
 		}
 		for _, member := range state.Members {
-			if member.Profile == id {
-				return coded(errorcode.ProfileInUse, errors.New("profile is still assigned to a group member"))
+			if member.Agent == id {
+				return coded(errorcode.ProfileInUse, errors.New("agent is still assigned to a group member"))
 			}
 		}
 	}
@@ -85,43 +85,43 @@ func (e *Engine) DeleteProfile(ctx context.Context, human, id event.ID) error {
 	return e.store.Put(ctx, doc)
 }
 
-func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Profile) (profile.Profile, error) {
-	e.profileMu.Lock()
-	defer e.profileMu.Unlock()
+func (e *Engine) SaveAgent(ctx context.Context, human event.ID, p agent.Agent) (agent.Agent, error) {
+	e.agentMu.Lock()
+	defer e.agentMu.Unlock()
 	if human == "" {
-		return profile.Profile{}, errors.New("profile owner is required")
+		return agent.Agent{}, errors.New("agent owner is required")
 	}
-	if err := validateProfile(p); err != nil {
-		return profile.Profile{}, err
+	if err := validateAgent(p); err != nil {
+		return agent.Agent{}, err
 	}
-	for _, builtin := range defaultProfiles() {
+	for _, builtin := range defaultAgents() {
 		if p.ID == builtin.ID {
-			return profile.Profile{}, errors.New("copy a builtin profile before editing")
+			return agent.Agent{}, errors.New("copy a builtin agent before editing")
 		}
 	}
 	if p.ID == "" {
 		p.ID = e.newID()
 	}
-	doc, err := e.store.Fetch(ctx, "profile", string(p.ID))
+	doc, err := e.store.Fetch(ctx, "agent", string(p.ID))
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return profile.Profile{}, err
+		return agent.Agent{}, err
 	}
 	if err == nil && doc.Meta["owner"] != string(human) {
-		return profile.Profile{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can edit it"))
+		return agent.Agent{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can edit it"))
 	}
 	p, err = e.keepAgentSecrets(ctx, p)
 	if err != nil {
-		return profile.Profile{}, err
+		return agent.Agent{}, err
 	}
 	body, err := json.Marshal(p)
 	if err != nil {
-		return profile.Profile{}, err
+		return agent.Agent{}, err
 	}
-	err = e.store.Put(ctx, store.Doc{Kind: "profile", Key: string(p.ID), Rev: doc.Rev, Body: body, Meta: map[string]string{"owner": string(human)}})
+	err = e.store.Put(ctx, store.Doc{Kind: "agent", Key: string(p.ID), Rev: doc.Rev, Body: body, Meta: map[string]string{"owner": string(human)}})
 	return p, err
 }
 
-func validateProfileNetwork(p profile.Profile) error {
+func validateAgentNetwork(p agent.Agent) error {
 	for _, scope := range p.Memory {
 		if scope != "member" && scope != "group" && scope != "project" {
 			return errors.New("invalid profile memory scope")
@@ -136,14 +136,14 @@ func validateProfileNetwork(p profile.Profile) error {
 	return (sandbox.Network{Mode: "allowlist", Hosts: p.Network}).Validate()
 }
 
-func validateProfile(p profile.Profile) error {
-	if err := validateProfileNetwork(p); err != nil {
+func validateAgent(p agent.Agent) error {
+	if err := validateAgentNetwork(p); err != nil {
 		return err
 	}
-	if strings.TrimSpace(p.Name) == "" || p.Role != profile.Leader && p.Role != profile.Worker {
+	if strings.TrimSpace(p.Name) == "" || p.Role != agent.Leader && p.Role != agent.Worker {
 		return errors.New("profile name and role are required")
 	}
-	if p.Role == profile.Leader {
+	if p.Role == agent.Leader {
 		if p.ToolPool != "leader.default" {
 			return errors.New("leader profile requires leader tools")
 		}
@@ -177,33 +177,11 @@ func validateProfile(p profile.Profile) error {
 	}
 }
 
-func (e *Engine) RegisterMember(ctx context.Context, groupID, human event.ID, member group.Member) (group.Member, error) {
-	actor, err := e.groupMember(ctx, groupID, human)
-	if err != nil {
-		return group.Member{}, err
-	}
-	if !actor.Can(group.RoleAdmin) || member.Kind != group.MemberAgent || member.Owner != "" && member.Owner != human {
-		return group.Member{}, errors.New("a human member can register only their own agents")
-	}
-	profiles, err := e.ListProfiles(ctx, human)
-	if err != nil {
-		return group.Member{}, err
-	}
-	for _, p := range profiles {
-		if p.ID != member.Profile {
-			continue
-		}
-		member.Owner = human
-		return e.addGroupMember(ctx, groupID, member, nil, actor.Can(group.RoleAdmin))
-	}
-	return group.Member{}, errors.New("profile is not owned by this human")
-}
-
 func agentSecretKey(id, name string) string { return "agent:" + id + ":" + name }
 
 // keepAgentSecrets moves the non-empty environment values of an external agent into the vault and returns the profile
 // without them. An empty value keeps the value that is already stored.
-func (e *Engine) keepAgentSecrets(ctx context.Context, p profile.Profile) (profile.Profile, error) {
+func (e *Engine) keepAgentSecrets(ctx context.Context, p agent.Agent) (agent.Agent, error) {
 	if p.Product == nil || len(p.Product.Env) == 0 {
 		return p, nil
 	}
@@ -215,7 +193,7 @@ func (e *Engine) keepAgentSecrets(ctx context.Context, p profile.Profile) (profi
 			continue
 		}
 		if err := e.vault.Set(ctx, agentSecretKey(string(p.ID), name), []byte(value)); err != nil {
-			return profile.Profile{}, err
+			return agent.Agent{}, err
 		}
 	}
 	p.Product = &product
@@ -223,7 +201,7 @@ func (e *Engine) keepAgentSecrets(ctx context.Context, p profile.Profile) (profi
 }
 
 // withAgentSecrets fills the environment values of an external agent that are empty from the vault.
-func (e *Engine) withAgentSecrets(ctx context.Context, p profile.Profile) (profile.Profile, error) {
+func (e *Engine) withAgentSecrets(ctx context.Context, p agent.Agent) (agent.Agent, error) {
 	if p.Product == nil || len(p.Product.Env) == 0 || p.ID == "" {
 		return p, nil
 	}
@@ -233,7 +211,7 @@ func (e *Engine) withAgentSecrets(ctx context.Context, p profile.Profile) (profi
 		if value == "" {
 			stored, err := e.vault.Get(ctx, agentSecretKey(string(p.ID), name))
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return profile.Profile{}, err
+				return agent.Agent{}, err
 			}
 			value = string(stored)
 		}

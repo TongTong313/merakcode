@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -45,12 +45,12 @@ func TestRemoteConnectionListsTheOtherEnginesRegisteredMembersWithoutExposingIts
 		t.Fatal(err)
 	}
 	defer b.Close()
-	sourceProfile := profile.DefaultWorker()
+	sourceProfile := agent.DefaultWorker()
 	sourceProfile.ID, sourceProfile.Mode = "source-profile", permission.ModeTakeover
-	if _, err := b.SaveProfile(ctx, "owner", sourceProfile); err != nil {
+	if _, err := b.SaveAgent(ctx, "owner", sourceProfile); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Remote worker", AgentRole: group.AgentWorker, Profile: sourceProfile.ID}}); err != nil {
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Remote worker", AgentRole: group.AgentWorker, Agent: sourceProfile.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	first, err := server.Start(a, t.TempDir())
@@ -91,13 +91,13 @@ func TestRemoteConnectionListsTheOtherEnginesRegisteredMembersWithoutExposingIts
 	if strings.Contains(string(encoded), second.Info.Token) {
 		t.Fatal("connection response exposed the token")
 	}
-	alias := profile.DefaultWorker()
+	alias := agent.DefaultWorker()
 	alias.ID = "remote-profile"
-	alias.Product = &profile.Product{Kind: worker.KindRemote, Remote: &profile.RemoteSource{Connection: connected.ID, Group: "source", Member: "worker"}}
-	if _, err := a.SaveProfile(ctx, "owner", alias); err != nil {
+	alias.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connected.ID, Group: "source", Member: "worker"}}
+	if _, err := a.SaveAgent(ctx, "owner", alias); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "alias", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: alias.ID}}); err != nil {
+	if _, err := a.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "alias", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: alias.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	var status sandbox.Status
@@ -129,12 +129,12 @@ func TestRemotePeerExecutesTheRegisteredSourceMemberInItsOwnCheckout(t *testing.
 		t.Fatal(err)
 	}
 	defer b.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Model.Provider = "source-profile", "fake"
-	if _, err := b.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := b.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Profile: p.ID}}); err != nil {
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Agent: p.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	instance, err := server.Start(b, t.TempDir())
@@ -151,7 +151,7 @@ func TestRemotePeerExecutesTheRegisteredSourceMemberInItsOwnCheckout(t *testing.
 		t.Fatal(err)
 	}
 	claim := task.Claim{ID: "remote-claim", Task: "remote-task", Session: "remote-session", Member: "remote-worker", Status: task.ClaimActive}
-	state := group.State{Group: group.Group{ID: "host-group", Kind: group.KindLocal, Name: "Host", DefaultLeader: "host-leader", Project: group.Project{Directory: "not-a-local-path"}}, Members: []group.Member{{ID: "remote-worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "private-host-profile"}}}
+	state := group.State{Group: group.Group{ID: "host-group", Kind: group.KindLocal, Name: "Host", Leader: "host-leader", Project: group.Project{Directory: "not-a-local-path"}}, Members: []group.Member{{ID: "remote-worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "private-host-profile"}}}
 	card := task.Card{ID: claim.Task, Group: state.Group.ID, Title: "Remote task", Workspace: "none", Status: task.Running, Claims: []task.Claim{claim}}
 	groupBody, _ := json.Marshal(state)
 	cardBody, _ := json.Marshal(card)
@@ -249,13 +249,13 @@ func TestRemoteWorkerImportsOriginalEventsIntoTheAssigningEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Model.Provider = "source-profile", "fake"
 	p.Mode = permission.ModeAsk
-	if _, err := b.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := b.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "leader", Project: group.Project{Directory: checkout}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Profile: p.ID, Checkouts: map[string]string{remoteURL: checkout}}}); err != nil {
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: checkout}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Agent: p.ID, Checkouts: map[string]string{remoteURL: checkout}}}); err != nil {
 		t.Fatal(err)
 	}
 	first, err := server.Start(a, t.TempDir())
@@ -280,13 +280,13 @@ func TestRemoteWorkerImportsOriginalEventsIntoTheAssigningEngine(t *testing.T) {
 	t.Cleanup(func() {
 		_ = credential.New(filepath.Join(dataDir, "credentials")).Delete(context.Background(), "remote:"+string(connection.ID))
 	})
-	p = profile.DefaultWorker()
+	p = agent.DefaultWorker()
 	p.ID = "remote-profile"
-	p.Product = &profile.Product{Kind: worker.KindRemote, Remote: &profile.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: connection.Members[1].Caps}}
-	if _, err := a.SaveProfile(ctx, "owner", p); err != nil {
+	p.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: connection.Members[1].Caps}}
+	if _, err := a.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Groups.Create(ctx, group.Group{ID: "local-host", Kind: group.KindLocal, Name: "Host", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir(), Remote: remoteURL}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "remote-member", Kind: group.MemberAgent, Name: "Remote", AgentRole: group.AgentWorker, Profile: p.ID, Remote: true, Checkouts: map[string]string{remoteURL: checkout}}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}, {ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover}}); err != nil {
+	if _, err := a.Groups.Create(ctx, group.Group{ID: "local-host", Kind: group.KindLocal, Name: "Host", Leader: "leader", Project: group.Project{Directory: t.TempDir(), Remote: remoteURL}}, []group.Member{{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "remote-member", Kind: group.MemberAgent, Name: "Remote", AgentRole: group.AgentWorker, Agent: p.ID, Remote: true, Checkouts: map[string]string{remoteURL: checkout}}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}, {ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover}}); err != nil {
 		t.Fatal(err)
 	}
 	card, err := a.Tasks.Create(ctx, task.Card{Group: "local-host", Title: "Execute remotely", Workspace: "worktree", Base: base})

@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -66,11 +66,11 @@ func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event
 	if err != nil {
 		return nil, err
 	}
-	p, err := e.memberProfile(ctx, member)
+	p, err := e.memberAgent(ctx, member)
 	if err != nil {
 		return nil, err
 	}
-	var source *profile.RemoteSource
+	var source *agent.RemoteSource
 	var ws workspace.Workspace
 	if p.Product != nil && p.Product.Kind == worker.KindRemote {
 		source = p.Product.Remote
@@ -105,7 +105,7 @@ func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event
 		defer func() { e.mu.Lock(); delete(e.merging, claim.ID); e.mu.Unlock() }()
 		if state.Group.Settings.MergeApprovalRequired() {
 			input, _ := json.Marshal(map[string]any{"task": card.ID, "claim": claim.ID, "target": state.Group.Brief.TargetBranch})
-			reply, err := e.permissions.Ask(e.ctx, permission.Request{Kind: "merge", Member: card.Leader,
+			reply, err := e.permissions.Ask(e.ctx, permission.Request{Kind: "merge", Member: state.Group.Leader,
 				Spec: tool.Spec{Name: "request_merge", Effect: tool.EffectGroup},
 				Call: tool.Call{Input: input, Env: tool.Env{Workdir: ws.Directory, Scope: event.Scope{Group: card.Group, Task: card.ID, Session: claim.Session}}},
 			})
@@ -137,7 +137,7 @@ func (e *Engine) requestMerge(ctx context.Context, card task.Card, claimID event
 				return
 			}
 			body, _ := json.Marshal(group.Notice{Kind: "info", Text: "MRK-6001: Claim integration failed. Inspect the worktree and target branch before retrying."})
-			_, _ = e.Bus.Publish(e.ctx, event.Event{Stream: event.Stream("group:" + card.Group), Scope: event.Scope{Group: card.Group, Task: card.ID}, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorAgent, ID: card.Leader}, Payload: body})
+			_, _ = e.Bus.Publish(e.ctx, event.Event{Stream: event.Stream("group:" + card.Group), Scope: event.Scope{Group: card.Group, Task: card.ID}, Type: group.NoticeSent, Actor: e.leaderActor(ctx, card), Payload: body})
 			return
 		}
 	})
@@ -173,7 +173,7 @@ func (e *Engine) createIntegrationTask(ctx context.Context, g *groupRun, fact ev
 	if err != nil {
 		return err
 	}
-	card, err := e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: original.ID, Title: "Integrate " + original.Title, Description: fmt.Sprintf("Rebase this worktree onto refs/heads/%s and resolve these conflicting files: %s. Preserve both the target changes and the original task result. Verify and commit the resolution, then submit_report. The original claim is %s.", result.Target, strings.Join(result.Conflicts, ", "), result.Claim), Acceptance: []string{"Resolve the reported conflicts and preserve both results.", "Verify the resolved result before reporting."}, Areas: result.Conflicts, Workspace: workspace.KindWorktree, Base: base, IntegrationOf: result.Claim, Review: original.Review, CreatedBy: event.Actor{Kind: event.ActorAgent, ID: original.Leader}})
+	card, err := e.CreateTask(ctx, task.Card{Group: g.group.ID, Parent: original.ID, Title: "Integrate " + original.Title, Description: fmt.Sprintf("Rebase this worktree onto refs/heads/%s and resolve these conflicting files: %s. Preserve both the target changes and the original task result. Verify and commit the resolution, then submit_report. The original claim is %s.", result.Target, strings.Join(result.Conflicts, ", "), result.Claim), Acceptance: []string{"Resolve the reported conflicts and preserve both results.", "Verify the resolved result before reporting."}, Areas: result.Conflicts, Workspace: workspace.KindWorktree, Base: base, IntegrationOf: result.Claim, Review: original.Review, CreatedBy: e.leaderActor(ctx, original)})
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func (e *Engine) returnToDoing(ctx context.Context, card task.Card) error {
 	if goal.Phase != task.PhaseIntegrating {
 		return nil
 	}
-	return e.Tasks.SetPhase(ctx, id, task.PhaseDoing, event.Actor{Kind: event.ActorAgent, ID: goal.Leader})
+	return e.Tasks.SetPhase(ctx, id, task.PhaseDoing, e.leaderActor(ctx, goal))
 }
 
 func (e *Engine) completeIntegration(ctx context.Context, fact event.Event) error {

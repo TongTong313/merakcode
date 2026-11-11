@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
@@ -60,15 +60,15 @@ func TestFolderTaskPublishesDeclaredArtifactsAndWaitsForReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,16 +146,16 @@ func workspaceGroup(t *testing.T, dir string, providers map[string]model.Provide
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = e.Close() })
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
-	g, err := e.CreateGroup(context.Background(), group.Group{Kind: group.KindLocal, Name: "Workspace", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, context.Background(), group.Group{Kind: group.KindLocal, Name: "Workspace", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "First worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-		{ID: "second", Name: "Second worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "First worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+		{ID: "second", Name: "Second worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}

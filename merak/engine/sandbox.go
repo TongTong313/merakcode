@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -40,7 +40,7 @@ func (e *Engine) MemberSandboxStatus(ctx context.Context, groupID, memberID, ses
 	if err != nil {
 		return sandbox.Status{}, err
 	}
-	p, err := e.memberProfile(ctx, member)
+	p, err := e.memberAgent(ctx, member)
 	if err != nil {
 		return sandbox.Status{}, err
 	}
@@ -63,7 +63,7 @@ func (e *Engine) MemberSandboxStatus(ctx context.Context, groupID, memberID, ses
 	return e.SandboxStatus(ctx, state.Group.Project.Directory, p.Mode)
 }
 
-func (e *Engine) remoteSandboxStatus(ctx context.Context, source *profile.RemoteSource, params protocol.SandboxStatusParams) (sandbox.Status, error) {
+func (e *Engine) remoteSandboxStatus(ctx context.Context, source *agent.RemoteSource, params protocol.SandboxStatusParams) (sandbox.Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	credentials, err := e.remoteCredentials(ctx, source.Connection)
@@ -266,7 +266,7 @@ func denyProductState(configuration sandbox.Profile) (sandbox.Profile, error) {
 	return configuration, nil
 }
 
-func (e *Engine) connectSandboxNetwork(launcher *sandbox.Launcher, p profile.Profile, a worker.Assignment) {
+func (e *Engine) connectSandboxNetwork(launcher *sandbox.Launcher, p agent.Agent, a worker.Assignment) {
 	launcher.MemberName = p.Name
 	launcher.ApproveNetwork = func(ctx context.Context, host string) (bool, error) { return e.approveWorkerNetwork(ctx, p, a, host) }
 	launcher.NetworkDenied = func(ctx context.Context, denial sandbox.NetworkDenial) error {
@@ -295,7 +295,7 @@ func (e *Engine) rememberSessionLaunch(key launchGrant, decision permission.Deci
 	e.launchGrants[key] = decision
 }
 
-func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile, a worker.Assignment, status sandbox.Status) error {
+func (e *Engine) approveUnconfinedMember(ctx context.Context, p agent.Agent, a worker.Assignment, status sandbox.Status) error {
 	scope := a.Scope
 	scope.Session = a.Session
 	input, err := json.Marshal(map[string]any{"member": p.Name, "reason": status.Reason, "unconfined": !status.Available, "networkUnenforced": status.Network == "none"})
@@ -371,7 +371,7 @@ func (e *Engine) approveUnconfinedMember(ctx context.Context, p profile.Profile,
 	return ctx.Err()
 }
 
-func (e *Engine) workerNetworkHosts(ctx context.Context, p profile.Profile, a worker.Assignment) ([]string, error) {
+func (e *Engine) workerNetworkHosts(ctx context.Context, p agent.Agent, a worker.Assignment) ([]string, error) {
 	if a.Scope.Group == "" {
 		return append(e.networkConfiguration().AllowedNetworkHosts(), p.Network...), nil
 	}
@@ -396,7 +396,7 @@ func (e *Engine) workerNetworkHosts(ctx context.Context, p profile.Profile, a wo
 	return nil, errors.New("sandbox assignment member is not in the group")
 }
 
-func (e *Engine) approveWorkerNetwork(ctx context.Context, p profile.Profile, a worker.Assignment, host string) (bool, error) {
+func (e *Engine) approveWorkerNetwork(ctx context.Context, p agent.Agent, a worker.Assignment, host string) (bool, error) {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
@@ -440,7 +440,7 @@ func (e *Engine) approveWorkerNetwork(ctx context.Context, p profile.Profile, a 
 	return reply.Decision == permission.Allow, nil
 }
 
-func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a worker.Assignment, denial sandbox.NetworkDenial) error {
+func (e *Engine) recordDeniedNetwork(ctx context.Context, p agent.Agent, a worker.Assignment, denial sandbox.NetworkDenial) error {
 	host := denial.Host
 	scope := a.Scope
 	scope.Session = a.Session
@@ -470,7 +470,7 @@ func (e *Engine) recordDeniedNetwork(ctx context.Context, p profile.Profile, a w
 	return err
 }
 
-func (e *Engine) recordProtectionChange(ctx context.Context, p profile.Profile, a worker.Assignment, failure *sandbox.ProtectionError) error {
+func (e *Engine) recordProtectionChange(ctx context.Context, p agent.Agent, a worker.Assignment, failure *sandbox.ProtectionError) error {
 	scope := a.Scope
 	scope.Session = a.Session
 	input, err := json.Marshal(map[string]any{"paths": failure.Paths, "member": p.Name})
@@ -495,7 +495,7 @@ func (e *Engine) recordProtectionChange(ctx context.Context, p profile.Profile, 
 	return err
 }
 
-func (e *Engine) recordFileDenial(ctx context.Context, p profile.Profile, a worker.Assignment, failure *sandbox.DenialError) error {
+func (e *Engine) recordFileDenial(ctx context.Context, p agent.Agent, a worker.Assignment, failure *sandbox.DenialError) error {
 	scope := a.Scope
 	scope.Session = a.Session
 	input, err := json.Marshal(map[string]string{"details": failure.Details, "member": p.Name})

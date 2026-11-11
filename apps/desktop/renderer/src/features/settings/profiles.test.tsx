@@ -49,8 +49,7 @@ test("saves a custom product and checks its real adapter connection", async () =
     host.querySelector<HTMLButtonElement>('button[aria-label="Save profile"]')!.click()
     await expect
       .poll(
-        async () =>
-          (await (await client()).profile.list({}))?.find((profile) => profile.name === "CLI tester")?.product,
+        async () => (await (await client()).agent.list({}))?.find((profile) => profile.name === "CLI tester")?.product,
       )
       .toEqual({
         kind: "claude-code",
@@ -59,9 +58,10 @@ test("saves a custom product and checks its real adapter connection", async () =
         model: "fixture-model",
         env: { FIXTURE_VALUE: "" },
       })
-    expect(
-      (await (await client()).profile.list({}))?.find((profile) => profile.name === "CLI tester")?.network,
-    ).toEqual(["api.example.com", "*.models.example.com:443"])
+    expect((await (await client()).agent.list({}))?.find((profile) => profile.name === "CLI tester")?.network).toEqual([
+      "api.example.com",
+      "*.models.example.com:443",
+    ])
   } finally {
     dispose()
     host.remove()
@@ -82,7 +82,7 @@ test("copies a default profile, edits its duties and registers it in the group",
     kind: "local",
     name: "Profiles",
     project: { directory: engine.project + "/.." },
-    defaultLeader: "leader",
+    leader: "leader",
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
       {
@@ -91,12 +91,11 @@ test("copies a default profile, edits its duties and registers it in the group",
         kind: "agent",
         name: "Leader",
         agentRole: "leader",
-        profile: "builtin-leader",
+        agent: "builtin-leader",
         owner: localHuman,
         status: "idle",
       },
     ],
-    profiles: [],
   })
   const host = document.createElement("div")
   document.body.appendChild(host)
@@ -125,7 +124,7 @@ test("copies a default profile, edits its duties and registers it in the group",
     input("Model", "fixture")
     press("Save profile")
     await expect.poll(() => host.querySelector('button[aria-label="Add Audit"]')).not.toBeNull()
-    expect((await connection.profile.list({}))?.find((profile) => profile.name === "Audit")?.mode).toBe("takeover")
+    expect((await connection.agent.list({}))?.find((profile) => profile.name === "Audit")?.mode).toBe("takeover")
     press("Add Audit")
     await expect
       .poll(async () =>
@@ -136,7 +135,7 @@ test("copies a default profile, edits its duties and registers it in the group",
     input("Duties", "Review Go and TypeScript changes.")
     press("Save profile")
     await expect
-      .poll(async () => (await connection.profile.list({}))?.find((profile) => profile.name === "Audit")?.duties)
+      .poll(async () => (await connection.agent.list({}))?.find((profile) => profile.name === "Audit")?.duties)
       .toBe("Review Go and TypeScript changes.")
   } finally {
     dispose()

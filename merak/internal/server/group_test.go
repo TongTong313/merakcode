@@ -10,19 +10,19 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
-func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T) {
+func TestTaskRPCChecksTheHumanRoleBeforeCancelling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	e, err := engine.New(engine.Deps{Workdir: t.TempDir()})
@@ -34,9 +34,8 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 	host := httptest.NewServer(handler)
 	defer host.Close()
 	clients := map[string]*protocol.Client{"owner": connectServerAs(t, handler, host, "owner", protocol.Capabilities{}), "approver": connectServerAs(t, handler, host, "approver", protocol.Capabilities{})}
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "a"}, []group.Member{
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: t.TempDir()}, Leader: "a"}, []group.Member{
 		{ID: "a", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
-		{ID: "b", Name: "Second", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 	})
@@ -68,7 +67,7 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 			t.Fatalf("parent=%+v err=%v", parent, err)
 		}
 	}
-	for _, method := range []string{"task.update", "task.cancel"} {
+	for _, method := range []string{"task.cancel"} {
 		if method == "task.cancel" {
 			for _, phase := range []task.Phase{task.PhaseDoing, task.PhaseStalled, task.PhaseDoing} {
 				var resumed task.Card
@@ -81,18 +80,12 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 			}
 		}
 		params := map[string]any{"task": card.ID}
-		if method == "task.update" {
-			params["leader"] = "b"
-		}
 		if err := clients["approver"].Call(ctx, method, params, new(task.Card)); err == nil {
 			t.Fatalf("approver used %s", method)
 		}
 		var result task.Card
 		if err := clients["owner"].Call(ctx, method, params, &result); err != nil {
 			t.Fatal(err)
-		}
-		if result.Leader != "b" {
-			t.Fatalf("leader=%s", result.Leader)
 		}
 		if method == "task.cancel" && (result.Status != task.Cancelled || result.Phase != task.PhaseCancelled) {
 			t.Fatalf("cancelled=%+v", result)
@@ -117,22 +110,28 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
-	params := protocol.GroupCreateParams{Group: group.Group{Kind: "cloud", Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, Members: []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, Profiles: []profile.Profile{p}}
+	params := protocol.GroupCreateParams{Group: group.Group{Kind: "cloud", Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, Members: []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}}
 	var created group.Group
 	if err := client.Call(ctx, "group.create", params, &created); err == nil || err.Error() != "MRK-1006" {
 		t.Fatalf("unsupported group: %v", err)
+	}
+	if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: p}, nil); err != nil {
+		t.Fatal(err)
 	}
 	params.Kind = group.KindLocal
 	params.Members = append(params.Members, group.Member{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner})
 	if err := client.Call(ctx, "group.create", params, &created); err != nil {
 		t.Fatal(err)
 	}
-	p = profile.DefaultWorker()
+	p = agent.DefaultWorker()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
+	if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: p}, nil); err != nil {
+		t.Fatal(err)
+	}
 	var member group.Member
-	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, Profile: &p}, &member); err != nil {
+	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}}, &member); err != nil {
 		t.Fatal(err)
 	}
 	if member.ID == "" || member.Group != created.ID {
@@ -154,14 +153,14 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 			if fact.Type != "turn.finished" {
 				continue
 			}
-			if fact.Scope.Task != card.ID || fact.Actor.ID != "leader" {
+			if fact.Scope.Group != created.ID || fact.Scope.Task != "" || fact.Actor.ID != "leader" {
 				t.Fatalf("thread attribution=%+v", fact)
 			}
 			var view leader.View
 			if err := client.Call(ctx, "group.state", protocol.GroupIDParams{Group: created.ID}, &view); err != nil {
 				t.Fatal(err)
 			}
-			if len(view.Tasks) != 1 || len(view.Members) != 3 || view.Tasks[0].Leader != "leader" || view.LastSeq == 0 {
+			if len(view.Tasks) != 1 || len(view.Members) != 3 || view.LastSeq == 0 {
 				t.Fatalf("view=%+v", view)
 			}
 			return
@@ -199,16 +198,21 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 			}
 			defer client.Close()
 			unknown := connectServerAs(t, handler, host, "unknown", protocol.Capabilities{})
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
 			work.Memory = []memory.Scope{}
+			for _, a := range []agent.Agent{lead, work} {
+				if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: a}, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var g group.Group
-			err = client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, Members: []group.Member{
+			err = client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, Members: []group.Member{
 				{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-			}, Profiles: []profile.Profile{lead, work}}, &g)
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+			}}, &g)
 			if err != nil {
 				t.Fatal(err)
 			}

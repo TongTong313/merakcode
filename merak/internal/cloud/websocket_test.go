@@ -84,7 +84,7 @@ func TestDeviceLinkAnnouncesMembersAndForwardsRequestsUnchanged(t *testing.T) {
 		done <- link.Connect(ctx, cloud.Credentials{Endpoint: strings.Replace(server.URL, "http:", "ws:", 1), Token: "fixture-secret", Account: "account", Device: "device"})
 	}()
 	defer func() { cancel(); <-done }()
-	members := []group.Member{{ID: "member", Name: "Worker", Group: "local", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "profile", Status: group.Idle}}
+	members := []group.Member{{ID: "member", Name: "Worker", Group: "local", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "profile", Status: group.Idle}}
 	if err := link.Announce(ctx, members); err != nil {
 		t.Fatal(err)
 	}

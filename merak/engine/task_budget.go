@@ -21,7 +21,7 @@ func (e *Engine) UpdateTask(ctx context.Context, id event.ID, change task.Update
 	if err := change.Budget.Validate(); err != nil {
 		return err
 	}
-	if change.Leader != "" || change.Phase != "" {
+	if change.Phase != "" {
 		return task.ErrState
 	}
 	card, err := e.Tasks.Get(ctx, id)
@@ -35,7 +35,7 @@ func (e *Engine) UpdateTask(ctx context.Context, id event.ID, change task.Update
 	if actor.Kind == event.ActorHuman && member.Can(group.RoleOwner) {
 		return e.Tasks.Update(ctx, id, change, actor)
 	}
-	if !(actor.Kind == event.ActorHuman && member.Can(group.RoleMember) || actor.Kind == event.ActorAgent && actor.ID == card.Leader) {
+	if !(actor.Kind == event.ActorHuman && member.Can(group.RoleMember) || actor.Kind == event.ActorAgent && e.leads(ctx, card, actor.ID)) {
 		return task.ErrNotMember
 	}
 	if strings.TrimSpace(change.Reason) == "" {
@@ -51,7 +51,7 @@ func (e *Engine) UpdateTask(ctx context.Context, id event.ID, change task.Update
 		if err != nil {
 			continue
 		}
-		p, err := e.memberProfile(ctx, member)
+		p, err := e.memberAgent(ctx, member)
 		if err == nil {
 			profiles[claim.Member] = grantedBudget(p.Budget, card.Grants)
 		}

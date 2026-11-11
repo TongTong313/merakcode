@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -71,14 +71,14 @@ func TestPooledWorkspaceKeepsSuccessfulSetupAcrossClaims(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Model.Provider, work.Mode = "work", "worker", permission.ModeTakeover
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Reuse setup", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Setup: []string{binary, "--workspace-setup-fixture", "success"}}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Reuse setup", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{Setup: []string{binary, "--workspace-setup-fixture", "success"}}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestWorkspaceSetupRunsBeforeWorkerAndFailureBlocksWithLog(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 			lead.ID, lead.Model.Provider = "lead", "leader"
 			work.ID, work.Model.Provider, work.Mode = "work", "worker", permission.ModeTakeover
 			if mode == "protected" {
@@ -180,7 +180,7 @@ func TestWorkspaceSetupRunsBeforeWorkerAndFailureBlocksWithLog(t *testing.T) {
 			if err := json.Unmarshal(body, &settings); err != nil {
 				t.Fatal(err)
 			}
-			g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Setup", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}, Settings: settings}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead, work})
+			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Setup", Leader: "leader", Project: group.Project{Directory: t.TempDir()}, Settings: settings}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
 			if err != nil {
 				t.Fatal(err)
 			}

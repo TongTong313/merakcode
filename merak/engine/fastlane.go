@@ -99,7 +99,7 @@ func (e *Engine) sendClaimInput(ctx context.Context, groupID event.ID, claim tas
 		if err != nil {
 			return false
 		}
-		p, err := e.memberProfile(ctx, member)
+		p, err := e.memberAgent(ctx, member)
 		if err != nil || !e.runnerFor(p, nil).Caps().Steer {
 			return false
 		}

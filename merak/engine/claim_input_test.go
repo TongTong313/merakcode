@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	storememory "github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -97,13 +97,13 @@ func testClaimInputDuringPreparation(t *testing.T, before bool) {
 	}
 	defer e.Close()
 	defer close(hold)
-	lp, wp := profile.DefaultLeader(), profile.DefaultWorker()
+	lp, wp := agent.DefaultLeader(), agent.DefaultWorker()
 	lp.ID, lp.Model.Provider, wp.ID, wp.Model.Provider = "lead", "leader", "work", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Preparing input", DefaultLeader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Preparing input", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: wp.ID},
-	}, []profile.Profile{lp, wp})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lp.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: wp.ID},
+	}, []agent.Agent{lp, wp})
 	if err != nil {
 		t.Fatal(err)
 	}

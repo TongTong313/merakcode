@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	storememory "github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -32,25 +32,25 @@ func TestAnExternalAgentKeepsItsEnvironmentValuesInTheCredentialVault(t *testing
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Name, p.Mode = "External", permission.ModeTakeover
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "env", "MERAKCODE_FIXTURE_ECHO": "OPENAI_API_KEY", "OPENAI_API_KEY": "secret-value"}}
-	saved, err := e.SaveProfile(ctx, "owner", p)
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "env", "MERAKCODE_FIXTURE_ECHO": "OPENAI_API_KEY", "OPENAI_API_KEY": "secret-value"}}
+	saved, err := e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if saved.Product.Env["OPENAI_API_KEY"] != "" {
 		t.Fatalf("the saved profile returns the secret: %v", saved.Product.Env)
 	}
-	doc, err := storage.Fetch(ctx, "profile", string(saved.ID))
+	doc, err := storage.Fetch(ctx, "agent", string(saved.ID))
 	if err != nil || strings.Contains(string(doc.Body), "secret-value") || !strings.Contains(string(doc.Body), "OPENAI_API_KEY") {
 		t.Fatalf("stored profile = %s, %v", doc.Body, err)
 	}
-	listed, err := e.ListProfiles(ctx, "owner")
+	listed, err := e.ListAgents(ctx, "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var found *profile.Profile
+	var found *agent.Agent
 	for i := range listed {
 		if listed[i].ID == saved.ID {
 			found = &listed[i]
@@ -61,7 +61,7 @@ func TestAnExternalAgentKeepsItsEnvironmentValuesInTheCredentialVault(t *testing
 	}
 
 	// saving again with the value left empty keeps the stored one
-	if _, err := e.SaveProfile(ctx, "owner", *found); err != nil {
+	if _, err := e.SaveAgent(ctx, "owner", *found); err != nil {
 		t.Fatal(err)
 	}
 	workdir := t.TempDir()

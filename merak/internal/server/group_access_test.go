@@ -31,7 +31,7 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 	as := func(human event.ID) *protocol.Client {
 		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
 	}
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
 		{ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"},
@@ -57,12 +57,7 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 	if err != nil || len(state.Members) != 4 {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
-	for _, method := range []string{"group.removeMember", "member.remove"} {
-		if method == "member.remove" {
-			if err := as("owner").Call(ctx, "group.addMember", map[string]any{"group": g.ID, "member": group.Member{ID: "added", Name: "Added", Kind: group.MemberHuman, Role: "member"}}, new(group.Member)); err != nil {
-				t.Fatal(err)
-			}
-		}
+	for _, method := range []string{"group.removeMember"} {
 		if err := as("observer").Call(ctx, method, map[string]any{"group": g.ID, "member": "added"}, new(struct{})); err == nil {
 			t.Fatal("observer removed a member")
 		}

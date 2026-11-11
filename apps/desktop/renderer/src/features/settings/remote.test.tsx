@@ -19,8 +19,7 @@ test("connects another engine and registers a selected remote worker without sav
       name: "Remote fixture",
       kind: "local",
       project: { directory },
-      defaultLeader: "leader",
-      profiles: [],
+      leader: "leader",
       members: [
         { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
         {
@@ -29,7 +28,7 @@ test("connects another engine and registers a selected remote worker without sav
           kind: "agent",
           name: worker ? "Remote Coordinator" : "Leader",
           agentRole: "leader",
-          profile: "builtin-leader",
+          agent: "builtin-leader",
           status: "idle",
         },
         ...(worker
@@ -40,7 +39,7 @@ test("connects another engine and registers a selected remote worker without sav
                 kind: "agent",
                 name: "Remote Worker",
                 agentRole: "worker",
-                profile: "builtin-worker",
+                agent: "builtin-worker",
                 status: "idle",
               },
             ]
@@ -77,7 +76,7 @@ test("connects another engine and registers a selected remote worker without sav
         (await connection.group.state({ group: group.id })).members?.some((member) => member.name === "Remote Worker"),
       )
       .toBe(true)
-    const profiles = await connection.profile.list({})
+    const profiles = await connection.agent.list({})
     expect(profiles?.find((profile) => profile.name === "Remote Worker")?.product?.kind).toBe("remote")
     expect(JSON.stringify(profiles)).not.toContain(second.token)
   } finally {

@@ -22,7 +22,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/credential"
@@ -57,7 +56,7 @@ func TestConfiguredPermissionModeAppliesOnlyToNewSessions(t *testing.T) {
 			t.Fatalf("settings=%v", settings)
 		}
 		var created protocol.SessionCreateResult
-		if err := c.Call(ctx, "session.create", map[string]any{"provider": "fixture"}, &created); err != nil {
+		if err := c.Call(ctx, "session.create", map[string]any{"workdir": t.TempDir(), "provider": "fixture"}, &created); err != nil {
 			t.Fatal(err)
 		}
 		var saved session.State
@@ -149,7 +148,7 @@ func TestConfigRPCPersistsRelayAndUsesItForNewConversations(t *testing.T) {
 			t.Fatal("configured model is absent from the catalog")
 		}
 		var created protocol.SessionCreateResult
-		if err := client.Call(ctx, "session.create", map[string]any{}, &created); err != nil {
+		if err := client.Call(ctx, "session.create", map[string]any{"workdir": home}, &created); err != nil {
 			t.Fatal(err)
 		}
 		if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: created.Session}}, new(protocol.SubscribeResult)); err != nil {
@@ -208,10 +207,10 @@ func TestConfiguredDefaultModelRunsMembersWithoutAModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	var g group.Group
-	if err := c.Call(ctx, "group.create", map[string]any{"name": "Defaults", "kind": "local", "project": group.Project{Directory: home}, "defaultLeader": "leader", "members": []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+	if err := c.Call(ctx, "group.create", map[string]any{"name": "Defaults", "kind": "local", "project": group.Project{Directory: home}, "leader": "leader", "members": []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, "profiles": []profile.Profile{}}, &g); err != nil {
+	}}, &g); err != nil {
 		t.Fatal(err)
 	}
 	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{loop.TurnFinished}})

@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -49,12 +49,12 @@ func TestFastRemoteCompletionImportsDeviceProgressBeforeReturningItsReport(t *te
 		t.Fatal(err)
 	}
 	defer b.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Model.Provider = "source-profile", "fake"
-	if _, err := b.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := b.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}}); err != nil {
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	instance, err := server.Start(b, t.TempDir())
@@ -74,7 +74,7 @@ func TestFastRemoteCompletionImportsDeviceProgressBeforeReturningItsReport(t *te
 	}()
 	storage := completedRemoteStore{Store: memory.New(), completed: completed}
 	bus := event.NewBus(storage, time.Now, event.NewID)
-	state := group.State{Group: group.Group{ID: "host", Kind: group.KindLocal, Name: "Host", DefaultLeader: "host-leader"}, Members: []group.Member{{ID: "alias", Name: "Alias", Kind: group.MemberAgent, AgentRole: group.AgentWorker}}}
+	state := group.State{Group: group.Group{ID: "host", Kind: group.KindLocal, Name: "Host", Leader: "host-leader"}, Members: []group.Member{{ID: "alias", Name: "Alias", Kind: group.MemberAgent, AgentRole: group.AgentWorker}}}
 	body, _ := json.Marshal(state)
 	if _, err := bus.Publish(ctx, event.Event{Stream: "group:host", Scope: event.Scope{Group: "host"}, Type: group.Created, Payload: body}); err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestFastRemoteCompletionImportsDeviceProgressBeforeReturningItsReport(t *te
 	if _, err := bus.Publish(ctx, event.Event{Stream: "group:host", Scope: event.Scope{Group: "host", Task: card.ID}, Type: task.Started, Payload: body}); err != nil {
 		t.Fatal(err)
 	}
-	runner := remote.Runner{Source: profile.RemoteSource{Connection: "connection", Group: "source", Member: "worker"}, Bus: bus, Store: storage,
+	runner := remote.Runner{Source: agent.RemoteSource{Connection: "connection", Group: "source", Member: "worker"}, Bus: bus, Store: storage,
 		Credentials: func(context.Context) (protocol.RemoteConnectParams, error) {
 			return protocol.RemoteConnectParams{Endpoint: instance.Info.Endpoint, Token: instance.Info.Token}, nil
 		},

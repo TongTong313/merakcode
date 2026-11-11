@@ -87,7 +87,10 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 	if len(args) > 0 && args[0] == "cloud" {
 		return cloudCommand(args[1:], stdout)
 	}
-	if len(args) > 0 && (args[0] == "group" || args[0] == "task" || args[0] == "member") {
+	if len(args) > 0 && args[0] == "agent" {
+		return agentCommand(args[1:], stdin, stdout, ui)
+	}
+	if len(args) > 0 && (args[0] == "group" || args[0] == "task") {
 		return groupCommand(args, stdin, stdout, ui)
 	}
 	if len(args) == 1 && args[0] == "--version" {

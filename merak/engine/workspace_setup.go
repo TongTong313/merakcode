@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -45,7 +45,7 @@ func (b *setupOutput) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (e *Engine) setupWorkspace(ctx context.Context, p profile.Profile, a worker.Assignment, ws workspace.Workspace, command []string) error {
+func (e *Engine) setupWorkspace(ctx context.Context, p agent.Agent, a worker.Assignment, ws workspace.Workspace, command []string) error {
 	if len(command) == 0 || ws.Kind != workspace.KindWorktree && ws.Kind != workspace.KindFolder {
 		return nil
 	}

@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -38,7 +38,7 @@ func TestRunnersShareDurableEventTypesAndCauses(t *testing.T) {
 			}
 			storage := memory.New()
 			bus := event.NewBus(storage, time.Now, event.NewID)
-			var runner worker.Runner = &claudecode.Runner{Bus: bus, Product: profile.Product{Kind: kind, Binary: binary, Args: []string{"--fixture", fixture}}}
+			var runner worker.Runner = &claudecode.Runner{Bus: bus, Product: agent.Product{Kind: kind, Binary: binary, Args: []string{"--fixture", fixture}}}
 			if kind == worker.KindBuiltin {
 				provider := fake.New(t, fake.Reply{Text: "Checking", Calls: []model.ToolCall{{ID: "call-1", Name: "read_file", Input: []byte(`{"path":"README.md"}`)}}}, fake.Reply{Text: "Checked README."})
 				runner = &builtin.Adapter{Bus: bus, Execute: func(ctx context.Context, assignment worker.Assignment, steer loop.Steer) (loop.Outcome, error) {

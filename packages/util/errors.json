@@ -206,6 +206,72 @@
       "title": { "zh": "群或任务操作失败", "en": "Group or task operation failed" },
       "hint": { "zh": "检查群类型、成员角色及任务状态。", "en": "Check the group kind, member roles and task state." }
     },
+    "GROUP_LEADER_MISSING": {
+      "code": "MRK-6008",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": { "zh": "协作群没有 Leader", "en": "The group has no Leader" },
+      "hint": {
+        "zh": "每个协作群需要恰好一个 Leader，请在成员里选一个 Leader 智能体。",
+        "en": "Every group needs exactly one Leader. Pick a Leader agent among the members."
+      }
+    },
+    "GROUP_LEADER_MULTIPLE": {
+      "code": "MRK-6009",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": { "zh": "协作群只能有一个 Leader", "en": "A group can have only one Leader" },
+      "hint": {
+        "zh": "要换 Leader，请使用“更换 Leader”，不要再添加一个。",
+        "en": "To change the Leader, use the change-Leader action instead of adding another one."
+      }
+    },
+    "LEADER_AGENT_REQUIRED": {
+      "code": "MRK-6010",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": { "zh": "Leader 必须是 Leader 智能体", "en": "The Leader must be a Leader agent" },
+      "hint": {
+        "zh": "Worker 智能体不能当 Leader，请选一个 Leader 角色的智能体。",
+        "en": "A Worker agent cannot lead. Pick an agent with the Leader role."
+      }
+    },
+    "WORKSPACE_INVALID": {
+      "code": "MRK-6011",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": { "zh": "工作空间不存在", "en": "The workspace does not exist" },
+      "hint": {
+        "zh": "工作空间需要是一个已存在的文件夹，请重新选择。",
+        "en": "The workspace must be an existing folder. Choose it again."
+      }
+    },
+    "LEADER_CANNOT_BE_REMOVED": {
+      "code": "MRK-6012",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": { "zh": "不能直接移出 Leader", "en": "The Leader cannot be removed" },
+      "hint": {
+        "zh": "请先更换 Leader，再移出原来的成员。",
+        "en": "Change the Leader first, then remove the former one."
+      }
+    },
+    "STORE_FORMAT_OUTDATED": {
+      "code": "MRK-1008",
+      "domain": "engine",
+      "status": 409,
+      "retryable": false,
+      "title": { "zh": "数据格式已升级", "en": "The data format has been upgraded" },
+      "hint": {
+        "zh": "开发版的旧数据不会迁移：关闭引擎后删除数据目录下的 merak.db，再重新启动。",
+        "en": "Data of earlier development builds is not migrated: stop the engine, delete merak.db in the data folder, and start again."
+      }
+    },
     "CONNECTION_FAILED": {
       "code": "MRK-1001",
       "domain": "engine",

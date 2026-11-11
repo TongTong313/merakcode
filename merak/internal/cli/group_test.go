@@ -25,7 +25,7 @@ func TestGroupAndTaskCommandsUseTheRunningEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "defaultLeader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "profile": "builtin-leader"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
+	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "leader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-leader"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
 	path := filepath.Join(home, "group-input.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestGroupAndTaskCommandsUseTheRunningEngine(t *testing.T) {
 		{"group", "pause", "--group", string(g.ID)},
 		{"task", "create", "--group", string(g.ID), "--title", "CLI task", "--workspace", "none"},
 		{"group", "board", "--group", string(g.ID)},
-		{"member", "catalog"},
+		{"agent", "catalog"},
 	} {
 		out.Reset()
 		if code := Run(args, strings.NewReader(""), &out); code != 0 || !json.Valid(bytes.TrimSpace(out.Bytes())) {

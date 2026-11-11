@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
@@ -119,16 +119,16 @@ func TestGroupApprovalRejectsAnUnqualifiedHumanWithoutConsumingTheRequest(t *tes
 		t.Fatal(err)
 	}
 	defer client.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "fake"
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID},
 		{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, p})
+	}, []agent.Agent{lead, p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,14 +187,14 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
-	lead, workerProfile := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, workerProfile := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "leader-profile", "fixture"
 	workerProfile.ID, workerProfile.Model.Provider = "worker-profile", "fixture"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: workerProfile.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: workerProfile.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, workerProfile})
+	}, []agent.Agent{lead, workerProfile})
 	if err != nil {
 		t.Fatal(err)
 	}

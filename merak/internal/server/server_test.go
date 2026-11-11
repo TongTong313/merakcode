@@ -80,7 +80,7 @@ func TestSessionRequestsDeliverOrderedNotificationsAndRetainHistory(t *testing.T
 	}
 	defer client.Close()
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if created.Session == "" {
@@ -174,7 +174,7 @@ func TestCancelStopsTheActiveModelAndAllowsAnotherTurn(t *testing.T) {
 	}
 	defer client.Close()
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: created.Session}}, nil); err != nil {
@@ -246,7 +246,7 @@ func TestProtocolRejectsUnknownInputFieldsAndUnsolicitedApprovals(t *testing.T) 
 		}
 	}
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil || created.Session == "" {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil || created.Session == "" {
 		t.Fatalf("connection did not recover after rejection: %v", err)
 	}
 }

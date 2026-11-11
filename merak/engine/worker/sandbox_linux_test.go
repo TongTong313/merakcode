@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -48,7 +48,7 @@ func TestSandboxExternalWorkerCanWriteItsOwnProductState(t *testing.T) {
 			launcher := new(sandbox.Launcher)
 			defer launcher.Close()
 			bus := event.NewBus(memory.New(), time.Now, event.NewID)
-			product := profile.Product{Kind: worker.Kind(test.kind), Binary: os.Args[0], Args: []string{"--merak-worker-fixture", test.kind, path}}
+			product := agent.Product{Kind: worker.Kind(test.kind), Binary: os.Args[0], Args: []string{"--merak-worker-fixture", test.kind, path}}
 			var runner worker.Runner
 			switch test.kind {
 			case "codex":
@@ -81,7 +81,7 @@ func TestSandboxExternalWorkerCreatesItsOwnStateDirectoryOnFirstLaunch(t *testin
 	launcher := new(sandbox.Launcher)
 	defer launcher.Close()
 	bus := event.NewBus(memory.New(), time.Now, event.NewID)
-	product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "codex", path}}
+	product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "codex", path}}
 	runner := &codex.Runner{Bus: bus, Sandbox: launcher, Product: product}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
@@ -101,7 +101,7 @@ func TestSandboxExternalWorkerKeepsTheRealUserProfile(t *testing.T) {
 	launcher := new(sandbox.Launcher)
 	defer launcher.Close()
 	bus := event.NewBus(memory.New(), time.Now, event.NewID)
-	product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "codex", filepath.Join(workspace, "output"), "--real-home", home}}
+	product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "codex", filepath.Join(workspace, "output"), "--real-home", home}}
 	runner := &codex.Runner{Bus: bus, Sandbox: launcher, Product: product}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
@@ -144,7 +144,7 @@ func TestSandboxExternalWorkerMigratesClaudeStateWithoutChangingTheOriginal(t *t
 			launcher := new(sandbox.Launcher)
 			defer launcher.Close()
 			bus := event.NewBus(memory.New(), time.Now, event.NewID)
-			product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", path, "--initial-state", expected}}
+			product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", path, "--initial-state", expected}}
 			if test.custom {
 				product.Env = map[string]string{"CLAUDE_CONFIG_DIR": directory}
 			}
@@ -173,7 +173,7 @@ func TestSandboxExternalWorkerRejectsAClaudeStateAliasToTheUserHome(t *testing.T
 	marker := filepath.Join(home, "outside-state")
 	launcher := new(sandbox.Launcher)
 	defer launcher.Close()
-	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher, Product: profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", marker}, Env: map[string]string{"CLAUDE_CONFIG_DIR": alias}}}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher, Product: agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", marker}, Env: map[string]string{"CLAUDE_CONFIG_DIR": alias}}}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestSandboxExternalWorkerPublishesOnlyACompleteClaudeConfiguration(t *testi
 	}()
 	launcher := new(sandbox.Launcher)
 	defer launcher.Close()
-	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher, Product: profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", filepath.Join(workspace, "completed")}}}
+	runner := &claudecode.Runner{Bus: event.NewBus(memory.New(), time.Now, event.NewID), Sandbox: launcher, Product: agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", "claude-code", filepath.Join(workspace, "completed")}}}
 	run, err := runner.Start(t.Context(), worker.Assignment{Session: event.NewID(), Workdir: workspace, SandboxProfile: sandbox.Profile{WriteAllow: []string{workspace}}})
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +254,7 @@ func checkExternalWorkerSandboxWrites(t *testing.T, kind string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			bus := event.NewBus(memory.New(), time.Now, event.NewID)
-			product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", kind, test.path}}
+			product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-worker-fixture", kind, test.path}}
 			var runner worker.Runner
 			switch kind {
 			case "codex":
@@ -308,7 +308,7 @@ func TestSandboxExternalWorkerCannotReadOtherProductState(t *testing.T) {
 			launcher := new(sandbox.Launcher)
 			defer launcher.Close()
 			bus := event.NewBus(memory.New(), time.Now, event.NewID)
-			product := profile.Product{Kind: worker.Kind(test.kind), Binary: os.Args[0], Args: []string{"--merak-worker-fixture", test.kind, marker, "--denied-state", denied}}
+			product := agent.Product{Kind: worker.Kind(test.kind), Binary: os.Args[0], Args: []string{"--merak-worker-fixture", test.kind, marker, "--denied-state", denied}}
 			var runner worker.Runner
 			switch test.kind {
 			case "codex":

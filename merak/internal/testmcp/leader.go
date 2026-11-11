@@ -17,7 +17,7 @@ type Leader struct {
 }
 
 var approvalID = regexp.MustCompile(`(?s)\(permission.routed\).*?"id":"([^"]+)"`)
-var foreignTask = regexp.MustCompile(`Scope fixture ([a-zA-Z0-9_-]+)`)
+var childOf = regexp.MustCompile(`Create fixture child ([a-zA-Z0-9_-]+)`)
 
 func (l *Leader) Handle(text string) error {
 	if strings.Contains(text, "Exit fixture") {
@@ -31,23 +31,8 @@ func (l *Leader) Handle(text string) error {
 		}
 		return result, err
 	}
-	if match := foreignTask.FindStringSubmatch(text); len(match) == 2 {
-		for _, tc := range []struct {
-			name  string
-			input any
-		}{
-			{"create_task", map[string]string{"title": "Escaped", "parent": match[1]}},
-			{"assign_task", map[string]string{"task": match[1], "member": "worker"}},
-		} {
-			body, _ := json.Marshal(tc.input)
-			result, err := Call(l.Server, tc.name, body)
-			if err != nil || !result.IsError {
-				return fmt.Errorf("leader escaped task subtree through %s: %v", tc.name, err)
-			}
-		}
-	}
-	if strings.Contains(text, "Create fixture child") {
-		result, err := call("create_task", map[string]string{"title": "Fixture child", "workspace": "inplace"})
+	if match := childOf.FindStringSubmatch(text); len(match) == 2 {
+		result, err := call("create_task", map[string]string{"title": "Fixture child", "workspace": "inplace", "parent": match[1]})
 		if err != nil {
 			return err
 		}
@@ -67,7 +52,7 @@ func (l *Leader) Handle(text string) error {
 			return err
 		}
 	}
-	if strings.Contains(text, "Create fixture child") || strings.Contains(text, "Reply fixture") || foreignTask.MatchString(text) {
+	if strings.Contains(text, "Create fixture child") || strings.Contains(text, "Reply fixture") {
 		if _, err := call("say", map[string]string{"text": fmt.Sprintf("Fixture PID %d", os.Getpid())}); err != nil {
 			return err
 		}

@@ -34,11 +34,11 @@ afterAll(async () => {
 
 async function createGroup() {
   const connection = await client()
-  const defaults = (await connection.profile.list({}))!
+  const defaults = (await connection.agent.list({}))!
   const profiles = await Promise.all(
     defaults.slice(0, 2).map((profile) =>
-      connection.profile.save({
-        profile: { ...profile, id: "", model: { provider: "fake", model: "fixture" } },
+      connection.agent.save({
+        agent: { ...profile, id: "", model: { provider: "fake", model: "fixture" } },
       }),
     ),
   )
@@ -47,9 +47,8 @@ async function createGroup() {
     kind: "local",
     name: "Task review",
     project: { directory: engine.project },
-    defaultLeader: "leader",
+    leader: "leader",
     settings: { mergeNeedsOwner: false },
-    profiles: [],
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
       ...(["leader", "worker"] as const).map((role, index) => ({
@@ -58,7 +57,7 @@ async function createGroup() {
         kind: "agent" as const,
         name: role,
         agentRole: role,
-        profile: profiles[index]!.id,
+        agent: profiles[index]!.id,
         owner: localHuman,
         status: "idle",
       })),

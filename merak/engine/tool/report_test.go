@@ -19,7 +19,7 @@ func TestSubmitReportExplainsTheLimitAndKeepsTheClaimActive(t *testing.T) {
 	storage := memory.New()
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	groups := group.New(storage, bus, event.NewID)
-	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
 	})

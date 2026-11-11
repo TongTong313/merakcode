@@ -195,7 +195,7 @@ func (e *Engine) forwardCloud(ctx context.Context, method string, params json.Ra
 }
 
 func (e *Engine) forwardCloudForHost(ctx context.Context, host *deviceHost, method string, params json.RawMessage) (json.RawMessage, error) {
-	params, err := cloudProfileParams(method, params)
+	params, err := cloudParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -224,64 +224,6 @@ func (e *Engine) forwardCloudForHost(ctx context.Context, host *deviceHost, meth
 	return result, nil
 }
 
-func cloudProfileParams(method string, body json.RawMessage) (json.RawMessage, error) {
-	if method != "group.create" && method != "group.addMember" {
-		return secret.RedactJSON(body)
-	}
-	var params map[string]json.RawMessage
-	if err := json.Unmarshal(body, &params); err != nil {
-		return nil, err
-	}
-	var profiles []map[string]json.RawMessage
-	if method == "group.create" && len(params["profiles"]) > 0 {
-		if err := json.Unmarshal(params["profiles"], &profiles); err != nil {
-			return nil, err
-		}
-	}
-	if method == "group.addMember" && len(params["profile"]) > 0 {
-		var p map[string]json.RawMessage
-		if err := json.Unmarshal(params["profile"], &p); err != nil {
-			return nil, err
-		}
-		profiles = append(profiles, p)
-	}
-	changed := false
-	for _, p := range profiles {
-		if len(p["product"]) == 0 {
-			continue
-		}
-		var product map[string]json.RawMessage
-		if err := json.Unmarshal(p["product"], &product); err != nil {
-			return nil, err
-		}
-		if len(product["env"]) == 0 {
-			continue
-		}
-		var env map[string]string
-		if err := json.Unmarshal(product["env"], &env); err != nil {
-			return nil, err
-		}
-		if len(env) == 0 {
-			continue
-		}
-		for name := range env {
-			env[name] = ""
-		}
-		product["env"], _ = json.Marshal(env)
-		p["product"], _ = json.Marshal(product)
-		changed = true
-	}
-	if changed {
-		if method == "group.create" {
-			params["profiles"], _ = json.Marshal(profiles)
-		} else {
-			params["profile"], _ = json.Marshal(profiles[0])
-		}
-		var err error
-		body, err = json.Marshal(params)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return secret.RedactJSON(body)
-}
+// cloudParams keeps secrets out of what is forwarded to the cloud. Agents travel as ids, so no environment value of an
+// agent is part of a forwarded request.
+func cloudParams(body json.RawMessage) (json.RawMessage, error) { return secret.RedactJSON(body) }

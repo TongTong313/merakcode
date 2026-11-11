@@ -11,12 +11,16 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 func (s *Server) sessionMethods() map[string]handler {
 	return map[string]handler{
 		"session.create": run(func(ctx context.Context, _ *connection, params protocol.SessionCreateParams) (any, error) {
+			if params.Workdir == "" {
+				return nil, &engine.Error{Code: errorcode.WorkspaceInvalid, Err: errors.New("a conversation needs a workspace folder")}
+			}
 			settings := s.configuration()
 			if params.Mode == "" {
 				params.Mode = permission.Mode(settings.PermissionMode)

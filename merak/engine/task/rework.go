@@ -31,5 +31,5 @@ func (p *Pool) Rework(ctx context.Context, id event.ID, feedback string) error {
 	} else {
 		card.Status = claimStatus(card.Claims)
 	}
-	return p.emit(ctx, Updated, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader})
+	return p.emit(ctx, Updated, card, p.leaderActor(ctx, card))
 }

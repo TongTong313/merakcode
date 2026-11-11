@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
@@ -37,7 +37,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 	dir := t.TempDir()
 	var calls atomic.Int32
 	progress := make(chan struct{}, 1)
-	var child event.ID
+	var child, goalID event.ID
 	var e *engine.Engine
 	call := func(id, name string, input any) fake.Reply {
 		body, _ := json.Marshal(input)
@@ -66,7 +66,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 		}
 		switch calls.Add(1) {
 		case 1:
-			return call("create", "create_task", map[string]any{"title": "Check README", "description": "Check the project documentation", "acceptance": []string{"Report the findings"}, "areas": []string{"README.md"}, "workspace": "none", "inputs": []string{"README.md"}, "priority": 4, "budget": map[string]any{"maxTokens": 100000}})
+			return call("create", "create_task", map[string]any{"parent": goalID, "title": "Check README", "description": "Check the project documentation", "acceptance": []string{"Report the findings"}, "areas": []string{"README.md"}, "workspace": "none", "inputs": []string{"README.md"}, "priority": 4, "budget": map[string]any{"maxTokens": 100000}})
 		case 2:
 			last := req.Messages[len(req.Messages)-1]
 			var card task.Card
@@ -132,14 +132,14 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 		t.Fatal(err)
 	}
 	defer e.Close()
-	leaderProfile, workerProfile := profile.DefaultLeader(), profile.DefaultWorker()
+	leaderProfile, workerProfile := agent.DefaultLeader(), agent.DefaultWorker()
 	leaderProfile.ID, leaderProfile.Model.Provider = "leader-profile", "leader-model"
 	workerProfile.ID, workerProfile.Model.Provider = "worker-profile", "worker-model"
-	created, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
+	created, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: leaderProfile.ID, Owner: "human"},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: workerProfile.ID, Owner: "human"},
-	}, []profile.Profile{leaderProfile, workerProfile})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: leaderProfile.ID, Owner: "human"},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: workerProfile.ID, Owner: "human"},
+	}, []agent.Agent{leaderProfile, workerProfile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +149,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	goalID = goal.ID
 	select {
 	case <-started:
 	case <-ctx.Done():
@@ -230,10 +231,10 @@ func TestGroupsCanReuseAnExistingLeaderProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "shared-profile", "fake"
 	for _, id := range []event.ID{"leader-a", "leader-b"} {
-		_, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: string(id), Project: group.Project{Directory: dir}, DefaultLeader: id}, []group.Member{{ID: id, Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, []profile.Profile{p})
+		_, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: string(id), Project: group.Project{Directory: dir}, Leader: id}, []group.Member{{ID: id, Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 		if err != nil {
 			t.Fatal(err)
 		}

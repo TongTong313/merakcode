@@ -11,7 +11,7 @@ import (
 func (s *Server) taskMethods() map[string]handler {
 	return map[string]handler{
 		"task.create": run(func(ctx context.Context, c *connection, params protocol.TaskCreateParams) (any, error) {
-			card := task.Card{Group: params.Group, Leader: params.Leader, Title: params.Title, Description: params.Description, Acceptance: params.Acceptance, Areas: params.Areas, Review: params.Review, Priority: params.Priority, Workspace: params.Workspace, Inputs: params.Inputs, Budget: params.Budget, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: c.human}}
+			card := task.Card{Group: params.Group, Title: params.Title, Description: params.Description, Acceptance: params.Acceptance, Areas: params.Areas, Review: params.Review, Priority: params.Priority, Workspace: params.Workspace, Inputs: params.Inputs, Budget: params.Budget, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: c.human}}
 			if params.Member != "" {
 				return s.engine.CreateAssignedTask(ctx, card, params.Member)
 			}

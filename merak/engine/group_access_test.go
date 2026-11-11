@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
 
@@ -22,13 +22,13 @@ func TestObserverCannotMutateGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "leader-profile", "quiet"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
 		{ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
-	}, []profile.Profile{p})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestObserverCannotMutateGroup(t *testing.T) {
 	if _, err := e.CreateTask(ctx, task.Card{Group: g.ID, Title: "Unauthorized", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "observer"}}); err == nil {
 		t.Error("observer created a task")
 	}
-	if _, err := e.RegisterMember(ctx, g.ID, "observer", group.Member{Name: "Unauthorized", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"}); err == nil {
+	if _, err := e.AddGroupMember(ctx, g.ID, "observer", group.Member{Name: "Unauthorized", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}); err == nil {
 		t.Error("observer registered a member")
 	}
 	after, err := e.ReadEvents(ctx, event.Stream("group:"+g.ID), 1, 100)
@@ -61,19 +61,19 @@ func TestPrivateMemberAcceptsOnlyItsOwnersAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID = "private"
 	if err := json.Unmarshal([]byte(`{"shared":false}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := e.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Private", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Private", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "other", Name: "Other", Kind: group.MemberHuman, Role: group.RoleMember},
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID, Owner: "owner"},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Owner: "owner"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestPrivateMemberAcceptsOnlyItsOwnersAssignments(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"shared":true}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.SaveProfile(ctx, "owner", p); err != nil {
+	if _, err := e.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
 	card, err := e.Tasks.Create(ctx, task.Card{Group: g.ID, Title: "Shared assignment"})

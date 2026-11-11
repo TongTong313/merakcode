@@ -20,7 +20,6 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 		"group update": "group.update", "group board": "group.state", "group inbox": "inbox", "group say": "group.say",
 		"group pause": "group.pause", "group resume": "group.resume", "task create": "task.create", "task assign": "task.assign",
 		"task review": "task.review", "task update": "task.update", "task cancel": "task.cancel",
-		"member catalog": "member.catalog", "member register": "member.register", "member test": "member.test",
 	}
 	method := methods[args[0]+" "+args[1]]
 	if method == "" {

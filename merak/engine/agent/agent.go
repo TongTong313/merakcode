@@ -1,5 +1,5 @@
-// Package profile contains the configuration shared by worker runners.
-package profile
+// Package agent contains what defines an agent: its role, model, tools and the product that runs it.
+package agent
 
 import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -37,7 +37,7 @@ type RemoteSource struct {
 	Member     event.ID    `json:"member"`
 	Caps       worker.Caps `json:"caps"`
 }
-type Profile struct {
+type Agent struct {
 	Shared   bool            `json:"shared,omitempty"`
 	Memory   []memory.Scope  `json:"memory,omitzero"`
 	Budget   Budget          `json:"budget,omitempty"`
@@ -56,9 +56,9 @@ type Profile struct {
 
 type Budget = session.Budget
 
-func DefaultLeader() Profile {
-	return Profile{Name: "Leader", Role: Leader, Summary: "Coordinate work and report outcomes.", ToolPool: "leader.default", Shared: true}
+func DefaultLeader() Agent {
+	return Agent{Name: "Leader", Role: Leader, Summary: "Coordinate work and report outcomes.", ToolPool: "leader.default", Shared: true}
 }
-func DefaultWorker() Profile {
-	return Profile{Name: "Worker", Role: Worker, Summary: "Implement and verify assigned work.", ToolPool: "worker.default", Shared: true}
+func DefaultWorker() Agent {
+	return Agent{Name: "Worker", Role: Worker, Summary: "Implement and verify assigned work.", ToolPool: "worker.default", Shared: true}
 }

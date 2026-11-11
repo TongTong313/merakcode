@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
@@ -102,7 +102,7 @@ func TestCloudGroupRequiresAnAccountWhileLocalGroupsRemainAvailable(t *testing.T
 		t.Fatal(err)
 	}
 	defer e.Close()
-	_, err = e.CreateGroup(t.Context(), group.Group{Kind: "cloud", Name: "Cloud"}, nil, nil)
+	_, err = createGroup(t, e, t.Context(), group.Group{Kind: "cloud", Name: "Cloud"}, nil, nil)
 	if err == nil || err.Error() != "MRK-1006" {
 		t.Fatalf("cloud error=%v", err)
 	}
@@ -494,13 +494,13 @@ func TestCloudShutdownUploadsInterruptedClaimsBeforeClosingTheLink(t *testing.T)
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := profile.DefaultWorker()
+			p := agent.DefaultWorker()
 			p.ID = "worker-profile"
 			p.Model.Provider = "fake"
-			if _, err = e.SaveProfile(ctx, "owner", p); err != nil {
+			if _, err = e.SaveAgent(ctx, "owner", p); err != nil {
 				t.Fatal(err)
 			}
-			_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}})
+			_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -596,7 +596,7 @@ func TestCloudCodeToolReturnsSandboxedReadsAndRejectsWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", DefaultLeader: "reader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "reader", Name: "Reader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "reader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "reader", Name: "Reader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,15 +668,15 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.ID = "local-profile"
 	p.Model.Provider = provider.Name()
 	p.Mode = permission.ModeAsk
-	saved, err := e.SaveProfile(ctx, "owner", p)
+	saved, err := e.SaveAgent(ctx, "owner", p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", DefaultLeader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: saved.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: saved.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +684,7 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	claim := task.Claim{ID: "cloud-claim", Task: "cloud-task", Member: "worker", Session: "cloud-session", Status: task.ClaimActive}
-	state := group.State{Group: group.Group{ID: "cloud-group", Kind: group.KindCloud, Name: "Cloud", DefaultLeader: "cloud-leader"}, Members: []group.Member{{ID: "worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "not-a-local-profile"}}}
+	state := group.State{Group: group.Group{ID: "cloud-group", Kind: group.KindCloud, Name: "Cloud", Leader: "cloud-leader"}, Members: []group.Member{{ID: "worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "not-a-local-profile"}}}
 	card := task.Card{ID: claim.Task, Group: state.Group.ID, Title: "Write result", Workspace: "folder", Claims: []task.Claim{claim}, Status: task.Running}
 	stateBody, _ := json.Marshal(state)
 	cardBody, _ := json.Marshal(card)
@@ -772,7 +772,7 @@ func TestCloudConnectionAnnouncesRegisteredMembersAndForwardsCreation(t *testing
 		t.Fatal(err)
 	}
 	defer e.Close()
-	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: "builtin-worker"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -787,7 +787,7 @@ func TestCloudConnectionAnnouncesRegisteredMembersAndForwardsCreation(t *testing
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	created, err := e.CreateGroup(ctx, group.Group{Kind: group.KindCloud, Name: "Cloud"}, nil, nil)
+	created, err := createGroup(t, e, ctx, group.Group{Kind: group.KindCloud, Name: "Cloud"}, nil, nil)
 	if err != nil || created.ID != "cloud-group" {
 		t.Fatalf("created=%+v %v", created, err)
 	}

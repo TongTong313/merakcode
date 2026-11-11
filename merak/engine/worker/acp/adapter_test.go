@@ -3,9 +3,9 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -41,7 +41,7 @@ func TestACPVersionOnePermissionsAndGoldenEvents(t *testing.T) {
 				}
 				return permission.Reply{Decision: decision}, nil
 			}}
-			runner := &acp.Runner{Bus: bus, Gate: gate, Product: profile.Product{Binary: binary}}
+			runner := &acp.Runner{Bus: bus, Gate: gate, Product: agent.Product{Binary: binary}}
 			run, err := runner.Start(ctx, worker.Assignment{Session: "session", Scope: event.Scope{Group: "group", Task: "task"}, Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 			if err != nil {
 				t.Fatal(err)

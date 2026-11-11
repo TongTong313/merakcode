@@ -23,7 +23,7 @@ func TestBudgetGrantPreservesEveryMembersClaimSession(t *testing.T) {
 			storage := memory.New()
 			bus := event.NewBus(storage, time.Now, event.NewID)
 			groups := group.New(storage, bus, event.NewID)
-			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
+			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 				{ID: "first", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentWorker},

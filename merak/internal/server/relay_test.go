@@ -79,7 +79,7 @@ func TestConfiguredRelayDiscoveryUsesSecretHeaders(t *testing.T) {
 		t.Fatal("relay discovery omitted published model limits")
 	}
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "relay", Model: "gpt-4o"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "relay", Model: "gpt-4o"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Call(ctx, "session.send", map[string]any{"session": created.Session, "parts": []map[string]string{{"text": "Hello"}}}, nil); err != nil {

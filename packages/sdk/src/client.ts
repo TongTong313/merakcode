@@ -25,7 +25,7 @@ const messageSchema = z.object({
 
 /** Calls that wait on a model service, an external product or a log archive get longer than the default 10 seconds. */
 const CALL_TIMEOUTS: Partial<Record<keyof Methods, number>> = {
-  "member.test": 40000,
+  "agent.test": 40000,
   "model.refresh": 30000,
   "model.discover": 30000,
   "remote.connect": 30000,
@@ -188,20 +188,16 @@ export async function connect(options: {
       refresh: (params: Methods["model.refresh"]["params"] = {}) => call("model.refresh", params),
       discover: (params: Methods["model.discover"]["params"]) => call("model.discover", params),
     },
-    member: {
-      remove: (params: Methods["member.remove"]["params"]) => call("member.remove", params),
-      catalog: () => call("member.catalog", {}),
-      register: (params: Methods["member.register"]["params"]) => call("member.register", params),
-      test: (params: Methods["member.test"]["params"]) => call("member.test", params),
-    },
     sandbox: {
       setup: () => call("sandbox.setup", {}),
       status: (params: Methods["sandbox.status"]["params"]) => call("sandbox.status", params),
     },
-    profile: {
-      delete: (params: Methods["profile.delete"]["params"]) => call("profile.delete", params),
-      list: (params: Methods["profile.list"]["params"]) => call("profile.list", params),
-      save: (params: Methods["profile.save"]["params"]) => call("profile.save", params),
+    agent: {
+      catalog: () => call("agent.catalog", {}),
+      delete: (params: Methods["agent.delete"]["params"]) => call("agent.delete", params),
+      list: (params: Methods["agent.list"]["params"] = {}) => call("agent.list", params),
+      save: (params: Methods["agent.save"]["params"]) => call("agent.save", params),
+      test: (params: Methods["agent.test"]["params"]) => call("agent.test", params),
     },
     group: {
       pause: (params: Methods["group.pause"]["params"]) => call("group.pause", params),

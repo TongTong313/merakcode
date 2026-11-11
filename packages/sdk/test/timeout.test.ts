@@ -71,7 +71,7 @@ it("model.refresh waits for a provider that answers after 12 seconds", { timeout
   }
 })
 
-it("member.test waits for a command product that answers after 15 seconds", { timeout: 90000 }, async () => {
+it("agent.test waits for a command product that answers after 15 seconds", { timeout: 90000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "merakcode-sdk-member-"))
   const running = await engine(home, {})
   // Without a prepared system sandbox the probe asks to start the product unrestricted; approve it
@@ -80,8 +80,8 @@ it("member.test waits for a command product that answers after 15 seconds", { ti
       void running.client.permission.reply({ request: event.id, decision: "allow" })
   })
   try {
-    const caps = await running.client.member.test({
-      profile: {
+    const caps = await running.client.agent.test({
+      agent: {
         id: "",
         name: "Slow command",
         role: "worker",

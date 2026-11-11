@@ -96,8 +96,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
       kind: "local",
       name: "Device source",
       project: { directory: engine.project },
-      defaultLeader: "source-leader",
-      profiles: [],
+      leader: "source-leader",
       members: [
         {
           id: "source-leader",
@@ -105,7 +104,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
           name: "Leader",
           kind: "agent",
           agentRole: "leader",
-          profile: "builtin-leader",
+          agent: "builtin-leader",
           status: "idle",
         },
         {
@@ -114,7 +113,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
           name: "Device Worker",
           kind: "agent",
           agentRole: "worker",
-          profile: "builtin-worker",
+          agent: "builtin-worker",
           owner: localHuman,
           status: "idle",
         },

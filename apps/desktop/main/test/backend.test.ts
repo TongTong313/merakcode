@@ -99,7 +99,7 @@ test("the engine keeps running when the app disconnects, and the next start join
   const next = create(home)
   await next.start()
   expect((await readInfo(home)).pid).toBe(pid)
-  expect((await next.client!.session.create({ provider: "fake" })).session).toBeTruthy()
+  expect((await next.client!.session.create({ provider: "fake", workdir: home })).session).toBeTruthy()
 }, 20000)
 
 test("shutdown stops the engine and removes its connection file", async () => {
@@ -139,7 +139,7 @@ test("attaches to an engine somebody else started and leaves it running", async 
     expect(info?.pid).toBe(child.pid)
     const endpoint = await created.start()
     expect(endpoint.port).toBe(Number(new URL(info!.endpoint).port))
-    expect((await created.client!.session.create({ provider: "fake" })).session).toBeTruthy()
+    expect((await created.client!.session.create({ provider: "fake", workdir: home })).session).toBeTruthy()
     await created.stop()
     expect(child.exitCode).toBeNull()
     expect(alive(child.pid!)).toBe(true)

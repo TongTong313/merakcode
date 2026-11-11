@@ -3,9 +3,9 @@ package opencode_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -33,7 +33,7 @@ func TestOpenCodeStartsACPWithEngineApprovalPolicy(t *testing.T) {
 		return permission.Reply{Decision: permission.Deny}, nil
 	}}
 	config := map[string]string{"OPENCODE_CONFIG_CONTENT": `{"permission":"allow","model":"local/test"}`}
-	runner := &opencode.Runner{Bus: bus, Gate: gate, Product: profile.Product{Binary: binary, Env: config}}
+	runner := &opencode.Runner{Bus: bus, Gate: gate, Product: agent.Product{Binary: binary, Env: config}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim", Member: "member"}})
 	if err != nil {
 		t.Fatal(err)

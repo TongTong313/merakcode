@@ -17,7 +17,7 @@ func (p *Pool) Withdraw(ctx context.Context, id, leader event.ID) error {
 	if !ok {
 		return store.ErrNotFound
 	}
-	if card.Leader != leader || card.Claims[index].Status != ClaimQueued {
+	if !p.leads(ctx, card, leader) || card.Claims[index].Status != ClaimQueued {
 		return ErrState
 	}
 	card = clone(card)
@@ -36,7 +36,7 @@ func (p *Pool) SetPriority(ctx context.Context, id, leader event.ID, priority in
 	if !ok {
 		return store.ErrNotFound
 	}
-	if card.Leader != leader || card.Status != Open && card.Status != Queued && card.Status != Running {
+	if !p.leads(ctx, card, leader) || card.Status != Open && card.Status != Queued && card.Status != Running {
 		return ErrState
 	}
 	card.Priority = priority

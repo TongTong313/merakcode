@@ -26,7 +26,7 @@ func (e *Engine) RemoteMembers(ctx context.Context) ([]protocol.RemoteMember, er
 	}
 	result := []protocol.RemoteMember{}
 	for _, member := range members {
-		p, err := e.memberProfile(ctx, member)
+		p, err := e.memberAgent(ctx, member)
 		if err != nil {
 			return nil, err
 		}

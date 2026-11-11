@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"regexp"
@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-func TestWorkerQuestionUsesItsTaskThreadAndHumanQuestionDoesNotBlockTheLeader(t *testing.T) {
+func TestLeaderQuestionUsesTheGroupThreadAndHumanQuestionDoesNotBlockTheLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	answer := make(chan question.Answer, 1)
@@ -69,20 +69,20 @@ func TestWorkerQuestionUsesItsTaskThreadAndHumanQuestionDoesNotBlockTheLeader(t 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
-	}, []profile.Profile{lead, work})
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID},
+	}, []agent.Agent{lead, work})
 	if err != nil {
 		t.Fatal(err)
 	}
 	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}})
 	defer stop()
-	card, err := e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Choose color", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "human"}}, "worker")
+	_, err = e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Choose color", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "human"}}, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,8 +96,8 @@ func TestWorkerQuestionUsesItsTaskThreadAndHumanQuestionDoesNotBlockTheLeader(t 
 			}
 			if fact.Type == question.Asked {
 				humanQuestion = fact
-				if fact.Scope.Task != card.ID || fact.Stream != event.Stream("group:"+g.ID) {
-					t.Fatalf("question escaped its task thread: %+v", fact)
+				if fact.Scope.Group != g.ID || fact.Stream != event.Stream("group:"+g.ID) {
+					t.Fatalf("question escaped its group thread: %+v", fact)
 				}
 			}
 			if humanQuestion.ID != "" && fact.Type == loop.TurnFinished && fact.Scope.Session == humanQuestion.Scope.Session && !finishedBeforeAnswer {

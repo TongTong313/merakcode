@@ -40,7 +40,7 @@ func (p *Pool) MarkIntegrated(ctx context.Context, claimID event.ID, head string
 	}
 	card = clone(card)
 	card.Claims[index].Integrated = head
-	return p.emit(ctx, Updated, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader})
+	return p.emit(ctx, Updated, card, p.leaderActor(ctx, card))
 }
 
 func (p *Pool) MarkPublished(ctx context.Context, claimID event.ID, ids []event.ID) error {
@@ -59,5 +59,5 @@ func (p *Pool) MarkPublished(ctx context.Context, claimID event.ID, ids []event.
 	}
 	card = clone(card)
 	card.Claims[index].Published = append([]event.ID(nil), ids...)
-	return p.emit(ctx, Updated, card, event.Actor{Kind: event.ActorAgent, ID: card.Leader})
+	return p.emit(ctx, Updated, card, p.leaderActor(ctx, card))
 }

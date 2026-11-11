@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -75,14 +75,14 @@ func runRemoteWorktree(t *testing.T, review bool) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	wp := profile.DefaultLeader()
+	wp := agent.DefaultLeader()
 	wp.ID, wp.Model.Provider = "source-profile", "device"
-	if _, err := b.SaveProfile(ctx, "local-human", wp); err != nil {
+	if _, err := b.SaveAgent(ctx, "local-human", wp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,17 +144,22 @@ func runRemoteWorktree(t *testing.T, review bool) {
 	if !strings.Contains(string(body), `"checkouts"`) {
 		t.Fatal("remote discovery dropped declared checkouts")
 	}
-	lp := profile.DefaultLeader()
+	lp := agent.DefaultLeader()
 	lp.ID, lp.Model.Provider = "host-leader", "leader"
-	rp := profile.DefaultWorker()
+	rp := agent.DefaultWorker()
 	rp.ID = "remote-worker"
-	rp.Product = &profile.Product{Kind: worker.KindRemote, Remote: &profile.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: worker.Caps{Steer: true, Permission: true}}}
+	rp.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: worker.Caps{Steer: true, Permission: true}}}
+	for _, a := range []agent.Agent{lp, rp} {
+		if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: a}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var g group.Group
-	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Host", Project: group.Project{Directory: aDir}, DefaultLeader: "leader", Brief: group.Brief{Check: "git diff --exit-code"}}, Members: []group.Member{
+	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Host", Project: group.Project{Directory: aDir}, Leader: "leader", Brief: group.Brief{Check: "git diff --exit-code"}}, Members: []group.Member{
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
-		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID},
-	}, Profiles: []profile.Profile{lp, rp}}, &g); err != nil {
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lp.ID},
+		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: rp.ID},
+	}}, &g); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range []string{"folder", "inplace"} {
@@ -162,16 +167,13 @@ func runRemoteWorktree(t *testing.T, review bool) {
 			t.Fatalf("remote %s: %v", kind, err)
 		}
 	}
-	if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Leader: "remote", Title: "Rejected remote leader", Workspace: "none"}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
-		t.Fatalf("remote task leader: %v", err)
-	}
-	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Rejected leader", Project: group.Project{Directory: aDir}, DefaultLeader: "remote"}, Members: []group.Member{{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID}}}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
+	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Rejected leader", Project: group.Project{Directory: aDir}, Leader: "remote"}, Members: []group.Member{{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: rp.ID}}}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
 		t.Fatalf("remote default leader: %v", err)
 	}
-	noRemote, err := a.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "No remote", Project: group.Project{Directory: integrationRepository(t)}, DefaultLeader: "leader"}, []group.Member{
+	noRemote, err := createGroup(t, a, ctx, group.Group{Kind: group.KindLocal, Name: "No remote", Project: group.Project{Directory: integrationRepository(t)}, Leader: "leader"}, []group.Member{
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
-		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lp.ID},
+		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: rp.ID},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

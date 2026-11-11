@@ -30,7 +30,7 @@ func TestCollaboratorsRequireDisjointScopesWithinTaskAreas(t *testing.T) {
 			storage := memory.New()
 			bus := event.NewBus(storage, time.Now, event.NewID)
 			groups := group.New(storage, bus, event.NewID)
-			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
+			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 				{ID: "a", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
 				{ID: "b", Name: "Second", Kind: group.MemberAgent, AgentRole: group.AgentWorker},

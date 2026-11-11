@@ -23,7 +23,7 @@ func TestEventEmitUsesTheExistingIsolatedEngineAndExternalNamespace(t *testing.T
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	g, err := e.Groups.Create(context.Background(), group.Group{Kind: group.KindLocal, Name: "CI", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader"}})
+	g, err := e.Groups.Create(context.Background(), group.Group{Kind: group.KindLocal, Name: "CI", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,12 +3,12 @@ package engine_test
 import (
 	"context"
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"testing"
 	"time"
@@ -27,14 +27,14 @@ func TestCancellingAGoalStopsItsWorkerAndRunsTheNextGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, worker := profile.DefaultLeader(), profile.DefaultWorker()
+	lead, worker := agent.DefaultLeader(), agent.DefaultWorker()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: worker.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: worker.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, worker})
+	}, []agent.Agent{lead, worker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,13 +103,13 @@ func TestAFailedDependencyStallsTheGoalAndNotifiesItsOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "approver", Name: "Reviewer", Kind: group.MemberHuman, Role: group.RoleApprover},
-	}, []profile.Profile{p})
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +162,12 @@ func TestCancellingAGoalInterruptsItsLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{p})
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestCancellingAGoalInterruptsItsLeader(t *testing.T) {
 	select {
 	case fact := <-facts:
 		outcome, err := event.Decode[loop.Outcome](fact)
-		if err != nil || outcome.Stop != loop.Cancelled || fact.Scope.Task != card.ID {
+		if err != nil || outcome.Stop != loop.Cancelled {
 			t.Fatalf("outcome=%+v err=%v", outcome, err)
 		}
 	case <-ctx.Done():
@@ -207,12 +207,12 @@ func TestTheLeaderRequestsAPlanCheckpointAndHumanApprovalStartsDoing(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultLeader()
+	p := agent.DefaultLeader()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{PlanNeedsApproval: true}}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: true}}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{p})
+	}, []agent.Agent{p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,15 +267,15 @@ func TestIntegratedGoalAutomaticallyEntersReviewAndApprovalDeliversItsChildren(t
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := profile.DefaultWorker()
+	worker := agent.DefaultWorker()
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: worker.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: worker.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, worker})
+	}, []agent.Agent{lead, worker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,15 +347,15 @@ func TestAGroupCanDisableTheFinalHumanReviewCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := profile.DefaultWorker()
+	worker := agent.DefaultWorker()
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, DefaultLeader: "leader", Settings: group.Settings{Review: &review}}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
-		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: worker.ID},
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{Review: &review}}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: worker.ID},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-	}, []profile.Profile{lead, worker})
+	}, []agent.Agent{lead, worker})
 	if err != nil {
 		t.Fatal(err)
 	}

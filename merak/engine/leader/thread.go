@@ -320,20 +320,8 @@ func (t *Threads) Route(fact event.Event) *Thread {
 	if fact.Scope.Group != t.group.ID {
 		return nil
 	}
-	key, member := t.group.ID, t.group.DefaultLeader
+	key, member := t.group.ID, t.group.Leader
 	scope := event.Scope{Group: t.group.ID}
-	if fact.Scope.Task != "" {
-		key = t.state.Root(fact.Scope.Task)
-		scope.Task = key
-		t.state.mu.Lock()
-		for _, line := range t.state.Tasks {
-			if line.ID == key && line.Leader != "" {
-				member = line.Leader
-				break
-			}
-		}
-		t.state.mu.Unlock()
-	}
 	if thread := t.items[key]; thread != nil {
 		return thread
 	}

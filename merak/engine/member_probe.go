@@ -6,22 +6,22 @@ import (
 	"os"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
-// TestMember checks an actual runner exchange without exposing project files as its working directory.
-func (e *Engine) TestMember(ctx context.Context, human event.ID, p profile.Profile) (worker.Caps, error) {
+// TestAgent checks an actual runner exchange without exposing project files as its working directory.
+func (e *Engine) TestAgent(ctx context.Context, human event.ID, p agent.Agent) (worker.Caps, error) {
 	if human == "" {
 		return worker.Caps{}, errors.New("profile owner is required")
 	}
-	if err := validateProfile(p); err != nil {
+	if err := validateAgent(p); err != nil {
 		return worker.Caps{}, err
 	}
 	if p.ID != "" {
-		profiles, err := e.ListProfiles(ctx, human)
+		profiles, err := e.ListAgents(ctx, human)
 		if err != nil {
 			return worker.Caps{}, err
 		}
@@ -44,7 +44,7 @@ func (e *Engine) TestMember(ctx context.Context, human event.ID, p profile.Profi
 		return worker.Caps{}, err
 	}
 	defer os.RemoveAll(dir)
-	p.Role, p.ToolPool = profile.Worker, "worker.readonly"
+	p.Role, p.ToolPool = agent.Worker, "worker.readonly"
 	if p.Product != nil && (p.Product.Kind == worker.KindCommand || p.Product.Kind == worker.KindACP) {
 		p.ToolPool = "worker.default"
 	}

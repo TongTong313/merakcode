@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
@@ -76,8 +76,8 @@ func TestEngineSandboxMembersCannotReadCredentialDirectories(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					p := profile.DefaultWorker()
-					p.Product = &profile.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", command}}
+					p := agent.DefaultWorker()
+					p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", command}}
 					run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "credential-check", Workdir: workspace})
 					if err != nil {
 						t.Fatal(err)
@@ -134,8 +134,8 @@ func TestEngineSandboxPassesOnlyDeclaredMemberEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", `printf '%s|%s' "$MEMBER_SETTING" "$MERAK_UNLISTED_FIXTURE"`}, Env: map[string]string{"MEMBER_SETTING": "explicit value"}}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", `printf '%s|%s' "$MEMBER_SETTING" "$MERAK_UNLISTED_FIXTURE"`}, Env: map[string]string{"MEMBER_SETTING": "explicit value"}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "environment-check", Workdir: t.TempDir()})

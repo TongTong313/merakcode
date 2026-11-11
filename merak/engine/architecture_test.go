@@ -61,7 +61,7 @@ var frozen = []string{
 	"memory.go",
 	"merge.go",
 	"network_policy.go",
-	"profiles.go",
+	"agents.go",
 	"recovery.go",
 	"remote.go",
 	"remote_delivery.go",

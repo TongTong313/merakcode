@@ -13,7 +13,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -23,17 +22,17 @@ import (
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
-func TestCloudGroupProfilesSendEnvironmentNamesOnly(t *testing.T) {
+func TestCloudGroupsNameAgentsByIdAndNeverSendTheirDefinitions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	peer := testcloud.New(t)
 	peer.Handle = func(req protocol.Message) (any, error) {
 		if req.Method == "group.create" {
-			if strings.Contains(string(req.Params), "literal-private-value") {
-				t.Error("profile environment value left the device")
+			if strings.Contains(string(req.Params), "profiles") || strings.Contains(string(req.Params), "CUSTOM_KEY") {
+				t.Error("an agent definition left the device")
 			}
-			if !strings.Contains(string(req.Params), "CUSTOM_KEY") {
-				t.Error("environment variable name was lost")
+			if !strings.Contains(string(req.Params), `"agent":"agent-1"`) {
+				t.Error("the member does not name its agent by id")
 			}
 			return group.Group{ID: "cloud-group", Kind: group.KindCloud}, nil
 		}
@@ -47,7 +46,7 @@ func TestCloudGroupProfilesSendEnvironmentNamesOnly(t *testing.T) {
 	if err := e.ConnectCloud(ctx, peer.Credentials()); err != nil {
 		t.Fatal(err)
 	}
-	params, _ := json.Marshal(protocol.GroupCreateParams{Group: group.Group{Kind: group.KindCloud}, Profiles: []profile.Profile{{Product: &profile.Product{Env: map[string]string{"CUSTOM_KEY": "literal-private-value"}}}}})
+	params, _ := json.Marshal(protocol.GroupCreateParams{Group: group.Group{Kind: group.KindCloud}, Members: []group.Member{{ID: "lead", Name: "Lead", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "agent-1"}}})
 	if _, handled, err := e.ForwardCloud(ctx, "group.create", params); err != nil || !handled {
 		t.Fatalf("forward handled=%t err=%v", handled, err)
 	}

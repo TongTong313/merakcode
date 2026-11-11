@@ -4,12 +4,12 @@ import (
 	"context"
 	"slices"
 
-	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
-func (e *Engine) workerNetworkPolicy(ctx context.Context, p profile.Profile, a worker.Assignment) (sandbox.Network, error) {
+func (e *Engine) workerNetworkPolicy(ctx context.Context, p agent.Agent, a worker.Assignment) (sandbox.Network, error) {
 	network := a.SandboxProfile.Network
 	hosts, err := e.workerNetworkHosts(ctx, p, a)
 	if err != nil {

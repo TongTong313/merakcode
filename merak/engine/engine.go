@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
@@ -21,7 +22,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/session"
@@ -44,6 +44,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/cloud"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/credential"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -77,7 +78,7 @@ type Deps struct {
 }
 
 type Engine struct {
-	profileMu         sync.Mutex
+	agentMu           sync.Mutex
 	remoteImportMu    sync.Mutex
 	cloudHost         *deviceHost
 	remoteHosts       map[string]*deviceHost
@@ -106,7 +107,7 @@ type Engine struct {
 	sentinelMu        sync.Mutex
 	sentinelSeen      map[string]bool
 	gate              *permission.Gate
-	defaultModel      atomic.Pointer[profile.ModelRef]
+	defaultModel      atomic.Pointer[agent.ModelRef]
 	catalogOnce       sync.Once
 	vault             credential.Vault
 	workspaceMu       sync.Mutex
@@ -134,7 +135,7 @@ type Engine struct {
 	claimPreparing    map[event.ID]*claimPreparation
 	groupRuns         map[event.ID]*groupRun
 	groupSessions     map[event.ID]bool
-	runnerFor         func(profile.Profile, *sandbox.Launcher) worker.Runner
+	runnerFor         func(agent.Agent, *sandbox.Launcher) worker.Runner
 	Terminals         *terminal.Manager
 	providersMu       sync.RWMutex
 	logger            *slog.Logger
@@ -228,11 +229,11 @@ func New(d Deps) (*Engine, error) {
 	e.askPermission = e.permissions.Ask
 	gate := &permission.Gate{Policy: permission.Policy{Mode: permission.ModeAsk}, Router: e.permissions, Bus: e.Bus, Grants: permission.NewGrants(func() permission.Settings { return e.networkConfiguration() })}
 	e.gate = gate
-	e.runnerFor = func(p profile.Profile, launcher *sandbox.Launcher) worker.Runner {
+	e.runnerFor = func(p agent.Agent, launcher *sandbox.Launcher) worker.Runner {
 		if p.Product != nil {
 			switch p.Product.Kind {
 			case worker.KindRemote:
-				source := profile.RemoteSource{}
+				source := agent.RemoteSource{}
 				if p.Product.Remote != nil {
 					source = *p.Product.Remote
 				}
@@ -324,11 +325,14 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	if options.Mode != "" && options.Mode != permission.ModeAsk && options.Mode != permission.ModeAuto && options.Mode != permission.ModeTakeover {
 		return nil, fmt.Errorf("MRK-4001")
 	}
-	if e.provider(options.Provider) == nil {
-		return nil, fmt.Errorf("unknown provider %q", options.Provider)
-	}
 	if options.Workdir == "" {
 		options.Workdir = e.workdir
+	}
+	if err := workspace.Existing(options.Workdir); err != nil {
+		return nil, coded(errorcode.WorkspaceInvalid, err)
+	}
+	if e.provider(options.Provider) == nil {
+		return nil, fmt.Errorf("unknown provider %q", options.Provider)
 	}
 	if options.Model == "" {
 		options.Model = e.model
@@ -389,25 +393,25 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	}
 	runner.Env.Sandbox = launcher
 	runner.Env.SandboxProfile = configuration
-	memberProfile := profile.DefaultWorker()
+	memberAgent := agent.DefaultWorker()
 	if state.Scope.Group != "" && state.Config.Member != "" {
 		groupID, memberID := e.executionSource(state.Scope, state.Config.Member)
 		member, err := e.groupMember(e.ctx, groupID, memberID)
 		if err != nil {
 			return nil, err
 		}
-		memberProfile, err = e.memberProfile(e.ctx, member)
+		memberAgent, err = e.memberAgent(e.ctx, member)
 		if err != nil {
 			return nil, err
 		}
 	}
 	assignment := worker.Assignment{Session: state.ID, Scope: state.Scope, Workdir: state.Config.Workdir, Claim: task.Claim{Member: state.Config.Member}, SandboxProfile: configuration}
-	network, err := e.workerNetworkPolicy(e.ctx, memberProfile, assignment)
+	network, err := e.workerNetworkPolicy(e.ctx, memberAgent, assignment)
 	if err != nil {
 		return nil, err
 	}
 	runner.Env.SandboxProfile.Network = network
-	e.connectSandboxNetwork(launcher, memberProfile, assignment)
+	e.connectSandboxNetwork(launcher, memberAgent, assignment)
 	runner.Env.Sandbox = e.keepSandbox(state.ID, launcher)
 	runner.Env.MemoryOwners = e.memberMemoryOwners(e.ctx, state.Config.Workdir, state.Scope, state.Config.Member)
 	runner.Env.Spill = func(ctx context.Context, name string, body []byte) (tool.Ref, error) {

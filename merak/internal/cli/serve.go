@@ -161,6 +161,9 @@ func serve(ctx context.Context, args []string) int {
 	}
 	local, err := localstore.Open(filepath.Join(home, "merak.db"))
 	if err != nil {
+		if errors.Is(err, localstore.ErrFormatOutdated) {
+			logger.Error("the data of an earlier format is not migrated", "code", err.Error())
+		}
 		return 1
 	}
 	defer local.Close()

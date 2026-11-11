@@ -76,18 +76,17 @@ test("a refresh arriving during the initial Git load preserves its result", asyn
 test("external file changes and commits refresh Git and review views", async () => {
   const disconnect = connect()
   const connection = await client()
-  const profiles = await connection.profile.list({})
-  const leader = await connection.profile.save({
-    profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
+  const profiles = await connection.agent.list({})
+  const leader = await connection.agent.save({
+    agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   await connection.group.create({
     id: "",
     kind: "local",
     name: "Watched project",
     project: { directory: env.project },
-    defaultLeader: "leader",
+    leader: "leader",
     settings: { initiative: "passive" },
-    profiles: [],
     members: [
       { id: localHuman, group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
       {
@@ -96,7 +95,7 @@ test("external file changes and commits refresh Git and review views", async () 
         kind: "agent",
         name: "Leader",
         agentRole: "leader",
-        profile: leader.id,
+        agent: leader.id,
         status: "idle",
       },
     ],

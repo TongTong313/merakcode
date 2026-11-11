@@ -34,7 +34,7 @@ func TestHistoryRequestsReadPersistedEventsAndSessions(t *testing.T) {
 	}
 	defer client.Close()
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	var list []session.Info

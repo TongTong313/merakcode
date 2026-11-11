@@ -22,20 +22,19 @@ afterAll(async () => {
 
 test("creates a task from the group's board with its acceptance criteria and reviewer", async () => {
   const connection = await client()
-  const profiles = await connection.profile.list({})
-  const leader = await connection.profile.save({
-    profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
+  const profiles = await connection.agent.list({})
+  const leader = await connection.agent.save({
+    agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
-  const worker = await connection.profile.save({
-    profile: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
+  const worker = await connection.agent.save({
+    agent: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   const group = await connection.group.create({
     id: "",
     kind: "local",
     name: "Delivery",
     project: { directory: engine.project },
-    defaultLeader: "leader",
-    profiles: [],
+    leader: "leader",
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
       {
@@ -44,7 +43,7 @@ test("creates a task from the group's board with its acceptance criteria and rev
         kind: "agent",
         name: "Coordinator",
         agentRole: "leader",
-        profile: leader.id,
+        agent: leader.id,
         owner: localHuman,
         status: "idle",
       },
@@ -54,7 +53,7 @@ test("creates a task from the group's board with its acceptance criteria and rev
         kind: "agent",
         name: "Writer",
         agentRole: "worker",
-        profile: worker.id,
+        agent: worker.id,
         owner: localHuman,
         status: "idle",
       },
@@ -105,7 +104,6 @@ test("creates a task from the group's board with its acceptance criteria and rev
       description: "Document the new behavior.",
       acceptance: ["Examples pass", "Links work"],
       review: true,
-      leader: "leader",
       createdBy: { id: localHuman, kind: "human" },
     })
     host.querySelector<HTMLButtonElement>('[aria-label="Open tasks"] .task-card')!.click()

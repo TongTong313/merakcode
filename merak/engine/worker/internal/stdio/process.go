@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TongTong313/merakcode/merak/engine/profile"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
@@ -26,7 +26,7 @@ type Process struct {
 	err    error
 }
 
-func Start(ctx context.Context, assignment worker.Assignment, p profile.Product, args []string, launcher *sandbox.Launcher) (*Process, error) {
+func Start(ctx context.Context, assignment worker.Assignment, p agent.Product, args []string, launcher *sandbox.Launcher) (*Process, error) {
 	binary, err := exec.LookPath(p.Binary)
 	if err != nil {
 		return nil, err

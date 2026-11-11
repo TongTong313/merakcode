@@ -12,18 +12,19 @@ import (
 )
 
 func (e *Engine) setPhaseTool(g *groupRun, thread *leader.Thread) tool.Tool {
-	return groupTool{spec: tool.Spec{Name: "set_phase", Description: "Set this top-level task's phase. Planning may require human approval before doing. Integrating requires completed reports. Human review controls delivery.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"phase":{"type":"string","enum":["planning","doing","integrating","stalled"]}},"required":["phase"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
+	return groupTool{spec: tool.Spec{Name: "set_phase", Description: "Set this top-level task's phase. Planning may require human approval before doing. Integrating requires completed reports. Human review controls delivery.", Effect: tool.EffectGroup, Input: json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"The goal to change; optional while exactly one goal is open"},"phase":{"type":"string","enum":["planning","doing","integrating","stalled"]}},"required":["phase"],"additionalProperties":false}`)}, run: func(ctx context.Context, call tool.Call) (any, error) {
 		var input struct {
+			Task  event.ID   `json:"task"`
 			Phase task.Phase `json:"phase"`
 		}
 		if err := decodeGroupInput(call.Input, &input); err != nil {
 			return nil, err
 		}
-		id := thread.Session.Scope.Task
-		if id == "" || input.Phase != task.PhasePlanning && input.Phase != task.PhaseDoing && input.Phase != task.PhaseIntegrating && input.Phase != task.PhaseStalled {
-			return nil, errors.New("a task thread and a supported phase are required")
+		if input.Phase != task.PhasePlanning && input.Phase != task.PhaseDoing && input.Phase != task.PhaseIntegrating && input.Phase != task.PhaseStalled {
+			return nil, errors.New("a supported phase is required")
 		}
-		if _, err := e.scopedTask(ctx, g.group.ID, thread, id); err != nil {
+		id, err := e.phaseTarget(ctx, g.group.ID, thread, input.Task)
+		if err != nil {
 			return nil, err
 		}
 		if err := e.Tasks.SetPhase(ctx, id, input.Phase, event.Actor{Kind: event.ActorAgent, ID: thread.Leader}); err != nil {
@@ -34,6 +35,31 @@ func (e *Engine) setPhaseTool(g *groupRun, thread *leader.Thread) tool.Tool {
 		}
 		return e.Tasks.Get(ctx, id)
 	}}
+}
+
+// phaseTarget names the goal whose phase changes: the one the Leader gave, or the only open goal of the group.
+func (e *Engine) phaseTarget(ctx context.Context, groupID event.ID, thread *leader.Thread, named event.ID) (event.ID, error) {
+	if named != "" {
+		card, err := e.scopedTask(ctx, groupID, thread, named)
+		if err != nil {
+			return "", err
+		}
+		return e.taskRoot(ctx, card)
+	}
+	cards, err := e.Tasks.List(ctx, groupID)
+	if err != nil {
+		return "", err
+	}
+	var open []event.ID
+	for _, card := range cards {
+		if card.Parent == "" && card.Phase != task.PhaseDone && card.Phase != task.PhaseCancelled {
+			open = append(open, card.ID)
+		}
+	}
+	if len(open) != 1 {
+		return "", errors.New("name the goal: the group does not have exactly one open goal")
+	}
+	return open[0], nil
 }
 
 func (e *Engine) advancePhase(ctx context.Context, fact event.Event) error {
@@ -69,7 +95,7 @@ func (e *Engine) advancePhase(ctx context.Context, fact event.Event) error {
 			if goal.Phase == task.PhaseDone || goal.Phase == task.PhaseCancelled {
 				continue
 			}
-			if err := e.Tasks.SetPhase(ctx, root, task.PhaseStalled, event.Actor{Kind: event.ActorAgent, ID: goal.Leader}); err != nil {
+			if err := e.Tasks.SetPhase(ctx, root, task.PhaseStalled, e.leaderActor(ctx, goal)); err != nil {
 				return err
 			}
 		}
@@ -94,7 +120,7 @@ func (e *Engine) advancePhase(ctx context.Context, fact event.Event) error {
 	if goal.Phase != task.PhaseIntegrating {
 		return nil
 	}
-	err = e.Tasks.SetPhase(ctx, goal.ID, task.PhaseReview, event.Actor{Kind: event.ActorAgent, ID: goal.Leader})
+	err = e.Tasks.SetPhase(ctx, goal.ID, task.PhaseReview, e.leaderActor(ctx, goal))
 	if errors.Is(err, task.ErrState) {
 		return nil
 	}

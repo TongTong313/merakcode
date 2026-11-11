@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -55,7 +55,7 @@ func TestPiMCPAcceptsASymlinkTemporaryDirectory(t *testing.T) {
 		t.Skip("sandbox unavailable")
 	}
 	binary, _ := os.Executable()
-	runner := pi.Runner{Sandbox: launcher, Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: profile.Product{Binary: binary, Env: map[string]string{"MERAKCODE_PI_MCP_PATH_FIXTURE": "1"}}}
+	runner := pi.Runner{Sandbox: launcher, Bus: event.NewBus(memory.New(), time.Now, event.NewID), Product: agent.Product{Binary: binary, Env: map[string]string{"MERAKCODE_PI_MCP_PATH_FIXTURE": "1"}}}
 	run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: root, Packet: "Begin", Claim: task.Claim{Member: "member"}, MCP: &worker.MCPConfig{Command: "unused"}, SandboxProfile: policy})
 	if err != nil {
 		t.Fatal(err)

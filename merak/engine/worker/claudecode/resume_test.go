@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
@@ -23,7 +23,7 @@ func TestExternalWorkerReworkResumesItsProductConversation(t *testing.T) {
 	bus := event.NewBus(storage, time.Now, event.NewID)
 	dir := t.TempDir()
 	for _, packet := range []string{"Original instructions", "Review feedback"} {
-		runner := &claudecode.Runner{Bus: bus, Store: storage, Product: profile.Product{Binary: binary, Args: []string{"--history"}}}
+		runner := &claudecode.Runner{Bus: bus, Store: storage, Product: agent.Product{Binary: binary, Args: []string{"--history"}}}
 		run, err := runner.Start(ctx, worker.Assignment{Session: "session", Workdir: dir, Packet: packet})
 		if err != nil {
 			t.Fatal(err)

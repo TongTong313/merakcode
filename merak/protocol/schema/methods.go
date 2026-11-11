@@ -6,11 +6,11 @@ import (
 	"reflect"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
@@ -40,26 +40,24 @@ func Methods() []Method {
 		{"config.get", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.Config]()},
 		{"config.set", reflect.TypeFor[protocol.ConfigPatch](), reflect.TypeFor[protocol.Config]()},
 		{"model.list", reflect.TypeFor[protocol.ModelListParams](), reflect.TypeFor[[]catalog.Model]()},
-		{"member.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
+		{"agent.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
 		{"worker.run", reflect.TypeFor[protocol.WorkerRunParams](), reflect.TypeFor[task.Report]()},
 		{"sandbox.status", reflect.TypeFor[protocol.SandboxStatusParams](), reflect.TypeFor[sandbox.Status]()},
 		{"sandbox.setup", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
-		{"member.register", reflect.TypeFor[protocol.MemberRegisterParams](), reflect.TypeFor[group.Member]()},
 		{"remote.connect", reflect.TypeFor[protocol.RemoteConnectParams](), reflect.TypeFor[protocol.RemoteConnection]()},
 		{"remote.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]protocol.RemoteMember]()},
 		{"remote.start", reflect.TypeFor[protocol.RemoteStartParams](), reflect.TypeFor[protocol.RemoteStartResult]()},
 		{"remote.deliver", reflect.TypeFor[protocol.RemoteDeliveryParams](), reflect.TypeFor[protocol.RemoteDelivery]()},
 		{"remote.sync", reflect.TypeFor[protocol.RemoteSyncParams](), reflect.TypeFor[struct{}]()},
 		{"remote.control", reflect.TypeFor[protocol.RemoteControlParams](), reflect.TypeFor[struct{}]()},
-		{"member.test", reflect.TypeFor[protocol.ProfileSaveParams](), reflect.TypeFor[worker.Caps]()},
-		{"profile.list", reflect.TypeFor[protocol.ProfileListParams](), reflect.TypeFor[[]profile.Profile]()},
-		{"profile.save", reflect.TypeFor[protocol.ProfileSaveParams](), reflect.TypeFor[profile.Profile]()},
-		{"profile.delete", reflect.TypeFor[protocol.ProfileDeleteParams](), reflect.TypeFor[struct{}]()},
+		{"agent.test", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[worker.Caps]()},
+		{"agent.list", reflect.TypeFor[protocol.AgentListParams](), reflect.TypeFor[[]agent.Agent]()},
+		{"agent.save", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[agent.Agent]()},
+		{"agent.delete", reflect.TypeFor[protocol.AgentDeleteParams](), reflect.TypeFor[struct{}]()},
 		{"group.create", reflect.TypeFor[protocol.GroupCreateParams](), reflect.TypeFor[group.Group]()},
 		{"group.update", reflect.TypeFor[protocol.GroupUpdateParams](), reflect.TypeFor[group.Group]()},
 		{"group.addMember", reflect.TypeFor[protocol.GroupAddMemberParams](), reflect.TypeFor[group.Member]()},
 		{"group.removeMember", reflect.TypeFor[protocol.GroupRemoveMemberParams](), reflect.TypeFor[struct{}]()},
-		{"member.remove", reflect.TypeFor[protocol.GroupRemoveMemberParams](), reflect.TypeFor[struct{}]()},
 		{"group.state", reflect.TypeFor[protocol.GroupIDParams](), reflect.TypeFor[leader.View]()},
 		{"group.pause", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},
 		{"group.resume", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},

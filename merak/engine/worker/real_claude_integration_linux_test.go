@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
@@ -94,7 +94,7 @@ func TestRealClaudeFirstStartupKeepsUserHomeReadOnly(t *testing.T) {
 	}))
 	defer server.Close()
 	trace := filepath.Join(workspace, "startup.trace")
-	product := profile.Product{Binary: os.Args[0], Args: []string{"--merak-real-claude-trace", trace}, Env: map[string]string{"ANTHROPIC_BASE_URL": server.URL, "ANTHROPIC_API_KEY": "fixture-key", "DISABLE_AUTOUPDATER": "1", "USE_BUILTIN_RIPGREP": "0"}}
+	product := agent.Product{Binary: os.Args[0], Args: []string{"--merak-real-claude-trace", trace}, Env: map[string]string{"ANTHROPIC_BASE_URL": server.URL, "ANTHROPIC_API_KEY": "fixture-key", "DISABLE_AUTOUPDATER": "1", "USE_BUILTIN_RIPGREP": "0"}}
 	p := sandbox.Profile{WriteAllow: []string{workspace}, Network: sandbox.Network{Mode: "allowlist", LocalPorts: []int{server.Listener.Addr().(*net.TCPAddr).Port}}}
 	for name := range product.Env {
 		p.EnvAllow = append(p.EnvAllow, name)

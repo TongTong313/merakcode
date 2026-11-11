@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
@@ -18,7 +19,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
@@ -39,11 +39,11 @@ func TestExternalLeaderSteersAnActiveTurnWithoutTakingAnotherRateSlot(t *testing
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := profile.DefaultLeader()
+	lead := agent.DefaultLeader()
 	lead.ID, lead.Mode = "lead", permission.ModeTakeover
-	lead.Product = &profile.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--leader-boundary"}}
+	lead.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--leader-boundary"}}
 	one := 1
-	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Steering limit", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader", Settings: group.Settings{TurnsPerMinute: &group.TurnLimits{Thread: &one, Group: &one}}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{lead})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Steering limit", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{TurnsPerMinute: &group.TurnLimits{Thread: &one, Group: &one}}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +92,9 @@ func TestExternalLeaderProfilesCanBeSavedOnlyWithMCPAndSteering(t *testing.T) {
 	defer e.Close()
 	for _, kind := range []worker.Kind{worker.KindClaudeCode, worker.KindCodex, worker.KindPi, worker.KindACP, worker.KindOpenCode, worker.KindCommand} {
 		t.Run(string(kind), func(t *testing.T) {
-			p := profile.DefaultLeader()
-			p.Product = &profile.Product{Kind: kind, Binary: "fixture"}
-			_, err := e.SaveProfile(t.Context(), "owner", p)
+			p := agent.DefaultLeader()
+			p.Product = &agent.Product{Kind: kind, Binary: "fixture"}
+			_, err := e.SaveAgent(t.Context(), "owner", p)
 			allowed := kind == worker.KindClaudeCode || kind == worker.KindCodex || kind == worker.KindPi
 			if (err == nil) != allowed {
 				t.Fatalf("allowed=%v error=%v", allowed, err)
@@ -139,32 +139,28 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	defaultLeader, external := profile.DefaultLeader(), profile.DefaultLeader()
+	defaultLeader, external := agent.DefaultLeader(), agent.DefaultLeader()
 	defaultLeader.ID, defaultLeader.Model.Provider = "default-profile", "group"
 	external.ID, external.Mode = "external-profile", permission.ModeTakeover
 	external.Budget.MaxSteps = 3
-	external.Product = &profile.Product{Kind: kind, Binary: claude, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_LEADER": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
+	external.Product = &agent.Product{Kind: kind, Binary: claude, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_LEADER": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
 	if kind == worker.KindClaudeCode {
 		external.Product.Args = []string{"--mcp-leader"}
 	}
-	work := profile.DefaultWorker()
+	work := agent.DefaultWorker()
 	work.ID, work.Model.Provider, work.Mode = "worker-profile", "worker", permission.ModeAuto
-	g, err := e.CreateGroup(ctx, group.Group{Name: "External leader", Kind: group.KindLocal, DefaultLeader: "default", Project: group.Project{Directory: directory}}, []group.Member{{ID: "default", Name: "Default", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: defaultLeader.ID}, {ID: "external", Name: "External", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: external.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []profile.Profile{defaultLeader, external, work})
+	g, err := createGroup(t, e, ctx, group.Group{Name: "External leader", Kind: group.KindLocal, Leader: "external", Project: group.Project{Directory: directory}}, []group.Member{{ID: "external", Name: "External", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: external.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{defaultLeader, external, work})
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := e.CreateTask(ctx, task.Card{Group: g.ID, Title: "Coordinate fixture", Leader: "external", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	other, err := e.Tasks.Create(ctx, task.Card{Group: g.ID, Title: "Other subtree"})
+	root, err := e.CreateTask(ctx, task.Card{Group: g.ID, Title: "Coordinate fixture", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{session.MessageCompleted}})
 	defer stop()
 	var pid string
-	for _, text := range []string{"Create fixture child", "Reply fixture", "Scope fixture " + string(other.ID), "Reply fixture"} {
+	for _, text := range []string{"Create fixture child " + string(root.ID), "Reply fixture", "Reply fixture"} {
 		if _, err := e.SayGroup(ctx, g.ID, root.ID, "owner", group.Message{Text: text, To: []event.ID{"external"}}); err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +168,7 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 		for {
 			select {
 			case fact := <-facts:
-				if fact.Scope.Task != root.ID || fact.Actor.ID != "external" {
+				if fact.Actor.ID != "external" {
 					continue
 				}
 				completion, _ := event.Decode[session.Completion](fact)
@@ -191,11 +187,11 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 		}
 	}
 	cards, err := e.Tasks.List(ctx, g.ID)
-	if err != nil || len(cards) != 3 {
+	if err != nil || len(cards) != 2 {
 		t.Fatalf("cards=%+v %v", cards, err)
 	}
 	for _, card := range cards {
-		if card.ID != root.ID && card.ID != other.ID && (card.Parent != root.ID || card.Title != "Fixture child") {
+		if card.ID != root.ID && (card.Parent != root.ID || card.Title != "Fixture child") {
 			t.Fatalf("child=%+v", card)
 		}
 	}
@@ -229,7 +225,7 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 			}
 		}
 	}
-	inputs, err := e.FindEvents(ctx, store.Query{Scope: event.Scope{Group: g.ID, Task: root.ID}, Types: []event.Type{session.MessageSent}})
+	inputs, err := e.FindEvents(ctx, store.Query{Scope: event.Scope{Group: g.ID}, Types: []event.Type{session.MessageSent}})
 	if err != nil || len(inputs) == 0 {
 		t.Fatalf("inputs=%v %v", inputs, err)
 	}
@@ -243,7 +239,7 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 	if !strings.Contains(firstText.String(), identity) || !strings.Contains(firstText.String(), string(root.ID)) {
 		t.Fatalf("first message lacks shared leader template and task: %s", body)
 	}
-	paused, stopPaused := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID, Task: root.ID}, Types: []event.Type{"group.paused"}})
+	paused, stopPaused := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{"group.paused"}})
 	defer stopPaused()
 	if _, err := e.SayGroup(ctx, g.ID, root.ID, "owner", group.Message{Text: "Exit fixture", To: []event.ID{"external"}}); err != nil {
 		t.Fatal(err)
@@ -254,9 +250,10 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 		t.Fatal("leader process exit was not reported")
 	}
 	if kind == worker.KindClaudeCode {
-		handed, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID, Task: root.ID}, Types: []event.Type{leader.ThreadHandedOver}})
+		handed, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{leader.ThreadHandedOver}})
 		defer stop()
-		if err := e.Tasks.Update(ctx, root.ID, task.Update{Leader: "default"}, event.Actor{Kind: event.ActorHuman, ID: "owner"}); err != nil {
+		next := defaultLeader.ID
+		if _, err := e.UpdateGroup(ctx, g.ID, "owner", group.Update{Leader: &next}); err != nil {
 			t.Fatal(err)
 		}
 		select {

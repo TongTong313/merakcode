@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
@@ -28,7 +28,7 @@ func TestStructuredWorkerReportRetainsReviewFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Model.Provider = "fake"
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: event.NewID(), Workdir: dir, Claim: task.Claim{ID: "claim", Task: "task", Member: "worker"}, Packet: "Update the documentation and return its structured report."})
 	if err != nil {
@@ -75,7 +75,7 @@ func TestSynthesizedWorkerReportCountsBothAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := profile.DefaultWorker()
+	p := agent.DefaultWorker()
 	p.Model.Provider = "fake"
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: event.NewID(), Workdir: dir, Claim: task.Claim{ID: "claim", Task: "task", Member: "worker"}, Packet: "Complete the assignment."})
 	if err != nil {

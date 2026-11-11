@@ -37,7 +37,7 @@ func TestStopDeliversTheCancelledTurnAndShutdownAndStoresThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	var created protocol.SessionCreateResult
-	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Provider: "fake"}, &created); err != nil {
+	if err := client.Call(ctx, "session.create", protocol.SessionCreateParams{Workdir: t.TempDir(), Provider: "fake"}, &created); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Call(ctx, "session.send", protocol.SessionSendParams{Session: created.Session, Parts: []model.Part{{Text: "Run"}}}, nil); err != nil {

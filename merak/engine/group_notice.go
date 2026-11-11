@@ -63,7 +63,7 @@ func (e *Engine) notifyTask(ctx context.Context, fact event.Event) error {
 		return nil
 	}
 	body, _ := json.Marshal(group.Notice{Kind: kind, Text: card.Title, To: to})
-	_, err = e.Bus.Publish(ctx, event.Event{Stream: fact.Stream, Scope: fact.Scope, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorAgent, ID: card.Leader}, Cause: fact.ID, Payload: body})
+	_, err = e.Bus.Publish(ctx, event.Event{Stream: fact.Stream, Scope: fact.Scope, Type: group.NoticeSent, Actor: e.leaderActor(ctx, card), Cause: fact.ID, Payload: body})
 	if err == nil && (kind == "review" || kind == "plan") {
 		e.watchTaskApproval(fact, kind)
 	}

@@ -9,10 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/profile"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -46,8 +46,8 @@ func debugWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 		return 1
 	}
 	defer closeHost()
-	p := profile.DefaultWorker()
-	p.Product = &profile.Product{Kind: worker.Kind(*kind), Binary: *binary}
+	p := agent.DefaultWorker()
+	p.Product = &agent.Product{Kind: worker.Kind(*kind), Binary: *binary}
 	id := event.NewID()
 	if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: id}}, nil); err != nil {
 		return 1
