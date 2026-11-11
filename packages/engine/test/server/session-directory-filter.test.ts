@@ -5,6 +5,8 @@ import { Session } from "@merakcode/engine/agent/session/index"
 import { Server } from "@merakcode/engine/app/server/server"
 import { Log } from "@merakcode/log/logger"
 import { tmpdir } from "../fixture/fixture"
+import { mkdir } from "node:fs/promises"
+import path from "node:path"
 
 Log.init({ print: false })
 
@@ -33,6 +35,7 @@ describe("GET /session directory filter (cross-platform path normalization)", ()
   test("a query for a different subdirectory does not include the session", async () => {
     await using tmp = await tmpdir({ git: true })
     const dir = tmp.path
+    await mkdir(path.join(dir, "sub"))
     const created = await Instance.provide({ directory: dir, fn: () => Session.create({ title: "root-only" }) })
     try {
       const app = Server.App()

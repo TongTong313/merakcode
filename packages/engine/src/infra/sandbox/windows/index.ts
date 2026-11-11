@@ -215,7 +215,7 @@ export namespace WindowsSandbox {
           )
           writeFileSync(request + ".started", "")
           await run("icacls", [request + ".started", "/grant", `*${state.sid}:M`, "/c", "/q"], { windowsHide: true })
-          const { stdout } = await run(exe, ["run", request], { windowsHide: true, timeout: 5000 })
+          const { stdout } = await run(exe, ["run", request], { windowsHide: true, timeout: 30_000 })
           if (stdout.trim() !== state.sid) throw new Error("The sandbox account identity changed")
           return {
             status: "on",
@@ -223,10 +223,18 @@ export namespace WindowsSandbox {
             degraded: ["loopback-not-restricted", "ambient-world-writable"],
           }
         } catch (error) {
+          const failed = error as NodeJS.ErrnoException & { stdout?: string }
+          const detail = [
+            failed instanceof Error ? failed.message : String(error),
+            failed.code ? `code ${failed.code}` : "",
+            failed.stdout?.trim() ?? "",
+          ]
+            .filter(Boolean)
+            .join(" ")
           return {
             status: "failed",
             backend: "windows-account",
-            reason: `The sandbox account could not start a process: ${error instanceof Error ? error.message : String(error)}`,
+            reason: `The sandbox account could not start a process: ${detail}`,
           }
         } finally {
           rmSync(request, { force: true })

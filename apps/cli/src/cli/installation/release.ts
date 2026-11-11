@@ -85,6 +85,8 @@ export namespace Release {
     const previous = current(layout)
     await fs.mkdir(versions, { recursive: true })
     const work = await fs.mkdtemp(path.join(layout.home, ".download-"))
+    // Windows tar.exe parses paths with the ANSI code page and cannot open a Chinese directory.
+    const extract = process.platform === "win32" ? await fs.mkdtemp(path.join(os.tmpdir(), "merakcode-extract-")) : work
     try {
       log.info("download started", { version, file })
       const sums = await get(`${base}/SHA256SUMS`, options.signal).then((res) => res.text())
@@ -93,21 +95,25 @@ export namespace Release {
         .find((line) => line.trim().endsWith(`  ${file}`))
         ?.split(/\s+/)[0]
       if (!expected) throw new Error(I18n.t("cli.upgrade.notInSums", { file }))
-      const archive = path.join(work, file)
+      const archive = path.join(extract, file)
       await fs.writeFile(archive, Buffer.from(await (await get(`${base}/${file}`, options.signal)).arrayBuffer()))
       if ((await sha256(archive)) !== expected) throw new Error(I18n.t("cli.upgrade.checksumMismatch", { file }))
       // The system tar extracts tar.gz; the tar.exe (bsdtar) bundled since Windows 10 also extracts zip.
       const tar =
         process.platform === "win32" ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe") : "tar"
-      execFileSync(tar, ["-xf", archive, "-C", work])
+      execFileSync(tar, ["-xf", archive, "-C", extract])
       const target = path.join(versions, version)
+      const unpacked = path.join(extract, name)
       await fs.rm(target, { recursive: true, force: true })
-      await fs.rename(path.join(work, name), target)
+      await fs.rename(unpacked, target).catch(async () => {
+        await fs.cp(unpacked, target, { recursive: true })
+      })
       await link(layout, version)
       await prune(versions, [version, ...(previous ? [previous] : [])])
       log.info("download completed", { version })
     } finally {
       await fs.rm(work, { recursive: true, force: true })
+      if (extract !== work) await fs.rm(extract, { recursive: true, force: true })
     }
   }
 

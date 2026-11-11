@@ -8,7 +8,7 @@ import { test, expect } from "./fixture"
 test("code: opens a file from the tree and saves edits to disk with the native save shortcut", async ({ kit }) => {
   const panel = kit.panel()
   await kit.page.getByRole("button", { name: "右侧面板" }).click()
-  await panel.getByRole("tab", { name: "代码" }).click()
+  await kit.openPanel("file")
   await panel.getByRole("treeitem", { name: "notes.txt" }).click()
   const editor = panel.getByRole("code")
   await expect(editor).toContainText("hello from e2e")
@@ -29,15 +29,39 @@ test("browser: opens a local page and shows its title and console errors", async
   try {
     const panel = kit.panel()
     await kit.page.getByRole("button", { name: "右侧面板" }).click()
-    await panel.getByRole("tab", { name: "浏览器" }).click()
+    await kit.openPanel("browser")
     const address = panel.getByRole("textbox", { name: "地址" })
     await address.fill(`http://127.0.0.1:${port}/`)
     await address.press("Enter")
-    await expect(panel.getByText("E2E 页面")).toBeVisible({ timeout: 30_000 })
+    await expect(panel.getByRole("tab", { name: "E2E 页面", exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(panel.getByRole("region", { name: "控制台" })).toContainText("E2E_BOOM")
   } finally {
     server.close()
   }
+})
+
+test("an exited shell keeps a closable tab without further heartbeats", async ({ kit }) => {
+  await kit.page.clock.install()
+  await kit.openPanel("terminal", true)
+  await kit.page.locator(".terminal-host textarea").focus()
+  await kit.page.keyboard.type("exit")
+  await kit.page.keyboard.press("Enter")
+  await expect(kit.page.getByRole("status").filter({ hasText: "终端已结束" })).toBeVisible()
+  await kit.openPanel("browser", true)
+  const updates: string[] = []
+  kit.page.on("request", (request) => {
+    if (request.method() === "PUT" && new URL(request.url()).pathname.startsWith("/pty/")) updates.push(request.url())
+  })
+  await kit.page.clock.fastForward(60_000)
+  expect(updates).toEqual([])
+  const tab = kit.panel().getByRole("tab", { name: /^终端/ })
+  await tab.click()
+  await expect(kit.page.getByRole("status").filter({ hasText: "终端已结束" })).toBeVisible()
+  await kit
+    .panel()
+    .getByRole("button", { name: /^关闭 终端/ })
+    .click()
+  await expect(tab).toHaveCount(0)
 })
 
 test("terminal: opens with Ctrl+J and runs commands in the project directory", async ({ kit }) => {
@@ -62,12 +86,11 @@ test("multiple terminals run independently, switching back works, and closing on
       .toBe(name)
   }
   await kit.page.keyboard.press("ControlOrMeta+J")
-  const terminal = kit.page.getByRole("region", { name: "终端" })
-  const tabs = terminal.getByRole("tab")
+  const tabs = kit.panel().getByRole("tab", { name: /^终端/ })
   await expect(tabs).toHaveCount(1)
   await write("one")
 
-  await terminal.getByRole("button", { name: "新终端" }).click()
+  await kit.openPanel("terminal", true)
   await expect(tabs).toHaveCount(2)
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true")
   await write("two")
@@ -76,6 +99,10 @@ test("multiple terminals run independently, switching back works, and closing on
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
   await write("three")
 
-  await tabs.nth(1).getByRole("button", { name: /^关闭/ }).click()
+  await kit
+    .panel()
+    .getByRole("button", { name: /^关闭 终端/ })
+    .nth(1)
+    .click()
   await expect(tabs).toHaveCount(1)
 })

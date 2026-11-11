@@ -29,6 +29,14 @@ export const ERRORS = {
       },
     },
   },
+  403: {
+    description: "Forbidden",
+    content: {
+      "application/json": {
+        schema: resolver(ErrorResponse),
+      },
+    },
+  },
   409: {
     description: "Checkout is busy or the request conflicts with its current state",
     content: {
@@ -37,8 +45,16 @@ export const ERRORS = {
       },
     },
   },
+  500: {
+    description: "Internal server error",
+    content: {
+      "application/json": {
+        schema: resolver(ErrorResponse),
+      },
+    },
+  },
 } as const
 
-export function errors(...codes: number[]) {
-  return Object.fromEntries(codes.map((code) => [code, ERRORS[code as keyof typeof ERRORS]]))
+export function errors(...codes: (keyof typeof ERRORS)[]) {
+  return Object.fromEntries(codes.map((code) => [code, ERRORS[code]]))
 }

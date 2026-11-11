@@ -2,7 +2,7 @@ import { render } from "solid-js/web"
 import { expect, test, vi } from "vitest"
 import { PlanCard, PlanPanel } from "./plan"
 import { setLocale } from "../../i18n"
-import { ui, setUi } from "../../state/ui"
+import { panels, selectPanels } from "../panel/workspace"
 import { choose } from "../../state/models"
 import { setState } from "../../state/store"
 import type { ProviderListResponses } from "@merakcode/sdk/client"
@@ -41,6 +41,7 @@ test("a paused plan explains that resuming keeps the original snapshot", async (
 
 test.each(["queued", "executing"])("the %s plan opens progress without dispatching another task", async (state) => {
   setLocale("zh")
+  await selectPanels({ directory: "/project", sessionID: `ses_${state}` })
   http.requests.length = 0
   http.plan = {
     sessionID: "ses_plan",
@@ -60,7 +61,9 @@ test.each(["queued", "executing"])("the %s plan opens progress without dispatchi
     await vi.waitFor(() => expect(host.textContent).toContain("查看执行进度"))
     if (state === "queued") expect(host.textContent).toContain("排队")
     ;[...host.querySelectorAll("button")].find((button) => button.textContent === "查看执行进度")?.click()
-    expect(ui.tab).toBe("plan")
+    await vi.waitFor(() =>
+      expect(panels()?.state.tabs.find((tab) => tab.id === panels()?.state.selected)?.kind).toBe("plan"),
+    )
     expect(http.requests.some((url) => url.includes("/plan/start"))).toBe(false)
   } finally {
     dispose()
@@ -73,6 +76,8 @@ vi.mock("undici", () => ({
   fetch: async (url: string, init?: { body?: ArrayBuffer }) => {
     if (init?.body) http.posts.push({ url, body: JSON.parse(new TextDecoder().decode(init.body)) })
     http.requests.push(url)
+    if (url.includes("/vcs/branch-options"))
+      return Response.json({ directory: "/project", current: null, branches: [], blocked: { reason: "unborn" } })
     return new Response(
       JSON.stringify(
         http.plan ?? {
@@ -93,15 +98,17 @@ vi.mock("undici", () => ({
 
 test("the session plan card presents one plan and opens the existing editor", async () => {
   setLocale("zh")
+  await selectPanels({ directory: "/project", sessionID: "ses_plan" })
   const host = document.createElement("div")
   document.body.append(host)
   const dispose = render(() => <PlanCard sessionID="ses_plan" directory="/project" />, host)
   try {
     await vi.waitFor(() => expect(host.textContent).toContain("计划已生成"))
     expect(host.textContent).toContain("待审核")
-    setUi("tab", "code")
     ;[...host.querySelectorAll("button")].find((button) => button.textContent === "查看计划")?.click()
-    expect(ui.tab).toBe("plan")
+    await vi.waitFor(() =>
+      expect(panels()?.state.tabs.find((tab) => tab.id === panels()?.state.selected)?.kind).toBe("plan"),
+    )
     expect([...host.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
       "查看计划",
       "开始执行",
@@ -116,6 +123,7 @@ test("the session plan card presents one plan and opens the existing editor", as
 
 test("the plan tab shows full Markdown and records only an explicit human edit view", async () => {
   setLocale("zh")
+  await selectPanels({ directory: "/project", sessionID: "ses_panel" })
   http.requests.length = 0
   http.plan = {
     sessionID: "ses_panel",
@@ -136,8 +144,12 @@ test("the plan tab shows full Markdown and records only an explicit human edit v
     expect(http.requests.filter((url) => url.includes("/plan/view"))).toHaveLength(0)
     ;[...host.querySelectorAll("button")].find((button) => button.textContent === "编辑计划")?.click()
     await vi.waitFor(() => expect(http.requests.filter((url) => url.includes("/plan/view"))).toHaveLength(1))
-    expect(ui.tab).toBe("code")
-    expect(ui.openFile?.planSessionID).toBe("ses_panel")
+    await vi.waitFor(() =>
+      expect(panels()?.state.tabs.find((tab) => tab.id === panels()?.state.selected)).toMatchObject({
+        kind: "file",
+        planSessionID: "ses_panel",
+      }),
+    )
   } finally {
     dispose()
     host.remove()

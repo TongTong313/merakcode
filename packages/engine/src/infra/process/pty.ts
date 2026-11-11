@@ -1,4 +1,21 @@
 import type { IPty } from "@lydell/node-pty"
+import { containProcess } from "./tree"
+import { randomUUID } from "node:crypto"
+import { mkdtemp, writeFile, rm } from "node:fs/promises"
+import path from "node:path"
+import os from "node:os"
+
+// The launcher waits until the host has installed process containment before starting user code.
+const launcher = String.raw`const fs = require('node:fs')
+const { spawn } = require('node:child_process')
+const [gate, command, args, nodeOptions] = JSON.parse(Buffer.from(process.argv[1], 'base64').toString())
+const timer = setInterval(() => {
+  if (!fs.existsSync(gate)) return
+  clearInterval(timer)
+  const child = spawn(command, args, { stdio: 'inherit', env: { ...process.env, ...nodeOptions } })
+  child.on('error', () => process.exit(127))
+  child.on('exit', (code) => process.exit(code ?? 1))
+}, 10)`
 
 /**
  * Pseudo terminal (node-pty), with fixes applied by attach():
@@ -32,18 +49,78 @@ export namespace NativePty {
     write(data: string): void
     resize(cols: number, rows: number): void
     kill(): void
+    stop(): Promise<void>
   }
 
   export async function spawn(command: string, args: string[], options: Options = {}): Promise<Process> {
     const pty = await import("@lydell/node-pty")
-    const child = pty.spawn(command, args, {
-      name: options.name ?? "xterm-256color",
-      cols: options.cols ?? 80,
-      rows: options.rows ?? 24,
-      cwd: options.cwd,
-      env: options.env,
-    })
+    const directory = await mkdtemp(path.join(os.tmpdir(), "merakcode-pty-"))
+    const gate = path.join(directory, "ready")
+    const marker = { name: "MERAKCODE_TERMINAL_RUN", value: randomUUID() }
+    const env = { ...(options.env ?? process.env), [marker.name]: marker.value }
+    const child = await (async () => {
+      try {
+        return pty.spawn(
+          process.execPath,
+          [
+            "-e",
+            launcher,
+            Buffer.from(
+              JSON.stringify([
+                gate,
+                command,
+                args,
+                Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() === "NODE_OPTIONS")),
+              ]),
+            ).toString("base64"),
+          ],
+          {
+            name: options.name ?? "xterm-256color",
+            cols: options.cols ?? 80,
+            rows: options.rows ?? 24,
+            cwd: options.cwd,
+            // User preloads run only in the contained command, after the launcher has opened the gate.
+            env: Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() !== "NODE_OPTIONS")),
+          },
+        )
+      } catch (error) {
+        await rm(directory, { recursive: true, force: true })
+        throw error
+      }
+    })()
     const state = attach(child)
+    const release = await containProcess(
+      {
+        pid: child.pid,
+        kill: (signal) => {
+          if (!state.exited) child.kill(signal)
+        },
+      },
+      marker,
+      async (text) => text.en,
+    ).catch(async (error) => {
+      if (!state.exited) child.kill()
+      await rm(directory, { recursive: true, force: true })
+      throw error
+    })
+    try {
+      await writeFile(gate, "ready")
+    } catch (error) {
+      await release()
+      await rm(directory, { recursive: true, force: true })
+      throw error
+    }
+    let stopping: Promise<void> | undefined
+    const stop = () =>
+      (stopping ??= release()
+        .then(() => rm(directory, { recursive: true, force: true }))
+        .catch((error) => {
+          stopping = undefined
+          throw error
+        }))
+    child.onExit(() => {
+      void stop().catch(() => {})
+    })
     return {
       get pid() {
         return child.pid
@@ -59,6 +136,7 @@ export namespace NativePty {
       kill: () => {
         if (!state.exited) child.kill()
       },
+      stop,
     }
   }
 

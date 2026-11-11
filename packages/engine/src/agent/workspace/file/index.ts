@@ -17,6 +17,73 @@ import { Global } from "../../../infra/global"
 export namespace File {
   const log = Log.create({ service: "file" })
 
+  export const Identity = z.object({ directory: z.string(), path: z.string() }).meta({ ref: "FileIdentity" })
+
+  /** Resolve existing ancestors before appending a missing suffix, so deleted files retain directory aliases. */
+  async function realPath(input: string): Promise<string> {
+    try {
+      return await fs.promises.realpath(input)
+    } catch (error) {
+      if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error
+      const parent = path.dirname(input)
+      if (parent === input) throw error
+      return path.join(await realPath(parent), path.basename(input))
+    }
+  }
+
+  /** Directory entries preserve spelling; stat verifies aliases without guessing the volume's case rules. */
+  async function canonicalPath(input: string) {
+    const absolute = await realPath(path.resolve(input))
+    const root = path.parse(absolute).root
+    let current = root
+    for (const part of absolute.slice(root.length).split(path.sep)) {
+      const entries = await fs.promises.readdir(current).catch((error: NodeJS.ErrnoException) => {
+        // A traversable ancestor need not be listable; realpath already resolved the accessible path.
+        if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code ?? "")) return [] as string[]
+        throw error
+      })
+      if (entries.includes(part)) {
+        current = path.join(current, part)
+        continue
+      }
+      const wanted = await fs.promises.stat(path.join(current, part)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined
+        throw error
+      })
+      let spelling = part
+      if (wanted)
+        for (const candidate of entries.filter(
+          (name) => name.normalize("NFC").toLowerCase() === part.normalize("NFC").toLowerCase(),
+        )) {
+          const value = await fs.promises.stat(path.join(current, candidate))
+          if (value.dev !== wanted.dev || value.ino !== wanted.ino) continue
+          spelling = candidate
+          break
+        }
+      current = path.join(current, spelling)
+    }
+    return current
+  }
+
+  export async function identity(input: string): Promise<z.infer<typeof Identity>> {
+    const target = Workspace.resolveToolPath(Instance.workspace, input)
+    const root = target.folder
+      ? target.folder.worktree === "/"
+        ? target.folder.path
+        : target.folder.worktree
+      : Instance.worktree === "/"
+        ? Instance.directory
+        : Instance.worktree
+    const existing = await fs.promises.realpath(root)
+    if (!(await fs.promises.stat(existing)).isDirectory()) throw new Error("File identity requires a directory root")
+    const directory = await canonicalPath(existing)
+    const absolute = await canonicalPath(target.filepath)
+    const relative = path.relative(directory, absolute)
+    const result =
+      relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? absolute : relative
+    return { directory, path: result.split(path.sep).join("/") }
+  }
+
   export const Info = z
     .object({
       path: z.string(),
@@ -72,6 +139,8 @@ export namespace File {
        * sha1 of the raw text; sent back as checksum to PUT /file/content, which returns 409 if the file changed since
        */
       checksum: z.string().optional(),
+      baselines: z.object({ head: z.string(), index: z.string() }).optional(),
+      missing: z.boolean().optional(),
     })
     .meta({
       ref: "FileContent",
@@ -415,7 +484,11 @@ export namespace File {
     const display = (worktree: string, gitPath: string) => {
       const full = path.resolve(worktree, gitPath)
       if (multi) return Workspace.displayPath(workspace, full)
-      return path.relative(Instance.directory, full)
+      const relative = path.relative(Instance.directory, full)
+      // The route and the real checkout can be different spellings of one directory, such as /var and /private/var.
+      if (relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative))
+        return gitPath.split(path.sep).join("/")
+      return relative.split(path.sep).join("/")
     }
 
     for (const folder of workspace.folders) {
@@ -425,11 +498,27 @@ export namespace File {
       seen.add(worktree)
 
       const diffOutput = (
-        await Process.run(["git", "-c", "core.quotepath=false", "diff", "--numstat", "HEAD"], {
+        await Process.run(["git", "-c", "core.quotepath=false", "diff", "--no-renames", "--numstat", "HEAD"], {
           cwd: worktree,
           nothrow: true,
         })
       ).text()
+
+      const names = (
+        await Process.run(["git", "-c", "core.quotepath=false", "diff", "--no-renames", "--name-status", "HEAD"], {
+          cwd: worktree,
+          nothrow: true,
+        })
+      ).text()
+      const statuses = new Map(
+        names
+          .trim()
+          .split("\n")
+          .map((line) => {
+            const [status, ...parts] = line.split("\t")
+            return [parts.join("\t"), status] as const
+          }),
+      )
 
       if (diffOutput.trim()) {
         for (const line of diffOutput.trim().split("\n")) {
@@ -439,7 +528,7 @@ export namespace File {
             path: display(worktree, filepath),
             added: added === "-" ? 0 : parseInt(added, 10),
             removed: removed === "-" ? 0 : parseInt(removed, 10),
-            status: "modified",
+            status: statuses.get(filepath) === "A" ? "added" : statuses.get(filepath) === "D" ? "deleted" : "modified",
           })
         }
       }
@@ -461,25 +550,6 @@ export namespace File {
             added: content.split("\n").length,
             removed: 0,
             status: "added",
-          })
-        }
-      }
-
-      const deletedOutput = (
-        await Process.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=D", "HEAD"], {
-          cwd: worktree,
-          nothrow: true,
-        })
-      ).text()
-
-      if (deletedOutput.trim()) {
-        for (const filepath of deletedOutput.trim().split("\n")) {
-          if (!filepath) continue
-          changedFiles.push({
-            path: display(worktree, filepath),
-            added: 0,
-            removed: 0, // Could get original line count but would require another git command
-            status: "deleted",
           })
         }
       }
@@ -510,20 +580,25 @@ export namespace File {
     // Fast path: check extension before any filesystem operations
     if (isImageByExtension(file)) {
       if (await Filesystem.isFile(full)) {
-        const content = (await fs.promises.readFile(full).catch(() => Buffer.alloc(0))).toString("base64")
+        const bytes = await fs.promises.readFile(full)
+        const content = bytes.toString("base64")
         const mimeType = getImageMimeType(file)
-        return { type: "text", content, mimeType, encoding: "base64" }
+        return {
+          type: "text",
+          content,
+          mimeType,
+          encoding: "base64",
+          checksum: createHash("sha1").update(bytes).digest("hex"),
+        }
       }
-      return { type: "text", content: "" }
+      return { type: "binary", content: "", missing: true }
     }
 
     if (isBinaryByExtension(file)) {
       return { type: "binary", content: "" }
     }
 
-    if (!(await Filesystem.isFile(full))) {
-      return { type: "text", content: "" }
-    }
+    const missing = !(await Filesystem.isFile(full))
 
     const mimeType = Filesystem.mimeType(full)
     const encode = await shouldEncode(mimeType)
@@ -549,20 +624,30 @@ export namespace File {
     if (!isGlobalPlan && (worktree ?? (project.vcs === "git" ? Instance.worktree : undefined))) {
       const cwd = worktree ?? Instance.worktree
       const rel = path.relative(cwd, full).replace(/\\/g, "/")
-      let diff = (await Process.run(["git", "diff", rel], { cwd, nothrow: true })).text()
-      if (!diff.trim()) diff = (await Process.run(["git", "diff", "--staged", rel], { cwd, nothrow: true })).text()
-      if (diff.trim()) {
-        const original = (await Process.run(["git", "show", `HEAD:${rel}`], { cwd, nothrow: true })).text()
-        const patch = structuredPatch(file, file, original, content, "old", "new", {
-          context: Infinity,
-          ignoreWhitespace: true,
-        })
-        const diff = formatPatch(patch)
-        // File names were passed above, so structuredPatch always includes them (diff 9 types mark them optional)
-        return { type: "text", content, checksum, patch: { ...patch, oldFileName: file, newFileName: file }, diff }
+      const [head, index] = await Promise.all([
+        Process.run(["git", "show", `HEAD:${rel}`], { cwd, nothrow: true }).then((result) =>
+          result.exitCode === 0 ? result.text() : "",
+        ),
+        Process.run(["git", "show", `:${rel}`], { cwd, nothrow: true }).then((result) =>
+          result.exitCode === 0 ? result.text() : "",
+        ),
+      ])
+      const baselines = { head, index }
+      if (head !== content) {
+        const patch = structuredPatch(file, file, head, content, "HEAD", "working", { context: Infinity })
+        return {
+          type: "text",
+          content,
+          checksum,
+          baselines,
+          missing,
+          patch: { ...patch, oldFileName: file, newFileName: file },
+          diff: formatPatch(patch),
+        }
       }
+      return { type: "text", content, checksum, baselines, missing }
     }
-    return { type: "text", content, checksum }
+    return { type: "text", content, checksum, missing }
   }
 
   /** Resolves the list input to an absolute directory; undefined for the virtual multi-root top level */

@@ -14,6 +14,7 @@ import { errors } from "../error"
 import { Filesystem } from "@merakcode/util/filesystem"
 import { Checkout } from "../../../infra/project/checkout"
 import { defer } from "@merakcode/util/defer"
+import { Lock } from "../../../infra/concurrency/lock"
 
 /**
  * Multi-root write/create/delete/rename: the input may be an absolute UI path, `folderName/rel`, or relative to the
@@ -28,6 +29,24 @@ function resolveInWorkspace(input: string): string | undefined {
 
 export const FileRoutes = lazy(() =>
   new Hono()
+    .get(
+      "/file/identity",
+      describeRoute({
+        summary: "Resolve file identity",
+        description:
+          "Resolve a file's actual directory and path spelling without conflating case-sensitive files. The workspace root must exist and be a directory; missing file suffixes retain their identity.",
+        operationId: "file.identity",
+        responses: {
+          200: {
+            description: "Resolved file identity",
+            content: { "application/json": { schema: resolver(File.Identity) } },
+          },
+          ...errors(400, 500),
+        },
+      }),
+      validator("query", z.object({ path: z.string() })),
+      async (c) => c.json(await File.identity(c.req.valid("query").path)),
+    )
     .get(
       "/find",
       describeRoute({
@@ -226,12 +245,13 @@ export const FileRoutes = lazy(() =>
       "/file/content",
       describeRoute({
         summary: "Write file",
-        description: "Write content to a file. Supports optional checksum for optimistic locking.",
+        description:
+          "Write content to a file. Supports optional checksum and expected checkout for optimistic locking.",
         operationId: "file.write",
         responses: {
           200: {
             description: "File written successfully",
-            content: { "application/json": { schema: resolver(z.object({ ok: z.boolean() })) } },
+            content: { "application/json": { schema: resolver(z.object({ ok: z.boolean(), checksum: z.string() })) } },
           },
           ...errors(400),
           409: {
@@ -239,7 +259,11 @@ export const FileRoutes = lazy(() =>
             content: {
               "application/json": {
                 schema: resolver(
-                  z.union([Checkout.BlockedError.Schema, z.object({ error: z.string(), currentChecksum: z.string() })]),
+                  z.union([
+                    Checkout.BlockedError.Schema,
+                    Checkout.StaleError.Schema,
+                    z.object({ error: z.string(), currentChecksum: z.string() }),
+                  ]),
                 ),
               },
             },
@@ -252,27 +276,35 @@ export const FileRoutes = lazy(() =>
           path: z.string(),
           content: z.string(),
           checksum: z.string().optional(),
+          expectedCheckout: z.string().nullable().optional(),
         }),
       ),
       async (c) => {
-        const { path, content, checksum } = c.req.valid("json")
+        const { path, content, checksum, expectedCheckout } = c.req.valid("json")
         const abs = resolveInWorkspace(path)
         if (!abs) {
           return c.json({ error: "path outside project" }, 400)
         }
+        using _file = await Lock.write(`file-write:${process.platform === "win32" ? abs.toLowerCase() : abs}`)
         const folder = Workspace.resolveFolder(Instance.workspace, abs)
-        using _ = defer(
-          Checkout.hold(folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree),
+        const directory = folder ? (folder.worktree === "/" ? folder.path : folder.worktree) : Instance.worktree
+        return await Checkout.write(
+          async () => {
+            if (checksum) {
+              const current = await Filesystem.readText(abs).catch(() => "")
+              const currentChecksum = createHash("sha1").update(current).digest("hex")
+              if (currentChecksum !== checksum) {
+                return c.json({ error: "conflict", currentChecksum }, 409)
+              }
+            }
+            if (expectedCheckout !== undefined) await Checkout.assert(expectedCheckout, directory)
+            await Filesystem.write(abs, content)
+            if (expectedCheckout !== undefined) await Checkout.assert(expectedCheckout, directory)
+            return c.json({ ok: true, checksum: createHash("sha1").update(content).digest("hex") })
+          },
+          directory,
+          expectedCheckout,
         )
-        if (checksum) {
-          const current = await Filesystem.readText(abs).catch(() => "")
-          const currentChecksum = createHash("sha1").update(current).digest("hex")
-          if (currentChecksum !== checksum) {
-            return c.json({ error: "conflict", currentChecksum }, 409)
-          }
-        }
-        await Filesystem.write(abs, content)
-        return c.json({ ok: true })
       },
     )
     .delete(

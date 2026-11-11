@@ -1,12 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash, randomUUID } from "node:crypto"
-import { realpathSync } from "node:fs"
+import { realpathSync, type BigIntStats } from "node:fs"
+import fs from "node:fs/promises"
 import path from "node:path"
 import z from "zod"
 import { NamedError } from "@merakcode/util/error"
 import { Log } from "@merakcode/log/logger"
 import { Process } from "@merakcode/util/process"
 import { Instance } from "./instance"
+import { Lock } from "../concurrency/lock"
 
 export namespace Checkout {
   export type Identity = {
@@ -64,7 +66,7 @@ export namespace Checkout {
       }
     })()
     const normalized = path.normalize(real)
-    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized
+    const key = normalized
     const known = entries.get(key)
     if (known) return known
     const next: Entry = {
@@ -105,6 +107,42 @@ export namespace Checkout {
     } finally {
       release()
     }
+  }
+
+  /** Git's per-worktree index lock excludes external checkout while a file save is in progress. */
+  export async function write<T>(
+    task: () => Promise<T>,
+    directory: string,
+    expectedCheckout?: string | null,
+  ): Promise<T> {
+    const location = entry(directory).directory
+    using _ = await Lock.write(`checkout-file-write:${location}`)
+    return await activity(async () => {
+      const result = await Process.run(["git", "rev-parse", "--path-format=absolute", "--git-path", "index"], {
+        cwd: location,
+        nothrow: true,
+      })
+      if (result.exitCode !== 0) {
+        if (expectedCheckout != null)
+          throw new BlockedError({ reason: "git_operation", message: "Cannot locate the checkout index" })
+        return task()
+      }
+      const lock = `${result.text().trim()}.lock`
+      const handle = await fs.open(lock, "wx").catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error
+        throw new BlockedError({ reason: "git_operation", message: "Another Git operation holds the checkout index" })
+      })
+      let owned: BigIntStats | undefined
+      try {
+        // Number inodes are often 0 on Windows, so a replaced lock would look identical and be deleted.
+        owned = await handle.stat({ bigint: true })
+        return await task()
+      } finally {
+        await handle.close()
+        const current = await fs.stat(lock, { bigint: true }).catch(() => undefined)
+        if (owned && current && current.dev === owned.dev && current.ino === owned.ino) await fs.unlink(lock)
+      }
+    }, location)
   }
 
   export async function exclusive<T>(task: () => T | Promise<T>, directory = Instance.worktree): Promise<T> {

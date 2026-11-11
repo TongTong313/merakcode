@@ -35,7 +35,13 @@ beforeAll(async () => {
   merak = await createMerakCode({ cwd: env.project, executablePath: engine, env: env.env })
 }, 120_000)
 
-beforeEach(() => {
+beforeEach(async () => {
+  await rm(path.join(env.project, ".git", "hooks", "post-checkout"), { force: true }).catch(() => {})
+  await expect
+    .poll(async () => (await merak.client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason ?? null, {
+      timeout: 30_000,
+    })
+    .not.toBe("busy")
   git("switch", "--quiet", "main")
 })
 
@@ -92,7 +98,7 @@ test("refuses to switch while a direct session shell is running", async () => {
     sessionID: session.id,
     agent: "build",
     sessionMode: "auto",
-    command: 'node -e "setTimeout(() => {}, 30000)"',
+    command: 'node -e "setTimeout(() => {}, 15000)"',
   })
   try {
     await expect
@@ -109,10 +115,18 @@ test("refuses to switch while a direct session shell is running", async () => {
     expect(switched.response.status).toBe(409)
     expect((await client.vcs.get({}, { throwOnError: true })).data.branch).toBe("main")
   } finally {
-    await client.session.abort({ sessionID: session.id })
-    await running
+    await client.session.abort({ sessionID: session.id }).catch(() => {})
+    await Promise.race([
+      Promise.resolve(running).catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, 20_000)),
+    ])
+    await expect
+      .poll(async () => (await client.vcs.branchOptions({}, { throwOnError: true })).data.blocked?.reason ?? null, {
+        timeout: 20_000,
+      })
+      .not.toBe("busy")
   }
-}, 120_000)
+}, 90_000)
 
 test("keeps a background command protected after its foreground turn finishes", async () => {
   const { client } = merak
@@ -537,12 +551,21 @@ test("reports a background process start failure once and releases its checkout"
       background?.type === "tool" && background.state.status === "completed" && background.state.metadata.status,
     ).toBe("failed")
     expect(notifications).toBe(1)
+    await expect
+      .poll(
+        async () => {
+          const blocked = (await failingMerak.client.vcs.branchOptions({}, { throwOnError: true })).data.blocked
+          return blocked ?? null
+        },
+        { timeout: 10_000 },
+      )
+      .toBeNull()
     const options = (await failingMerak.client.vcs.branchOptions({}, { throwOnError: true })).data
     const result = await failingMerak.client.vcs.switchBranch({
       branch: "dev",
       expectedCheckout: options.current!.checkout,
     })
-    expect(result.response.status).toBe(200)
+    expect(result.response.status, JSON.stringify(result.error)).toBe(200)
   } finally {
     reply = () => ({ text: "OK" })
     await failingMerak.close()

@@ -2,18 +2,21 @@ import type { VcsBranchOptions } from "@merakcode/sdk/client"
 import { isMerakCodeError } from "@merakcode/sdk/errors"
 import { createStore } from "solid-js/store"
 import { t } from "../i18n"
-import { sameDir } from "../lib/route"
 import { call, client } from "./client"
+import { restoreDraftProtection } from "../features/code/draft"
+import { restoreReviewProtection } from "../features/review/protection"
+import { confirmDirectory } from "../features/code/identity"
 
 type Checkout = NonNullable<VcsBranchOptions["current"]>
 type Entry = { options?: VcsBranchOptions; loading: boolean; switching: boolean; error?: GitOperationError }
 type Change = { branch: string | null; head: string | null; checkout: string | null; branchChanged: boolean }
+type BranchRequest = { id: number; pending?: Promise<VcsBranchOptions | undefined> }
 const [entries, setEntries] = createStore<Record<string, Entry>>({})
 const [identities, setIdentities] = createStore<Record<string, Checkout | null>>({})
 const [dirty, setDirty] = createStore<Record<string, Record<string, number>>>({})
 const [aliases, setAliases] = createStore<Record<string, string>>({})
 const revisions = new Map<string, number>()
-const requests = new Map<string, number>()
+const requests = new Map<string, BranchRequest>()
 let nextRequest = 0
 const listeners = new Set<(directory: string, change: Change) => void>()
 
@@ -54,9 +57,29 @@ export const gitState = (directory: string) => entries[gitDirectory(directory)]
 export const checkoutOf = (directory: string) => identities[gitDirectory(directory)]?.checkout
 export const identityOf = (directory: string) => identities[gitDirectory(directory)]
 
+/** Compare confirmed aliases without guessing whether a filesystem folds case. */
+export function sameDirectory(a: string, b: string) {
+  const normalize = (value: string) =>
+    gitDirectory(value)
+      .replace(/\\/g, "/")
+      .replace(/(.)\/+$/, "$1")
+  return normalize(a) === normalize(b)
+}
+
+/** Resolve the checkout root without recursively restoring editor drafts. */
+export async function resolveDirectory(directory: string) {
+  if (aliases[directory]) return aliases[directory]
+  const options = await call(client(directory).vcs.branchOptions())
+  await confirmDirectory(directory, options)
+  associate(directory, options.directory)
+  return options.directory
+}
+
 /** Editor buffers and comment drafts outlive their views, and register their own unsaved work. */
 export function registerDirty(directory: string, owner: string, count: number) {
-  setDirty(gitDirectory(directory), (previous) => ({ ...previous, [owner]: count }))
+  const key = gitDirectory(directory)
+  if (count > 0) return void setDirty(key, (previous) => ({ ...previous, [owner]: count }))
+  if (dirty[key]) setDirty(key, owner, undefined!)
 }
 
 export function unsavedReason(directory: string) {
@@ -100,7 +123,7 @@ function associate(directory: string, canonical: string) {
   if (directory !== canonical && entries[directory] && !entries[canonical]) setEntries(canonical, entries[directory])
   setAliases(directory, canonical)
   for (const [alias, target] of Object.entries(aliases)) {
-    if (!sameDir(target, canonical) && !sameDir(alias, canonical)) continue
+    if (target !== canonical && alias !== directory) continue
     setAliases(alias, canonical)
     const counts = dirty[alias]
     if (counts && alias !== canonical) {
@@ -117,12 +140,26 @@ function associate(directory: string, canonical: string) {
   }
 }
 
-export async function refreshBranches(directory: string) {
+export function refreshBranches(
+  directory: string,
+  options?: { force?: boolean },
+): Promise<VcsBranchOptions | undefined> {
   const key = gitDirectory(directory)
-  const request = ++nextRequest
+  const active = requests.get(key)?.pending
+  // Opening the picker must not reuse a lookup that started before an out-of-band `git branch` create.
+  if (active && !options?.force) return active
+  const request: BranchRequest = { id: ++nextRequest }
+  requests.set(key, request)
+  request.pending = loadBranches(directory, request).finally(() => {
+    if (requests.get(key) === request) request.pending = undefined
+  })
+  return request.pending
+}
+
+async function loadBranches(directory: string, request: BranchRequest): Promise<VcsBranchOptions | undefined> {
+  const key = gitDirectory(directory)
   const revision = revisions.get(key) ?? 0
   const before = checkoutOf(directory)
-  requests.set(key, request)
   setEntries(key, (previous) => ({
     ...previous,
     loading: true,
@@ -131,17 +168,30 @@ export async function refreshBranches(directory: string) {
   }))
   try {
     const options = await call(client(directory).vcs.branchOptions())
-    if (requests.get(key) !== request) return
+    await confirmDirectory(directory, options)
+    const next = requests.get(key)
+    if (next && next.id > request.id) return next.pending ?? gitState(key)?.options
     const targetKey = gitDirectory(options.directory)
-    if ((requests.get(targetKey) ?? 0) > request) return
+    const targetRequest = requests.get(targetKey)
+    if (targetRequest && targetRequest.id > request.id) {
+      associate(directory, options.directory)
+      return targetRequest.pending ?? gitState(targetKey)?.options
+    }
     const current = identities[targetKey] ?? identities[key]
     if (
       (revisions.get(key) ?? 0) !== revision ||
       (current?.checkout !== before && options.current?.checkout !== current?.checkout)
     )
-      return refreshBranches(directory)
+      return loadBranches(directory, request)
     associate(directory, options.directory)
     const target = gitDirectory(directory)
+    requests.set(target, request)
+    await restoreDraftProtection(directory)
+    if (target !== directory) await restoreDraftProtection(target)
+    await restoreReviewProtection(target)
+    const latest = requests.get(target)
+    if (latest && latest.id > request.id) return latest.pending ?? gitState(target)?.options
+    if ((revisions.get(key) ?? 0) !== revision) return loadBranches(directory, request)
     updateCheckout(target, options.current)
     setEntries(target, (previous) => ({
       ...previous,
@@ -152,7 +202,9 @@ export async function refreshBranches(directory: string) {
     }))
     return options
   } catch (error) {
-    if (requests.get(key) === request) setEntries(gitDirectory(directory), { loading: false, error: gitFailure(error) })
+    const target = gitDirectory(directory)
+    if (requests.get(key) === request && (requests.get(target)?.id ?? 0) <= request.id)
+      setEntries(target, { loading: false, error: gitFailure(error) })
   }
 }
 
@@ -161,6 +213,9 @@ export const switching = (directory: string) => !!gitState(directory)?.switching
 export function switchReason(directory: string) {
   const local = unsavedReason(directory)
   if (local) return local
+  const entry = gitState(directory)
+  if (entry?.error) return entry.error.message
+  if (!entry?.options || entry.loading) return t("git.loading")
   const blocked = gitState(directory)?.options?.blocked
   if (blocked) return t(`git.blocked.${blocked.reason}`)
 }

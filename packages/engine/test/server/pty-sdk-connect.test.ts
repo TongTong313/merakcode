@@ -8,6 +8,43 @@ import { WebSocketServer } from "ws"
 
 Log.init({ print: false })
 
+test("the SDK reports a normal remote close and rejects later terminal input", async () => {
+  const server = new WebSocketServer({ host: "127.0.0.1", port: 0 })
+  const received: string[] = []
+  server.on("connection", (socket) =>
+    socket.on("message", (data) => {
+      received.push(data.toString())
+      socket.close(1000, "transport maintenance")
+    }),
+  )
+  await once(server, "listening")
+  const address = server.address()
+  if (typeof address === "string" || !address) throw new Error("Expected a TCP listener")
+  const closed: number[] = []
+  const errors: Event[] = []
+  const connection = connectPty({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    ptyID: "normal-close",
+    onData() {},
+    onClose: (event) => closed.push(event.code),
+    onError: (event) => errors.push(event),
+  })
+  try {
+    connection.send("first")
+    await expect.poll(() => received).toEqual(["first"])
+    await expect.poll(() => closed).toEqual([1000])
+    expect(errors).toEqual([])
+    expect(connection.send("second")).toBe(false)
+    connection.close()
+    expect(connection.send("third")).toBe(false)
+    expect(received).toEqual(["first"])
+  } finally {
+    connection.close()
+    for (const socket of server.clients) socket.terminate()
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  }
+})
+
 test("the SDK preserves terminal input order when onOpen sends more input", async () => {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 })
   server.on("connection", (socket) => socket.on("message", (data) => socket.send(data.toString())))

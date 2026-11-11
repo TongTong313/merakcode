@@ -111,7 +111,7 @@ export namespace Filesystem {
    * Whether child is inside the parent directory tree. Both are resolved first so that mixing `/tmp` and `C:\\...`
    * on Windows does not give a wrong answer. Paths on different drives never contain each other.
    */
-  export function contains(parent: string, child: string) {
+  function containsLexical(parent: string, child: string) {
     const a = resolve(parent)
     const b = resolve(child)
     if (process.platform === "win32") {
@@ -125,6 +125,11 @@ export namespace Filesystem {
     }
     const rel = relative(a, b)
     return !rel.startsWith("..") && rel !== ".."
+  }
+
+  export function contains(parent: string, child: string) {
+    if (containsLexical(parent, child)) return true
+    return containsLexical(resolvedDirectory(parent), resolvedDirectory(child))
   }
 
   /** Stops once current and stop are the same directory; slash or drive-letter case differences do not count */
@@ -216,6 +221,21 @@ export namespace Filesystem {
   }
 
   /**
+   * Filesystem identity of a directory, so `/var` and `/private/var`, or a Windows 8.3 name and its long path, compare
+   * equal. A missing path stays lexical, so a removed symlink is not remembered as its old target.
+   */
+  export function resolvedDirectory(directory: string): string {
+    const key = canonicalDirectory(directory)
+    let current = normalize(directory)
+    try {
+      current = normalize(realpathSync.native(current))
+    } catch {
+      return key
+    }
+    return canonicalDirectory(current)
+  }
+
+  /**
    * Whether two directory strings point to the same directory, ignoring drive-letter case (D:\ vs d:\), slash
    * direction and trailing slashes (same rules as canonicalDirectory). Used for filtering by directory, such as the
    * session list, so clients that spell the same directory differently still match.
@@ -225,7 +245,8 @@ export namespace Filesystem {
     // Old sessions may lack the directory field (Storage.read does not validate), so either side can be
     // undefined/null at runtime. Fall back to strict equality so canonicalDirectory never calls .replace on it.
     if (!a || !b) return a === b
-    return canonicalDirectory(a) === canonicalDirectory(b)
+    if (canonicalDirectory(a) === canonicalDirectory(b)) return true
+    return resolvedDirectory(a) === resolvedDirectory(b)
   }
 
   /**

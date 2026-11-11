@@ -4,7 +4,16 @@ import { t } from "../../i18n"
 import { gitDirectory } from "../../state/git"
 import { toast } from "../../ui/toast"
 import { send } from "../conversation/send"
-import { clearComments, commentMessage, commentsOf, removeComment, revealComment, type Comment } from "./state"
+import {
+  clearComments,
+  commentMessage,
+  commentsOf,
+  remainingComments,
+  removeComment,
+  revealComment,
+  type Comment,
+} from "./state"
+import { panels } from "../panel/workspace"
 import { commentLocation } from "./selection"
 
 const [sending, setSending] = createStore<Record<string, boolean>>({})
@@ -20,11 +29,21 @@ export async function submitComments(sessionID: string | undefined, directory: s
     rows: comment.rows.map((row) => ({ ...row })),
   }))
   if (!submitted.length || submitted.some((comment) => comment.stale)) return
+  const owner = panels()
+  const source = owner?.state.tabs.find((tab) => tab.id === owner.state.selected && tab.kind === "review")?.id
   const key = keyOf(sessionID, directory)
   setSending(key, true)
   try {
     await send(sessionID, directory, { text: commentMessage(submitted), files: [] })
-    clearComments(sessionID, submitted, directory)
+    if (!source || (panels() === owner && owner?.state.selected === source && !owner.state.chooser)) {
+      clearComments(sessionID, submitted, directory)
+    }
+    if (source && owner?.state.tabs.some((tab) => tab.id === source)) {
+      const current = (owner.view(source).comments ?? {}) as Record<string, Comment[]>
+      await owner.patchView(source, {
+        comments: { ...current, [sessionID]: remainingComments(current[sessionID] ?? [], submitted, directory) },
+      })
+    }
   } catch (error) {
     toast({ kind: "error", title: t("error.request", { message: (error as Error).message }), error })
   } finally {

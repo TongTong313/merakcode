@@ -540,6 +540,16 @@ export const guard: Plugin = async ({ directory, $ }) => {
 
 终端的实时连接由 `connectPty` 提供。先用 `client.pty.create()` 创建 PTY，再从同源页面连接；`PtyConnectionOptions` 设置引擎地址、PTY ID、目录、回放游标和回调，返回的 `PtyConnection` 可发送输入并关闭连接。打开前发送的输入会排队，文本和二进制输出分别交给 `onData`。浏览器 WebSocket 不能自行添加 HTTP 鉴权头；带口令的桌面宿主需在连接升级时附加鉴权。
 
+`onClose` 报告连接关闭，包括没有错误事件的正常关闭。PTY 此时可能仍在运行。调用方可使用原 PTY ID 重新连接。连接正在关闭或已经关闭时，`send` 返回 `false`。返回 `true` 只表示本地接受输入，不代表 PTY 已经处理输入。调用方应保留被拒绝的输入以供重试，不应自动重放已接受的命令。
+
+终端可以通过 `owner: { sessionID, tabID }` 绑定会话与标签；删除所属会话会停止对应终端。带归属的终端需要至少每 90 秒通过 `client.pty.update({ ptyID })` 续约，桌面客户端每 20 秒续约；失联后引擎回收进程。`client.pty.remove({ ptyID })` 等待受管本地进程退出后才返回成功。关闭 `PtyConnection` 只断开连接，不停止 PTY。文件 `client.file.read()` 返回的 `baselines.head` 与 `baselines.index` 分别是已提交和暂存正文，`content` 是磁盘正文；`missing` 表示文件已不存在。
+
+`client.pty.closeOwned({ owner: { tabID, sessionID } })` 按稳定标签归属关闭终端，并拒绝该标签的迟到创建；新对话尚未生成会话 ID 时可以省略 `sessionID`。
+
+`client.file.identity({ path })` 返回实际工作目录和文件拼写。客户端应共同使用 `directory` 与 `path` 识别文件。接口通过磁盘信息区分大小写别名与不同文件，不按操作系统推测卷规则。缺失文件保留请求拼写，客户端仍可恢复草稿。
+
+`client.file.write()` 成功后返回本次写入正文的 `checksum`，下次保存可直接携带该值检测并发修改。保存期间，引擎持有 Git 索引锁，并在写入前后核对 `expectedCheckout`。分支变化或外部 Git 操作导致的冲突返回 409，客户端应保留草稿。图片读取使用 `encoding: "base64"` 并提供版本校验值；文本编辑器应将编码内容作为只读预览，缺失文件通过 `missing` 标记。
+
 ```ts
 import { connectPty, createMerakCodeClient, type PtyConnection, type PtyConnectionOptions } from "@merakcode/sdk/client"
 

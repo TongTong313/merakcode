@@ -74,6 +74,8 @@ import type {
   ExperimentalResourceListResponses,
   FileDeleteErrors,
   FileDeleteResponses,
+  FileIdentityErrors,
+  FileIdentityResponses,
   FileListErrors,
   FileListResponses,
   FilePartInput,
@@ -197,6 +199,8 @@ import type {
   ProviderRelayDiscoverResponses,
   ProviderVerifyErrors,
   ProviderVerifyResponses,
+  PtyCloseOwnedErrors,
+  PtyCloseOwnedResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyCreateErrors,
@@ -205,6 +209,7 @@ import type {
   PtyGetResponses,
   PtyListErrors,
   PtyListResponses,
+  PtyOwner,
   PtyRemoveErrors,
   PtyRemoveResponses,
   PtyUpdateErrors,
@@ -1817,13 +1822,14 @@ export class File_ extends HeyApiClient {
   /**
    * Write file
    *
-   * Write content to a file. Supports optional checksum for optimistic locking.
+   * Write content to a file. Supports optional checksum and expected checkout for optimistic locking.
    */
   public write<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       checksum?: string
       content: string
+      expectedCheckout?: string | null
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1836,6 +1842,7 @@ export class File_ extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "checksum" },
             { in: "body", key: "content" },
+            { in: "body", key: "expectedCheckout" },
             { in: "body", key: "path" },
           ],
         },
@@ -1850,6 +1857,36 @@ export class File_ extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Resolve file identity
+   *
+   * Resolve a file's actual directory and path spelling without conflating case-sensitive files. The workspace root must exist and be a directory; missing file suffixes retain their identity.
+   */
+  public identity<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<FileIdentityResponses, FileIdentityErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FileIdentityResponses, FileIdentityErrors, ThrowOnError>({
+      url: "/file/identity",
+      ...options,
+      ...params,
     })
   }
 
@@ -3454,6 +3491,7 @@ export class Pty extends HeyApiClient {
       env?: {
         [key: string]: string
       }
+      owner?: PtyOwner
       size?: {
         cols: number
         rows: number
@@ -3472,6 +3510,7 @@ export class Pty extends HeyApiClient {
             { in: "body", key: "command" },
             { in: "body", key: "cwd" },
             { in: "body", key: "env" },
+            { in: "body", key: "owner" },
             { in: "body", key: "size" },
             { in: "body", key: "title" },
           ],
@@ -3480,6 +3519,41 @@ export class Pty extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PtyCreateResponses, PtyCreateErrors, ThrowOnError>({
       url: "/pty",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Close a terminal tab
+   *
+   * Stop the tab's managed terminal processes and reject delayed creation for the closed owner.
+   */
+  public closeOwned<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      owner: PtyOwner
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<PtyCloseOwnedResponses, PtyCloseOwnedErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "owner" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PtyCloseOwnedResponses, PtyCloseOwnedErrors, ThrowOnError>({
+      url: "/pty/close-owned",
       ...options,
       ...params,
       headers: {
@@ -3559,6 +3633,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      owner?: PtyOwner
       size?: {
         cols: number
         rows: number
@@ -3574,6 +3649,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "body", key: "owner" },
             { in: "body", key: "size" },
             { in: "body", key: "title" },
           ],

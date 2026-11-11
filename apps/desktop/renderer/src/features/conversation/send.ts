@@ -47,7 +47,8 @@ export async function send(sessionID: string, directory: string, submission: Sub
   if (mode !== undefined) await setPermissionLevel(sessionID, directory, mode)
   await waitForPermissionLevel(sessionID)
   if (startsSessionPlan(submission.text)) {
-    if (!(await buffersFor(directory).savePlan(sessionID))) throw new Error(t("plan.saveFirst"))
+    if (!(await buffersFor(directory).savePlan(sessionID)))
+      throw new MerakCodeError({ code: "MRK-4020", message: t("plan.saveFirst") })
   }
   const info = session(sessionID)
   const dir = info?.directory ?? directory

@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import path from "path"
 import { Global } from "@merakcode/engine/infra/global/index"
@@ -11,6 +12,17 @@ const root = path.resolve("/work/demo")
 const home = path.resolve("/home/dev")
 const at = (...parts: string[]) => path.join(root, ...parts)
 const ctx = { workspace: [root], home }
+
+/** Same parent walk as PermissionPolicy when /home is a symlink, as on GitHub-hosted macOS. */
+function physical(file: string): string {
+  const absolute = path.resolve(file)
+  try {
+    return realpathSync.native(absolute)
+  } catch {
+    const parent = path.dirname(absolute)
+    return parent === absolute ? absolute : path.join(physical(parent), path.basename(absolute))
+  }
+}
 
 const decide = (mode: PermissionPolicy.Mode, ask: PermissionPolicy.Ask, user: PermissionNext.Ruleset = []) =>
   PermissionNext.evaluate(ask.permission, ask.pattern, PermissionPolicy.ruleset(mode, user)).action
@@ -75,7 +87,7 @@ describe("file operation classification", () => {
   test("offers grant scopes: trust this file or this directory for the session", () => {
     const ask = PermissionPolicy.file({ ...ctx, op: "read", path: path.join(home, "docs", "a.md") })
     expect(ask.grants.map((grant) => grant.scope)).toEqual(["file", "directory"])
-    expect(ask.grants[1]!.pattern).toBe(PermissionNext.normalizePath(path.join(home, "docs")) + "/*")
+    expect(ask.grants[1]!.pattern).toBe(PermissionNext.normalizePath(physical(path.join(home, "docs"))) + "/*")
   })
 })
 

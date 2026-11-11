@@ -104,27 +104,37 @@ export async function containProcess(
             throw await failure("QueryInformationJobObject")
           ids = Buffer.alloc(ids.length * 2)
         }
-        for (let index = 0; index < ids.readUInt32LE(4); index++) {
-          const offset = 8 + index * width
-          const pid = width === 8 ? Number(ids.readBigUInt64LE(offset)) : ids.readUInt32LE(offset)
-          const handle = lib.call("kernel32.dll", "OpenProcess", ["u32", "i32", "u32"], "ptr", [0x101000, 0, pid])
-          if (handle) {
-            const member = Buffer.alloc(4)
-            if (
-              !lib.call("kernel32.dll", "IsProcessInJob", ["ptr", "ptr", "ptr"], "i32", [
-                handle,
-                job,
-                lib.pointer(member),
-              ])
-            ) {
-              const error = await failure("IsProcessInJob")
-              lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
-              throw error
-            }
-            if (member.readInt32LE()) processes.push(handle)
-            else lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
-          } else if (Number(lib.call("kernel32.dll", "GetLastError", [], "u32", [])) !== 87)
-            throw await failure("OpenProcess")
+        const assigned = ids.readUInt32LE(0)
+        const listed = ids.readUInt32LE(4)
+        // A process that cannot be queried is omitted from the list. Do not treat that as an empty tree.
+        if (assigned > listed) throw await failure("QueryInformationJobObject")
+        // SeDebugPrivilege ignores a process DACL. Drop it so a denied query stays unconfirmed.
+        const resumeDebug = suspendDebugPrivilege(lib)
+        try {
+          for (let index = 0; index < listed; index++) {
+            const offset = 8 + index * width
+            const pid = width === 8 ? Number(ids.readBigUInt64LE(offset)) : ids.readUInt32LE(offset)
+            const handle = lib.call("kernel32.dll", "OpenProcess", ["u32", "i32", "u32"], "ptr", [0x101000, 0, pid])
+            if (handle) {
+              const member = Buffer.alloc(4)
+              if (
+                !lib.call("kernel32.dll", "IsProcessInJob", ["ptr", "ptr", "ptr"], "i32", [
+                  handle,
+                  job,
+                  lib.pointer(member),
+                ])
+              ) {
+                const error = await failure("IsProcessInJob")
+                lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
+                throw error
+              }
+              if (member.readInt32LE()) processes.push(handle)
+              else lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
+            } else if (Number(lib.call("kernel32.dll", "GetLastError", [], "u32", [])) !== 87)
+              throw await failure("OpenProcess")
+          }
+        } finally {
+          resumeDebug()
         }
         if (!lib.call("kernel32.dll", "TerminateJobObject", ["ptr", "u32"], "i32", [job, 1]))
           throw await failure("TerminateJobObject")
@@ -153,13 +163,71 @@ export async function containProcess(
         }
       } finally {
         for (const handle of processes) lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
-        // Keep the job queryable after a failed stop, so a later receipt can confirm the complete tree.
+        // Close the job only after the process handles, and only once the whole tree is confirmed.
+        // A failed query must leave the job open so a later receipt can confirm it.
         if (confirmed) lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
       }
     }
   } catch (error) {
     lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [job])
     throw error
+  }
+}
+
+/** Disables SeDebugPrivilege for this process until the returned function runs. A missing privilege is unchanged. */
+function suspendDebugPrivilege(lib: NonNullable<ReturnType<typeof native>>) {
+  const none = () => {}
+  const width = process.arch === "ia32" ? 4 : 8
+  const token = Buffer.alloc(width)
+  const current = lib.call("kernel32.dll", "GetCurrentProcess", [], "ptr", [])
+  if (!lib.call("advapi32.dll", "OpenProcessToken", ["ptr", "u32", "ptr"], "i32", [current, 0x28, lib.pointer(token)]))
+    return none
+  const handle = width === 8 ? token.readBigUInt64LE(0) : BigInt(token.readUInt32LE(0))
+  const close = () => lib.call("kernel32.dll", "CloseHandle", ["ptr"], "i32", [handle])
+  const name = Buffer.from("SeDebugPrivilege\0", "utf16le")
+  const luid = Buffer.alloc(8)
+  if (
+    !lib.call("advapi32.dll", "LookupPrivilegeValueW", ["ptr", "ptr", "ptr"], "i32", [
+      0n,
+      lib.pointer(name),
+      lib.pointer(luid),
+    ])
+  ) {
+    close()
+    return none
+  }
+  const next = Buffer.alloc(16)
+  next.writeUInt32LE(1, 0)
+  luid.copy(next, 4)
+  const previous = Buffer.alloc(16)
+  const returned = Buffer.alloc(4)
+  if (
+    !lib.call("advapi32.dll", "AdjustTokenPrivileges", ["ptr", "i32", "ptr", "u32", "ptr", "ptr"], "i32", [
+      handle,
+      0,
+      lib.pointer(next),
+      previous.length,
+      lib.pointer(previous),
+      lib.pointer(returned),
+    ])
+  ) {
+    close()
+    return none
+  }
+  let restored = false
+  return () => {
+    if (restored) return
+    restored = true
+    if (previous.readUInt32LE(0) > 0)
+      lib.call("advapi32.dll", "AdjustTokenPrivileges", ["ptr", "i32", "ptr", "u32", "ptr", "ptr"], "i32", [
+        handle,
+        0,
+        lib.pointer(previous),
+        0,
+        0n,
+        0n,
+      ])
+    close()
   }
 }
 

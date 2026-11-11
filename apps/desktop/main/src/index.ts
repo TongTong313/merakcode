@@ -90,6 +90,7 @@ function main() {
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "backend", message, extra),
   })
   const windows = new Windows({
+    prepareWindow: (win) => browser.closeAll(win),
     preload: path.join(here, "preload.cjs"),
     settings,
     endpoint: () => backend.endpoint,
@@ -184,7 +185,10 @@ function main() {
     },
   }
 
-  const browser = new BrowserPanel((win, name, ...args) => windows.send(win, name, ...args))
+  const browser = new BrowserPanel(
+    (win, name, ...args) => windows.send(win, name, ...args),
+    () => settings.locale,
+  )
 
   Auth.install(session.defaultSession, () => backend.endpoint)
   // Grant only notifications, clipboard writes and fullscreen; deny everything else (camera, location, ...)
@@ -249,12 +253,27 @@ function main() {
     })
   let quitting = false
   app.on("before-quit", (event) => {
-    event.preventDefault()
-    if (quitting) return
+    if (quitting) {
+      log.info("quit already pending")
+      event.preventDefault()
+      return
+    }
     quitting = true
-    tray.destroy()
-    void Promise.allSettled([backend.stop()])
-      .then(() => Log.close())
-      .finally(() => app.exit(0))
+    event.preventDefault()
+    const started = Date.now()
+    log.info("quit requested")
+    void windows.prepareClose().then(async (accepted) => {
+      log.info("quit windows prepared", { accepted, elapsed: Date.now() - started })
+      if (!accepted) {
+        quitting = false
+        return
+      }
+      tray.destroy()
+      log.info("quit backend stopping", { elapsed: Date.now() - started })
+      await Promise.allSettled([backend.stop()])
+      log.info("quit logs closing", { elapsed: Date.now() - started })
+      await Log.close()
+      app.exit(0)
+    })
   })
 }

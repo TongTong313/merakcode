@@ -4,6 +4,7 @@ import { afterEach, expect, test } from "vitest"
 import { setLocale, t } from "../../i18n"
 import { setState } from "../../state/store"
 import { Commit } from "./commit"
+import { selectPanels } from "../panel/workspace"
 
 const dir = "D:/work"
 
@@ -82,4 +83,27 @@ test("push stays available and is disabled when the branch has nothing to push",
   expect(push).toBeTruthy()
   expect(push?.hasAttribute("disabled")).toBe(true)
   expect(push?.parentElement?.getAttribute("title")).toBe(t("review.pushNothing"))
+})
+
+test("recovered commit messages can be selected without losing the current draft", async () => {
+  const owner = await selectPanels({ directory: "/recovered-commits", sessionID: crypto.randomUUID() })
+  const id = owner.open({ kind: "git", view: { commit: "first", commitAlternatives: ["second"] } })
+  const host = document.createElement("div")
+  document.body.append(host)
+  const dispose = render(() => <Commit directory="/recovered-commits" instanceID={id} onDone={() => {}} />, host)
+  try {
+    const chooser = host.querySelector("select")!
+    expect(chooser).not.toBeNull()
+    const input = host.querySelector("textarea")!
+    input.value = "first with newer edits"
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    chooser.value = "0"
+    chooser.dispatchEvent(new Event("change", { bubbles: true }))
+    expect(input.value).toBe("second")
+    await owner.flush()
+    expect(owner.view(id).commitAlternatives).toContain("first with newer edits")
+  } finally {
+    dispose()
+    host.remove()
+  }
 })
