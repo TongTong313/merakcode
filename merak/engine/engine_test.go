@@ -128,8 +128,8 @@ func TestChatChoosesTheFullOrReadOnlyToolPool(t *testing.T) {
 		tools  []string
 		denied bool
 	}{
-		{"worker.default", []string{"ask_user", "bash", "bash_output", "edit_file", "glob", "grep", "list_dir", "lookup", "read_file", "recall", "remember", "spawn", "wait_child", "write_file"}, false},
-		{"worker.readonly", []string{"glob", "grep", "list_dir", "lookup", "read_file", "recall", "spawn", "wait_child"}, true},
+		{"worker.default", []string{"ask_user", "bash", "bash_output", "code_search", "docx_read", "edit_file", "excel_read", "excel_write", "glob", "grep", "list_dir", "lookup", "multi_edit", "read_file", "recall", "remember", "schedule_create", "schedule_delete", "schedule_list", "skill", "spawn", "todo_write", "wait_child", "web_fetch", "web_search", "write_file", "write_plan"}, false},
+		{"worker.readonly", []string{"docx_read", "excel_read", "glob", "grep", "list_dir", "lookup", "read_file", "recall", "schedule_list", "skill", "spawn", "todo_write", "wait_child", "write_plan"}, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()

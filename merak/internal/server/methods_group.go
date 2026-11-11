@@ -13,8 +13,8 @@ func (s *Server) groupMethods() map[string]handler {
 		return done(s.engine.Tasks.RemoveMember(ctx, params.Group, c.human, params.Member))
 	})
 	return map[string]handler{
-		"agent.list": run(func(ctx context.Context, c *connection, _ protocol.AgentListParams) (any, error) {
-			return s.engine.ListAgents(ctx, c.human)
+		"agent.list": run(func(ctx context.Context, c *connection, params protocol.AgentListParams) (any, error) {
+			return s.engine.ListAgentsFor(ctx, c.human, params.Directory)
 		}),
 		"agent.save": run(func(ctx context.Context, c *connection, params protocol.AgentSaveParams) (any, error) {
 			return s.engine.SaveAgent(ctx, c.human, params.Agent)

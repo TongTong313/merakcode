@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/memory"
@@ -19,7 +21,7 @@ import (
 
 func (e *Engine) extractMemory(c *conversation) {
 	e.mu.Lock()
-	if len(c.queue) > 0 || e.ctx.Err() != nil {
+	if len(c.queue) > 0 || e.ctx.Err() != nil || !e.memoryExtractOn() {
 		e.mu.Unlock()
 		return
 	}
@@ -33,11 +35,12 @@ func (e *Engine) extractMemory(c *conversation) {
 		e.mu.Unlock()
 	}()
 	var result memory.Extraction
-	provider := e.provider(c.state.Config.Provider)
+	ref := e.extractorModel(agent.ModelRef{Provider: c.state.Config.Provider, Model: c.state.Config.Model})
+	provider := e.provider(ref.Provider)
 	if provider == nil {
 		return
 	}
-	extractor := memory.ModelExtractor{Provider: provider, Model: c.state.Config.Model, OnUsage: func(usage model.Usage) { result.Usage = usage }}
+	extractor := memory.ModelExtractor{Provider: provider, Model: ref.Model, OnUsage: func(usage model.Usage) { result.Usage = usage }}
 	notes, err := extractor.Extract(ctx, c.state.Messages)
 	result.Failed = err != nil
 	if err == nil && ctx.Err() == nil {
@@ -62,6 +65,9 @@ func (e *Engine) extractMemory(c *conversation) {
 }
 
 func (e *Engine) extractTaskMemory(card task.Card, cause event.ID) {
+	if !e.memoryExtractOn() {
+		return
+	}
 	if _, running := e.memoryExtractions.LoadOrStore(cause, true); running {
 		return
 	}
@@ -100,6 +106,7 @@ func (e *Engine) extractTaskMemory(card task.Card, cause event.ID) {
 				}
 			}
 		}
+		ref = e.extractorModel(ref)
 		provider := e.provider(ref.Provider)
 		if provider == nil {
 			return
@@ -163,4 +170,92 @@ func (e *Engine) extractTaskMemory(card task.Card, cause event.ID) {
 		_, _ = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + card.Group), Type: memory.Extracted, Scope: scope, Actor: event.Actor{Kind: event.ActorAgent, ID: member.ID}, Cause: cause, Payload: body})
 		return
 	}
+}
+
+// MemorySettings are the switches of the engine's memory. An engine that was not configured keeps both on; the
+// server turns them to what the configuration says, which is off unless the user turned them on.
+type MemorySettings struct {
+	// AutoExtract saves notes from a conversation that has gone idle.
+	AutoExtract bool
+	// AutoRecall puts the notes that fit into the first turn of a conversation or a claim.
+	AutoRecall bool
+	// Model is "provider/model" of the model that writes notes (memory.model); empty means the model of the conversation.
+	Model string
+}
+
+// ConfigureMemory applies MemorySettings; it takes effect on the next turn.
+func (e *Engine) ConfigureMemory(settings MemorySettings) {
+	e.memoryExtractOff.Store(!settings.AutoExtract)
+	e.memoryRecallOff.Store(!settings.AutoRecall)
+	provider, name, found := strings.Cut(settings.Model, "/")
+	if !found || provider == "" || name == "" {
+		e.memoryModel.Store(nil)
+		return
+	}
+	e.memoryModel.Store(&agent.ModelRef{Provider: provider, Model: name})
+}
+
+// extractorModel is the model that writes notes: the memory-extractor entry of the agent section, else memory.model,
+// else own.
+func (e *Engine) extractorModel(own agent.ModelRef) agent.ModelRef {
+	if ref, ok := e.configuredJobModel("memory-extractor"); ok {
+		return ref
+	}
+	if ref := e.memoryModel.Load(); ref != nil {
+		return *ref
+	}
+	return own
+}
+
+func (e *Engine) memoryExtractOn() bool { return !e.memoryExtractOff.Load() }
+func (e *Engine) memoryRecallOn() bool  { return !e.memoryRecallOff.Load() }
+
+// MemoryList returns the notes of a project, or of one scope of it, newest first. The scope is "project" (the
+// default), "group" or "member".
+func (e *Engine) MemoryList(ctx context.Context, directory, scope string) ([]memory.Note, error) {
+	if scope == "" || scope == string(memory.ScopeProject) {
+		notes, err := e.notes.List(ctx, []memory.Owner{memory.ProjectOwner(e.directory(directory))})
+		return notes, err
+	}
+	if scope != string(memory.ScopeGroup) && scope != string(memory.ScopeMember) {
+		return nil, errors.New("unknown memory scope")
+	}
+	all, err := e.notes.List(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	notes := []memory.Note{}
+	for _, note := range all {
+		if string(note.Scope) == scope {
+			notes = append(notes, note)
+		}
+	}
+	return notes, nil
+}
+
+// MemoryRead returns one note.
+func (e *Engine) MemoryRead(ctx context.Context, id event.ID) (memory.Note, error) {
+	if strings.TrimSpace(string(id)) == "" {
+		return memory.Note{}, errors.New("a note id is required")
+	}
+	return e.notes.Read(ctx, id)
+}
+
+// MemoryDelete removes one note.
+func (e *Engine) MemoryDelete(ctx context.Context, id event.ID) error {
+	return e.notes.Delete(ctx, id)
+}
+
+// ConfigureRules sets the personal rules of the user; they come before the project's rules in the prompt of
+// every conversation started afterwards.
+func (e *Engine) ConfigureRules(personal []string) {
+	copied := append([]string(nil), personal...)
+	e.personal.Store(&copied)
+}
+
+func (e *Engine) personalRules() []string {
+	if rules := e.personal.Load(); rules != nil {
+		return *rules
+	}
+	return nil
 }

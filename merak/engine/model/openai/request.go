@@ -124,6 +124,12 @@ func encode(req model.Request, config Config) map[string]any {
 		}
 		body[key] = req.MaxTokens
 	}
+	if req.Temperature != nil {
+		body["temperature"] = *req.Temperature
+	}
+	if req.TopP != nil {
+		body["top_p"] = *req.TopP
+	}
 	if len(req.Tools) > 0 {
 		tools := make([]wireTool, 0, len(req.Tools))
 		for _, spec := range req.Tools {

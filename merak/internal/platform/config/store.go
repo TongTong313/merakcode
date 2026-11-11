@@ -3,8 +3,10 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,7 +23,7 @@ type Store struct {
 // Open reads the global configuration of a root directory: merakcode.jsonc, or merakcode.json when that is the file
 // that exists. A missing file is an empty configuration; the first change creates merakcode.jsonc.
 func Open(root string) (*Store, error) {
-	s := &Store{path: filepath.Join(root, "merakcode.jsonc"), value: Value{Providers: map[string]Provider{}}}
+	s := &Store{path: filepath.Join(root, "merakcode.jsonc"), value: defaults()}
 	if _, err := os.Stat(s.path); os.IsNotExist(err) {
 		if _, err := os.Stat(filepath.Join(root, "merakcode.json")); err == nil {
 			s.path = filepath.Join(root, "merakcode.json")
@@ -38,6 +40,7 @@ func Open(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.inFile(s.path)
 	s.text, s.value = data, value
 	return s, nil
 }
@@ -117,6 +120,7 @@ func (s *Store) write(edits ...edit) error {
 			return err
 		}
 	}
+	value.inFile(s.path)
 	s.text, s.value = text, value
 	return nil
 }
@@ -157,12 +161,49 @@ func (s *Store) update(patch Patch) (Value, error) {
 	}
 	text("model", patch.Model)
 	text("small_model", patch.SmallModel)
+	text("default_agent", patch.DefaultAgent)
 	text("thinking", patch.Thinking)
 	text("locale", patch.Locale)
 	text("permissionMode", patch.PermissionMode)
 	if patch.Log != nil {
 		upper := strings.ToUpper(*patch.Log)
 		text("logLevel", &upper)
+	}
+	for _, name := range slices.Sorted(maps.Keys(patch.MCP)) {
+		server := patch.MCP[name]
+		if server == nil {
+			edits = append(edits, edit{path: []string{"mcp", name}, clear: true})
+			continue
+		}
+		if err := ValidateMCPServers(map[string]MCPServer{name: *server}); err != nil {
+			return Value{}, err
+		}
+		edits = append(edits, edit{path: []string{"mcp", name}, value: fileDefinition(*server)})
+	}
+	if patch.Rules != nil && patch.Rules.User != nil {
+		edits = append(edits, userRulesEdit(*patch.Rules.User))
+	}
+	if patch.Memory != nil {
+		if patch.Memory.AutoExtract != nil {
+			edits = append(edits, edit{path: []string{"memory", "auto_extract"}, value: *patch.Memory.AutoExtract})
+		}
+		if patch.Memory.AutoRecall != nil {
+			edits = append(edits, edit{path: []string{"memory", "auto_recall"}, value: *patch.Memory.AutoRecall})
+		}
+		if patch.Memory.Model != nil && *patch.Memory.Model == "" {
+			edits = append(edits, edit{path: []string{"memory", "model"}, clear: true})
+		} else if patch.Memory.Model != nil {
+			edits = append(edits, edit{path: []string{"memory", "model"}, value: *patch.Memory.Model})
+		}
+	}
+	if patch.Snapshot != nil {
+		edits = append(edits, edit{path: []string{"snapshot"}, value: *patch.Snapshot})
+	}
+	if patch.CompactionAuto != nil {
+		edits = append(edits, edit{path: []string{"compaction", "auto"}, value: *patch.CompactionAuto})
+	}
+	if patch.RetentionDays != nil {
+		edits = append(edits, edit{path: []string{"storage", "retention_days"}, value: *patch.RetentionDays})
 	}
 	if patch.Board != nil && patch.Board.AutoArchiveDays != nil {
 		edits = append(edits, edit{path: []string{"board", "autoArchiveDays"}, value: *patch.Board.AutoArchiveDays})
@@ -215,4 +256,17 @@ func (s *Store) ForProject(dir string) (Value, error) {
 		return Value{}, err
 	}
 	return Merge(s.Private(), project), nil
+}
+
+// defaults is the configuration while no file says anything.
+func defaults() Value {
+	return Value{Providers: map[string]Provider{}, Board: Board{AutoArchiveDays: DefaultAutoArchiveDays}, Snapshot: true, CompactionAuto: true}
+}
+
+// userRulesEdit sets rules.user, or removes it when the list is empty.
+func userRulesEdit(list []string) edit {
+	if len(list) == 0 {
+		return edit{path: []string{"rules", "user"}, clear: true}
+	}
+	return edit{path: []string{"rules", "user"}, value: list}
 }

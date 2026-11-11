@@ -61,3 +61,19 @@ func Report(server worker.MCPConfig) error {
 	}
 	return nil
 }
+
+// Claim takes a task through the claim_task tool of a Worker's MCP server.
+func Claim(server worker.MCPConfig, task string) error {
+	input, err := json.Marshal(map[string]string{"task": task})
+	if err != nil {
+		return err
+	}
+	result, err := Call(server, "claim_task", input)
+	if err != nil {
+		return err
+	}
+	if result.IsError {
+		return fmt.Errorf("MCP claim rejected: %+v", result)
+	}
+	return nil
+}

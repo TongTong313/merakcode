@@ -12,6 +12,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
   const engine = await engineFixture({
     replies: [
       {
+        role: kind === "question" ? "leader" : "worker",
         calls: [
           {
             id: "request",
@@ -26,6 +27,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
       ...(kind === "permission"
         ? [
             {
+              role: "worker",
               calls: [
                 {
                   id: "report",
@@ -37,6 +39,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
           ]
         : [
             {
+              role: "leader",
               calls: [
                 {
                   id: "next-question",
@@ -46,7 +49,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
               ],
             },
           ]),
-      ...Array.from({ length: 8 }, () => ({ text: "Waiting for the answer." })),
+      ...Array.from({ length: 8 }, () => ({ role: "leader", text: "Waiting for the answer." })),
     ],
   })
   let dispose = () => {}

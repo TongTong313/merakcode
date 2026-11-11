@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 
@@ -65,6 +66,23 @@ func (e *Engine) provider(name string) model.Provider {
 
 func (e *Engine) ConfigureModels(overrides []catalog.Override) { e.catalog.Configure(overrides) }
 
+// SessionSettings are the configuration keys that decide what a conversation keeps.
+type SessionSettings struct {
+	// Snapshot records the files of a conversation so a revert can put them back.
+	Snapshot bool
+	// AutoCompact lets a conversation shrink its own context when it fills up.
+	AutoCompact bool
+	// RetentionDays deletes conversations idle for that many days; 0 keeps them.
+	RetentionDays int
+}
+
+// ConfigureSessions applies SessionSettings; it takes effect on the next turn.
+func (e *Engine) ConfigureSessions(settings SessionSettings) {
+	e.snapshotsOff.Store(!settings.Snapshot)
+	e.autoCompactOff.Store(!settings.AutoCompact)
+	e.retentionDays.Store(int64(settings.RetentionDays))
+}
+
 func (e *Engine) RefreshModels(ctx context.Context, provider string) error {
 	return e.catalog.RefreshProvider(ctx, provider)
 }
@@ -96,4 +114,42 @@ func (e *Engine) notifyCatalog(provider string, err error) {
 	}
 	body, _ := json.Marshal(notice)
 	_, _ = e.Bus.Publish(e.ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: kind, Actor: event.Actor{Kind: event.ActorAgent}, Payload: body})
+}
+
+// ConfigureTools switches tools off or on by name (the v0.3 tools section). A name that ends in * stands for every
+// tool whose name starts with the part before it; "exa" stands for both searches. A tool not named stays on. The
+// list a session offers is fixed when the session starts.
+func (e *Engine) ConfigureTools(switches map[string]bool) {
+	copied := make(map[string]bool, len(switches))
+	for name, on := range switches {
+		copied[name] = on
+	}
+	e.toolSwitches.Store(&copied)
+}
+
+// toolEnabled says whether the configuration leaves a tool on. An exact name wins over a pattern, and a longer
+// pattern wins over a shorter one.
+func (e *Engine) toolEnabled(name string) bool {
+	switches := e.toolSwitches.Load()
+	if switches == nil {
+		return true
+	}
+	return switchedOn(*switches, name)
+}
+
+// switchedOn applies one set of switches to a tool name; a tool the switches do not name is on.
+func switchedOn(switches map[string]bool, name string) bool {
+	if on, ok := switches[name]; ok {
+		return on
+	}
+	if on, ok := switches["exa"]; ok && (name == "web_search" || name == "code_search") {
+		return on
+	}
+	best, enabled := -1, true
+	for pattern, on := range switches {
+		if prefix, found := strings.CutSuffix(pattern, "*"); found && strings.HasPrefix(name, prefix) && len(prefix) > best {
+			best, enabled = len(prefix), on
+		}
+	}
+	return enabled
 }

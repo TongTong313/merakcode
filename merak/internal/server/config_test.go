@@ -86,7 +86,8 @@ func TestConfiguredPermissionModeAppliesOnlyToNewSessions(t *testing.T) {
 
 func TestConfigRPCPersistsRelayAndUsesItForNewConversations(t *testing.T) {
 	home := t.TempDir()
-	called := make(chan string, 1)
+	// The answer and the title of the conversation each make one request.
+	called := make(chan string, 16)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Model string `json:"model"`

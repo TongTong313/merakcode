@@ -33,6 +33,9 @@ func TestLeaderWithdrawsQueuedClaimAndMemberAutomaticallyStartsTheNext(t *testin
 	var withdrawn, kept task.Card
 	step := 0
 	leadModel := groupScript{name: "leader", test: t, reply: func(req model.Request) fake.Reply {
+		if !strings.Contains(fmt.Sprint(req.Messages), "Update the queue") {
+			return fake.Reply{Text: "Waiting."}
+		}
 		step++
 		switch step {
 		case 1:
@@ -87,7 +90,7 @@ func TestLeaderWithdrawsQueuedClaimAndMemberAutomaticallyStartsTheNext(t *testin
 	for {
 		select {
 		case fact := <-facts:
-			if fact.Type == session.MessageCompleted && fact.Stream == event.Stream("group:"+g.ID) {
+			if fact.Type == session.MessageCompleted && fact.Stream == event.Stream("group:"+g.ID) && !idleReply(fact) {
 				card, err := e.Tasks.Get(ctx, withdrawn.ID)
 				if err != nil || card.Status != task.Open {
 					t.Fatalf("queued claim was not withdrawn: %+v %v", card, err)
@@ -111,4 +114,10 @@ func TestLeaderWithdrawsQueuedClaimAndMemberAutomaticallyStartsTheNext(t *testin
 			t.Fatal(ctx.Err())
 		}
 	}
+}
+
+// idleReply reports whether a group message is the plain "Waiting." of a Leader that was woken and had nothing to do.
+func idleReply(fact event.Event) bool {
+	message, err := event.Decode[session.Completion](fact)
+	return err == nil && len(message.Parts) == 1 && message.Parts[0].Text == "Waiting."
 }

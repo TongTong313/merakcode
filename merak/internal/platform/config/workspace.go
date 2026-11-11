@@ -6,17 +6,43 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
+// MCPServer is one MCP server: a command the engine runs ("local") or an address it connects to ("remote").
 type MCPServer struct {
-	Command string            `json:"command"`
+	// Type is "local" or "remote"; empty means local.
+	Type    string            `json:"type,omitempty"`
+	Command string            `json:"command,omitempty"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+	// URL and Headers belong to a remote server.
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// Disabled keeps the entry in the file but does not start or connect it.
+	Disabled bool `json:"disabled,omitempty"`
+	// Timeout is how long the engine waits for the server, in milliseconds; 0 uses the default.
+	Timeout int `json:"timeout,omitempty"`
+	// Deferred keeps the tools of the server out of the first prompt until the model loads them.
+	Deferred bool `json:"deferred,omitempty"`
+	// OAuth holds the client of a remote server that needs a login; NoOAuth says the server never does.
+	OAuth   *OAuth `json:"oauth,omitempty"`
+	NoOAuth bool   `json:"noOAuth,omitempty"`
 }
+
+// OAuth is the client a remote MCP server logs in with. Without a client id the engine registers itself.
+type OAuth struct {
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+}
+
+// Remote says whether the server is reached over HTTP.
+func (s MCPServer) Remote() bool { return s.Type == "remote" }
 
 func (s *MCPServer) UnmarshalJSON(data []byte) error {
 	var fields map[string]json.RawMessage
@@ -42,6 +68,54 @@ func (s *MCPServer) UnmarshalJSON(data []byte) error {
 				}
 				value.Args = append(value.Args, text)
 			}
+		case "type", "url":
+			var text string
+			if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &text) != nil {
+				return errors.New("MCP " + name + " must be a string")
+			}
+			if name == "type" {
+				value.Type = text
+			} else {
+				value.URL = text
+			}
+		case "headers":
+			var headers map[string]json.RawMessage
+			if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &headers) != nil {
+				return errors.New("MCP headers must be an object")
+			}
+			value.Headers = make(map[string]string, len(headers))
+			for key, item := range headers {
+				var text string
+				if len(item) == 0 || item[0] != '"' || json.Unmarshal(item, &text) != nil {
+					return errors.New("MCP header values must be strings")
+				}
+				value.Headers[key] = text
+			}
+		case "disabled", "deferred", "noOAuth":
+			var flag bool
+			if json.Unmarshal(raw, &flag) != nil {
+				return errors.New("MCP " + name + " must be a boolean")
+			}
+			switch name {
+			case "disabled":
+				value.Disabled = flag
+			case "deferred":
+				value.Deferred = flag
+			default:
+				value.NoOAuth = flag
+			}
+		case "timeout":
+			if json.Unmarshal(raw, &value.Timeout) != nil {
+				return errors.New("MCP timeout must be a number")
+			}
+		case "oauth":
+			var oauth OAuth
+			decoder := json.NewDecoder(strings.NewReader(string(raw)))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&oauth) != nil {
+				return errors.New("invalid MCP oauth")
+			}
+			value.OAuth = &oauth
 		case "env":
 			var env map[string]json.RawMessage
 			if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &env) != nil {
@@ -71,7 +145,7 @@ func (s MCPServer) Hash() string {
 
 type Workspace struct {
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
-	Warnings   []string             `json:"warnings,omitempty"`
+	Warnings   []Warning            `json:"warnings,omitempty"`
 }
 type Trust struct {
 	Project  string `json:"project"`
@@ -81,6 +155,7 @@ type Trust struct {
 }
 
 var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+var headerName = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // projectFiles are the places a project keeps configuration; later files override earlier ones.
@@ -119,6 +194,7 @@ func ReadProject(root string) (Value, error) {
 		if err != nil {
 			return Value{}, err
 		}
+		value.inFile(file.Name())
 		if err := ValidateMCPServers(value.MCPServers); err != nil {
 			return Value{}, err
 		}
@@ -132,7 +208,25 @@ func ReadProject(root string) (Value, error) {
 
 func ValidateMCPServers(servers map[string]MCPServer) error {
 	for name, server := range servers {
-		if !serverName.MatchString(name) || strings.TrimSpace(server.Command) == "" || strings.ContainsRune(server.Command, '\x00') {
+		if !serverName.MatchString(name) || server.Timeout < 0 {
+			return errors.New("invalid MCP server")
+		}
+		switch server.Type {
+		case "", "local":
+			if strings.TrimSpace(server.Command) == "" || strings.ContainsRune(server.Command, '\x00') || server.URL != "" || len(server.Headers) > 0 {
+				return errors.New("invalid MCP server")
+			}
+		case "remote":
+			address, err := url.Parse(server.URL)
+			if err != nil || address.Host == "" || address.User != nil || address.Scheme != "https" && address.Scheme != "http" || server.Command != "" || len(server.Args) > 0 || len(server.Env) > 0 {
+				return errors.New("invalid MCP server")
+			}
+			for key, value := range server.Headers {
+				if !headerName.MatchString(key) || strings.ContainsAny(value, "\r\n\x00") {
+					return errors.New("invalid MCP header")
+				}
+			}
+		default:
 			return errors.New("invalid MCP server")
 		}
 		for _, arg := range server.Args {

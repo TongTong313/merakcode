@@ -91,6 +91,77 @@ func Run(t *testing.T, open func(*testing.T) store.Store) {
 			t.Fatalf("missing = %v", err)
 		}
 	})
+	t.Run("finds events by a text in their payload, ignoring ASCII case and treating wildcards literally", func(t *testing.T) {
+		s := open(t)
+		ctx := context.Background()
+		plain := fact("plain", "session:a", 1)
+		plain.Payload = json.RawMessage(`{"role":"user","parts":[{"text":"Fix the Login page"}]}`)
+		percent := fact("percent", "session:a", 2)
+		percent.Payload = json.RawMessage(`{"role":"user","parts":[{"text":"100% done_ok"}]}`)
+		other := fact("other", "session:b", 1)
+		other.Scope.Session = "b"
+		other.Payload = json.RawMessage(`{"role":"user","parts":[{"text":"nothing here"}]}`)
+		if err := s.Append(ctx, []event.Event{plain, percent, other}); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			text string
+			want []event.ID
+		}{
+			{"login", []event.ID{"plain"}},
+			{"LOGIN PAGE", []event.ID{"plain"}},
+			{"100%", []event.ID{"percent"}},
+			{"done_ok", []event.ID{"percent"}},
+			{"d_ne", nil},
+			{"%", []event.ID{"percent"}},
+			{"absent", nil},
+		} {
+			got, err := s.Find(ctx, store.Query{Text: tc.text})
+			var ids []event.ID
+			for _, e := range got {
+				ids = append(ids, e.ID)
+			}
+			if err != nil || !reflect.DeepEqual(ids, tc.want) {
+				t.Fatalf("text %q found %v, %v; want %v", tc.text, ids, err, tc.want)
+			}
+		}
+	})
+	t.Run("deletes a stream with its events and a document by its key", func(t *testing.T) {
+		s := open(t)
+		ctx := context.Background()
+		keep, drop := fact("keep", "session:keep", 1), fact("drop", "session:drop", 1)
+		keep.Scope.Session, drop.Scope.Session = "keep", "drop"
+		if err := s.Append(ctx, []event.Event{keep, drop}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Put(ctx, store.Doc{Kind: "snapshot", Key: "drop", Body: []byte("{}")}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.DeleteStream(ctx, "session:drop"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Delete(ctx, "snapshot", "drop"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Get(ctx, "drop"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("a deleted event is still there: %v", err)
+		}
+		if read, err := s.Read(ctx, "session:drop", 1, 10); err != nil || len(read) != 0 {
+			t.Fatalf("a deleted stream reads %v, %v", read, err)
+		}
+		if _, err := s.Fetch(ctx, "snapshot", "drop"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("a deleted document is still there: %v", err)
+		}
+		if got, err := s.Get(ctx, "keep"); err != nil || got.ID != "keep" {
+			t.Fatalf("another stream was touched: %v", err)
+		}
+		if err := s.Delete(ctx, "snapshot", "drop"); err != nil {
+			t.Fatalf("deleting twice must not fail: %v", err)
+		}
+		if err := s.Append(ctx, []event.Event{fact("again", "session:drop", 1)}); err != nil {
+			t.Fatalf("a deleted stream starts again from 1: %v", err)
+		}
+	})
 	t.Run("appends consecutive events atomically and reads in sequence order", func(t *testing.T) {
 		s := open(t)
 		ctx := context.Background()

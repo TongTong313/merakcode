@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -109,21 +110,65 @@ func (m *Manager) Snapshot(ctx context.Context, state *State) error {
 type Info struct {
 	ID        event.ID  `json:"id"`
 	CreatedAt time.Time `json:"createdAt"`
+	Title     string    `json:"title,omitempty"`
+	Archived  bool      `json:"archived,omitempty"`
 	Config    Config    `json:"config"`
 }
 
 func (m *Manager) List(ctx context.Context) ([]Info, error) {
-	facts, err := m.store.Find(ctx, store.Query{Types: []event.Type{Created}})
+	facts, err := m.store.Find(ctx, store.Query{Types: []event.Type{Created, Updated}})
 	if err != nil {
 		return nil, err
 	}
 	result := []Info{}
+	index := make(map[event.ID]int)
 	for _, fact := range facts {
+		if fact.Type == Updated {
+			change, err := event.Decode[Change](fact)
+			i, ok := index[fact.Scope.Session]
+			if err != nil || !ok {
+				continue
+			}
+			state := State{Title: result[i].Title, Archived: result[i].Archived, Config: result[i].Config}
+			state.applyChange(change)
+			result[i].Title, result[i].Archived, result[i].Config = state.Title, state.Archived, state.Config
+			continue
+		}
 		state, err := event.Decode[State](fact)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, Info{ID: state.ID, CreatedAt: fact.Time, Config: state.Config})
+		index[state.ID] = len(result)
+		result = append(result, Info{ID: state.ID, CreatedAt: fact.Time, Title: state.Title, Archived: state.Archived, Config: state.Config})
 	}
 	return result, nil
+}
+
+// Delete removes a session and the children it started: their events, snapshots and hot state. It returns the
+// ids it removed.
+func (m *Manager) Delete(ctx context.Context, id event.ID) ([]event.ID, error) {
+	infos, err := m.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	removed := []event.ID{id}
+	for i := 0; i < len(removed); i++ {
+		for _, info := range infos {
+			if info.Config.Parent == removed[i] && !slices.Contains(removed, info.ID) {
+				removed = append(removed, info.ID)
+			}
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, victim := range removed {
+		if err := m.store.DeleteStream(ctx, event.Stream("session:"+victim)); err != nil {
+			return nil, err
+		}
+		if err := m.store.Delete(ctx, "snapshot", string(victim)); err != nil {
+			return nil, err
+		}
+		delete(m.hot, victim)
+	}
+	return removed, nil
 }

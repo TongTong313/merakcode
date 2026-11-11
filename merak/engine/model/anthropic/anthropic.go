@@ -97,6 +97,11 @@ func (c *Client) Stream(ctx context.Context, req model.Request) (model.Stream, e
 			params.OutputConfig.Effort = sdk.OutputConfigEffort(effort)
 		}
 	}
+	// The API refuses sampling parameters while the model thinks, so they are sent only without thinking. This SDK
+	// has no fields for them, so they travel as extra fields of the request body.
+	if sampling := samplingFields(req); len(sampling) > 0 && params.Thinking.OfEnabled == nil && params.Thinking.OfAdaptive == nil {
+		params.SetExtraFields(sampling)
+	}
 	for _, message := range req.Messages {
 		var blocks []sdk.ContentBlockParamUnion
 		for _, part := range message.Parts {
@@ -164,4 +169,18 @@ func providerError(err error) error {
 		failure.Status = api.StatusCode
 	}
 	return failure
+}
+
+func samplingFields(req model.Request) map[string]any {
+	fields := map[string]any{}
+	if req.Temperature != nil {
+		fields["temperature"] = *req.Temperature
+	}
+	if req.TopP != nil {
+		fields["top_p"] = *req.TopP
+	}
+	if req.TopK != nil {
+		fields["top_k"] = *req.TopK
+	}
+	return fields
 }

@@ -91,11 +91,13 @@ func (e *Engine) prepareTaskPacket(ctx context.Context, p *agent.Agent, a *worke
 		}
 	}
 	owners := e.memberMemoryOwners(ctx, a.Workdir, a.Scope, a.Claim.Member)
-	packet.Memory, err = e.notes.Recall(ctx, memory.Query{Owners: owners, Text: card.Title + " " + card.Description, Tags: card.Areas})
-	if err != nil {
-		return nil, err
+	if e.memoryRecallOn() {
+		packet.Memory, err = e.notes.Recall(ctx, memory.Query{Owners: owners, Text: card.Title + " " + card.Description, Tags: card.Areas})
+		if err != nil {
+			return nil, err
+		}
 	}
-	if len(packet.Memory) == 0 {
+	if len(packet.Memory) == 0 && e.memoryRecallOn() {
 		packet.Memory, err = e.notes.Recall(ctx, memory.Query{Owners: owners, Limit: 5})
 		if err != nil {
 			return nil, err

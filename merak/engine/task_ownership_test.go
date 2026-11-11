@@ -354,9 +354,11 @@ func TestTasksTheLeaderCreatesBelongToItsGroupAndWorkersCannotCreateTasks(t *tes
 		for _, spec := range req.Tools {
 			names = append(names, spec.Name)
 		}
-		select {
-		case workerTools <- names:
-		default:
+		if slices.Contains(names, "submit_report") { // the assigned run, not an invitation to claim work
+			select {
+			case workerTools <- names:
+			default:
+			}
 		}
 		return fake.Reply{Text: "Waiting."}
 	}}

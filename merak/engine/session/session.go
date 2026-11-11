@@ -20,6 +20,7 @@ const (
 	MessageCompleted event.Type = "message.completed"
 	MessageDelta     event.Type = "message.delta"
 	BudgetExtended   event.Type = "session.budget_extended"
+	TodoUpdated      event.Type = "todo.updated"
 )
 
 func init() {
@@ -29,6 +30,7 @@ func init() {
 	event.Register[Completion](MessageCompleted)
 	event.Register[model.Chunk](MessageDelta)
 	event.Register[Budget](BudgetExtended)
+	event.Register[Todos](TodoUpdated)
 }
 
 // Input retains the source events of a combined Leader message for restart recovery.
@@ -38,6 +40,12 @@ type Input struct {
 }
 
 type State struct {
+	Marks            []Mark                          `json:"marks,omitempty"`
+	Tracks           []Track                         `json:"tracks,omitempty"`
+	Hidden           *Hidden                         `json:"hidden,omitempty"`
+	Title            string                          `json:"title,omitempty"`
+	Archived         bool                            `json:"archived,omitempty"`
+	Todos            []tool.Todo                     `json:"todos,omitempty"`
 	BudgetExtensions int                             `json:"budgetExtensions,omitempty"`
 	Warnings         []Diagnostic                    `json:"warnings,omitempty"`
 	MCP              *MCPSelection                   `json:"mcp,omitempty"`
@@ -90,6 +98,9 @@ type Config struct {
 	Model          string          `json:"model"`
 	Thinking       model.Thinking  `json:"thinking,omitempty"`
 	Workdir        string          `json:"workdir"`
+	// Switches turn tools off or on by name for this conversation, on top of the configuration's tools section; a
+	// name may end in *.
+	Switches map[string]bool `json:"switches,omitempty"`
 }
 
 type Selection struct {
@@ -222,6 +233,22 @@ func Fold(s *State, e event.Event) error {
 		}
 		s.Open[call.ID] = call
 		s.Causes[call.ID] = e.ID
+	case Updated:
+		change, err := event.Decode[Change](e)
+		if err != nil {
+			return err
+		}
+		s.applyChange(change)
+	case Tracked, Reverted, Unreverted:
+		if err := s.foldRevert(e); err != nil {
+			return err
+		}
+	case TodoUpdated:
+		todos, err := event.Decode[Todos](e)
+		if err != nil {
+			return err
+		}
+		s.Todos = todos.Items
 	case Rebuilt:
 		rebuilt, err := event.Decode[Rebuild](e)
 		if err != nil {
@@ -230,6 +257,7 @@ func Fold(s *State, e event.Event) error {
 		if rebuilt.From != 0 || rebuilt.To <= 0 || rebuilt.To > len(s.Messages) {
 			return fmt.Errorf("invalid rebuild range")
 		}
+		s.shiftAfterRebuild(rebuilt.To)
 		s.Messages = append([]model.Message{rebuilt.Summary}, WithoutReasoning(s.Messages[rebuilt.To:])...)
 		s.SummaryID = rebuilt.SummaryID
 		s.Usage = s.Usage.Add(rebuilt.Usage)
@@ -248,6 +276,9 @@ func Fold(s *State, e event.Event) error {
 			return err
 		}
 		if len(message.Parts) > 0 {
+			if e.Type == MessageSent {
+				s.noteUserMessage(e, message.Role)
+			}
 			s.Messages = append(s.Messages, message.Message)
 		}
 		s.Usage = s.Usage.Add(message.Usage)
@@ -315,4 +346,9 @@ func WithoutReasoning(messages []model.Message) []model.Message {
 		}
 	}
 	return result
+}
+
+// Todos is the whole todo list of a session after a todo_write call.
+type Todos struct {
+	Items []tool.Todo `json:"items"`
 }

@@ -18,7 +18,11 @@ type Request struct {
 	Tools     []ToolSpec
 	Thinking  Thinking
 	MaxTokens int
-	Cache     CacheHint
+	// Temperature, TopP and TopK are sent to the provider when set; nil leaves the provider default.
+	Temperature *float64
+	TopP        *float64
+	TopK        *int
+	Cache       CacheHint
 }
 
 // CacheHint controls the lifetime of the frozen system prefix and conversation cache.

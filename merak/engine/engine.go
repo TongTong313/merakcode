@@ -9,11 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/agent"
+	"github.com/TongTong313/merakcode/merak/engine/clienttool"
+	"github.com/TongTong313/merakcode/merak/engine/code"
+	slash "github.com/TongTong313/merakcode/merak/engine/command"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
@@ -22,14 +26,19 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/plan"
+	"github.com/TongTong313/merakcode/merak/engine/plugin"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/question"
+	"github.com/TongTong313/merakcode/merak/engine/rules"
+	"github.com/TongTong313/merakcode/merak/engine/schedule"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	memorystore "github.com/TongTong313/merakcode/merak/engine/store/memory"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/terminal"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"github.com/TongTong313/merakcode/merak/engine/web"
 	"github.com/TongTong313/merakcode/merak/engine/window"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/engine/worker/acp"
@@ -53,6 +62,8 @@ import (
 type Deps struct {
 	Cloud            cloud.Link
 	SentinelInterval time.Duration
+	// ScheduleInterval is how often due scheduled tasks are looked for; the default is one minute.
+	ScheduleInterval time.Duration
 	MCPCommand       string
 	ApprovalTimeout  time.Duration
 	DataDir          string
@@ -108,6 +119,9 @@ type Engine struct {
 	sentinelSeen      map[string]bool
 	gate              *permission.Gate
 	defaultModel      atomic.Pointer[agent.ModelRef]
+	smallModel        atomic.Pointer[agent.ModelRef]
+	agentSettings     atomic.Pointer[AgentSettings]
+	memoryModel       atomic.Pointer[agent.ModelRef]
 	catalogOnce       sync.Once
 	vault             credential.Vault
 	workspaceMu       sync.Mutex
@@ -134,6 +148,27 @@ type Engine struct {
 	merging           map[event.ID]bool
 	claimRuns         map[event.ID]claimRun
 	claimPreparing    map[event.ID]*claimPreparation
+	claimRestarts     map[event.ID][]loop.Input
+	externals         map[event.ID]*externalChat
+	inviteMu          sync.Mutex
+	keyMu             sync.Mutex
+	personal          atomic.Pointer[[]string]
+	toolSwitches      atomic.Pointer[map[string]bool]
+	plans             *plan.Plans
+	commandSet        atomic.Pointer[map[string]slash.Entry]
+	skillRoots        atomic.Pointer[skillRoots]
+	memoryExtractOff  atomic.Bool
+	memoryRecallOff   atomic.Bool
+	mcpLoginOnce      sync.Once
+	mcpLoginSet       *mcp.Login
+	snapshotMu        sync.Mutex
+	worktreeOnce      sync.Once
+	worktreeSet       *code.Worktrees
+	snapshotDir       string
+	snapshotTemp      bool
+	snapshotsOff      atomic.Bool
+	autoCompactOff    atomic.Bool
+	retentionDays     atomic.Int64
 	groupRuns         map[event.ID]*groupRun
 	groupSessions     map[event.ID]bool
 	runnerFor         func(agent.Agent, *sandbox.Launcher) worker.Runner
@@ -151,6 +186,14 @@ type Engine struct {
 	system            string
 	now               func() time.Time
 	tools             *tool.Pool
+	clientTools       *clienttool.Registry
+	plugins           atomic.Pointer[[]plugin.Spec]
+	pluginTimeout     atomic.Int64
+	pluginSessions    map[event.ID]*plugin.Session
+	schedules         schedule.Schedules
+	scheduleRunner    *schedule.Runner
+	scheduleNoticeMu  sync.Mutex
+	localHuman        event.ID
 	store             store.Store
 	manager           *session.Manager
 	counter           *window.Counter
@@ -203,6 +246,8 @@ func New(d Deps) (*Engine, error) {
 		askQuestion:     d.AskQuestion,
 		workerQuestions: make(map[event.ID]*pendingWorkerQuestion),
 		claimPreparing:  make(map[event.ID]*claimPreparation),
+		claimRestarts:   make(map[event.ID][]loop.Input),
+		externals:       make(map[event.ID]*externalChat),
 		taskApprovals:   make(map[event.ID]*taskApproval),
 		logger:          d.Logger,
 		Bus:             event.NewBus(d.Store, d.Now, d.NewID), providers: make(map[string]model.Provider), newID: d.NewID, model: d.Model, thinking: d.Thinking,
@@ -269,6 +314,7 @@ func New(d Deps) (*Engine, error) {
 	}
 	e.shutdownDone = make(chan struct{})
 	e.manager = session.NewManager(d.Store, e.Bus)
+	e.plans = plan.New(d.Store)
 	e.Workspaces = workspace.New(e.ctx, d.Store, e.Bus, e.newID)
 	e.merging = make(map[event.ID]bool)
 	e.claimRuns = make(map[event.ID]claimRun)
@@ -283,13 +329,14 @@ func New(d Deps) (*Engine, error) {
 	for name, p := range d.Providers {
 		e.providers[name] = &model.Retrying{Provider: p, Price: func(id string, u model.Usage) model.Usage { return e.catalog.Get(name, id).Price.Apply(u) }}
 	}
-	for _, t := range []tool.Tool{tool.Spawn{}, tool.WaitChild{}, tool.ReadFile{Memory: e.notes}, tool.Remember{Memory: e.notes}, tool.Recall{Memory: e.notes}, tool.WriteFile{}, tool.EditFile{}, tool.Bash{}, tool.Glob{}, tool.Grep{}, tool.ListDir{}, tool.Lookup{Store: d.Store}, tool.BashOutput{}} {
+	for _, t := range []tool.Tool{tool.Spawn{}, tool.WaitChild{}, tool.ReadFile{Memory: e.notes}, tool.Remember{Memory: e.notes}, tool.Recall{Memory: e.notes}, tool.WriteFile{}, tool.EditFile{}, tool.Bash{}, tool.Glob{}, tool.Grep{}, tool.ListDir{}, tool.Lookup{Store: d.Store}, tool.BashOutput{}, tool.TodoWrite{}, tool.WritePlan{}, tool.MultiEdit{}, tool.DocxRead{}, tool.ExcelRead{}, tool.ExcelWrite{}, web.Fetch{}, web.Search{}, web.Code{}} {
 		if d.ToolPool == "worker.readonly" && t.Spec().Effect != tool.EffectRead {
 			continue
 		}
 		e.tools.Tools[t.Spec().Name] = gate.Wrap(t)
 	}
 	e.tools.Deferred = make(map[string]tool.Tool)
+	e.clientTools = clienttool.New()
 	if d.ToolPool != "worker.readonly" {
 		e.tools.Tools["ask_user"] = tool.AskUser{Bus: e.Bus, Ask: e.askQuestion}
 	}
@@ -301,6 +348,11 @@ func New(d Deps) (*Engine, error) {
 		delete(e.tools.Tools, t.Spec().Name)
 	}
 	e.workers.Go(func() { e.Board.Run(e.ctx, e.logger) })
+	e.workers.Go(e.pruneDaily)
+	e.localHuman = "local-human"
+	e.schedules = schedule.Schedules{Docs: e.store}
+	e.scheduleRunner = &schedule.Runner{Schedules: e.schedules, Now: e.now, Fire: e.fireSchedule, Missed: e.missedSchedule}
+	e.workers.Go(func() { e.watchSchedules(d.ScheduleInterval) })
 	e.watchSentinel(d.SentinelInterval)
 	return e, nil
 }
@@ -328,8 +380,9 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	if options.Mode != "" && options.Mode != permission.ModeAsk && options.Mode != permission.ModeAuto && options.Mode != permission.ModeTakeover {
 		return nil, fmt.Errorf("MRK-4001")
 	}
+	options.Workdir = canonicalDirectory(options.Workdir)
 	if options.Workdir == "" {
-		options.Workdir = e.workdir
+		options.Workdir = canonicalDirectory(e.workdir)
 	}
 	if err := workspace.Existing(options.Workdir); err != nil {
 		return nil, coded(errorcode.WorkspaceInvalid, err)
@@ -346,23 +399,29 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	situation := prompt.Situation{
 		Role:   options.Role,
 		System: e.system + "\n" + options.System, Environment: prompt.Environment{OS: runtime.GOOS, Shell: "bash", Workdir: options.Workdir},
-		Deferred: e.sessionTools(session.Config{Parent: options.Parent, ToolPool: options.ToolPool}).DeferredSpecs(),
+		Deferred: e.sessionTools(session.Config{Parent: options.Parent, ToolPool: options.ToolPool, Switches: options.Switches}).DeferredSpecs(),
 	}
-	rules, err := os.ReadFile(filepath.Join(options.Workdir, "AGENTS.md"))
-	if err != nil && !os.IsNotExist(err) {
+	projectRules, err := rules.Load(ctx, options.Workdir)
+	if err != nil {
 		return nil, err
 	}
-	if len(rules) > 0 {
-		situation.Instructions = []string{string(rules)}
+	situation.Personal = e.personalRules()
+	skills, err := e.skills(options.Workdir)
+	if err != nil {
+		return nil, err
 	}
+	if options.Parent == "" {
+		situation.Skills = skills.Section()
+	}
+	situation.Instructions = projectRules.Sections(nil)
 	if options.Parent != "" {
-		situation.Deferred = e.sessionTools(session.Config{Parent: options.Parent}).DeferredSpecs()
+		situation.Deferred = e.sessionTools(session.Config{Parent: options.Parent, Switches: options.Switches}).DeferredSpecs()
 		situation.System += "\nYou are a read-only child. Research the assigned question and return a concise report. You cannot modify files, claim tasks or start children."
 	}
 	if options.ID == "" {
 		options.ID = e.newID()
 	}
-	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir}}
+	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir, Switches: options.Switches}}
 	state.Config.Budget = options.Budget
 	if options.Budget.MaxWallClock > 0 {
 		state.Config.BudgetDeadline = e.now().Add(options.Budget.MaxWallClock)
@@ -370,6 +429,23 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	state.BaseCommit, _ = git.Current(ctx, options.Workdir)
 	state.Tools = e.sessionTools(state.Config).Specs()
 	c, err := e.conversationFor(state)
+	if err == nil && len(options.Tools) > 0 {
+		keep := func(name string) bool { return slices.Contains(options.Tools, name) }
+		for name := range c.runner.Tools.Tools {
+			if !keep(name) {
+				delete(c.runner.Tools.Tools, name)
+			}
+		}
+		for name := range c.runner.Tools.Deferred {
+			if !keep(name) {
+				delete(c.runner.Tools.Deferred, name)
+			}
+		}
+		c.state.Tools = c.runner.Tools.Specs()
+	}
+	if err == nil && (projectRules.HasDescribed() || options.Parent == "" && len(skills.Skills) > 0) {
+		c.state.Tools = c.runner.Tools.Specs()
+	}
 	if err == nil && len(options.MCPServers) > 0 {
 		body, _ := json.Marshal(options.MCPServers)
 		_ = json.Unmarshal(body, &c.mcpServers)
@@ -420,13 +496,56 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	runner.Env.Spill = func(ctx context.Context, name string, body []byte) (tool.Ref, error) {
 		return e.spillScoped(ctx, state.Scope, name, body)
 	}
+	if state.Config.Parent == "" {
+		if skills, err := e.skills(state.Config.Workdir); err == nil && len(skills.Skills) > 0 {
+			runner.Tools = runner.Tools.With(tool.Skill{Read: skills.Read})
+		}
+		if set, err := rules.Load(e.ctx, state.Config.Workdir); err == nil {
+			runner.Env.Attach = set.Attacher(state.Config.Workdir)
+			if set.HasDescribed() {
+				runner.Tools = runner.Tools.With(tool.Rule{Lookup: set.Lookup})
+			}
+		}
+	}
+	if state.Config.Parent == "" && state.Config.ToolPool != "leader.default" {
+		planned := new(atomic.Bool)
+		runner.Tools = runner.Tools.With(tool.WritePlan{Write: func(ctx context.Context, content string) error {
+			if _, err := e.writePlan(ctx, state.ID, content); err != nil {
+				return err
+			}
+			planned.Store(true)
+			return nil
+		}})
+		runner.Finish = func() []model.Part {
+			if planned.CompareAndSwap(true, false) {
+				return []model.Part{{Text: "The plan is ready for review."}}
+			}
+			return nil
+		}
+		runner.OnTodos = func(ctx context.Context, items []tool.Todo) { e.todosChanged(ctx, state.ID, items) }
+	}
+	if state.Config.Parent == "" && state.Scope.Group == "" {
+		scheduler := sessionScheduler{e: e, workdir: state.Config.Workdir}
+		for _, t := range []tool.Tool{tool.ScheduleCreate{Scheduler: scheduler}, tool.ScheduleList{Scheduler: scheduler}, tool.ScheduleDelete{Scheduler: scheduler}} {
+			readOnly := state.Config.ToolPool == "worker.readonly" || e.tools.Name == "worker.readonly"
+			if name := t.Spec().Name; e.toolEnabled(name) && switchedOn(state.Config.Switches, name) && (!readOnly || t.Spec().Effect == tool.EffectRead) {
+				runner.Tools = runner.Tools.With(e.gate.Wrap(t))
+			}
+		}
+	}
 	runner.Tools.RestoreLoaded(state.Loaded)
 	runner.Snapshot = e.manager.Snapshot
+	runner.Track = e.trackWorkspace(state.ID, state.Config.Workdir)
 	entry := e.catalog.Get(state.Config.Provider, state.Config.Model)
 	reserve := max(entry.MaxOutput/4, 8192)
-	runner.Window = &window.Builder{Budget: window.Budget{Window: entry.Window, Reserve: reserve, Trigger: .9, Target: .6, KeepTurns: 4, ResultCap: 50 * 1024}, Counter: e.counter, Bus: e.Bus, Summarize: window.ModelSummarizer{Provider: p}}
+	runner.Window = &window.Builder{Budget: window.Budget{Window: entry.Window, Reserve: reserve, Trigger: .9, Target: .6, KeepTurns: 4, ResultCap: 50 * 1024}, Counter: e.counter, Bus: e.Bus, Summarize: e.summarizer(p)}
 	runner.Window.Snapshot = e.manager.Snapshot
 	c := &conversation{state: state, runner: runner, queue: make(chan *conversationTurn, 1), turns: make(map[*conversationTurn]struct{})}
+	if state.Config.Parent == "" && state.Scope.Group == "" {
+		if skills, err := e.skills(state.Config.Workdir); err == nil {
+			c.recommender = skills.Recommender()
+		}
+	}
 	if state.Config.Parent == "" {
 		c.children = builtin.New(e.ctx, e.Bus, e.newID, e.childRun(state.ID, state.Scope, state.Config))
 		c.runner.Env.Children = c.children
@@ -438,7 +557,19 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 func (e *Engine) childRun(parent event.ID, scope event.Scope, config session.Config) func(context.Context, event.ID, string) (loop.Outcome, error) {
 	return func(ctx context.Context, id event.ID, input string) (loop.Outcome, error) {
 		childScope := event.Scope{Group: scope.Group, Task: scope.Task, Session: id}
-		child, err := e.newConversation(ctx, SessionOptions{ID: id, Parent: parent, Scope: childScope, Member: config.Member, Mode: config.Mode, Provider: config.Provider, Model: config.Model, Thinking: config.Thinking, Workdir: config.Workdir, Budget: config.Budget})
+		options := SessionOptions{ID: id, Parent: parent, Scope: childScope, Member: config.Member, Mode: config.Mode, Provider: config.Provider, Model: config.Model, Thinking: config.Thinking, Workdir: config.Workdir, Budget: config.Budget}
+		if name := builtin.AgentOf(ctx); name != "" {
+			found, ok := e.agentNamed(name, config.Workdir)
+			if !ok {
+				return loop.Outcome{}, coded(errorcode.SessionRequestFailed, fmt.Errorf("no agent is named %s", name))
+			}
+			options.System = found.System
+			if found.Model.Provider != "" && found.Model.Model != "" {
+				options.Provider, options.Model, options.Thinking = found.Model.Provider, found.Model.Model, found.Model.Thinking
+			}
+			options.Tools, options.Switches = found.Tools, found.Switches
+		}
+		child, err := e.newConversation(ctx, options)
 		if err != nil {
 			return loop.Outcome{}, err
 		}
@@ -454,6 +585,20 @@ func (e *Engine) childRun(parent event.ID, scope event.Scope, config session.Con
 
 func (e *Engine) sessionTools(config session.Config) *tool.Pool {
 	pool := e.tools.With()
+	for _, t := range e.clientTools.Tools() {
+		pool.Deferred[t.Spec().Name] = e.gate.Wrap(t)
+	}
+	enabled := func(name string) bool { return e.toolEnabled(name) && switchedOn(config.Switches, name) }
+	for name := range pool.Tools {
+		if !enabled(name) {
+			delete(pool.Tools, name)
+		}
+	}
+	for name := range pool.Deferred {
+		if !enabled(name) {
+			delete(pool.Deferred, name)
+		}
+	}
 	if config.Parent == "" && config.ToolPool != "worker.readonly" && config.ToolPool != "leader.default" {
 		return pool
 	}
@@ -462,7 +607,7 @@ func (e *Engine) sessionTools(config session.Config) *tool.Pool {
 		pool.Name = "worker.readonly"
 	}
 	for name, t := range pool.Tools {
-		if t.Spec().Effect != tool.EffectRead || config.Parent != "" && (name == "spawn" || name == "wait_child") {
+		if t.Spec().Effect != tool.EffectRead || config.Parent != "" && (name == "spawn" || name == "wait_child" || name == "write_plan") {
 			delete(pool.Tools, name)
 		}
 	}

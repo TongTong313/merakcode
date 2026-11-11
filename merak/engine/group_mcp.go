@@ -28,6 +28,9 @@ func (e *Engine) workerTools(a worker.Assignment, submit func(context.Context, t
 		e.askLeaderTool(a),
 		tool.AskUser{Bus: e.Bus, Ask: e.askQuestion},
 		tool.SubmitReport{Claim: a.Claim.ID, Submit: submit},
+		tool.ClaimTask{Claim: func(ctx context.Context, id event.ID, scope []string) (task.Claim, error) {
+			return e.Tasks.Claim(ctx, id, a.Scope.Group, a.Claim.Member, scope)
+		}},
 		tool.ReportProgress{Report: func(ctx context.Context, summary string) error {
 			body, _ := json.Marshal(task.Progress{Claim: a.Claim.ID, Summary: summary})
 			_, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + a.Scope.Group), Scope: a.Scope, Type: task.Progressed, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Payload: body})

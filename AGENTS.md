@@ -12,7 +12,10 @@ The `dev-v1.0.0` branch rebuilds the whole architecture. The user designs the ar
   `apps/desktop` components, styles, i18n entries and e2e specs instead of rewriting them; only the data layer
   changes to the new SDK. The v0.3 engine, command line and SDK may be read for reference but not copied.
 - Nothing that v0.x could do may be missing in v1. Compared with `origin/tt/refactor/ui-side-panel`, every
-  feature must keep working; the only change allowed is that planning is no longer a separate mode.
+  feature must keep working; the only changes allowed are that planning is no longer a separate mode and that
+  language servers (LSP) and automatic formatting after an edit are not built, as in OpenCode 2; only their `lsp` and
+  `formatter` configuration keys stay configurable (slice R18; the user decided on 2026-11-12, see section 11 of
+  `docs/plans/v1-acceptance-review.html`).
 - Never move, skip or weaken a failing test to get CI green. Fix it, or list it in
   `apps/desktop/main/e2e/PENDING.md` with the slice that fixes it.
 - `docs/plans/v1-acceptance-review.html` sections 9 and 10 are the current work order. Where it differs from

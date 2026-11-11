@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/command"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/anthropic"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
@@ -185,8 +187,21 @@ func (s *Server) applyConfiguration(value config.Value) {
 	}
 	s.engine.ConfigureModels(overrides)
 	s.engine.Board.Configure(value.Board.AutoArchiveDays)
+	commands := make(map[string]command.Entry, len(value.Commands))
+	for name, entry := range value.Commands {
+		commands[name] = command.Entry{Template: entry.Template, Description: entry.Description, Agent: entry.Agent, Model: entry.Model}
+	}
+	s.engine.ConfigureCommands(commands)
+	s.engine.ConfigureTools(value.Tools)
+	s.engine.ConfigureAgents(engine.AgentSettings{Agents: value.Agents, Default: value.DefaultAgent})
+	s.engine.ConfigureRules(value.Rules.User)
+	s.engine.ConfigureSkills(s.configRoot, value.Skills.Paths, value.Skills.URLs)
+	s.engine.ConfigureMemory(engine.MemorySettings{AutoExtract: value.Memory.AutoExtract, AutoRecall: value.Memory.AutoRecall, Model: value.Memory.Model})
+	s.engine.ConfigureSessions(engine.SessionSettings{Snapshot: value.Snapshot, AutoCompact: value.CompactionAuto, RetentionDays: value.RetentionDays})
 	provider, name, _ := strings.Cut(value.Model, "/")
 	s.engine.SetDefaultModel(provider, name, model.Thinking(value.Thinking))
+	small, smallName, _ := strings.Cut(value.SmallModel, "/")
+	s.engine.SetSmallModel(small, smallName)
 	s.engine.ConfigureCatalog(sources)
 	if s.Level != nil && value.Log != "" {
 		var level slog.Level

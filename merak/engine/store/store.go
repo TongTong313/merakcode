@@ -17,6 +17,10 @@ type Store interface {
 	Put(context.Context, Doc) error
 	Fetch(context.Context, string, string) (Doc, error)
 	List(context.Context, string, string) ([]DocMeta, error)
+	// DeleteStream removes every event of a stream; the stream may start again from sequence 1.
+	DeleteStream(context.Context, event.Stream) error
+	// Delete removes a document; deleting a missing one succeeds.
+	Delete(ctx context.Context, kind, key string) error
 }
 
 // Query combines all non-empty fields; time bounds are exclusive and results
@@ -27,6 +31,8 @@ type Query struct {
 	After  time.Time    `json:"after,omitempty"`
 	Before time.Time    `json:"before,omitempty"`
 	Limit  int          `json:"limit,omitempty"`
+	// Text keeps the events whose payload contains it, ignoring ASCII letter case; wildcards are literal.
+	Text string `json:"text,omitempty"`
 }
 
 type Doc struct {

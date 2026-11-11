@@ -98,7 +98,7 @@ func TestTriggerOutputsCannotRecursivelyTriggerMoreActions(t *testing.T) {
 func TestTriggerAssignmentCannotRecursivelyCreateTasks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	e, g := triggerGroup(t, group.Settings{Triggers: []group.Trigger{{ID: "assign", When: event.Filter{Types: []event.Type{task.QueuedEvent}}, Then: group.Action{Kind: group.CreateTask, Template: "Follow assignment", Member: "worker"}}}}, map[string]model.Provider{"leader": fake.New(t), "worker": fake.New(t, fake.Reply{Hold: make(chan struct{})})})
+	e, g := triggerGroup(t, group.Settings{Triggers: []group.Trigger{{ID: "assign", When: event.Filter{Types: []event.Type{task.QueuedEvent}}, Then: group.Action{Kind: group.CreateTask, Template: "Follow assignment", Member: "worker"}}}}, map[string]model.Provider{"leader": groupScript{name: "leader", test: t, reply: func(model.Request) fake.Reply { return fake.Reply{Text: "Observed"} }}, "worker": fake.New(t, fake.Reply{Hold: make(chan struct{})})})
 	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{task.Created}})
 	defer stop()
 	seed, err := e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Seed", Workspace: "none", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}}, "worker")

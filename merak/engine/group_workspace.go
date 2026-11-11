@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"path/filepath"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
@@ -59,7 +58,7 @@ func (e *Engine) BindTask(ctx context.Context, groupID, taskID, human event.ID) 
 	if card.Group != "" {
 		return task.Card{}, coded(errorcode.TaskAlreadyInGroup, task.ErrAlreadyBound)
 	}
-	if filepath.Clean(card.Project) != filepath.Clean(state.Group.Project.Directory) {
+	if !workspace.SameDirectory(card.Project, state.Group.Project.Directory) {
 		if !actor.Can(group.RoleAdmin) {
 			return task.Card{}, task.ErrNotMember
 		}
@@ -77,6 +76,7 @@ func (e *Engine) BindTask(ctx context.Context, groupID, taskID, human event.ID) 
 // moveGroup makes another folder the workspace of a group that has no work running, and takes its unfinished tasks
 // along. The Leader continues in a new session started in the new folder.
 func (e *Engine) moveGroup(ctx context.Context, g group.Group, directory string, human event.ID) (group.Group, error) {
+	directory = canonicalDirectory(directory)
 	if err := workspace.Existing(directory); err != nil {
 		return group.Group{}, coded(errorcode.WorkspaceInvalid, err)
 	}

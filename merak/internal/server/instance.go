@@ -122,8 +122,8 @@ func StartWith(e *engine.Engine, options Options) (*Instance, error) {
 	handler := New(e, info.Token)
 	handler.settings = settings
 	e.ConfigureNetworkSettings(settings)
-	handler.applyConfiguration(settings.Private())
 	handler.dataDir, handler.configRoot = home, options.Config
+	handler.applyConfiguration(settings.Private())
 	handler.logRoot, _ = platformlog.Root()
 	instance := &Instance{Info: info, http: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}, server: handler, lock: lock, home: home}
 	body, err := json.Marshal(info)

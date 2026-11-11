@@ -20,12 +20,27 @@ const (
 	TurnStarted   event.Type = "turn.started"
 	TurnFinished  event.Type = "turn.finished"
 	TurnPreempted event.Type = "turn.preempted"
+
+	// InputDelivered is the receipt for an input handed to a running member; InputConsumed marks the moment the
+	// model reads it. Both carry the event that caused the input.
+	InputDelivered event.Type = "input.delivered"
+	InputConsumed  event.Type = "input.consumed"
 )
 
 func init() {
+	event.Register[Delivered](InputDelivered)
+	event.Register[Consumed](InputConsumed)
 	event.Register[session.Started](TurnStarted)
 	event.Register[Outcome](TurnFinished)
 	event.Register[Preempted](TurnPreempted)
+}
+
+type Delivered struct {
+	Claim event.ID `json:"claim"`
+}
+
+type Consumed struct {
+	Session event.ID `json:"session"`
 }
 
 type Preempted struct {
@@ -58,6 +73,8 @@ type Loop struct {
 	Budget   func(context.Context) (StopReason, error)
 	Deadline func(context.Context) (time.Time, error)
 	Finish   func() []model.Part
+	// Params may change the sampling parameters of a request just before it is sent; nil leaves them.
+	Params   func(context.Context, *model.Request)
 	Steer    Steer
 	Model    model.Provider
 	ModelID  string
@@ -66,7 +83,11 @@ type Loop struct {
 	Tools    *tool.Pool
 	Env      tool.Env
 	Snapshot func(context.Context, *session.State) error
-	Window   *window.Builder
+	// Track records the workspace before a step that can change files; nil disables the record.
+	Track func(context.Context) (string, error)
+	// OnTodos is called after the model replaced its todo list; the engine uses it to finish a plan whose steps are all done.
+	OnTodos func(ctx context.Context, items []tool.Todo)
+	Window  *window.Builder
 }
 
 type Input struct {
@@ -165,6 +186,9 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 			if err != nil {
 				return Outcome{}, err
 			}
+		}
+		if l.Params != nil {
+			l.Params(ctx, &request)
 		}
 		message, err := l.askStep(ctx, s, scope, request)
 		if err != nil {
@@ -275,6 +299,9 @@ func (l *Loop) runTools(ctx context.Context, s *session.State, scope event.Scope
 			}
 		}
 		group := calls[start:end]
+		if err := l.track(ctx, s, scope, group); err != nil {
+			return err
+		}
 		causes := make([]event.ID, len(group))
 		for i, call := range group {
 			called, err := l.emit(ctx, s, scope, agent, tool.Called, call, "")
@@ -302,6 +329,18 @@ func (l *Loop) runTools(ctx context.Context, s *session.State, scope event.Scope
 			if _, err := l.emit(ctx, s, scope, agent, tool.Completed, tool.Completion{CallID: call.ID, Name: call.Name, Result: results[i]}, causes[i]); err != nil {
 				return err
 			}
+			if tool.IsTodoWrite(call.Name) && !results[i].IsError {
+				items, err := tool.ParseTodos(call.Input)
+				if err != nil {
+					return err
+				}
+				if _, err := l.emit(ctx, s, scope, agent, session.TodoUpdated, session.Todos{Items: items}, causes[i]); err != nil {
+					return err
+				}
+				if l.OnTodos != nil {
+					l.OnTodos(ctx, items)
+				}
+			}
 		}
 		start = end
 	}
@@ -320,6 +359,12 @@ func (l *Loop) Inject(ctx context.Context, s *session.State, inputs []Input) err
 			continue
 		}
 		if _, err := l.emit(ctx, s, s.Scope, input.Actor, session.MessageSent, session.Input{Message: model.Message{Role: model.User, Parts: input.Parts}, Sources: input.Sources}, input.Cause); err != nil {
+			return err
+		}
+		if input.Cause == "" {
+			continue
+		}
+		if _, err := l.emit(ctx, s, s.Scope, input.Actor, InputConsumed, Consumed{Session: s.ID}, input.Cause); err != nil {
 			return err
 		}
 	}
@@ -405,4 +450,25 @@ func (l *Loop) emit(ctx context.Context, s *session.State, scope event.Scope, ac
 		}
 	}
 	return e, nil
+}
+
+// track records the workspace before a batch of calls that may change files. A workspace that cannot be recorded
+// only means the files of this step cannot be put back later; it never stops the work.
+func (l *Loop) track(ctx context.Context, s *session.State, scope event.Scope, calls []model.ToolCall) error {
+	if l.Track == nil {
+		return nil
+	}
+	changes := false
+	for _, call := range calls {
+		changes = changes || !l.isRead(call.Name)
+	}
+	if !changes {
+		return nil
+	}
+	tree, err := l.Track(ctx)
+	if err != nil || tree == "" {
+		return nil
+	}
+	_, err = l.emit(ctx, s, scope, event.Actor{Kind: event.ActorAgent, ID: s.Config.Member}, session.Tracked, session.Track{Tree: tree}, "")
+	return err
 }

@@ -48,16 +48,31 @@ func (Bash) Run(ctx context.Context, call Call) (Result, error) {
 	if err != nil {
 		return failure(err), nil
 	}
+	profile := call.Env.SandboxProfile
+	var extra map[string]string
+	if call.Env.ShellEnv != nil {
+		extra = call.Env.ShellEnv(ctx, call.Env.Workdir, call.ID)
+		profile.EnvAllow = append([]string(nil), profile.EnvAllow...)
+		for name := range extra {
+			profile.EnvAllow = append(profile.EnvAllow, name)
+		}
+	}
 	if call.Env.Sandbox != nil {
-		cmd, err = call.Env.Sandbox.Command(ctx, call.Env.SandboxProfile, cmd.Path, cmd.Args[1:]...)
+		cmd, err = call.Env.Sandbox.Command(ctx, profile, cmd.Path, cmd.Args[1:]...)
 		if err != nil {
 			return failure(err), nil
 		}
 		cmd.Dir = call.Env.Workdir
 	}
+	if len(extra) > 0 {
+		cmd.Env = cmd.Environ()
+		for name, value := range extra {
+			cmd.Env = append(cmd.Env, name+"="+value)
+		}
+	}
 	var buffer bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buffer, &buffer
-	runErr := call.Env.Sandbox.Start(cmd, call.Env.SandboxProfile)
+	runErr := call.Env.Sandbox.Start(cmd, profile)
 	if runErr == nil {
 		runErr = call.Env.Sandbox.Wait(cmd)
 	}

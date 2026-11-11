@@ -15,6 +15,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/plugin"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -124,6 +125,13 @@ func (e *Engine) releaseSandbox(session event.ID) {
 			delete(e.mcpProcesses, id)
 		}
 	}
+	var hosts []*plugin.Session
+	for id, live := range e.pluginSessions {
+		if session == "" || id == session {
+			hosts = append(hosts, live)
+			delete(e.pluginSessions, id)
+		}
+	}
 	var launchers []*sandbox.Launcher
 	for key, launcher := range e.sandboxes {
 		if session == "" || key.session == session {
@@ -135,6 +143,9 @@ func (e *Engine) releaseSandbox(session event.ID) {
 	var failure error
 	for _, process := range processes {
 		failure = errors.Join(failure, process.Close())
+	}
+	for _, live := range hosts {
+		failure = errors.Join(failure, live.Close())
 	}
 	for _, launcher := range launchers {
 		failure = errors.Join(failure, launcher.Close())

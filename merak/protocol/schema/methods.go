@@ -7,11 +7,18 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/agent"
+	"github.com/TongTong313/merakcode/merak/engine/code"
+	"github.com/TongTong313/merakcode/merak/engine/command"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
+	"github.com/TongTong313/merakcode/merak/engine/mcp"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
+	"github.com/TongTong313/merakcode/merak/engine/plan"
+	"github.com/TongTong313/merakcode/merak/engine/schedule"
 	"github.com/TongTong313/merakcode/merak/engine/session"
+	"github.com/TongTong313/merakcode/merak/engine/skill"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/terminal"
@@ -39,6 +46,24 @@ func Methods() []Method {
 		{"cloud.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]group.Member]()},
 		{"config.get", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.Config]()},
 		{"config.set", reflect.TypeFor[protocol.ConfigPatch](), reflect.TypeFor[protocol.Config]()},
+		{"plan.get", reflect.TypeFor[protocol.PlanParams](), reflect.TypeFor[plan.Plan]()},
+		{"plan.save", reflect.TypeFor[protocol.PlanSaveParams](), reflect.TypeFor[plan.Plan]()},
+		{"plan.execute", reflect.TypeFor[protocol.PlanParams](), reflect.TypeFor[plan.Plan]()},
+		{"plan.stop", reflect.TypeFor[protocol.PlanParams](), reflect.TypeFor[plan.Plan]()},
+		{"command.list", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[[]command.Command]()},
+		{"session.command", reflect.TypeFor[protocol.SessionCommandParams](), reflect.TypeFor[command.Result]()},
+		{"skill.list", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[protocol.SkillListResult]()},
+		{"skill.discover", reflect.TypeFor[protocol.SkillDiscoverParams](), reflect.TypeFor[[]skill.Offer]()},
+		{"skill.install", reflect.TypeFor[protocol.SkillInstallParams](), reflect.TypeFor[protocol.SkillInstallResult]()},
+		{"skill.uninstall", reflect.TypeFor[protocol.SkillUninstallParams](), reflect.TypeFor[struct{}]()},
+		{"rules.read", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[protocol.RulesReadResult]()},
+		{"rules.change", reflect.TypeFor[protocol.RulesChangeParams](), reflect.TypeFor[struct{}]()},
+		{"memory.list", reflect.TypeFor[protocol.MemoryListParams](), reflect.TypeFor[[]memory.Note]()},
+		{"memory.read", reflect.TypeFor[protocol.MemoryNoteParams](), reflect.TypeFor[memory.Note]()},
+		{"memory.delete", reflect.TypeFor[protocol.MemoryNoteParams](), reflect.TypeFor[struct{}]()},
+		{"mcp.status", reflect.TypeFor[protocol.MCPStatusParams](), reflect.TypeFor[[]mcp.Status]()},
+		{"mcp.authenticate", reflect.TypeFor[protocol.MCPServerParams](), reflect.TypeFor[protocol.MCPAuthenticateResult]()},
+		{"mcp.logout", reflect.TypeFor[protocol.MCPServerParams](), reflect.TypeFor[struct{}]()},
 		{"model.list", reflect.TypeFor[protocol.ModelListParams](), reflect.TypeFor[[]catalog.Model]()},
 		{"agent.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
 		{"worker.run", reflect.TypeFor[protocol.WorkerRunParams](), reflect.TypeFor[task.Report]()},
@@ -89,10 +114,28 @@ func Methods() []Method {
 		{"repo.diff", reflect.TypeFor[protocol.RepoDiffParams](), reflect.TypeFor[[]git.Change]()},
 		{"repo.branches", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[[]git.Branch]()},
 		{"repo.checkout", reflect.TypeFor[protocol.RepoCheckoutParams](), reflect.TypeFor[struct{}]()},
+		{"repo.commit", reflect.TypeFor[protocol.RepoCommitParams](), reflect.TypeFor[protocol.RepoCommitResult]()},
+		{"repo.push", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[struct{}]()},
+		{"repo.commitMessage", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[protocol.RepoCommitMessageResult]()},
+		{"worktree.create", reflect.TypeFor[protocol.WorktreeCreateParams](), reflect.TypeFor[code.Worktree]()},
+		{"worktree.list", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[[]code.Worktree]()},
+		{"worktree.merge", reflect.TypeFor[protocol.WorktreePathParams](), reflect.TypeFor[struct{}]()},
+		{"worktree.remove", reflect.TypeFor[protocol.WorktreePathParams](), reflect.TypeFor[struct{}]()},
+		{"file.status", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[code.Status]()},
+		{"file.identity", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[code.Identity]()},
+		{"file.find", reflect.TypeFor[protocol.FileFindParams](), reflect.TypeFor[[]string]()},
 		{"session.create", reflect.TypeFor[protocol.SessionCreateParams](), reflect.TypeFor[protocol.SessionCreateResult]()},
 		{"session.send", reflect.TypeFor[protocol.SessionSendParams](), reflect.TypeFor[struct{}]()},
 		{"session.cancel", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[struct{}]()},
-		{"session.list", reflect.TypeFor[struct{}](), reflect.TypeFor[[]session.Info]()},
+		{"session.list", reflect.TypeFor[protocol.SessionListParams](), reflect.TypeFor[[]session.Info]()},
+		{"session.update", reflect.TypeFor[protocol.SessionUpdateParams](), reflect.TypeFor[struct{}]()},
+		{"session.revert", reflect.TypeFor[protocol.SessionRevertParams](), reflect.TypeFor[struct{}]()},
+		{"session.unrevert", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[struct{}]()},
+		{"session.compact", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[struct{}]()},
+		{"session.delete", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[struct{}]()},
+		{"session.search", reflect.TypeFor[protocol.SessionSearchParams](), reflect.TypeFor[[]session.Hit]()},
+		{"session.export", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[[]event.Event]()},
+		{"session.import", reflect.TypeFor[protocol.SessionImportParams](), reflect.TypeFor[protocol.SessionCreateResult]()},
 		{"session.snapshot", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[session.State]()},
 		{"events.read", reflect.TypeFor[protocol.EventsReadParams](), reflect.TypeFor[[]event.Event]()},
 		{"events.find", reflect.TypeFor[store.Query](), reflect.TypeFor[[]event.Event]()},
@@ -100,6 +143,11 @@ func Methods() []Method {
 		{"event.emit", reflect.TypeFor[protocol.EventEmitParams](), reflect.TypeFor[event.Event]()},
 		{"permission.reply", reflect.TypeFor[protocol.PermissionReplyParams](), reflect.TypeFor[struct{}]()},
 		{"question.reply", reflect.TypeFor[protocol.QuestionReplyParams](), reflect.TypeFor[struct{}]()},
+		{"schedule.list", reflect.TypeFor[struct{}](), reflect.TypeFor[[]schedule.Schedule]()},
+		{"schedule.delete", reflect.TypeFor[protocol.ScheduleDeleteParams](), reflect.TypeFor[struct{}]()},
+		{"tool.register", reflect.TypeFor[protocol.ToolRegisterParams](), reflect.TypeFor[struct{}]()},
+		{"tool.unregister", reflect.TypeFor[protocol.ToolUnregisterParams](), reflect.TypeFor[struct{}]()},
+		{"tool.result", reflect.TypeFor[protocol.ToolResultParams](), reflect.TypeFor[struct{}]()},
 		{"events.subscribe", reflect.TypeFor[event.Filter](), reflect.TypeFor[protocol.SubscribeResult]()},
 		{"events.unsubscribe", reflect.TypeFor[protocol.UnsubscribeParams](), reflect.TypeFor[struct{}]()},
 	}

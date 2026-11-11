@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	ErrNotMember = errors.New("task: only a worker member can be assigned")
-	ErrBusy      = errors.New("task: member already has an active claim")
-	ErrState     = errors.New("task: operation is not allowed in the current state")
+	ErrNotMember  = errors.New("task: only a worker member can be assigned")
+	ErrNotInGroup = errors.New("task: the task does not belong to this group")
+	ErrBusy       = errors.New("task: member already has an active claim")
+	ErrState      = errors.New("task: operation is not allowed in the current state")
 	// ErrAlreadyBound means the task has a group, which it keeps for good.
 	ErrAlreadyBound = errors.New("task: the task already belongs to a group")
 	// ErrNotFinished means only a finished task can be archived.
@@ -669,4 +670,27 @@ func (p *Pool) FinishedBefore(ctx context.Context, limit time.Time) ([]event.ID,
 	}
 	slices.Sort(result)
 	return result, nil
+}
+
+// Claim lets a Worker take a task of its own group for itself. The first claim owns the task; later ones
+// collaborate and need a scope that does not overlap the others. Queueing and conflicts follow the rules of a
+// Leader's assignment, and the claim is attributed to the Worker.
+func (p *Pool) Claim(ctx context.Context, id, groupID, memberID event.ID, scope []string) (Claim, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return Claim{}, err
+	}
+	card, ok := p.cards[id]
+	if !ok {
+		return Claim{}, store.ErrNotFound
+	}
+	if card.Group == "" || card.Group != groupID {
+		return Claim{}, ErrNotInGroup
+	}
+	role := RoleOwner
+	if slices.ContainsFunc(card.Claims, func(c Claim) bool { return c.Role == RoleOwner && c.Status != ClaimAbandoned }) {
+		role = RoleCollaborator
+	}
+	return p.assign(ctx, id, memberID, role, scope, false, event.Actor{Kind: event.ActorAgent, ID: memberID})
 }

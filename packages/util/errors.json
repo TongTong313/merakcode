@@ -569,6 +569,230 @@
         "zh": "检查日志、存储连接和输出路径后重试。",
         "en": "Check the logs, storage connection and output path, then retry."
       }
+    },
+    "TAKEOVER_NEEDS_CONFIRMATION": {
+      "code": "MRK-4006",
+      "domain": "session",
+      "status": 409,
+      "retryable": false,
+      "title": {
+        "zh": "接管模式需要确认",
+        "en": "Takeover mode needs confirmation"
+      },
+      "hint": {
+        "zh": "接管模式会关闭沙箱和权限检查。请在确认后重试。",
+        "en": "Takeover turns off the sandbox and permission checks. Confirm it and try again."
+      }
+    },
+    "REVERT_TARGET_INVALID": {
+      "code": "MRK-4007",
+      "domain": "session",
+      "status": 400,
+      "retryable": false,
+      "title": {
+        "zh": "无法撤回到这条消息",
+        "en": "Cannot revert to this message"
+      },
+      "hint": {
+        "zh": "只能撤回到你自己发送的、仍然可见的消息。",
+        "en": "You can only revert to a visible message that you sent."
+      }
+    },
+    "NOTHING_TO_RESTORE": {
+      "code": "MRK-4008",
+      "domain": "session",
+      "status": 409,
+      "retryable": false,
+      "title": {
+        "zh": "没有可恢复的撤回",
+        "en": "Nothing to restore"
+      },
+      "hint": {
+        "zh": "撤回后已经发送了新消息，或者没有撤回过。",
+        "en": "A new message was sent after the revert, or nothing was reverted."
+      }
+    },
+    "SESSION_BUSY": {
+      "code": "MRK-4009",
+      "domain": "session",
+      "status": 409,
+      "retryable": true,
+      "title": {
+        "zh": "会话正在运行",
+        "en": "The session is running"
+      },
+      "hint": {
+        "zh": "请等当前回合结束或先停止它，再重试。",
+        "en": "Wait for the current turn to end or stop it, then try again."
+      }
+    },
+    "PLAN_STALE": {
+      "code": "MRK-4011",
+      "domain": "session",
+      "status": 409,
+      "retryable": false,
+      "title": {
+        "zh": "计划已被修改",
+        "en": "The plan has changed"
+      },
+      "hint": {
+        "zh": "计划在你打开之后又被修改过。请重新载入计划，保留你的修改后再保存。",
+        "en": "The plan changed after you opened it. Reload it, keep your edits and save again."
+      }
+    },
+    "PLAN_STATE": {
+      "code": "MRK-4012",
+      "domain": "session",
+      "status": 409,
+      "retryable": false,
+      "title": {
+        "zh": "计划现在不能这样操作",
+        "en": "The plan cannot do that now"
+      },
+      "hint": {
+        "zh": "只有待审阅或已停止的计划能执行，只有执行中的计划能停止。",
+        "en": "Only a plan under review or stopped can be executed, and only a running plan can be stopped."
+      }
+    },
+    "AUTO_COMPACTION_OFF": {
+      "code": "MRK-4010",
+      "domain": "session",
+      "status": 413,
+      "retryable": false,
+      "title": {
+        "zh": "上下文已满，自动压缩已关闭",
+        "en": "Context is full and automatic compaction is off"
+      },
+      "hint": {
+        "zh": "请手动压缩会话，或在配置里重新打开 compaction.auto。",
+        "en": "Compact the session by hand, or turn compaction.auto back on in the configuration."
+      }
+    },
+    "WORKTREE_MERGE_CONFLICT": {
+      "code": "MRK-6018",
+      "domain": "task",
+      "status": 409,
+      "retryable": false,
+      "title": {
+        "zh": "合并有冲突",
+        "en": "The merge has conflicts"
+      },
+      "hint": {
+        "zh": "工作树和主分支改了同一处，合并已撤销，两边都没有变化。请先在工作树里整合主分支的改动。",
+        "en": "The worktree and the main branch changed the same lines. The merge was undone and nothing changed on either side. Bring the main branch into the worktree first."
+      }
+    },
+    "NOTHING_TO_SUMMARIZE": {
+      "code": "MRK-6019",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": {
+        "zh": "没有可写提交信息的改动",
+        "en": "There are no changes to describe"
+      },
+      "hint": {
+        "zh": "工作目录里没有未提交的改动。",
+        "en": "The folder has no uncommitted changes."
+      }
+    },
+    "WORKTREE_UNKNOWN": {
+      "code": "MRK-6020",
+      "domain": "task",
+      "status": 400,
+      "retryable": false,
+      "title": {
+        "zh": "这不是对话的工作树",
+        "en": "This is not a conversation worktree"
+      },
+      "hint": {
+        "zh": "只能合并或删除由 MerakCode 为对话创建的工作树。",
+        "en": "Only worktrees that MerakCode made for a conversation can be merged or removed."
+      }
+    },
+    "SCHEDULE_INVALID": {
+      "code": "MRK-4013",
+      "domain": "session",
+      "status": 400,
+      "retryable": false,
+      "title": {
+        "zh": "定时任务设置无效",
+        "en": "The scheduled task is not valid"
+      },
+      "hint": {
+        "zh": "定时表达式要有五段（分 时 日 月 周），提示词和工作空间不能为空。",
+        "en": "A schedule needs a five-field expression (minute hour day month weekday), a prompt and a folder."
+      }
+    },
+    "SCHEDULE_UNKNOWN": {
+      "code": "MRK-4014",
+      "domain": "session",
+      "status": 404,
+      "retryable": false,
+      "title": {
+        "zh": "没有这个定时任务",
+        "en": "No such scheduled task"
+      },
+      "hint": {
+        "zh": "它可能已经被删除，请刷新列表。",
+        "en": "It may have been deleted. Refresh the list."
+      }
+    },
+    "SCHEDULE_RUN_FAILED": {
+      "code": "MRK-4015",
+      "domain": "session",
+      "status": 502,
+      "retryable": true,
+      "title": {
+        "zh": "定时任务没能开始",
+        "en": "A scheduled run could not start"
+      },
+      "hint": {
+        "zh": "检查默认模型、指定的智能体和工作空间是否还在，下一个时间点会再试。",
+        "en": "Check the default model, the chosen agent and that the folder still exists. The next run will try again."
+      }
+    },
+    "PLUGIN_NODE_MISSING": {
+      "code": "MRK-3003",
+      "domain": "config",
+      "status": 503,
+      "retryable": false,
+      "title": {
+        "zh": "插件需要 Node.js",
+        "en": "Plugins need Node.js"
+      },
+      "hint": {
+        "zh": "安装 Node.js 并让它出现在 PATH 里，或在桌面端使用自带的运行时。没有它对话照常进行，只是插件不起作用。",
+        "en": "Install Node.js and put it on the PATH, or use the desktop app's own runtime. Conversations work without it; only the plugins do not."
+      }
+    },
+    "PLUGIN_LOAD_FAILED": {
+      "code": "MRK-3004",
+      "domain": "config",
+      "status": 400,
+      "retryable": false,
+      "title": {
+        "zh": "插件加载失败",
+        "en": "A plugin failed to load"
+      },
+      "hint": {
+        "zh": "检查插件的路径或包名，以及它自己的报错。其他插件不受影响。",
+        "en": "Check the path or package name of the plugin and its own error. The other plugins are not affected."
+      }
+    },
+    "PLUGIN_HOOK_FAILED": {
+      "code": "MRK-5012",
+      "domain": "tool",
+      "status": 500,
+      "retryable": false,
+      "title": {
+        "zh": "插件的钩子出错或超时",
+        "en": "A plugin hook failed or timed out"
+      },
+      "hint": {
+        "zh": "这一次钩子被跳过，回合照常进行。检查插件的日志，钩子每次最多运行 10 秒。",
+        "en": "The hook was skipped and the turn went on. Check the plugin; a hook may run for 10 seconds at most."
+      }
     }
   }
 }

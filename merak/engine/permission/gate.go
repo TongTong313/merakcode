@@ -89,6 +89,14 @@ func (g guarded) Run(ctx context.Context, call tool.Call) (tool.Result, error) {
 			decision = remembered
 		}
 	}
+	if decision == Ask && call.Env.PermissionAsk != nil {
+		switch call.Env.PermissionAsk(ctx, g.Spec().Name, call.Input) {
+		case "allow":
+			decision = Allow
+		case "deny":
+			decision = Deny
+		}
+	}
 	if decision == Ask {
 		request := requestFor(call, g.Spec())
 		request.Mode = policy.Mode

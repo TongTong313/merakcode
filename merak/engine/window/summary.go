@@ -15,13 +15,21 @@ type SummaryRequest struct {
 	MaxTokens int
 }
 
-type ModelSummarizer struct{ Provider model.Provider }
+// ModelSummarizer asks a model for the summary. A non-empty Model replaces the model of the conversation, whose
+// thinking level then no longer applies.
+type ModelSummarizer struct {
+	Provider model.Provider
+	Model    string
+}
 
 func (s ModelSummarizer) Summarize(ctx context.Context, input SummaryRequest) (Summary, error) {
 	if input.To <= 0 || input.To > len(input.Parent.Messages) || input.MaxTokens <= 0 {
 		return Summary{}, errors.New("MRK-4003")
 	}
 	request := summaryRequest(input)
+	if s.Model != "" {
+		request.Model, request.Thinking = s.Model, ""
+	}
 	stream, err := s.Provider.Stream(ctx, request)
 	if err != nil {
 		return Summary{}, err

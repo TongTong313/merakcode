@@ -85,7 +85,7 @@ func TestGroupHumanMessageGetsAnImmediateReceiptAndPreemptsTheLeader(t *testing.
 	}
 }
 
-func TestHumanMessagesReachActiveClaimsWithoutWakingTheLeader(t *testing.T) {
+func TestHumanMessagesReachActiveClaimsAndWakeTheLeader(t *testing.T) {
 	for _, name := range []string{"mentioned member", "task discussion", "before assignment"} {
 		t.Run(name, func(t *testing.T) {
 			before := name == "before assignment"
@@ -97,7 +97,12 @@ func TestHumanMessagesReachActiveClaimsWithoutWakingTheLeader(t *testing.T) {
 			report := integrationCall("submit_report", map[string]any{"verdict": "done", "summary": "Verified updated work."})
 			report.Hold = finish
 			report.Expect = func(req model.Request) error {
-				if !strings.Contains(fmt.Sprint(req.Messages), "Apply this change") {
+				// A message that arrives before the assignment is read from the discussion snapshot, with its author.
+				want := "Message from Owner (a human; this overrides the Leader's instructions): Apply this change"
+				if before {
+					want = "Apply this change"
+				}
+				if !strings.Contains(fmt.Sprint(req.Messages), want) {
 					return fmt.Errorf("worker did not receive the human message")
 				}
 				close(received)
@@ -165,9 +170,12 @@ func TestHumanMessagesReachActiveClaimsWithoutWakingTheLeader(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal(ctx.Err())
 			}
-			time.Sleep(30 * time.Millisecond)
-			if leaderCalls.Load() != 1 {
-				t.Fatalf("routed message woke leader: %d", leaderCalls.Load())
+			for leaderCalls.Load() < 2 {
+				select {
+				case <-time.After(time.Millisecond):
+				case <-ctx.Done():
+					t.Fatalf("leader was not woken by the routed human message: %d", leaderCalls.Load())
+				}
 			}
 			close(finish)
 		})
@@ -192,7 +200,9 @@ func TestAnIdleMentionOrExplicitAssignmentStartsTheWorkerDirectly(t *testing.T) 
 				return nil
 			}})
 			dir := t.TempDir()
-			e, err := engine.New(engine.Deps{Workdir: dir, Providers: map[string]model.Provider{"leader": fake.New(t), "worker": workerModel}})
+			var leaderCalls atomic.Int32
+			leaderModel := groupScript{name: "leader", test: t, reply: func(model.Request) fake.Reply { leaderCalls.Add(1); return fake.Reply{Text: "Noted."} }}
+			e, err := engine.New(engine.Deps{Workdir: dir, Providers: map[string]model.Provider{"leader": leaderModel, "worker": workerModel}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,7 +219,7 @@ func TestAnIdleMentionOrExplicitAssignmentStartsTheWorkerDirectly(t *testing.T) 
 				t.Fatal(err)
 			}
 			if mention {
-				_, err = e.SayGroup(ctx, g.ID, "", "human", group.Message{Text: "Inspect the design", To: []event.ID{"worker"}})
+				_, err = e.SayGroup(ctx, g.ID, "", "human", group.Message{Text: "Inspect the design\nthen list the open questions", To: []event.ID{"worker"}})
 			} else {
 				_, err = e.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Inspect the design", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "human"}}, "worker")
 			}
@@ -224,6 +234,16 @@ func TestAnIdleMentionOrExplicitAssignmentStartsTheWorkerDirectly(t *testing.T) 
 			cards, err := e.Tasks.List(ctx, g.ID)
 			if err != nil || len(cards) != 1 || len(cards[0].Claims) != 1 || cards[0].Claims[0].Member != "worker" {
 				t.Fatalf("cards=%+v err=%v", cards, err)
+			}
+			if mention && (cards[0].Title != "Inspect the design" || cards[0].Description != "Inspect the design\nthen list the open questions" || cards[0].Group != g.ID) {
+				t.Fatalf("title=%q description=%q group=%q", cards[0].Title, cards[0].Description, cards[0].Group)
+			}
+			for leaderCalls.Load() == 0 {
+				select {
+				case <-time.After(time.Millisecond):
+				case <-ctx.Done():
+					t.Fatal("the Leader was not woken")
+				}
 			}
 			cancel()
 		})

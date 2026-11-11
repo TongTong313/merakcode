@@ -118,6 +118,10 @@ func (s *Store) Find(ctx context.Context, q store.Query) ([]event.Event, error) 
 			args = append(args, kind)
 		}
 	}
+	if q.Text != "" {
+		where = append(where, `CAST(payload AS TEXT) LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+likeEscape(q.Text)+"%")
+	}
 	if !q.After.IsZero() {
 		where = append(where, "time > ?")
 		args = append(args, timestamp(q.After))
@@ -239,4 +243,21 @@ func nullable(value string) any {
 		return nil
 	}
 	return value
+}
+
+// DeleteStream removes every event of a stream.
+func (s *Store) DeleteStream(ctx context.Context, stream event.Stream) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE stream = ?", stream)
+	return err
+}
+
+// Delete removes a document; a missing one is not an error.
+func (s *Store) Delete(ctx context.Context, kind, key string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM docs WHERE kind = ? AND key = ?", kind, key)
+	return err
+}
+
+// likeEscape makes a text match itself inside a LIKE pattern that escapes with a backslash.
+func likeEscape(text string) string {
+	return strings.NewReplacer(`\`, `\`, `%`, `\%`, `_`, `\_`).Replace(text)
 }

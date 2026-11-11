@@ -110,3 +110,18 @@ func (e *Engine) snapshotPermissions(ctx context.Context, state *session.State) 
 	}
 	return nil
 }
+
+// SearchSessions finds the conversations that have a message containing a text.
+func (e *Engine) SearchSessions(ctx context.Context, text string, limit int) ([]session.Hit, error) {
+	return e.manager.Search(ctx, text, limit)
+}
+
+// ExportSession returns every event of a conversation, ready to be imported again.
+func (e *Engine) ExportSession(ctx context.Context, id event.ID) ([]event.Event, error) {
+	return e.manager.Export(ctx, id)
+}
+
+// ImportSession adds an exported conversation as a new one and returns its id.
+func (e *Engine) ImportSession(ctx context.Context, facts []event.Event) (event.ID, error) {
+	return e.manager.Import(ctx, facts, e.newID)
+}

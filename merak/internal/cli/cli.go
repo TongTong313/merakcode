@@ -87,6 +87,24 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 	if len(args) > 0 && args[0] == "cloud" {
 		return cloudCommand(args[1:], stdout)
 	}
+	if len(args) > 0 && args[0] == "skill" {
+		return skillCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "schedule" {
+		return scheduleCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "command" {
+		return commandCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "session" {
+		return sessionCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "export" {
+		return exportCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "import" {
+		return importCommand(args[1:], stdin, stdout, ui)
+	}
 	if len(args) > 0 && args[0] == "agent" {
 		return agentCommand(args[1:], stdin, stdout, ui)
 	}

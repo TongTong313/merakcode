@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 type Model struct {
 	Name      string   `json:"name,omitempty"`
 	Window    int      `json:"window,omitempty"`
@@ -42,6 +44,38 @@ type Cloud struct {
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
+// Warning is one entry of a configuration file that was skipped or is not used. The configuration still loads.
+type Warning struct {
+	// Code is the MRK code a client shows; Path is the key that was skipped, such as "mcp.local" or "memory.x".
+	Code string `json:"code"`
+	Path string `json:"path"`
+	// File is the file the entry is in.
+	File    string `json:"file,omitempty"`
+	Message string `json:"message"`
+}
+
+func (w Warning) String() string { return w.Path + ": " + w.Message }
+
+// warn records warnings written as "path: message".
+func (v *Value) warn(texts ...string) {
+	for _, text := range texts {
+		path, message, found := strings.Cut(text, ": ")
+		if !found {
+			path, message = "", text
+		}
+		v.Warnings = append(v.Warnings, Warning{Code: "MRK-3002", Path: path, Message: message})
+	}
+}
+
+// inFile says which file the warnings that have no file yet came from.
+func (v *Value) inFile(file string) {
+	for i := range v.Warnings {
+		if v.Warnings[i].File == "" {
+			v.Warnings[i].File = file
+		}
+	}
+}
+
 // Value is the configuration the program uses. It is read from the v0.3 file format; Warnings lists what was ignored.
 type Value struct {
 	Cloud            Cloud                `json:"cloud,omitempty"`
@@ -63,7 +97,24 @@ type Value struct {
 	EnabledProviders []string             `json:"enabledProviders,omitempty"`
 	Providers        map[string]Provider  `json:"providers"`
 	Board            Board                `json:"board"`
-	Warnings         []string             `json:"warnings,omitempty"`
+	// Memory decides what the engine remembers across conversations; both switches default to off.
+	Memory Memory `json:"memory"`
+	// Tools switches tools off or on by name (the v0.3 tools section); a name may end in * and "exa" means both searches.
+	Tools map[string]bool `json:"tools,omitempty"`
+	// Agents are the entries of the agent section and DefaultAgent is the agent a new conversation starts with (v0.3 agent and default_agent).
+	Agents       map[string]Agent `json:"agents,omitempty"`
+	DefaultAgent string           `json:"defaultAgent,omitempty"`
+	// Commands are the slash commands of the configuration (the v0.3 command section).
+	Commands map[string]Command `json:"commands,omitempty"`
+	// Skills are the extra folders to find skills in and the default sources to install them from (v0.3 skills.paths and skills.urls).
+	Skills Skills `json:"skills"`
+	// Snapshot keeps the files of a conversation so a revert can put them back (default on).
+	Snapshot bool `json:"snapshot"`
+	// CompactionAuto lets a conversation shrink its own context when it fills up (default on).
+	CompactionAuto bool `json:"compactionAuto"`
+	// RetentionDays deletes conversations idle for this many days; 0 keeps them for ever.
+	RetentionDays int       `json:"retentionDays,omitempty"`
+	Warnings      []Warning `json:"warnings,omitempty"`
 }
 
 // ProviderPatch changes only the fields it names. A string field set to "" removes the key from the file.
@@ -86,6 +137,42 @@ type ProviderPatch struct {
 	HasHeaders bool `json:"hasHeaders,omitempty"`
 }
 
+// Command is one entry of the v0.3 command section.
+type Command struct {
+	Template    string `json:"template"`
+	Description string `json:"description,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	Model       string `json:"model,omitempty"`
+}
+
+// Skills is the v0.3 `skills` section.
+type Skills struct {
+	Paths []string `json:"paths,omitempty"`
+	URLs  []string `json:"urls,omitempty"`
+}
+
+// Memory is the v0.3 `memory` section, of which v1 uses three keys.
+type Memory struct {
+	// AutoExtract saves notes from a conversation once it is idle (v0.3 auto_extract: true, "signals" or "always").
+	AutoExtract bool `json:"autoExtract"`
+	// AutoRecall puts the notes that fit a message into its first turn (v0.3 auto_recall).
+	AutoRecall bool `json:"autoRecall"`
+	// Model names the model that writes notes (v0.3 model); empty means the small or the default model.
+	Model string `json:"model,omitempty"`
+}
+
+// RulesPatch changes the rules in the global file.
+type RulesPatch struct {
+	User *[]string `json:"user,omitempty"`
+}
+
+// MemoryPatch changes the memory settings.
+type MemoryPatch struct {
+	AutoExtract *bool   `json:"autoExtract,omitempty"`
+	AutoRecall  *bool   `json:"autoRecall,omitempty"`
+	Model       *string `json:"model,omitempty"`
+}
+
 // Board holds the settings of the task board.
 type Board struct {
 	// AutoArchiveDays is how many days a finished task stays on the board before it is archived; 0 turns it off.
@@ -101,7 +188,16 @@ type BoardPatch struct {
 }
 
 type Patch struct {
-	Board            *BoardPatch               `json:"board,omitempty"`
+	Board *BoardPatch `json:"board,omitempty"`
+	// MCP adds or replaces servers by name; a null entry deletes the server.
+	MCP    map[string]*MCPServer `json:"mcp,omitempty"`
+	Memory *MemoryPatch          `json:"memory,omitempty"`
+	// Rules replaces the personal rules; nil leaves them.
+	Rules            *RulesPatch               `json:"rules,omitempty"`
+	DefaultAgent     *string                   `json:"defaultAgent,omitempty"`
+	Snapshot         *bool                     `json:"snapshot,omitempty"`
+	CompactionAuto   *bool                     `json:"compactionAuto,omitempty"`
+	RetentionDays    *int                      `json:"retentionDays,omitempty"`
 	Cloud            *Cloud                    `json:"cloud,omitempty"`
 	PermissionMode   *string                   `json:"permissionMode,omitempty"`
 	PermissionRules  *[]PermissionRule         `json:"permissionRules,omitempty"`

@@ -6,6 +6,8 @@ import (
 )
 
 type AgentListParams struct {
+	// Directory adds the agents that this folder and the user's root define in files.
+	Directory string `json:"directory,omitempty"`
 }
 
 type AgentDeleteParams struct {

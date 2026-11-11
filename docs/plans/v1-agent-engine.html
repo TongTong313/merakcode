@@ -410,7 +410,7 @@
       </li>
       <li>
         <strong>不倒退。</strong>v0.x 能做的 v1 都能做：模型目录、MCP（含远程和
-        OAuth）、技能、插件、斜杠命令、计划、LSP、网页抓取和搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发。计划不再是单独的模式，任何模式下都能写计划。
+        OAuth）、技能、插件、斜杠命令、计划、网页抓取和搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发。计划不再是单独的模式，任何模式下都能写计划。
       </li>
     </ol>
 
@@ -2849,13 +2849,6 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         <td>经 Exa 的公共 MCP 服务搜索网页和代码，复用远程 MCP 客户端；配置里可以关掉</td>
       </tr>
       <tr>
-        <td><code>lsp</code></td>
-        <td>read</td>
-        <td>
-          跳到定义、找引用、悬停、文档符号、工作区符号、跳到实现、调用方和被调用方；改文件后自动附上已就绪语言服务器的诊断
-        </td>
-      </tr>
-      <tr>
         <td><code>docx_read</code> / <code>excel_read</code> / <code>excel_write</code></td>
         <td>read / write</td>
         <td>只用标准库读 Word 和 Excel，写最小合法的 <code>.xlsx</code>；延迟加载</td>
@@ -2917,11 +2910,10 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
       </tr>
     </table>
     <p>
-      git 操作第一轮走 <code>bash</code>，合并由工作区模块做，不给模型单独的 git
-      工具。<code>write_file</code>、<code>edit_file</code>、<code>multi_edit</code>
-      成功后按扩展名跑一次可用的格式化工具（gofmt、prettier、ruff、rustfmt 等 24 种，和 v0.3.1
-      相同），结果附在工具结果后面，配置 <code>formatter</code> 可以关掉或换命令。配置
-      <code>tools</code> 按名字开关工具，关掉的不进给模型的工具列表。
+      git 操作第一轮走 <code>bash</code>，合并由工作区模块做，不给模型单独的 git 工具。配置 <code>lsp</code>、<code
+        >formatter</code
+      >
+      可以读写，引擎不读它们（见验收报告 R18）。配置 <code>tools</code> 按名字开关工具，关掉的不进给模型的工具列表。
     </p>
     <h4>什么该是工具</h4>
     <p>
@@ -6505,7 +6497,7 @@ export function applyToAssignments(view: Assignments, e: Event): Assignments</co
       </tr>
       <tr>
         <td>R18</td>
-        <td>LSP</td>
+        <td>lsp 与 formatter 配置项（可配置，不提供）</td>
       </tr>
       <tr>
         <td>R19</td>

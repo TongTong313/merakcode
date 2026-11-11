@@ -44,6 +44,7 @@ func main() {
 	requestPermission := flag.Bool("request-permission", false, "")
 	mcpConfig := flag.String("mcp-config", "", "")
 	mcpReport := flag.Bool("mcp-report", false, "")
+	mcpClaimFile := flag.String("mcp-claim-file", "", "")
 	mcpLeader := flag.Bool("mcp-leader", false, "")
 	leaderBoundary := flag.Bool("leader-boundary", false, "")
 	recovery := flag.String("recovery-phase", "", "")
@@ -211,6 +212,16 @@ func main() {
 			if json.Unmarshal(reader.Bytes(), &approval) != nil || approval.Response.Response.Behavior != "allow" {
 				os.Exit(17)
 			}
+			if *mcpClaimFile != "" {
+				id, err := os.ReadFile(*mcpClaimFile)
+				if err != nil {
+					os.Exit(18)
+				}
+				if err := claimMCPTask(*mcpConfig, strings.TrimSpace(string(id))); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(19)
+				}
+			}
 			if err := submitMCPReport(*mcpConfig); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(15)
@@ -249,4 +260,18 @@ func submitMCPReport(configuration string) error {
 		return fmt.Errorf("missing merak MCP server")
 	}
 	return testmcp.Report(server)
+}
+
+func claimMCPTask(configuration, task string) error {
+	var config struct {
+		Servers map[string]worker.MCPConfig `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(configuration), &config); err != nil {
+		return err
+	}
+	server, ok := config.Servers["merak"]
+	if !ok {
+		return fmt.Errorf("missing merak MCP server")
+	}
+	return testmcp.Claim(server, task)
 }

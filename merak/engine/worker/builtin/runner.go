@@ -42,7 +42,24 @@ func (r *Runner) SetRun(run func(context.Context, event.ID, string) (loop.Outcom
 	r.run = run
 }
 
+type agentKey struct{}
+
+// AgentOf returns the name of the agent a child was started as, or "" for a plain read-only child.
+func AgentOf(ctx context.Context) string {
+	name, _ := ctx.Value(agentKey{}).(string)
+	return name
+}
+
+// SpawnAgent starts a child as a named agent; the child runner finds the name with AgentOf.
+func (r *Runner) SpawnAgent(ctx context.Context, agent, prompt string) (event.ID, error) {
+	return r.spawn(context.WithValue(ctx, agentKey{}, agent), prompt)
+}
+
 func (r *Runner) Spawn(ctx context.Context, prompt string) (event.ID, error) {
+	return r.spawn(ctx, prompt)
+}
+
+func (r *Runner) spawn(ctx context.Context, prompt string) (event.ID, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -53,7 +70,7 @@ func (r *Runner) Spawn(ctx context.Context, prompt string) (event.ID, error) {
 	}
 	id := r.newID()
 	done := make(chan struct{})
-	childCtx, cancel := context.WithCancel(r.ctx)
+	childCtx, cancel := context.WithCancel(context.WithValue(r.ctx, agentKey{}, AgentOf(ctx)))
 	execute := r.run
 	var outcome loop.Outcome
 	adapter := &Adapter{Bus: r.bus, Execute: func(ctx context.Context, a worker.Assignment, _ loop.Steer) (loop.Outcome, error) {

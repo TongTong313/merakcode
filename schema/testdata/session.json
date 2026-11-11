@@ -390,6 +390,12 @@
     }
   ],
   "state": {
+    "marks": [
+      {
+        "id": "golden-03",
+        "index": 0
+      }
+    ],
     "id": "golden",
     "scope": {
       "session": "golden",

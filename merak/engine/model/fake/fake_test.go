@@ -61,3 +61,37 @@ func TestRequestsReceiveRepliesInScriptOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestARoleReplyAnswersOnlyRequestsOfThatRole(t *testing.T) {
+	provider := fake.New(t,
+		fake.Reply{Role: "worker", Text: "Worker one"},
+		fake.Reply{Role: "leader", Text: "Leader one"},
+		fake.Reply{Text: "Anyone"},
+		fake.Reply{Role: "worker", Text: "Worker two"},
+	)
+	ask := func(system string) string {
+		t.Helper()
+		stream, err := provider.Stream(context.Background(), model.Request{System: system})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var text string
+		for {
+			chunk, err := stream.Recv()
+			if err == io.EOF {
+				return text
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			text += chunk.Text
+		}
+	}
+	got := []string{ask("Role: leader"), ask("Role: worker"), ask("Role: worker"), ask("Role: worker")}
+	want := []string{"Leader one", "Worker one", "Anyone", "Worker two"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("answers = %v, want %v", got, want)
+		}
+	}
+}

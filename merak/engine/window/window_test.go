@@ -13,6 +13,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store/memory"
+	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/window"
 )
 
@@ -191,5 +192,26 @@ func TestNextBudgetIncludesObservedCacheUsage(t *testing.T) {
 	report, err := event.Decode[window.Report](facts[0])
 	if err != nil || report.CacheRead != 7 || report.CacheWrite != 3 || report.Messages != 16 {
 		t.Fatalf("report=%+v %v", report, err)
+	}
+}
+
+func TestToolSchemasSentToTheModelDropAdditionalPropertiesFalseAndKeepTheRest(t *testing.T) {
+	storage := memory.New()
+	bus := event.NewBus(storage, time.Now, event.NewID)
+	schema := `{"type":"object","properties":{"name":{"type":"string","minLength":1},"opts":{"type":"object","properties":{},"additionalProperties":false},"free":{"type":"object","additionalProperties":{"type":"string"}}},"required":["name"],"additionalProperties":false}`
+	state := session.State{ID: "s", System: "Frozen rules", Config: session.Config{Provider: "fake", Model: "fixture"},
+		Tools:    []tool.Spec{{Name: "demo", Description: "Demo.", Input: json.RawMessage(schema)}},
+		Messages: []model.Message{{Role: model.User, Parts: []model.Part{{Text: "Hello"}}}}}
+	builder := window.Builder{Budget: window.Budget{Window: 100000, Reserve: 100, Trigger: .9, Target: .6, KeepTurns: 1}, Counter: new(window.Counter), Bus: bus}
+	request, err := builder.Build(context.Background(), &state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"type":"object","properties":{"name":{"type":"string","minLength":1},"opts":{"type":"object","properties":{}},"free":{"type":"object","additionalProperties":{"type":"string"}}},"required":["name"]}`
+	if got := string(request.Tools[0].Input); got != want {
+		t.Fatalf("schema sent to the model:\n got %s\nwant %s", got, want)
+	}
+	if string(state.Tools[0].Input) != schema {
+		t.Fatal("the schema kept in the session was changed")
 	}
 }

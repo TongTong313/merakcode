@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -63,8 +64,14 @@ type fileRelay struct {
 
 type fileMCP struct {
 	Type        string             `json:"type"`
-	Command     []*string          `json:"command"`
-	Environment map[string]*string `json:"environment"`
+	Command     []*string          `json:"command,omitempty"`
+	Environment map[string]*string `json:"environment,omitempty"`
+	URL         string             `json:"url,omitempty"`
+	Headers     map[string]string  `json:"headers,omitempty"`
+	Enabled     *bool              `json:"enabled,omitempty"`
+	Timeout     int                `json:"timeout,omitempty"`
+	Deferred    bool               `json:"deferred,omitempty"`
+	OAuth       json.RawMessage    `json:"oauth,omitempty"`
 }
 
 type fileServer struct {
@@ -120,13 +127,26 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 	var board struct {
 		AutoArchiveDays *int `json:"autoArchiveDays"`
 	}
+	var snapshotFlag *bool
+	var commands map[string]Command
+	var tools map[string]bool
+	var skills struct {
+		Paths []string `json:"paths"`
+		URLs  []string `json:"urls"`
+	}
+	var memory map[string]json.RawMessage
+	var compaction map[string]json.RawMessage
+	var storage struct {
+		RetentionDays *int `json:"retention_days"`
+	}
 	var mcp map[string]json.RawMessage
+	var agents map[string]json.RawMessage
 	var providers map[string]fileProvider
 	for _, field := range []struct {
 		key    string
 		target any
 	}{
-		{"locale", &localeText}, {"logLevel", &level}, {"model", &value.Model}, {"small_model", &value.SmallModel},
+		{"snapshot", &snapshotFlag}, {"tools", &tools}, {"command", &commands}, {"skills", &skills}, {"memory", &memory}, {"compaction", &compaction}, {"storage", &storage}, {"locale", &localeText}, {"logLevel", &level}, {"model", &value.Model}, {"small_model", &value.SmallModel}, {"default_agent", &value.DefaultAgent}, {"agent", &agents},
 		{"thinking", &value.Thinking}, {"enabled_providers", &value.EnabledProviders}, {"disabled_providers", &disabled},
 		{"server", &server}, {"board", &board}, {"rules", &rules}, {"mcp", &mcp}, {"provider", &providers}, {"cloud", &value.Cloud},
 		{"permissionMode", &value.PermissionMode}, {"workspaceTrust", &value.WorkspaceTrust},
@@ -141,9 +161,62 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 	if raw, ok := top["permission"]; ok {
 		mapped, warnings := permissionRules(raw)
 		value.PermissionRules = append(value.PermissionRules, mapped...)
-		value.Warnings = append(value.Warnings, warnings...)
+		value.warn(warnings...)
 	}
 	value.Server = Server{Port: server.Port, Hostname: server.Hostname}
+	value.Snapshot, value.CompactionAuto = snapshotFlag == nil || *snapshotFlag, true
+	if raw, ok := compaction["auto"]; ok && json.Unmarshal(raw, &value.CompactionAuto) != nil {
+		return Value{}, errors.New("invalid compaction.auto")
+	}
+	for _, name := range slices.Sorted(maps.Keys(compaction)) {
+		if name != "auto" {
+			value.warn("compaction." + name + ": this key is not used and is ignored")
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(memory)) {
+		raw := memory[name]
+		switch name {
+		case "auto_extract":
+			var flag bool
+			var mode string
+			switch {
+			case json.Unmarshal(raw, &flag) == nil:
+				value.Memory.AutoExtract = flag
+			case json.Unmarshal(raw, &mode) == nil && (mode == "signals" || mode == "always"):
+				value.Memory.AutoExtract = true
+			default:
+				return Value{}, errors.New("invalid memory.auto_extract")
+			}
+		case "auto_recall":
+			if json.Unmarshal(raw, &value.Memory.AutoRecall) != nil {
+				return Value{}, errors.New("invalid memory.auto_recall")
+			}
+		case "model":
+			if json.Unmarshal(raw, &value.Memory.Model) != nil {
+				return Value{}, errors.New("invalid memory.model")
+			}
+		default:
+			value.warn("memory." + name + ": this key is not used and is ignored")
+		}
+	}
+	var agentWarnings []string
+	value.Agents, agentWarnings = parseAgents(agents)
+	value.warn(agentWarnings...)
+	value.Skills = Skills{Paths: skills.Paths, URLs: skills.URLs}
+	value.Tools = tools
+	for name, entry := range commands {
+		if strings.TrimSpace(entry.Template) == "" {
+			value.warn("command." + name + ": a command needs a template")
+			continue
+		}
+		if value.Commands == nil {
+			value.Commands = map[string]Command{}
+		}
+		value.Commands[name] = entry
+	}
+	if storage.RetentionDays != nil {
+		value.RetentionDays = *storage.RetentionDays
+	}
 	value.Board.AutoArchiveDays = DefaultAutoArchiveDays
 	if board.AutoArchiveDays != nil {
 		value.Board.AutoArchiveDays = *board.AutoArchiveDays
@@ -161,12 +234,9 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 		if err := json.Unmarshal(raw, &source); err != nil {
 			return Value{}, fmt.Errorf("invalid mcp.%s", name)
 		}
-		if source.Type != "local" {
-			value.Warnings = append(value.Warnings, "mcp."+name+": remote servers are not supported yet")
+		if source.Type != "local" && source.Type != "remote" {
+			value.warn("mcp." + name + ": unknown server type, skipped")
 			continue
-		}
-		if len(source.Command) == 0 {
-			return Value{}, fmt.Errorf("invalid mcp.%s", name)
 		}
 		if value.MCPServers == nil {
 			value.MCPServers = map[string]MCPServer{}
@@ -177,12 +247,12 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 		}
 		value.MCPServers[name] = server
 	}
-	value.Warnings = append(value.Warnings, keyWarnings(top)...)
+	value.warn(keyWarnings(top)...)
 	var extra map[string]json.RawMessage
 	_ = decodeKey(top, "server", &extra)
 	for _, name := range []string{"mdns", "mdnsDomain", "cors"} {
 		if _, ok := extra[name]; ok {
-			value.Warnings = append(value.Warnings, "server."+name+": this key is not used and is ignored")
+			value.warn("server." + name + ": this key is not used and is ignored")
 		}
 	}
 	return value, nil
@@ -190,7 +260,31 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 
 // mcpServer converts a local server definition; null entries are rejected.
 func mcpServer(name string, source fileMCP) (MCPServer, error) {
-	var server MCPServer
+	server := MCPServer{Timeout: source.Timeout, Deferred: source.Deferred, Disabled: source.Enabled != nil && !*source.Enabled}
+	if len(source.OAuth) > 0 {
+		var on bool
+		if json.Unmarshal(source.OAuth, &on) == nil && !on {
+			server.NoOAuth = true
+		} else {
+			var oauth OAuth
+			decoder := json.NewDecoder(strings.NewReader(string(source.OAuth)))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&oauth) != nil {
+				return MCPServer{}, fmt.Errorf("invalid mcp.%s", name)
+			}
+			server.OAuth = &oauth
+		}
+	}
+	if source.Type == "remote" {
+		if source.URL == "" || len(source.Command) > 0 {
+			return MCPServer{}, fmt.Errorf("invalid mcp.%s", name)
+		}
+		server.Type, server.URL, server.Headers = "remote", source.URL, source.Headers
+		return server, nil
+	}
+	if len(source.Command) == 0 {
+		return MCPServer{}, fmt.Errorf("invalid mcp.%s", name)
+	}
 	for i, part := range source.Command {
 		if part == nil {
 			return MCPServer{}, fmt.Errorf("invalid mcp.%s", name)
@@ -265,21 +359,40 @@ func keyWarnings(top map[string]json.RawMessage) []string {
 func MCPFile(servers map[string]MCPServer) []byte {
 	definitions := make(map[string]fileMCP, len(servers))
 	for name, server := range servers {
-		command := make([]*string, 0, 1+len(server.Args))
-		command = append(command, &server.Command)
-		for i := range server.Args {
-			command = append(command, &server.Args[i])
-		}
-		definition := fileMCP{Type: "local", Command: command}
-		if len(server.Env) > 0 {
-			definition.Environment = make(map[string]*string, len(server.Env))
-			for key := range server.Env {
-				value := server.Env[key]
-				definition.Environment[key] = &value
-			}
-		}
-		definitions[name] = definition
+		definitions[name] = fileDefinition(server)
 	}
 	body, _ := json.Marshal(map[string]any{"mcp": definitions})
 	return body
+}
+
+// fileDefinition writes one server the way a v0.3 file spells it.
+func fileDefinition(server MCPServer) fileMCP {
+	definition := fileMCP{Type: "local", Timeout: server.Timeout, Deferred: server.Deferred}
+	if server.Disabled {
+		off := false
+		definition.Enabled = &off
+	}
+	switch {
+	case server.NoOAuth:
+		definition.OAuth = json.RawMessage("false")
+	case server.OAuth != nil:
+		definition.OAuth, _ = json.Marshal(server.OAuth)
+	}
+	if server.Remote() {
+		definition.Type, definition.URL, definition.Headers = "remote", server.URL, server.Headers
+		return definition
+	}
+	command := server.Command
+	definition.Command = append(make([]*string, 0, 1+len(server.Args)), &command)
+	for i := range server.Args {
+		definition.Command = append(definition.Command, &server.Args[i])
+	}
+	if len(server.Env) > 0 {
+		definition.Environment = make(map[string]*string, len(server.Env))
+		for key := range server.Env {
+			value := server.Env[key]
+			definition.Environment[key] = &value
+		}
+	}
+	return definition
 }

@@ -11,9 +11,11 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/leader"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
@@ -287,4 +289,114 @@ func (r *externalLeader) Close() {
 		<-r.done
 	}
 	_ = r.endpoint.Close()
+}
+
+// inviteIdleWorkers offers each open task nobody holds to every idle built-in Worker of the group, once per task
+// and Worker. The offer is an event, so a restart does not repeat it.
+func (e *Engine) inviteIdleWorkers(g *groupRun) {
+	e.inviteMu.Lock()
+	defer e.inviteMu.Unlock()
+	ctx := e.ctx
+	cards, err := e.Tasks.List(ctx, g.group.ID)
+	if err != nil {
+		return
+	}
+	open := task.Claimable(cards)
+	busy := make(map[event.ID]bool)
+	for _, card := range cards {
+		for _, claim := range card.Claims {
+			if claim.Status == task.ClaimActive || claim.Status == task.ClaimQueued {
+				busy[claim.Member] = true
+			}
+		}
+	}
+	if len(open) == 0 {
+		return
+	}
+	state, err := e.Groups.Get(ctx, g.group.ID)
+	if err != nil {
+		return
+	}
+	facts, err := e.store.Find(ctx, store.Query{Scope: event.Scope{Group: g.group.ID}, Types: []event.Type{task.Offered}})
+	if err != nil {
+		return
+	}
+	offered := make(map[task.Offer]bool)
+	for _, fact := range facts {
+		if offer, err := event.Decode[task.Offer](fact); err == nil {
+			offered[offer] = true
+		}
+	}
+	for _, member := range state.Members {
+		if member.Kind != group.MemberAgent || member.AgentRole != group.AgentWorker || member.Remote || busy[member.ID] || e.memberRunning(g.group.ID, member.ID) {
+			continue
+		}
+		p, err := e.memberAgent(ctx, member)
+		if err != nil || p.Product != nil && p.Product.Kind != worker.KindBuiltin {
+			continue
+		}
+		var fresh []task.Card
+		for _, card := range open {
+			offer := task.Offer{Task: card.ID, Member: member.ID}
+			if offered[offer] {
+				continue
+			}
+			body, _ := json.Marshal(offer)
+			if _, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + g.group.ID), Scope: event.Scope{Group: g.group.ID, Task: card.ID}, Type: task.Offered, Actor: event.Actor{Kind: "system"}, Payload: body}); err != nil {
+				continue
+			}
+			offered[offer] = true
+			fresh = append(fresh, card)
+		}
+		if len(fresh) > 0 {
+			e.workers.Go(func() { e.runInvitation(ctx, g, member, p, fresh) })
+		}
+	}
+}
+
+// memberRunning reports whether a member currently holds the execution slot of its group.
+func (e *Engine) memberRunning(groupID, member event.ID) bool {
+	source, id := e.executionSource(event.Scope{Group: groupID}, member)
+	e.memberMu.Lock()
+	defer e.memberMu.Unlock()
+	return e.memberExecutions[memberExecution{source, id}] != nil
+}
+
+// runInvitation is one short turn of an idle Worker: it sees the unclaimed tasks, may read the project and may
+// claim one with claim_task.
+func (e *Engine) runInvitation(ctx context.Context, g *groupRun, member group.Member, p agent.Agent, cards []task.Card) {
+	scope := event.Scope{Group: g.group.ID}
+	release, err := e.acquireMember(ctx, scope, member.ID)
+	if err != nil {
+		return
+	}
+	defer release()
+	chosen, err := e.memberModel(p.Model)
+	if err != nil {
+		return
+	}
+	id := e.newID()
+	scope.Session = id
+	c, err := e.newConversation(ctx, SessionOptions{ID: id, Scope: scope, Member: member.ID, Mode: p.Mode, Provider: chosen.Provider, Model: chosen.Model, Thinking: chosen.Thinking, Workdir: g.configuration().Project.Directory, System: p.System, ToolPool: "worker.readonly", Budget: p.Budget})
+	if err != nil {
+		return
+	}
+	defer e.releaseSandbox(c.state.ID)
+	defer c.runner.Env.Jobs.Close()
+	if c.children != nil {
+		defer c.children.Close()
+	}
+	c.runner.Tools = c.runner.Tools.With(tool.ClaimTask{Claim: func(ctx context.Context, taskID event.ID, scope []string) (task.Claim, error) {
+		return e.Tasks.Claim(ctx, taskID, g.group.ID, member.ID, scope)
+	}})
+	c.state.Tools = c.runner.Tools.Specs()
+	if c.state, err = e.manager.Create(ctx, *c.state); err != nil {
+		return
+	}
+	lines := make([]string, 0, len(cards))
+	for _, card := range cards {
+		lines = append(lines, "- "+string(card.ID)+": "+card.Title)
+	}
+	text := "Unclaimed work in your group:\n" + strings.Join(lines, "\n") + "\nIf one of these fits you, take it with claim_task; you may read the project first. Otherwise reply with a single word."
+	_, _ = e.runInput(ctx, c, loop.Input{Parts: []model.Part{{Text: text}}, Actor: event.Actor{Kind: "system"}})
 }

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -76,7 +76,7 @@ func (e *Engine) CreateGroupForTask(ctx context.Context, g group.Group, members 
 	if card.Group != "" {
 		return group.Group{}, coded(errorcode.TaskAlreadyInGroup, task.ErrAlreadyBound)
 	}
-	if g.Project.Directory != "" && filepath.Clean(g.Project.Directory) != filepath.Clean(card.Project) {
+	if g.Project.Directory != "" && !workspace.SameDirectory(g.Project.Directory, card.Project) {
 		return group.Group{}, coded(errorcode.GroupWorkspaceMismatch, errors.New("the workspace of the group is the one of its task"))
 	}
 	g.Project.Directory = card.Project
@@ -119,6 +119,7 @@ func (e *Engine) createGroup(ctx context.Context, g group.Group, members []group
 	}
 	e.agentMu.Lock()
 	defer e.agentMu.Unlock()
+	g.Project.Directory = canonicalDirectory(g.Project.Directory)
 	if err := workspace.Existing(g.Project.Directory); err != nil {
 		return group.Group{}, coded(errorcode.WorkspaceInvalid, err)
 	}
@@ -238,7 +239,7 @@ func (e *Engine) memberAgent(ctx context.Context, member group.Member) (agent.Ag
 
 // loadAgent reads the agent of a member and the human who owns it; the built-in agents have no owner.
 func (e *Engine) loadAgent(ctx context.Context, member group.Member) (agent.Agent, event.ID, error) {
-	for _, p := range defaultAgents() {
+	for _, p := range e.builtinAgents() {
 		if p.ID == member.Agent || member.Agent == "" && string(p.Role) == string(member.AgentRole) {
 			return p, "", nil
 		}
@@ -334,6 +335,7 @@ func checkWorkspaceKind(kind string) error {
 // createLooseTask creates a task that no group has taken yet. It lives in its own stream and wakes no Leader; its
 // kind of workspace is settled when a group takes it.
 func (e *Engine) createLooseTask(ctx context.Context, card task.Card) (task.Card, error) {
+	card.Project = canonicalDirectory(card.Project)
 	if err := workspace.Existing(card.Project); err != nil {
 		return task.Card{}, coded(errorcode.WorkspaceInvalid, err)
 	}
@@ -587,6 +589,14 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 				if e.routeTaskChange(e.ctx, run, fact) {
 					continue
 				}
+				if fact.Type == task.QueuedEvent && fact.Actor.Kind == event.ActorAgent && fact.Actor.ID != run.configuration().Leader {
+					// A Worker took a task for itself: the Leader needs to know who holds it now.
+					if thread := run.threads.Route(fact); thread != nil {
+						thread.Scheduler.EnqueuePriority(fact, leader.PriorityNormal)
+						e.startLeader(run, thread)
+					}
+					continue
+				}
 				if !leaderInputType(fact.Type) {
 					continue
 				}
@@ -614,12 +624,10 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 						continue
 					}
 				}
-				if assigned {
-					thread.Scheduler.Inform(fact)
-					continue
-				}
-				if fact.Type == group.HumanSaid && e.forwardHuman(e.ctx, run, fact) {
-					thread.Scheduler.Inform(fact)
+				if assigned || fact.Type == group.HumanSaid && e.forwardHuman(e.ctx, run, fact) {
+					// The human's word already went to the member; the Leader wakes to update its plan.
+					thread.Scheduler.EnqueuePriority(fact, leader.PriorityNormal)
+					e.startLeader(run, thread)
 					continue
 				}
 				thread.Scheduler.Enqueue(fact)
@@ -674,7 +682,8 @@ func (e *Engine) startMember(g *groupRun, memberID event.ID) {
 	}
 }
 
-func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
+// startClaim runs a claim; restart carries the human words a stopped run did not see.
+func (e *Engine) startClaim(g *groupRun, claim task.Claim, restart ...loop.Input) {
 	ctx, cancel := context.WithCancel(e.ctx)
 	started := false
 	e.mu.Lock()
@@ -745,7 +754,18 @@ func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
 			p.System += "\nThis is a research task. File access is read-only. Return your findings in the report."
 		}
 	}
-	run, err := e.StartWorker(ctx, p, worker.Assignment{Claim: claim, Session: claim.Session, Scope: event.Scope{Group: card.Group, Task: card.ID}, Workdir: workdir})
+	assignment := worker.Assignment{Claim: claim, Session: claim.Session, Scope: event.Scope{Group: card.Group, Task: card.ID}, Workdir: workdir}
+	var words []string
+	for _, input := range restart {
+		for _, part := range input.Parts {
+			words = append(words, part.Text)
+		}
+		if input.Cause != "" {
+			assignment.Cause = input.Cause
+		}
+	}
+	assignment.Packet = strings.Join(words, "\n")
+	run, err := e.StartWorker(ctx, p, assignment)
 	if err != nil {
 		if claim.Workspace != "" {
 			if ws, err := e.Workspaces.Get(e.ctx, claim.Workspace); err == nil {
@@ -761,7 +781,22 @@ func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
 	e.workers.Go(func() {
 		defer cancel()
 		report, runErr := run.Wait(context.Background())
-		defer func() { e.mu.Lock(); delete(e.claimRuns, claim.ID); e.mu.Unlock() }()
+		restarting := false
+		defer func() {
+			if !restarting {
+				e.mu.Lock()
+				delete(e.claimRuns, claim.ID)
+				e.mu.Unlock()
+			}
+		}()
+		if inputs := e.takeClaimRestart(claim.ID); len(inputs) > 0 && e.ctx.Err() == nil {
+			restarting = true
+			e.mu.Lock()
+			delete(e.claimRuns, claim.ID)
+			e.mu.Unlock()
+			e.workers.Go(func() { e.startClaim(g, claim, inputs...) })
+			return
+		}
 		ending, cancel := context.WithTimeout(context.WithoutCancel(e.ctx), 5*time.Second)
 		defer cancel()
 		if claim.Workspace != "" {
@@ -876,6 +911,9 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 			fail(err)
 			return
 		}
+		if p.Product == nil && !thread.Scheduler.Pending() { // only a built-in Leader has a known end of turn
+			e.inviteIdleWorkers(g)
+		}
 	}
 }
 
@@ -935,6 +973,7 @@ func (e *Engine) otherOpenGoal(ctx context.Context, groupID, except event.ID) bo
 
 // ListTasks gives the tasks of every group, and the ones that have no group yet.
 func (e *Engine) ListTasks(ctx context.Context, filter task.Filter) ([]task.Card, error) {
+	filter.Project = canonicalDirectory(filter.Project)
 	return e.Tasks.Find(ctx, filter)
 }
 

@@ -114,6 +114,42 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
     case "session.budget":
       state.usage = addUsage(state.usage, event.payload.summaryUsage ?? emptyUsage())
       break
+    case "snapshot.tracked":
+      state.tracks = [...(previous.tracks ?? []), { index: state.messages?.length ?? 0, tree: event.payload.tree }]
+      break
+    case "session.reverted": {
+      const mark = previous.marks?.find((candidate) => candidate.id === event.payload.message)
+      const total = state.messages?.length ?? 0
+      if (!mark || mark.index > total) throw new Error("Revert target is not a message of the session")
+      const hiddenMarks = (previous.marks ?? []).filter((candidate) => candidate.index >= mark.index)
+      const hiddenTracks = (previous.tracks ?? []).filter((candidate) => candidate.index > mark.index)
+      state.hidden = {
+        index: mark.index,
+        messages: structuredClone(state.messages!.slice(mark.index)),
+        ...(hiddenMarks.length ? { marks: hiddenMarks } : {}),
+        ...(hiddenTracks.length ? { tracks: hiddenTracks } : {}),
+        ...(event.payload.current ? { current: event.payload.current } : {}),
+      }
+      state.messages = state.messages!.slice(0, mark.index)
+      state.marks = (previous.marks ?? []).slice(0, (previous.marks?.length ?? 0) - hiddenMarks.length)
+      state.tracks = (previous.tracks ?? []).slice(0, (previous.tracks?.length ?? 0) - hiddenTracks.length)
+      break
+    }
+    case "session.unreverted":
+      if (!previous.hidden) throw new Error("Nothing was reverted")
+      state.messages = [...(state.messages ?? []), ...(previous.hidden.messages ?? [])]
+      state.marks = [...(previous.marks ?? []), ...(previous.hidden.marks ?? [])]
+      state.tracks = [...(previous.tracks ?? []), ...(previous.hidden.tracks ?? [])]
+      delete state.hidden
+      break
+    case "session.updated":
+      if (event.payload.title != null) state.title = event.payload.title
+      if (event.payload.archived != null) state.archived = event.payload.archived
+      if (event.payload.mode) state.config = { ...state.config, mode: event.payload.mode }
+      break
+    case "todo.updated":
+      state.todos = structuredClone(event.payload.items ?? [])
+      break
     case "session.rebuilt": {
       const rebuilt = event.payload
       if (rebuilt.from !== 0 || rebuilt.to <= 0 || rebuilt.to > (state.messages?.length ?? 0))
@@ -122,6 +158,12 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
         .messages!.slice(rebuilt.to)
         .map((message) => ({ ...message, parts: message.parts?.filter((part) => !part.reasoning) ?? [] }))
         .filter((message) => message.parts.length)
+      state.marks = (previous.marks ?? [])
+        .filter((mark) => mark.index >= rebuilt.to)
+        .map((mark) => ({ id: mark.id, index: mark.index - rebuilt.to + 1 }))
+      state.tracks = (previous.tracks ?? [])
+        .filter((track) => track.index > rebuilt.to)
+        .map((track) => ({ index: track.index - rebuilt.to + 1, tree: track.tree }))
       state.messages = [structuredClone(rebuilt.summary), ...retained]
       state.summaryId = rebuilt.summaryId
       state.usage = addUsage(state.usage, rebuilt.usage)
@@ -146,7 +188,13 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
     case "message.completed": {
       const { role, parts } = event.payload
       state.messages ??= []
-      if (parts?.length) state.messages.push({ role, parts: structuredClone(parts) })
+      if (parts?.length) {
+        if (event.type === "message.sent" && role === "user") {
+          delete state.hidden
+          state.marks = [...(previous.marks ?? []), { id: event.id, index: state.messages.length }]
+        }
+        state.messages.push({ role, parts: structuredClone(parts) })
+      }
       state.usage = addUsage(state.usage, event.type === "message.completed" ? event.payload.usage : emptyUsage())
       for (const part of parts ?? []) if (part.toolCall) state.open![part.toolCall.id] = part.toolCall
       break
@@ -179,6 +227,8 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
       break
     }
   }
+  if (!state.marks?.length) delete state.marks
+  if (!state.tracks?.length) delete state.tracks
   if (!Object.keys(state.open!).length) delete state.open
   if (!Object.keys(state.causes!).length) delete state.causes
   state.lastSeq = event.seq

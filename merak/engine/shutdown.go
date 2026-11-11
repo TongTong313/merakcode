@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"os"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 )
@@ -35,6 +36,13 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 
 func (e *Engine) shutdown(ctx context.Context) error {
 	defer e.disconnectCloud()
+	defer func() {
+		e.snapshotMu.Lock()
+		defer e.snapshotMu.Unlock()
+		if e.snapshotTemp {
+			_ = os.RemoveAll(e.snapshotDir)
+		}
+	}()
 	e.Terminals.Close()
 	e.Workspaces.Close()
 	e.mu.Lock()

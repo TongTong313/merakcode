@@ -50,6 +50,7 @@ type Server struct {
 }
 
 func New(e *engine.Engine, token string) *Server {
+	e.SetLocalHuman(protocol.LocalHuman)
 	return &Server{engine: e, human: protocol.LocalHuman, token: token, identities: map[string]event.ID{}, connections: make(map[*websocket.Conn]bool), desktops: make(map[*websocket.Conn]string), approvals: make(map[event.ID]*approval), questions: make(map[event.ID]*pendingQuestion), forwarded: make(map[*websocket.Conn]chan struct{}), done: make(chan struct{})}
 }
 
@@ -85,6 +86,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Release remote calls before waiting for the event bus subscription lock.
 		cancel()
 		conn.Close()
+		s.engine.DropClientTools((&connection{ws: conn}).owner())
 		remote.close()
 		if stopSubscription != nil {
 			stopSubscription()
@@ -166,7 +168,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if conn.Write(body) != nil {
 		return
 	}
-	c := &connection{ws: conn, human: human, remote: remote, filters: make(map[event.ID]event.Filter)}
+	c := &connection{ws: conn, human: human, remote: remote, closed: ctx.Done(), filters: make(map[event.ID]event.Filter)}
 	table := s.methods()
 	events, stop := s.engine.Bus.Subscribe(event.Filter{})
 	stopSubscription = stop

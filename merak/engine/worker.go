@@ -252,6 +252,9 @@ func (e *Engine) runAssignment(ctx context.Context, p agent.Agent, a worker.Assi
 	}
 	input := loop.Input{Parts: []model.Part{{Text: a.Packet}}, Actor: event.Actor{Kind: event.ActorAgent, ID: a.Claim.Member}, Cause: a.Cause, Sources: a.Sources}
 	outcome, err := e.runInput(ctx, c, input)
+	if err == nil && report != nil && a.Claim.Task != "" {
+		outcome.Usage = outcome.Usage.Add(e.offerUnclaimedTasks(ctx, c, a))
+	}
 	if err != nil || a.Claim.Task == "" || report != nil || outcome.Stop != loop.Answered {
 		return outcome, err
 	}
@@ -295,4 +298,23 @@ func (s joinedSteer) Preempt() <-chan struct{} {
 		return s.second.Preempt()
 	}
 	return nil
+}
+
+// offerUnclaimedTasks gives a Worker that has just reported one more short turn when its group has open tasks
+// nobody holds, so it can claim one. Nothing runs when there is nothing to claim.
+func (e *Engine) offerUnclaimedTasks(ctx context.Context, c *conversation, a worker.Assignment) model.Usage {
+	cards, err := e.Tasks.List(ctx, a.Scope.Group)
+	if err != nil {
+		return model.Usage{}
+	}
+	var lines []string
+	for _, card := range task.Claimable(cards) {
+		lines = append(lines, "- "+string(card.ID)+": "+card.Title)
+	}
+	if len(lines) == 0 {
+		return model.Usage{}
+	}
+	text := "Unclaimed work in your group:\n" + strings.Join(lines, "\n") + "\nYour report is in. If one of these fits you, take it with claim_task; otherwise reply with a single word."
+	outcome, _ := e.runInput(ctx, c, loop.Input{Parts: []model.Part{{Text: text}}, Actor: event.Actor{Kind: "system"}})
+	return outcome.Usage
 }

@@ -265,7 +265,7 @@
           <strong>相对 v0.x 大面积倒退，违反“基本功能不能阉割”的底线。</strong>桌面端重写缩水（消息列表 921 → 284
           行，设置页 1272 → 216 行，少了 26 个文件、23 个 e2e spec）；模型目录只剩 11
           个内置模型，打开只看得到一家一两个模型；MCP
-          远程和登录、技能、插件、斜杠命令、计划、LSP、网页搜索、定时任务等十几项能力没有；系统提示词只有一句话（4.5、4.6
+          远程和登录、技能、插件、斜杠命令、计划、网页搜索、定时任务等十几项能力没有；系统提示词只有一句话（4.5、4.6
           节）。
         </li>
         <li><strong>测试不真实。</strong>88 个桌面端 e2e 里 20 个失败，失败的用例被移出了 CI（5.4 节）。</li>
@@ -924,7 +924,7 @@
       </tr>
     </table>
     <p>
-      工具也一样：v0.3.1 注册了 31 个工具，v1 缺网页抓取、网页搜索、代码搜索、多处编辑、LSP、Word 和 Excel
+      工具也一样：v0.3.1 注册了 31 个工具，v1 缺网页抓取、网页搜索、代码搜索、多处编辑、Word 和 Excel
       的读写、待办、计划、技能、定时任务。整改见 7.5 节的对照表和 7.6 节。
     </p>
 
@@ -1074,7 +1074,7 @@
       </tr>
       <tr>
         <td>C7</td>
-        <td>1.3 节：插件、技能、斜杠命令、LSP 排在阶段 4 之后；14.1 节：删除计划模式</td>
+        <td>1.3 节：插件、技能、斜杠命令排在阶段 4 之后；14.1 节：删除计划模式</td>
         <td>14 节：v0.3.1 已有的能力一项不少</td>
         <td>执行方两头都“符合”：删了能力，又把测它们的用例移出 CI</td>
       </tr>
@@ -1141,7 +1141,7 @@
       <tr>
         <td>U9</td>
         <td>相比 v0.x 基本功能不能阉割</td>
-        <td>1.3 节把插件、技能、斜杠命令、LSP、定时任务推到阶段 4 以后；14.1 节删计划</td>
+        <td>1.3 节把插件、技能、斜杠命令、定时任务推到阶段 4 以后；14.1 节删计划</td>
         <td>D-16</td>
       </tr>
       <tr>
@@ -1393,8 +1393,9 @@
         <td>
           v0.x 能做的 v1 都要能做，以 UI 分支
           <code>origin/tt/refactor/ui-side-panel</code> 为对照，一项不少：模型目录、MCP（含远程和
-          OAuth）、技能、插件、斜杠命令、计划、LSP、网页抓取和搜索、代码搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发、对话界面。只有两处变化：计划不再是单独的模式（D-15）；不再提供
-          v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP
+          OAuth）、技能、插件、斜杠命令、计划、网页抓取和搜索、代码搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发、对话界面。只有三处变化：计划不再是单独的模式（D-15）；不提供
+          v0.3.1 的语言服务器（LSP）和改完文件自动格式化，只保留 <code>lsp</code>、<code>formatter</code> 两个配置项（见
+          R18 和 11 节）；不再提供 v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP
           或纯命令行适配器，不用写代码。对照范围包括 v0.3.1 引擎的文件约定：<code>.merakcode/</code>
           下的规则、命令、智能体、技能目录（消解 C7）
         </td>
@@ -1890,11 +1891,6 @@ type Card struct {
         <td>R17</td>
       </tr>
       <tr>
-        <td>LSP：35 种语言服务器、跳转和引用等操作、改文件后的诊断、自动下载</td>
-        <td>缺</td>
-        <td>R18</td>
-      </tr>
-      <tr>
         <td>定时任务（<code>loop</code> 技能和定时工具）</td>
         <td>缺</td>
         <td>R19，靠守护进程</td>
@@ -1920,9 +1916,9 @@ type Card struct {
         <td>R13、R14</td>
       </tr>
       <tr>
-        <td>按名字开关工具；改完文件自动格式化（24 种格式化工具）</td>
+        <td>按名字开关工具</td>
         <td>缺</td>
-        <td>R17、R18</td>
+        <td>R17</td>
       </tr>
       <tr>
         <td>
@@ -2125,9 +2121,9 @@ type Card struct {
       </tr>
       <tr>
         <td>R18</td>
-        <td>LSP</td>
+        <td>lsp 与 formatter 配置项（可配置，不提供）</td>
         <td>R17</td>
-        <td>D-16、7.5 节</td>
+        <td>7.5 节</td>
       </tr>
       <tr>
         <td>R19</td>
@@ -2404,7 +2400,10 @@ type Card struct {
       </tr>
       <tr>
         <td><code>formatter</code>、<code>lsp</code></td>
-        <td>原样支持</td>
+        <td>
+          可配置，引擎不提供：能读、<code>config.get</code> 返回、<code>config.set</code>
+          原地修改、项目配置可覆盖；引擎不读它们（见 R18 和 11 节）
+        </td>
         <td>R18</td>
       </tr>
       <tr>
@@ -3676,56 +3675,136 @@ type Card struct {
     <p><strong>不做：</strong>浏览器渲染网页；写 Word。</p>
     <p><strong>验证：</strong>全量命令全绿。</p>
 
-    <h3 id="wo-r18">R18 LSP</h3>
+    <h3 id="wo-r18">R18 lsp 与 formatter 配置项（可配置，不提供）</h3>
     <p>
-      <strong>做完以后：</strong>改完文件后智能体能看到语言服务器报的错误；工具
-      <code>lsp</code> 支持跳到定义、找引用、悬停、文档符号、工作区符号、跳到实现、调用方和被调用方；v0.3.1 支持的 35
-      种语言服务器都能用，能自动下载的照样自动下载。
+      <strong>做完以后：</strong>v0.3 配置文件里的 <code>lsp</code>、<code>formatter</code> 两段在 v1
+      里是正式的配置项：读得出来，<code>config.get</code> 返回，<code>config.set</code>
+      能原地修改，项目配置能覆盖全局。引擎本身不提供这两项功能：不启动语言服务器、不提供
+      <code>lsp</code> 工具、改完文件后不跑格式化也不附诊断。
     </p>
-    <p class="muted">依赖：R17。解决：7.5 节。</p>
+    <p class="muted">
+      依赖：R17。解决：7.5 节。做法对照 OpenCode 2.0：它接受并保留 <code>lsp</code> 配置，但不运行语言服务器；LSP
+      和格式化服务的移植在上游议题 anomalyco/opencode#38528 里待做。上游恢复以后再评估要不要真的提供。
+    </p>
     <p>
-      <strong>先读：</strong
-      ><code>merak/engine/tool/edit_file.go</code
-      >、<code>write_file.go</code>、<code>merak/internal/platform/process</code>；LSP 3.17
-      规范的初始化、<code>textDocument/*</code>、<code>publishDiagnostics</code>。服务器清单（id、扩展名、项目根标记、启动命令、安装方式）可以读
-      dev-v0.3.1 的 <code>packages/engine/src/infra/lsp/server.ts</code> 取数据，id 保持一致：
+      <strong>先读：</strong><code>merak/internal/platform/config</code> 的
+      <code>types.go</code
+      >、<code>document.go</code>、<code>store.go</code>、<code>merge.go</code>、<code>config.go</code>（<code
+        >public</code
+      >
+      函数）；R14 加的 <code>agents.go</code>、<code>agents_test.go</code> 和 R13 的
+      <code>memory_test.go</code> 是同样做法的例子；已有的 <code>unsupported_test.go</code>。v0.3 这两段的字段名可以读
+      v0.3.1 的 <code>schema/config.json</code>，只取格式。
     </p>
-    <pre><code>astro bash biome clangd clojure-lsp csharp dart deno dockerfile elixir-ls eslint fsharp gleam gopls
-haskell-language-server jdtls kotlin-ls lua-ls nixd ocaml-lsp oxlint prisma pyright ruby-lsp rust
-sourcekit-lsp svelte terraform texlab tinymist ty typescript vue yaml-ls zls</code></pre>
+    <p><strong>文件里的格式（v0.3 原样）：</strong></p>
     <ul>
       <li>
-        新包 <code>engine/lsp</code>：stdio 上的 JSON-RPC
-        客户端（只用标准库），按扩展名和项目根标记选服务器，每个工作区每种服务器一个进程，空闲 10 分钟关闭。
+        <code>lsp</code>：<code>false</code>、<code>true</code>，或者 <code>{ "&lt;id&gt;": 条目 }</code>。条目是
+        <code>{ "disabled": true }</code>（关掉一个内置服务器），或者自己的服务器
+        <code
+          >{ "command": ["程序", "参数"], "extensions": [".xyz"], "env": { "名": "值" }, "initialization": {…},
+          "disabled"?: true }</code
+        >。
       </li>
       <li>
-        <code>write_file</code>、<code>edit_file</code>、<code>multi_edit</code> 成功后，等已就绪的服务器最多 3
-        秒拿诊断，附在工具结果后面；没有就绪的服务器就不等。
+        <code>formatter</code>：<code>false</code>、<code>true</code>，或者
+        <code
+          >{ "&lt;名字&gt;": { "disabled"?: true, "command"?: [...], "extensions"?: [...], "environment"?: { "名": "值"
+          } } }</code
+        >。
+      </li>
+      <li><code>false</code> 关掉整段，<code>true</code> 和不写一样。</li>
+    </ul>
+    <p>
+      <strong>配置视图和补丁（Go，JSON 键与文件里的略有不同，照 R13 的 <code>memory</code> 的做法）：</strong>
+    </p>
+    <ul>
+      <li>
+        <code>config.Value</code> 加 <code>LSP</code> 和 <code>Formatter</code>：
+        <code>{ "disabled": bool, "servers": { id: 条目 } }</code> 和
+        <code>{ "disabled": bool, "entries": { 名字: 条目 } }</code>；条目的字段名与文件里一致。
       </li>
       <li>
-        安装：PATH 里有就用；没有时按清单的安装方式下载到 <code>~/.merakcode/cache/bin</code>；<code
-          >MERAKCODE_DISABLE_LSP_DOWNLOAD=1</code
+        <code>config.Patch</code> 加同形状的 <code>LSP</code>、<code>Formatter</code>：<code>disabled</code>
+        是指针，条目是指针的表， <code>null</code> 删除条目。
+      </li>
+      <li>新代码放进新文件 <code>merak/internal/platform/config/tooling.go</code>，已有文件只加接线。</li>
+    </ul>
+    <p><strong>规则：</strong></p>
+    <ul>
+      <li>
+        读：条目不是对象时记一条 MRK-3002 警告（路径写
+        <code>lsp.&lt;id&gt;</code
+        >）并跳过，文件里保留；整段既不是布尔也不是对象时配置报错；条目里有不认识的字段不警告。
+      </li>
+      <li>
+        <code>config.get</code> 返回两段，<code>env</code>、<code>environment</code> 的值置空、名字保留，和 MCP 的
+        <code>env</code>
+        一样；私有视图保留值。
+      </li>
+      <li>
+        <code>config.set</code> 原地改文件（注释、顺序、别的键不动）：条目整个替换；<code>null</code> 删除；<code
+          >disabled: true</code
         >
-        时不下载。配置 <code>lsp: {id: {disabled?, command?}}</code> 可以关掉或换命令。
+        写成 <code>false</code>（条目随之丢掉，和 v0.3 一样）；当前是 <code>false</code> 时再传
+        <code>disabled: false</code> 或条目，先写 <code>{}</code>。客户端把
+        <code>config.get</code> 看到的内容原样传回时，空的环境变量值表示保持文件里原来的值。
+      </li>
+      <li>
+        校验：命令的每一项不能为空；<code>extensions</code> 每项以 <code>.</code> 开头且至少两个字符；id
+        和名字不能为空。有一项不合格就整个补丁拒绝，文件不变。
+      </li>
+      <li>
+        项目配置：按条目覆盖全局，整条替换，不做字段合并；项目写
+        <code>false</code> 只关掉这个项目；读项目配置不改全局配置。
+      </li>
+      <li>
+        引擎不读这两段：不新增工具、事件、环境变量和错误码，<code>MERAKCODE_DISABLE_LSP_DOWNLOAD</code> 也不实现。
       </li>
     </ul>
     <p>
-      <strong>先写的测试：</strong>在 <code>engine/lsp/testdata</code> 写一个假语言服务器（Go
-      程序），对固定输入返回定义位置和一条诊断；测 <code>lsp</code> 工具的跳到定义；测
-      <code>edit_file</code> 之后结果里有诊断；测服务器退出后下一次调用自动重启；测关闭下载时不发网络请求。
+      <strong>先写的测试：</strong>在 <code>merak/internal/platform/config</code>，一个一个红、绿（<code>openText</code>
+      这类小夹具自己写；保留已有的 <code>TestLspAndFormatterKeysOfAV03FileAreKeptAndDoNothing</code> 不改）：
+    </p>
+    <ul>
+      <li>
+        一份带注释的 v0.3 文件，含 <code>gopls</code> 关闭、一个自己的服务器（带 <code>env</code> 和
+        <code>initialization</code>）、一个格式化条目（带
+        <code>environment</code
+        >）和一个不是对象的条目：读出的值和文件一致；公开视图里环境变量的值是空的、名字在；私有视图里值还在；只有那个坏条目一条
+        MRK-3002 警告。
+      </li>
+      <li><code>false</code> 和 <code>true</code> 的两种写法；<code>"lsp": "yes"</code> 这样的写法打开配置时报错。</li>
+      <li>
+        <code>config.set</code> 同时改一个服务器的扩展名（空的 <code>env</code> 值传回）、删一个条目、加一个带
+        <code>env</code>
+        的新条目、关掉一个格式化条目：文件里注释和别的键不变；私有视图里旧值还在，新值也在；重新打开文件读出的内容相同。
+      </li>
+      <li>
+        整段关掉再打开：文件里依次是 <code>false</code> 和
+        <code>{}</code> 加上新条目；坏命令、坏扩展名、空名字三种补丁各被拒绝，拒绝以后文件和原来逐字节相同。
+      </li>
+      <li>
+        项目配置：项目文件覆盖全局的同名条目（整条替换，旧的 <code>env</code> 不留）、全局的别的条目还在、项目写
+        <code>"formatter": false</code> 时合并结果里是关闭的，而全局配置没变。
+      </li>
+      <li>
+        <code>merak/internal/server</code>：协议里 <code>config.set</code> 带一个 <code>lsp</code> 条目，再
+        <code>config.get</code>，条目在、环境变量的值是空的。
+      </li>
+    </ul>
+    <p>
+      <strong>实现步骤：</strong
+      >类型、读取、公开视图的打码、补丁到编辑的转换、项目合并，各一步，每步对着上面的测试；然后
+      <code>pnpm generate:protocol</code> 重新生成协议和 SDK 类型；<code>CHANGELOG.md</code> 的
+      <code>Unreleased</code> 中英文各加一行；<code>docs/plans/</code> 不再改。
     </p>
     <p>
-      <strong>对照 v0.3 补齐：</strong>改完文件自动格式化。<code>write_file</code>、<code>edit_file</code>、<code
-        >multi_edit</code
-      >
-      成功后，按文件扩展名找一个可用的格式化工具跑一次（工作目录是工作空间，在沙箱里），结果附在工具结果后面。清单和
-      v0.3.1
-      相同：gofmt、mix、prettier、oxfmt、biome、zig、clang-format、ktlint、ruff、air、uv、rubocop、standardrb、htmlbeautifier、dart、ocamlformat、terraform、latexindent、gleam、shfmt、nixfmt、rustfmt、pint、ormolu；每个工具的扩展名、启用条件（项目里有它的配置文件或依赖）、命令可以读
-      dev-v0.3.1 的 <code>packages/engine/src/infra/process/formatter.ts</code> 取数据。配置
-      <code>formatter: false</code> 全部关掉，<code>formatter.&lt;名字&gt;</code>
-      可以关掉一个、换命令、加环境变量或扩展名。测试用假格式化程序（Go 写的测试夹具）验证调用和关闭。
+      <strong>不做：</strong>语言服务器和
+      <code>lsp</code>
+      工具；改完文件后的诊断和自动格式化；服务器和格式化工具的清单与自动下载；桌面端设置里编辑这两段的页面（R20
+      之后按需要再加）。
     </p>
-    <p><strong>不做：</strong>代码补全；重命名和代码操作。</p>
     <p><strong>验证：</strong>全量命令全绿。</p>
 
     <h3 id="wo-r19">R19 定时任务</h3>
@@ -4113,7 +4192,7 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
       </tr>
       <tr>
         <td><code>merak doctor</code></td>
-        <td>逐项检查并给出结论：守护进程、数据目录、默认模型能否连通、沙箱、git、已配置的 MCP 服务器、语言服务器</td>
+        <td>逐项检查并给出结论：守护进程、数据目录、默认模型能否连通、沙箱、git、已配置的 MCP 服务器</td>
       </tr>
       <tr>
         <td><code>merak logs [-f]</code></td>
@@ -4284,7 +4363,7 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
       </li>
       <li>
         不读、不复制 v0.3 的引擎、命令行、SDK，只有施工单点名的几个文件例外（R2 的 <code>schema/config.json</code> 和
-        <code>paths.ts</code>，R3 的兜底表，R15 的插件钩子定义，R18 的语言服务器和格式化工具清单，R27 的命令名，R28
+        <code>paths.ts</code>，R3 的兜底表，R15 的插件钩子定义，R27 的命令名，R28
         的表结构和消息结构），而且只取格式、数据和行为，代码原创。
       </li>
       <li>Go 模块只用标准库和已批准的依赖；需要新依赖时停下来问。</li>
@@ -4339,7 +4418,17 @@ pnpm --dir apps/desktop/main test:e2e     # 本片涉及的 spec；R25 起跑全
       </tr>
       <tr>
         <td>1.3 节</td>
-        <td>删“桌面端不重新设计”和“插件、技能、斜杠命令、LSP、定时任务排在阶段 4 之后”，换成 D-16</td>
+        <td>删“桌面端不重新设计”和“插件、技能、斜杠命令、定时任务排在阶段 4 之后”，换成 D-16</td>
+      </tr>
+      <tr>
+        <td>7.5 节、R18</td>
+        <td>
+          R18 改为“lsp 与 formatter 配置项”：2026-11-12 查到 OpenCode 2.0 起接受并保留 lsp
+          配置，但不运行语言服务器、不提供 lsp 工具和诊断，LSP 与格式化服务的移植在上游议题 anomalyco/opencode#38528
+          里待做；官方文档对格式化的说法不一致。v1 照这个做法：<code>lsp</code>、<code>formatter</code>
+          可配置，引擎不提供语言服务器、<code>lsp</code>
+          工具、诊断和自动格式化。上游恢复后再评估是否真的提供
+        </td>
       </tr>
       <tr>
         <td>2.3、2.5、3.4、12.2 节</td>

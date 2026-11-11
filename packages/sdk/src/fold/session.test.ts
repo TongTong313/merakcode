@@ -1,6 +1,6 @@
 import { expect, test } from "vitest"
 import { readFile } from "node:fs/promises"
-import { EngineEventSchema, SessionStateSchema, type SessionState } from "../protocol.gen"
+import { EngineEventSchema, SessionStateSchema, type EngineEvent, type SessionState } from "../protocol.gen"
 import { foldSession } from "./session"
 
 test("folds the real Go event log into the same session snapshot", async () => {
@@ -113,4 +113,82 @@ test("restores child reports, loaded tools, usage and the model selected for a t
   expect(state.children?.child?.delivered).toBe(true)
   expect(state.loaded).toEqual(["search"])
   expect(state.usage.input).toBe(11)
+})
+
+function at(seq: number, partial: Record<string, unknown>): EngineEvent {
+  return {
+    id: `event-${seq}`,
+    seq,
+    stream: "session:session",
+    time: "2026-11-11T00:00:00Z",
+    actor: { kind: "human" },
+    scope: { session: "session" },
+    ...partial,
+  } as EngineEvent
+}
+
+const blank: SessionState = {
+  id: "session",
+  lastSeq: 0,
+  scope: { session: "session" },
+  status: "idle",
+  config: { provider: "fake", model: "model", workdir: "/workspace" },
+  system: "Frozen",
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, costKnown: false },
+  messages: null,
+}
+
+test("a revert hides the message and what followed, and unrevert brings them back; a new message commits it", () => {
+  const user = (seq: number, text: string) =>
+    at(seq, { type: "message.sent", payload: { role: "user", parts: [{ text }] } })
+  const answer = (seq: number, text: string) =>
+    at(seq, {
+      type: "message.completed",
+      actor: { kind: "agent" },
+      payload: { role: "assistant", parts: [{ text }], usage: blank.usage },
+    })
+  let state: SessionState | undefined = foldSession(undefined, at(1, { type: "session.created", payload: blank }))
+  state = foldSession(state, user(2, "First"))
+  state = foldSession(state, answer(3, "One"))
+  state = foldSession(state, at(4, { type: "snapshot.tracked", payload: { index: 0, tree: "tree-a" } }))
+  state = foldSession(state, user(5, "Second"))
+  state = foldSession(state, answer(6, "Two"))
+  expect(state?.marks).toEqual([
+    { id: "event-2", index: 0 },
+    { id: "event-5", index: 2 },
+  ])
+  expect(state?.tracks).toEqual([{ index: 2, tree: "tree-a" }])
+
+  const reverted = foldSession(
+    state,
+    at(7, { type: "session.reverted", payload: { message: "event-5", current: "tree-b" } }),
+  )!
+  expect(reverted.messages?.map((m) => m.parts?.[0]?.text)).toEqual(["First", "One"])
+  expect(reverted.hidden?.messages?.map((m) => m.parts?.[0]?.text)).toEqual(["Second", "Two"])
+  expect(reverted.hidden?.current).toBe("tree-b")
+  expect(state?.messages).toHaveLength(4)
+
+  const restored = foldSession(reverted, at(8, { type: "session.unreverted", payload: {} }))!
+  expect(restored.messages?.map((m) => m.parts?.[0]?.text)).toEqual(["First", "One", "Second", "Two"])
+  expect(restored.hidden).toBeUndefined()
+
+  const committed = foldSession(reverted, user(8, "Replacement"))!
+  expect(committed.hidden).toBeUndefined()
+  expect(committed.marks?.at(-1)).toEqual({ id: "event-8", index: 2 })
+})
+
+test("renames, archives and changes the mode of a session and keeps the todo list", () => {
+  let state: SessionState | undefined = foldSession(undefined, at(1, { type: "session.created", payload: blank }))
+  state = foldSession(
+    state,
+    at(2, { type: "session.updated", payload: { title: "Fix login", archived: true, mode: "auto" } }),
+  )
+  state = foldSession(state, at(3, { type: "session.updated", payload: { archived: false } }))
+  state = foldSession(state, at(4, { type: "todo.updated", payload: { items: [{ content: "Read", status: "done" }] } }))
+  expect(state).toMatchObject({
+    title: "Fix login",
+    config: { mode: "auto" },
+    todos: [{ content: "Read", status: "done" }],
+  })
+  expect(state?.archived).toBeFalsy()
 })

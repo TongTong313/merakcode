@@ -65,7 +65,13 @@ func (r ReadFile) Run(ctx context.Context, call Call) (result Result, runErr err
 		return failure(err), nil
 	}
 	call.Env.Reads.remember(path, data)
-	return fileParts(ctx, path, data), nil
+	result = fileParts(ctx, path, data)
+	if call.Env.Attach != nil {
+		if extra := call.Env.Attach(path); extra != "" {
+			result.Parts = append(result.Parts, model.Part{Text: extra})
+		}
+	}
+	return result, nil
 }
 
 func fileParts(ctx context.Context, path string, data []byte) Result {

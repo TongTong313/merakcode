@@ -42,6 +42,16 @@ type Builder struct {
 	SummaryUsage model.Usage
 	lastUsage    model.Usage
 	Snapshot     func(context.Context, *session.State) error
+	// ManualOnly stops the builder from shrinking the context by itself; a full context then fails with MRK-4010.
+	ManualOnly bool
+}
+
+// Compact rebuilds the context now, keeping the latest turn, whatever the thresholds say.
+func (b *Builder) Compact(ctx context.Context, s *session.State) error {
+	keep := b.Budget.KeepTurns
+	b.Budget.KeepTurns = 1
+	defer func() { b.Budget.KeepTurns = keep }()
+	return b.Rebuild(ctx, s)
 }
 
 func (b *Builder) Build(ctx context.Context, s *session.State) (model.Request, error) {
@@ -62,6 +72,9 @@ func (b *Builder) Build(ctx context.Context, s *session.State) (model.Request, e
 	}
 	value := b.Counter.Estimate(s.Config.Provider, request)
 	if float64(value.Total+b.Budget.Reserve) > float64(b.Budget.Window)*b.Budget.Trigger {
+		if b.ManualOnly {
+			return model.Request{}, b.reportFailure(ctx, s, request, "MRK-4010")
+		}
 		if err := b.Rebuild(ctx, s); err != nil {
 			code := "MRK-4003"
 			if err.Error() == "MRK-4002" {
@@ -165,7 +178,7 @@ func (b *Builder) reportFailure(ctx context.Context, s *session.State, request m
 func requestFor(s *session.State, reserve int) model.Request {
 	request := model.Request{Model: s.Config.Model, System: s.System, Messages: s.Messages, Thinking: s.Config.Thinking, MaxTokens: reserve}
 	for _, spec := range s.Tools {
-		request.Tools = append(request.Tools, model.ToolSpec{Name: spec.Name, Description: spec.Description, Input: spec.Input})
+		request.Tools = append(request.Tools, model.ToolSpec{Name: spec.Name, Description: spec.Description, Input: compactSchema(spec.Input)})
 	}
 	return request
 }

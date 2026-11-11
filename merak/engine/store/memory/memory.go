@@ -96,8 +96,9 @@ func (s *Store) Find(ctx context.Context, q store.Query) ([]event.Event, error) 
 	defer s.mu.Unlock()
 	result := []event.Event{}
 	filter := event.Filter{Scope: q.Scope, Types: q.Types}
+	text := asciiLower(q.Text)
 	for _, e := range s.events {
-		if !filter.Matches(e) || !q.After.IsZero() && !e.Time.After(q.After) || !q.Before.IsZero() && !e.Time.Before(q.Before) {
+		if !filter.Matches(e) || !q.After.IsZero() && !e.Time.After(q.After) || !q.Before.IsZero() && !e.Time.Before(q.Before) || text != "" && !strings.Contains(asciiLower(string(e.Payload)), text) {
 			continue
 		}
 		e.Payload = bytes.Clone(e.Payload)
@@ -165,4 +166,39 @@ func (s *Store) List(ctx context.Context, kind, prefix string) ([]store.DocMeta,
 	}
 	slices.SortFunc(result, func(a, b store.DocMeta) int { return cmp.Compare(a.Key, b.Key) })
 	return result, nil
+}
+
+// DeleteStream removes every event of a stream.
+func (s *Store) DeleteStream(ctx context.Context, stream event.Stream) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.streams[stream] {
+		delete(s.events, e.ID)
+	}
+	delete(s.streams, stream)
+	return nil
+}
+
+// Delete removes a document; a missing one is not an error.
+func (s *Store) Delete(ctx context.Context, kind, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.docs, [2]string{kind, key})
+	return nil
+}
+
+// asciiLower folds only ASCII letters, the same way the SQL LIKE of the local store compares.
+func asciiLower(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, text)
 }

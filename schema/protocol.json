@@ -63,14 +63,36 @@
         "shared": {
           "type": "boolean"
         },
+        "source": {
+          "type": "string"
+        },
         "summary": {
           "type": "string"
+        },
+        "switches": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
         },
         "system": {
           "type": "string"
         },
         "toolPool": {
           "type": "string"
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": ["duties", "id", "model", "name", "role", "summary", "toolPool"],
@@ -389,6 +411,141 @@
       "required": ["price"],
       "type": "object"
     },
+    "CodeIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": ["directory", "path"],
+      "type": "object"
+    },
+    "CodeStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "staged": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": ["path"],
+      "type": "object"
+    },
+    "CodeWorktree": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": ["branch", "key", "path", "root"],
+      "type": "object"
+    },
+    "CommandCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "local": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        }
+      },
+      "required": ["description", "name", "source"],
+      "type": "object"
+    },
+    "CommandResult": {
+      "additionalProperties": false,
+      "properties": {
+        "sent": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["sent"],
+      "type": "object"
+    },
+    "ConfigAgent": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "tools": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "ConfigBoard": {
       "additionalProperties": false,
       "properties": {
@@ -422,6 +579,25 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "ConfigCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        }
+      },
+      "required": ["template"],
       "type": "object"
     },
     "ConfigLaunchDecision": {
@@ -459,14 +635,99 @@
         "command": {
           "type": "string"
         },
+        "deferred": {
+          "type": "boolean"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
         "env": {
           "additionalProperties": {
             "type": "string"
           },
           "type": "object"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "noOAuth": {
+          "type": "boolean"
+        },
+        "oauth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigOAuth"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
         }
       },
-      "required": ["command"],
+      "type": "object"
+    },
+    "ConfigMemory": {
+      "additionalProperties": false,
+      "properties": {
+        "autoExtract": {
+          "type": "boolean"
+        },
+        "autoRecall": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": ["autoExtract", "autoRecall"],
+      "type": "object"
+    },
+    "ConfigMemoryPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "autoExtract": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "autoRecall": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "type": "object"
     },
     "ConfigModel": {
@@ -493,6 +754,21 @@
         },
         "window": {
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigOAuth": {
+      "additionalProperties": false,
+      "properties": {
+        "clientId": {
+          "type": "string"
+        },
+        "clientSecret": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
         }
       },
       "type": "object"
@@ -540,6 +816,26 @@
             }
           ]
         },
+        "compactionAuto": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "defaultAgent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "deniedHosts": {
           "anyOf": [
             {
@@ -574,6 +870,29 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mcp": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ConfigMCPServer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigMemoryPatch"
             },
             {
               "type": "null"
@@ -653,10 +972,40 @@
           },
           "type": "object"
         },
+        "retentionDays": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigRulesPatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "smallModel": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "boolean"
             },
             {
               "type": "null"
@@ -964,6 +1313,32 @@
       },
       "type": "object"
     },
+    "ConfigRulesPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ConfigServer": {
       "additionalProperties": false,
       "properties": {
@@ -972,6 +1347,38 @@
         },
         "port": {
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigSkills": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "urls": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "type": "object"
@@ -998,6 +1405,12 @@
     "ConfigValue": {
       "additionalProperties": false,
       "properties": {
+        "agents": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ConfigAgent"
+          },
+          "type": "object"
+        },
         "allowedHosts": {
           "anyOf": [
             {
@@ -1016,6 +1429,18 @@
         },
         "cloud": {
           "$ref": "#/$defs/ConfigCloud"
+        },
+        "commands": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ConfigCommand"
+          },
+          "type": "object"
+        },
+        "compactionAuto": {
+          "type": "boolean"
+        },
+        "defaultAgent": {
+          "type": "string"
         },
         "deniedHosts": {
           "anyOf": [
@@ -1055,6 +1480,9 @@
           },
           "type": "object"
         },
+        "memory": {
+          "$ref": "#/$defs/ConfigMemory"
+        },
         "model": {
           "type": "string"
         },
@@ -1093,17 +1521,32 @@
           },
           "type": "object"
         },
+        "retentionDays": {
+          "type": "integer"
+        },
         "rules": {
           "$ref": "#/$defs/ConfigRules"
         },
         "server": {
           "$ref": "#/$defs/ConfigServer"
         },
+        "skills": {
+          "$ref": "#/$defs/ConfigSkills"
+        },
         "smallModel": {
           "type": "string"
         },
+        "snapshot": {
+          "type": "boolean"
+        },
         "thinking": {
           "type": "string"
+        },
+        "tools": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
         },
         "unconfined": {
           "anyOf": [
@@ -1122,7 +1565,7 @@
           "anyOf": [
             {
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/ConfigWarning"
               },
               "type": "array"
             },
@@ -1145,7 +1588,26 @@
           ]
         }
       },
-      "required": ["board", "providers"],
+      "required": ["board", "compactionAuto", "memory", "providers", "skills", "snapshot"],
+      "type": "object"
+    },
+    "ConfigWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "message", "path"],
       "type": "object"
     },
     "EngineFileChanges": {
@@ -1782,6 +2244,9 @@
     "GroupNotice": {
       "additionalProperties": false,
       "properties": {
+        "count": {
+          "type": "integer"
+        },
         "kind": {
           "type": "string"
         },
@@ -2219,6 +2684,26 @@
       "required": ["goals", "lastSeq", "members", "rev", "tasks"],
       "type": "object"
     },
+    "LoopConsumed": {
+      "additionalProperties": false,
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["session"],
+      "type": "object"
+    },
+    "LoopDelivered": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "type": "string"
+        }
+      },
+      "required": ["claim"],
+      "type": "object"
+    },
     "LoopInput": {
       "additionalProperties": false,
       "properties": {
@@ -2330,6 +2815,41 @@
       "required": ["causes"],
       "type": "object"
     },
+    "McpChange": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": ["server"],
+      "type": "object"
+    },
+    "McpStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "integer"
+        }
+      },
+      "required": ["name", "status", "tools"],
+      "type": "object"
+    },
     "MemoryExtraction": {
       "additionalProperties": false,
       "properties": {
@@ -2344,6 +2864,48 @@
         }
       },
       "required": ["stored", "usage"],
+      "type": "object"
+    },
+    "MemoryNote": {
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["created", "id", "kind", "owner", "scope", "source", "tags", "text"],
       "type": "object"
     },
     "ModelChunk": {
@@ -2684,6 +3246,47 @@
       "required": ["call", "spec"],
       "type": "object"
     },
+    "PlanPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "session": {
+          "type": "string"
+        },
+        "snapshot": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": ["content", "revision", "session", "status"],
+      "type": "object"
+    },
+    "PluginFailedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "hook": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "error", "hook", "plugin"],
+      "type": "object"
+    },
     "ProtocolAgentDeleteParams": {
       "additionalProperties": false,
       "properties": {
@@ -2696,7 +3299,11 @@
     },
     "ProtocolAgentListParams": {
       "additionalProperties": false,
-      "properties": {},
+      "properties": {
+        "directory": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "ProtocolAgentSaveParams": {
@@ -3053,6 +3660,22 @@
       "required": ["from", "stream"],
       "type": "object"
     },
+    "ProtocolFileFindParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": ["query"],
+      "type": "object"
+    },
     "ProtocolFileParams": {
       "additionalProperties": false,
       "properties": {
@@ -3283,6 +3906,57 @@
       "required": ["engine", "human", "protocol"],
       "type": "object"
     },
+    "ProtocolMCPAuthenticateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url"],
+      "type": "object"
+    },
+    "ProtocolMCPServerParams": {
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": ["server"],
+      "type": "object"
+    },
+    "ProtocolMCPStatusParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ProtocolMemoryListParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ProtocolMemoryNoteParams": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
     "ProtocolModelDiscoverParams": {
       "additionalProperties": false,
       "properties": {
@@ -3338,6 +4012,32 @@
         }
       },
       "required": ["decision", "request"],
+      "type": "object"
+    },
+    "ProtocolPlanParams": {
+      "additionalProperties": false,
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["session"],
+      "type": "object"
+    },
+    "ProtocolPlanSaveParams": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["content", "revision", "session"],
       "type": "object"
     },
     "ProtocolQuestionReplyParams": {
@@ -3597,6 +4297,52 @@
       "required": ["branch"],
       "type": "object"
     },
+    "ProtocolRepoCommitMessageResult": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["message"],
+      "type": "object"
+    },
+    "ProtocolRepoCommitParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["message"],
+      "type": "object"
+    },
+    "ProtocolRepoCommitResult": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "type": "string"
+        }
+      },
+      "required": ["commit"],
+      "type": "object"
+    },
     "ProtocolRepoDiffParams": {
       "additionalProperties": false,
       "properties": {
@@ -3610,6 +4356,139 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "ProtocolRuleFileChange": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["name"],
+      "type": "object"
+    },
+    "ProtocolRuleView": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "globs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["body", "kind", "name", "path"],
+      "type": "object"
+    },
+    "ProtocolRulesChangeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProtocolRuleFileChange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "personal": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ProtocolRulesReadResult": {
+      "additionalProperties": false,
+      "properties": {
+        "instructions": {
+          "type": "string"
+        },
+        "personal": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ProtocolRuleView"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["personal", "rules"],
       "type": "object"
     },
     "ProtocolSandboxStatusParams": {
@@ -3633,6 +4512,16 @@
       },
       "type": "object"
     },
+    "ProtocolScheduleDeleteParams": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
     "ProtocolSessionCancelParams": {
       "additionalProperties": false,
       "properties": {
@@ -3643,11 +4532,33 @@
       "required": ["session"],
       "type": "object"
     },
+    "ProtocolSessionCommandParams": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "session"],
+      "type": "object"
+    },
     "ProtocolSessionCreateParams": {
       "additionalProperties": false,
       "properties": {
+        "agent": {
+          "type": "string"
+        },
         "budget": {
           "$ref": "#/$defs/SessionBudget"
+        },
+        "key": {
+          "type": "string"
         },
         "mcpServers": {
           "additionalProperties": {
@@ -3683,6 +4594,61 @@
       "required": ["session"],
       "type": "object"
     },
+    "ProtocolSessionImportParams": {
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/EventEvent"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["events"],
+      "type": "object"
+    },
+    "ProtocolSessionListParams": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ProtocolSessionRevertParams": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["message", "session"],
+      "type": "object"
+    },
+    "ProtocolSessionSearchParams": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": ["query"],
+      "type": "object"
+    },
     "ProtocolSessionSendParams": {
       "additionalProperties": false,
       "properties": {
@@ -3702,6 +4668,9 @@
             }
           ]
         },
+        "plan": {
+          "type": "boolean"
+        },
         "selection": {
           "anyOf": [
             {
@@ -3717,6 +4686,169 @@
         }
       },
       "required": ["parts", "session"],
+      "type": "object"
+    },
+    "ProtocolSessionUpdateParams": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirm": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["session"],
+      "type": "object"
+    },
+    "ProtocolSkillDiscoverParams": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": ["source"],
+      "type": "object"
+    },
+    "ProtocolSkillInstallParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": ["names", "source"],
+      "type": "object"
+    },
+    "ProtocolSkillInstallResult": {
+      "additionalProperties": false,
+      "properties": {
+        "installed": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["installed"],
+      "type": "object"
+    },
+    "ProtocolSkillListResult": {
+      "additionalProperties": false,
+      "properties": {
+        "problems": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skills": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SkillSkill"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["skills", "sources"],
+      "type": "object"
+    },
+    "ProtocolSkillUninstallParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": ["name"],
       "type": "object"
     },
     "ProtocolSubscribeResult": {
@@ -3958,6 +5090,49 @@
       "required": ["id"],
       "type": "object"
     },
+    "ProtocolToolRegisterParams": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "effect": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "schema": {}
+      },
+      "required": ["description", "name", "schema"],
+      "type": "object"
+    },
+    "ProtocolToolResultParams": {
+      "additionalProperties": false,
+      "properties": {
+        "call": {
+          "type": "string"
+        },
+        "isError": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["call", "text"],
+      "type": "object"
+    },
+    "ProtocolToolUnregisterParams": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["name"],
+      "type": "object"
+    },
     "ProtocolUnsubscribeParams": {
       "additionalProperties": false,
       "properties": {
@@ -3985,6 +5160,32 @@
         }
       },
       "required": ["packet", "profile", "session", "workdir"],
+      "type": "object"
+    },
+    "ProtocolWorktreeCreateParams": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": ["key"],
+      "type": "object"
+    },
+    "ProtocolWorktreePathParams": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["path"],
       "type": "object"
     },
     "QuestionAnswer": {
@@ -4092,6 +5293,39 @@
       "required": ["available", "backend", "network"],
       "type": "object"
     },
+    "ScheduleSchedule": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "cron": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "next": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      },
+      "required": ["created", "cron", "id", "owner", "prompt", "workdir"],
+      "type": "object"
+    },
     "SessionBudget": {
       "additionalProperties": false,
       "properties": {
@@ -4106,6 +5340,35 @@
         },
         "maxWallClock": {
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "SessionChange": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "type": "object"
@@ -4229,6 +5492,12 @@
         "provider": {
           "type": "string"
         },
+        "switches": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
         "thinking": {
           "type": "string"
         },
@@ -4255,9 +5524,80 @@
       "required": ["code"],
       "type": "object"
     },
+    "SessionHidden": {
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "marks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SessionMark"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "messages": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ModelMessage"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tracks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SessionTrack"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["index", "messages"],
+      "type": "object"
+    },
+    "SessionHit": {
+      "additionalProperties": false,
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": ["session", "snippet"],
+      "type": "object"
+    },
     "SessionInfo": {
       "additionalProperties": false,
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "config": {
           "$ref": "#/$defs/SessionConfig"
         },
@@ -4266,6 +5606,9 @@
           "type": "string"
         },
         "id": {
+          "type": "string"
+        },
+        "title": {
           "type": "string"
         }
       },
@@ -4344,6 +5687,19 @@
       "required": ["servers"],
       "type": "object"
     },
+    "SessionMark": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        }
+      },
+      "required": ["id", "index"],
+      "type": "object"
+    },
     "SessionRebuild": {
       "additionalProperties": false,
       "properties": {
@@ -4370,6 +5726,22 @@
         }
       },
       "required": ["from", "summary", "summaryId", "throughSeq", "to", "usage"],
+      "type": "object"
+    },
+    "SessionRevert": {
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "restored": {
+          "type": "string"
+        }
+      },
+      "required": ["message"],
       "type": "object"
     },
     "SessionSelection": {
@@ -4407,6 +5779,9 @@
     "SessionState": {
       "additionalProperties": false,
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "baseCommit": {
           "type": "string"
         },
@@ -4428,6 +5803,16 @@
         "config": {
           "$ref": "#/$defs/SessionConfig"
         },
+        "hidden": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionHidden"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "id": {
           "type": "string"
         },
@@ -4439,6 +5824,19 @@
             {
               "items": {
                 "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "marks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SessionMark"
               },
               "type": "array"
             },
@@ -4494,11 +5892,40 @@
         "system": {
           "type": "string"
         },
+        "title": {
+          "type": "string"
+        },
+        "todos": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ToolTodo"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "tools": {
           "anyOf": [
             {
               "items": {
                 "$ref": "#/$defs/ToolSpec"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tracks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SessionTrack"
               },
               "type": "array"
             },
@@ -4527,6 +5954,84 @@
       "required": ["config", "id", "lastSeq", "messages", "scope", "status", "system", "usage"],
       "type": "object"
     },
+    "SessionTodos": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ToolTodo"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items"],
+      "type": "object"
+    },
+    "SessionTrack": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "type": "integer"
+        },
+        "tree": {
+          "type": "string"
+        }
+      },
+      "required": ["index", "tree"],
+      "type": "object"
+    },
+    "SkillOffer": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["description", "name"],
+      "type": "object"
+    },
+    "SkillSkill": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["description", "name", "source"],
+      "type": "object"
+    },
     "StoreQuery": {
       "additionalProperties": false,
       "properties": {
@@ -4543,6 +6048,9 @@
         },
         "scope": {
           "$ref": "#/$defs/EventScope"
+        },
+        "text": {
+          "type": "string"
         },
         "types": {
           "anyOf": [
@@ -4910,6 +6418,19 @@
         }
       },
       "required": ["at", "by"],
+      "type": "object"
+    },
+    "TaskOffer": {
+      "additionalProperties": false,
+      "properties": {
+        "member": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": ["member", "task"],
       "type": "object"
     },
     "TaskProgress": {
@@ -5292,6 +6813,19 @@
       "required": ["description", "effect", "input", "name"],
       "type": "object"
     },
+    "ToolTodo": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": ["content", "status"],
+      "type": "object"
+    },
     "WindowReport": {
       "additionalProperties": false,
       "properties": {
@@ -5563,6 +7097,15 @@
     "human.said": {
       "$ref": "#/$defs/GroupMessage"
     },
+    "input.consumed": {
+      "$ref": "#/$defs/LoopConsumed"
+    },
+    "input.delivered": {
+      "$ref": "#/$defs/LoopDelivered"
+    },
+    "mcp.changed": {
+      "$ref": "#/$defs/McpChange"
+    },
     "member.added": {
       "$ref": "#/$defs/GroupMember"
     },
@@ -5617,6 +7160,12 @@
     "phase.changed": {
       "$ref": "#/$defs/TaskCard"
     },
+    "plan.updated": {
+      "$ref": "#/$defs/PlanPlan"
+    },
+    "plugin.failed": {
+      "$ref": "#/$defs/PluginFailedEvent"
+    },
     "question.answered": {
       "$ref": "#/$defs/QuestionAnswer"
     },
@@ -5647,8 +7196,22 @@
     "session.rebuilt": {
       "$ref": "#/$defs/SessionRebuild"
     },
+    "session.reverted": {
+      "$ref": "#/$defs/SessionRevert"
+    },
+    "session.unreverted": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "session.updated": {
+      "$ref": "#/$defs/SessionChange"
+    },
     "session.warning": {
       "$ref": "#/$defs/SessionDiagnostic"
+    },
+    "snapshot.tracked": {
+      "$ref": "#/$defs/SessionTrack"
     },
     "task.archived": {
       "$ref": "#/$defs/TaskCard"
@@ -5661,6 +7224,9 @@
     },
     "task.created": {
       "$ref": "#/$defs/TaskCard"
+    },
+    "task.offered": {
+      "$ref": "#/$defs/TaskOffer"
     },
     "task.opened": {
       "$ref": "#/$defs/TaskCard"
@@ -5700,6 +7266,9 @@
     },
     "thread.started": {
       "$ref": "#/$defs/LeaderHandover"
+    },
+    "todo.updated": {
+      "$ref": "#/$defs/SessionTodos"
     },
     "tool.called": {
       "$ref": "#/$defs/ModelToolCall"
@@ -5858,6 +7427,24 @@
         "$ref": "#/$defs/ProtocolCloudStatus"
       }
     },
+    "command.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/CommandCommand"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
     "config.get": {
       "params": {
         "additionalProperties": false,
@@ -6010,6 +7597,32 @@
         "type": "object"
       }
     },
+    "file.find": {
+      "params": {
+        "$ref": "#/$defs/ProtocolFileFindParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "file.identity": {
+      "params": {
+        "$ref": "#/$defs/ProtocolFileParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CodeIdentity"
+      }
+    },
     "file.list": {
       "params": {
         "$ref": "#/$defs/ProtocolFileParams"
@@ -6034,6 +7647,14 @@
       },
       "result": {
         "$ref": "#/$defs/EngineFileContent"
+      }
+    },
+    "file.status": {
+      "params": {
+        "$ref": "#/$defs/ProtocolFileParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CodeStatus"
       }
     },
     "group.addMember": {
@@ -6142,6 +7763,78 @@
         "$ref": "#/$defs/ProtocolHelloResult"
       }
     },
+    "mcp.authenticate": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMCPServerParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolMCPAuthenticateResult"
+      }
+    },
+    "mcp.logout": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMCPServerParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "mcp.status": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMCPStatusParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/McpStatus"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "memory.delete": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMemoryNoteParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "memory.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMemoryListParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/MemoryNote"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "memory.read": {
+      "params": {
+        "$ref": "#/$defs/ProtocolMemoryNoteParams"
+      },
+      "result": {
+        "$ref": "#/$defs/MemoryNote"
+      }
+    },
     "model.discover": {
       "params": {
         "$ref": "#/$defs/ProtocolModelDiscoverParams"
@@ -6204,6 +7897,38 @@
         "additionalProperties": false,
         "properties": {},
         "type": "object"
+      }
+    },
+    "plan.execute": {
+      "params": {
+        "$ref": "#/$defs/ProtocolPlanParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PlanPlan"
+      }
+    },
+    "plan.get": {
+      "params": {
+        "$ref": "#/$defs/ProtocolPlanParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PlanPlan"
+      }
+    },
+    "plan.save": {
+      "params": {
+        "$ref": "#/$defs/ProtocolPlanSaveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PlanPlan"
+      }
+    },
+    "plan.stop": {
+      "params": {
+        "$ref": "#/$defs/ProtocolPlanParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PlanPlan"
       }
     },
     "question.reply": {
@@ -6308,6 +8033,22 @@
         "type": "object"
       }
     },
+    "repo.commit": {
+      "params": {
+        "$ref": "#/$defs/ProtocolRepoCommitParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolRepoCommitResult"
+      }
+    },
+    "repo.commitMessage": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolRepoCommitMessageResult"
+      }
+    },
     "repo.diff": {
       "params": {
         "$ref": "#/$defs/ProtocolRepoDiffParams"
@@ -6326,12 +8067,40 @@
         ]
       }
     },
+    "repo.push": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
     "repo.status": {
       "params": {
         "$ref": "#/$defs/ProtocolDirectoryParams"
       },
       "result": {
         "$ref": "#/$defs/GitState"
+      }
+    },
+    "rules.change": {
+      "params": {
+        "$ref": "#/$defs/ProtocolRulesChangeParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "rules.read": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolRulesReadResult"
       }
     },
     "sandbox.setup": {
@@ -6354,7 +8123,55 @@
         "$ref": "#/$defs/SandboxStatus"
       }
     },
+    "schedule.delete": {
+      "params": {
+        "$ref": "#/$defs/ProtocolScheduleDeleteParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "schedule.list": {
+      "params": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ScheduleSchedule"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
     "session.cancel": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "session.command": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCommandParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CommandResult"
+      }
+    },
+    "session.compact": {
       "params": {
         "$ref": "#/$defs/ProtocolSessionCancelParams"
       },
@@ -6372,17 +8189,79 @@
         "$ref": "#/$defs/ProtocolSessionCreateResult"
       }
     },
-    "session.list": {
+    "session.delete": {
       "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
         "additionalProperties": false,
         "properties": {},
         "type": "object"
+      }
+    },
+    "session.export": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/EventEvent"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "session.import": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionImportParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolSessionCreateResult"
+      }
+    },
+    "session.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionListParams"
       },
       "result": {
         "anyOf": [
           {
             "items": {
               "$ref": "#/$defs/SessionInfo"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "session.revert": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionRevertParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "session.search": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionSearchParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/SessionHit"
             },
             "type": "array"
           },
@@ -6408,6 +8287,70 @@
       },
       "result": {
         "$ref": "#/$defs/SessionState"
+      }
+    },
+    "session.unrevert": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "session.update": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionUpdateParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "skill.discover": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSkillDiscoverParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/SkillOffer"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "skill.install": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSkillInstallParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolSkillInstallResult"
+      }
+    },
+    "skill.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolSkillListResult"
+      }
+    },
+    "skill.uninstall": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSkillUninstallParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
       }
     },
     "task.archive": {
@@ -6540,12 +8483,88 @@
         "$ref": "#/$defs/TerminalInfo"
       }
     },
+    "tool.register": {
+      "params": {
+        "$ref": "#/$defs/ProtocolToolRegisterParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "tool.result": {
+      "params": {
+        "$ref": "#/$defs/ProtocolToolResultParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "tool.unregister": {
+      "params": {
+        "$ref": "#/$defs/ProtocolToolUnregisterParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
     "worker.run": {
       "params": {
         "$ref": "#/$defs/ProtocolWorkerRunParams"
       },
       "result": {
         "$ref": "#/$defs/TaskReport"
+      }
+    },
+    "worktree.create": {
+      "params": {
+        "$ref": "#/$defs/ProtocolWorktreeCreateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/CodeWorktree"
+      }
+    },
+    "worktree.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/CodeWorktree"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "worktree.merge": {
+      "params": {
+        "$ref": "#/$defs/ProtocolWorktreePathParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    "worktree.remove": {
+      "params": {
+        "$ref": "#/$defs/ProtocolWorktreePathParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
       }
     }
   },

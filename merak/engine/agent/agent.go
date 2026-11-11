@@ -52,6 +52,12 @@ type Agent struct {
 	Model    ModelRef        `json:"model"`
 	ToolPool string          `json:"toolPool"`
 	Product  *Product        `json:"product,omitempty"`
+	// Tools limits a child started from this agent to these tools; empty means the pool of its kind.
+	Tools []string `json:"tools,omitempty"`
+	// Switches turn tools off or on by name for conversations with this agent; a name may end in *.
+	Switches map[string]bool `json:"switches,omitempty"`
+	// Source is "file" or "config" for an agent that is defined outside the library; it is read-only.
+	Source string `json:"source,omitempty"`
 }
 
 type Budget = session.Budget

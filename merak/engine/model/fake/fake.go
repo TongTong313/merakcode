@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 )
 
 type Reply struct {
+	// Role limits the reply to requests whose system prompt says "Role: <Role>"; empty answers any request.
+	Role   string                    `json:"role,omitempty"`
 	Text   string                    `json:"text"`
 	Calls  []model.ToolCall          `json:"calls,omitempty"`
 	Expect func(model.Request) error `json:"-"`
@@ -23,11 +26,12 @@ type provider struct {
 	mu      sync.Mutex
 	test    testing.TB
 	replies []Reply
+	used    []bool
 	next    int
 }
 
 func New(t testing.TB, replies ...Reply) model.Provider {
-	return &provider{test: t, replies: append([]Reply(nil), replies...)}
+	return &provider{test: t, replies: append([]Reply(nil), replies...), used: make([]bool, len(replies))}
 }
 
 func (p *provider) Name() string { return "fake" }
@@ -38,13 +42,21 @@ func (p *provider) Stream(ctx context.Context, req model.Request) (model.Stream,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if p.next >= len(p.replies) {
+	index := -1
+	for i, candidate := range p.replies {
+		if !p.used[i] && (candidate.Role == "" || strings.Contains(req.System, "Role: "+candidate.Role)) {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
 		if p.test != nil {
 			p.test.Errorf("fake: script exhausted at request %d", p.next+1)
 		}
 		return nil, errors.New("fake: script exhausted")
 	}
-	reply := p.replies[p.next]
+	reply := p.replies[index]
+	p.used[index] = true
 	p.next++
 	if reply.Expect != nil {
 		if err := reply.Expect(req); err != nil {

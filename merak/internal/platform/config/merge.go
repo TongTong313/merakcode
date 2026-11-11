@@ -9,7 +9,7 @@ import "maps"
 func Merge(global, project Value) Value {
 	merged := clone(global)
 	for _, field := range []struct{ from, to *string }{
-		{&project.Model, &merged.Model}, {&project.SmallModel, &merged.SmallModel}, {&project.Thinking, &merged.Thinking},
+		{&project.Model, &merged.Model}, {&project.SmallModel, &merged.SmallModel}, {&project.DefaultAgent, &merged.DefaultAgent}, {&project.Thinking, &merged.Thinking},
 		{&project.Locale, &merged.Locale}, {&project.Log, &merged.Log},
 	} {
 		if *field.from != "" {
@@ -24,6 +24,13 @@ func Merge(global, project Value) Value {
 			merged.MCPServers = map[string]MCPServer{}
 		}
 		maps.Copy(merged.MCPServers, project.MCPServers)
+	}
+	if len(project.Agents) > 0 {
+		merged.Agents = maps.Clone(merged.Agents)
+		if merged.Agents == nil {
+			merged.Agents = map[string]Agent{}
+		}
+		maps.Copy(merged.Agents, project.Agents)
 	}
 	merged.PermissionRules = append(merged.PermissionRules, project.PermissionRules...)
 	merged.Warnings = append(merged.Warnings, project.Warnings...)

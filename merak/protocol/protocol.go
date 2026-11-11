@@ -54,7 +54,37 @@ type HelloResult struct {
 	Engine   string   `json:"engine"`
 }
 
+type SessionListParams struct {
+	// Archived lists the archived conversations instead of the others.
+	Archived bool `json:"archived,omitempty"`
+}
+
+type SessionUpdateParams struct {
+	Session event.ID `json:"session"`
+	session.Update
+}
+
+type SessionRevertParams struct {
+	Session event.ID `json:"session"`
+	// Message is the id of the message.sent event of the message to go back to.
+	Message event.ID `json:"message"`
+}
+
+type SessionImportParams struct {
+	// Events are the events of an exported conversation.
+	Events []event.Event `json:"events"`
+}
+
+type SessionSearchParams struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit,omitempty"`
+}
+
 type SessionCreateParams struct {
+	// Key is chosen by the client; asking again with it returns the conversation it made the first time.
+	Key string `json:"key,omitempty"`
+	// Agent is a saved agent to talk to: an external product takes over the conversation.
+	Agent      event.ID             `json:"agent,omitempty"`
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
 	Budget     session.Budget       `json:"budget,omitempty"`
 	Mode       permission.Mode      `json:"mode,omitempty"`
@@ -79,6 +109,8 @@ type SessionCreateResult struct {
 }
 
 type SessionSendParams struct {
+	// Plan asks the agent to write a plan for this message first, and to stop there.
+	Plan         bool               `json:"plan,omitempty"`
 	ExtendBudget bool               `json:"extendBudget,omitempty"`
 	Selection    *session.Selection `json:"selection,omitempty"`
 	Session      event.ID           `json:"session"`
@@ -125,4 +157,20 @@ const LocalHuman event.ID = "local-human"
 type EngineStatus struct {
 	PID     int `json:"pid"`
 	Clients int `json:"clients"`
+}
+
+type SessionCommandParams struct {
+	Session   event.ID `json:"session"`
+	Name      string   `json:"name"`
+	Arguments string   `json:"arguments,omitempty"`
+}
+
+type PlanParams struct {
+	Session event.ID `json:"session"`
+}
+
+type PlanSaveParams struct {
+	Session  event.ID `json:"session"`
+	Content  string   `json:"content"`
+	Revision int      `json:"revision"`
 }

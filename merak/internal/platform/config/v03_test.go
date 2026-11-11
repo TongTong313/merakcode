@@ -54,7 +54,7 @@ func TestV03GlobalConfigurationIsReadWithoutChanges(t *testing.T) {
 	if !slices.Equal(view.Rules.User, []string{"Answer in Chinese"}) {
 		t.Fatalf("rules: %+v", view.Rules)
 	}
-	if !slices.ContainsFunc(view.Warnings, func(w string) bool { return strings.Contains(w, "experimental") }) {
+	if !slices.ContainsFunc(view.Warnings, func(w config.Warning) bool { return strings.Contains(w.String(), "experimental") }) {
 		t.Fatalf("the unsupported key is not listed in the warnings: %v", view.Warnings)
 	}
 }
@@ -161,7 +161,7 @@ func TestProjectConfigurationIsReadFromBothPlacesAndOverridesTheGlobalOne(t *tes
 	if _, ok := effective.MCPServers["api"]; !ok || effective.MCPServers["files"].Command != "node" || effective.MCPServers["docs"].Command != "node" {
 		t.Fatalf("servers: %+v", effective.MCPServers)
 	}
-	if !slices.ContainsFunc(effective.Warnings, func(w string) bool { return strings.Contains(w, "surprise") }) {
+	if !slices.ContainsFunc(effective.Warnings, func(w config.Warning) bool { return strings.Contains(w.String(), "surprise") }) {
 		t.Fatalf("the unknown project key is not reported: %v", effective.Warnings)
 	}
 }
@@ -249,7 +249,7 @@ func TestPermissionEntriesThatV1CanEnforceBecomeRulesAndTheRestIsReported(t *tes
 		t.Fatalf("rules: %+v", view.PermissionRules)
 	}
 	for _, key := range []string{"permission.read", "permission.network"} {
-		if !slices.ContainsFunc(view.Warnings, func(w string) bool { return strings.HasPrefix(w, key+":") }) {
+		if !slices.ContainsFunc(view.Warnings, func(w config.Warning) bool { return w.Path == key }) {
 			t.Errorf("%s is not reported as saved but not enforced: %v", key, view.Warnings)
 		}
 	}
@@ -312,5 +312,39 @@ func TestSendingBackAModelWithItsThinkingLevelsKeepsTheVariantOptions(t *testing
 	}
 	if got, _ := os.ReadFile(filepath.Join(root, "merakcode.json")); string(got) != file {
 		t.Fatalf("variants were rewritten:\n%s", got)
+	}
+}
+
+func TestWarningsNameTheCodeTheKeyAndTheFileTheyCameFrom(t *testing.T) {
+	root := t.TempDir()
+	global := filepath.Join(root, "merakcode.jsonc")
+	if err := os.WriteFile(global, []byte(`{"experimental": {}, "mcp": {"odd": {"type": "pipe"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := config.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]config.Warning{}
+	for _, w := range settings.Get().Warnings {
+		byPath[w.Path] = w
+	}
+	for _, key := range []string{"experimental", "mcp.odd"} {
+		w, ok := byPath[key]
+		if !ok || w.Code != "MRK-3002" || w.File != global || w.Message == "" {
+			t.Errorf("%s: %+v (all: %+v)", key, w, byPath)
+		}
+	}
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".merakcode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(project, ".merakcode", "merakcode.jsonc")
+	if err := os.WriteFile(file, []byte(`{"surprise": 1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	value, err := config.ReadProject(project)
+	if err != nil || len(value.Warnings) != 1 || value.Warnings[0].Path != "surprise" || value.Warnings[0].File != file {
+		t.Fatalf("warnings=%+v err=%v", value.Warnings, err)
 	}
 }

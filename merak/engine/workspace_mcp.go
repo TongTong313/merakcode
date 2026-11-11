@@ -3,16 +3,28 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/TongTong313/merakcode/merak/engine/clienttool"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/plugin"
 	"github.com/TongTong313/merakcode/merak/engine/session"
+	"github.com/TongTong313/merakcode/merak/engine/skill"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
+	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
 
 func (e *Engine) prepareMCP(ctx context.Context, c *conversation) {
@@ -97,7 +109,13 @@ func (e *Engine) prepareMCP(ctx context.Context, c *conversation) {
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		process, err := mcp.Start(e.ctx, selected.Name, definition, c.runner.Env)
+		var process *mcp.Process
+		var err error
+		if definition.Remote() {
+			process, err = mcp.StartRemote(e.ctx, selected.Name, definition, e.mcpLogin())
+		} else {
+			process, err = mcp.Start(e.ctx, selected.Name, definition, c.runner.Env)
+		}
 		if err != nil {
 			e.mcpWarning(ctx, c, "MRK-5010", selected.Name)
 			continue
@@ -125,7 +143,9 @@ func (e *Engine) prepareMCP(ctx context.Context, c *conversation) {
 			c.runner.Tools.Deferred = make(map[string]tool.Tool)
 		}
 		for _, operation := range process.Tools {
-			c.runner.Tools.Deferred[operation.Spec().Name] = e.gate.Wrap(operation)
+			if e.toolEnabled(operation.Spec().Name) {
+				c.runner.Tools.Deferred[operation.Spec().Name] = e.gate.Wrap(operation)
+			}
 		}
 	}
 	c.state.Tools = c.runner.Tools.Specs()
@@ -219,4 +239,372 @@ func (e *Engine) recoverWorkspaceConfirmations(ctx context.Context) error {
 		e.startWorkspaceConfirmation(config.Trust{Project: item.Project, Item: "mcpServers/" + item.Server, Hash: item.Hash}, request)
 	}
 	return nil
+}
+
+// MCPStatus is how a configured MCP server is doing; MCPChange and MCPChanged tell clients to read it again.
+type (
+	MCPStatus = mcp.Status
+	MCPChange = mcp.Change
+)
+
+// MCPChanged is the event that follows a login, a logout or a failed login.
+const MCPChanged = mcp.Changed
+
+func (e *Engine) mcpLogin() *mcp.Login {
+	e.mcpLoginOnce.Do(func() { e.mcpLoginSet = &mcp.Login{Vault: e.vault} })
+	return e.mcpLoginSet
+}
+
+// MCPStatus connects to every enabled MCP server of the user, and of the project when its directory is given and the
+// user trusts the entry, and reports how each one is doing. Entries of a project that were not confirmed are shown
+// as disabled until the user decides.
+func (e *Engine) MCPStatus(ctx context.Context, directory string) ([]MCPStatus, error) {
+	directory = e.directory(directory)
+	servers := e.mcpDefinitions(ctx, directory)
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	launcher := &sandbox.Launcher{Disabled: true}
+	launcher.Unavailable = func(context.Context, sandbox.Status) error { return nil }
+	env := tool.Env{Workdir: directory, Sandbox: launcher}
+	statuses := make([]MCPStatus, len(names))
+	var wait sync.WaitGroup
+	for i, name := range names {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			statuses[i] = mcp.Probe(ctx, name, servers[name], e.mcpLogin(), env)
+		}()
+	}
+	wait.Wait()
+	return statuses, nil
+}
+
+// mcpDefinitions returns the MCP servers that apply to a folder: the user's, and those of the project, which stay
+// disabled until the user confirmed them.
+func (e *Engine) mcpDefinitions(ctx context.Context, directory string) map[string]config.MCPServer {
+	settings := e.networkConfiguration()
+	servers := make(map[string]config.MCPServer)
+	user := make(map[string]bool)
+	for name, definition := range settings.MCPServers() {
+		servers[name], user[name] = definition, true
+	}
+	if found, err := config.ReadWorkspace(directory); err == nil {
+		project := directory
+		if root, err := git.ProjectRoot(ctx, directory); err == nil {
+			project = root
+		}
+		if resolved, err := resolvedSandboxPath(project); err == nil {
+			project = resolved
+		}
+		for name, definition := range found.MCPServers {
+			if user[name] {
+				continue
+			}
+			if settings.WorkspaceDecision(project, "mcpServers/"+name, definition.Hash()) != "allow" {
+				definition.Disabled = true
+			}
+			servers[name] = definition
+		}
+	}
+	return servers
+}
+
+// MCPAuthenticate starts the login of a remote server and returns the address to open in a browser. When the
+// browser comes back, MCPChanged follows; its Code is empty on success.
+func (e *Engine) MCPAuthenticate(ctx context.Context, name string) (string, error) {
+	definition, ok := e.networkConfiguration().MCPServers()[name]
+	if !ok || !definition.Remote() || definition.Disabled || definition.NoOAuth {
+		return "", coded(errorcode.SessionRequestFailed, errors.New("this server does not take a login"))
+	}
+	var auth *mcp.AuthRequired
+	if probe, err := mcp.StartRemote(ctx, name, definition, e.mcpLogin()); err == nil {
+		_ = probe.Close()
+		return "", coded(errorcode.SessionRequestFailed, errors.New("the server is already logged in"))
+	} else if !errors.As(err, &auth) {
+		return "", coded(errorcode.McpStartFailed, err)
+	}
+	address, finished, err := e.mcpLogin().Begin(ctx, name, definition.URL, auth, definition)
+	if err != nil {
+		return "", coded(errorcode.McpStartFailed, err)
+	}
+	e.workers.Go(func() {
+		change := MCPChange{Server: name}
+		select {
+		case err := <-finished:
+			if err != nil {
+				change.Code = "MRK-5010"
+			}
+		case <-e.ctx.Done():
+			return
+		}
+		body, _ := json.Marshal(change)
+		_, _ = e.Bus.Publish(e.ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: MCPChanged, Actor: event.Actor{Kind: event.ActorAgent}, Payload: body})
+	})
+	return address, nil
+}
+
+// MCPLogout forgets the login of a remote server.
+func (e *Engine) MCPLogout(ctx context.Context, name string) error {
+	if err := e.mcpLogin().Logout(ctx, name); err != nil {
+		return err
+	}
+	body, _ := json.Marshal(MCPChange{Server: name})
+	_, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: MCPChanged, Actor: event.Actor{Kind: event.ActorAgent}, Payload: body})
+	return err
+}
+
+// skillRoots are the folders besides a project's own where skills live.
+type skillRoots struct {
+	// global is the root that holds a skills folder, ~/.merakcode.
+	global string
+	// extra are folders that hold skill folders directly (skills.paths of the configuration).
+	extra []string
+	// urls are the default sources to install from (skills.urls).
+	urls []string
+}
+
+// ConfigureSkills tells the engine where the user's skills are: the root with a skills folder, extra folders and
+// the default install sources. It takes effect for conversations started afterwards.
+func (e *Engine) ConfigureSkills(global string, extra, urls []string) {
+	e.skillRoots.Store(&skillRoots{global: global, extra: append([]string(nil), extra...), urls: append([]string(nil), urls...)})
+}
+
+func (e *Engine) skills(workdir string) (skill.Set, error) {
+	roots := e.skillRoots.Load()
+	if roots == nil {
+		roots = &skillRoots{}
+	}
+	return skill.Discover(workdir, roots.global, roots.extra...)
+}
+
+// SkillList lists the skills that apply to a folder.
+func (e *Engine) SkillList(_ context.Context, directory string) (skill.Set, error) {
+	return e.skills(e.directory(directory))
+}
+
+// SkillSources returns the default places to install skills from.
+func (e *Engine) SkillSources() []string {
+	if roots := e.skillRoots.Load(); roots != nil {
+		return roots.urls
+	}
+	return nil
+}
+
+func (e *Engine) skillTarget(scope, directory string) (string, error) {
+	switch scope {
+	case "project", "":
+		return filepath.Join(e.directory(directory), ".merakcode", "skills"), nil
+	case "global":
+		if roots := e.skillRoots.Load(); roots != nil && roots.global != "" {
+			return filepath.Join(roots.global, "skills"), nil
+		}
+	}
+	return "", coded(errorcode.SessionRequestFailed, errors.New("unknown skill scope"))
+}
+
+// SkillDiscover lists what a source offers: an http(s) address with an index.json, or a git repository.
+func (e *Engine) SkillDiscover(ctx context.Context, source, token string) ([]skill.Offer, error) {
+	if isGit(source) {
+		return skill.DiscoverGit(ctx, source, e.skillCache(), token)
+	}
+	return skill.DiscoverSource(ctx, source)
+}
+
+// SkillInstall installs the chosen skills of a source into the project or the user's folder.
+func (e *Engine) SkillInstall(ctx context.Context, source, token string, names []string, scope, directory string) ([]string, error) {
+	target, err := e.skillTarget(scope, directory)
+	if err != nil {
+		return nil, err
+	}
+	if isGit(source) {
+		return skill.InstallGit(ctx, source, e.skillCache(), token, names, target)
+	}
+	return skill.Install(ctx, source, names, target)
+}
+
+// SkillUninstall deletes an installed skill from the project or the user's folder.
+func (e *Engine) SkillUninstall(_ context.Context, name, scope, directory string) error {
+	target, err := e.skillTarget(scope, directory)
+	if err != nil {
+		return err
+	}
+	return skill.Uninstall(target, name)
+}
+
+func isGit(source string) bool {
+	return strings.HasSuffix(source, ".git") || strings.HasPrefix(source, "git@") || strings.HasPrefix(source, "git://") || strings.HasPrefix(source, "ssh://") || strings.HasPrefix(source, "file://")
+}
+
+func (e *Engine) skillCache() string {
+	if e.dataDir != "" {
+		return filepath.Join(e.dataDir, "..", "cache", "skills")
+	}
+	return filepath.Join(os.TempDir(), "merak-skills")
+}
+
+// RegisterClientTool offers a tool of a connected client to the models of the sessions that start afterwards; owner
+// names the connection. handler runs a call on the client's side.
+func (e *Engine) RegisterClientTool(owner string, definition clienttool.Definition, handler clienttool.Handler) error {
+	return e.clientTools.Register(owner, definition, handler)
+}
+
+// UnregisterClientTool removes one tool of owner.
+func (e *Engine) UnregisterClientTool(owner, name string) { e.clientTools.Unregister(owner, name) }
+
+// DropClientTools removes every tool of owner; the server calls it when the connection closes.
+func (e *Engine) DropClientTools(owner string) { e.clientTools.Drop(owner) }
+
+// ClientTools lists the names of the registered client tools.
+func (e *Engine) ClientTools() []string { return e.clientTools.Names() }
+
+// ---- plugins ----
+
+// ConfigurePlugins sets the plugins every conversation of the engine loads (the plugin key of the configuration);
+// it takes effect for the conversations whose first turn comes afterwards.
+func (e *Engine) ConfigurePlugins(specs []plugin.Spec) {
+	copied := append([]plugin.Spec(nil), specs...)
+	e.plugins.Store(&copied)
+}
+
+// SetPluginHookTimeout bounds each call of a plugin hook; the default is 10 seconds.
+func (e *Engine) SetPluginHookTimeout(timeout time.Duration) { e.pluginTimeout.Store(int64(timeout)) }
+
+func (e *Engine) pluginSpecs() []plugin.Spec {
+	if specs := e.plugins.Load(); specs != nil {
+		return *specs
+	}
+	return nil
+}
+
+func (e *Engine) pluginPaths() (cache, data string) {
+	root := filepath.Join(os.TempDir(), "merak-plugins")
+	if e.dataDir != "" {
+		root = filepath.Join(e.dataDir, "..")
+	}
+	return filepath.Join(root, "cache"), filepath.Join(root, "plugin-data")
+}
+
+func (e *Engine) pluginOptions(directory string, launcher *sandbox.Launcher, profile sandbox.Profile) plugin.Options {
+	cache, data := e.pluginPaths()
+	worktree := directory
+	if root, err := git.ProjectRoot(e.ctx, directory); err == nil {
+		worktree = root
+	}
+	return plugin.Options{Launcher: launcher, Profile: profile, Directory: directory, Worktree: worktree, DataRoot: data, Cache: cache, HookTimeout: time.Duration(e.pluginTimeout.Load())}
+}
+
+// preparePlugins starts the plugin host of a conversation on its first turn, adds the custom tools of the plugins
+// to its deferred tools and puts the hooks around its tools. Without Node, or when a plugin cannot load, the
+// conversation runs without that plugin and says why in a warning.
+func (e *Engine) preparePlugins(ctx context.Context, c *conversation) {
+	specs := e.pluginSpecs()
+	if c.pluginsReady || len(specs) == 0 || c.state.Config.Parent != "" {
+		return
+	}
+	c.pluginsReady = true
+	host, statuses, err := plugin.Start(e.ctx, e.pluginOptions(c.state.Config.Workdir, c.runner.Env.Sandbox, c.runner.Env.SandboxProfile), specs)
+	if err != nil {
+		code := "MRK-3004"
+		if errors.Is(err, plugin.ErrNoNode) {
+			code = "MRK-3003"
+		}
+		e.mcpWarning(ctx, c, code, "")
+		return
+	}
+	for _, status := range statuses {
+		if status.State != "loaded" {
+			e.mcpWarning(ctx, c, "MRK-3004", status.Spec)
+		}
+	}
+	sessionID := c.state.ID
+	live := plugin.NewSession(host, statuses, string(sessionID), func(ctx context.Context, failure plugin.FailedEvent) {
+		body, _ := json.Marshal(failure)
+		_, _ = e.Bus.Publish(context.WithoutCancel(ctx), event.Event{Stream: event.Stream("session:" + sessionID), Scope: c.state.Scope, Type: plugin.Failed, Actor: event.Actor{Kind: event.ActorAgent, ID: c.state.Config.Member}, Payload: body})
+	})
+	e.sandboxMu.Lock()
+	if e.pluginSessions == nil {
+		e.pluginSessions = make(map[event.ID]*plugin.Session)
+	}
+	e.pluginSessions[sessionID] = live
+	e.sandboxMu.Unlock()
+	if c.runner.Tools.Deferred == nil {
+		c.runner.Tools.Deferred = make(map[string]tool.Tool)
+	}
+	for _, t := range live.Tools() {
+		if name := t.Spec().Name; e.toolEnabled(name) && switchedOn(c.state.Config.Switches, name) {
+			c.runner.Tools.Deferred[name] = e.gate.Wrap(t)
+		}
+	}
+	for name, t := range c.runner.Tools.Tools {
+		c.runner.Tools.Tools[name] = live.Wrap(t)
+	}
+	for name, t := range c.runner.Tools.Deferred {
+		c.runner.Tools.Deferred[name] = live.Wrap(t)
+	}
+	c.plugins = live
+	c.runner.Params = func(ctx context.Context, request *model.Request) { live.Params(ctx, request) }
+	c.runner.Env.PermissionAsk = func(ctx context.Context, name string, input json.RawMessage) string {
+		return live.PermissionAsk(ctx, name, input)
+	}
+	c.runner.Env.ShellEnv = live.ShellEnv
+	c.state.Tools = c.runner.Tools.Specs()
+	if custom := live.Tools(); len(custom) > 0 && !strings.Contains(c.state.System, "Available deferred plugin tools") {
+		var listed []tool.Spec
+		for _, t := range custom {
+			listed = append(listed, tool.Spec{Name: t.Spec().Name, Description: t.Spec().Description})
+		}
+		body, _ := json.Marshal(listed)
+		c.state.System += "\nAvailable deferred plugin tools (load their schemas before calling):\n" + string(body)
+	}
+	facts, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Session: sessionID}})
+	live.Watch(facts, stop)
+}
+
+// PluginInfo is one plugin of the configuration with what became of it when the engine loaded it.
+type PluginInfo struct {
+	plugin.Status
+	// Code is the error code of a plugin that did not load, or of the missing Node.js.
+	Code string `json:"code,omitempty"`
+}
+
+// ListPlugins loads the configured plugins in a throw-away host, in the sandbox, and says what became of each.
+func (e *Engine) ListPlugins(ctx context.Context, directory string) ([]PluginInfo, error) {
+	specs := e.pluginSpecs()
+	infos := make([]PluginInfo, 0, len(specs))
+	if len(specs) == 0 {
+		return infos, nil
+	}
+	directory = e.directory(directory)
+	profile, err := e.memberSandboxProfile(e.ctx, directory, sandbox.Profile{Network: sandbox.Network{Mode: "allowlist"}})
+	if err == nil {
+		profile, err = denyProductState(profile)
+	}
+	if err != nil {
+		return nil, err
+	}
+	launcher := &sandbox.Launcher{StateDir: e.sandboxStateDir}
+	launcher.Unavailable = func(context.Context, sandbox.Status) error { return nil }
+	defer launcher.Close()
+	host, statuses, err := plugin.Start(ctx, e.pluginOptions(directory, launcher, profile), specs)
+	if errors.Is(err, plugin.ErrNoNode) {
+		for _, spec := range specs {
+			infos = append(infos, PluginInfo{Status: plugin.Status{Spec: spec.Spec, State: "failed", Error: err.Error()}, Code: "MRK-3003"})
+		}
+		return infos, nil
+	}
+	if err != nil {
+		return nil, coded("MRK-3004", err)
+	}
+	defer host.Close()
+	for _, status := range statuses {
+		info := PluginInfo{Status: status}
+		if status.State != "loaded" {
+			info.Code = "MRK-3004"
+		}
+		infos = append(infos, info)
+	}
+	return infos, nil
 }

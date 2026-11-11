@@ -10,6 +10,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/internal/platform/websocket"
+	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 // connection is what a method needs to know about the connection that called it.
@@ -20,6 +21,10 @@ type connection struct {
 	// filters are the event subscriptions of the connection; the goroutine that forwards events reads them.
 	filterMu sync.RWMutex
 	filters  map[event.ID]event.Filter
+	// closed is closed with the connection; toolCalls are the calls of client tools that wait for their results.
+	closed    <-chan struct{}
+	toolMu    sync.Mutex
+	toolCalls map[string]chan protocol.ToolResultParams
 }
 
 // handler serves one method of the protocol. Its result is encoded as the result of the call; a nil result is an empty
@@ -33,7 +38,7 @@ var errMethodNotFound = errors.New("method not found")
 func (s *Server) methods() map[string]handler {
 	table := map[string]handler{}
 	for _, part := range []map[string]handler{
-		s.sessionMethods(), s.groupMethods(), s.taskMethods(), s.fileMethods(), s.configMethods(), s.eventMethods(), s.cloudMethods(),
+		s.sessionMethods(), s.groupMethods(), s.taskMethods(), s.fileMethods(), s.configMethods(), s.eventMethods(), s.cloudMethods(), s.toolMethods(), s.scheduleMethods(),
 	} {
 		maps.Copy(table, part)
 	}

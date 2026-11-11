@@ -46,6 +46,9 @@ func Validate(value Value) error {
 			return errors.New("invalid cloud endpoint")
 		}
 	}
+	if value.RetentionDays < 0 {
+		return errors.New("invalid storage.retention_days")
+	}
 	if value.Board.AutoArchiveDays < 0 {
 		return errors.New("invalid board.autoArchiveDays")
 	}

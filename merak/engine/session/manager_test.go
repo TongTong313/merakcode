@@ -55,3 +55,40 @@ func TestManagerRestoresSnapshotThenReplaysLaterEvents(t *testing.T) {
 		t.Fatal("snapshot messages were lost")
 	}
 }
+
+func TestDeletingASessionRemovesItsChildrenItsSnapshotAndItsEventsOnly(t *testing.T) {
+	ctx := context.Background()
+	storage := memory.New()
+	bus := event.NewBus(storage, time.Now, event.NewID)
+	manager := session.NewManager(storage, bus)
+	for _, state := range []session.State{
+		{ID: "parent", Config: session.Config{Provider: "fake", Model: "fixture", Workdir: "w"}},
+		{ID: "child", Config: session.Config{Provider: "fake", Model: "fixture", Workdir: "w", Parent: "parent"}},
+		{ID: "grandchild", Config: session.Config{Provider: "fake", Model: "fixture", Workdir: "w", Parent: "child"}},
+		{ID: "other", Config: session.Config{Provider: "fake", Model: "fixture", Workdir: "w"}},
+	} {
+		created, err := manager.Create(ctx, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := manager.Snapshot(ctx, created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := manager.Delete(ctx, "parent")
+	if err != nil || len(removed) != 3 {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+	infos, err := manager.List(ctx)
+	if err != nil || len(infos) != 1 || infos[0].ID != "other" {
+		t.Fatalf("list=%+v err=%v", infos, err)
+	}
+	for _, id := range []event.ID{"parent", "child", "grandchild"} {
+		if _, err := manager.Load(ctx, id); err == nil {
+			t.Fatalf("%s can still be loaded", id)
+		}
+	}
+	if _, err := manager.Load(ctx, "other"); err != nil {
+		t.Fatalf("an unrelated session was touched: %v", err)
+	}
+}

@@ -88,3 +88,42 @@ func TestBoardAutoArchiveDaysDefaultToThreeAndAreEditedInPlace(t *testing.T) {
 		t.Fatal("a negative number of days was accepted")
 	}
 }
+
+func TestSessionKeepingSettingsReadV03KeysAndDefaultToOn(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "merakcode.jsonc")
+	original := "{\n  // keep this comment\n  \"snapshot\": false,\n  \"compaction\": { \"auto\": false, \"prune\": true },\n  \"storage\": { \"retention_days\": 30 }\n}\n"
+	if err := os.WriteFile(file, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := config.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := settings.Get()
+	if got.Snapshot || got.CompactionAuto || got.RetentionDays != 30 {
+		t.Fatalf("snapshot=%v compaction.auto=%v retention=%d", got.Snapshot, got.CompactionAuto, got.RetentionDays)
+	}
+	empty := t.TempDir()
+	defaults, err := config.Open(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := defaults.Get(); !v.Snapshot || !v.CompactionAuto || v.RetentionDays != 0 {
+		t.Fatalf("defaults snapshot=%v compaction.auto=%v retention=%d", v.Snapshot, v.CompactionAuto, v.RetentionDays)
+	}
+	on, days := true, 7
+	if _, err := settings.Update(config.Patch{Snapshot: &on, CompactionAuto: &on, RetentionDays: &days}); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := os.ReadFile(file)
+	for _, want := range []string{"keep this comment", `"snapshot": true`, `"auto": true`, `"prune": true`, `"retention_days": 7`} {
+		if !strings.Contains(string(saved), want) {
+			t.Fatalf("the file lacks %q after the edit:\n%s", want, saved)
+		}
+	}
+	negative := -1
+	if _, err := settings.Update(config.Patch{RetentionDays: &negative}); err == nil {
+		t.Fatal("a negative retention was accepted")
+	}
+}

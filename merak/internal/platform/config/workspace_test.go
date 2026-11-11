@@ -78,7 +78,7 @@ func TestWorkspaceConfigurationReportsUnknownKeysAndMergesEveryFile(t *testing.T
 	if err != nil || value.MCPServers["a"].Command != "one" || value.MCPServers["b"].Command != "new" {
 		t.Fatalf("value=%+v err=%v", value, err)
 	}
-	if !slices.ContainsFunc(value.Warnings, func(w string) bool { return strings.Contains(w, "unknown") }) {
+	if !slices.ContainsFunc(value.Warnings, func(w config.Warning) bool { return strings.Contains(w.String(), "unknown") }) {
 		t.Fatalf("warnings=%v", value.Warnings)
 	}
 }

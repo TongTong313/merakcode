@@ -89,6 +89,28 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - Make tasks belong to groups: a task can be created on its own (`merak task create --project`) and starts once a new group is made for it (`merak group create --task`) or an existing group takes it (`merak group bind`); a group can own many tasks and a task belongs to at most one group. A group moves to the workspace of the task it takes only when no work is running (MRK-6014). Add `task.list`, `group.list` and batch `task.archive`: finished tasks are archived after `board.autoArchiveDays` days (default 3, 0 turns it off). Remove the per-minute turn limits of Leaders.
 
+- Put the human's word first: a message to a Worker, or a task given to it directly, now stops its current step and also wakes the Leader to update its plan; Workers that cannot take messages mid-run restart the same claim in the same workspace. Every delivery is receipted (`input.delivered`, `input.consumed`), Leaders and Workers get a `todo_write` list that clients can fold into the Leader's breakdown, and the Leader has a full system prompt.
+
+- Let Workers take work on their own: `claim_task` (built-in and external Workers through MCP) claims an open task of the group for the Worker itself, a Worker that has just reported is shown the group's unclaimed tasks, and idle built-in Workers are invited once per task after the Leader's turn.
+
+- Bring the v0.3 session features back: `session.update`, `session.revert` and `session.unrevert` (files are put back from a shadow Git snapshot, `snapshot` setting), `session.compact` and automatic compaction (`compaction.auto`), `session.delete`, `session.search`, session export and import, and the daily deletion of idle conversations (`storage.retention_days`); `merak session` has the same commands.
+
+- Bring the v0.3 workspace features back: repository commit and push, git worktrees, `file.status`, `file.find`, `file.identity` and spelling-tolerant directory lookup, a `code` workspace for the files of a folder, and read-only file agents (`agent.list` takes a directory).
+
+- Support remote MCP servers over Streamable HTTP with OAuth (PKCE) login and logout, MCP prompts as slash commands, and `mcp.status`; MCP settings are edited in place in the v0.3 `mcp` section.
+
+- Make memory, rules, skills and slash commands configurable as in v0.3: `memory.auto_extract`, `memory.auto_recall`, `memory.model`, personal and project rules (`rules.*`, `rules.read`, `rules.change`), skills from folders, URLs and Git (`skill.list`, `skill.discover`, `skill.install`, `skill.uninstall`; the `skill` tool and recommendations; built-in `docx`, `excel` and `pdf` skills) and `command` entries with `$ARGUMENTS` (`command.list`, `session.command`). Configuration problems that do not stop the program come back as `warnings` of `config.get`.
+
+- Planning is no longer a mode: the `write_plan` tool saves a plan to the session, a message sent with `plan: true` asks for one, and `plan.get`, `plan.save`, `plan.execute` and `plan.stop` read and run it.
+
+- Bring the v0.3 tools back: `multi_edit`, `docx_read`, `excel_read`, `excel_write`, `web_fetch`, `web_search` and `code_search`; the `tools` section of the configuration switches tools off by name or pattern.
+
+- Let a client offer tools to the models: `tool.register` lists a tool as `client__<name>`, the engine sends `tool.call` to that connection and the client answers with `tool.result`; the tool is asked about by its effect and disappears when the connection closes. The SDK has `client.tool.register`.
+
+- Read the v0.3 `agent` and `default_agent` keys: `build` overrides the built-in Worker's model, prompt and tools, `general` and `explore` are agents a child can be started as, `title`, `summary`, `compaction` and `memory-extractor` choose the model of those jobs, `plan` is ignored with a warning, and every other name becomes an agent that is listed, can be started as a child and can be the default for new conversations. `small_model` and `memory.model` now take effect too.
+
+- Run tasks on a schedule: the model can create, list and delete scheduled tasks with `schedule_create`, `schedule_list` and `schedule_delete` (five-field cron in the machine's time zone, a built-in `loop` skill explains how). The background engine checks every minute and starts a new conversation titled "定时：…" in the task's folder, then puts a notice in the inbox; runs that fell while the engine was stopped are not made up, and one notice says how many were missed. `schedule.list` and `schedule.delete` and `merak schedule list|delete` manage them.
+
 ### Fixed
 
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
@@ -234,6 +256,28 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 成员配置（profile）改为智能体（agent）（`merak agent`、`agent.*` 方法）：群成员只能按已有智能体的 id 加入，不再内联定义。一个群有且只有一个 Leader 智能体和一条 Leader 线程，只有群主能一步换掉它；每个群和会话都必须有一个已存在的工作区文件夹。任务不再有自己的 Leader，由群的 Leader 统一推进它所有的目标。早期开发版写下的数据会被 MRK-1008 拒绝，不会被读错。
 
 - 任务归属协作群：任务可以单独创建（`merak task create --project`），再为它新建协作群（`merak group create --task`）或交给已有协作群（`merak group bind`）后才开始推进；一个群可以有多个任务，一个任务最多属于一个群。群接收的任务工作空间不同时，只有群里没有进行中的工作才会搬过去（MRK-6014）。新增 `task.list`、`group.list` 和批量 `task.archive`：结束的任务在 `board.autoArchiveDays` 天后自动归档（默认 3 天，0 为关闭）。删除 Leader 的每分钟回合上限。
+
+- 人的指令优先：在群里 @ 某个成员、或直接给它派任务，会打断它当前的一步，并同时唤醒 Leader 更新计划；不能中途收消息的成员会在同一个工作区里带着人的话重新开始这次认领。每次送达都有回执（`input.delivered`、`input.consumed`），Leader 和 Worker 都有 `todo_write` 待办，客户端可以折叠出 Leader 的任务拆解；Leader 有了完整的系统提示词。
+
+- Worker 主动认领：`claim_task`（内置 Worker 和经 MCP 的外部 Worker）可以认领所在协作群里还没人负责的任务；Worker 交完报告会看到群里待认领的任务；Leader 的回合结束后，空闲的内置 Worker 对每张待认领的卡各收到一次邀约。
+
+- 找回 v0.3 的会话功能：`session.update`、`session.revert`、`session.unrevert`（文件从影子 Git 快照还原，`snapshot` 设置）、`session.compact` 与自动压缩（`compaction.auto`）、`session.delete`、`session.search`、会话导出与导入，以及每天清理闲置会话（`storage.retention_days`）；`merak session` 有同样的命令。
+
+- 找回 v0.3 的工作区功能：仓库提交与推送、git 工作树、`file.status`、`file.find`、`file.identity`，目录名拼写容错，按文件夹读文件的 `code` 工作区，以及只读的文件智能体（`agent.list` 可以带目录）。
+
+- 支持经 Streamable HTTP 的远程 MCP 服务器，含 OAuth（PKCE）登录与退出；MCP 提示词作为斜杠命令；新增 `mcp.status`。MCP 设置按 v0.3 的 `mcp` 段原地修改。
+
+- 记忆、规则、技能和斜杠命令可以像 v0.3 一样配置：`memory.auto_extract`、`memory.auto_recall`、`memory.model`，个人和项目规则（`rules.*`、`rules.read`、`rules.change`），来自文件夹、URL 和 Git 的技能（`skill.list`、`skill.discover`、`skill.install`、`skill.uninstall`，`skill` 工具与推荐，内置 `docx`、`excel`、`pdf` 技能），以及带 `$ARGUMENTS` 的 `command` 配置（`command.list`、`session.command`）。不致命的配置问题以 `config.get` 的 `warnings` 返回。
+
+- 规划不再是独立模式：`write_plan` 工具把计划存进会话，发消息带 `plan: true` 就会请求出计划，`plan.get`、`plan.save`、`plan.execute`、`plan.stop` 读取并执行它。
+
+- 找回 v0.3 的工具：`multi_edit`、`docx_read`、`excel_read`、`excel_write`、`web_fetch`、`web_search`、`code_search`；配置的 `tools` 段可以按名字或通配符关闭工具。
+
+- 客户端可以给模型提供工具：`tool.register` 把工具列为 `client__<name>`，引擎向该连接发 `tool.call`，客户端用 `tool.result` 回答；工具按其影响类别询问权限，连接断开后消失。SDK 有 `client.tool.register`。
+
+- 读取 v0.3 的 `agent` 和 `default_agent`：`build` 覆盖内置 Worker 的模型、提示词和工具，`general`、`explore` 是子智能体可选的角色，`title`、`summary`、`compaction`、`memory-extractor` 指定这几件内部任务用的模型，`plan` 忽略并告警，其他名字成为智能体，出现在智能体库里、可作为子智能体启动、可作为新对话的默认智能体。`small_model` 和 `memory.model` 现在也会生效。
+
+- 定时任务：模型可以用 `schedule_create`、`schedule_list`、`schedule_delete` 创建、查看和删除定时任务（五段 cron，按本机时区，内置 `loop` 技能说明怎么写）。后台引擎每分钟检查一次，到点在任务的工作空间里新开一个标题为“定时：…”的对话，结束后给收件箱发通知；引擎没运行时错过的时间点不补跑，只发一条说明错过了几次的通知。可以用 `schedule.list`、`schedule.delete` 和 `merak schedule list|delete` 管理。
 
 ### 修复
 
