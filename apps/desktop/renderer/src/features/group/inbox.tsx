@@ -1,7 +1,7 @@
 import { EngineEventSchema, type Inbox, type Notice } from "@merakcode/sdk"
 import { createEffect, createResource, createSignal, For, Show, untrack } from "solid-js"
 import { t, type Key } from "../../i18n"
-import { localHuman, markNoticeRead, noticeRead } from "../../state/groups"
+import { markNoticeRead, noticeRead } from "../../state/groups"
 import { client } from "../../state/client"
 import { Dialog } from "../../ui/dialog"
 import { Approval, Question } from "../conversation/dock"
@@ -117,8 +117,8 @@ export function GroupInbox(props: { inbox: Inbox; notice?: string; onTask: (id: 
             <Show when={request.loading}>
               <p role="status">{t("inbox.loading")}</p>
             </Show>
-            <Show when={question()}>{(event) => <Question request={event()} human={localHuman} />}</Show>
-            <Show when={permission()}>{(event) => <Approval request={event()} human={localHuman} />}</Show>
+            <Show when={question()}>{(event) => <Question request={event()} />}</Show>
+            <Show when={permission()}>{(event) => <Approval request={event()} />}</Show>
           </Show>
         </div>
       </Dialog>

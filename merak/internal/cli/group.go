@@ -30,7 +30,7 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 	flags.SetOutput(io.Discard)
 	file := flags.String("file", "", "")
 	values := map[string]*string{}
-	for _, key := range []string{"group", "human", "task", "member", "thread", "title", "description", "workspace", "leader", "decision", "feedback", "text", "role"} {
+	for _, key := range []string{"group", "task", "member", "thread", "title", "description", "workspace", "leader", "decision", "feedback", "text", "role"} {
 		values[key] = flags.String(key, "", "")
 	}
 	if flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
@@ -70,11 +70,11 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 	defer client.Close()
 	var result any
 	if method == "inbox" {
-		var id, human event.ID
-		if json.Unmarshal(params["group"], &id) != nil || json.Unmarshal(params["human"], &human) != nil || id == "" || human == "" {
+		var id event.ID
+		if json.Unmarshal(params["group"], &id) != nil || id == "" {
 			return 2
 		}
-		result, err = client.GroupInbox(ctx, id, human)
+		result, err = client.GroupInbox(ctx, id, client.Hello.Human)
 	} else {
 		var raw json.RawMessage
 		err = client.Call(ctx, method, params, &raw)

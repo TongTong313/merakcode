@@ -82,6 +82,8 @@ function main() {
   const icon = dev ? path.join(here, "..", "..", "build", "icon.png") : path.join(resources, "icon.png")
   log.info("starting", { version: app.getVersion(), dev, platform: process.platform, engine: layout.kind })
   let quitting = false
+  // Quitting leaves the engine running in the background; only "Stop background engine and quit" ends it
+  let stopEngine = false
 
   const backend = new Backend({
     executable: Engine.command(layout),
@@ -139,6 +141,7 @@ function main() {
     settings: () => windows.send(focused(), "openSettings", "general"),
     clear: () => windows.broadcast("clearNotifications"),
     quit: () => app.quit(),
+    stopEngine: () => actions.stopEngine(),
   })
 
   const actions: Actions = {
@@ -150,6 +153,10 @@ function main() {
     settings: () => windows.send(focused(), "openSettings", "general"),
     checkUpdates: () => void updater.check(),
     restartBackend: () => void backend.restart().catch(() => {}),
+    stopEngine: () => {
+      stopEngine = true
+      app.quit()
+    },
     logs: () => void shell.openPath(logs),
     diagnostics: () =>
       void exportDiagnostics({
@@ -254,7 +261,7 @@ function main() {
     if (quitting) return
     quitting = true
     tray.destroy()
-    void Promise.allSettled([backend.stop()])
+    void Promise.allSettled([stopEngine ? backend.shutdown() : backend.stop()])
       .then(() => Log.close())
       .finally(() => app.exit(0))
   })

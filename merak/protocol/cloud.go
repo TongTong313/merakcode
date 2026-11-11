@@ -58,14 +58,14 @@ type DeviceToolCall struct {
 	Call        tool.Call   `json:"call"`
 }
 type CloudInbound struct {
-	Cause         event.ID               `json:"cause,omitempty"`
-	QuestionReply *QuestionReplyParams   `json:"questionReply,omitempty"`
-	Assignment    *DeviceAssignment      `json:"assignment,omitempty"`
-	Message       *DeviceMessage         `json:"message,omitempty"`
-	Cancel        *event.ID              `json:"cancel,omitempty"`
-	Reply         *PermissionReplyParams `json:"reply,omitempty"`
-	Notice        *group.Notice          `json:"notice,omitempty"`
-	Scope         event.Scope            `json:"scope,omitempty"`
-	Events        []event.Event          `json:"events,omitempty"`
-	ToolCall      *DeviceToolCall        `json:"toolCall,omitempty"`
+	Cause         event.ID          `json:"cause,omitempty"`
+	QuestionReply *DeviceAnswer     `json:"questionReply,omitempty"`
+	Assignment    *DeviceAssignment `json:"assignment,omitempty"`
+	Message       *DeviceMessage    `json:"message,omitempty"`
+	Cancel        *event.ID         `json:"cancel,omitempty"`
+	Reply         *DeviceReply      `json:"reply,omitempty"`
+	Notice        *group.Notice     `json:"notice,omitempty"`
+	Scope         event.Scope       `json:"scope,omitempty"`
+	Events        []event.Event     `json:"events,omitempty"`
+	ToolCall      *DeviceToolCall   `json:"toolCall,omitempty"`
 }

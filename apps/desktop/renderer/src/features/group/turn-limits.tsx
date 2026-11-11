@@ -5,7 +5,6 @@ import { t } from "../../i18n"
 import { client } from "../../state/client"
 import { summary } from "../../state/error"
 import { noticeText } from "./notice"
-import { localHuman } from "../../state/groups"
 
 export function TurnLimits(props: { group: GroupGroup; editable: boolean }) {
   const [saving, setSaving] = createSignal(false)
@@ -37,7 +36,6 @@ export function TurnLimits(props: { group: GroupGroup; editable: boolean }) {
                     await client()
                   ).group.update({
                     group: props.group.id,
-                    human: localHuman,
                     settings: {
                       ...props.group.settings,
                       turnsPerMinute: { ...props.group.settings?.turnsPerMinute, [kind]: count.data },

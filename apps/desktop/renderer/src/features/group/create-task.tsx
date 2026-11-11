@@ -3,7 +3,6 @@ import { createSignal, For } from "solid-js"
 import { z } from "zod"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
-import { localHuman } from "../../state/groups"
 import { toast } from "../../ui/toast"
 
 const inputSchema = z.object({
@@ -39,7 +38,6 @@ export function CreateTask(props: { group: GroupGroup; members: GroupMember[]; o
       ).task.create({
         ...input,
         group: props.group.id,
-        human: localHuman,
         ...(member()!.agentRole === "worker" ? { member: assignee() } : { leader: assignee() }),
       })
       props.onCreated()

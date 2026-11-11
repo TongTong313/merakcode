@@ -15,10 +15,10 @@ import {
   type Inbox,
   type SessionState,
 } from "@merakcode/sdk"
-import { client, onConnection, type EngineClient } from "./client"
+import { client, localHuman, onConnection, type EngineClient } from "./client"
 import { bridge, log, storage } from "../lib/bridge"
 
-export const localHuman = "local-human"
+export { localHuman }
 const [groups, setGroups] = createSignal<GroupGroup[]>([])
 export { groups }
 type GroupView = {

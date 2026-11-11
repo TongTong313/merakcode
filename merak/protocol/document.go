@@ -11,6 +11,5 @@ type DocReadParams struct {
 }
 
 type DocWriteParams struct {
-	Human event.ID `json:"human"`
 	group.Document
 }

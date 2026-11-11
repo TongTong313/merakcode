@@ -12,6 +12,7 @@ type ModelListParams struct {
 type Config = config.Value
 type ConfigPatch = config.Patch
 type ConfigProvider = config.Provider
+type ConfigProviderPatch = config.ProviderPatch
 type ConfigModel = config.Model
 
 type ModelRefreshParams struct {

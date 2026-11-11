@@ -48,7 +48,7 @@ func TestAWorkerQuestionReachesTheNamedHumanAndReturnsToItsClaim(t *testing.T) {
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
-	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "fixture-token", protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), handler.AddIdentity("named"), protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +82,10 @@ func TestAWorkerQuestionReachesTheNamedHumanAndReturnsToItsClaim(t *testing.T) {
 			if fact.Type != question.Asked {
 				continue
 			}
-			params := protocol.QuestionReplyParams{Request: fact.ID, Text: "Blue", Human: "other"}
-			if err := client.Call(ctx, "question.reply", params, nil); err == nil {
-				t.Fatal("another ordinary member answered the question")
+			params := protocol.QuestionReplyParams{Request: fact.ID, Text: "Blue"}
+			if _, err := e.AuthorizeQuestion(ctx, fact.ID, "other"); err == nil {
+				t.Fatal("another ordinary member may answer the question")
 			}
-			params.Human = "named"
 			if err := client.Call(ctx, "question.reply", params, nil); err != nil {
 				t.Fatal(err)
 			}

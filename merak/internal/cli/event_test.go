@@ -9,7 +9,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/internal/server"
 )
 
 func TestEventEmitUsesTheExistingIsolatedEngineAndExternalNamespace(t *testing.T) {
@@ -19,7 +18,7 @@ func TestEventEmitUsesTheExistingIsolatedEngineAndExternalNamespace(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err := server.Start(e, home)
+	instance, err := startAt(e, home)
 	if err != nil {
 		t.Fatal(err)
 	}

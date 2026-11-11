@@ -26,7 +26,7 @@ test.describe("custom provider", () => {
     await dialog.getByRole("textbox", { name: "模型 ID" }).fill("e2e-local")
     await dialog.getByRole("button", { name: "添加" }).click()
     await expect(dialog).toBeHidden()
-    await expect.poll(async () => (await json(config)).providers?.local?.baseURL).toBe(kit.modelURL)
+    await expect.poll(async () => (await json(config)).provider?.local?.options?.baseURL).toBe(kit.modelURL)
 
     await kit.page.keyboard.press("Escape")
     await kit.page
@@ -40,7 +40,7 @@ test.describe("custom provider", () => {
 
     await kit.settings(/^模型与供应商$/)
     await panel.getByRole("button", { name: "删除 Local" }).click()
-    await expect.poll(async () => (await json(config)).providers?.local).toBeUndefined()
+    await expect.poll(async () => (await json(config)).provider?.local).toBeUndefined()
   })
 })
 
@@ -65,9 +65,10 @@ test("a relay group keeps the context length the station returned", async ({ kit
   await dialog.getByRole("button", { name: "添加" }).click()
   await expect(dialog).toBeHidden()
   await expect
-    .poll(async () => (await json(config)).providers?.["packy-standard"]?.models?.["e2e-relay"]?.window)
+    .poll(async () => (await json(config)).provider?.["packy-standard"]?.models?.["e2e-relay"]?.limit?.context)
     .toBe(11111)
-  expect((await json(config)).providers?.["packy-standard"]?.apiKey).toBe("sk-e2e")
+  // The key is kept in the credential vault, never in the configuration file
+  expect((await json(config)).provider?.["packy-standard"]?.options?.apiKey).toBeUndefined()
 })
 
 test("the custom provider dialog keeps one fixed frame across modes and groups", async ({ kit }) => {

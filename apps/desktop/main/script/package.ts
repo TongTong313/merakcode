@@ -87,19 +87,15 @@ for (const target of targets) {
     throw new Error(`engine was not built: ${dir}`)
 }
 
-// 3. App directory for electron-builder, including the native storage runtime
+// 3. App directory for electron-builder
 const stage = path.join(root, ".package")
 const app = path.join(stage, "app")
 await rm(stage, { recursive: true, force: true })
 await mkdir(app, { recursive: true })
 // Packages bundled into the window UI (its production dependencies) and into the main process (the files esbuild put
-// into main.js and preload.cjs, plus the native SQLite package copied by build.ts.
+// into main.js and preload.cjs).
 await writeFile(path.join(stage, "THIRD_PARTY_LICENSES.txt"), Licenses.collect([renderer], bundled))
 for (const file of ["main.js", "preload.cjs"]) await cp(path.join(root, "dist", file), path.join(app, file))
-await cp(path.join(root, "dist", "node_modules"), path.join(app, "node_modules"), { recursive: true })
-const sqlite = JSON.parse(await readFile(path.join(app, "node_modules/better-sqlite3/package.json"), "utf8")) as {
-  version: string
-}
 await writeFile(
   path.join(app, "package.json"),
   JSON.stringify(
@@ -113,7 +109,6 @@ await writeFile(
       homepage: Project.HOMEPAGE,
       type: "module",
       main: "main.js",
-      dependencies: { "better-sqlite3": sqlite.version },
       // Window app_id / WM_CLASS on Linux; must match the installed .desktop file name for the taskbar to group it
       desktopName: "merakcode-desktop.desktop",
     },
@@ -150,9 +145,8 @@ for (const target of targets) {
       // The UI is only Chinese and English, so skip Chromium's other locales (saves over 40 MB)
       electronLanguages: ["zh-CN", "en-US"],
       directories: { output: path.join(root, "release"), buildResources: path.resolve(root, "..", "build") },
-      files: ["main.js", "preload.cjs", "package.json", "node_modules/better-sqlite3/**/*"],
+      files: ["main.js", "preload.cjs", "package.json"],
       asar: true,
-      asarUnpack: ["node_modules/better-sqlite3/prebuilds/*.node"],
       npmRebuild: false,
       nodeGypRebuild: false,
       extraResources: [

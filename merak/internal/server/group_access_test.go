@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -27,6 +28,9 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	as := func(human event.ID) *protocol.Client {
+		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
+	}
 	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
@@ -37,10 +41,11 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 	}
 	for _, human := range []string{"", "observer", "owner"} {
 		params := map[string]any{"group": g.ID, "member": group.Member{ID: "added", Name: "Added", Kind: group.MemberHuman, Role: "member"}}
+		caller := client
 		if human != "" {
-			params["human"] = human
+			caller = as(event.ID(human))
 		}
-		err := client.Call(ctx, "group.addMember", params, new(group.Member))
+		err := caller.Call(ctx, "group.addMember", params, new(group.Member))
 		if human == "owner" && err != nil {
 			t.Fatal(err)
 		}
@@ -54,14 +59,14 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 	}
 	for _, method := range []string{"group.removeMember", "member.remove"} {
 		if method == "member.remove" {
-			if err := client.Call(ctx, "group.addMember", map[string]any{"group": g.ID, "human": "owner", "member": group.Member{ID: "added", Name: "Added", Kind: group.MemberHuman, Role: "member"}}, new(group.Member)); err != nil {
+			if err := as("owner").Call(ctx, "group.addMember", map[string]any{"group": g.ID, "member": group.Member{ID: "added", Name: "Added", Kind: group.MemberHuman, Role: "member"}}, new(group.Member)); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := client.Call(ctx, method, map[string]any{"group": g.ID, "human": "observer", "member": "added"}, new(struct{})); err == nil {
+		if err := as("observer").Call(ctx, method, map[string]any{"group": g.ID, "member": "added"}, new(struct{})); err == nil {
 			t.Fatal("observer removed a member")
 		}
-		if err := client.Call(ctx, method, map[string]any{"group": g.ID, "human": "owner", "member": "added"}, new(struct{})); err != nil {
+		if err := as("owner").Call(ctx, method, map[string]any{"group": g.ID, "member": "added"}, new(struct{})); err != nil {
 			t.Fatal(err)
 		}
 		state, err := e.Groups.Get(ctx, g.ID)

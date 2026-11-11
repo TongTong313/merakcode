@@ -72,8 +72,9 @@ test.describe("group inbox", () => {
   test.use({
     git: true,
     script: {
-      reply: ({ toolResults }) =>
-        toolResults.length
+      // The Leader is woken by the answer in a new turn, whose message names the answered question
+      reply: ({ toolResults, prompt }) =>
+        toolResults.length || prompt.includes("question.answered")
           ? { tool: "say", args: { text: "Answer received." } }
           : { tool: "ask_human", args: { to: "local-human", text: "Choose a color", options: ["Blue", "Green"] } },
     },

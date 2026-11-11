@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -72,6 +71,7 @@ func (s MCPServer) Hash() string {
 
 type Workspace struct {
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+	Warnings   []string             `json:"warnings,omitempty"`
 }
 type Trust struct {
 	Project  string `json:"project"`
@@ -83,135 +83,51 @@ type Trust struct {
 var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// projectFiles are the places a project keeps configuration; later files override earlier ones.
+var projectFiles = []string{"merakcode.jsonc", "merakcode.json", ".merakcode/merakcode.jsonc", ".merakcode/merakcode.json"}
+
+// ReadWorkspace reads a project's configuration files. Unknown keys are only reported in the warnings.
 func ReadWorkspace(root string) (Workspace, error) {
-	var paths []string
-	for _, name := range []string{"merakcode.json", "merakcode.jsonc"} {
-		path := filepath.Join(root, name)
-		if _, err := os.Stat(path); err == nil {
-			paths = append(paths, path)
-		} else if !os.IsNotExist(err) {
-			return Workspace{}, err
-		}
-	}
-	if len(paths) == 0 {
-		return Workspace{}, nil
-	}
-	if len(paths) != 1 {
-		return Workspace{}, errors.New("ambiguous workspace configuration")
-	}
-	file, err := os.Open(paths[0])
+	value, err := ReadProject(root)
 	if err != nil {
 		return Workspace{}, err
 	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-	if err != nil || len(data) > 1<<20 {
-		return Workspace{}, errors.New("workspace configuration could not be read")
-	}
-	var value Workspace
-	if err := decodeConfiguration(data, &value); err != nil {
-		return Workspace{}, err
-	}
-	if err := ValidateMCPServers(value.MCPServers); err != nil {
-		return Workspace{}, err
-	}
-	return value, nil
+	return Workspace{MCPServers: value.MCPServers, Warnings: value.Warnings}, nil
 }
 
-// decodeConfiguration accepts JSON plus comments and trailing commas in either filename.
-func decodeConfiguration(data []byte, target any) error {
-	clean := bytes.Clone(data)
-	quoted, escaped := false, false
-	for i := 0; i < len(clean); i++ {
-		char := clean[i]
-		if quoted {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if char == '\\' {
-				escaped = true
-			} else if char == '"' {
-				quoted = false
-			}
-			continue
-		}
-		if char == '"' {
-			quoted = true
-			continue
-		}
-		if char != '/' || i+1 == len(clean) {
-			continue
-		}
-		if clean[i+1] == '/' {
-			for i < len(clean) && clean[i] != '\n' && clean[i] != '\r' {
-				clean[i] = ' '
-				i++
-			}
-			i--
-		} else if clean[i+1] == '*' {
-			clean[i], clean[i+1] = ' ', ' '
-			i += 2
-			for i+1 < len(clean) && !(clean[i] == '*' && clean[i+1] == '/') {
-				if clean[i] != '\n' && clean[i] != '\r' {
-					clean[i] = ' '
-				}
-				i++
-			}
-			if i+1 >= len(clean) {
-				return errors.New("unterminated configuration comment")
-			}
-			clean[i], clean[i+1] = ' ', ' '
-			i++
-		}
+// ReadProject reads and merges the configuration files of a project directory.
+func ReadProject(root string) (Value, error) {
+	var merged Value
+	scope, err := filepath.Abs(root)
+	if err != nil {
+		return Value{}, err
 	}
-	quoted, escaped = false, false
-	for i, char := range clean {
-		if quoted {
-			if escaped {
-				escaped = false
-			} else if char == '\\' {
-				escaped = true
-			} else if char == '"' {
-				quoted = false
-			}
+	for _, name := range projectFiles {
+		file, err := os.Open(filepath.Join(root, filepath.FromSlash(name)))
+		if os.IsNotExist(err) {
 			continue
 		}
-		if char == '"' {
-			quoted = true
-			continue
+		if err != nil {
+			return Value{}, err
 		}
-		if char != ',' {
-			continue
+		data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+		file.Close()
+		if err != nil || len(data) > 1<<20 {
+			return Value{}, errors.New("workspace configuration could not be read")
 		}
-		j := i + 1
-		for j < len(clean) && strings.ContainsRune(" \t\r\n", rune(clean[j])) {
-			j++
+		value, err := load(data)
+		if err != nil {
+			return Value{}, err
 		}
-		if j < len(clean) && (clean[j] == '}' || clean[j] == ']') {
-			k := i - 1
-			for k >= 0 && strings.ContainsRune(" \t\r\n", rune(clean[k])) {
-				k--
-			}
-			if k < 0 || strings.ContainsRune("{[,", rune(clean[k])) {
-				return errors.New("invalid trailing comma")
-			}
-			clean[i] = ' '
+		if err := ValidateMCPServers(value.MCPServers); err != nil {
+			return Value{}, err
 		}
+		for i := range value.PermissionRules {
+			value.PermissionRules[i].Project = scope
+		}
+		merged = Merge(merged, value)
 	}
-	clean = bytes.TrimSpace(clean)
-	if len(clean) == 0 || clean[0] != '{' {
-		return errors.New("configuration must be an object")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(clean))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return errors.New("invalid configuration")
-	}
-	if decoder.Decode(new(any)) != io.EOF {
-		return errors.New("expected one configuration object")
-	}
-	return nil
+	return merged, nil
 }
 
 func ValidateMCPServers(servers map[string]MCPServer) error {
@@ -247,15 +163,12 @@ func (s *Store) WorkspaceDecision(project, item, hash string) string {
 func (s *Store) RememberWorkspaceTrust(entry Trust) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	next := clone(s.value)
-	for i, old := range next.WorkspaceTrust {
+	next := append([]Trust(nil), s.value.WorkspaceTrust...)
+	for i, old := range next {
 		if old.Project == entry.Project && old.Item == entry.Item && old.Hash == entry.Hash {
-			next.WorkspaceTrust[i] = entry
-			_, err := s.save(next)
-			return err
+			next[i] = entry
+			return s.write(setList("workspaceTrust", next))
 		}
 	}
-	next.WorkspaceTrust = append(next.WorkspaceTrust, entry)
-	_, err := s.save(next)
-	return err
+	return s.write(setList("workspaceTrust", append(next, entry)))
 }

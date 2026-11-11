@@ -7,5 +7,11 @@
   "unknownCost": "Cost: unknown\n",
   "allowWrite": "Allow writing %s? [y/n] ",
   "allowExec": "Run command %s? [y/n] ",
-  "diagnosticSaved": "Diagnostic archive saved to %s\n"
+  "diagnosticSaved": "Diagnostic archive saved to %s\n",
+  "statusRunning": "The engine is running",
+  "statusStopped": "The engine is not running",
+  "statusPID": "pid",
+  "statusPort": "port",
+  "statusRoot": "root",
+  "statusClients": "clients"
 }

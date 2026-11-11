@@ -50,19 +50,17 @@ test("saves a custom product and checks its real adapter connection", async () =
     await expect
       .poll(
         async () =>
-          (await (await client()).profile.list({ human: localHuman }))?.find((profile) => profile.name === "CLI tester")
-            ?.product,
+          (await (await client()).profile.list({}))?.find((profile) => profile.name === "CLI tester")?.product,
       )
       .toEqual({
         kind: "claude-code",
         binary,
         args: ["--history"],
         model: "fixture-model",
-        env: { FIXTURE_VALUE: "example" },
+        env: { FIXTURE_VALUE: "" },
       })
     expect(
-      (await (await client()).profile.list({ human: localHuman }))?.find((profile) => profile.name === "CLI tester")
-        ?.network,
+      (await (await client()).profile.list({}))?.find((profile) => profile.name === "CLI tester")?.network,
     ).toEqual(["api.example.com", "*.models.example.com:443"])
   } finally {
     dispose()
@@ -127,9 +125,7 @@ test("copies a default profile, edits its duties and registers it in the group",
     input("Model", "fixture")
     press("Save profile")
     await expect.poll(() => host.querySelector('button[aria-label="Add Audit"]')).not.toBeNull()
-    expect(
-      (await connection.profile.list({ human: localHuman }))?.find((profile) => profile.name === "Audit")?.mode,
-    ).toBe("takeover")
+    expect((await connection.profile.list({}))?.find((profile) => profile.name === "Audit")?.mode).toBe("takeover")
     press("Add Audit")
     await expect
       .poll(async () =>
@@ -140,10 +136,7 @@ test("copies a default profile, edits its duties and registers it in the group",
     input("Duties", "Review Go and TypeScript changes.")
     press("Save profile")
     await expect
-      .poll(
-        async () =>
-          (await connection.profile.list({ human: localHuman }))?.find((profile) => profile.name === "Audit")?.duties,
-      )
+      .poll(async () => (await connection.profile.list({}))?.find((profile) => profile.name === "Audit")?.duties)
       .toBe("Review Go and TypeScript changes.")
   } finally {
     dispose()

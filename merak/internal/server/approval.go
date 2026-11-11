@@ -95,11 +95,11 @@ func (s *Server) offerApproval(conn *websocket.Conn, id event.ID, grouped bool) 
 	return pending.owner == conn
 }
 
-func (s *Server) replyApproval(ctx context.Context, conn *websocket.Conn, params protocol.PermissionReplyParams) error {
+func (s *Server) replyApproval(ctx context.Context, conn *websocket.Conn, caller event.ID, params protocol.PermissionReplyParams) error {
 	if params.Remember != "" && params.Remember != "session" && params.Remember != "always" {
 		return errors.New("MRK-5002")
 	}
-	human, err := s.engine.AuthorizePermission(ctx, params.Request, params.Human)
+	human, err := s.engine.AuthorizePermission(ctx, params.Request, caller)
 	if err != nil {
 		return errors.New("MRK-5002")
 	}

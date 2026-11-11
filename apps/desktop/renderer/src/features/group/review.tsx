@@ -3,7 +3,6 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { z } from "zod"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
-import { localHuman } from "../../state/groups"
 import { toast } from "../../ui/toast"
 import { Report } from "./report"
 import { ReviewFiles } from "../review/review"
@@ -131,7 +130,7 @@ export function TaskReview(props: {
     const original = feedback()
     setBusy(true)
     try {
-      await (await client()).task.review({ task, human: localHuman, decision, feedback: parsed.data.feedback })
+      await (await client()).task.review({ task, decision, feedback: parsed.data.feedback })
       for (const session of new Set(submitted.map((comment) => comment.sessionID))) clearComments(session, submitted)
       if (props.card.id === task && feedback() === original) setFeedback("")
     } catch (error) {

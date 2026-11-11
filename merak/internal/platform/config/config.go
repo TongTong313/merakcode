@@ -7,210 +7,11 @@ import (
 	"errors"
 	"net"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
-
-type Model struct {
-	Name      string   `json:"name,omitempty"`
-	Window    int      `json:"window,omitempty"`
-	MaxOutput int      `json:"maxOutput,omitempty"`
-	Thinking  []string `json:"thinking,omitempty"`
-}
-
-type Provider struct {
-	Picker       *Picker           `json:"picker,omitempty"`
-	Station      string            `json:"station,omitempty"`
-	Group        string            `json:"group,omitempty"`
-	Auth         string            `json:"auth,omitempty"`
-	Headers      map[string]string `json:"headers,omitempty"`
-	HasHeaders   bool              `json:"hasHeaders,omitempty"`
-	ClearHeaders bool              `json:"clearHeaders,omitempty"`
-	Name         string            `json:"name,omitempty"`
-	Protocol     string            `json:"protocol,omitempty"`
-	BaseURL      string            `json:"baseURL,omitempty"`
-	APIKey       string            `json:"apiKey,omitempty"`
-	HasKey       bool              `json:"hasKey,omitempty"`
-	ClearKey     bool              `json:"clearKey,omitempty"`
-	Disabled     bool              `json:"disabled,omitempty"`
-	Models       map[string]Model  `json:"models,omitempty"`
-}
-
-type Picker struct {
-	Include []string `json:"include,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
-}
-
-type Value struct {
-	Cloud            Cloud                `json:"cloud,omitempty"`
-	Mode             string               `json:"mode,omitempty"`
-	MCPServers       map[string]MCPServer `json:"mcpServers,omitempty"`
-	WorkspaceTrust   []Trust              `json:"workspaceTrust,omitempty"`
-	PermissionRules  []PermissionRule     `json:"permissionRules,omitempty"`
-	PermissionGrants []PermissionGrant    `json:"permissionGrants,omitempty"`
-	Unconfined       []LaunchDecision     `json:"unconfined,omitempty"`
-	AllowedHosts     []string             `json:"allowedHosts,omitempty"`
-	DeniedHosts      []string             `json:"deniedHosts,omitempty"`
-	Model            string               `json:"model,omitempty"`
-	Thinking         string               `json:"thinking,omitempty"`
-	Locale           string               `json:"locale,omitempty"`
-	Log              string               `json:"log,omitempty"`
-	Providers        map[string]Provider  `json:"providers"`
-}
-
-type Patch struct {
-	Cloud            *Cloud               `json:"cloud,omitempty"`
-	Mode             *string              `json:"mode,omitempty"`
-	PermissionRules  *[]PermissionRule    `json:"permissionRules,omitempty"`
-	PermissionGrants *[]PermissionGrant   `json:"permissionGrants,omitempty"`
-	Unconfined       *[]LaunchDecision    `json:"unconfined,omitempty"`
-	AllowedHosts     *[]string            `json:"allowedHosts,omitempty"`
-	DeniedHosts      *[]string            `json:"deniedHosts,omitempty"`
-	Model            *string              `json:"model,omitempty"`
-	Thinking         *string              `json:"thinking,omitempty"`
-	Locale           *string              `json:"locale,omitempty"`
-	Log              *string              `json:"log,omitempty"`
-	Providers        map[string]*Provider `json:"providers,omitempty"`
-}
-
-type Store struct {
-	mu    sync.Mutex
-	path  string
-	value Value
-}
-
-type Cloud struct {
-	Endpoint string `json:"endpoint,omitempty"`
-}
-
-func Open(path string) (*Store, error) {
-	s := &Store{path: path, value: Value{Providers: map[string]Provider{}}}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return s, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := decodeConfiguration(data, &s.value); err != nil {
-		return nil, err
-	}
-	if err := Validate(s.value); err != nil {
-		return nil, err
-	}
-	if s.value.Providers == nil {
-		s.value.Providers = map[string]Provider{}
-	}
-	return s, nil
-}
-
-func (s *Store) Private() Value {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return clone(s.value)
-}
-
-func (s *Store) Get() Value { return public(s.Private()) }
-
-func (s *Store) Update(patch Patch) (Value, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.update(patch)
-}
-
-func (s *Store) update(patch Patch) (Value, error) {
-	next := clone(s.value)
-	if patch.Cloud != nil {
-		next.Cloud = *patch.Cloud
-	}
-	if patch.PermissionRules != nil {
-		next.PermissionRules = append([]PermissionRule(nil), (*patch.PermissionRules)...)
-	}
-	if patch.PermissionGrants != nil {
-		next.PermissionGrants = append([]PermissionGrant(nil), (*patch.PermissionGrants)...)
-	}
-	if patch.Unconfined != nil {
-		next.Unconfined = append([]LaunchDecision(nil), (*patch.Unconfined)...)
-	}
-	if patch.AllowedHosts != nil {
-		next.AllowedHosts = append([]string(nil), (*patch.AllowedHosts)...)
-	}
-	if patch.DeniedHosts != nil {
-		next.DeniedHosts = append([]string(nil), (*patch.DeniedHosts)...)
-	}
-	for _, field := range []struct {
-		update *string
-		value  *string
-	}{{patch.Mode, &next.Mode}, {patch.Model, &next.Model}, {patch.Thinking, &next.Thinking}, {patch.Locale, &next.Locale}, {patch.Log, &next.Log}} {
-		if field.update != nil {
-			*field.value = *field.update
-		}
-	}
-	for id, update := range patch.Providers {
-		if update == nil {
-			delete(next.Providers, id)
-			continue
-		}
-		provider := *update
-		if provider.Headers == nil && !provider.ClearHeaders {
-			provider.Headers = next.Providers[id].Headers
-		}
-		if provider.ClearHeaders {
-			provider.Headers = nil
-		}
-		provider.HasHeaders, provider.ClearHeaders = false, false
-		if provider.APIKey == "" && !provider.ClearKey {
-			provider.APIKey = next.Providers[id].APIKey
-		}
-		if provider.ClearKey {
-			provider.APIKey = ""
-		}
-		provider.HasKey, provider.ClearKey = false, false
-		next.Providers[id] = provider
-	}
-	return s.save(next)
-}
-
-func (s *Store) save(next Value) (Value, error) {
-	if err := Validate(next); err != nil {
-		return Value{}, err
-	}
-	if s.path == "" {
-		s.value = clone(next)
-		return public(next), nil
-	}
-	data, err := json.MarshalIndent(next, "", "  ")
-	if err != nil {
-		return Value{}, err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
-		return Value{}, err
-	}
-	file, err := os.CreateTemp(filepath.Dir(s.path), ".config-*")
-	if err != nil {
-		return Value{}, err
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	if _, err := file.Write(append(data, '\n')); err != nil {
-		return Value{}, err
-	}
-	if err := file.Sync(); err != nil {
-		return Value{}, err
-	}
-	if err := file.Close(); err != nil {
-		return Value{}, err
-	}
-	if err := os.Rename(file.Name(), s.path); err != nil {
-		return Value{}, err
-	}
-	s.value = clone(next)
-	return public(next), nil
-}
 
 func public(value Value) Value {
 	for _, server := range value.MCPServers {
@@ -220,9 +21,9 @@ func public(value Value) Value {
 	}
 	for id, provider := range value.Providers {
 		provider.HasHeaders = len(provider.Headers) > 0
-		provider.Headers, provider.ClearHeaders = nil, false
+		provider.Headers = nil
 		provider.HasKey = provider.APIKey != ""
-		provider.APIKey, provider.ClearKey = "", false
+		provider.APIKey = ""
 		value.Providers[id] = provider
 	}
 	return value
@@ -245,7 +46,7 @@ func Validate(value Value) error {
 			return errors.New("invalid cloud endpoint")
 		}
 	}
-	if value.Mode != "" && value.Mode != "ask" && value.Mode != "auto" && value.Mode != "takeover" {
+	if value.PermissionMode != "" && value.PermissionMode != "ask" && value.PermissionMode != "auto" && value.PermissionMode != "takeover" {
 		return errors.New("invalid permission mode")
 	}
 	if err := ValidateMCPServers(value.MCPServers); err != nil {
@@ -334,3 +135,6 @@ func thinking(value string) bool {
 	}
 	return false
 }
+
+// Public removes keys, header values and MCP environment values from a value.
+func Public(value Value) Value { return public(clone(value)) }

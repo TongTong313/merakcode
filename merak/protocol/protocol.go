@@ -31,29 +31,27 @@ type HelloParams struct {
 }
 
 type Capabilities struct {
-	Store   bool `json:"store,omitempty"`
 	Approve bool `json:"approve,omitempty"`
 }
 
 type PermissionReplyParams struct {
 	Leader   event.ID            `json:"leader,omitempty"`
 	Remember string              `json:"remember,omitempty"`
-	Human    event.ID            `json:"human,omitempty"`
 	Request  event.ID            `json:"request"`
 	Decision permission.Decision `json:"decision"`
 }
 
 type QuestionReplyParams struct {
-	Human     event.ID `json:"human,omitempty"`
 	Request   event.ID `json:"request"`
 	Text      string   `json:"text,omitempty"`
 	Cancelled bool     `json:"cancelled,omitempty"`
 }
 
 type HelloResult struct {
-	Store    string `json:"store,omitempty"`
-	Protocol int    `json:"protocol"`
-	Engine   string `json:"engine"`
+	// Human is the person every call of this connection acts as.
+	Human    event.ID `json:"human"`
+	Protocol int      `json:"protocol"`
+	Engine   string   `json:"engine"`
 }
 
 type SessionCreateParams struct {
@@ -117,4 +115,14 @@ type Message struct {
 	Params  json.RawMessage `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *Error          `json:"error,omitempty"`
+}
+
+// LocalHuman is the identity of every connection to the engine of this machine. Calls act as this person; a client
+// does not name one.
+const LocalHuman event.ID = "local-human"
+
+// EngineStatus is what a running engine tells about itself.
+type EngineStatus struct {
+	PID     int `json:"pid"`
+	Clients int `json:"clients"`
 }

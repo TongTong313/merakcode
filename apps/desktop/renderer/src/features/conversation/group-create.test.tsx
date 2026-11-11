@@ -132,7 +132,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
         groupView(created!.id)?.members.some((member) => member.id === "cloud-source-worker" && !!member.device),
       )
       .toBe(true)
-    await connection.group.say({ group: created!.id, human: localHuman, text: "Cloud discussion" })
+    await connection.group.say({ group: created!.id, text: "Cloud discussion" })
     await expect
       .poll(() =>
         groupView(created!.id)?.events.some(
@@ -143,11 +143,11 @@ test("creates a cloud group and folds its forwarded history through the shared g
     await expect
       .poll(() => groupView(created!.id)?.inbox.info.some((notice) => notice.text === "Cloud inbox notice"))
       .toBe(true)
-    await connection.group.say({ group: created!.id, human: localHuman, text: "Approval pending" })
+    await connection.group.say({ group: created!.id, text: "Approval pending" })
     await expect
       .poll(() => groupView(created!.id)?.inbox.todo.some((notice) => notice.request === "cloud-request"))
       .toBe(true)
-    await connection.group.say({ group: created!.id, human: localHuman, text: "Approval answered" })
+    await connection.group.say({ group: created!.id, text: "Approval answered" })
     await expect.poll(() => groupView(created!.id)?.inbox.todo).toEqual([])
     await connection.close()
     await loadGroups()

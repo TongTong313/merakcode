@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -25,6 +24,8 @@ type Source struct {
 type Options struct {
 	Sources   []Source
 	Overrides []Override
+	// PublicURL replaces the address of the public catalog; it is meant for tests and development.
+	PublicURL string
 }
 
 // Override distinguishes an omitted field from an explicit zero or empty value.
@@ -36,6 +37,9 @@ type Override struct {
 	Price     *Price            `json:"price,omitempty"`
 	Caps      *Caps             `json:"caps,omitempty"`
 	Thinking  *[]model.Thinking `json:"thinking,omitempty"`
+	// DefaultThinking and Deprecated are filled by the fallback table and the public catalog.
+	DefaultThinking *model.Thinking `json:"defaultThinking,omitempty"`
+	Deprecated      *bool           `json:"deprecated,omitempty"`
 }
 
 func (o Override) copy() Override {
@@ -68,6 +72,12 @@ func (o Override) apply(m Model, source string) Model {
 		m.Thinking = slices.Clone(*o.Thinking)
 		set("thinking")
 	}
+	if o.DefaultThinking != nil {
+		m.DefaultThinking = *o.DefaultThinking
+	}
+	if o.Deprecated != nil {
+		m.Deprecated = *o.Deprecated
+	}
 	m.Source = source
 	return m
 }
@@ -77,46 +87,76 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 	return c.RefreshProvider(ctx, "")
 }
 
-func (c *Catalog) ConfigureSources(sources []Source) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.configuredSources = slices.Clone(sources)
-	for index := range c.configuredSources {
-		c.configuredSources[index].Headers = maps.Clone(sources[index].Headers)
+// RefreshProvider fetches the list of one provider, or of every source when provider is empty, and keeps the previous
+// data of any source whose fetch fails.
+func (c *Catalog) RefreshProvider(ctx context.Context, provider string) error {
+	var failures []error
+	for _, source := range c.allSources() {
+		if source.Disabled || provider != "" && source.Provider != provider {
+			continue
+		}
+		if err := c.refreshSource(ctx, source); err != nil {
+			failures = append(failures, err)
+		}
 	}
+	return errors.Join(failures...)
 }
 
-func (c *Catalog) RefreshProvider(ctx context.Context, provider string) error {
+func (c *Catalog) allSources() []Source {
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	sources := slices.Clone(c.sources)
 	for _, source := range c.configuredSources {
 		sources = slices.DeleteFunc(sources, func(previous Source) bool { return previous.Provider == source.Provider })
 		sources = append(sources, source)
 	}
-	c.mu.RUnlock()
-	var failures []error
-	for _, source := range sources {
-		if source.Disabled || provider != "" && source.Provider != provider {
-			continue
-		}
-		updates, err := fetchModels(ctx, source)
-		if err != nil {
-			failures = append(failures, err)
-			continue
-		}
-		c.mu.Lock()
-		for _, update := range updates {
-			m := update.apply(c.get(update.Provider, update.ID), "live")
-			index := slices.IndexFunc(c.models, func(v Model) bool { return v.Provider == m.Provider && v.ID == m.ID })
-			if index >= 0 {
-				c.models[index] = m
-			} else {
-				c.models = append(c.models, m)
+	return sources
+}
+
+// refreshSource replaces the list of one provider with a fresh fetch, caches it and reports the outcome.
+func (c *Catalog) refreshSource(ctx context.Context, source Source) error {
+	updates, err := fetchModels(ctx, source)
+	if err != nil {
+		c.report(source.Provider, err)
+		return err
+	}
+	updates = slices.DeleteFunc(updates, func(o Override) bool { return !chatModel(source.Provider, o.ID) })
+	now := c.now()
+	c.mu.Lock()
+	c.setLive(source.Provider, updates, now)
+	c.mu.Unlock()
+	c.save(ctx, source.Provider, Snapshot{Fetched: now, Models: updates})
+	c.report(source.Provider, nil)
+	return nil
+}
+
+func (c *Catalog) setLive(provider string, updates []Override, fetched time.Time) {
+	index := make(map[string]Override, len(updates))
+	for _, update := range updates {
+		update.Provider = provider
+		index[update.ID] = update
+	}
+	c.live[provider] = index
+	c.state.fetched[provider] = fetched
+}
+
+func (c *Catalog) liveMatch(provider, id string) (Override, bool) {
+	if o, ok := c.live[provider][id]; ok {
+		return o, true
+	}
+	names := make([]string, 0, len(c.live))
+	for name := range c.live {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		for _, o := range c.live[name] {
+			if o.ID == id || o.Provider+"/"+o.ID == id {
+				return o, true
 			}
 		}
-		c.mu.Unlock()
 	}
-	return errors.Join(failures...)
+	return Override{}, false
 }
 
 func fetchModels(ctx context.Context, source Source) ([]Override, error) {
@@ -230,8 +270,10 @@ func openRouterModels(data []byte) ([]Override, error) {
 			Top    struct {
 				Output *int `json:"max_completion_tokens"`
 			} `json:"top_provider"`
-			Pricing      map[string]string `json:"pricing"`
-			Architecture *struct {
+			Deprecated     bool              `json:"deprecated"`
+			ExpirationDate *string           `json:"expiration_date"`
+			Pricing        map[string]string `json:"pricing"`
+			Architecture   *struct {
 				Input []string `json:"input_modalities"`
 			} `json:"architecture"`
 			Parameters []string `json:"supported_parameters"`
@@ -246,6 +288,10 @@ func openRouterModels(data []byte) ([]Override, error) {
 			return nil, &model.Error{Code: "MRK-2001", Cause: errors.New("missing model id")}
 		}
 		o := Override{Provider: "openrouter", ID: item.ID, Window: item.Window, MaxOutput: item.Top.Output}
+		if item.Deprecated || item.ExpirationDate != nil {
+			deprecated := true
+			o.Deprecated = &deprecated
+		}
 		price := Price{Currency: "USD"}
 		valid := true
 		for _, field := range []struct {

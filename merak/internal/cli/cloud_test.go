@@ -26,7 +26,7 @@ func TestCloudLoginCommandUsesTheConfiguredDevelopmentHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	host, err := server.Start(e, home)
+	host, err := server.StartWith(e, server.Options{Data: filepath.Join(home, "data"), Config: home, Address: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}

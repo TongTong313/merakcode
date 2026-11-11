@@ -22,6 +22,12 @@
         "caps": {
           "$ref": "#/$defs/CatalogCaps"
         },
+        "defaultThinking": {
+          "type": "string"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },
@@ -70,6 +76,19 @@
       "required": ["caps", "id", "maxOutput", "price", "provider", "source", "thinking", "window"],
       "type": "object"
     },
+    "CatalogNotice": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": ["provider"],
+      "type": "object"
+    },
     "CatalogOverride": {
       "additionalProperties": false,
       "properties": {
@@ -77,6 +96,26 @@
           "anyOf": [
             {
               "$ref": "#/$defs/CatalogCaps"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "defaultThinking": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deprecated": {
+          "anyOf": [
+            {
+              "type": "boolean"
             },
             {
               "type": "null"
@@ -349,16 +388,6 @@
             }
           ]
         },
-        "mode": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "model": {
           "anyOf": [
             {
@@ -389,6 +418,16 @@
             }
           ]
         },
+        "permissionMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "permissionRules": {
           "anyOf": [
             {
@@ -413,7 +452,7 @@
           "additionalProperties": {
             "anyOf": [
               {
-                "$ref": "#/$defs/ConfigProvider"
+                "$ref": "#/$defs/ConfigProviderPatch"
               },
               {
                 "type": "null"
@@ -421,6 +460,16 @@
             ]
           },
           "type": "object"
+        },
+        "smallModel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "thinking": {
           "anyOf": [
@@ -534,12 +583,6 @@
         "baseURL": {
           "type": "string"
         },
-        "clearHeaders": {
-          "type": "boolean"
-        },
-        "clearKey": {
-          "type": "boolean"
-        },
         "disabled": {
           "type": "boolean"
         },
@@ -582,6 +625,161 @@
         },
         "station": {
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigProviderPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "apiKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseURL": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clearHeaders": {
+          "type": "boolean"
+        },
+        "disabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasHeaders": {
+          "type": "boolean"
+        },
+        "hasKey": {
+          "type": "boolean"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "models": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ConfigModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "picker": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigPicker"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "station": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConfigRules": {
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConfigServer": {
+      "additionalProperties": false,
+      "properties": {
+        "hostname": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
         }
       },
       "type": "object"
@@ -637,6 +835,19 @@
             }
           ]
         },
+        "enabledProviders": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "locale": {
           "type": "string"
         },
@@ -648,9 +859,6 @@
             "$ref": "#/$defs/ConfigMCPServer"
           },
           "type": "object"
-        },
-        "mode": {
-          "type": "string"
         },
         "model": {
           "type": "string"
@@ -667,6 +875,9 @@
               "type": "null"
             }
           ]
+        },
+        "permissionMode": {
+          "type": "string"
         },
         "permissionRules": {
           "anyOf": [
@@ -687,6 +898,15 @@
           },
           "type": "object"
         },
+        "rules": {
+          "$ref": "#/$defs/ConfigRules"
+        },
+        "server": {
+          "$ref": "#/$defs/ConfigServer"
+        },
+        "smallModel": {
+          "type": "string"
+        },
         "thinking": {
           "type": "string"
         },
@@ -695,6 +915,19 @@
             {
               "items": {
                 "$ref": "#/$defs/ConfigLaunchDecision"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
               },
               "type": "array"
             },
@@ -2454,9 +2687,6 @@
       "properties": {
         "approve": {
           "type": "boolean"
-        },
-        "store": {
-          "type": "boolean"
         }
       },
       "type": "object"
@@ -2524,6 +2754,25 @@
       "required": ["endpoint", "pid", "protocol", "token"],
       "type": "object"
     },
+    "ProtocolDeviceAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "cancelled": {
+          "type": "boolean"
+        },
+        "human": {
+          "type": "string"
+        },
+        "request": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["request"],
+      "type": "object"
+    },
     "ProtocolDeviceAssignment": {
       "additionalProperties": false,
       "properties": {
@@ -2563,6 +2812,28 @@
         }
       },
       "required": ["claim", "input"],
+      "type": "object"
+    },
+    "ProtocolDeviceReply": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "human": {
+          "type": "string"
+        },
+        "leader": {
+          "type": "string"
+        },
+        "remember": {
+          "type": "string"
+        },
+        "request": {
+          "type": "string"
+        }
+      },
+      "required": ["decision", "request"],
       "type": "object"
     },
     "ProtocolDiagnosticsParams": {
@@ -2621,9 +2892,6 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "key": {
           "type": "string"
         },
@@ -2637,7 +2905,20 @@
           "type": "string"
         }
       },
-      "required": ["group", "human", "key", "rev", "text", "title"],
+      "required": ["group", "key", "rev", "text", "title"],
+      "type": "object"
+    },
+    "ProtocolEngineStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "clients": {
+          "type": "integer"
+        },
+        "pid": {
+          "type": "integer"
+        }
+      },
+      "required": ["clients", "pid"],
       "type": "object"
     },
     "ProtocolError": {
@@ -2725,9 +3006,6 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "member": {
           "$ref": "#/$defs/GroupMember"
         },
@@ -2742,7 +3020,7 @@
           ]
         }
       },
-      "required": ["group", "human", "member"],
+      "required": ["group", "member"],
       "type": "object"
     },
     "ProtocolGroupControlParams": {
@@ -2751,14 +3029,11 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "thread": {
           "type": "string"
         }
       },
-      "required": ["group", "human"],
+      "required": ["group"],
       "type": "object"
     },
     "ProtocolGroupCreateParams": {
@@ -2831,23 +3106,17 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "member": {
           "type": "string"
         }
       },
-      "required": ["group", "human", "member"],
+      "required": ["group", "member"],
       "type": "object"
     },
     "ProtocolGroupSayParams": {
       "additionalProperties": false,
       "properties": {
         "group": {
-          "type": "string"
-        },
-        "human": {
           "type": "string"
         },
         "task": {
@@ -2870,7 +3139,7 @@
           ]
         }
       },
-      "required": ["group", "human", "text"],
+      "required": ["group", "text"],
       "type": "object"
     },
     "ProtocolGroupUpdateParams": {
@@ -2899,9 +3168,6 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "settings": {
           "anyOf": [
             {
@@ -2913,7 +3179,7 @@
           ]
         }
       },
-      "required": ["group", "human"],
+      "required": ["group"],
       "type": "object"
     },
     "ProtocolHelloParams": {
@@ -2938,14 +3204,14 @@
         "engine": {
           "type": "string"
         },
+        "human": {
+          "type": "string"
+        },
         "protocol": {
           "type": "integer"
-        },
-        "store": {
-          "type": "string"
         }
       },
-      "required": ["engine", "protocol"],
+      "required": ["engine", "human", "protocol"],
       "type": "object"
     },
     "ProtocolMemberRegisterParams": {
@@ -2954,14 +3220,11 @@
         "group": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "member": {
           "$ref": "#/$defs/GroupMember"
         }
       },
-      "required": ["group", "human", "member"],
+      "required": ["group", "member"],
       "type": "object"
     },
     "ProtocolModelDiscoverParams": {
@@ -3008,9 +3271,6 @@
         "decision": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "leader": {
           "type": "string"
         },
@@ -3027,37 +3287,26 @@
     "ProtocolProfileDeleteParams": {
       "additionalProperties": false,
       "properties": {
-        "human": {
-          "type": "string"
-        },
         "profile": {
           "type": "string"
         }
       },
-      "required": ["human", "profile"],
+      "required": ["profile"],
       "type": "object"
     },
     "ProtocolProfileListParams": {
       "additionalProperties": false,
-      "properties": {
-        "human": {
-          "type": "string"
-        }
-      },
-      "required": ["human"],
+      "properties": {},
       "type": "object"
     },
     "ProtocolProfileSaveParams": {
       "additionalProperties": false,
       "properties": {
-        "human": {
-          "type": "string"
-        },
         "profile": {
           "$ref": "#/$defs/ProfileProfile"
         }
       },
-      "required": ["human", "profile"],
+      "required": ["profile"],
       "type": "object"
     },
     "ProtocolQuestionReplyParams": {
@@ -3065,9 +3314,6 @@
       "properties": {
         "cancelled": {
           "type": "boolean"
-        },
-        "human": {
-          "type": "string"
         },
         "request": {
           "type": "string"
@@ -3154,7 +3400,7 @@
         "questionReply": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ProtocolQuestionReplyParams"
+              "$ref": "#/$defs/ProtocolDeviceAnswer"
             },
             {
               "type": "null"
@@ -3164,7 +3410,7 @@
         "reply": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ProtocolPermissionReplyParams"
+              "$ref": "#/$defs/ProtocolDeviceReply"
             },
             {
               "type": "null"
@@ -3442,62 +3688,6 @@
       "required": ["parts", "session"],
       "type": "object"
     },
-    "ProtocolStoreAppendParams": {
-      "additionalProperties": false,
-      "properties": {
-        "events": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/EventEvent"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": ["events"],
-      "type": "object"
-    },
-    "ProtocolStoreFetchParams": {
-      "additionalProperties": false,
-      "properties": {
-        "key": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        }
-      },
-      "required": ["key", "kind"],
-      "type": "object"
-    },
-    "ProtocolStoreListParams": {
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "type": "string"
-        },
-        "prefix": {
-          "type": "string"
-        }
-      },
-      "required": ["kind"],
-      "type": "object"
-    },
-    "ProtocolStorePutParams": {
-      "additionalProperties": false,
-      "properties": {
-        "doc": {
-          "$ref": "#/$defs/StoreDoc"
-        }
-      },
-      "required": ["doc"],
-      "type": "object"
-    },
     "ProtocolSubscribeResult": {
       "additionalProperties": false,
       "properties": {
@@ -3511,9 +3701,6 @@
     "ProtocolTaskAssignParams": {
       "additionalProperties": false,
       "properties": {
-        "human": {
-          "type": "string"
-        },
         "member": {
           "type": "string"
         },
@@ -3537,20 +3724,17 @@
           "type": "string"
         }
       },
-      "required": ["human", "member", "task"],
+      "required": ["member", "task"],
       "type": "object"
     },
     "ProtocolTaskCancelParams": {
       "additionalProperties": false,
       "properties": {
-        "human": {
-          "type": "string"
-        },
         "task": {
           "type": "string"
         }
       },
-      "required": ["human", "task"],
+      "required": ["task"],
       "type": "object"
     },
     "ProtocolTaskCreateParams": {
@@ -3589,9 +3773,6 @@
           "type": "string"
         },
         "group": {
-          "type": "string"
-        },
-        "human": {
           "type": "string"
         },
         "inputs": {
@@ -3638,14 +3819,11 @@
         "feedback": {
           "type": "string"
         },
-        "human": {
-          "type": "string"
-        },
         "task": {
           "type": "string"
         }
       },
-      "required": ["decision", "human", "task"],
+      "required": ["decision", "task"],
       "type": "object"
     },
     "ProtocolTaskUpdateParams": {
@@ -3661,9 +3839,6 @@
             }
           ]
         },
-        "human": {
-          "type": "string"
-        },
         "leader": {
           "type": "string"
         },
@@ -3677,7 +3852,7 @@
           "type": "string"
         }
       },
-      "required": ["human", "task"],
+      "required": ["task"],
       "type": "object"
     },
     "ProtocolTerminalIDParams": {
@@ -4287,76 +4462,6 @@
         }
       },
       "required": ["config", "id", "lastSeq", "messages", "scope", "status", "system", "usage"],
-      "type": "object"
-    },
-    "StoreBufferState": {
-      "additionalProperties": false,
-      "properties": {
-        "connected": {
-          "type": "boolean"
-        },
-        "limit": {
-          "type": "integer"
-        },
-        "pending": {
-          "type": "integer"
-        }
-      },
-      "required": ["connected", "limit", "pending"],
-      "type": "object"
-    },
-    "StoreDoc": {
-      "additionalProperties": false,
-      "properties": {
-        "body": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "key": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "meta": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "rev": {
-          "type": "integer"
-        }
-      },
-      "required": ["body", "key", "kind", "rev"],
-      "type": "object"
-    },
-    "StoreDocMeta": {
-      "additionalProperties": false,
-      "properties": {
-        "key": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "meta": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "rev": {
-          "type": "integer"
-        }
-      },
-      "required": ["key", "kind", "rev"],
       "type": "object"
     },
     "StoreQuery": {
@@ -5342,6 +5447,12 @@
     "artifact.published": {
       "$ref": "#/$defs/WorkspacePublished"
     },
+    "catalog.failed": {
+      "$ref": "#/$defs/CatalogNotice"
+    },
+    "catalog.refreshed": {
+      "$ref": "#/$defs/CatalogNotice"
+    },
     "child.finished": {
       "$ref": "#/$defs/SessionChildResult"
     },
@@ -5358,9 +5469,6 @@
       "additionalProperties": false,
       "properties": {},
       "type": "object"
-    },
-    "engine.storage": {
-      "$ref": "#/$defs/StoreBufferState"
     },
     "events.lagged": {
       "additionalProperties": false,
@@ -5672,6 +5780,16 @@
       },
       "result": {
         "$ref": "#/$defs/GroupDocument"
+      }
+    },
+    "engine.status": {
+      "params": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolEngineStatus"
       }
     },
     "engine.stop": {
@@ -6208,96 +6326,6 @@
       },
       "result": {
         "$ref": "#/$defs/SessionState"
-      }
-    },
-    "store.append": {
-      "params": {
-        "$ref": "#/$defs/ProtocolStoreAppendParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      }
-    },
-    "store.fetch": {
-      "params": {
-        "$ref": "#/$defs/ProtocolStoreFetchParams"
-      },
-      "result": {
-        "$ref": "#/$defs/StoreDoc"
-      }
-    },
-    "store.find": {
-      "params": {
-        "$ref": "#/$defs/StoreQuery"
-      },
-      "result": {
-        "anyOf": [
-          {
-            "items": {
-              "$ref": "#/$defs/EventEvent"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "store.get": {
-      "params": {
-        "$ref": "#/$defs/ProtocolEventsGetParams"
-      },
-      "result": {
-        "$ref": "#/$defs/EventEvent"
-      }
-    },
-    "store.list": {
-      "params": {
-        "$ref": "#/$defs/ProtocolStoreListParams"
-      },
-      "result": {
-        "anyOf": [
-          {
-            "items": {
-              "$ref": "#/$defs/StoreDocMeta"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "store.put": {
-      "params": {
-        "$ref": "#/$defs/ProtocolStorePutParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      }
-    },
-    "store.read": {
-      "params": {
-        "$ref": "#/$defs/ProtocolEventsReadParams"
-      },
-      "result": {
-        "anyOf": [
-          {
-            "items": {
-              "$ref": "#/$defs/EventEvent"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ]
       }
     },
     "task.assign": {

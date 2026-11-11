@@ -398,7 +398,7 @@ func (e *Engine) routeDevicePermission(ctx context.Context, req permission.Reque
 		return reply, true, err
 	}
 }
-func (e *Engine) answerDevicePermission(reply protocol.PermissionReplyParams) {
+func (e *Engine) answerDevicePermission(reply protocol.DeviceReply) {
 	if reply.Decision != permission.Allow && reply.Decision != permission.Deny {
 		return
 	}

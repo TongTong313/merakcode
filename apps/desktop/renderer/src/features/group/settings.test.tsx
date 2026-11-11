@@ -17,9 +17,8 @@ test("owners change group initiative and receive later settings updates", async 
     location.href = engine.url
     setLocale("en")
     const connection = await client()
-    const profiles = await connection.profile.list({ human: localHuman })
+    const profiles = await connection.profile.list({})
     const leader = await connection.profile.save({
-      human: localHuman,
       profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const group = await connection.group.create({
@@ -61,7 +60,7 @@ test("owners change group initiative and receive later settings updates", async 
     limit("Thread turns per minute")!.dispatchEvent(new Event("change", { bubbles: true }))
     await expect.poll(() => groupView(group.id)?.group?.settings?.turnsPerMinute?.thread).toBe(9)
     expect(groupView(group.id)?.group?.settings?.planNeedsApproval).toBe(true)
-    await connection.group.say({ group: group.id, human: localHuman, text: "Report current status", to: ["leader"] })
+    await connection.group.say({ group: group.id, text: "Report current status", to: ["leader"] })
     await expect
       .poll(() => groupView(group.id)?.events.some((event) => event.type === "turn.finished"), { timeout: 10000 })
       .toBe(true)
@@ -72,7 +71,6 @@ test("owners change group initiative and receive later settings updates", async 
     expect(groupView(group.id)?.group?.settings?.planNeedsApproval).toBe(true)
     await connection.group.update({
       group: group.id,
-      human: localHuman,
       settings: { ...group.settings, initiative: "eager" },
     })
     await expect.poll(() => selector()?.value).toBe("eager")

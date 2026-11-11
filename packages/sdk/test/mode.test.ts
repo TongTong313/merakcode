@@ -35,7 +35,7 @@ it("selects takeover through the SDK and writes without an approval client", asy
       let info: { endpoint: string; token: string } | undefined
       for (let attempt = 0; attempt < 250; attempt++) {
         if (child.exitCode !== null) throw new Error(`Engine exited with ${child.exitCode}`)
-        info = await readFile(path.join(home, "engine.json"), "utf8")
+        info = await readFile(path.join(home, "data", "engine.json"), "utf8")
           .then((body) => JSON.parse(body) as { endpoint: string; token: string })
           .catch((error: NodeJS.ErrnoException) => {
             if (error.code !== "ENOENT") throw error

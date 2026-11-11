@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,16 +14,16 @@ func TestWorkspaceMCPConfigurationParsesBothFilenamesAndRejectsInvalidFiles(t *t
 	for _, name := range []string{"merakcode.json", "merakcode.jsonc"} {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
-			content := `{/* comment */"mcpServers":{"docs":{"command":"node","args":["url://literal",],"env":{"TOKEN":"${SECRET}"},},},}// end`
+			content := `{/* comment */"mcp":{"docs":{"type":"local","command":["node","url://literal",],"environment":{"TOKEN":"${SECRET}"},},},}// end`
 			if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
 			value, err := config.ReadWorkspace(directory)
-			if err != nil || value.MCPServers["docs"].Env["TOKEN"] != "${SECRET}" {
+			if err != nil || value.MCPServers["docs"].Env["TOKEN"] != "${SECRET}" || !slices.Equal(value.MCPServers["docs"].Args, []string{"url://literal"}) {
 				t.Fatalf("value=%+v err=%v", value, err)
 			}
 			original := value.MCPServers["docs"].Hash()
-			content = `{"mcpServers":{"other":{"command":"unused"},"docs":{"env":{"TOKEN":"${SECRET}"},"args":["url://literal"],"command":"node"}}}`
+			content = `{"mcp":{"other":{"type":"local","command":["unused"]},"docs":{"environment":{"TOKEN":"${SECRET}"},"command":["node","url://literal"],"type":"local"}}}`
 			if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -33,17 +34,14 @@ func TestWorkspaceMCPConfigurationParsesBothFilenamesAndRejectsInvalidFiles(t *t
 		})
 	}
 	for _, content := range []string{
-		`{"unknown":true}`, `{"mcpServers":{"docs":{"command":"node","url":"https://example.com"}}}`,
-		`{"mcpServers":{"bad.name":{"command":"node"}}}`, `{"mcpServers":{"":{"command":"node"}}}`,
-		`{"mcpServers":{"` + strings.Repeat("a", 33) + `":{"command":"node"}}}`,
-		`{"mcpServers":{"docs":{}}}`, `{"mcpServers":{"docs":{"command":"  "}}}`,
-		`{"mcpServers":{"docs":{"command":"node","args":"bad"}}}`, `{"mcpServers":{"docs":{"command":"node","env":{"A":true}}}}`,
-		`{"mcpServers":{"docs":{"command":"node","env":{"BAD=NAME":"value"}}}}`,
-		`{"mcpServers":{"docs":{"command":"node","args":[null]}}}`,
-		`{"mcpServers":{"docs":{"command":"node","env":{"A":null}}}}`,
-		`{"mcpServers":{"docs":{"command":"node","args":null}}}`,
-		`{"mcpServers":{"docs":{"command":"node","env":null}}}`,
-		`{/* unfinished`, `{"mcpServers":{}},`, `{} {}`, `[]`, `null`, `{,}`, `{"mcpServers":{"docs":{"command":"node","args":[,]}}}`,
+		`{"mcp":{"bad.name":{"type":"local","command":["node"]}}}`, `{"mcp":{"":{"type":"local","command":["node"]}}}`,
+		`{"mcp":{"` + strings.Repeat("a", 33) + `":{"type":"local","command":["node"]}}}`,
+		`{"mcp":{"docs":{"type":"local"}}}`, `{"mcp":{"docs":{"type":"local","command":[]}}}`,
+		`{"mcp":{"docs":{"type":"local","command":["  "]}}}`, `{"mcp":{"docs":{"type":"local","command":"node"}}}`,
+		`{"mcp":{"docs":{"type":"local","command":["node"],"environment":{"A":true}}}}`,
+		`{"mcp":{"docs":{"type":"local","command":["node"],"environment":{"BAD=NAME":"value"}}}}`,
+		`{"mcp":{"docs":{"type":"local","command":["node",null]}}}`,
+		`{/* unfinished`, `{"mcp":{}},`, `{} {}`, `[]`, `null`, `{,}`, `{"mcp":{"docs":{"type":"local","command":[,]}}}`,
 	} {
 		t.Run(content, func(t *testing.T) {
 			directory := t.TempDir()
@@ -60,22 +58,37 @@ func TestWorkspaceMCPConfigurationParsesBothFilenamesAndRejectsInvalidFiles(t *t
 	if value, err := config.ReadWorkspace(directory); err != nil || len(value.MCPServers) != 0 {
 		t.Fatalf("missing file: %+v %v", value, err)
 	}
-	for _, name := range []string{"merakcode.json", "merakcode.jsonc"} {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(`{}`), 0600); err != nil {
+}
+
+func TestWorkspaceConfigurationReportsUnknownKeysAndMergesEveryFile(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(directory, ".merakcode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"merakcode.json": `{"unknown":true,"mcp":{"a":{"type":"local","command":["one"]},"b":{"type":"local","command":["old"]}}}`,
+		filepath.Join(".merakcode", "merakcode.jsonc"): `{"mcp":{"b":{"type":"local","command":["new"]}}}`,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := config.ReadWorkspace(directory); err == nil {
-		t.Fatal("ambiguous files accepted")
+	value, err := config.ReadWorkspace(directory)
+	if err != nil || value.MCPServers["a"].Command != "one" || value.MCPServers["b"].Command != "new" {
+		t.Fatalf("value=%+v err=%v", value, err)
+	}
+	if !slices.ContainsFunc(value.Warnings, func(w string) bool { return strings.Contains(w, "unknown") }) {
+		t.Fatalf("warnings=%v", value.Warnings)
 	}
 }
 
 func TestUserMCPSecretsStayPrivateAndWorkspaceTrustPersists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "merakcode.json")
-	if err := os.WriteFile(path, []byte(`{"mcpServers":{"docs":{"command":"node","env":{"TOKEN":"private-value"}}}}`), 0600); err != nil {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "merakcode.json"), []byte(`{"mcp":{"docs":{"type":"local","command":["node"],"environment":{"TOKEN":"private-value"}}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := config.Open(path)
+	settings, err := config.Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +101,7 @@ func TestUserMCPSecretsStayPrivateAndWorkspaceTrustPersists(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	settings, err = config.Open(path)
+	settings, err = config.Open(root)
 	if err != nil || len(settings.Private().WorkspaceTrust) != 2 || settings.Private().MCPServers["docs"].Env["TOKEN"] != "private-value" {
 		t.Fatalf("settings=%+v err=%v", settings, err)
 	}

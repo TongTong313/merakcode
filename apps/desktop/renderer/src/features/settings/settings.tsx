@@ -38,8 +38,8 @@ function General() {
       <div class="card">
         <Row label={t("permissionLevel.label")} desc={t("permissionLevel.default.desc")}>
           <PermissionModeSelect
-            value={state.config?.mode ?? "ask"}
-            onChange={(mode) => void updateConfig({ mode }).catch(fail)}
+            value={state.config?.permissionMode ?? "ask"}
+            onChange={(mode) => void updateConfig({ permissionMode: mode }).catch(fail)}
           />
         </Row>
         <Row label={t("settings.language")} desc={t("settings.language.desc")}>

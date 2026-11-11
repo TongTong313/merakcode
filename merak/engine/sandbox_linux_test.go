@@ -460,7 +460,7 @@ func TestEngineSandboxSingleChatRemembersNetworkHostsAfterRestart(t *testing.T) 
 	path := filepath.Join(t.TempDir(), "merakcode.json")
 	var approvals atomic.Int32
 	for range 2 {
-		settings, err := config.Open(path)
+		settings, err := config.Open(filepath.Dir(path))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -534,7 +534,7 @@ func TestEngineSandboxSingleChatAllowAllStillEnforcesUserDenials(t *testing.T) {
 func TestEngineSandboxKeepsLateNetworkApprovalAfterTheWorkerExits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	settings, err := config.Open(filepath.Join(t.TempDir(), "merakcode.json"))
+	settings, err := config.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

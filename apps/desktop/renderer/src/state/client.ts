@@ -9,6 +9,8 @@ let opening: Promise<EngineClient> | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let persistent = false
 let failures = 0
+/** The person every call of this connection acts as; the engine tells it in its greeting. */
+export let localHuman = ""
 
 function retry() {
   if (!persistent || timer) return
@@ -32,6 +34,7 @@ export function client(): Promise<EngineClient> {
   })
     .then((connection) => {
       current = connection
+      localHuman = connection.hello.human
       failures = 0
       for (const listener of listeners) listener(connection)
       void connection.closed.then(() => {

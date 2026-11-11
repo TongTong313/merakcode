@@ -57,8 +57,8 @@ func (s *Server) offerQuestion(conn *websocket.Conn, id event.ID) bool {
 	return pending.owner == conn
 }
 
-func (s *Server) replyQuestion(ctx context.Context, conn *websocket.Conn, params protocol.QuestionReplyParams) error {
-	human, err := s.engine.AuthorizeQuestion(ctx, params.Request, params.Human)
+func (s *Server) replyQuestion(ctx context.Context, conn *websocket.Conn, caller event.ID, params protocol.QuestionReplyParams) error {
+	human, err := s.engine.AuthorizeQuestion(ctx, params.Request, caller)
 	if err != nil {
 		return errors.New("MRK-5002")
 	}

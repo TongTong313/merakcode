@@ -4,7 +4,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,27 +17,25 @@ import (
 	"github.com/TongTong313/merakcode/merak"
 	"github.com/TongTong313/merakcode/merak/engine"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/question"
-	"github.com/TongTong313/merakcode/merak/engine/store"
-	"github.com/TongTong313/merakcode/merak/engine/task"
-	"github.com/TongTong313/merakcode/merak/engine/terminal"
-	"github.com/TongTong313/merakcode/merak/engine/worker"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/websocket"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 type Server struct {
-	cloudMu     sync.Mutex
-	questions   map[event.ID]*pendingQuestion
-	settings    *config.Store
-	configMu    sync.Mutex
-	Level       *slog.LevelVar
-	dataDir     string
+	cloudMu    sync.Mutex
+	questions  map[event.ID]*pendingQuestion
+	settings   *config.Store
+	configMu   sync.Mutex
+	Level      *slog.LevelVar
+	dataDir    string
+	configRoot string
+	// human is the person the connections that carry the token act as; identities lists other tokens and their people.
+	human       event.ID
+	identities  map[string]event.ID
 	logRoot     string
-	Storage     *RemoteStore
 	engine      *engine.Engine
 	token       string
 	mu          sync.Mutex
@@ -53,11 +50,12 @@ type Server struct {
 }
 
 func New(e *engine.Engine, token string) *Server {
-	return &Server{engine: e, token: token, connections: make(map[*websocket.Conn]bool), desktops: make(map[*websocket.Conn]string), approvals: make(map[event.ID]*approval), questions: make(map[event.ID]*pendingQuestion), forwarded: make(map[*websocket.Conn]chan struct{}), done: make(chan struct{})}
+	return &Server{engine: e, human: protocol.LocalHuman, token: token, identities: map[string]event.ID{}, connections: make(map[*websocket.Conn]bool), desktops: make(map[*websocket.Conn]string), approvals: make(map[event.ID]*approval), questions: make(map[event.ID]*pendingQuestion), forwarded: make(map[*websocket.Conn]chan struct{}), done: make(chan struct{})}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if s.token == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.token)) != 1 {
+	human, ok := s.authenticate(r.Header.Get("Authorization"))
+	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -88,11 +86,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		conn.Close()
 		remote.close()
-		if s.Storage != nil {
-			if s.Storage.detach(conn) {
-				s.engine.DisconnectedStorage()
-			}
-		}
 		if stopSubscription != nil {
 			stopSubscription()
 		}
@@ -161,13 +154,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Write(body)
 		return
 	}
-	helloResult := protocol.HelloResult{Protocol: protocol.Version, Engine: merak.Version()}
-	if hello.Capabilities.Store {
-		helloResult.Store = "declined"
-		if s.Storage != nil && s.Storage.attach(conn, s.engine.StorageTimedOut) {
-			helloResult.Store = "accepted"
-		}
-	}
+	helloResult := protocol.HelloResult{Human: human, Protocol: protocol.Version, Engine: merak.Version()}
 	response.Result, _ = json.Marshal(helloResult)
 	s.mu.Lock()
 	s.connections[conn] = hello.Capabilities.Approve
@@ -179,18 +166,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if conn.Write(body) != nil {
 		return
 	}
-	storageReady := make(chan struct{})
-	var storageErr error
-	if helloResult.Store == "accepted" {
-		go func() {
-			storageErr = s.engine.ReconnectStorage(ctx, s.Storage)
-			close(storageReady)
-		}()
-	} else {
-		close(storageReady)
-	}
-	filters := make(map[event.ID]event.Filter)
-	var filterMu sync.RWMutex
+	c := &connection{ws: conn, human: human, remote: remote, filters: make(map[event.ID]event.Filter)}
+	table := s.methods()
 	events, stop := s.engine.Bus.Subscribe(event.Filter{})
 	stopSubscription = stop
 	forwarded := make(chan struct{})
@@ -201,14 +178,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer close(forwarded)
 		for fact := range events {
 			matched := fact.Type == event.Lagged || fact.Type == engine.Shutdown
-			filterMu.RLock()
-			for _, filter := range filters {
+			c.filterMu.RLock()
+			for _, filter := range c.filters {
 				if filter.Matches(fact) {
 					matched = true
 					break
 				}
 			}
-			filterMu.RUnlock()
+			c.filterMu.RUnlock()
 			if fact.Type == permission.Requested && hello.Capabilities.Approve {
 				request, err := event.Decode[permission.Request](fact)
 				matched = err == nil && request.Leader == "" && s.offerApproval(conn, fact.ID, fact.Scope.Group != "" || request.Kind == "workspace")
@@ -238,15 +215,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	if hello.Capabilities.Approve {
 		go func() {
-			select {
-			case <-storageReady:
-			case <-ctx.Done():
-				return
-			}
-			if storageErr == nil {
-				if err := s.offerPendingApprovals(ctx, conn); err != nil {
-					_ = conn.Close()
-				}
+			if err := s.offerPendingApprovals(ctx, conn); err != nil {
+				_ = conn.Close()
 			}
 		}()
 	}
@@ -262,12 +232,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		if request.JSONRPC == "2.0" && request.Method == "" && len(request.ID) > 0 && (len(request.Result) > 0 || request.Error != nil) {
-			if s.Storage != nil {
-				s.Storage.receive(conn, request)
-			}
-			continue
-		}
 		if request.JSONRPC != "2.0" || request.Method == "" || !validID(request.ID) || len(request.Result) != 0 || request.Error != nil {
 			if replyRPCError(conn, request.ID, -32600, "Invalid request") != nil {
 				return
@@ -275,497 +239,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		go func(request protocol.Message) {
-			select {
-			case <-storageReady:
-			case <-ctx.Done():
-				return
-			}
 			response := protocol.Message{JSONRPC: "2.0", ID: request.ID}
-			if storageErr != nil {
-				response.Error = protocol.StorageError(storageErr)
-				body, _ := json.Marshal(response)
-				_ = conn.Write(body)
-				return
-			}
 			var result any = struct{}{}
 			var callErr error
 			if forwarded, handled, err := s.engine.ForwardCloud(ctx, request.Method, request.Params); handled {
 				result, callErr = forwarded, err
-			} else {
-				switch request.Method {
-				case "remote.control":
-					var params protocol.RemoteControlParams
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						callErr = remote.control(params)
-					}
-				case "cloud.login":
-					var params protocol.CloudLoginParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.loginCloud(ctx, params)
-					}
-				case "cloud.logout":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						callErr = s.logoutCloud(ctx)
-					}
-				case "cloud.status":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						result = s.engine.CloudStatus()
-					}
-				case "cloud.members":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						result, callErr = s.engine.CloudMembers(ctx)
-					}
-				case "profile.list":
-					var params protocol.ProfileListParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.ListProfiles(ctx, params.Human)
-					}
-				case "profile.save":
-					var params protocol.ProfileSaveParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.SaveProfile(ctx, params.Human, params.Profile)
-					}
-				case "remote.start":
-					var params protocol.RemoteStartParams
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						result, callErr = remote.start(params)
-					}
-				case "remote.deliver":
-					var params protocol.RemoteDeliveryParams
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						result, callErr = remote.deliver(params)
-					}
-				case "remote.sync":
-					var params protocol.RemoteSyncParams
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						callErr = remote.sync(params)
-					}
-				case "remote.connect":
-					var params protocol.RemoteConnectParams
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						result, callErr = s.engine.ConnectRemote(ctx, params)
-					}
-				case "remote.members":
-					var params struct{}
-					if callErr = decodeParams(request.Params, &params); callErr == nil {
-						result, callErr = s.engine.RemoteMembers(ctx)
-					}
-				case "member.register":
-					var params protocol.MemberRegisterParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.RegisterMember(ctx, params.Group, params.Human, params.Member)
-					}
-				case "profile.delete":
-					var params protocol.ProfileDeleteParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.DeleteProfile(ctx, params.Human, params.Profile)
-					}
-				case "member.test":
-					var params protocol.ProfileSaveParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.TestMember(ctx, params.Human, params.Profile)
-					}
-				case "group.create":
-					var params protocol.GroupCreateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.CreateGroup(ctx, params.Group, params.Members, params.Profiles)
-					}
-				case "group.addMember":
-					var params protocol.GroupAddMemberParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.AddGroupMember(ctx, params.Group, params.Human, params.Member, params.Profile)
-					}
-				case "group.update":
-					var params protocol.GroupUpdateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.UpdateGroup(ctx, params.Group, params.Human, params.Update)
-					}
-				case "group.removeMember", "member.remove":
-					var params protocol.GroupRemoveMemberParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.Tasks.RemoveMember(ctx, params.Group, params.Human, params.Member)
-					}
-				case "group.pause", "group.resume":
-					var params protocol.GroupControlParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.SetGroupPaused(ctx, params.Group, params.Human, params.Thread, request.Method == "group.pause")
-					}
-				case "group.state":
-					var params protocol.GroupIDParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.GroupState(ctx, params.Group)
-					}
-				case "group.say":
-					var params protocol.GroupSayParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.SayGroup(ctx, params.Group, params.Task, params.Human, params.Message)
-					}
-				case "task.assign":
-					var params protocol.TaskAssignParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.AssignTask(ctx, params.Task, params.Human, params.Member, params.Role, params.Scope)
-					}
-				case "task.review":
-					var params protocol.TaskReviewParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.ReviewTask(ctx, params.Task, params.Human, params.Decision, params.Feedback)
-					}
-				case "task.update":
-					var params protocol.TaskUpdateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.UpdateTask(ctx, params.Task, params.Update, event.Actor{Kind: event.ActorHuman, ID: params.Human})
-					}
-					if callErr == nil {
-						result, callErr = s.engine.Tasks.Get(ctx, params.Task)
-					}
-				case "task.cancel":
-					var params protocol.TaskCancelParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.Tasks.SetPhase(ctx, params.Task, task.PhaseCancelled, event.Actor{Kind: event.ActorHuman, ID: params.Human})
-					}
-					if callErr == nil {
-						result, callErr = s.engine.Tasks.Get(ctx, params.Task)
-					}
-				case "task.create":
-					var params protocol.TaskCreateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						card := task.Card{Group: params.Group, Leader: params.Leader, Title: params.Title, Description: params.Description, Acceptance: params.Acceptance, Areas: params.Areas, Review: params.Review, Priority: params.Priority, Workspace: params.Workspace, Inputs: params.Inputs, Budget: params.Budget, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: params.Human}}
-						if params.Member != "" {
-							result, callErr = s.engine.CreateAssignedTask(ctx, card, params.Member)
-						} else {
-							result, callErr = s.engine.CreateTask(ctx, card)
-						}
-					}
-				case "doc.list":
-					var params protocol.GroupIDParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.ListGroupDocuments(ctx, params.Group)
-					}
-				case "doc.read":
-					var params protocol.DocReadParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.ReadGroupDocument(ctx, params.Group, params.Key)
-					}
-				case "doc.write":
-					var params protocol.DocWriteParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.WriteGroupDocument(ctx, event.Actor{Kind: event.ActorHuman, ID: params.Human}, params.Document)
-					}
-				case "config.get":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						result = s.configuration()
-					}
-				case "config.set":
-					var patch config.Patch
-					callErr = decodeParams(request.Params, &patch)
-					if callErr == nil {
-						result, callErr = s.configure(patch)
-					}
-				case "member.catalog":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						result = worker.Catalog(ctx)
-					}
-				case "worker.run":
-					var params protocol.WorkerRunParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil && (params.Session == "" || params.Workdir == "") {
-						callErr = errors.New("worker session and workdir are required")
-					}
-					if callErr == nil {
-						var run worker.Run
-						run, callErr = s.engine.StartWorker(ctx, params.Profile, worker.Assignment{Session: params.Session, Workdir: params.Workdir, Packet: params.Packet})
-						if callErr == nil {
-							// Drain the runner subscription; connection filters forward the same bus events.
-							for range run.Events() {
-							}
-							result, callErr = run.Wait(ctx)
-						}
-					}
-				case "sandbox.status":
-					var params protocol.SandboxStatusParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						if params.Group != "" {
-							result, callErr = s.engine.MemberSandboxStatus(ctx, params.Group, params.Member, params.Session)
-						} else {
-							result, callErr = s.engine.SandboxStatus(ctx, params.Workdir, params.Mode, params.Session)
-						}
-					}
-				case "sandbox.setup":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						callErr = s.engine.SetupSandbox(ctx)
-					}
-				case "model.list":
-					var params protocol.ModelListParams
-					callErr = decodeParams(request.Params, &params)
-					for _, o := range params.Overrides {
-						if o.Provider == "" || o.ID == "" || o.Window != nil && *o.Window <= 0 || o.MaxOutput != nil && *o.MaxOutput <= 0 {
-							callErr = errors.New("invalid model override")
-						}
-					}
-					if callErr == nil {
-						result = s.engine.ModelCatalog(params.Overrides...)
-					}
-				case "model.discover":
-					var params protocol.ModelDiscoverParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = discoverModels(ctx, params.Provider)
-					}
-				case "model.refresh":
-					var params protocol.ModelRefreshParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.RefreshModels(ctx, params.Provider)
-					}
-					if callErr == nil {
-						result = s.engine.ModelCatalog()
-					}
-				case "diagnostics.bundle":
-					var params protocol.DiagnosticsParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.diagnostics(ctx, params)
-					}
-				case "blob.read":
-					var params protocol.BlobReadParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						var data []byte
-						var total int
-						data, total, callErr = s.engine.ReadBlob(ctx, params.Ref, params.Offset, params.Limit)
-						result = protocol.BlobReadResult{Data: data, Total: total, Offset: params.Offset}
-					}
-				case "engine.stop":
-					callErr = decodeParams(request.Params, &struct{}{})
-				case "session.list":
-					callErr = decodeParams(request.Params, &struct{}{})
-					if callErr == nil {
-						result, callErr = s.engine.ListSessions(ctx)
-					}
-				case "session.snapshot":
-					var params protocol.SessionCancelParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.SessionSnapshot(ctx, params.Session)
-					}
-				case "events.read":
-					var p protocol.EventsReadParams
-					callErr = decodeParams(request.Params, &p)
-					if callErr == nil {
-						result, callErr = s.engine.ReadEvents(ctx, p.Stream, p.From, p.Limit)
-					}
-				case "event.emit":
-					var params protocol.EventEmitParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.EmitEvent(ctx, params.Group, params.Type, params.Payload)
-					}
-				case "events.find":
-					var p store.Query
-					callErr = decodeParams(request.Params, &p)
-					if callErr == nil {
-						result, callErr = s.engine.FindEvents(ctx, p)
-					}
-				case "events.get":
-					var p protocol.EventsGetParams
-					callErr = decodeParams(request.Params, &p)
-					if callErr == nil {
-						result, callErr = s.engine.GetEvent(ctx, p.ID)
-					}
-				case "terminal.list":
-					var params protocol.DirectoryParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result = s.engine.Terminals.List(params.Directory)
-					}
-				case "terminal.create":
-					var params terminal.CreateOptions
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.Terminals.Create(ctx, params)
-					}
-				case "terminal.get", "terminal.remove":
-					var params protocol.TerminalIDParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						if request.Method == "terminal.get" {
-							result, callErr = s.engine.Terminals.Get(params.ID)
-						} else {
-							callErr = s.engine.Terminals.Remove(ctx, params.ID)
-						}
-					}
-				case "terminal.update":
-					var params protocol.TerminalUpdateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.Terminals.Update(ctx, params.ID, params.UpdateOptions)
-					}
-				case "file.read", "file.list":
-					var params protocol.FileParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						if request.Method == "file.read" {
-							result, callErr = s.engine.ReadFile(ctx, params.Directory, params.Path)
-						} else {
-							result, callErr = s.engine.ListFiles(ctx, params.Directory, params.Path)
-						}
-					}
-				case "repo.status", "repo.branches":
-					var params protocol.DirectoryParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						if request.Method == "repo.status" {
-							result, callErr = s.engine.RepoStatus(ctx, params.Directory)
-						} else {
-							result, callErr = s.engine.RepoBranches(ctx, params.Directory)
-						}
-					}
-				case "repo.diff":
-					var params protocol.RepoDiffParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						result, callErr = s.engine.RepoDiff(ctx, params.Directory, params.Base, params.Session)
-					}
-				case "repo.checkout":
-					var params protocol.RepoCheckoutParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.RepoCheckout(ctx, params.Directory, params.Branch)
-					}
-				case "session.create":
-					var params protocol.SessionCreateParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						settings := s.configuration()
-						if params.Mode == "" {
-							params.Mode = permission.Mode(settings.Mode)
-						}
-						if params.Provider == "" {
-							params.Provider, params.Model, _ = strings.Cut(settings.Model, "/")
-						}
-						if params.Thinking == "" {
-							params.Thinking = model.Thinking(settings.Thinking)
-						}
-						var id event.ID
-						id, callErr = s.engine.CreateSession(ctx, engine.SessionOptions{Mode: params.Mode, Provider: params.Provider, Model: params.Model, Thinking: params.Thinking, Workdir: params.Workdir, Budget: params.Budget, MCPServers: params.MCPServers})
-						result = protocol.SessionCreateResult{Session: id}
-					}
-				case "session.send":
-					var params protocol.SessionSendParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						if params.Selection != nil {
-							callErr = s.engine.SendWithBudget(ctx, params.Session, params.Parts, params.ExtendBudget, *params.Selection)
-						} else {
-							callErr = s.engine.SendWithBudget(ctx, params.Session, params.Parts, params.ExtendBudget)
-						}
-					}
-				case "session.cancel":
-					var params protocol.SessionCancelParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.engine.Cancel(params.Session)
-					}
-				case "permission.reply":
-					var params protocol.PermissionReplyParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.replyApproval(ctx, conn, params)
-					}
-				case "question.reply":
-					var params protocol.QuestionReplyParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						callErr = s.replyQuestion(ctx, conn, params)
-					}
-				case "events.subscribe":
-					var filter event.Filter
-					callErr = decodeParams(request.Params, &filter)
-					if callErr == nil {
-						id := event.NewID()
-						filterMu.Lock()
-						filters[id] = filter
-						filterMu.Unlock()
-						result = protocol.SubscribeResult{Subscription: id}
-					}
-				case "events.unsubscribe":
-					var params protocol.UnsubscribeParams
-					callErr = decodeParams(request.Params, &params)
-					if callErr == nil {
-						filterMu.Lock()
-						delete(filters, params.Subscription)
-						filterMu.Unlock()
-					}
-				default:
-					response.Error = &protocol.Error{Code: -32601, Message: "Method not found", Data: protocol.ErrorData{Code: "MRK-1001"}}
-				}
+			} else if call := table[request.Method]; call == nil {
+				callErr = errMethodNotFound
+			} else if value, err := call(ctx, c, request.Params); err != nil {
+				callErr = err
+			} else if value != nil {
+				result = value
 			}
 			if callErr != nil {
-				code := "MRK-4001"
-				if strings.HasPrefix(request.Method, "group.") || strings.HasPrefix(request.Method, "task.") || request.Method == "event.emit" {
-					code = "MRK-6001"
-				}
-				if request.Method == "permission.reply" || request.Method == "question.reply" {
-					code = "MRK-5002"
-				}
-				if request.Method == "diagnostics.bundle" {
-					code = "MRK-1004"
-				}
-				if strings.HasPrefix(request.Method, "file.") || strings.HasPrefix(request.Method, "terminal.") || strings.HasPrefix(request.Method, "repo.") {
-					code = "MRK-5001"
-				}
-				if request.Method == "blob.read" {
-					code = "MRK-1003"
-				}
-				if strings.HasPrefix(request.Method, "config.") {
-					code = "MRK-3001"
-				}
-				var failure *engine.Error
-				if errors.As(callErr, &failure) {
-					code = failure.Code
-				}
-				response.Error = &protocol.Error{Code: -32602, Message: "Invalid request parameters", Data: protocol.ErrorData{Code: code}}
-				if callErr.Error() == "MRK-4005" {
-					response.Error.Data = protocol.ErrorData{Code: "MRK-4005"}
-				}
-				if errors.Is(callErr, store.ErrUnavailable) {
-					response.Error = protocol.StorageError(callErr)
-				}
-				var remote *protocol.Error
-				if errors.As(callErr, &remote) {
-					response.Error = remote
-				}
-				if callErr.Error() == "MRK-1006" || callErr.Error() == "MRK-1007" {
-					response.Error = &protocol.Error{Code: -32000, Message: "Cloud request failed", Data: protocol.ErrorData{Code: callErr.Error()}}
-				}
+				response.Error = rpcError(request.Method, callErr)
 			}
 			if len(request.ID) == 0 {
 				return

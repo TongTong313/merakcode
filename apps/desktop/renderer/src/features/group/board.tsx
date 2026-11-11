@@ -6,7 +6,6 @@ import { Markdown } from "../../ui/markdown"
 import { Report } from "./report"
 import { CreateTask } from "./create-task"
 import { client } from "../../state/client"
-import { localHuman } from "../../state/groups"
 import { toast } from "../../ui/toast"
 import { ClaimProcess } from "./process"
 import { conflictFiles } from "./conflicts"
@@ -73,7 +72,6 @@ export function TaskBoard(props: {
         await client()
       ).task.assign({
         task: task.id,
-        human: localHuman,
         member: assignee(),
         role: collaborators() ? "collaborator" : "owner",
         scope: scope()
@@ -94,7 +92,7 @@ export function TaskBoard(props: {
     if (!task || busy()) return
     setBusy(true)
     try {
-      await (await client()).task.cancel({ task: task.id, human: localHuman })
+      await (await client()).task.cancel({ task: task.id })
     } catch (error) {
       toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
     } finally {

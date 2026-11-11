@@ -39,7 +39,6 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
     try {
       const connection = await client()
       const profile = await connection.profile.save({
-        human: localHuman,
         profile: {
           id: "",
           name: source.member.name,
@@ -63,7 +62,6 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
       })
       await connection.member.register({
         group: props.group,
-        human: localHuman,
         member: {
           id: "",
           group: props.group,

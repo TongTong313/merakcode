@@ -45,7 +45,7 @@ func TestDiagnoseWritesAnArchiveWithoutStartingTheEngine(t *testing.T) {
 			t.Fatal("command exported a token")
 		}
 	}
-	if _, err := os.Stat(filepath.Join(home, "engine.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "data", "engine.json")); !os.IsNotExist(err) {
 		t.Fatal("diagnose started an engine")
 	}
 }

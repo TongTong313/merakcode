@@ -145,7 +145,7 @@ func TestUnavailableSandboxRemembersStartupDecisionByMemberAndProject(t *testing
 			}{
 				{"first", workspace, 1}, {"first", workspace, 1}, {"second", workspace, 2}, {"first", t.TempDir(), 3},
 			} {
-				settings, err := config.Open(configPath)
+				settings, err := config.Open(filepath.Dir(configPath))
 				if err != nil {
 					t.Fatal(err)
 				}

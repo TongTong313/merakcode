@@ -22,13 +22,11 @@ afterAll(async () => {
 
 test("creates a task from the group's board with its acceptance criteria and reviewer", async () => {
   const connection = await client()
-  const profiles = await connection.profile.list({ human: localHuman })
+  const profiles = await connection.profile.list({})
   const leader = await connection.profile.save({
-    human: localHuman,
     profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   const worker = await connection.profile.save({
-    human: localHuman,
     profile: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   const group = await connection.group.create({
@@ -131,7 +129,7 @@ test("creates a task from the group's board with its acceptance criteria and rev
       .toContain("Update the guide")
     await click("Close", document.querySelector(".task-detail")!.closest('[role="dialog"]')!)
     await expect.poll(() => document.querySelector(".task-detail")).toBeNull()
-    await connection.task.create({ group: group.id, human: localHuman, title: "Verify guide", review: true })
+    await connection.task.create({ group: group.id, title: "Verify guide", review: true })
     await expect.poll(() => host.querySelector('[aria-label="Open tasks"]')?.textContent).toContain("Verify guide")
     host.querySelector<HTMLButtonElement>('[aria-label="Open tasks"] .task-card')!.click()
     const assign = document.querySelector<HTMLSelectElement>('select[aria-label="Assign member"]')

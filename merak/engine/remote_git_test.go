@@ -77,11 +77,11 @@ func runRemoteWorktree(t *testing.T, review bool) {
 	defer b.Close()
 	wp := profile.DefaultLeader()
 	wp.ID, wp.Model.Provider = "source-profile", "device"
-	if _, err := b.SaveProfile(ctx, "owner", wp); err != nil {
+	if _, err := b.SaveProfile(ctx, "local-human", wp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: "builtin-leader"},
 	}); err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func runRemoteWorktree(t *testing.T, review bool) {
 		t.Fatal(err)
 	}
 	defer bClient.Close()
-	if err := bClient.Call(ctx, "member.register", map[string]any{"group": "source", "human": "owner", "member": map[string]any{"id": "worker", "kind": "agent", "name": "Remote worker", "agentRole": "leader", "profile": wp.ID, "checkouts": map[string]string{remoteDir: bDir}}}, nil); err != nil {
+	if err := bClient.Call(ctx, "member.register", map[string]any{"group": "source", "member": map[string]any{"id": "worker", "kind": "agent", "name": "Remote worker", "agentRole": "leader", "profile": wp.ID, "checkouts": map[string]string{remoteDir: bDir}}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	leader := groupScript{name: "leader", test: t, reply: func(req model.Request) fake.Reply {
@@ -120,7 +120,7 @@ func runRemoteWorktree(t *testing.T, review bool) {
 		return fake.Reply{Text: "Waiting"}
 	}}
 	a, err := engine.New(engine.Deps{DataDir: t.TempDir(), Workdir: aDir, Providers: map[string]model.Provider{"leader": leader}, Ask: func(context.Context, permission.Request) (permission.Reply, error) {
-		return permission.Reply{Decision: permission.Allow, Human: "owner"}, nil
+		return permission.Reply{Decision: permission.Allow, Human: "local-human"}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -151,37 +151,37 @@ func runRemoteWorktree(t *testing.T, review bool) {
 	rp.Product = &profile.Product{Kind: worker.KindRemote, Remote: &profile.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: worker.Caps{Steer: true, Permission: true}}}
 	var g group.Group
 	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Host", Project: group.Project{Directory: aDir}, DefaultLeader: "leader", Brief: group.Brief{Check: "git diff --exit-code"}}, Members: []group.Member{
-		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
 		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID},
 	}, Profiles: []profile.Profile{lp, rp}}, &g); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range []string{"folder", "inplace"} {
-		if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Human: "owner", Member: "remote", Title: "Rejected " + kind, Workspace: kind}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
+		if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Member: "remote", Title: "Rejected " + kind, Workspace: kind}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
 			t.Fatalf("remote %s: %v", kind, err)
 		}
 	}
-	if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Human: "owner", Leader: "remote", Title: "Rejected remote leader", Workspace: "none"}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
+	if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Leader: "remote", Title: "Rejected remote leader", Workspace: "none"}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
 		t.Fatalf("remote task leader: %v", err)
 	}
 	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Rejected leader", Project: group.Project{Directory: aDir}, DefaultLeader: "remote"}, Members: []group.Member{{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID}}}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
 		t.Fatalf("remote default leader: %v", err)
 	}
 	noRemote, err := a.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "No remote", Project: group.Project{Directory: integrationRepository(t)}, DefaultLeader: "leader"}, []group.Member{
-		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lp.ID},
 		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: rp.ID},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: noRemote.ID, Human: "owner", Member: "remote", Title: "No remote", Workspace: "worktree"}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
+	if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: noRemote.ID, Member: "remote", Title: "No remote", Workspace: "worktree"}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {
 		t.Fatalf("worktree without remote: %v", err)
 	}
 	facts, stop := a.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{workspace.MergeDone, task.Updated}})
 	defer stop()
-	card, err := a.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Remote change", Workspace: "worktree", Review: review, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "owner"}}, "remote")
+	card, err := a.CreateAssignedTask(ctx, task.Card{Group: g.ID, Title: "Remote change", Workspace: "worktree", Review: review, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "local-human"}}, "remote")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func runRemoteWorktree(t *testing.T, review bool) {
 				if _, err := os.Stat(filepath.Join(aDir, "remote.txt")); !os.IsNotExist(err) {
 					t.Fatal("merged before human review")
 				}
-				if err := a.ReviewTask(ctx, card.ID, "owner", "approve", ""); err != nil {
+				if err := a.ReviewTask(ctx, card.ID, "local-human", "approve", ""); err != nil {
 					t.Fatal(err)
 				}
 				approved = true

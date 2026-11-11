@@ -34,7 +34,7 @@ func TestWorkspaceConfirmationSurvivesEngineRestartWithTheSameRequest(t *testing
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcpServers":{"docs":{"command":"missing"}}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcp":{"docs":{"type":"local","command":["missing"]}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	storage, settings := memorystore.New(), config.NewMemory()
@@ -134,12 +134,12 @@ func TestMCPNameCollisionSkipsTheConflictingServer(t *testing.T) {
 	for server, name := range map[string]string{"a": "b__c", "a__b": "c"} {
 		servers[server] = config.MCPServer{Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1", "MERAKCODE_MCP_TOOL_NAME": name}}
 	}
-	body, _ := json.Marshal(config.Value{MCPServers: servers})
+	body, _ := config.MCPFile(servers), error(nil)
 	path := filepath.Join(t.TempDir(), "merakcode.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := config.Open(path)
+	settings, err := config.Open(filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,16 +169,16 @@ func TestUserMCPOverridesWorkspaceAndStopsWhenTheTakeoverSessionEnds(t *testing.
 	if err := os.WriteFile(filepath.Join(directory, "note.txt"), []byte("owned server"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcpServers":{"docs":{"command":"missing-workspace-command"}}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcp":{"docs":{"type":"local","command":["missing-workspace-command"]}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	command, _ := os.Executable()
-	body, _ := json.Marshal(config.Value{MCPServers: map[string]config.MCPServer{"docs": {Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1", "MERAKCODE_MCP_LIFETIME_FILE": filepath.Join(directory, "mcp-address")}}}})
+	body, _ := config.MCPFile(map[string]config.MCPServer{"docs": {Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1", "MERAKCODE_MCP_LIFETIME_FILE": filepath.Join(directory, "mcp-address")}}}), error(nil)
 	path := filepath.Join(t.TempDir(), "merakcode.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := config.Open(path)
+	settings, err := config.Open(filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,19 +230,19 @@ func TestMCPToolsUseTheDeferredPoolAndGateWhileBrokenServersAreSkipped(t *testin
 	if err := os.WriteFile(filepath.Join(directory, "note.txt"), []byte("verified MCP file"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"unknown":true}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"model":5}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	command, _ := os.Executable()
-	body, _ := json.Marshal(config.Value{MCPServers: map[string]config.MCPServer{
+	body := config.MCPFile(map[string]config.MCPServer{
 		"docs":   {Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1"}},
 		"broken": {Command: filepath.Join(directory, "missing-server")},
-	}})
+	})
 	path := filepath.Join(t.TempDir(), "merakcode.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := config.Open(path)
+	settings, err := config.Open(filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestWorkspaceMCPTrustIsSharedByTwoWorktreesOfTheGroupProject(t *testing.T) 
 	git("worktree", "add", "--detach", second, "HEAD")
 	command, _ := os.Executable()
 	definition := config.MCPServer{Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1"}}
-	body, _ := json.Marshal(config.Workspace{MCPServers: map[string]config.MCPServer{"docs": definition}})
+	body, _ := config.MCPFile(map[string]config.MCPServer{"docs": definition}), error(nil)
 	for _, directory := range []string{first, second} {
 		if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), body, 0600); err != nil {
 			t.Fatal(err)
@@ -358,7 +358,7 @@ func TestWorkspaceMCPConfirmationAppliesOnlyToLaterSessions(t *testing.T) {
 	definition := config.MCPServer{Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1", "PRIVATE_VALUE": "never-in-events"}}
 	write := func(prefix string, server config.MCPServer) {
 		t.Helper()
-		body, _ := json.Marshal(config.Workspace{MCPServers: map[string]config.MCPServer{"docs": server}})
+		body, _ := config.MCPFile(map[string]config.MCPServer{"docs": server}), error(nil)
 		if err := os.WriteFile(filepath.Join(directory, "merakcode.jsonc"), append([]byte(prefix), body...), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -464,7 +464,7 @@ func TestWorkspaceMCPConfirmationAppliesOnlyToLaterSessions(t *testing.T) {
 
 func TestWorkspaceConfirmationRemainsInSnapshotAfterTheTurnFinishes(t *testing.T) {
 	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcpServers":{"docs":{"command":"missing-command"}}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcp":{"docs":{"type":"local","command":["missing-command"]}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	requested := make(chan struct{}, 1)
@@ -521,7 +521,7 @@ func TestStandaloneWorktreesShareAnActualMCPConfirmation(t *testing.T) {
 	fixtureGit(t, project, "worktree", "add", "--detach", second, "HEAD")
 	command, _ := os.Executable()
 	definition := config.MCPServer{Command: command, Args: []string{"-test.run=^TestBuiltinMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_BUILTIN_MCP_FIXTURE": "1"}}
-	body, _ := json.Marshal(config.Workspace{MCPServers: map[string]config.MCPServer{"docs": definition}})
+	body, _ := config.MCPFile(map[string]config.MCPServer{"docs": definition}), error(nil)
 	settings := config.NewMemory()
 	var asked atomic.Int32
 	for i, directory := range []string{first, second} {

@@ -43,7 +43,7 @@ export async function engineFixture(options: { replies?: unknown[] } = {}) {
   let info: { endpoint: string; token: string } | undefined
   for (let attempt = 0; attempt < 250; attempt++) {
     if (child.exitCode !== null) throw new Error(`Engine exited: ${child.exitCode}\n${startupError}`)
-    info = await readFile(path.join(root, "engine.json"), "utf8").then(
+    info = await readFile(path.join(root, "data", "engine.json"), "utf8").then(
       (body) => JSON.parse(body),
       () => undefined,
     )

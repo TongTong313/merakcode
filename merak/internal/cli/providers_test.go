@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -139,5 +140,40 @@ func TestModelsListsSupportedThinkingAndUnknownPrices(t *testing.T) {
 		if !found[name] {
 			t.Errorf("missing %s", name)
 		}
+	}
+}
+
+func TestModelsRefreshSubcommandFetchesOneProviderAndListShowsSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MERAKCODE_HOME", home)
+	cleanupEngine(t, home)
+	var asked atomic.Int32
+	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		fmt.Fprint(w, `{"data":[{"id":"qwen-live"},{"id":"text-embedding-v4"}]}`)
+	}))
+	defer host.Close()
+	t.Setenv("DASHSCOPE_BASE_URL", host.URL)
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	var output bytes.Buffer
+	if code := Run([]string{"models", "refresh", "dashscope"}, strings.NewReader(""), &output); code != 0 || asked.Load() != 1 {
+		t.Fatalf("code=%d requests=%d output=%q", code, asked.Load(), output.String())
+	}
+	output.Reset()
+	if code := Run([]string{"models"}, strings.NewReader(""), &output); code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	var entries []catalog.Model
+	if err := json.Unmarshal(output.Bytes(), &entries); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, entry := range entries {
+		if entry.Provider == "dashscope" {
+			ids = append(ids, entry.ID+":"+entry.Source)
+		}
+	}
+	if len(ids) != 1 || ids[0] != "qwen-live:live" {
+		t.Fatalf("dashscope models = %v", ids)
 	}
 }

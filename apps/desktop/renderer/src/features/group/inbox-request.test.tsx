@@ -57,13 +57,11 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
     location.href = engine.url
     setLocale("en")
     const connection = await client()
-    const profiles = await connection.profile.list({ human: localHuman })
+    const profiles = await connection.profile.list({})
     const leader = await connection.profile.save({
-      human: localHuman,
       profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const worker = await connection.profile.save({
-      human: localHuman,
       profile: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const group = await connection.group.create({
@@ -106,12 +104,10 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
       ),
       host,
     )
-    if (kind === "question")
-      await connection.group.say({ group: group.id, human: localHuman, text: "Ask me to choose the color." })
+    if (kind === "question") await connection.group.say({ group: group.id, text: "Ask me to choose the color." })
     else
       await connection.task.create({
         group: group.id,
-        human: localHuman,
         member: "worker",
         title: "Write a file",
         review: true,

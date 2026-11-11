@@ -6,12 +6,12 @@ import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { z } from "zod"
 import { connect, PROTOCOL_VERSION } from "@merakcode/sdk"
-import { SqliteStore } from "@merakcode/sdk/store"
 import metadata from "../package.json" with { type: "json" }
 
 /**
- * Connects to the local Go engine, starting it only when needed. The main process hosts storage over the SDK and
- * retains the token for authenticated window requests. Storage stays open until graceful shutdown completes.
+ * Connects to the local Go engine, the daemon of the user, and starts it when it is not running. The engine is its own
+ * process and outlives the app: closing the app only closes the connection, and only `shutdown` stops the engine.
+ * The main process keeps the token for authenticated window requests.
  */
 export type Endpoint = { url: string; origin: string; port: number; headers: Record<string, string> }
 export type State = "starting" | "ready" | "restarting" | "failed" | "stopped"
@@ -34,7 +34,7 @@ export type Options = {
 }
 
 type Client = Awaited<ReturnType<typeof connect>>
-type Running = { client: Client; close: () => Promise<void> }
+type Running = { client: Client; pid: number; disconnect: () => Promise<void>; stopEngine: () => Promise<void> }
 const connectionSchema = z.object({
   endpoint: z.url().refine((url) => /^ws:\/\/127\.0\.0\.1:\d+\/rpc$/.test(url)),
   token: z.string().min(1),
@@ -42,17 +42,26 @@ const connectionSchema = z.object({
   protocol: z.literal(PROTOCOL_VERSION),
 })
 
+/** The engine keeps its connection file and database in <root>/data; the root is MERAKCODE_HOME or ~/.merakcode. */
 function dataDirectory(env: NodeJS.ProcessEnv) {
-  if (env.MERAKCODE_HOME) return env.MERAKCODE_HOME
-  if (process.platform === "win32")
-    return path.join(env.APPDATA || path.join(homedir(), "AppData", "Roaming"), "MerakCode")
-  if (process.platform === "darwin") return path.join(homedir(), "Library", "Application Support", "MerakCode")
-  return path.join(
-    env.XDG_DATA_HOME && path.isAbsolute(env.XDG_DATA_HOME)
-      ? env.XDG_DATA_HOME
-      : path.join(homedir(), ".local", "share"),
-    "merakcode",
-  )
+  return path.join(env.MERAKCODE_HOME || path.join(homedir(), ".merakcode"), "data")
+}
+
+function running(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function kill(pid: number) {
+  try {
+    process.kill(pid)
+  } catch {
+    /* The engine may have already exited. */
+  }
 }
 
 export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]; exit: [number | null] }> {
@@ -129,7 +138,17 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     })
   }
 
+  /** Closes the connection and leaves the engine running; this is what quitting the app does. */
   async stop() {
+    this.stopping = true
+    clearTimeout(this.timer)
+    await this.launching
+    await this.release()
+    this.set("stopped")
+  }
+
+  /** Stops the engine itself and closes the connection ("Stop background engine and quit", `merak stop`). */
+  async shutdown() {
     this.stopping = true
     clearTimeout(this.timer)
     await this.launching
@@ -153,7 +172,6 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     const env = { ...process.env, ...this.options.env() }
     const home = dataDirectory(env)
     await mkdir(home, { recursive: true })
-    const storage = new SqliteStore(path.join(home, "merak.db"))
     let child: ChildProcess | undefined
     let childExit: Promise<number | null> | undefined
     let childError: Error | undefined
@@ -161,7 +179,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     const attach = async () => {
       try {
         info = connectionSchema.parse(JSON.parse(await readFile(path.join(home, "engine.json"), "utf8")))
-        return await connect({ ...info, store: storage, client: { name: "desktop", version: metadata.version } })
+        return await connect({ ...info, client: { name: "desktop", version: metadata.version } })
       } catch {
         return undefined
       }
@@ -172,16 +190,14 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
       if (!client) {
         const [command, ...prefix] = this.options.executable
         if (!command) throw new Error("MRK-1001")
-        child = spawn(
-          command,
-          [...prefix, "serve", "--store", "remote", "--port", String(this.port), ...(this.options.serve ?? [])],
-          {
-            cwd: this.options.cwd,
-            env,
-            windowsHide: true,
-            stdio: "ignore",
-          },
-        )
+        // Detached, so that the engine is not a child of the app that started it and goes on when the app quits
+        child = spawn(command, [...prefix, "serve", "--port", String(this.port), ...(this.options.serve ?? [])], {
+          cwd: this.options.cwd,
+          env,
+          detached: true,
+          windowsHide: true,
+          stdio: "ignore",
+        })
         childExit = new Promise((resolve) => {
           child!.once("error", (error) => {
             childError = error
@@ -189,6 +205,7 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
           })
           child!.once("exit", resolve)
         })
+        child.unref()
         const deadline = Date.now() + (this.options.timeout ?? 10000)
         while (!client && Date.now() < deadline) {
           if (childError) throw childError
@@ -201,32 +218,23 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     } catch (error) {
       child?.kill()
       await childExit
-      storage.close()
       this.options.log("error", "backend start failed", { code: "MRK-1001" })
       this.error = "MRK-1001"
       throw error
     }
     const connected = client
     const pid = info.pid
-    let released = false
-    const release = () => {
-      if (!released) {
-        released = true
-        storage.close()
-      }
-    }
-    let closing: Promise<void> | undefined
+    let stopping: Promise<void> | undefined
     const engine: Running = {
       client: connected,
-      close: () =>
-        (closing ??= (async () => {
+      pid,
+      disconnect: () => connected.close(),
+      stopEngine: () =>
+        (stopping ??= (async () => {
           let timer: NodeJS.Timeout | undefined
           const graceful = connected.engine
             .stop()
-            .then(async () => {
-              await connected.closed
-              await childExit
-            })
+            .then(() => connected.closed)
             .then(
               () => true,
               () => false,
@@ -238,26 +246,16 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
             }),
           ])
           clearTimeout(timer)
-          if (!finished) {
-            try {
-              if (child) child.kill()
-              else process.kill(pid)
-            } catch {
-              /* The engine may have already exited. */
-            }
-            await childExit
-          }
+          if (!finished) kill(pid)
           await connected.close()
-          release()
+          // The files of the engine are free only when its process is gone
+          for (let wait = 0; wait < 200 && running(pid); wait++) await delay(25)
+          if (running(pid)) kill(pid)
         })()),
     }
     this.engine = engine
-    void (childExit ?? connected.closed.then(() => null))
-      .then(async (code) => {
-        await connected.closed
-        release()
-        this.exited(engine, code)
-      })
+    void connected.closed
+      .then(() => this.exited(engine, null))
       .catch((error: Error) => {
         this.error = error.message
       })
@@ -296,10 +294,17 @@ export class Backend extends EventEmitter<{ state: [State, Endpoint | undefined]
     }, delays[this.attempt])
   }
 
-  /** Waits for the engine shutdown and storage acknowledgement before closing the database. */
+  /** Stops the engine and closes the connection to it. */
   private async kill() {
     const engine = this.engine
     this.engine = undefined
-    await engine?.close()
+    await engine?.stopEngine()
+  }
+
+  /** Closes the connection and leaves the engine running. */
+  private async release() {
+    const engine = this.engine
+    this.engine = undefined
+    await engine?.disconnect()
   }
 }

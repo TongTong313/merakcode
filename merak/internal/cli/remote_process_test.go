@@ -61,7 +61,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 		stop := func() { _ = command.Process.Kill(); <-exited }
 		t.Cleanup(stop)
 		for {
-			info, err := server.ReadInfo(home)
+			info, err := server.ReadInfo(filepath.Join(home, "data"))
 			if err == nil {
 				client, err := protocol.Connect(ctx, info.Endpoint, info.Token, protocol.HelloParams{Protocol: protocol.Version})
 				if err != nil {
@@ -102,7 +102,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 		params := protocol.GroupCreateParams{
 			Group: group.Group{ID: id, Name: string(id), Kind: group.KindLocal, DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}},
 			Members: []group.Member{
-				{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner},
+				{ID: "local-human", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner},
 				{ID: "leader", Kind: group.MemberAgent, Name: "Leader", AgentRole: group.AgentLeader, Profile: lead.ID},
 				{ID: "worker", Kind: group.MemberAgent, Name: "Worker", AgentRole: group.AgentWorker, Profile: work.ID, Checkouts: checkouts},
 			}, Profiles: []profile.Profile{lead, work},
@@ -144,7 +144,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 		t.Fatal(err)
 	}
 	var card task.Card
-	if err := a.client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: "host", Human: "owner", Title: "Report remotely", Workspace: "none", Member: "worker"}, &card); err != nil {
+	if err := a.client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: "host", Title: "Report remotely", Workspace: "none", Member: "worker"}, &card); err != nil {
 		t.Fatal(err)
 	}
 	waitFor := func(kind event.Type) event.Event {
@@ -170,7 +170,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 	if report := reported.Claims[0].Report; report.Verdict != task.VerdictDone || report.Summary != "Remote task completed" || report.Synthesized {
 		t.Fatalf("remote report changed: %+v", report)
 	}
-	if err := a.client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: "host", Human: "owner", Title: "Ask remotely", Workspace: "none", Member: "worker"}, &card); err != nil {
+	if err := a.client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: "host", Title: "Ask remotely", Workspace: "none", Member: "worker"}, &card); err != nil {
 		t.Fatal(err)
 	}
 	forwarded := waitFor(question.Asked)

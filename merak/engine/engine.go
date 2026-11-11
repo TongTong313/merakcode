@@ -43,6 +43,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/cloud"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
+	"github.com/TongTong313/merakcode/merak/internal/platform/credential"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -54,23 +55,25 @@ type Deps struct {
 	MCPCommand       string
 	ApprovalTimeout  time.Duration
 	DataDir          string
-	SandboxStateDir  string
-	NetworkSettings  NetworkSettings
-	AskQuestion      func(context.Context, question.Request) (question.Answer, error)
-	Logger           *slog.Logger
-	MemoryIdle       time.Duration
-	Store            store.Store
-	Catalog          *catalog.Catalog
-	Providers        map[string]model.Provider
-	Model            string
-	Thinking         model.Thinking
-	Now              func() time.Time
-	NewID            func() event.ID
-	Workdir          string
-	System           string
-	ToolPool         string
-	Deferred         []tool.Tool
-	Ask              func(context.Context, permission.Request) (permission.Reply, error)
+	// Vault keeps secrets; without one the engine uses the system vault under DataDir, or memory when it has no DataDir.
+	Vault           credential.Vault
+	SandboxStateDir string
+	NetworkSettings NetworkSettings
+	AskQuestion     func(context.Context, question.Request) (question.Answer, error)
+	Logger          *slog.Logger
+	MemoryIdle      time.Duration
+	Store           store.Store
+	Catalog         *catalog.Catalog
+	Providers       map[string]model.Provider
+	Model           string
+	Thinking        model.Thinking
+	Now             func() time.Time
+	NewID           func() event.ID
+	Workdir         string
+	System          string
+	ToolPool        string
+	Deferred        []tool.Tool
+	Ask             func(context.Context, permission.Request) (permission.Reply, error)
 }
 
 type Engine struct {
@@ -104,6 +107,8 @@ type Engine struct {
 	sentinelSeen      map[string]bool
 	gate              *permission.Gate
 	defaultModel      atomic.Pointer[profile.ModelRef]
+	catalogOnce       sync.Once
+	vault             credential.Vault
 	workspaceMu       sync.Mutex
 	workspacePending  map[config.Trust]bool
 	mcpCommand        string
@@ -190,6 +195,7 @@ func New(d Deps) (*Engine, error) {
 		sentinelSeen:    make(map[string]bool),
 		mcpCommand:      d.MCPCommand,
 		dataDir:         d.DataDir,
+		vault:           newVault(d.Vault, d.DataDir),
 		sandboxStateDir: d.SandboxStateDir,
 		sandboxes:       make(map[sandboxKey]*sandbox.Launcher),
 		askQuestion:     d.AskQuestion,
@@ -267,7 +273,6 @@ func New(d Deps) (*Engine, error) {
 	e.groupSessions = make(map[event.ID]bool)
 	e.counter = new(window.Counter)
 	e.sessions = make(map[event.ID]*conversation)
-	e.watchStorage()
 	if d.Catalog == nil {
 		d.Catalog = catalog.New()
 	}
@@ -473,3 +478,19 @@ func (e *Engine) spillScoped(ctx context.Context, scope event.Scope, name string
 	}
 	return tool.Ref("mrk://blob/" + id), nil
 }
+
+func newVault(given credential.Vault, dataDir string) credential.Vault {
+	switch {
+	case given != nil:
+		return given
+	case dataDir != "" && os.Getenv("MERAKCODE_FILE_CREDENTIALS") == "1":
+		// For machines without a system vault, and for tests: private files under the data directory.
+		return credential.NewFile(filepath.Join(dataDir, "credentials"))
+	case dataDir != "":
+		return credential.New(filepath.Join(dataDir, "credentials"))
+	}
+	return credential.NewMemory()
+}
+
+// Vault returns the vault of the engine, for the server that hosts it.
+func (e *Engine) Vault() credential.Vault { return e.vault }

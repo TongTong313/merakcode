@@ -2,7 +2,7 @@ import type { GroupMember } from "@merakcode/sdk"
 import { createResource, createSignal, For, Show } from "solid-js"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
-import { groupView, loadGroup, localHuman } from "../../state/groups"
+import { groupView, loadGroup } from "../../state/groups"
 import { toast } from "../../ui/toast"
 import { Section } from "./layout"
 
@@ -23,7 +23,7 @@ export function CloudMembers(props: { group: string }) {
   const add = async (member: GroupMember) => {
     setBusy(true)
     try {
-      await (await client()).group.addMember({ group: props.group, human: localHuman, member })
+      await (await client()).group.addMember({ group: props.group, member })
       await refetch()
       toast({ kind: "success", title: t("group.joined", { names: member.name }) })
     } catch (error) {

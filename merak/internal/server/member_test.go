@@ -89,7 +89,7 @@ func TestMemberProbeChecksTheProtocolInAnIsolatedDirectory(t *testing.T) {
 	p := profile.DefaultWorker()
 	p.Product = &profile.Product{Kind: worker.KindClaudeCode, Binary: binary}
 	var caps worker.Caps
-	if err := client.Call(ctx, "member.test", map[string]any{"human": "owner", "profile": p}, &caps); err != nil {
+	if err := client.Call(ctx, "member.test", map[string]any{"profile": p}, &caps); err != nil {
 		t.Fatal(err)
 	}
 	if !caps.Steer {
@@ -105,7 +105,7 @@ func TestMemberProbeChecksTheProtocolInAnIsolatedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Product.Args = []string{"--fixture", invalid}
-	if err := client.Call(ctx, "member.test", map[string]any{"human": "owner", "profile": p}, &caps); err == nil {
+	if err := client.Call(ctx, "member.test", map[string]any{"profile": p}, &caps); err == nil {
 		t.Fatal("invalid protocol was reported as connected")
 	}
 }

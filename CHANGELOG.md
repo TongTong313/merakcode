@@ -77,6 +77,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - After a turn finishes, reasoning and tool steps collapse into a single timing line, keeping the final reply and that turn's changed files. Copy takes only the final reply while folded, and the whole turn once expanded.
 
+- Run the engine as a background process of its own: closing the desktop app no longer stops it, tasks keep going, and the next start of the app (or of `merak`) joins the same engine. "Stop Background Engine and Quit" in the tray and the File menu, or `merak stop`, ends it; `merak status` shows whether it runs, its process id, port, folder and number of clients. The desktop app no longer hosts the storage of the engine, so `merak serve --store remote` and the native SQLite module are gone.
+
+- Decide who a request acts as from the connection, not from the request: no call names a person any more, and `hello` tells the client which person it is. Provider keys and the environment values of external agents are kept in the credential vault instead of the configuration file and the database; keys found in the configuration file or in `auth.json` of earlier versions are moved there. `merak provider list|login|logout` and `merak provider relay add|remove` manage them.
+
+- Fetch the model list of every configured provider in the background, so a provider with a key shows its full list without a manual refresh. The lists, with context sizes, prices and thinking levels from the public catalog and a fallback table, are kept across restarts and work offline; models that cannot chat are left out, deprecated ones are marked, and a failed refresh is reported once. `merak models refresh [provider]` refreshes at once, `merak serve --refresh-models` is gone.
+
+- Keep every MerakCode file under one folder, `~/.merakcode` (`MERAKCODE_HOME` moves it), and read the v0.3 configuration format unchanged. A change in settings now edits only that setting, so the comments and the rest of the file stay as written, and an address taken from an environment variable is no longer copied into the file. `merak serve` takes its port and host from the `server` setting.
+
 ### Fixed
 
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
@@ -210,6 +218,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 权限级别改为每次询问（`ask`，默认）、仅询问危险行为（`autoApprove`）和全面接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。全面接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
 
 - 一轮对话结束后，思考和工具步骤收成一行用时，最终回复和本轮改动文件仍保留。收起时复制只取最终回复，展开后复制整轮内容。
+
+- 引擎作为独立的后台进程运行：关闭桌面端不再停止它，任务照常推进，下次打开桌面端（或运行 `merak`）会连上同一个引擎。托盘和文件菜单里的“停止后台引擎并退出”，或 `merak stop`，可以停止它；`merak status` 显示它是否在跑、进程 id、端口、根目录和已连接的客户端数。桌面端不再充当引擎的存储宿主，`merak serve --store remote` 和原生 SQLite 模块一并删除。
+
+- 请求以谁的身份执行由连接决定，不再由请求自报：所有调用都不再带人名，`hello` 会告诉客户端它是谁。服务商密钥和外部智能体的环境变量值存进凭据库，不再写进配置文件和数据库；旧版配置文件和 `auth.json` 里已有的密钥会被迁进凭据库。`merak provider list|login|logout` 和 `merak provider relay add|remove` 管理它们。
+
+- 在后台拉取每个已配置服务商的模型列表：配了密钥的服务商打开就能看到完整列表，不用手动刷新。列表连同公开目录和兜底表补全的上下文、价格、思考档位一起保存，重启和离线后仍在；不能对话的模型不显示，已弃用的会标出，刷新失败只提示一次。`merak models refresh [服务商]` 立刻刷新，`merak serve --refresh-models` 已删除。
+
+- 所有文件统一放在 `~/.merakcode` 一个目录下（`MERAKCODE_HOME` 可以挪动它），配置沿用 v0.3 的格式，不用改。在设置里改一项只改这一项，文件里的注释和其他内容保持原样；环境变量里的地址不再被写进配置文件。`merak serve` 的端口和地址取自配置里的 `server`。
 
 ### 修复
 

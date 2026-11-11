@@ -9,14 +9,17 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 )
 
+func str(value string) *string { return &value }
+
 func TestConfigurationPersistsProviderChangesWithoutReturningKeys(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "merakcode.json")
-	settings, err := config.Open(file)
+	root := t.TempDir()
+	file := filepath.Join(root, "merakcode.jsonc")
+	settings, err := config.Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := "relay/example-model"
-	_, err = settings.Update(config.Patch{Model: &model, Providers: map[string]*config.Provider{"relay": {Name: "Local relay", Protocol: "openai", BaseURL: "http://127.0.0.1:8080/v1", APIKey: "private-key", Models: map[string]config.Model{"example-model": {Window: 32000, MaxOutput: 2048}}}}})
+	_, err = settings.Update(config.Patch{Model: &model, Providers: map[string]*config.ProviderPatch{"relay": {Name: str("Local relay"), Protocol: str("openai"), BaseURL: str("http://127.0.0.1:8080/v1"), APIKey: str("private-key"), Models: map[string]*config.Model{"example-model": {Window: 32000, MaxOutput: 2048}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,12 +27,10 @@ func TestConfigurationPersistsProviderChangesWithoutReturningKeys(t *testing.T) 
 	if visible.Model != model || visible.Providers["relay"].APIKey != "" || !visible.Providers["relay"].HasKey {
 		t.Fatalf("invalid public configuration: model=%s", visible.Model)
 	}
-	provider := visible.Providers["relay"]
-	provider.Name = "Renamed relay"
-	if _, err := settings.Update(config.Patch{Providers: map[string]*config.Provider{"relay": &provider}}); err != nil {
+	if _, err := settings.Update(config.Patch{Providers: map[string]*config.ProviderPatch{"relay": {Name: str("Renamed relay")}}}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := config.Open(file)
+	reopened, err := config.Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +41,7 @@ func TestConfigurationPersistsProviderChangesWithoutReturningKeys(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider.BaseURL = "file:///private"
-	if _, err := reopened.Update(config.Patch{Providers: map[string]*config.Provider{"relay": &provider}}); err == nil {
+	if _, err := reopened.Update(config.Patch{Providers: map[string]*config.ProviderPatch{"relay": {BaseURL: str("file:///private")}}}); err == nil {
 		t.Fatal("accepted invalid endpoint")
 	}
 	after, err := os.ReadFile(file)

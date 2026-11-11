@@ -7,10 +7,10 @@ Monorepo for MerakCode, an AI coding tool built around an Electron desktop app. 
 The `dev-v1.0.0` branch rebuilds the whole architecture. The user designs the architecture and each module: implement what the user has decided, and ask when a design question is still open.
 
 - The v0.3 engine and the `merak` command line (`apps/cli`) are deleted; `packages/sdk` is the new TypeScript SDK, and its types are generated from `merak/protocol`. The new engine, command line and protocol are written in Go in `merak/`; the design is `docs/plans/v1-agent-engine.html`. Implement the slice the user asks for, in the order its section lists, test first.
-- Don't read, search or copy the v0.3 engine, command line or SDK (the `v0.3.0` tag, other branches, or other clones of this repository) unless the user asks. Work from the user's design and from tests.
+- The v0.3 engine, command line and SDK (the `v0.3.0` tag, other branches, other clones of this repository) may be read as a reference for behavior, formats and data (the user allowed it on 2026-11-11). Never copy or translate their code: write every line of v1 yourself, from the user's design and from tests.
 - The desktop baseline is `origin/tt/refactor/ui-side-panel` (it contains all of `dev-v0.3.1`). Copy its
   `apps/desktop` components, styles, i18n entries and e2e specs instead of rewriting them; only the data layer
-  changes to the new SDK. The ban on reading the v0.3 engine, command line and SDK is unchanged.
+  changes to the new SDK. The v0.3 engine, command line and SDK may be read for reference but not copied.
 - Nothing that v0.x could do may be missing in v1. Compared with `origin/tt/refactor/ui-side-panel`, every
   feature must keep working; the only change allowed is that planning is no longer a separate mode.
 - Never move, skip or weaken a failing test to get CI green. Fix it, or list it in

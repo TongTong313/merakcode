@@ -38,12 +38,41 @@ func discoverModels(ctx context.Context, provider config.Provider) ([]catalog.Mo
 	return result, nil
 }
 
+var builtinProviders = []string{"openai", "anthropic", "deepseek", "moonshot", "zhipu", "dashscope", "gemini", "openrouter"}
+
+func protocolOf(name string) string {
+	if name == "anthropic" {
+		return "anthropic"
+	}
+	return "openai"
+}
+
+// environmentSource is the model list source of a built-in provider that is configured only by environment variables.
+func environmentSource(name string) catalog.Source {
+	source := catalog.Source{Provider: name, Protocol: protocolOf(name), APIKey: os.Getenv(strings.ToUpper(name) + "_API_KEY"), BaseURL: os.Getenv(strings.ToUpper(name) + "_BASE_URL")}
+	if source.BaseURL != "" {
+		return source
+	}
+	if name == "anthropic" {
+		builtin, _ := anthropic.Builtin(name)
+		source.BaseURL = builtin.BaseURL
+		return source
+	}
+	builtin, _ := openai.Builtin(name)
+	source.BaseURL = builtin.BaseURL
+	return source
+}
+
 func (s *Server) configuration() config.Value {
 	if s.settings == nil {
 		return config.Value{Providers: map[string]config.Provider{}}
 	}
 	value := s.settings.Get()
-	for _, name := range []string{"openai", "anthropic", "deepseek", "moonshot", "zhipu", "dashscope", "gemini", "openrouter"} {
+	for name, provider := range value.Providers {
+		provider.HasKey = s.providerKey(context.Background(), name) != ""
+		value.Providers[name] = provider
+	}
+	for _, name := range builtinProviders {
 		provider := value.Providers[name]
 		if provider.Name == "" {
 			provider.Name = name
@@ -54,10 +83,7 @@ func (s *Server) configuration() config.Value {
 				provider.Protocol = "anthropic"
 			}
 		}
-		if provider.BaseURL == "" {
-			provider.BaseURL = os.Getenv(strings.ToUpper(name) + "_BASE_URL")
-		}
-		provider.HasKey = provider.HasKey || os.Getenv(strings.ToUpper(name)+"_API_KEY") != ""
+		provider.HasKey = provider.HasKey || s.providerKey(context.Background(), name) != "" || os.Getenv(strings.ToUpper(name)+"_API_KEY") != ""
 		value.Providers[name] = provider
 	}
 	return value
@@ -70,6 +96,9 @@ func (s *Server) configure(patch config.Patch) (config.Value, error) {
 		return config.Value{}, os.ErrNotExist
 	}
 	previous := s.settings.Private()
+	if err := s.keepProviderKeys(context.Background(), &patch); err != nil {
+		return config.Value{}, err
+	}
 	if _, err := s.settings.Update(patch); err != nil {
 		return config.Value{}, err
 	}
@@ -87,13 +116,17 @@ func (s *Server) applyConfiguration(value config.Value) {
 	var overrides []catalog.Override
 	var sources []catalog.Source
 	for name, provider := range value.Providers {
-		key, base := provider.APIKey, provider.BaseURL
+		key, base := s.providerKey(context.Background(), name), provider.BaseURL
+		if key == "" {
+			key = provider.APIKey
+		}
 		if key == "" {
 			key = os.Getenv(strings.ToUpper(name) + "_API_KEY")
 		}
 		if base == "" {
 			base = os.Getenv(strings.ToUpper(name) + "_BASE_URL")
 		}
+		configured := key != "" || base != ""
 		protocol := provider.Protocol
 		if protocol == "" {
 			protocol = "openai"
@@ -110,7 +143,9 @@ func (s *Server) applyConfiguration(value config.Value) {
 				base = builtin.BaseURL
 			}
 		}
-		sources = append(sources, catalog.Source{Provider: name, BaseURL: base, APIKey: key, Protocol: protocol, Auth: provider.Auth, Headers: provider.Headers, Disabled: provider.Disabled})
+		if configured {
+			sources = append(sources, catalog.Source{Provider: name, BaseURL: base, APIKey: key, Protocol: protocol, Auth: provider.Auth, Headers: provider.Headers, Disabled: provider.Disabled})
+		}
 		if provider.Disabled {
 			s.engine.SetProvider(name, nil)
 			continue
@@ -142,10 +177,16 @@ func (s *Server) applyConfiguration(value config.Value) {
 			overrides = append(overrides, override)
 		}
 	}
+	for _, name := range builtinProviders {
+		if _, listed := value.Providers[name]; listed || os.Getenv(strings.ToUpper(name)+"_API_KEY") == "" && os.Getenv(strings.ToUpper(name)+"_BASE_URL") == "" {
+			continue
+		}
+		sources = append(sources, environmentSource(name))
+	}
 	s.engine.ConfigureModels(overrides)
 	provider, name, _ := strings.Cut(value.Model, "/")
 	s.engine.SetDefaultModel(provider, name, model.Thinking(value.Thinking))
-	s.engine.Catalog().ConfigureSources(sources)
+	s.engine.ConfigureCatalog(sources)
 	if s.Level != nil && value.Log != "" {
 		var level slog.Level
 		if level.UnmarshalText([]byte(value.Log)) == nil {

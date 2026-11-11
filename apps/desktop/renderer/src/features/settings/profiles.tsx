@@ -18,9 +18,7 @@ export function Profiles(props: { group?: string; kind?: string } = {}) {
 }
 
 function LocalProfiles(props: { group?: string }) {
-  const [profiles, { refetch }] = createResource(
-    async () => (await (await client()).profile.list({ human: localHuman })) ?? [],
-  )
+  const [profiles, { refetch }] = createResource(async () => (await (await client()).profile.list({})) ?? [])
   const [draft, setDraft] = createSignal<ProfileProfile>()
   const [products, { refetch: detect }] = createResource(async () => (await (await client()).member.catalog()) ?? [])
   const [environment, setEnvironment] = createSignal("")
@@ -59,7 +57,7 @@ function LocalProfiles(props: { group?: string }) {
     const env = environment()
     setBusy(true)
     try {
-      await (await client()).member.test({ human: localHuman, profile: payload(profile) })
+      await (await client()).member.test({ profile: payload(profile) })
       if (draft() === profile && environment() === env) setChecked(true)
     } catch (error) {
       fail(error)
@@ -74,7 +72,7 @@ function LocalProfiles(props: { group?: string }) {
     if (!profile) return
     setBusy(true)
     try {
-      await (await client()).profile.save({ human: localHuman, profile: payload(profile) })
+      await (await client()).profile.save({ profile: payload(profile) })
       await refetch()
       setDraft(undefined)
     } catch (error) {
@@ -91,7 +89,6 @@ function LocalProfiles(props: { group?: string }) {
         await client()
       ).member.register({
         group: props.group,
-        human: localHuman,
         member: {
           id: "",
           group: props.group,

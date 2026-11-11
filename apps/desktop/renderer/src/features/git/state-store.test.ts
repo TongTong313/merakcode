@@ -76,9 +76,8 @@ test("a refresh arriving during the initial Git load preserves its result", asyn
 test("external file changes and commits refresh Git and review views", async () => {
   const disconnect = connect()
   const connection = await client()
-  const profiles = await connection.profile.list({ human: localHuman })
+  const profiles = await connection.profile.list({})
   const leader = await connection.profile.save({
-    human: localHuman,
     profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   await connection.group.create({

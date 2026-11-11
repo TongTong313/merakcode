@@ -29,21 +29,21 @@ test("saves three permission modes and confirms full takeover", async () => {
     }
     await expect.poll(() => host.querySelector('[aria-label="Permission level"]')).not.toBeNull()
     choose("Ask only for risky actions")
-    await expect.poll(async () => (await connection.config.get()).mode).toBe("auto")
+    await expect.poll(async () => (await connection.config.get()).permissionMode).toBe("auto")
     choose("Full takeover")
     await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull()
-    expect((await connection.config.get()).mode).toBe("auto")
+    expect((await connection.config.get()).permissionMode).toBe("auto")
     ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
       .find((button) => button.textContent === "Cancel")!
       .click()
-    expect((await connection.config.get()).mode).toBe("auto")
+    expect((await connection.config.get()).permissionMode).toBe("auto")
     choose("Full takeover")
     ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
       .find((button) => button.textContent === "Enable full takeover")!
       .click()
-    await expect.poll(async () => (await connection.config.get()).mode).toBe("takeover")
+    await expect.poll(async () => (await connection.config.get()).permissionMode).toBe("takeover")
     choose("Ask every time")
-    await expect.poll(async () => (await connection.config.get()).mode).toBe("ask")
+    await expect.poll(async () => (await connection.config.get()).permissionMode).toBe("ask")
   } finally {
     dispose()
     host.remove()

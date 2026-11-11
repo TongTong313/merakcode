@@ -100,6 +100,9 @@ func TestGroupUpdateRPCChangesRunningTriggerSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	as := func(human event.ID) *protocol.Client {
+		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
+	}
 	lead := profile.DefaultLeader()
 	lead.ID, lead.Model.Provider = "profile", "fake"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, DefaultLeader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
@@ -112,10 +115,10 @@ func TestGroupUpdateRPCChangesRunningTriggerSettings(t *testing.T) {
 	}
 	settings := group.Settings{Initiative: group.Eager, Triggers: []group.Trigger{{ID: "ci", When: event.Filter{Types: []event.Type{"external.ci.finished"}}, Then: group.Action{Kind: group.CreateTask, Template: "Check CI result"}}}}
 	var updated group.Group
-	if err := client.Call(ctx, "group.update", map[string]any{"group": g.ID, "human": "approver", "settings": settings}, &updated); err == nil || err.Error() != "MRK-6001" {
+	if err := as("approver").Call(ctx, "group.update", map[string]any{"group": g.ID, "settings": settings}, &updated); err == nil || err.Error() != "MRK-6001" {
 		t.Fatalf("approver updated settings: %v", err)
 	}
-	if err := client.Call(ctx, "group.update", map[string]any{"group": g.ID, "human": "owner", "settings": settings}, &updated); err != nil {
+	if err := as("owner").Call(ctx, "group.update", map[string]any{"group": g.ID, "settings": settings}, &updated); err != nil {
 		t.Fatal(err)
 	}
 	if updated.Settings.Initiative != group.Eager {

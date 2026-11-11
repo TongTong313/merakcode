@@ -16,7 +16,7 @@ test("reconnects after an engine crash, restores history and clears old approval
   await expect(kit.text("FIRST_BEFORE_RESTART")).toBeVisible()
   await kit.send("approval")
   await expect(kit.approval()).toBeVisible()
-  const connection = path.join(kit.root, "engine.json")
+  const connection = path.join(kit.root, "data", "engine.json")
   const before = JSON.parse(await readFile(connection, "utf8")) as { pid: number }
   process.kill(before.pid)
   await expect

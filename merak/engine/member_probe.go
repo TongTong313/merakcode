@@ -33,6 +33,10 @@ func (e *Engine) TestMember(ctx context.Context, human event.ID, p profile.Profi
 			return worker.Caps{}, errors.New("profile is not owned by this human")
 		}
 	}
+	p, err := e.withAgentSecrets(ctx, p)
+	if err != nil {
+		return worker.Caps{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir, err := os.MkdirTemp("", "merak-member-test-")

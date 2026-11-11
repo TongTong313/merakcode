@@ -453,7 +453,7 @@ test.describe("task artifact review", () => {
     await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     await expect(kit.page.getByRole("log", { name: "群聊", exact: true })).toBeVisible()
-    const engineInfo = JSON.parse(await readFile(path.join(kit.root, "engine.json"), "utf8")) as {
+    const engineInfo = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")) as {
       endpoint: string
       token: string
     }
@@ -468,7 +468,6 @@ test.describe("task artifact review", () => {
       const worker = (await rpc.group.state({ group: groupID })).members!.find((member) => member.role === "worker")!
       const card = await rpc.task.create({
         group: groupID,
-        human: "local-human",
         title: "审核文档",
         member: worker.id,
         workspace: "folder",
@@ -497,7 +496,6 @@ test.describe("task artifact review", () => {
       await rpc.group.say({
         group: groupID,
         task: taskID,
-        human: "local-human",
         to: [created.payload.group.defaultLeader!],
         text: "Publish report now",
       })
@@ -519,8 +517,8 @@ test.describe("task artifact review", () => {
       expect(await kit.app.evaluate(() => (globalThis as unknown as { downloadedName: string }).downloadedName)).toBe(
         "report.txt",
       )
-      await rpc.task.update({ task: taskID, human: "local-human", phase: "doing" })
-      await rpc.task.update({ task: taskID, human: "local-human", phase: "integrating" })
+      await rpc.task.update({ task: taskID, phase: "doing" })
+      await rpc.task.update({ task: taskID, phase: "integrating" })
       await expect
         .poll(async () =>
           (await facts()).some((event) => event.type === "phase.changed" && event.payload.phase === "review"),
@@ -591,7 +589,7 @@ test.describe("task worktree review", () => {
     await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     await expect(kit.page.getByRole("log", { name: "群聊", exact: true })).toBeVisible()
-    const engineInfo = JSON.parse(await readFile(path.join(kit.root, "engine.json"), "utf8")) as {
+    const engineInfo = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")) as {
       endpoint: string
       token: string
     }
@@ -606,7 +604,6 @@ test.describe("task worktree review", () => {
       const worker = (await rpc.group.state({ group: groupID })).members!.find((member) => member.role === "worker")!
       const card = await rpc.task.create({
         group: groupID,
-        human: "local-human",
         title: "审核代码",
         member: worker.id,
         review: true,
@@ -653,8 +650,8 @@ test.describe("task worktree review", () => {
         .poll(async () => (await events()).some((event) => event.type === "merge.done" && event.scope.task === card.id))
         .toBe(true)
       await kit.page.goto(reviewURL)
-      await rpc.task.update({ task: card.id, human: "local-human", phase: "doing" })
-      await rpc.task.update({ task: card.id, human: "local-human", phase: "integrating" })
+      await rpc.task.update({ task: card.id, phase: "doing" })
+      await rpc.task.update({ task: card.id, phase: "integrating" })
       await expect(review.getByRole("button", { name: "打回规划", exact: true })).toBeVisible()
       await expect(file).toContainText("Reviewed notes with examples")
       await kit.page.screenshot({ path: info.outputPath("task-review.png") })

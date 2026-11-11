@@ -58,9 +58,6 @@ type conversationTurn struct {
 }
 
 func (e *Engine) CreateSession(ctx context.Context, options SessionOptions) (event.ID, error) {
-	if e.storageFull() {
-		return "", store.ErrUnavailable
-	}
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -183,9 +180,6 @@ func (e *Engine) SendWithBudget(ctx context.Context, id event.ID, parts []model.
 			return errors.New("MRK-4001")
 		}
 		selected = &value
-	}
-	if e.storageFull() {
-		return store.ErrUnavailable
 	}
 	if err := ctx.Err(); err != nil {
 		return err

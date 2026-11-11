@@ -43,7 +43,7 @@ func (e *Engine) waitDeviceQuestion(ctx context.Context, id event.ID) (question.
 	}
 }
 
-func (e *Engine) answerDeviceQuestion(ctx context.Context, reply protocol.QuestionReplyParams) {
+func (e *Engine) answerDeviceQuestion(ctx context.Context, reply protocol.DeviceAnswer) {
 	fact, err := e.store.Get(ctx, reply.Request)
 	if err != nil || (fact.Type != question.Asked && fact.Type != group.MemberAsked) || !e.activeDeviceGroup(fact.Scope.Group) {
 		return

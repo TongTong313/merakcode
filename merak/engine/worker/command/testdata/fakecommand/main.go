@@ -21,6 +21,11 @@ func main() {
 			time.Sleep(time.Second)
 		}
 	}
+	if os.Getenv("MERAKCODE_FIXTURE_MODE") == "env" {
+		if err := os.WriteFile("env.txt", []byte(os.Getenv(os.Getenv("MERAKCODE_FIXTURE_ECHO"))), 0600); err != nil {
+			os.Exit(3)
+		}
+	}
 	if err := os.WriteFile("input.txt", input, 0600); err != nil {
 		os.Exit(3)
 	}

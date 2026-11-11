@@ -2,6 +2,11 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"os"
+
+	"github.com/TongTong313/merakcode/merak/engine/event"
 
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
@@ -65,3 +70,30 @@ func (e *Engine) RefreshModels(ctx context.Context, provider string) error {
 }
 
 func (e *Engine) Catalog() *catalog.Catalog { return e.catalog }
+
+// ConfigureCatalog sets the providers whose model lists are fetched. The first call reads the cached lists and starts
+// the background refresh: stale lists are fetched at once and then every hour, and a provider whose key or address
+// changed is fetched right away. MERAKCODE_DISABLE_CATALOG_FETCH=1 keeps the background from sending any request.
+func (e *Engine) ConfigureCatalog(sources []catalog.Source) {
+	e.catalogOnce.Do(func() {
+		hooks := catalog.Hooks{Cache: catalog.StoreCache{Store: e.store}, Now: e.now, Notify: e.notifyCatalog, Disabled: os.Getenv("MERAKCODE_DISABLE_CATALOG_FETCH") == "1"}
+		if err := e.catalog.Attach(e.ctx, hooks); err != nil && e.logger != nil {
+			e.logger.Warn("model catalog cache could not be read")
+		}
+		e.workers.Go(func() { e.catalog.Run(e.ctx) })
+	})
+	e.catalog.ConfigureSources(sources)
+}
+
+func (e *Engine) notifyCatalog(provider string, err error) {
+	kind, notice := catalog.Refreshed, catalog.Notice{Provider: provider}
+	if err != nil {
+		kind, notice.Code = catalog.Failed, "MRK-2001"
+		var failure *model.Error
+		if errors.As(err, &failure) && failure.Code != "" {
+			notice.Code = failure.Code
+		}
+	}
+	body, _ := json.Marshal(notice)
+	_, _ = e.Bus.Publish(e.ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: kind, Actor: event.Actor{Kind: event.ActorAgent}, Payload: body})
+}

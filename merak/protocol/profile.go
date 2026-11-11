@@ -7,21 +7,17 @@ import (
 )
 
 type ProfileListParams struct {
-	Human event.ID `json:"human"`
 }
 
 type ProfileDeleteParams struct {
-	Human   event.ID `json:"human"`
 	Profile event.ID `json:"profile"`
 }
 
 type ProfileSaveParams struct {
-	Human   event.ID        `json:"human"`
 	Profile profile.Profile `json:"profile"`
 }
 
 type MemberRegisterParams struct {
 	Group  event.ID     `json:"group"`
-	Human  event.ID     `json:"human"`
 	Member group.Member `json:"member"`
 }

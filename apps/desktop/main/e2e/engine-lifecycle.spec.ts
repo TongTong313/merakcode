@@ -1,17 +1,26 @@
 import { _electron, expect, test } from "@playwright/test"
 import { execFile } from "node:child_process"
 import { createServer } from "node:http"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { access, mkdtemp, readFile, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { connect } from "@merakcode/sdk"
-import { SqliteStore } from "@merakcode/sdk/store"
 import { bundle } from "../script/build"
+import { stopEngine } from "./fixture"
 import { build } from "esbuild"
 
-test("keeps the engine and storage running while windows are hidden, then shuts down in order", async () => {
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+test("the engine is a background process: it outlives the app, the next start joins it, and the menu stops it", async () => {
   const main = path.resolve(import.meta.dirname, "..")
   const repo = path.resolve(main, "../../..")
   const target = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`
@@ -44,24 +53,26 @@ test("keeps the engine and storage running while windows are hidden, then shuts 
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("Missing local fixture port")
   const modelURL = `http://127.0.0.1:${address.port}`
-  const app = await _electron.launch({
-    executablePath: createRequire(import.meta.url)("electron") as string,
-    args: [
-      main,
-      `--user-data-dir=${path.join(home, "electron")}`,
-      ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
-    ],
-    env: {
-      ...Object.fromEntries(
-        Object.entries(process.env).filter(([key, value]) => key !== "ELECTRON_RUN_AS_NODE" && value !== undefined),
-      ),
-      MERAKCODE_HOME: home,
-      MERAKCODE_APP_DEV_URL: modelURL,
-      MERAKCODE_DISABLE_AUTOUPDATE: "1",
-      OPENAI_API_KEY: "test-key",
-      OPENAI_BASE_URL: modelURL,
-    },
-  })
+  const launch = () =>
+    _electron.launch({
+      executablePath: createRequire(import.meta.url)("electron") as string,
+      args: [
+        main,
+        `--user-data-dir=${path.join(home, "electron")}`,
+        ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
+      ],
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key, value]) => key !== "ELECTRON_RUN_AS_NODE" && value !== undefined),
+        ),
+        MERAKCODE_HOME: home,
+        MERAKCODE_APP_DEV_URL: modelURL,
+        MERAKCODE_DISABLE_AUTOUPDATE: "1",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: modelURL,
+      },
+    })
+  const app = await launch()
   let observer: Awaited<ReturnType<typeof connect>> | undefined
   const appProcess = app.process()
   try {
@@ -105,7 +116,7 @@ test("keeps the engine and storage running while windows are hidden, then shuts 
     })
     expect(handshake).toMatchObject({ protocol: 1, provider: true })
     expect(handshake.models).toBeGreaterThan(0)
-    const info = JSON.parse(await readFile(path.join(home, "engine.json"), "utf8"))
+    const info = JSON.parse(await readFile(path.join(home, "data", "engine.json"), "utf8"))
     observer = await connect(info)
     const session = await observer.session.create({ provider: "openai", model: "gpt-4o", workdir: home })
     await page.evaluate(async (id) => {
@@ -138,6 +149,7 @@ test("keeps the engine and storage running while windows are hidden, then shuts 
         }, session.session),
       )
       .toBe("Background finished")
+    // Quitting the app leaves the engine running, with the work it did
     await app
       .evaluate(({ app }) => {
         app.quit()
@@ -145,17 +157,33 @@ test("keeps the engine and storage running while windows are hidden, then shuts 
       })
       .catch(() => {})
     await expect.poll(() => appProcess.exitCode, { timeout: 15000 }).toBe(0)
-    const store = new SqliteStore(path.join(home, "merak.db"))
+    expect(alive(info.pid)).toBe(true)
+    const stored = await observer.events.find({ scope: { session: session.session }, types: ["message.completed"] })
+    expect(stored).toHaveLength(1)
+
+    // The next start joins the same engine and finds the session
+    const again = await launch()
+    const againProcess = again.process()
     try {
-      expect(store.find({ types: ["engine.shutdown"] })).toHaveLength(1)
-      expect(store.find({ scope: { session: session.session }, types: ["message.completed"] })).toHaveLength(1)
+      const window = await again.firstWindow()
+      await expect(window.getByRole("heading", { name: "Engine lifecycle" })).toBeVisible()
+      expect(JSON.parse(await readFile(path.join(home, "data", "engine.json"), "utf8")).pid).toBe(info.pid)
+      expect((await observer.session.list())?.map((item) => item.id)).toContain(session.session)
+      // "Stop background engine and quit" ends the engine, then the app
+      await again
+        .evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById("stop-engine")!.click())
+        .catch(() => {})
+      await expect.poll(() => againProcess.exitCode, { timeout: 30000 }).toBe(0)
+      await expect.poll(() => alive(info.pid), { timeout: 15000 }).toBe(false)
+      await expect(access(path.join(home, "data", "engine.json"))).rejects.toThrow()
     } finally {
-      store.close()
+      await again.close().catch(() => {})
     }
   } finally {
     release.resolve()
     await observer?.close()
     await app.close().catch(() => {})
+    await stopEngine(home)
     await new Promise<void>((resolve) => server.close(() => resolve()))
     await rm(home, { recursive: true, force: true, maxRetries: 5 })
   }

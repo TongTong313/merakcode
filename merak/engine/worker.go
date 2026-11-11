@@ -21,6 +21,10 @@ import (
 )
 
 func (e *Engine) StartWorker(ctx context.Context, p profile.Profile, a worker.Assignment) (worker.Run, error) {
+	p, err := e.withAgentSecrets(ctx, p)
+	if err != nil {
+		return nil, err
+	}
 	a.Scope.Session = a.Session
 	if p.Product != nil && p.Product.Kind == worker.KindRemote {
 		// The source engine enforces its own profile; the host enforces task totals.

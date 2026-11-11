@@ -26,6 +26,7 @@ func TestSharedDocumentsAreVersionedAndCheckTheWriterRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	member, observer := connectServerAs(t, handler, host, "member", protocol.Capabilities{}), connectServerAs(t, handler, host, "observer", protocol.Capabilities{})
 	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Documents", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "member", Name: "Member", Kind: group.MemberHuman, Role: "member"},
@@ -34,29 +35,29 @@ func TestSharedDocumentsAreVersionedAndCheckTheWriterRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := map[string]any{"group": g.ID, "human": "member", "key": "design", "title": "Design", "text": "First version", "rev": 0}
+	params := map[string]any{"group": g.ID, "key": "design", "title": "Design", "text": "First version", "rev": 0}
 	var result struct {
 		Group string
 		Key   string
 		Text  string
 		Rev   uint64
 	}
-	if err := client.Call(ctx, "doc.write", params, &result); err != nil {
+	if err := member.Call(ctx, "doc.write", params, &result); err != nil {
 		t.Fatal(err)
 	}
 	if result.Rev != 1 || result.Text != "First version" {
 		t.Fatalf("document=%+v", result)
 	}
 	params["text"] = "Lost update"
-	if err := client.Call(ctx, "doc.write", params, &result); err == nil {
+	if err := member.Call(ctx, "doc.write", params, &result); err == nil {
 		t.Fatal("stale revision overwrote a document")
 	}
-	params["rev"], params["human"] = 1, "observer"
-	if err := client.Call(ctx, "doc.write", params, &result); err == nil {
+	params["rev"] = 1
+	if err := observer.Call(ctx, "doc.write", params, &result); err == nil {
 		t.Fatal("observer wrote a document")
 	}
-	params["human"], params["text"] = "member", "Second version"
-	if err := client.Call(ctx, "doc.write", params, &result); err != nil || result.Rev != 2 {
+	params["text"] = "Second version"
+	if err := member.Call(ctx, "doc.write", params, &result); err != nil || result.Rev != 2 {
 		t.Fatalf("update=%+v %v", result, err)
 	}
 	if err := client.Call(ctx, "doc.read", map[string]any{"group": g.ID, "key": "design"}, &result); err != nil || result.Text != "Second version" {

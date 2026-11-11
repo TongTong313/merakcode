@@ -65,7 +65,7 @@ export function choice(id: string | undefined, directory: string) {
   const saved = model ? own?.thinking?.[modelKey(model)] : undefined
   const sameModel = config?.provider === model?.providerID && config?.model === model?.modelID
   const requested = saved ?? (sameModel ? config?.thinking : undefined) ?? state.config?.thinking
-  const requestedMode = config?.mode ?? own?.mode ?? state.config?.mode
+  const requestedMode = config?.mode ?? own?.mode ?? state.config?.permissionMode
   const mode: "ask" | "auto" | "takeover" =
     requestedMode === "takeover" || requestedMode === "auto" ? requestedMode : "ask"
   return { model, mode, variant: requested && (!levels.length || levels.includes(requested)) ? requested : levels[0] }

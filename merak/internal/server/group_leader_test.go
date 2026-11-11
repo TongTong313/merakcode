@@ -31,6 +31,7 @@ func TestOnlyOwnerCanReplaceDefaultLeaderWithALocalLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	people := map[string]*protocol.Client{"owner": connectAs(t, host, "owner", protocol.Capabilities{}), "admin": connectAs(t, host, "admin", protocol.Capabilities{})}
 	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Leaders", DefaultLeader: "first", Project: group.Project{Directory: dir}, Settings: group.Settings{Review: new(false)}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
@@ -46,7 +47,7 @@ func TestOnlyOwnerCanReplaceDefaultLeaderWithALocalLeader(t *testing.T) {
 		allowed       bool
 	}{{"admin", "second", false}, {"owner", "remote", false}, {"owner", "missing", false}, {"owner", "second", true}} {
 		var changed group.Group
-		err := client.Call(ctx, "group.update", map[string]any{"group": g.ID, "human": test.human, "defaultLeader": test.leader}, &changed)
+		err := people[test.human].Call(ctx, "group.update", map[string]any{"group": g.ID, "defaultLeader": test.leader}, &changed)
 		if (err == nil) != test.allowed {
 			t.Fatalf("human=%s leader=%s error=%v", test.human, test.leader, err)
 		}

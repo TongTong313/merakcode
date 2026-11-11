@@ -21,18 +21,15 @@ func TestGeneratorDescribesMethodsAndTypedEventPayloads(t *testing.T) {
 	if err := json.Unmarshal(body, &schema); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"hello", "session.create", "session.send", "session.cancel", "events.subscribe", "store.append", "store.read", "store.find", "store.get", "store.put", "store.fetch", "store.list"} {
+	for _, name := range []string{"hello", "session.create", "session.send", "session.cancel", "events.subscribe", "engine.status", "events.find"} {
 		if len(schema.Methods[name]) == 0 {
 			t.Errorf("missing method %s", name)
 		}
 	}
-	var bodySchema struct {
-		AnyOf []struct {
-			Type string `json:"type"`
-		} `json:"anyOf"`
-	}
-	if err := json.Unmarshal(schema.Defs["StoreDoc"].Properties["body"], &bodySchema); err != nil || len(bodySchema.AnyOf) != 2 || bodySchema.AnyOf[0].Type != "string" {
-		t.Fatalf("document bytes must use JSON base64 strings: %s", schema.Defs["StoreDoc"].Properties["body"])
+	for _, name := range []string{"store.append", "store.read", "store.find", "store.get", "store.put", "store.fetch", "store.list"} {
+		if len(schema.Methods[name]) != 0 {
+			t.Errorf("the engine no longer asks its client to host its storage, but %s is in the protocol", name)
+		}
 	}
 	if len(schema.Defs["ProtocolSessionSendParams"].Properties["parts"]) == 0 {
 		t.Fatal("message parts are missing")

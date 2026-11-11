@@ -15,6 +15,17 @@ import (
 )
 
 func models(args []string, output io.Writer) int {
+	var only string
+	refreshOnly := len(args) > 0 && args[0] == "refresh"
+	if refreshOnly {
+		if len(args) > 2 {
+			return 2
+		}
+		if len(args) == 2 {
+			only = args[1]
+		}
+		args = nil
+	}
 	flags := flag.NewFlagSet("models", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	refresh := flags.Bool("refresh", false, "")
@@ -33,8 +44,11 @@ func models(args []string, output io.Writer) int {
 		return 1
 	}
 	defer client.Close()
-	if *refresh && client.Call(ctx, "model.refresh", protocol.ModelRefreshParams{}, nil) != nil {
+	if (*refresh || refreshOnly) && client.Call(ctx, "model.refresh", protocol.ModelRefreshParams{Provider: only}, nil) != nil {
 		return 1
+	}
+	if refreshOnly {
+		return 0
 	}
 	params := protocol.ModelListParams{}
 	if *overrides != "" {

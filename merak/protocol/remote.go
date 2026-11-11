@@ -52,11 +52,11 @@ type RemoteDelivery struct {
 }
 
 type RemoteControlParams struct {
-	Lookup        *RemoteLookupReply     `json:"lookup,omitempty"`
-	Message       *DeviceMessage         `json:"message,omitempty"`
-	Cancel        *event.ID              `json:"cancel,omitempty"`
-	Reply         *PermissionReplyParams `json:"reply,omitempty"`
-	QuestionReply *QuestionReplyParams   `json:"questionReply,omitempty"`
+	Lookup        *RemoteLookupReply `json:"lookup,omitempty"`
+	Message       *DeviceMessage     `json:"message,omitempty"`
+	Cancel        *event.ID          `json:"cancel,omitempty"`
+	Reply         *DeviceReply       `json:"reply,omitempty"`
+	QuestionReply *DeviceAnswer      `json:"questionReply,omitempty"`
 }
 
 const RemoteLookupRequested event.Type = "reference.requested"
@@ -66,4 +66,16 @@ func init() { event.Register[tool.Call](RemoteLookupRequested) }
 type RemoteLookupReply struct {
 	Request event.ID    `json:"request"`
 	Result  tool.Result `json:"result"`
+}
+
+// DeviceReply and DeviceAnswer are the permission and question replies that travel between engines: the engine that
+// asked is told which person answered. A client of an engine never sends them.
+type DeviceReply struct {
+	PermissionReplyParams
+	Human event.ID `json:"human,omitempty"`
+}
+
+type DeviceAnswer struct {
+	QuestionReplyParams
+	Human event.ID `json:"human,omitempty"`
 }

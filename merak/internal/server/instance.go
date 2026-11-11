@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
@@ -40,16 +41,33 @@ func (i *Instance) AskQuestion(ctx context.Context, request question.Request) (q
 	return i.server.AskQuestion(ctx, request)
 }
 
-func Start(e *engine.Engine, home string, storage ...*RemoteStore) (*Instance, error) {
-	return StartOn(e, home, 0, storage...)
+func Start(e *engine.Engine, home string) (*Instance, error) {
+	return StartOn(e, home, 0)
 }
 
-func StartOn(e *engine.Engine, home string, port int, storage ...*RemoteStore) (*Instance, error) {
-	return StartListening(e, home, "127.0.0.1", port, storage...)
+func StartOn(e *engine.Engine, home string, port int) (*Instance, error) {
+	return StartListening(e, home, "127.0.0.1", port)
 }
 
-// StartListening exposes the authenticated protocol at an explicitly selected address.
-func StartListening(e *engine.Engine, home, address string, port int, storage ...*RemoteStore) (*Instance, error) {
+// StartListening exposes the authenticated protocol at an explicitly selected address. The configuration file is read
+// from the same directory as the connection file.
+func StartListening(e *engine.Engine, home, address string, port int) (*Instance, error) {
+	return StartWith(e, Options{Data: home, Config: home, Address: address, Port: port})
+}
+
+// Options says where the engine keeps its files and where it listens.
+type Options struct {
+	// Data holds engine.json and the lock file.
+	Data string
+	// Config is the root directory of the global configuration file.
+	Config  string
+	Address string
+	Port    int
+}
+
+// StartWith exposes the authenticated protocol as the options say.
+func StartWith(e *engine.Engine, options Options) (*Instance, error) {
+	home, address, port := options.Data, options.Address, options.Port
 	ip := net.ParseIP(address)
 	if ip == nil || port < 0 || port > 65535 {
 		return nil, errors.New("MRK-3001")
@@ -69,8 +87,12 @@ func StartListening(e *engine.Engine, home, address string, port int, storage ..
 		lock.Close()
 		return nil, err
 	}
-	settings, err := config.Open(filepath.Join(home, "merakcode.json"))
+	settings, err := config.Open(options.Config)
 	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	if err := migrateSecrets(context.Background(), settings, e.Vault(), home); err != nil {
 		lock.Close()
 		return nil, err
 	}
@@ -101,11 +123,8 @@ func StartListening(e *engine.Engine, home, address string, port int, storage ..
 	handler.settings = settings
 	e.ConfigureNetworkSettings(settings)
 	handler.applyConfiguration(settings.Private())
-	handler.dataDir = home
+	handler.dataDir, handler.configRoot = home, options.Config
 	handler.logRoot, _ = platformlog.Root()
-	if len(storage) > 0 {
-		handler.Storage = storage[0]
-	}
 	instance := &Instance{Info: info, http: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}, server: handler, lock: lock, home: home}
 	body, err := json.Marshal(info)
 	if err == nil {
@@ -176,3 +195,6 @@ func (i *Instance) SetLogLevel(level *slog.LevelVar) {
 		}
 	}
 }
+
+// AddIdentity makes a token for connections that act as another person than the one of this machine.
+func (i *Instance) AddIdentity(human event.ID) string { return i.server.AddIdentity(human) }

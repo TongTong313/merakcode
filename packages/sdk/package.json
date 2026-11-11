@@ -5,8 +5,7 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./store": "./src/store.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -14,11 +13,9 @@
     "test:e2e": "vitest run test/"
   },
   "dependencies": {
-    "better-sqlite3": "13.0.3",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "9.6.0",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

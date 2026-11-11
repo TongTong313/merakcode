@@ -32,7 +32,7 @@ func TestModelsReadsTheRunningEnginesConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.ConfigureModels([]catalog.Override{{Provider: "company", ID: "configured", Window: new(7777)}})
-	instance, err := server.Start(e, home)
+	instance, err := startAt(e, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestRunJSONUsesConfiguredProviderAndAnswersQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err = server.Start(e, home)
+	instance, err = startAt(e, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestRunJSONUsesConfiguredProviderAndAnswersQuestions(t *testing.T) {
 	}
 }
 
-func TestRunUsesThePlatformDataDirectory(t *testing.T) {
+func TestRunUsesTheDataFolderUnderTheMerakcodeRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("MERAKCODE_HOME", "")
 	for _, key := range []string{"HOME", "USERPROFILE", "APPDATA", "XDG_DATA_HOME"} {
@@ -99,7 +99,7 @@ func TestRunUsesThePlatformDataDirectory(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		home = filepath.Join(root, "Library", "Application Support", "MerakCode")
 	}
-	for _, entry := range []struct{ path, text string }{{home, "Platform directory"}, {filepath.Join(root, ".merakcode"), "Legacy directory"}} {
+	for _, entry := range []struct{ path, text string }{{home, "Platform directory"}, {filepath.Join(root, ".merakcode", "data"), "Merakcode directory"}} {
 		e, err := engine.New(engine.Deps{Workdir: root, Providers: map[string]model.Provider{"openai": fake.New(t, fake.Reply{Text: entry.text})}})
 		if err != nil {
 			t.Fatal(err)
@@ -111,7 +111,7 @@ func TestRunUsesThePlatformDataDirectory(t *testing.T) {
 		t.Cleanup(func() { instance.Close() })
 	}
 	var output bytes.Buffer
-	if code := Run([]string{"run", "--model", "fixture", "Hello"}, strings.NewReader(""), &output); code != 0 || output.String() != "Platform directory\n" {
+	if code := Run([]string{"run", "--model", "fixture", "Hello"}, strings.NewReader(""), &output); code != 0 || output.String() != "Merakcode directory\n" {
 		t.Fatalf("code=%d output=%q", code, output.String())
 	}
 }
@@ -171,7 +171,7 @@ func TestRunUsesTheExistingEngineThroughTheProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err := server.Start(e, home)
+	instance, err := startAt(e, home)
 	if err != nil {
 		t.Fatal(err)
 	}

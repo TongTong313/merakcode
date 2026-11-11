@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine"
@@ -22,8 +21,8 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/openai"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/question"
-	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/internal/localstore"
+	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -77,16 +76,31 @@ func serve(ctx context.Context, args []string) int {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	script := flags.String("script", "", "")
-	storageMode := flags.String("store", "local", "")
 	overrides := flags.String("model-overrides", "", "")
-	refresh := flags.Bool("refresh-models", false, "")
 	development := flags.Bool("development", false, "")
 	port := flags.Int("port", 0, "")
 	listen := flags.String("listen", "127.0.0.1", "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
 		return 2
 	}
-	if (*storageMode != "local" && *storageMode != "remote") || *port < 0 || *port > 65535 || net.ParseIP(*listen) == nil {
+	root, err := configRoot()
+	if err != nil {
+		return 1
+	}
+	settings, err := config.Open(root)
+	if err != nil {
+		return 1
+	}
+	given := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	configured := settings.Get().Server
+	if !given["port"] && configured.Port != 0 {
+		*port = configured.Port
+	}
+	if !given["listen"] && configured.Hostname != "" {
+		*listen = configured.Hostname
+	}
+	if *port < 0 || *port > 65535 || net.ParseIP(*listen) == nil {
 		return 2
 	}
 	logDir, err := platformlog.Directory("engine", *development)
@@ -127,11 +141,6 @@ func serve(ctx context.Context, args []string) int {
 	if err != nil {
 		return 1
 	}
-	if *refresh {
-		if err := catalogue.Refresh(ctx); err != nil {
-			return 1
-		}
-	}
 	for _, name := range []string{"openai", "deepseek", "moonshot", "zhipu", "dashscope", "gemini", "openrouter"} {
 		config, _ := openai.Builtin(name)
 		prefix := strings.ToUpper(name)
@@ -147,23 +156,15 @@ func serve(ctx context.Context, args []string) int {
 	}
 	ready := make(chan struct{})
 	var instance *server.Instance
-	var storage store.Store
-	var remote *server.RemoteStore
-	if *storageMode == "remote" {
-		remote = server.NewRemoteStore()
-		storage = store.NewBuffered(remote, 4096)
-	} else {
-		if err := os.MkdirAll(home, 0700); err != nil {
-			return 1
-		}
-		local, err := localstore.Open(filepath.Join(home, "merak.db"))
-		if err != nil {
-			return 1
-		}
-		defer local.Close()
-		storage = local
+	if err := os.MkdirAll(home, 0700); err != nil {
+		return 1
 	}
-	e, err := engine.New(engine.Deps{DataDir: home, Logger: logger, Store: storage, Providers: providers, Catalog: catalogue, Workdir: workdir, Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
+	local, err := localstore.Open(filepath.Join(home, "merak.db"))
+	if err != nil {
+		return 1
+	}
+	defer local.Close()
+	e, err := engine.New(engine.Deps{DataDir: home, Logger: logger, Store: local, Providers: providers, Catalog: catalogue, Workdir: workdir, Ask: func(ctx context.Context, request permission.Request) (permission.Reply, error) {
 		select {
 		case <-ready:
 			return instance.Ask(ctx, request)
@@ -182,12 +183,10 @@ func serve(ctx context.Context, args []string) int {
 		return 1
 	}
 	defer e.Close()
-	if remote == nil {
-		if err := e.Recover(ctx); err != nil {
-			return 1
-		}
+	if err := e.Recover(ctx); err != nil {
+		return 1
 	}
-	instance, err = server.StartListening(e, home, *listen, *port, remote)
+	instance, err = server.StartWith(e, server.Options{Data: home, Config: root, Address: *listen, Port: *port})
 	if err != nil {
 		return 1
 	}
@@ -202,28 +201,25 @@ func serve(ctx context.Context, args []string) int {
 	return 0
 }
 
-func dataHome() (string, error) {
-	if home := os.Getenv("MERAKCODE_HOME"); home != "" {
-		return home, nil
-	}
-	if runtime.GOOS == "windows" {
-		dir, err := os.UserConfigDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(dir, "MerakCode"), nil
+// configRoot is the one directory every file of the program lives under: MERAKCODE_HOME, or ~/.merakcode.
+func configRoot() (string, error) {
+	if root := os.Getenv("MERAKCODE_HOME"); root != "" {
+		return root, nil
 	}
 	userHome, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(userHome, "Library", "Application Support", "MerakCode"), nil
+	return filepath.Join(userHome, ".merakcode"), nil
+}
+
+// dataHome holds the conversation database and the connection file of the engine.
+func dataHome() (string, error) {
+	root, err := configRoot()
+	if err != nil {
+		return "", err
 	}
-	if dir := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(dir) {
-		return filepath.Join(dir, "merakcode"), nil
-	}
-	return filepath.Join(userHome, ".local", "share", "merakcode"), nil
+	return filepath.Join(root, "data"), nil
 }
 
 func configuredCatalog(path string) (*catalog.Catalog, error) {

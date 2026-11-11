@@ -29,7 +29,7 @@ func TestStopExitsTheServeProcessAndRemovesConnectionFile(t *testing.T) {
 	go func() { done <- child.Wait() }()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := server.ReadInfo(home); err == nil {
+		if _, err := server.ReadInfo(filepath.Join(home, "data")); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -48,7 +48,7 @@ func TestStopExitsTheServeProcessAndRemovesConnectionFile(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("serve did not stop")
 	}
-	if _, err := os.Stat(filepath.Join(home, "engine.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "data", "engine.json")); !os.IsNotExist(err) {
 		t.Fatalf("connection file remains: %v", err)
 	}
 }

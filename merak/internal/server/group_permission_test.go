@@ -27,7 +27,7 @@ func TestOfflineWorkspaceConfirmationSurvivesTheTurnAndClientDisconnect(t *testi
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcpServers":{"docs":{"command":"not-started"}}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "merakcode.json"), []byte(`{"mcp":{"docs":{"type":"local","command":["not-started"]}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	settings := config.NewMemory()
@@ -114,7 +114,7 @@ func TestGroupApprovalRejectsAnUnqualifiedHumanWithoutConsumingTheRequest(t *tes
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
-	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "fixture-token", protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), handler.AddIdentity("approver"), protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,12 +142,18 @@ func TestGroupApprovalRejectsAnUnqualifiedHumanWithoutConsumingTheRequest(t *tes
 			if fact.Type != permission.Requested {
 				continue
 			}
-			params := protocol.PermissionReplyParams{Request: fact.ID, Decision: permission.Allow, Human: "approver"}
+			params := protocol.PermissionReplyParams{Request: fact.ID, Decision: permission.Allow}
 			if err := client.Call(ctx, "permission.reply", params, nil); err == nil {
 				t.Fatal("lower role answered a protected write")
 			}
-			params.Human = "owner"
-			if err := client.Call(ctx, "permission.reply", params, nil); err != nil {
+			client.Close()
+			owner, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), handler.AddIdentity("owner"), protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owner.Close()
+			waitForRequest(t, owner, fact.ID)
+			if err := owner.Call(ctx, "permission.reply", params, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := run.Wait(ctx); err != nil {
@@ -177,6 +183,7 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler = server.New(e, "token")
+	ownerToken := handler.AddIdentity("owner")
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
@@ -204,7 +211,7 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), ownerToken, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +227,7 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 				t.Fatal("reconnect changed request identity")
 			}
 			if !transferred {
-				replacement, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "replacement", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
+				replacement, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), ownerToken, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "replacement", Version: "1"}, Capabilities: protocol.Capabilities{Approve: true}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -230,7 +237,7 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 				client, transferred = replacement, true
 				continue
 			}
-			if err := client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request, Human: "owner", Decision: permission.Allow}, nil); err != nil {
+			if err := client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request, Decision: permission.Allow}, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := run.Wait(ctx); err != nil {

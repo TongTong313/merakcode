@@ -1,8 +1,8 @@
 # Desktop engine lifecycle
 
-The main process connects to `<data>/engine.json` before starting `merak serve --store remote`. It offers the SDK's SQLite storage host during `hello`; a declined offer continues as an ordinary client. Data locations match the Go command: `MERAKCODE_HOME`, Windows `%APPDATA%/MerakCode`, macOS `~/Library/Application Support/MerakCode`, or Linux `$XDG_DATA_HOME/merakcode` with the usual home fallback.
+The main process connects to `<root>/data/engine.json` before starting `merak serve --store remote`. It offers the SDK's SQLite storage host during `hello`; a declined offer continues as an ordinary client. Every file lives under one root, like the Go command: `MERAKCODE_HOME`, or `~/.merakcode`.
 
-Source builds use `merak/dist/<platform>-<arch>/merak[.exe]`. Installers contain the native binary in `resources/merak/`. The main bundle includes the SQLite runtime and its prebuilt native modules; it does not ship a separate Node engine. `script/dev.ts` builds the native Go target before launching Electron.
+Source builds use `merak/dist/<platform>-<arch>/merak[.exe]`. Installers contain the native binary in `resources/merak/`. The engine is a background process of its own (`merak serve`, the daemon of the user): the main process joins the one that is running, starts it detached when there is none, and on quit only closes its connection. The tray and the File menu have "Stop Background Engine and Quit"; `merak stop` does the same from a terminal. `script/dev.ts` builds the native Go target before launching Electron.
 
 The main process serves packaged UI files through Electron's [protocol handler](https://www.electronjs.org/docs/latest/api/protocol), at the engine's HTTP origin. Development forwards those UI requests to Vite. This works even when a command-line process started the engine first. File resolution stays inside the built UI directory. Unrelated HTTP requests use [Session.fetch](https://www.electronjs.org/docs/latest/api/session) with `bypassCustomProtocolHandlers`; only application frames receive the engine token on WebSocket handshakes.
 

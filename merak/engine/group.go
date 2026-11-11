@@ -166,6 +166,10 @@ func (e *Engine) saveGroupProfile(ctx context.Context, p profile.Profile, owner 
 	if p.ID == "" || p.Role != profile.Leader && p.Role != profile.Worker {
 		return errors.New("profile id and role are required")
 	}
+	p, err := e.keepAgentSecrets(ctx, p)
+	if err != nil {
+		return err
+	}
 	body, err := json.Marshal(p)
 	if err != nil {
 		return err

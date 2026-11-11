@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/worker/remote"
-	"github.com/TongTong313/merakcode/merak/internal/platform/credential"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
@@ -42,7 +40,7 @@ func (e *Engine) remoteCredentials(ctx context.Context, id event.ID) (protocol.R
 	if e.dataDir == "" || id == "" {
 		return result, errors.New("MRK-3001")
 	}
-	body, err := credential.New(filepath.Join(e.dataDir, "credentials")).Get(ctx, "remote:"+string(id))
+	body, err := e.vault.Get(ctx, "remote:"+string(id))
 	if err != nil {
 		return result, err
 	}
@@ -115,7 +113,7 @@ func (e *Engine) replyRemoteEvent(ctx context.Context, fact event.Event) (protoc
 		request.Call.Env.Scope = fact.Scope
 		request.Call.Env.Scope.Session = ""
 		reply, err := e.permissions.AskRemote(ctx, request, fact.Time)
-		return protocol.RemoteControlParams{Reply: &protocol.PermissionReplyParams{Request: fact.ID, Decision: reply.Decision, Leader: reply.Leader, Human: reply.Human, Remember: reply.Remember}}, err
+		return protocol.RemoteControlParams{Reply: &protocol.DeviceReply{PermissionReplyParams: protocol.PermissionReplyParams{Request: fact.ID, Decision: reply.Decision, Leader: reply.Leader, Remember: reply.Remember}, Human: reply.Human}}, err
 	}
 	if fact.Type == question.Asked {
 		request, err := event.Decode[question.Request](fact)
@@ -124,7 +122,7 @@ func (e *Engine) replyRemoteEvent(ctx context.Context, fact event.Event) (protoc
 		}
 		request.ID = fact.ID
 		answer, err := e.askQuestion(ctx, request)
-		return protocol.RemoteControlParams{QuestionReply: &protocol.QuestionReplyParams{Request: fact.ID, Text: answer.Text, Human: answer.Human, Cancelled: answer.Cancelled}}, err
+		return protocol.RemoteControlParams{QuestionReply: &protocol.DeviceAnswer{QuestionReplyParams: protocol.QuestionReplyParams{Request: fact.ID, Text: answer.Text, Cancelled: answer.Cancelled}, Human: answer.Human}}, err
 	}
 	if fact.Type == group.MemberAsked {
 		e.mu.Lock()
@@ -142,7 +140,7 @@ func (e *Engine) replyRemoteEvent(ctx context.Context, fact event.Event) (protoc
 		defer cancel()
 		select {
 		case text := <-pending.reply:
-			return protocol.RemoteControlParams{QuestionReply: &protocol.QuestionReplyParams{Request: fact.ID, Text: text}}, nil
+			return protocol.RemoteControlParams{QuestionReply: &protocol.DeviceAnswer{QuestionReplyParams: protocol.QuestionReplyParams{Request: fact.ID, Text: text}}}, nil
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				e.approvalTimedOut(context.WithoutCancel(ctx), fact.Scope, fact.Actor.ID, fact.ID)
@@ -168,7 +166,7 @@ func (e *Engine) ConnectRemote(ctx context.Context, params protocol.RemoteConnec
 		return protocol.RemoteConnection{}, err
 	}
 	secret, _ := json.Marshal(params)
-	vault := credential.New(filepath.Join(e.dataDir, "credentials"))
+	vault := e.vault
 	for _, prior := range connections {
 		doc, err := e.store.Fetch(ctx, prior.Kind, prior.Key)
 		if err != nil {

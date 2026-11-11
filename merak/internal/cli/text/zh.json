@@ -7,5 +7,11 @@
   "unknownCost": "费用：未知\n",
   "allowWrite": "允许写入 %s 吗？[y/n] ",
   "allowExec": "允许运行命令 %s 吗？[y/n] ",
-  "diagnosticSaved": "诊断包已保存到 %s\n"
+  "diagnosticSaved": "诊断包已保存到 %s\n",
+  "statusRunning": "引擎正在运行",
+  "statusStopped": "引擎没有运行",
+  "statusPID": "pid",
+  "statusPort": "port",
+  "statusRoot": "root",
+  "statusClients": "clients"
 }

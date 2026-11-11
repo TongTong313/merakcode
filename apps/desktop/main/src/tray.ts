@@ -1,7 +1,7 @@
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from "electron"
 import type { AppLocale, TrayState } from "../../renderer/src/desktop/bridge-contract"
 
-/** System tray: recent sessions, new session, settings, quit */
+/** System tray: recent sessions, new session, settings, quit, and stopping the background engine with it */
 export type Options = {
   icon: string
   locale: () => AppLocale
@@ -11,6 +11,8 @@ export type Options = {
   settings: () => void
   clear: () => void
   quit: () => void
+  /** Stops the engine that keeps running in the background, then quits */
+  stopEngine: () => void
 }
 
 const text = {
@@ -22,6 +24,7 @@ const text = {
     clear: "清除通知",
     settings: "设置",
     quit: "退出",
+    stopEngine: "停止后台引擎并退出",
   },
   en: {
     open: "Open MerakCode",
@@ -31,6 +34,7 @@ const text = {
     clear: "Clear Notifications",
     settings: "Settings",
     quit: "Quit",
+    stopEngine: "Stop Background Engine and Quit",
   },
 }
 
@@ -81,6 +85,7 @@ export class AppTray {
       { label: t.settings, click: () => this.options.settings() },
       { type: "separator" },
       { label: t.quit, click: () => this.options.quit() },
+      { label: t.stopEngine, click: () => this.options.stopEngine() },
     ]
     this.tray.setContextMenu(Menu.buildFromTemplate(template))
   }

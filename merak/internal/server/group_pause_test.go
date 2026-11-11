@@ -44,16 +44,19 @@ func TestPausedGroupRetainsMessagesUntilAnAdminResumesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	as := func(human event.ID) *protocol.Client {
+		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
+	}
 	p := profile.DefaultLeader()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	g, err := e.CreateGroup(ctx, group.Group{Kind: group.KindLocal, Name: "Paused", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, []group.Member{{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}, {ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: p.ID}}, []profile.Profile{p})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Call(ctx, "group.pause", map[string]any{"group": g.ID, "human": "observer"}, new(struct{})); err == nil {
+	if err := as("observer").Call(ctx, "group.pause", map[string]any{"group": g.ID}, new(struct{})); err == nil {
 		t.Fatal("observer paused the group")
 	}
-	if err := client.Call(ctx, "group.pause", map[string]any{"group": g.ID, "human": "owner"}, new(struct{})); err != nil {
+	if err := as("owner").Call(ctx, "group.pause", map[string]any{"group": g.ID}, new(struct{})); err != nil {
 		t.Fatal(err)
 	}
 	events, stop := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Group: g.ID}, Types: []event.Type{loop.TurnStarted, loop.TurnFinished}})
@@ -66,7 +69,7 @@ func TestPausedGroupRetainsMessagesUntilAnAdminResumesIt(t *testing.T) {
 		t.Fatalf("paused group invoked a model: %s", fact.Type)
 	case <-time.After(80 * time.Millisecond):
 	}
-	if err := client.Call(ctx, "group.resume", map[string]any{"group": g.ID, "human": "owner"}, new(struct{})); err != nil {
+	if err := as("owner").Call(ctx, "group.resume", map[string]any{"group": g.ID}, new(struct{})); err != nil {
 		t.Fatal(err)
 	}
 	for {

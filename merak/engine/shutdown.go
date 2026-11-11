@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/store"
 )
 
 const Shutdown event.Type = "engine.shutdown"
@@ -53,11 +52,6 @@ func (e *Engine) shutdown(ctx context.Context) error {
 	if e.sandboxErr != nil {
 		return e.sandboxErr
 	}
-	if buffered, ok := e.store.(*store.Buffered); ok {
-		if err := buffered.Wait(ctx); err != nil {
-			return err
-		}
-	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, c := range e.sessions {
@@ -69,11 +63,5 @@ func (e *Engine) shutdown(ctx context.Context) error {
 		}
 	}
 	_, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: Shutdown, Actor: event.Actor{Kind: event.ActorAgent}, Payload: json.RawMessage(`{}`)})
-	if err != nil {
-		return err
-	}
-	if buffered, ok := e.store.(*store.Buffered); ok {
-		return buffered.Wait(ctx)
-	}
-	return nil
+	return err
 }

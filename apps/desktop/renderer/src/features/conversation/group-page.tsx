@@ -59,10 +59,7 @@ export function GroupConversation(props: { id: string; directory: string }) {
         .join(","),
     async () => {
       const connection = await client()
-      const [profiles, products] = await Promise.all([
-        connection.profile.list({ human: localHuman }),
-        connection.member.catalog(),
-      ])
+      const [profiles, products] = await Promise.all([connection.profile.list({}), connection.member.catalog()])
       return { profiles: profiles ?? [], products: products ?? [] }
     },
   )
@@ -290,7 +287,6 @@ export function GroupConversation(props: { id: string; directory: string }) {
                     ).group.say({
                       group: props.id,
                       task: task() || undefined,
-                      human: localHuman,
                       text,
                       to: [...recipients],
                     })
@@ -394,7 +390,6 @@ export function GroupConversation(props: { id: string; directory: string }) {
                               await client()
                             ).group.update({
                               group: group.id,
-                              human: localHuman,
                               settings: { ...group.settings, initiative },
                             })
                           } catch (error) {

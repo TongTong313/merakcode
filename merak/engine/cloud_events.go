@@ -273,7 +273,7 @@ func (e *Engine) importCloudUnlocked(ctx context.Context, host *deviceHost, fact
 			if err != nil {
 				return err
 			}
-			e.answerDeviceQuestion(ctx, protocol.QuestionReplyParams{Request: fact.Cause, Text: answer.Text})
+			e.answerDeviceQuestion(ctx, protocol.DeviceAnswer{QuestionReplyParams: protocol.QuestionReplyParams{Request: fact.Cause, Text: answer.Text}})
 		}
 	}
 	return nil

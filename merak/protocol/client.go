@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/store"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/TongTong313/merakcode/merak/internal/platform/websocket"
@@ -24,31 +22,27 @@ type Client struct {
 	pending       map[string]chan Message
 	done          chan struct{}
 	failure       error
-	store         store.Store
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
 
-func Connect(ctx context.Context, endpoint, token string, hello HelloParams, hosts ...store.Store) (*Client, error) {
-	return connect(ctx, endpoint, token, hello, false, hosts...)
+func Connect(ctx context.Context, endpoint, token string, hello HelloParams) (*Client, error) {
+	return connect(ctx, endpoint, token, hello, false)
 }
 
 // ConnectOrdered delivers every notification through Notifications in wire order.
-// Events remains empty; responses and storage requests retain their normal behavior.
-func ConnectOrdered(ctx context.Context, endpoint, token string, hello HelloParams, hosts ...store.Store) (*Client, error) {
-	return connect(ctx, endpoint, token, hello, true, hosts...)
+// Events remains empty; responses keep their normal behavior.
+func ConnectOrdered(ctx context.Context, endpoint, token string, hello HelloParams) (*Client, error) {
+	return connect(ctx, endpoint, token, hello, true)
 }
 
-func connect(ctx context.Context, endpoint, token string, hello HelloParams, ordered bool, hosts ...store.Store) (*Client, error) {
+func connect(ctx context.Context, endpoint, token string, hello HelloParams, ordered bool) (*Client, error) {
 	conn, err := websocket.Dial(ctx, endpoint, token)
 	if err != nil {
 		return nil, &Error{Code: -32000, Message: "Connection failed", Data: ErrorData{Code: "MRK-1001"}}
 	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
-	if len(hosts) > 0 && hosts[0] != nil {
-		hello.Capabilities.Store = true
-	}
 	params, err := json.Marshal(hello)
 	if err != nil {
 		conn.Close()
@@ -88,9 +82,6 @@ func connect(ctx context.Context, endpoint, token string, hello HelloParams, ord
 		conn.Close()
 		c.cancel()
 		return nil, &Error{Code: -32000, Message: "Protocol version is unsupported", Data: ErrorData{Code: "MRK-1001"}}
-	}
-	if len(hosts) > 0 && c.Hello.Store == "accepted" {
-		c.store = hosts[0]
 	}
 	go c.read()
 	return c, nil
@@ -165,15 +156,6 @@ func (c *Client) read() {
 		if err = json.Unmarshal(body, &message); err != nil {
 			failure = err
 			return
-		}
-		if strings.HasPrefix(message.Method, "store.") && c.store != nil {
-			go func(request Message) {
-				body, err := json.Marshal(HandleStore(c.ctx, c.store, request))
-				if err == nil {
-					_ = c.conn.Write(body)
-				}
-			}(message)
-			continue
 		}
 		if !c.ordered && (message.Method == "event" || message.Method == "events.lagged") {
 			var fact event.Event

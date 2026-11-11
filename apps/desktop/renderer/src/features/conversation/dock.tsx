@@ -13,17 +13,13 @@ const failed = (error: unknown) =>
     error,
   })
 
-export function Approval(props: {
-  request: Extract<EngineEvent, { type: "permission.requested" }>
-  more?: number
-  human?: string
-}) {
+export function Approval(props: { request: Extract<EngineEvent, { type: "permission.requested" }>; more?: number }) {
   const [busy, setBusy] = createSignal(false)
   const reply = async (decision: "allow" | "deny") => {
     const request = props.request.id
     setBusy(true)
     try {
-      await (await client()).permission.reply({ request, decision, human: props.human })
+      await (await client()).permission.reply({ request, decision })
     } catch (error) {
       failed(error)
     } finally {
@@ -53,7 +49,7 @@ export function Approval(props: {
   )
 }
 
-export function Question(props: { request: Extract<EngineEvent, { type: "question.asked" }>; human?: string }) {
+export function Question(props: { request: Extract<EngineEvent, { type: "question.asked" }> }) {
   const [answer, setAnswer] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   createEffect(
@@ -72,7 +68,7 @@ export function Question(props: { request: Extract<EngineEvent, { type: "questio
     if (busy() || (!cancelled && !text)) return
     setBusy(true)
     try {
-      await (await client()).question.reply({ request, text, cancelled, human: props.human })
+      await (await client()).question.reply({ request, text, cancelled })
     } catch (error) {
       failed(error)
     } finally {

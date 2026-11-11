@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -108,6 +109,10 @@ func (e *Engine) SaveProfile(ctx context.Context, human event.ID, p profile.Prof
 	if err == nil && doc.Meta["owner"] != string(human) {
 		return profile.Profile{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the profile owner can edit it"))
 	}
+	p, err = e.keepAgentSecrets(ctx, p)
+	if err != nil {
+		return profile.Profile{}, err
+	}
 	body, err := json.Marshal(p)
 	if err != nil {
 		return profile.Profile{}, err
@@ -192,4 +197,48 @@ func (e *Engine) RegisterMember(ctx context.Context, groupID, human event.ID, me
 		return e.addGroupMember(ctx, groupID, member, nil, actor.Can(group.RoleAdmin))
 	}
 	return group.Member{}, errors.New("profile is not owned by this human")
+}
+
+func agentSecretKey(id, name string) string { return "agent:" + id + ":" + name }
+
+// keepAgentSecrets moves the non-empty environment values of an external agent into the vault and returns the profile
+// without them. An empty value keeps the value that is already stored.
+func (e *Engine) keepAgentSecrets(ctx context.Context, p profile.Profile) (profile.Profile, error) {
+	if p.Product == nil || len(p.Product.Env) == 0 {
+		return p, nil
+	}
+	product := *p.Product
+	product.Env = make(map[string]string, len(p.Product.Env))
+	for name, value := range p.Product.Env {
+		product.Env[name] = ""
+		if value == "" {
+			continue
+		}
+		if err := e.vault.Set(ctx, agentSecretKey(string(p.ID), name), []byte(value)); err != nil {
+			return profile.Profile{}, err
+		}
+	}
+	p.Product = &product
+	return p, nil
+}
+
+// withAgentSecrets fills the environment values of an external agent that are empty from the vault.
+func (e *Engine) withAgentSecrets(ctx context.Context, p profile.Profile) (profile.Profile, error) {
+	if p.Product == nil || len(p.Product.Env) == 0 || p.ID == "" {
+		return p, nil
+	}
+	product := *p.Product
+	product.Env = make(map[string]string, len(p.Product.Env))
+	for name, value := range p.Product.Env {
+		if value == "" {
+			stored, err := e.vault.Get(ctx, agentSecretKey(string(p.ID), name))
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return profile.Profile{}, err
+			}
+			value = string(stored)
+		}
+		product.Env[name] = value
+	}
+	p.Product = &product
+	return p, nil
 }

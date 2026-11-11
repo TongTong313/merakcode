@@ -38,11 +38,9 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 				t.Fatal(err)
 			}
 			defer host.Close()
-			client, err := protocol.Connect(ctx, host.Info.Endpoint, host.Info.Token, protocol.HelloParams{Protocol: 1, Capabilities: protocol.Capabilities{Approve: true}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer client.Close()
+			owner := connectAs(t, host, "owner", protocol.Capabilities{})
+			admin := connectAs(t, host, "admin", protocol.Capabilities{})
+			adminApprover := connectAs(t, host, "admin", protocol.Capabilities{Approve: true})
 			g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Budget", DefaultLeader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
@@ -52,7 +50,7 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 				t.Fatal(err)
 			}
 			var card task.Card
-			if err := client.Call(ctx, "task.create", map[string]any{"group": g.ID, "human": "owner", "title": "Bounded", "budget": map[string]any{"maxTokens": 10}}, &card); err != nil {
+			if err := owner.Call(ctx, "task.create", map[string]any{"group": g.ID, "title": "Bounded", "budget": map[string]any{"maxTokens": 10}}, &card); err != nil {
 				t.Fatal(err)
 			}
 			if card.Budget.MaxTokens != 10 {
@@ -63,7 +61,7 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 			}
 			completed := make(chan error, 1)
 			go func() {
-				completed <- client.Call(ctx, "task.update", map[string]any{"task": card.ID, "human": "admin", "budget": map[string]any{"tokens": 20}, "reason": "Finish verification"}, nil)
+				completed <- admin.Call(ctx, "task.update", map[string]any{"task": card.ID, "budget": map[string]any{"tokens": 20}, "reason": "Finish verification"}, nil)
 			}()
 			var request permission.Request
 			select {
@@ -76,10 +74,14 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 			if request.Kind != "budget" || permission.Need(request, workspace.Workspace{}, g) != group.RoleOwner || request.Leader != "" {
 				t.Fatalf("route=%+v", request)
 			}
-			if err := client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request.ID, Human: "admin", Decision: decision}, nil); err == nil {
+			waitForRequest(t, adminApprover, request.ID)
+			if err := adminApprover.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request.ID, Decision: decision}, nil); err == nil {
 				t.Fatal("admin approved an owner budget")
 			}
-			if err := client.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request.ID, Human: "owner", Decision: decision}, nil); err != nil {
+			adminApprover.Close()
+			ownerApprover := connectAs(t, host, "owner", protocol.Capabilities{Approve: true})
+			waitForRequest(t, ownerApprover, request.ID)
+			if err := ownerApprover.Call(ctx, "permission.reply", protocol.PermissionReplyParams{Request: request.ID, Decision: decision}, nil); err != nil {
 				t.Fatal(err)
 			}
 			err = <-completed
@@ -102,7 +104,7 @@ func TestSDKTaskBudgetIncreaseRequiresOwnerAndPreservesDeniedState(t *testing.T)
 			} else if len(value.Grants) != 0 || current.Status != task.Blocked {
 				t.Fatalf("denied=%s", body)
 			}
-			if err := client.Call(ctx, "task.update", map[string]any{"task": card.ID, "human": "owner", "budget": map[string]any{"tokens": 15}}, nil); err != nil {
+			if err := owner.Call(ctx, "task.update", map[string]any{"task": card.ID, "budget": map[string]any{"tokens": 15}}, nil); err != nil {
 				t.Fatal(err)
 			}
 		})

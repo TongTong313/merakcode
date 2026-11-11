@@ -36,7 +36,7 @@ it("connects to a real merak serve and receives a completed conversation", async
   })
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()))
   try {
-    const infoFile = path.join(home, "engine.json")
+    const infoFile = path.join(home, "data", "engine.json")
     let info: { endpoint: string; token: string } | undefined
     for (let attempt = 0; attempt < 250; attempt++) {
       if (child.exitCode !== null) throw new Error(`Engine exited with ${child.exitCode}`)
@@ -120,7 +120,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         project: { directory: home },
         defaultLeader: "leader",
         members: [
-          { id: "human", group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
+          { id: "local-human", group: "", kind: "human", name: "Owner", role: "owner", status: "idle" },
           {
             id: "leader",
             group: "",
@@ -147,7 +147,7 @@ it("connects to a real merak serve and receives a completed conversation", async
       const stopGroup = await client.events.subscribe({ scope: { group: group.id } }, (event) => {
         if (event.type === "turn.finished") groupDone.resolve()
       })
-      const task = await client.task.create({ group: group.id, human: "human", title: "Verify the SDK group" })
+      const task = await client.task.create({ group: group.id, title: "Verify the SDK group" })
       await Promise.race([
         groupDone.promise,
         delay(5000).then(() => {
@@ -161,7 +161,7 @@ it("connects to a real merak serve and receives a completed conversation", async
       await stopGroup()
       await client.group.addMember({
         group: group.id,
-        human: "human",
+
         member: {
           id: "worker",
           group: group.id,
@@ -185,23 +185,23 @@ it("connects to a real merak serve and receives a completed conversation", async
       const observeGroup = await client.events.subscribe({ scope: { group: group.id } }, (event) =>
         groupEvents.push(event),
       )
-      const message = await client.group.say({ group: group.id, human: "human", text: "Please prepare for review." })
+      const message = await client.group.say({ group: group.id, text: "Please prepare for review." })
       await expect.poll(() => groupEvents.filter((event) => event.type === "turn.finished").length).toBe(1)
       expect(groupEvents.some((event) => event.type === "notice.sent" && event.cause === message)).toBe(true)
       const reviewed = await client.task.create({
         group: group.id,
-        human: "human",
+
         title: "Review the SDK result",
         review: true,
       })
       await expect.poll(() => groupEvents.filter((event) => event.type === "turn.finished").length).toBe(2)
-      const claim = await client.task.assign({ task: reviewed.id, human: "human", member: "worker" })
+      const claim = await client.task.assign({ task: reviewed.id, member: "worker" })
       expect(claim.member).toBe("worker")
       await expect
         .poll(() => groupEvents.some((event) => event.type === "task.reported" && event.scope.task === reviewed.id))
         .toBe(true)
-      await client.task.update({ task: reviewed.id, human: "human", phase: "doing" })
-      await client.task.update({ task: reviewed.id, human: "human", phase: "integrating" })
+      await client.task.update({ task: reviewed.id, phase: "doing" })
+      await client.task.update({ task: reviewed.id, phase: "integrating" })
       await expect
         .poll(() =>
           groupEvents.some(
@@ -210,7 +210,7 @@ it("connects to a real merak serve and receives a completed conversation", async
           ),
         )
         .toBe(true)
-      await client.task.review({ task: reviewed.id, human: "human", decision: "approve" })
+      await client.task.review({ task: reviewed.id, decision: "approve" })
       await expect
         .poll(() => groupEvents.some((event) => event.type === "task.closed" && event.scope.task === reviewed.id))
         .toBe(true)

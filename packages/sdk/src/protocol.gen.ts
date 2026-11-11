@@ -7,6 +7,8 @@ export const CatalogCapsSchema: z.ZodType<CatalogCaps> = z.lazy(() =>
 )
 export type CatalogModel = {
   caps: CatalogCaps
+  defaultThinking?: string
+  deprecated?: boolean
   id: string
   maxOutput: number
   price: CatalogPrice
@@ -19,6 +21,8 @@ export type CatalogModel = {
 export const CatalogModelSchema: z.ZodType<CatalogModel> = z.lazy(() =>
   z.strictObject({
     caps: CatalogCapsSchema,
+    defaultThinking: z.string().optional(),
+    deprecated: z.boolean().optional(),
     id: z.string(),
     maxOutput: z.number().int(),
     price: CatalogPriceSchema,
@@ -29,8 +33,14 @@ export const CatalogModelSchema: z.ZodType<CatalogModel> = z.lazy(() =>
     window: z.number().int(),
   }),
 )
+export type CatalogNotice = { code?: string; provider: string }
+export const CatalogNoticeSchema: z.ZodType<CatalogNotice> = z.lazy(() =>
+  z.strictObject({ code: z.string().optional(), provider: z.string() }),
+)
 export type CatalogOverride = {
   caps?: CatalogCaps | null
+  defaultThinking?: string | null
+  deprecated?: boolean | null
   id: string
   maxOutput?: number | null
   price?: CatalogPrice | null
@@ -41,6 +51,8 @@ export type CatalogOverride = {
 export const CatalogOverrideSchema: z.ZodType<CatalogOverride> = z.lazy(() =>
   z.strictObject({
     caps: z.union([CatalogCapsSchema, z.null()]).optional(),
+    defaultThinking: z.union([z.string(), z.null()]).optional(),
+    deprecated: z.union([z.boolean(), z.null()]).optional(),
     id: z.string(),
     maxOutput: z.union([z.number().int(), z.null()]).optional(),
     price: z.union([CatalogPriceSchema, z.null()]).optional(),
@@ -106,11 +118,12 @@ export type ConfigPatch = {
   deniedHosts?: string[] | null | null
   locale?: string | null
   log?: string | null
-  mode?: string | null
   model?: string | null
   permissionGrants?: ConfigPermissionGrant[] | null | null
+  permissionMode?: string | null
   permissionRules?: ConfigPermissionRule[] | null | null
-  providers?: Record<string, ConfigProvider | null>
+  providers?: Record<string, ConfigProviderPatch | null>
+  smallModel?: string | null
   thinking?: string | null
   unconfined?: ConfigLaunchDecision[] | null | null
 }
@@ -121,11 +134,12 @@ export const ConfigPatchSchema: z.ZodType<ConfigPatch> = z.lazy(() =>
     deniedHosts: z.union([z.union([z.array(z.string()), z.null()]), z.null()]).optional(),
     locale: z.union([z.string(), z.null()]).optional(),
     log: z.union([z.string(), z.null()]).optional(),
-    mode: z.union([z.string(), z.null()]).optional(),
     model: z.union([z.string(), z.null()]).optional(),
     permissionGrants: z.union([z.union([z.array(ConfigPermissionGrantSchema), z.null()]), z.null()]).optional(),
+    permissionMode: z.union([z.string(), z.null()]).optional(),
     permissionRules: z.union([z.union([z.array(ConfigPermissionRuleSchema), z.null()]), z.null()]).optional(),
-    providers: z.record(z.string(), z.union([ConfigProviderSchema, z.null()])).optional(),
+    providers: z.record(z.string(), z.union([ConfigProviderPatchSchema, z.null()])).optional(),
+    smallModel: z.union([z.string(), z.null()]).optional(),
     thinking: z.union([z.string(), z.null()]).optional(),
     unconfined: z.union([z.union([z.array(ConfigLaunchDecisionSchema), z.null()]), z.null()]).optional(),
   }),
@@ -161,8 +175,6 @@ export type ConfigProvider = {
   apiKey?: string
   auth?: string
   baseURL?: string
-  clearHeaders?: boolean
-  clearKey?: boolean
   disabled?: boolean
   group?: string
   hasHeaders?: boolean
@@ -179,8 +191,6 @@ export const ConfigProviderSchema: z.ZodType<ConfigProvider> = z.lazy(() =>
     apiKey: z.string().optional(),
     auth: z.string().optional(),
     baseURL: z.string().optional(),
-    clearHeaders: z.boolean().optional(),
-    clearKey: z.boolean().optional(),
     disabled: z.boolean().optional(),
     group: z.string().optional(),
     hasHeaders: z.boolean().optional(),
@@ -193,6 +203,48 @@ export const ConfigProviderSchema: z.ZodType<ConfigProvider> = z.lazy(() =>
     station: z.string().optional(),
   }),
 )
+export type ConfigProviderPatch = {
+  apiKey?: string | null
+  auth?: string | null
+  baseURL?: string | null
+  clearHeaders?: boolean
+  disabled?: boolean | null
+  group?: string | null
+  hasHeaders?: boolean
+  hasKey?: boolean
+  headers?: Record<string, string>
+  models?: Record<string, ConfigModel | null>
+  name?: string | null
+  picker?: ConfigPicker | null
+  protocol?: string | null
+  station?: string | null
+}
+export const ConfigProviderPatchSchema: z.ZodType<ConfigProviderPatch> = z.lazy(() =>
+  z.strictObject({
+    apiKey: z.union([z.string(), z.null()]).optional(),
+    auth: z.union([z.string(), z.null()]).optional(),
+    baseURL: z.union([z.string(), z.null()]).optional(),
+    clearHeaders: z.boolean().optional(),
+    disabled: z.union([z.boolean(), z.null()]).optional(),
+    group: z.union([z.string(), z.null()]).optional(),
+    hasHeaders: z.boolean().optional(),
+    hasKey: z.boolean().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    models: z.record(z.string(), z.union([ConfigModelSchema, z.null()])).optional(),
+    name: z.union([z.string(), z.null()]).optional(),
+    picker: z.union([ConfigPickerSchema, z.null()]).optional(),
+    protocol: z.union([z.string(), z.null()]).optional(),
+    station: z.union([z.string(), z.null()]).optional(),
+  }),
+)
+export type ConfigRules = { user?: string[] | null }
+export const ConfigRulesSchema: z.ZodType<ConfigRules> = z.lazy(() =>
+  z.strictObject({ user: z.union([z.array(z.string()), z.null()]).optional() }),
+)
+export type ConfigServer = { hostname?: string; port?: number }
+export const ConfigServerSchema: z.ZodType<ConfigServer> = z.lazy(() =>
+  z.strictObject({ hostname: z.string().optional(), port: z.number().int().optional() }),
+)
 export type ConfigTrust = { decision: string; hash: string; item: string; project: string }
 export const ConfigTrustSchema: z.ZodType<ConfigTrust> = z.lazy(() =>
   z.strictObject({ decision: z.string(), hash: z.string(), item: z.string(), project: z.string() }),
@@ -201,16 +253,21 @@ export type ConfigValue = {
   allowedHosts?: string[] | null
   cloud?: ConfigCloud
   deniedHosts?: string[] | null
+  enabledProviders?: string[] | null
   locale?: string
   log?: string
   mcpServers?: Record<string, ConfigMCPServer>
-  mode?: string
   model?: string
   permissionGrants?: ConfigPermissionGrant[] | null
+  permissionMode?: string
   permissionRules?: ConfigPermissionRule[] | null
   providers: Record<string, ConfigProvider>
+  rules?: ConfigRules
+  server?: ConfigServer
+  smallModel?: string
   thinking?: string
   unconfined?: ConfigLaunchDecision[] | null
+  warnings?: string[] | null
   workspaceTrust?: ConfigTrust[] | null
 }
 export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
@@ -218,16 +275,21 @@ export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
     allowedHosts: z.union([z.array(z.string()), z.null()]).optional(),
     cloud: ConfigCloudSchema.optional(),
     deniedHosts: z.union([z.array(z.string()), z.null()]).optional(),
+    enabledProviders: z.union([z.array(z.string()), z.null()]).optional(),
     locale: z.string().optional(),
     log: z.string().optional(),
     mcpServers: z.record(z.string(), ConfigMCPServerSchema).optional(),
-    mode: z.string().optional(),
     model: z.string().optional(),
     permissionGrants: z.union([z.array(ConfigPermissionGrantSchema), z.null()]).optional(),
+    permissionMode: z.string().optional(),
     permissionRules: z.union([z.array(ConfigPermissionRuleSchema), z.null()]).optional(),
     providers: z.record(z.string(), ConfigProviderSchema),
+    rules: ConfigRulesSchema.optional(),
+    server: ConfigServerSchema.optional(),
+    smallModel: z.string().optional(),
     thinking: z.string().optional(),
     unconfined: z.union([z.array(ConfigLaunchDecisionSchema), z.null()]).optional(),
+    warnings: z.union([z.array(z.string()), z.null()]).optional(),
     workspaceTrust: z.union([z.array(ConfigTrustSchema), z.null()]).optional(),
   }),
 )
@@ -888,9 +950,9 @@ export type ProtocolBlobReadResult = { data: string | null; offset: number; tota
 export const ProtocolBlobReadResultSchema: z.ZodType<ProtocolBlobReadResult> = z.lazy(() =>
   z.strictObject({ data: z.union([z.string(), z.null()]), offset: z.number().int(), total: z.number().int() }),
 )
-export type ProtocolCapabilities = { approve?: boolean; store?: boolean }
+export type ProtocolCapabilities = { approve?: boolean }
 export const ProtocolCapabilitiesSchema: z.ZodType<ProtocolCapabilities> = z.lazy(() =>
-  z.strictObject({ approve: z.boolean().optional(), store: z.boolean().optional() }),
+  z.strictObject({ approve: z.boolean().optional() }),
 )
 export type ProtocolClientInfo = { name: string; version: string }
 export const ProtocolClientInfoSchema: z.ZodType<ProtocolClientInfo> = z.lazy(() =>
@@ -912,6 +974,15 @@ export const ProtocolCloudStatusSchema: z.ZodType<ProtocolCloudStatus> = z.lazy(
 export type ProtocolConnectionInfo = { endpoint: string; pid: number; protocol: number; token: string }
 export const ProtocolConnectionInfoSchema: z.ZodType<ProtocolConnectionInfo> = z.lazy(() =>
   z.strictObject({ endpoint: z.string(), pid: z.number().int(), protocol: z.number().int(), token: z.string() }),
+)
+export type ProtocolDeviceAnswer = { cancelled?: boolean; human?: string; request: string; text?: string }
+export const ProtocolDeviceAnswerSchema: z.ZodType<ProtocolDeviceAnswer> = z.lazy(() =>
+  z.strictObject({
+    cancelled: z.boolean().optional(),
+    human: z.string().optional(),
+    request: z.string(),
+    text: z.string().optional(),
+  }),
 )
 export type ProtocolDeviceAssignment = {
   cause?: string
@@ -937,6 +1008,22 @@ export type ProtocolDeviceMessage = { claim: string; input: LoopInput }
 export const ProtocolDeviceMessageSchema: z.ZodType<ProtocolDeviceMessage> = z.lazy(() =>
   z.strictObject({ claim: z.string(), input: LoopInputSchema }),
 )
+export type ProtocolDeviceReply = {
+  decision: string
+  human?: string
+  leader?: string
+  remember?: string
+  request: string
+}
+export const ProtocolDeviceReplySchema: z.ZodType<ProtocolDeviceReply> = z.lazy(() =>
+  z.strictObject({
+    decision: z.string(),
+    human: z.string().optional(),
+    leader: z.string().optional(),
+    remember: z.string().optional(),
+    request: z.string(),
+  }),
+)
 export type ProtocolDiagnosticsParams = { days?: number; group?: string; session?: string; withConfig?: boolean }
 export const ProtocolDiagnosticsParamsSchema: z.ZodType<ProtocolDiagnosticsParams> = z.lazy(() =>
   z.strictObject({
@@ -958,23 +1045,13 @@ export type ProtocolDocReadParams = { group: string; key: string }
 export const ProtocolDocReadParamsSchema: z.ZodType<ProtocolDocReadParams> = z.lazy(() =>
   z.strictObject({ group: z.string(), key: z.string() }),
 )
-export type ProtocolDocWriteParams = {
-  group: string
-  human: string
-  key: string
-  rev: number
-  text: string
-  title: string
-}
+export type ProtocolDocWriteParams = { group: string; key: string; rev: number; text: string; title: string }
 export const ProtocolDocWriteParamsSchema: z.ZodType<ProtocolDocWriteParams> = z.lazy(() =>
-  z.strictObject({
-    group: z.string(),
-    human: z.string(),
-    key: z.string(),
-    rev: z.number().int(),
-    text: z.string(),
-    title: z.string(),
-  }),
+  z.strictObject({ group: z.string(), key: z.string(), rev: z.number().int(), text: z.string(), title: z.string() }),
+)
+export type ProtocolEngineStatus = { clients: number; pid: number }
+export const ProtocolEngineStatusSchema: z.ZodType<ProtocolEngineStatus> = z.lazy(() =>
+  z.strictObject({ clients: z.number().int(), pid: z.number().int() }),
 )
 export type ProtocolError = { code: number; data: ProtocolErrorData; message: string }
 export const ProtocolErrorSchema: z.ZodType<ProtocolError> = z.lazy(() =>
@@ -998,23 +1075,17 @@ export type ProtocolFileParams = { directory?: string; path: string }
 export const ProtocolFileParamsSchema: z.ZodType<ProtocolFileParams> = z.lazy(() =>
   z.strictObject({ directory: z.string().optional(), path: z.string() }),
 )
-export type ProtocolGroupAddMemberParams = {
-  group: string
-  human: string
-  member: GroupMember
-  profile?: ProfileProfile | null
-}
+export type ProtocolGroupAddMemberParams = { group: string; member: GroupMember; profile?: ProfileProfile | null }
 export const ProtocolGroupAddMemberParamsSchema: z.ZodType<ProtocolGroupAddMemberParams> = z.lazy(() =>
   z.strictObject({
     group: z.string(),
-    human: z.string(),
     member: GroupMemberSchema,
     profile: z.union([ProfileProfileSchema, z.null()]).optional(),
   }),
 )
-export type ProtocolGroupControlParams = { group: string; human: string; thread?: string }
+export type ProtocolGroupControlParams = { group: string; thread?: string }
 export const ProtocolGroupControlParamsSchema: z.ZodType<ProtocolGroupControlParams> = z.lazy(() =>
-  z.strictObject({ group: z.string(), human: z.string(), thread: z.string().optional() }),
+  z.strictObject({ group: z.string(), thread: z.string().optional() }),
 )
 export type ProtocolGroupCreateParams = {
   brief?: GroupBrief
@@ -1044,15 +1115,14 @@ export type ProtocolGroupIDParams = { group: string }
 export const ProtocolGroupIDParamsSchema: z.ZodType<ProtocolGroupIDParams> = z.lazy(() =>
   z.strictObject({ group: z.string() }),
 )
-export type ProtocolGroupRemoveMemberParams = { group: string; human: string; member: string }
+export type ProtocolGroupRemoveMemberParams = { group: string; member: string }
 export const ProtocolGroupRemoveMemberParamsSchema: z.ZodType<ProtocolGroupRemoveMemberParams> = z.lazy(() =>
-  z.strictObject({ group: z.string(), human: z.string(), member: z.string() }),
+  z.strictObject({ group: z.string(), member: z.string() }),
 )
-export type ProtocolGroupSayParams = { group: string; human: string; task?: string; text: string; to?: string[] | null }
+export type ProtocolGroupSayParams = { group: string; task?: string; text: string; to?: string[] | null }
 export const ProtocolGroupSayParamsSchema: z.ZodType<ProtocolGroupSayParams> = z.lazy(() =>
   z.strictObject({
     group: z.string(),
-    human: z.string(),
     task: z.string().optional(),
     text: z.string(),
     to: z.union([z.array(z.string()), z.null()]).optional(),
@@ -1062,7 +1132,6 @@ export type ProtocolGroupUpdateParams = {
   brief?: GroupBrief | null
   defaultLeader?: string | null
   group: string
-  human: string
   settings?: GroupSettings | null
 }
 export const ProtocolGroupUpdateParamsSchema: z.ZodType<ProtocolGroupUpdateParams> = z.lazy(() =>
@@ -1070,7 +1139,6 @@ export const ProtocolGroupUpdateParamsSchema: z.ZodType<ProtocolGroupUpdateParam
     brief: z.union([GroupBriefSchema, z.null()]).optional(),
     defaultLeader: z.union([z.string(), z.null()]).optional(),
     group: z.string(),
-    human: z.string(),
     settings: z.union([GroupSettingsSchema, z.null()]).optional(),
   }),
 )
@@ -1082,13 +1150,13 @@ export const ProtocolHelloParamsSchema: z.ZodType<ProtocolHelloParams> = z.lazy(
     protocol: z.number().int(),
   }),
 )
-export type ProtocolHelloResult = { engine: string; protocol: number; store?: string }
+export type ProtocolHelloResult = { engine: string; human: string; protocol: number }
 export const ProtocolHelloResultSchema: z.ZodType<ProtocolHelloResult> = z.lazy(() =>
-  z.strictObject({ engine: z.string(), protocol: z.number().int(), store: z.string().optional() }),
+  z.strictObject({ engine: z.string(), human: z.string(), protocol: z.number().int() }),
 )
-export type ProtocolMemberRegisterParams = { group: string; human: string; member: GroupMember }
+export type ProtocolMemberRegisterParams = { group: string; member: GroupMember }
 export const ProtocolMemberRegisterParamsSchema: z.ZodType<ProtocolMemberRegisterParams> = z.lazy(() =>
-  z.strictObject({ group: z.string(), human: z.string(), member: GroupMemberSchema }),
+  z.strictObject({ group: z.string(), member: GroupMemberSchema }),
 )
 export type ProtocolModelDiscoverParams = { provider: ConfigProvider }
 export const ProtocolModelDiscoverParamsSchema: z.ZodType<ProtocolModelDiscoverParams> = z.lazy(() =>
@@ -1102,42 +1170,28 @@ export type ProtocolModelRefreshParams = { provider?: string }
 export const ProtocolModelRefreshParamsSchema: z.ZodType<ProtocolModelRefreshParams> = z.lazy(() =>
   z.strictObject({ provider: z.string().optional() }),
 )
-export type ProtocolPermissionReplyParams = {
-  decision: string
-  human?: string
-  leader?: string
-  remember?: string
-  request: string
-}
+export type ProtocolPermissionReplyParams = { decision: string; leader?: string; remember?: string; request: string }
 export const ProtocolPermissionReplyParamsSchema: z.ZodType<ProtocolPermissionReplyParams> = z.lazy(() =>
   z.strictObject({
     decision: z.string(),
-    human: z.string().optional(),
     leader: z.string().optional(),
     remember: z.string().optional(),
     request: z.string(),
   }),
 )
-export type ProtocolProfileDeleteParams = { human: string; profile: string }
+export type ProtocolProfileDeleteParams = { profile: string }
 export const ProtocolProfileDeleteParamsSchema: z.ZodType<ProtocolProfileDeleteParams> = z.lazy(() =>
-  z.strictObject({ human: z.string(), profile: z.string() }),
+  z.strictObject({ profile: z.string() }),
 )
-export type ProtocolProfileListParams = { human: string }
-export const ProtocolProfileListParamsSchema: z.ZodType<ProtocolProfileListParams> = z.lazy(() =>
-  z.strictObject({ human: z.string() }),
-)
-export type ProtocolProfileSaveParams = { human: string; profile: ProfileProfile }
+export type ProtocolProfileListParams = {}
+export const ProtocolProfileListParamsSchema: z.ZodType<ProtocolProfileListParams> = z.lazy(() => z.strictObject({}))
+export type ProtocolProfileSaveParams = { profile: ProfileProfile }
 export const ProtocolProfileSaveParamsSchema: z.ZodType<ProtocolProfileSaveParams> = z.lazy(() =>
-  z.strictObject({ human: z.string(), profile: ProfileProfileSchema }),
+  z.strictObject({ profile: ProfileProfileSchema }),
 )
-export type ProtocolQuestionReplyParams = { cancelled?: boolean; human?: string; request: string; text?: string }
+export type ProtocolQuestionReplyParams = { cancelled?: boolean; request: string; text?: string }
 export const ProtocolQuestionReplyParamsSchema: z.ZodType<ProtocolQuestionReplyParams> = z.lazy(() =>
-  z.strictObject({
-    cancelled: z.boolean().optional(),
-    human: z.string().optional(),
-    request: z.string(),
-    text: z.string().optional(),
-  }),
+  z.strictObject({ cancelled: z.boolean().optional(), request: z.string(), text: z.string().optional() }),
 )
 export type ProtocolRemoteConnection = { endpoint: string; id: string; members: ProtocolRemoteMember[] | null }
 export const ProtocolRemoteConnectionSchema: z.ZodType<ProtocolRemoteConnection> = z.lazy(() =>
@@ -1155,16 +1209,16 @@ export type ProtocolRemoteControlParams = {
   cancel?: string | null
   lookup?: ProtocolRemoteLookupReply | null
   message?: ProtocolDeviceMessage | null
-  questionReply?: ProtocolQuestionReplyParams | null
-  reply?: ProtocolPermissionReplyParams | null
+  questionReply?: ProtocolDeviceAnswer | null
+  reply?: ProtocolDeviceReply | null
 }
 export const ProtocolRemoteControlParamsSchema: z.ZodType<ProtocolRemoteControlParams> = z.lazy(() =>
   z.strictObject({
     cancel: z.union([z.string(), z.null()]).optional(),
     lookup: z.union([ProtocolRemoteLookupReplySchema, z.null()]).optional(),
     message: z.union([ProtocolDeviceMessageSchema, z.null()]).optional(),
-    questionReply: z.union([ProtocolQuestionReplyParamsSchema, z.null()]).optional(),
-    reply: z.union([ProtocolPermissionReplyParamsSchema, z.null()]).optional(),
+    questionReply: z.union([ProtocolDeviceAnswerSchema, z.null()]).optional(),
+    reply: z.union([ProtocolDeviceReplySchema, z.null()]).optional(),
   }),
 )
 export type ProtocolRemoteDelivery = { branch: string }
@@ -1277,45 +1331,22 @@ export const ProtocolSessionSendParamsSchema: z.ZodType<ProtocolSessionSendParam
     session: z.string(),
   }),
 )
-export type ProtocolStoreAppendParams = { events: EventEvent[] | null }
-export const ProtocolStoreAppendParamsSchema: z.ZodType<ProtocolStoreAppendParams> = z.lazy(() =>
-  z.strictObject({ events: z.union([z.array(EventEventSchema), z.null()]) }),
-)
-export type ProtocolStoreFetchParams = { key: string; kind: string }
-export const ProtocolStoreFetchParamsSchema: z.ZodType<ProtocolStoreFetchParams> = z.lazy(() =>
-  z.strictObject({ key: z.string(), kind: z.string() }),
-)
-export type ProtocolStoreListParams = { kind: string; prefix?: string }
-export const ProtocolStoreListParamsSchema: z.ZodType<ProtocolStoreListParams> = z.lazy(() =>
-  z.strictObject({ kind: z.string(), prefix: z.string().optional() }),
-)
-export type ProtocolStorePutParams = { doc: StoreDoc }
-export const ProtocolStorePutParamsSchema: z.ZodType<ProtocolStorePutParams> = z.lazy(() =>
-  z.strictObject({ doc: StoreDocSchema }),
-)
 export type ProtocolSubscribeResult = { subscription: string }
 export const ProtocolSubscribeResultSchema: z.ZodType<ProtocolSubscribeResult> = z.lazy(() =>
   z.strictObject({ subscription: z.string() }),
 )
-export type ProtocolTaskAssignParams = {
-  human: string
-  member: string
-  role?: string
-  scope?: string[] | null
-  task: string
-}
+export type ProtocolTaskAssignParams = { member: string; role?: string; scope?: string[] | null; task: string }
 export const ProtocolTaskAssignParamsSchema: z.ZodType<ProtocolTaskAssignParams> = z.lazy(() =>
   z.strictObject({
-    human: z.string(),
     member: z.string(),
     role: z.string().optional(),
     scope: z.union([z.array(z.string()), z.null()]).optional(),
     task: z.string(),
   }),
 )
-export type ProtocolTaskCancelParams = { human: string; task: string }
+export type ProtocolTaskCancelParams = { task: string }
 export const ProtocolTaskCancelParamsSchema: z.ZodType<ProtocolTaskCancelParams> = z.lazy(() =>
-  z.strictObject({ human: z.string(), task: z.string() }),
+  z.strictObject({ task: z.string() }),
 )
 export type ProtocolTaskCreateParams = {
   acceptance?: string[] | null
@@ -1323,7 +1354,6 @@ export type ProtocolTaskCreateParams = {
   budget?: TaskBudget
   description?: string
   group: string
-  human?: string
   inputs?: string[] | null
   leader?: string
   member?: string
@@ -1339,7 +1369,6 @@ export const ProtocolTaskCreateParamsSchema: z.ZodType<ProtocolTaskCreateParams>
     budget: TaskBudgetSchema.optional(),
     description: z.string().optional(),
     group: z.string(),
-    human: z.string().optional(),
     inputs: z.union([z.array(z.string()), z.null()]).optional(),
     leader: z.string().optional(),
     member: z.string().optional(),
@@ -1349,13 +1378,12 @@ export const ProtocolTaskCreateParamsSchema: z.ZodType<ProtocolTaskCreateParams>
     workspace: z.string().optional(),
   }),
 )
-export type ProtocolTaskReviewParams = { decision: string; feedback?: string; human: string; task: string }
+export type ProtocolTaskReviewParams = { decision: string; feedback?: string; task: string }
 export const ProtocolTaskReviewParamsSchema: z.ZodType<ProtocolTaskReviewParams> = z.lazy(() =>
-  z.strictObject({ decision: z.string(), feedback: z.string().optional(), human: z.string(), task: z.string() }),
+  z.strictObject({ decision: z.string(), feedback: z.string().optional(), task: z.string() }),
 )
 export type ProtocolTaskUpdateParams = {
   budget?: TaskBudgetIncrease | null
-  human: string
   leader?: string
   phase?: string
   reason?: string
@@ -1364,7 +1392,6 @@ export type ProtocolTaskUpdateParams = {
 export const ProtocolTaskUpdateParamsSchema: z.ZodType<ProtocolTaskUpdateParams> = z.lazy(() =>
   z.strictObject({
     budget: z.union([TaskBudgetIncreaseSchema, z.null()]).optional(),
-    human: z.string(),
     leader: z.string().optional(),
     phase: z.string().optional(),
     reason: z.string().optional(),
@@ -1589,29 +1616,6 @@ export const SessionStateSchema: z.ZodType<SessionState> = z.lazy(() =>
     tools: z.union([z.array(ToolSpecSchema), z.null()]).optional(),
     usage: ModelUsageSchema,
     warnings: z.union([z.array(SessionDiagnosticSchema), z.null()]).optional(),
-  }),
-)
-export type StoreBufferState = { connected: boolean; limit: number; pending: number }
-export const StoreBufferStateSchema: z.ZodType<StoreBufferState> = z.lazy(() =>
-  z.strictObject({ connected: z.boolean(), limit: z.number().int(), pending: z.number().int() }),
-)
-export type StoreDoc = { body: string | null; key: string; kind: string; meta?: Record<string, string>; rev: number }
-export const StoreDocSchema: z.ZodType<StoreDoc> = z.lazy(() =>
-  z.strictObject({
-    body: z.union([z.string(), z.null()]),
-    key: z.string(),
-    kind: z.string(),
-    meta: z.record(z.string(), z.string()).optional(),
-    rev: z.number().int(),
-  }),
-)
-export type StoreDocMeta = { key: string; kind: string; meta?: Record<string, string>; rev: number }
-export const StoreDocMetaSchema: z.ZodType<StoreDocMeta> = z.lazy(() =>
-  z.strictObject({
-    key: z.string(),
-    kind: z.string(),
-    meta: z.record(z.string(), z.string()).optional(),
-    rev: z.number().int(),
   }),
 )
 export type StoreQuery = {
@@ -2052,6 +2056,28 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
+      payload: CatalogNotice
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "catalog.failed"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: CatalogNotice
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "catalog.refreshed"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
       payload: SessionChildResult
       scope: EventScope
       seq?: number
@@ -2102,17 +2128,6 @@ export type EngineEvent =
       stream: string
       time: string
       type: "engine.shutdown"
-    }
-  | {
-      actor: EventActor
-      cause?: string
-      id: string
-      payload: StoreBufferState
-      scope: EventScope
-      seq?: number
-      stream: string
-      time: string
-      type: "engine.storage"
     }
   | {
       actor: EventActor
@@ -2823,6 +2838,28 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: CatalogNoticeSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("catalog.failed"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
+    payload: CatalogNoticeSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("catalog.refreshed"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: SessionChildResultSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -2873,17 +2910,6 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("engine.shutdown"),
-  }),
-  z.strictObject({
-    actor: EventActorSchema,
-    cause: z.string().optional(),
-    id: z.string(),
-    payload: StoreBufferStateSchema,
-    scope: EventScopeSchema,
-    seq: z.number().int().optional(),
-    stream: z.string(),
-    time: z.string(),
-    type: z.literal("engine.storage"),
   }),
   z.strictObject({
     actor: EventActorSchema,
@@ -3597,6 +3623,7 @@ export type Methods = {
   "doc.list": { params: ProtocolGroupIDParams; result: GroupDocumentInfo[] | null }
   "doc.read": { params: ProtocolDocReadParams; result: GroupDocument }
   "doc.write": { params: ProtocolDocWriteParams; result: GroupDocument }
+  "engine.status": { params: {}; result: ProtocolEngineStatus }
   "engine.stop": { params: {}; result: {} }
   "event.emit": { params: ProtocolEventEmitParams; result: EventEvent }
   "events.find": { params: StoreQuery; result: EventEvent[] | null }
@@ -3644,13 +3671,6 @@ export type Methods = {
   "session.list": { params: {}; result: SessionInfo[] | null }
   "session.send": { params: ProtocolSessionSendParams; result: {} }
   "session.snapshot": { params: ProtocolSessionCancelParams; result: SessionState }
-  "store.append": { params: ProtocolStoreAppendParams; result: {} }
-  "store.fetch": { params: ProtocolStoreFetchParams; result: StoreDoc }
-  "store.find": { params: StoreQuery; result: EventEvent[] | null }
-  "store.get": { params: ProtocolEventsGetParams; result: EventEvent }
-  "store.list": { params: ProtocolStoreListParams; result: StoreDocMeta[] | null }
-  "store.put": { params: ProtocolStorePutParams; result: {} }
-  "store.read": { params: ProtocolEventsReadParams; result: EventEvent[] | null }
   "task.assign": { params: ProtocolTaskAssignParams; result: TaskClaim }
   "task.cancel": { params: ProtocolTaskCancelParams; result: TaskCard }
   "task.create": { params: ProtocolTaskCreateParams; result: TaskCard }
@@ -3675,6 +3695,7 @@ export const methodSchemas = {
   "doc.list": { params: ProtocolGroupIDParamsSchema, result: z.union([z.array(GroupDocumentInfoSchema), z.null()]) },
   "doc.read": { params: ProtocolDocReadParamsSchema, result: GroupDocumentSchema },
   "doc.write": { params: ProtocolDocWriteParamsSchema, result: GroupDocumentSchema },
+  "engine.status": { params: z.strictObject({}), result: ProtocolEngineStatusSchema },
   "engine.stop": { params: z.strictObject({}), result: z.strictObject({}) },
   "event.emit": { params: ProtocolEventEmitParamsSchema, result: EventEventSchema },
   "events.find": { params: StoreQuerySchema, result: z.union([z.array(EventEventSchema), z.null()]) },
@@ -3731,13 +3752,6 @@ export const methodSchemas = {
   "session.list": { params: z.strictObject({}), result: z.union([z.array(SessionInfoSchema), z.null()]) },
   "session.send": { params: ProtocolSessionSendParamsSchema, result: z.strictObject({}) },
   "session.snapshot": { params: ProtocolSessionCancelParamsSchema, result: SessionStateSchema },
-  "store.append": { params: ProtocolStoreAppendParamsSchema, result: z.strictObject({}) },
-  "store.fetch": { params: ProtocolStoreFetchParamsSchema, result: StoreDocSchema },
-  "store.find": { params: StoreQuerySchema, result: z.union([z.array(EventEventSchema), z.null()]) },
-  "store.get": { params: ProtocolEventsGetParamsSchema, result: EventEventSchema },
-  "store.list": { params: ProtocolStoreListParamsSchema, result: z.union([z.array(StoreDocMetaSchema), z.null()]) },
-  "store.put": { params: ProtocolStorePutParamsSchema, result: z.strictObject({}) },
-  "store.read": { params: ProtocolEventsReadParamsSchema, result: z.union([z.array(EventEventSchema), z.null()]) },
   "task.assign": { params: ProtocolTaskAssignParamsSchema, result: TaskClaimSchema },
   "task.cancel": { params: ProtocolTaskCancelParamsSchema, result: TaskCardSchema },
   "task.create": { params: ProtocolTaskCreateParamsSchema, result: TaskCardSchema },

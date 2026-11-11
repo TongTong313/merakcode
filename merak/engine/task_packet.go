@@ -119,7 +119,11 @@ func (e *Engine) prepareTaskPacket(ctx context.Context, p *profile.Profile, a *w
 			}
 		}
 	}
-	entry := e.catalog.Get(p.Model.Provider, p.Model.Model)
+	chosen, err := e.memberModel(p.Model)
+	if err != nil {
+		chosen = p.Model
+	}
+	entry := e.catalog.Get(chosen.Provider, chosen.Model)
 	budget := max(0, entry.Window-max(entry.MaxOutput/4, 8192)-window.EstimateText(p.System))
 	a.Packet, err = packet.Render(budget)
 	var sources []event.ID

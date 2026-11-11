@@ -14,22 +14,21 @@ import (
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
-func TestStopKeepsStorageConnectedUntilCancelledTurnAndShutdownAreDelivered(t *testing.T) {
+func TestStopDeliversTheCancelledTurnAndShutdownAndStoresThem(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	remote := server.NewRemoteStore()
+	disk := memory.New()
 	entered := make(chan struct{})
-	e, err := engine.New(engine.Deps{Store: remote, Workdir: t.TempDir(), Providers: map[string]model.Provider{"fake": fake.New(t, fake.Reply{Hold: make(chan struct{}), Expect: func(model.Request) error { close(entered); return nil }})}})
+	e, err := engine.New(engine.Deps{Store: disk, Workdir: t.TempDir(), Providers: map[string]model.Provider{"fake": fake.New(t, fake.Reply{Hold: make(chan struct{}), Expect: func(model.Request) error { close(entered); return nil }})}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err := server.Start(e, t.TempDir(), remote)
+	instance, err := server.Start(e, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	disk := memory.New()
-	client, err := protocol.Connect(ctx, instance.Info.Endpoint, instance.Info.Token, protocol.HelloParams{Protocol: 1}, disk)
+	client, err := protocol.Connect(ctx, instance.Info.Endpoint, instance.Info.Token, protocol.HelloParams{Protocol: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +66,7 @@ func TestStopKeepsStorageConnectedUntilCancelledTurnAndShutdownAreDelivered(t *t
 					t.Fatal("shutdown preceded cancellation")
 				}
 				if _, err := disk.Get(ctx, fact.ID); err != nil {
-					t.Fatal("shutdown was not acknowledged by host")
+					t.Fatal("the shutdown event was not stored")
 				}
 				return
 			}

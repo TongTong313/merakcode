@@ -30,7 +30,7 @@ test.each([false, true])(
     try {
       let info: { endpoint: string; token: string } | undefined
       for (let attempt = 0; attempt < 250; attempt++) {
-        info = await readFile(path.join(home, "engine.json"), "utf8").then(
+        info = await readFile(path.join(home, "data", "engine.json"), "utf8").then(
           (body) => JSON.parse(body),
           () => undefined,
         )

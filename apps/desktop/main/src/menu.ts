@@ -11,6 +11,8 @@ export type Actions = {
   settings: () => void
   checkUpdates: () => void
   restartBackend: () => void
+  /** Stops the engine that keeps running in the background, then quits */
+  stopEngine: () => void
   logs: () => void
   diagnostics: () => void
   homepage: () => void
@@ -40,6 +42,7 @@ const text = {
     logs: "打开日志目录",
     diagnostics: "导出诊断信息…",
     restart: "重启本地服务",
+    stopEngine: "停止后台引擎并退出",
     devtools: "开发者工具",
   },
   en: {
@@ -63,6 +66,7 @@ const text = {
     logs: "Open Logs Folder",
     diagnostics: "Export Diagnostics…",
     restart: "Restart Local Service",
+    stopEngine: "Stop Background Engine and Quit",
     devtools: "Developer Tools",
   },
 }
@@ -94,6 +98,7 @@ export namespace AppMenu {
                 { role: "unhide" },
                 { type: "separator" },
                 { role: "quit" },
+                { id: "stop-engine", label: t.stopEngine, click: actions.stopEngine },
               ] satisfies MenuItemConstructorOptions[],
             },
           ]
@@ -110,6 +115,7 @@ export namespace AppMenu {
                 { label: t.settings, accelerator: "CmdOrCtrl+,", click: actions.settings },
                 { type: "separator" },
                 { role: "quit" },
+                { id: "stop-engine", label: t.stopEngine, click: actions.stopEngine },
               ] satisfies MenuItemConstructorOptions[])),
         ],
       },

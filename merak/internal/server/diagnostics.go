@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) diagnostics(ctx context.Context, params protocol.DiagnosticsParams) (protocol.DiagnosticsResult, error) {
-	bundler := diagnose.Bundler{DataDir: s.dataDir, LogRoot: s.logRoot, Find: s.engine.FindEvents, Models: s.engine.ModelCatalog()}
+	bundler := diagnose.Bundler{DataDir: s.dataDir, ConfigRoot: s.configRoot, LogRoot: s.logRoot, Find: s.engine.FindEvents, Models: s.engine.ModelCatalog()}
 	s.mu.Lock()
 	for _, version := range s.desktops {
 		bundler.DesktopVersion = version

@@ -138,7 +138,7 @@ func TestRemoteRequestsAlreadyImportedByAnotherSubscriberStillReceiveOneAnswerPe
 		},
 		Reply: func(_ context.Context, fact event.Event) (protocol.RemoteControlParams, error) {
 			answers.Add(1)
-			return protocol.RemoteControlParams{QuestionReply: &protocol.QuestionReplyParams{Request: fact.ID, Text: "Continue"}}, nil
+			return protocol.RemoteControlParams{QuestionReply: &protocol.DeviceAnswer{QuestionReplyParams: protocol.QuestionReplyParams{Request: fact.ID, Text: "Continue"}}}, nil
 		},
 	}
 	for attempt := range 3 {

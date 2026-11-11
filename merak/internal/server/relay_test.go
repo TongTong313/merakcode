@@ -50,16 +50,16 @@ func TestConfiguredRelayDiscoveryUsesSecretHeaders(t *testing.T) {
 	}
 	defer client.Close()
 	var value config.Value
-	provider := config.Provider{Protocol: "openai", BaseURL: host.URL, APIKey: "provider-key", Auth: "x-api-key", Headers: map[string]string{"X-Route": "private-routing-key"}, Station: "station", Group: "group", Picker: &config.Picker{Exclude: []string{"gpt-4o"}}}
-	if err := client.Call(ctx, "config.set", config.Patch{Providers: map[string]*config.Provider{"relay": &provider}}, &value); err != nil {
+	text := func(value string) *string { return &value }
+	provider := config.ProviderPatch{Protocol: text("openai"), BaseURL: &host.URL, APIKey: text("provider-key"), Auth: text("x-api-key"), Headers: map[string]string{"X-Route": "private-routing-key"}, Station: text("station"), Group: text("group"), Picker: &config.Picker{Exclude: []string{"gpt-4o"}}}
+	if err := client.Call(ctx, "config.set", config.Patch{Providers: map[string]*config.ProviderPatch{"relay": &provider}}, &value); err != nil {
 		t.Fatal(err)
 	}
 	public := value.Providers["relay"]
 	if len(public.Headers) != 0 || !public.HasHeaders || public.APIKey != "" || public.Station != "station" {
 		t.Fatalf("public config is unsafe or incomplete: %+v", public)
 	}
-	public.Name = "Renamed group"
-	if err := client.Call(ctx, "config.set", config.Patch{Providers: map[string]*config.Provider{"relay": &public}}, &value); err != nil {
+	if err := client.Call(ctx, "config.set", config.Patch{Providers: map[string]*config.ProviderPatch{"relay": {Name: text("Renamed group")}}}, &value); err != nil {
 		t.Fatal(err)
 	}
 	if saved := value.Providers["relay"].Picker; saved == nil || len(saved.Exclude) != 1 || saved.Exclude[0] != "gpt-4o" {

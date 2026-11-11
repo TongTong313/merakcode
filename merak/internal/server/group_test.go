@@ -33,11 +33,7 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
-	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer client.Close()
+	clients := map[string]*protocol.Client{"owner": connectServerAs(t, handler, host, "owner", protocol.Capabilities{}), "approver": connectServerAs(t, handler, host, "approver", protocol.Capabilities{})}
 	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: t.TempDir()}, DefaultLeader: "a"}, []group.Member{
 		{ID: "a", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
 		{ID: "b", Name: "Second", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
@@ -57,7 +53,7 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 	}
 	for _, human := range []string{"approver", "owner"} {
 		var result task.Card
-		err := client.Call(ctx, "task.cancel", protocol.TaskCancelParams{Task: child.ID, Human: event.ID(human)}, &result)
+		err := clients[human].Call(ctx, "task.cancel", protocol.TaskCancelParams{Task: child.ID}, &result)
 		if human == "approver" {
 			if err == nil {
 				t.Fatal("approver cancelled a child task")
@@ -76,7 +72,7 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 		if method == "task.cancel" {
 			for _, phase := range []task.Phase{task.PhaseDoing, task.PhaseStalled, task.PhaseDoing} {
 				var resumed task.Card
-				if err := client.Call(ctx, "task.update", map[string]any{"task": card.ID, "human": "owner", "phase": phase}, &resumed); err != nil {
+				if err := clients["owner"].Call(ctx, "task.update", map[string]any{"task": card.ID, "phase": phase}, &resumed); err != nil {
 					t.Fatal(err)
 				}
 				if resumed.Phase != phase {
@@ -84,16 +80,15 @@ func TestTaskRPCChecksTheHumanRoleBeforeChangingLeaderOrCancelling(t *testing.T)
 				}
 			}
 		}
-		params := map[string]any{"task": card.ID, "human": "approver"}
+		params := map[string]any{"task": card.ID}
 		if method == "task.update" {
 			params["leader"] = "b"
 		}
-		if err := client.Call(ctx, method, params, new(task.Card)); err == nil {
+		if err := clients["approver"].Call(ctx, method, params, new(task.Card)); err == nil {
 			t.Fatalf("approver used %s", method)
 		}
-		params["human"] = "owner"
 		var result task.Card
-		if err := client.Call(ctx, method, params, &result); err != nil {
+		if err := clients["owner"].Call(ctx, method, params, &result); err != nil {
 			t.Fatal(err)
 		}
 		if result.Leader != "b" {
@@ -130,14 +125,14 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 		t.Fatalf("unsupported group: %v", err)
 	}
 	params.Kind = group.KindLocal
-	params.Members = append(params.Members, group.Member{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner})
+	params.Members = append(params.Members, group.Member{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner})
 	if err := client.Call(ctx, "group.create", params, &created); err != nil {
 		t.Fatal(err)
 	}
 	p = profile.DefaultWorker()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
 	var member group.Member
-	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Human: "owner", Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, Profile: &p}, &member); err != nil {
+	if err := client.Call(ctx, "group.addMember", protocol.GroupAddMemberParams{Group: created.ID, Member: group.Member{Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: p.ID}, Profile: &p}, &member); err != nil {
 		t.Fatal(err)
 	}
 	if member.ID == "" || member.Group != created.ID {
@@ -147,7 +142,7 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 		t.Fatal(err)
 	}
 	var card task.Card
-	if err := client.Call(ctx, "task.create", map[string]any{"group": created.ID, "human": "owner", "title": "Verify project", "areas": []string{"docs"}}, &card); err != nil {
+	if err := client.Call(ctx, "task.create", map[string]any{"group": created.ID, "title": "Verify project", "areas": []string{"docs"}}, &card); err != nil {
 		t.Fatal(err)
 	}
 	if len(card.Areas) != 1 || card.Areas[0] != "docs" {
@@ -203,13 +198,14 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer client.Close()
+			unknown := connectServerAs(t, handler, host, "unknown", protocol.Capabilities{})
 			lead, work := profile.DefaultLeader(), profile.DefaultWorker()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
 			work.Memory = []memory.Scope{}
 			var g group.Group
 			err = client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, DefaultLeader: "leader"}, Members: []group.Member{
-				{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
+				{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Profile: lead.ID},
 				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Profile: work.ID},
 			}, Profiles: []profile.Profile{lead, work}}, &g)
@@ -220,16 +216,16 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 				t.Fatal(err)
 			}
 			var said event.ID
-			if err := client.Call(ctx, "group.say", map[string]any{"group": g.ID, "human": "unknown", "text": "Hello"}, &said); err == nil {
+			if err := unknown.Call(ctx, "group.say", map[string]any{"group": g.ID, "text": "Hello"}, &said); err == nil {
 				t.Fatal("nonmember spoke")
 			}
-			if err := client.Call(ctx, "group.say", map[string]any{"group": g.ID, "human": "human", "text": "Hello"}, &said); err != nil {
+			if err := client.Call(ctx, "group.say", map[string]any{"group": g.ID, "text": "Hello"}, &said); err != nil {
 				t.Fatal(err)
 			}
 			if said == "" {
 				t.Fatal("missing message id")
 			}
-			params := map[string]any{"group": g.ID, "human": "human", "title": "Review work", "review": true, "priority": 3, "workspace": "none", "inputs": []string{"reference.md"}}
+			params := map[string]any{"group": g.ID, "title": "Review work", "review": true, "priority": 3, "workspace": "none", "inputs": []string{"reference.md"}}
 			if direct {
 				params["member"] = "worker"
 			}
@@ -237,17 +233,17 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 			if err := client.Call(ctx, "task.create", params, &card); err != nil {
 				t.Fatal(err)
 			}
-			if !card.Review || card.Priority != 3 || card.CreatedBy.ID != "human" {
+			if !card.Review || card.Priority != 3 || card.CreatedBy.ID != "local-human" {
 				t.Fatalf("card=%+v", card)
 			}
 			if card.Workspace != "none" || len(card.Inputs) != 1 || card.Inputs[0] != "reference.md" {
 				t.Fatalf("workspace input was lost: %+v", card)
 			}
 			if !direct {
-				if err := client.Call(ctx, "task.assign", map[string]any{"task": card.ID, "human": "unknown", "member": "worker"}, new(task.Claim)); err == nil {
+				if err := unknown.Call(ctx, "task.assign", map[string]any{"task": card.ID, "member": "worker"}, new(task.Claim)); err == nil {
 					t.Fatal("nonmember assigned work")
 				}
-				if err := client.Call(ctx, "task.assign", map[string]any{"task": card.ID, "human": "human", "member": "worker"}, new(task.Claim)); err != nil {
+				if err := client.Call(ctx, "task.assign", map[string]any{"task": card.ID, "member": "worker"}, new(task.Claim)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -272,7 +268,7 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 							}
 						}
 					}
-					if err := client.Call(ctx, "task.review", map[string]any{"task": card.ID, "human": "human", "decision": decision, "feedback": feedback}, new(struct{})); err != nil {
+					if err := client.Call(ctx, "task.review", map[string]any{"task": card.ID, "decision": decision, "feedback": feedback}, new(struct{})); err != nil {
 						t.Fatal(err)
 					}
 					if reports == 2 {

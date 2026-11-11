@@ -27,7 +27,7 @@ async function engine(home: string, env: Record<string, string>) {
   let info: { endpoint: string; token: string } | undefined
   for (let attempt = 0; attempt < 250 && !info; attempt++) {
     if (child.exitCode !== null) throw new Error(`Engine exited with ${child.exitCode}`)
-    info = await readFile(path.join(home, "engine.json"), "utf8")
+    info = await readFile(path.join(home, "data", "engine.json"), "utf8")
       .then((text) => JSON.parse(text) as { endpoint: string; token: string })
       .catch(() => undefined)
     if (!info) await delay(20)
@@ -81,7 +81,6 @@ it("member.test waits for a command product that answers after 15 seconds", { ti
   })
   try {
     const caps = await running.client.member.test({
-      human: "owner",
       profile: {
         id: "",
         name: "Slow command",

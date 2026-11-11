@@ -35,6 +35,7 @@ type Request struct {
 
 type Bundler struct {
 	DataDir        string
+	ConfigRoot     string
 	LogRoot        string
 	DesktopVersion string
 	Models         []catalog.Model
@@ -98,8 +99,8 @@ func (b Bundler) Bundle(ctx context.Context, req Request, out io.Writer) (runErr
 	if err := write("engine.json", connection); err != nil {
 		return err
 	}
-	if req.WithConfig && b.DataDir != "" {
-		settings, err := config.Open(filepath.Join(b.DataDir, "merakcode.json"))
+	if req.WithConfig && b.ConfigRoot != "" {
+		settings, err := config.Open(b.ConfigRoot)
 		if err != nil {
 			return errors.New("invalid diagnostic configuration file")
 		}

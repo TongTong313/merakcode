@@ -51,7 +51,7 @@ export function GroupCreate(props: {
         void client()
           .then(async (connection) => {
             const [list, catalog, status] = await Promise.all([
-              connection.profile.list({ human: localHuman }),
+              connection.profile.list({}),
               connection.member.catalog(),
               connection.cloud.status(),
             ])
@@ -108,7 +108,6 @@ export function GroupCreate(props: {
     if (!profile.id.startsWith("builtin-") && !profile.id.startsWith("product:")) return profile
     const selected = model()
     return (await client()).profile.save({
-      human: localHuman,
       profile: {
         ...profile,
         id: "",
@@ -157,7 +156,6 @@ export function GroupCreate(props: {
           if (member) {
             await connection.group.addMember({
               group: created()!.id,
-              human: localHuman,
               member,
             })
             added.add(id)
@@ -169,7 +167,6 @@ export function GroupCreate(props: {
         const profile = await save(draft)
         await connection.group.addMember({
           group: created()!.id,
-          human: localHuman,
           member: {
             id: crypto.randomUUID(),
             group: created()!.id,

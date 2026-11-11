@@ -89,7 +89,11 @@ func writeDiagnostic(ctx context.Context, request diagnose.Request, path string)
 		if err != nil {
 			return err
 		}
-		bundler := diagnose.Bundler{DataDir: home, LogRoot: root}
+		settings, err := configRoot()
+		if err != nil {
+			return err
+		}
+		bundler := diagnose.Bundler{DataDir: home, ConfigRoot: settings, LogRoot: root}
 		if request.Session != "" || request.Group != "" {
 			path := filepath.Join(home, "merak.db")
 			if _, err := os.Stat(path); err != nil {

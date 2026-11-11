@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/model"
 )
@@ -17,8 +18,12 @@ type Model struct {
 	Price     Price            `json:"price"`
 	Caps      Caps             `json:"caps"`
 	Thinking  []model.Thinking `json:"thinking"`
-	Source    string           `json:"source"`
-	Unknown   []string         `json:"unknown,omitempty"`
+	// DefaultThinking is the level to start with; it is empty when nothing is known about it.
+	DefaultThinking model.Thinking `json:"defaultThinking,omitempty"`
+	// Deprecated models stay usable but are not offered when choosing one.
+	Deprecated bool     `json:"deprecated,omitempty"`
+	Source     string   `json:"source"`
+	Unknown    []string `json:"unknown,omitempty"`
 }
 
 type Caps struct {
@@ -63,11 +68,21 @@ type Catalog struct {
 	configuredSources []Source
 	overrides         []Override
 	configured        []Override
+	// live holds each provider's own list, public the public catalog; both are filled by refreshes and the cache.
+	live   map[string]map[string]Override
+	public map[string]Override
+	state  background
+	// publicURL is where the public catalog is fetched from.
+	publicURL string
 }
 
 func New(options ...Options) *Catalog {
-	c := &Catalog{models: builtins()}
+	c := &Catalog{models: builtins(), live: map[string]map[string]Override{}, public: map[string]Override{}, publicURL: defaultPublicURL}
+	c.state = background{fetched: map[string]time.Time{}, tried: map[string]time.Time{}, force: map[string]bool{}, sigs: map[string]string{}, wake: make(chan struct{}, 1)}
 	for _, o := range options {
+		if o.PublicURL != "" {
+			c.publicURL = o.PublicURL
+		}
 		c.sources = append(c.sources, o.Sources...)
 		for _, override := range o.Overrides {
 			c.overrides = append(c.overrides, override.copy())
@@ -88,7 +103,23 @@ func (c *Catalog) Get(provider, id string) Model {
 	return m
 }
 
+// get resolves a model from the lowest layer to the highest: the built-in entries, the fallback table, the public
+// catalog and the provider's own list. User overrides are applied by the callers.
 func (c *Catalog) get(provider, id string) Model {
+	m := c.builtin(provider, id)
+	if o, ok := fallbackOverride(provider, id); ok {
+		m = o.apply(m, m.Source)
+	}
+	if o, ok := c.publicMatch(id); ok {
+		m = o.apply(m, "public")
+	}
+	if o, ok := c.liveMatch(provider, id); ok {
+		m = o.apply(m, "live")
+	}
+	return m
+}
+
+func (c *Catalog) builtin(provider, id string) Model {
 	for _, m := range c.models {
 		if m.Provider == provider && m.ID == id {
 			return clone(m, provider, id)
@@ -138,7 +169,14 @@ func (c *Catalog) List(overrides ...Override) []Model {
 	c.mu.RLock()
 	keys := make(map[[2]string]bool)
 	for _, m := range c.models {
-		keys[[2]string{m.Provider, m.ID}] = true
+		if len(c.live[m.Provider]) == 0 {
+			keys[[2]string{m.Provider, m.ID}] = true
+		}
+	}
+	for provider, models := range c.live {
+		for id := range models {
+			keys[[2]string{provider, id}] = true
+		}
 	}
 	for _, m := range append(slices.Clone(c.overrides), c.configured...) {
 		keys[[2]string{m.Provider, m.ID}] = true

@@ -33,9 +33,8 @@ afterAll(async () => {
 
 test("replays group history and sends a mention through the shared composer", async () => {
   const connection = await client()
-  const profiles = await connection.profile.list({ human: localHuman })
+  const profiles = await connection.profile.list({})
   const leader = await connection.profile.save({
-    human: localHuman,
     profile: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
   })
   const group = await connection.group.create({
@@ -60,12 +59,10 @@ test("replays group history and sends a mention through the shared composer", as
     profiles: [],
   })
   const batch = await connection.profile.save({
-    human: localHuman,
     profile: { ...profiles![1]!, id: "", name: "Batch tool", product: { kind: "command", binary: "unused-command" } },
   })
   await connection.member.register({
     group: group.id,
-    human: localHuman,
     member: {
       id: "batch",
       group: group.id,
@@ -133,7 +130,7 @@ test("replays group history and sends a mention through the shared composer", as
       ),
       host,
     )
-    await connection.group.say({ group: group.id, human: localHuman, text: "A later update" })
+    await connection.group.say({ group: group.id, text: "A later update" })
     await expect
       .poll(() => host.querySelector(`[data-unread-group="${group.id}"]`)?.textContent, { timeout: 10000 })
       .toBe("1")
@@ -159,7 +156,6 @@ test("replays group history and sends a mention through the shared composer", as
     expect(host.querySelector(`[data-unread-group="${group.id}"]`)).toBeNull()
     const task = await connection.task.create({
       group: group.id,
-      human: localHuman,
       title: "Check the task discussion",
     })
     await expect

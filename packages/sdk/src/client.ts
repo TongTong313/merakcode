@@ -1,6 +1,5 @@
 import { z } from "zod"
 import metadata from "../package.json" with { type: "json" }
-import { handleStore, type StorageHost } from "./store-host"
 import {
   EngineEventSchema,
   PROTOCOL_VERSION,
@@ -37,7 +36,6 @@ const CALL_TIMEOUTS: Partial<Record<keyof Methods, number>> = {
 export async function connect(options: {
   endpoint: string
   token?: string
-  store?: StorageHost
   approve?: boolean
   client?: { name: string; version: string }
 }) {
@@ -66,13 +64,6 @@ export async function connect(options: {
     try {
       if (typeof event.data !== "string") throw new Error("MRK-1001")
       const message = messageSchema.parse(JSON.parse(event.data))
-      if (message.method?.startsWith("store.") && options.store && message.id !== undefined) {
-        void handleStore(options.store, message.method, message.params).then((response) => {
-          if (socket.readyState === WebSocket.OPEN)
-            socket.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, ...response }))
-        })
-        return
-      }
       if (message.method === "event" || message.method === "events.lagged") {
         const fact = EngineEventSchema.parse(message.params)
         for (const [listener, filter] of listeners) {
@@ -145,7 +136,7 @@ export async function connect(options: {
     hello = await call("hello", {
       protocol: PROTOCOL_VERSION,
       client: options.client ?? { name: "sdk", version: metadata.version },
-      capabilities: { store: !!options.store, approve: !!options.approve },
+      capabilities: { approve: !!options.approve },
     })
     if (hello.protocol !== PROTOCOL_VERSION) throw new Error("MRK-1002")
   } catch (error) {

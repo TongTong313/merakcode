@@ -34,11 +34,10 @@ afterAll(async () => {
 
 async function createGroup() {
   const connection = await client()
-  const defaults = (await connection.profile.list({ human: localHuman }))!
+  const defaults = (await connection.profile.list({}))!
   const profiles = await Promise.all(
     defaults.slice(0, 2).map((profile) =>
       connection.profile.save({
-        human: localHuman,
         profile: { ...profile, id: "", model: { provider: "fake", model: "fixture" } },
       }),
     ),
@@ -72,7 +71,6 @@ test("reviews the task baseline, returns collected feedback to the original clai
   const group = await createGroup()
   const card = await connection.task.create({
     group: group.id,
-    human: localHuman,
     title: "Review guide",
     member: "worker",
     review: true,
@@ -172,11 +170,11 @@ test("reviews the task baseline, returns collected feedback to the original clai
         timeout: 10000,
       })
       .toBe(true)
-    await connection.task.update({ task: card.id, human: localHuman, phase: "doing" })
+    await connection.task.update({ task: card.id, phase: "doing" })
     await writeFile(path.join(engine.project, "integration.txt"), "Integration check\n")
     await engine.git("add", "integration.txt")
     await engine.git("commit", "-m", "Integrated fixture")
-    await connection.task.update({ task: card.id, human: localHuman, phase: "integrating" })
+    await connection.task.update({ task: card.id, phase: "integrating" })
     await expect
       .poll(
         async () =>
@@ -216,7 +214,6 @@ test("keeps a submitted decision on its original task while switching reviews", 
   const group = await createGroup()
   const first = await connection.task.create({
     group: group.id,
-    human: localHuman,
     title: "First review",
     member: "worker",
     workspace: "folder",
@@ -224,7 +221,6 @@ test("keeps a submitted decision on its original task while switching reviews", 
   })
   const second = await connection.task.create({
     group: group.id,
-    human: localHuman,
     title: "Second review",
     member: "worker",
     workspace: "folder",
@@ -276,7 +272,7 @@ test("a claim's file tree scrolls only its own diff when claims share a path", a
   const connection = await client()
   const group = await createGroup()
   for (const title of ["First claim", "Second claim"])
-    await connection.task.create({ group: group.id, human: localHuman, title, member: "worker", review: true })
+    await connection.task.create({ group: group.id, title, member: "worker", review: true })
   const events = async () =>
     (await connection.events.read({ stream: `group:${group.id}`, from: 1 }))!.map((event) =>
       EngineEventSchema.parse(event),

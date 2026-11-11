@@ -267,7 +267,6 @@ jobs:
           actual=$("$resources/merak/merak" --version)
           test "$actual" = "$expected"
           test ! -e "$resources/engine/node"
-          test -f "$resources/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/linux-x64.node"
       - run: pnpm exec playwright install-deps chromium
         working-directory: apps/desktop/main
       - run: xvfb-run -a node --import ./script/node/register.mjs apps/desktop/main/script/smoke-package.ts

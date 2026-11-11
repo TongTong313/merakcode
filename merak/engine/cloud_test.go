@@ -704,7 +704,7 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 			}
 			if fact.Type == question.Asked || fact.Type == group.MemberAsked {
 				questions++
-				if err := peer.Send(ctx, protocol.CloudInbound{QuestionReply: &protocol.QuestionReplyParams{Request: fact.ID, Human: "owner", Text: "Proceed"}}); err != nil {
+				if err := peer.Send(ctx, protocol.CloudInbound{QuestionReply: &protocol.DeviceAnswer{QuestionReplyParams: protocol.QuestionReplyParams{Request: fact.ID, Text: "Proceed"}, Human: "owner"}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -713,7 +713,7 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 					t.Fatal("duplicate approval")
 				}
 				approved = true
-				if err = peer.Send(ctx, protocol.CloudInbound{Reply: &protocol.PermissionReplyParams{Request: fact.ID, Decision: permission.Allow, Human: "owner"}}); err != nil {
+				if err = peer.Send(ctx, protocol.CloudInbound{Reply: &protocol.DeviceReply{PermissionReplyParams: protocol.PermissionReplyParams{Request: fact.ID, Decision: permission.Allow}, Human: "owner"}}); err != nil {
 					t.Fatal(err)
 				}
 			}

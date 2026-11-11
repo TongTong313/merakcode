@@ -20,6 +20,37 @@ import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
+import { connect } from "@merakcode/sdk"
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The engine outlives the app, so a test stops the one its app started and waits until its files are free. */
+export async function stopEngine(root: string) {
+  const info = await readFile(path.join(root, "data", "engine.json"), "utf8").then(
+    (text) => JSON.parse(text) as { endpoint: string; token: string; pid: number; protocol: number },
+    () => undefined,
+  )
+  if (!info) return
+  try {
+    const client = await connect(info)
+    // The engine may close the connection before it answers, so the answer is not waited for
+    void client.engine.stop().catch(() => undefined)
+    await Promise.race([client.closed, delay(5000)])
+    void client.close().catch(() => undefined)
+  } catch {
+    /* The engine may have already exited. */
+  }
+  for (let wait = 0; wait < 200 && alive(info.pid); wait++) await delay(25)
+  if (alive(info.pid)) process.kill(info.pid)
+}
 
 /** One fake model reply: text, or a tool call (the model is asked again once the tool result is back) */
 type Reply = { text: string } | { tool: string; args: Record<string, unknown> }
@@ -235,8 +266,11 @@ export const test = base.extend<{
       path.join(root, "merakcode.json"),
       JSON.stringify({
         model: "openai/e2e",
-        providers: {
-          openai: { apiKey: "e2e", baseURL: fake.url, models: { e2e: { window: modelWindow, maxOutput: 1024 } } },
+        provider: {
+          openai: {
+            options: { apiKey: "e2e", baseURL: fake.url },
+            models: { e2e: { limit: { context: modelWindow, output: 1024 } } },
+          },
         },
         locale: "zh-CN",
         ...config,
@@ -368,7 +402,13 @@ export const test = base.extend<{
       await tracing.stop({ path: trace })
       await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
     } else if (!alreadyExited) await tracing.stop()
-    await app.close().catch(() => undefined)
+    // Closing waits for the output of the app to end, which the background engine may still hold open: once the app
+    // has exited, stop the engine, then wait for the close to finish
+    const closing = app.close().catch(() => undefined)
+    for (let wait = 0; wait < 400 && appProcess.exitCode === null && appProcess.signalCode === null; wait++)
+      await delay(25)
+    await stopEngine(root)
+    await closing
     fake.close()
     const initializedSandbox = await readFile(path.join(root, "data", "sandbox", "state.json")).then(
       () => true,

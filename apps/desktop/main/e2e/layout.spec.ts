@@ -15,13 +15,12 @@ test("the new conversation keeps the established reading width", async ({ kit },
 
 test("settings and group views contain long content in a small window", async ({ kit }, info) => {
   await kit.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(800, 600))
-  const endpoint = JSON.parse(await readFile(path.join(kit.root, "engine.json"), "utf8"))
+  const endpoint = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8"))
   const rpc = await connect(endpoint)
   const name = "Worker-" + "LongProjectName".repeat(8)
   try {
-    const worker = (await rpc.profile.list({ human: "local-human" }))!.find((profile) => profile.role === "worker")!
+    const worker = (await rpc.profile.list({}))!.find((profile) => profile.role === "worker")!
     await rpc.profile.save({
-      human: "local-human",
       profile: { ...worker, id: "", name, model: { provider: "openai", model: "e2e" } },
     })
   } finally {

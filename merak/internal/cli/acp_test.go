@@ -36,18 +36,18 @@ func TestACPServesBuiltinWorkerWithApprovalAndCancellation(t *testing.T) {
 	project := t.TempDir()
 	binary, _ := os.Executable()
 	definition := config.MCPServer{Command: binary, Args: []string{"-test.run=^TestACPMCPFixtureProcess$"}, Env: map[string]string{"MERAKCODE_CLI_MCP": "1"}}
-	body, _ := json.Marshal(config.Value{MCPServers: map[string]config.MCPServer{"docs": definition}})
+	body := config.MCPFile(map[string]config.MCPServer{"docs": definition})
 	if err := os.WriteFile(filepath.Join(home, "merakcode.json"), body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := config.Open(filepath.Join(home, "merakcode.json"))
+	settings, err := config.Open(home)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(project, "source.txt"), []byte("Verified MCP source"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(project, "merakcode.json"), []byte(`{"mcpServers":{"workspace":{"command":"missing-workspace-server"}}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(project, "merakcode.json"), []byte(`{"mcp":{"workspace":{"type":"local","command":["missing-workspace-server"]}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("MERAKCODE_HOME", home)
@@ -70,7 +70,7 @@ func TestACPServesBuiltinWorkerWithApprovalAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host, err = server.Start(e, home)
+	host, err = startAt(e, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestACPServesBuiltinWorkerWithApprovalAndCancellation(t *testing.T) {
 	if body, err := os.ReadFile(filepath.Join(project, "result.txt")); !approved || err != nil || string(body) != "Approved" {
 		t.Fatalf("approved=%v result=%q %v", approved, body, err)
 	}
-	saved, err := config.Open(filepath.Join(home, "merakcode.json"))
+	saved, err := config.Open(home)
 	if err != nil || len(saved.Private().WorkspaceTrust) != 1 {
 		t.Fatal("workspace confirmation did not reach the ACP client")
 	}

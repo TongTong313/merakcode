@@ -77,7 +77,7 @@ test("connects another engine and registers a selected remote worker without sav
         (await connection.group.state({ group: group.id })).members?.some((member) => member.name === "Remote Worker"),
       )
       .toBe(true)
-    const profiles = await connection.profile.list({ human: localHuman })
+    const profiles = await connection.profile.list({})
     expect(profiles?.find((profile) => profile.name === "Remote Worker")?.product?.kind).toBe("remote")
     expect(JSON.stringify(profiles)).not.toContain(second.token)
   } finally {

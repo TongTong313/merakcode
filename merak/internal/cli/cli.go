@@ -61,6 +61,9 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 		}
 		ui.language, args = selected, args[1:]
 	}
+	if len(args) == 1 && args[0] == "status" {
+		return statusCommand(stdout, ui)
+	}
 	if len(args) == 1 && args[0] == "stop" {
 		return stopEngine()
 	}
@@ -74,6 +77,9 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return serve(ctx, args[1:])
+	}
+	if len(args) > 0 && args[0] == "provider" {
+		return providerCommand(args[1:], stdin, stdout)
 	}
 	if len(args) > 0 && args[0] == "models" {
 		return models(args[1:], stdout)
