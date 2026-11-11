@@ -1,10 +1,61 @@
 import { createServer, type ServerResponse } from "node:http"
 import { addAbortListener } from "node:events"
 import { createRoot } from "solid-js"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { useGitChanges } from "../features/git/changes"
 import { updateCheckout } from "./git"
 import { connect, listen, setState, state } from "./store"
+
+test("startup and implicit provider refreshes retain an offline folder without hiding explicit failures", async () => {
+  const providers = { all: [], connected: [], default: {} as Record<string, string> }
+  const stream = Promise.withResolvers<ServerResponse>()
+  let disconnect = () => {}
+  const server = createServer((request, response) => {
+    const url = new URL(request.url!, "http://localhost")
+    if (url.pathname === "/global/event") {
+      response.writeHead(200, { "content-type": "text/event-stream" })
+      response.flushHeaders()
+      stream.resolve(response)
+      return
+    }
+    response.setHeader("content-type", "application/json")
+    const directory = url.searchParams.get("directory") ?? String(request.headers["x-merakcode-directory"] ?? "")
+    if (decodeURIComponent(directory) === "/offline-review-folder") {
+      response.writeHead(400)
+      response.end(JSON.stringify({ name: "HTTPError", code: "MRK-1009", message: "Directory unavailable", data: {} }))
+      return
+    }
+    response.end(JSON.stringify(url.pathname === "/provider" ? providers : {}))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("Startup fixture did not listen")
+  location.href = `http://127.0.0.1:${address.port}`
+  const previous = localStorage.getItem("ui:folders")
+  localStorage.setItem("ui:folders", JSON.stringify(["/offline-review-folder"]))
+  vi.resetModules()
+  try {
+    const { bootstrap, connect, loadProviders, state } = await import("./store")
+    await expect(bootstrap()).resolves.toBeUndefined()
+    expect(state.folders.map((folder) => folder.directory)).toEqual(["/offline-review-folder"])
+    expect(state.providers).toEqual(providers)
+    await expect(loadProviders()).resolves.toEqual(providers)
+    await expect(loadProviders("/offline-review-folder")).rejects.toMatchObject({ code: "MRK-1009" })
+    disconnect = connect()
+    const response = await stream.promise
+    providers.default.fixture = "refreshed-model"
+    response.write(
+      `data: ${JSON.stringify({ payload: { type: "provider.changed", properties: { reason: "refreshed" } } })}\n\n`,
+    )
+    await expect.poll(() => state.providers?.default.fixture).toBe("refreshed-model")
+  } finally {
+    disconnect()
+    if (previous === null) localStorage.removeItem("ui:folders")
+    else localStorage.setItem("ui:folders", previous)
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
 
 test("directoryless global events in the Git panel preserve the following session events", async () => {
   const stream = Promise.withResolvers<ServerResponse>()

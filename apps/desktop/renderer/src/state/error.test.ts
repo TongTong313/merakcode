@@ -12,6 +12,16 @@ describe("error summary", () => {
     expect(summary({ name: "APIError", code: "MRK-2006", data: { message: "bad gateway" } })).toBe("MRK-2006")
   })
 
+  test("a localized wrapper keeps the SDK code and request available for diagnostics", () => {
+    const cause = new MerakCodeError({ code: "MRK-7009", message: "Checkout changed", requestID: "req_recovery" })
+    const error = new Error("Recovery failed", { cause })
+    expect(summary(error)).toBe("MRK-7009 · req_recovery")
+    expect(details(error, { version: "test", platform: "win32", time: "now" })).toContain("request: req_recovery")
+    const cycle = new Error("cycle")
+    cycle.cause = cycle
+    expect(summary(cycle)).toBeUndefined()
+  })
+
   test("errors without a code have no summary", () => {
     expect(summary(new Error("plain"))).toBeUndefined()
     expect(summary(undefined)).toBeUndefined()

@@ -2,6 +2,7 @@
  * macOS Seatbelt profile for `sandbox-exec`. Paths are passed as -D parameters and referenced with (param "…"),
  * so they never need escaping. Later rules override earlier ones, which is what the order below relies on.
  */
+import { realpathSync } from "node:fs"
 import type { Policy } from "../policy"
 
 export namespace Seatbelt {
@@ -16,8 +17,18 @@ export namespace Seatbelt {
 
   export function profile(policy: Policy) {
     const params: string[] = []
+    // Seatbelt matches the path after symlink resolution. /var and /private/var must both be allowed.
+    const concrete = (values: string[]) =>
+      values.flatMap((value) => {
+        try {
+          const real = realpathSync.native(value)
+          return real === value ? [value] : [value, real]
+        } catch {
+          return [value]
+        }
+      })
     const names = (prefix: string, values: string[]) =>
-      values.map((value, index) => {
+      concrete(values).map((value, index) => {
         params.push("-D", `${prefix}${index}=${value}`)
         return `(param "${prefix}${index}")`
       })

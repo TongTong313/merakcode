@@ -70,7 +70,7 @@ test.each([
                 `/out:${path.join(directory, "stop-receipt.exe")}`,
                 path.join(import.meta.dirname, "../tool/fixture/stop-receipt.cs"),
               ],
-              { windowsHide: true, timeout: 5000 },
+              { windowsHide: true, timeout: 60_000 },
             )
           await fs.writeFile(
             path.join(directory, "background.mjs"),

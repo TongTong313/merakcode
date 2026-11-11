@@ -35,6 +35,7 @@ export const Instance = {
     const directory = Filesystem.normalize(input.directory)
     const identity = Workspace.identity({ directory, folders: input.workspace?.folders })
     const folderPaths = Workspace.normalizeFolderPaths(directory, input.workspace?.folders)
+    // The cache key must be workspace.key. dispose() deletes that key; a resolved spelling would leave the instance alive.
     const cacheKey = Workspace.key(directory, folderPaths, identity?.id)
     const current = (() => {
       try {
@@ -88,7 +89,10 @@ export const Instance = {
       })
       cache.set(cacheKey, existing)
     }
-    const ctx = await existing
+    const ctx = await existing.catch((error) => {
+      if (cache.get(cacheKey) === existing) cache.delete(cacheKey)
+      throw error
+    })
     return context.provide(ctx, async () => {
       return input.fn()
     })

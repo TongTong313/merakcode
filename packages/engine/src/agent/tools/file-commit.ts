@@ -42,7 +42,7 @@ export async function commitToolFile(
           tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
         }))
       if (!changed && current) {
-        target = check.pattern
+        target = filePath
         break
       }
       authorization.request.checks = [check]

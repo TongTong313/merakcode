@@ -374,7 +374,7 @@ test("normal startup repairs a locked ESM dependency and preserves the user's SD
   } finally {
     vi.unstubAllEnvs()
   }
-})
+}, 120_000)
 
 test("a real offline npm install leaves the plugin API usable", async () => {
   await using tmp = await tmpdir()

@@ -4,8 +4,10 @@ import { Navigate, Route, Router, useLocation, useNavigate, useParams } from "@s
 import { t } from "./i18n"
 import { bridge, log, mac } from "./lib/bridge"
 import { decodeDir, sessionPath } from "./lib/route"
-import { bootstrap, connect, openFolder, state } from "./state/store"
+import { bootstrap, connect, listen, openFolder, state } from "./state/store"
 import { restoreLayout, setUi, togglePanel, ui } from "./state/ui"
+import { openPanel, releasePanels } from "./features/panel/workspace"
+import { CloseEditor } from "./features/panel/close"
 import { toast, Toasts } from "./ui/toast"
 import { Compose } from "./features/conversation/compose"
 import { Conversation } from "./features/conversation/page"
@@ -30,8 +32,10 @@ function Shortcuts() {
       else if (key === "n" && directory()) navigate(sessionPath(directory()!))
       else if (key === "g" && directory()) setUi("newTeam", true)
       else if (key === ",") setUi("settings", "general")
-      else if (key === "j") setUi("terminal", !ui.terminal)
-      else if (key === "b") togglePanel()
+      else if (key === "j") {
+        setUi("panel", true)
+        void openPanel({ kind: "terminal" }, true)
+      } else if (key === "b") togglePanel()
       else return
       event.preventDefault()
     }
@@ -70,7 +74,31 @@ function Root(props: { children?: JSX.Element }) {
     await Promise.all([bootstrap(), restoreLayout()])
     return true
   })
-  onMount(() => onCleanup(connect()))
+  onMount(() => {
+    onCleanup(connect())
+    onCleanup(
+      listen((directory, event) => {
+        const sessionID =
+          event.type === "session.deleted"
+            ? event.properties.sessionID
+            : event.type === "session.updated" && event.properties.info.time.archived
+              ? event.properties.info.id
+              : undefined
+        if (sessionID) {
+          const release = () =>
+            void releasePanels({ directory, sessionID }, event.type === "session.deleted").catch((error: unknown) =>
+              toast({
+                kind: "error",
+                title: t("error.request", { message: String(error) }),
+                error,
+                action: { label: t("panel.retry"), run: release },
+              }),
+            )
+          release()
+        }
+      }),
+    )
+  })
   createEffect(() => ready.error && log("error", "bootstrap failed", { error: String(ready.error) }))
   return (
     <>
@@ -78,6 +106,7 @@ function Root(props: { children?: JSX.Element }) {
         {props.children}
         <Shortcuts />
         <Warnings />
+        <CloseEditor />
         <Notify />
         <Palette />
         <Onboarding />

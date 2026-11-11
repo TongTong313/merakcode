@@ -39,12 +39,7 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: Install ripgrep
         shell: bash
-        run: |
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
-            macOS) HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep ;;
-            Windows) choco install ripgrep -y --no-progress ;;
-          esac
+        run: bash .github/scripts/install-ci-packages.sh ripgrep
       - run: pnpm test:perf
         if: inputs.suite == 'performance'
         working-directory: apps/cli

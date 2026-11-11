@@ -11,7 +11,12 @@ const SIGKILL_TIMEOUT_MS = 200
 
 export namespace Shell {
   export async function killTree(
-    proc: { readonly pid?: number; kill(signal?: NodeJS.Signals): unknown },
+    proc: {
+      readonly pid?: number
+      readonly exitCode?: number | null
+      readonly signalCode?: NodeJS.Signals | null
+      kill(signal?: NodeJS.Signals): unknown
+    },
     opts?: { exited?: () => boolean },
   ): Promise<boolean> {
     const pid = proc.pid
@@ -26,20 +31,32 @@ export namespace Shell {
       })
     }
 
+    const gone = (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH"
     try {
       process.kill(-pid, "SIGTERM")
       await delay(SIGKILL_TIMEOUT_MS)
       if (!opts?.exited?.()) {
-        process.kill(-pid, "SIGKILL")
+        try {
+          process.kill(-pid, "SIGKILL")
+        } catch (error) {
+          if (!gone(error)) throw error
+        }
       }
       return true
-    } catch (_e) {
-      proc.kill("SIGTERM")
-      await delay(SIGKILL_TIMEOUT_MS)
-      if (!opts?.exited?.()) {
-        return Boolean(proc.kill("SIGKILL"))
+    } catch (error) {
+      if (gone(error)) return true
+      try {
+        proc.kill("SIGTERM")
+      } catch (inner) {
+        return gone(inner)
       }
-      return false
+      await delay(SIGKILL_TIMEOUT_MS)
+      if (opts?.exited?.() || proc.exitCode !== null || proc.signalCode !== null) return true
+      try {
+        return Boolean(proc.kill("SIGKILL")) || proc.exitCode !== null || proc.signalCode !== null
+      } catch (inner) {
+        return gone(inner)
+      }
     }
   }
   const BLACKLIST = new Set(["fish", "nu"])
@@ -66,6 +83,13 @@ export namespace Shell {
     const s = process.env.SHELL
     if (s) return s
     return fallback()
+  })
+
+  /** Native Windows shells avoid MSYS console input loss after terminal resizing. */
+  export const terminal = lazy(() => {
+    if (process.platform !== "win32" || process.env.SHELL) return preferred()
+    if (Flag.MERAKCODE_GIT_BASH_PATH) return Flag.MERAKCODE_GIT_BASH_PATH
+    return Process.which("pwsh") || Process.which("powershell") || process.env.COMSPEC || "cmd.exe"
   })
 
   export type RunResult = {

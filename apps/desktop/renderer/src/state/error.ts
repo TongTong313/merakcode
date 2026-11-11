@@ -6,11 +6,16 @@ type Coded = { code?: unknown; requestID?: unknown; status?: unknown; message?: 
 
 const field = (value: unknown) => (typeof value === "string" || typeof value === "number" ? String(value) : undefined)
 
-function read(error: unknown) {
+function read(
+  error: unknown,
+  seen = new Set<unknown>(),
+): { code: string; message?: string; request?: string; status?: string } | undefined {
   if (typeof error !== "object" || error === null) return
+  if (seen.has(error)) return
+  seen.add(error)
   const value = error as Coded
   const code = field(value.code)
-  if (!code?.startsWith("MRK-")) return
+  if (!code?.startsWith("MRK-")) return "cause" in error ? read(error.cause, seen) : undefined
   return {
     code,
     message: field(value.data?.message) ?? field(value.message),

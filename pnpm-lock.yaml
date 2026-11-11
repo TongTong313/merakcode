@@ -466,6 +466,9 @@ importers:
       solid-js:
         specifier: 'catalog:'
         version: 1.9.12
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: 26.6.5

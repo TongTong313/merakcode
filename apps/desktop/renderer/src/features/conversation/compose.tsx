@@ -1,7 +1,7 @@
 import Folder from "lucide-solid/icons/folder"
 import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
-import { createEffect, createSignal, on, onMount, Show } from "solid-js"
+import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js"
 import { produce } from "solid-js/store"
 import { applyEvent } from "@merakcode/sdk/store"
 import { useNavigate } from "@solidjs/router"
@@ -16,6 +16,8 @@ import { agentConnections, connectionsLoaded, loadConnections } from "../../stat
 import { Select } from "../../ui/select"
 import { Frame } from "../shell/frame"
 import { BranchPicker } from "../git/branch-picker"
+import { promotePanels } from "../panel/workspace"
+import { toast } from "../../ui/toast"
 import { Composer, type ComposerDraft, type Submission } from "./composer"
 import { createWorktree, send, type WorktreeAttempt } from "./send"
 
@@ -58,6 +60,10 @@ function preparationFor(directory: string) {
  */
 export function Compose(props: { directory: string }) {
   const navigate = useNavigate()
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
   const prepared = () => preparationFor(props.directory)
   const productID = () => prepared().productID()
   const lockedTarget = () => [...prepared().sessions.values()].some((pending) => pending.requested || pending.id)
@@ -132,9 +138,12 @@ export function Compose(props: { directory: string }) {
       // Carry the model and mode chosen for the new conversation over to the session
       choose(info.id, directory, { model: picked.model, variant: picked.variant, mode: picked.mode })
       await send(info.id, directory, submission, picked.mode)
+      await promotePanels(directory, { directory: info.directory, sessionID: info.id }).catch(() =>
+        toast({ kind: "error", title: t("panel.persistError") }),
+      )
       current.setDraft(undefined)
       preparations.delete(directory)
-      if (props.directory === directory) navigate(sessionPath(directory, info.id))
+      if (!disposed && props.directory === directory) navigate(sessionPath(directory, info.id))
     } finally {
       current.setCreating(false)
     }

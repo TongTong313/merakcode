@@ -1,4 +1,5 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron"
+import z from "zod"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 import type { AppLocale, DesktopBridge, FileFilter, Theme, TrayState } from "../../renderer/src/desktop/bridge-contract"
@@ -37,6 +38,7 @@ type Context = { event: IpcMainInvokeEvent; win: BrowserWindow }
 type Handler = (ctx: Context, ...args: unknown[]) => unknown
 
 const log = Log.create("ipc")
+const browserURL = z.url({ protocol: /^https?$/, error: "MRK-7016" })
 
 const str = (value: unknown) => (typeof value === "string" ? value : undefined)
 const absolute = (value: unknown) => (typeof value === "string" && path.isAbsolute(value) ? value : undefined)
@@ -86,6 +88,14 @@ export namespace Ipc {
 
     const handlers = {
       getBackendState: () => deps.backend.state,
+      installCloseGuard: ({ win }) => deps.windows.guardClose(win),
+      completeResourceClose: ({ win }, accepted) =>
+        deps.windows.completeResourceClose(win, z.boolean().catch(false).parse(accepted)),
+      completeClose: ({ win }, accepted) => {
+        const closed = z.boolean().catch(false).parse(accepted)
+        deps.windows.completeClose(win, closed)
+        return closed
+      },
       restartBackend: async () => {
         await deps.backend
           .restart()
@@ -121,23 +131,29 @@ export namespace Ipc {
         if (theme === "system" || theme === "light" || theme === "dark") deps.theme(theme)
       },
 
-      browserShow: ({ win }, raw) => {
-        const box = options(raw)
-        const values = [box.x, box.y, box.width, box.height]
-        if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) return
-        deps.browser.show(win, {
-          x: box.x as number,
-          y: box.y as number,
-          width: box.width as number,
-          height: box.height as number,
-        })
+      browserShow: ({ win }, id, raw) => {
+        const input = z
+          .object({
+            id: z.string().min(1),
+            x: z.number().finite(),
+            y: z.number().finite(),
+            width: z.number().nonnegative().finite(),
+            height: z.number().nonnegative().finite(),
+          })
+          .parse({ ...options(raw), id })
+        deps.browser.show(win, input.id, input)
       },
-      browserHide: ({ win }) => deps.browser.hide(win),
-      browserNavigate: ({ win }, url) => (typeof url === "string" ? deps.browser.navigate(win, url) : undefined),
-      browserBack: ({ win }) => deps.browser.back(win),
-      browserForward: ({ win }) => deps.browser.forward(win),
-      browserReload: ({ win }) => deps.browser.reload(win),
-      browserDevtools: ({ win }) => deps.browser.devtools(win),
+      browserClose: ({ win }, id) => deps.browser.close(win, z.string().min(1).parse(id)),
+      browserRelease: ({ win }, id) => deps.browser.release(win, z.string().min(1).parse(id)),
+      browserHide: ({ win }, id) => deps.browser.hide(win, z.string().optional().parse(id)),
+      browserRestore: ({ win }, id, url) =>
+        deps.browser.restore(win, z.string().min(1).parse(id), browserURL.parse(url)),
+      browserNavigate: ({ win }, id, url) =>
+        deps.browser.navigate(win, z.string().min(1).parse(id), browserURL.parse(url)),
+      browserBack: ({ win }, id) => deps.browser.back(win, z.string().min(1).parse(id)),
+      browserForward: ({ win }, id) => deps.browser.forward(win, z.string().min(1).parse(id)),
+      browserReload: ({ win }, id) => deps.browser.reload(win, z.string().min(1).parse(id)),
+      browserDevtools: ({ win }, id) => deps.browser.devtools(win, z.string().min(1).parse(id)),
 
       openExternal: async (_ctx, url) => {
         if (typeof url === "string" && /^(https?:|mailto:)/i.test(url)) await shell.openExternal(url)
@@ -211,6 +227,11 @@ export namespace Ipc {
 
       storageGet: (_ctx, bucket, key) =>
         typeof bucket === "string" && typeof key === "string" ? deps.storage.get(bucket, key) : null,
+      storageEntries: (_ctx, bucket) => {
+        const result = z.string().safeParse(bucket)
+        return result.success ? deps.storage.entries(result.data) : []
+      },
+      storageBuckets: () => deps.storage.buckets(),
       storageSet: (_ctx, bucket, key, value) => {
         if (typeof bucket === "string" && typeof key === "string" && typeof value === "string")
           deps.storage.set(bucket, key, value)

@@ -74,12 +74,15 @@ describe("BashJobStore", () => {
               ask: async () => {},
             },
           )
+          // Wait for the real child to start before testing cancellation; Windows process startup can exceed one second.
           await expect
-            .poll(() =>
-              fs.stat(effect).then(
-                (s) => s.size,
-                () => 0,
-              ),
+            .poll(
+              () =>
+                fs.stat(effect).then(
+                  (s) => s.size,
+                  () => 0,
+                ),
+              { timeout: 5_000 },
             )
             .toBeGreaterThan(0)
           workerPID = Number(await fs.readFile(pidFile, "utf8"))

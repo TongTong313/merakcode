@@ -22,8 +22,8 @@ class MerakCodeError extends Error { readonly code: string; readonly status?: nu
 type MerakCodeOptions = EngineOptions & { url?: string; headers?: Record<string, string>; tools?: HostTool[]; agents?: Record<string, AgentConfig>; clientRun?: string; }
 type MerakCodeSession = { id: string; info: SessionOutput; setPermissionLevel(permissionLevel: PermissionLevel, expectedRevision?: number): Promise<SessionOutput>; run(prompt: string, options?: RunOptions): AsyncIterable<RunEvent>; events(options?: Handlers): AsyncIterable<RunEvent>; messages(): Promise<{ info: MessageOutput; parts: PartOutput[]; }[]>; abort(): Promise<void>; }
 type PermissionDecision = "allow-once" | "allow-session" | "deny"
-type PtyConnection = { send(data: string): void; close(): void; }
-type PtyConnectionOptions = { baseUrl: string | URL; ptyID: string; directory?: string; cursor?: number; onData(data: string | ArrayBuffer): void; onOpen?(): void; onError?(event: Event): void; }
+type PtyConnection = { send(data: string): boolean; close(): void; }
+type PtyConnectionOptions = { baseUrl: string | URL; ptyID: string; directory?: string; cursor?: number; onData(data: string | ArrayBuffer): void; onOpen?(): void; onError?(event: Event): void; onClose?(event: CloseEvent): void; }
 interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer?: RequestDeadlineTimer; }
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
@@ -33,20 +33,20 @@ function startsSessionPlan(text: string): boolean
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1122 exports generated from openapi.json
++ 1135 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
 function connectPty(input: PtyConnectionOptions): PtyConnection
 function createMerakCodeClient(config?: Config & { directory?: string; workspaceFolders?: Array<{ name?: string; path: string; }>; clientRun?: string; logger?: Logger; }): MerakCodeClient
-type PtyConnection = { send(data: string): void; close(): void; }
-type PtyConnectionOptions = { baseUrl: string | URL; ptyID: string; directory?: string; cursor?: number; onData(data: string | ArrayBuffer): void; onOpen?(): void; onError?(event: Event): void; }
+type PtyConnection = { send(data: string): boolean; close(): void; }
+type PtyConnectionOptions = { baseUrl: string | URL; ptyID: string; directory?: string; cursor?: number; onData(data: string | ArrayBuffer): void; onOpen?(): void; onError?(event: Event): void; onClose?(event: CloseEvent): void; }
 interface RequestDeadlineOptions { signal?: AbortSignal; timeout?: number; timer?: RequestDeadlineTimer; }
 interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; clear(timer: unknown): void; }
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 function startsSessionPlan(text: string): boolean
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1122 exports generated from openapi.json
++ 1135 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 

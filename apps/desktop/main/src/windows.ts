@@ -16,6 +16,7 @@ import type { Settings } from "./settings"
  *   its current page.
  */
 export type Options = {
+  prepareWindow?: (win: BrowserWindow) => Promise<boolean>
   preload: string
   settings: Settings
   endpoint: () => Endpoint | undefined
@@ -37,11 +38,99 @@ export class Windows {
   /** Windows that could not load while the backend was not ready; loaded once it is */
   private pending = new Map<BrowserWindow, string>()
   private crashes = new WeakMap<BrowserWindow, number[]>()
+  private guarded = new WeakSet<BrowserWindow>()
+  private accepted = new WeakSet<BrowserWindow>()
+  private closing = new Map<BrowserWindow, ReturnType<typeof Promise.withResolvers<boolean>>>()
+  private releasing = new Map<BrowserWindow, ReturnType<typeof Promise.withResolvers<boolean>>>()
 
   constructor(private options: Options) {}
 
   all() {
     return [...this.list].filter((win) => !win.isDestroyed())
+  }
+
+  guardClose(win: BrowserWindow) {
+    this.guarded.add(win)
+    if (this.closing.has(win)) this.send(win, "closeRequested")
+  }
+
+  completeClose(win: BrowserWindow, accepted: boolean) {
+    const pending = this.closing.get(win)
+    pending?.resolve(accepted)
+    this.closing.delete(win)
+    if (!pending && accepted) void this.releaseWindows([win]).then((closed) => closed && this.closeAccepted(win))
+  }
+
+  completeResourceClose(win: BrowserWindow, accepted: boolean) {
+    this.releasing.get(win)?.resolve(accepted)
+    this.releasing.delete(win)
+  }
+
+  private closeAccepted(win: BrowserWindow) {
+    if (win.isDestroyed()) return
+    this.accepted.add(win)
+    win.close()
+  }
+
+  private async releaseWindows(windows: BrowserWindow[]) {
+    for (const win of windows) {
+      if (win.isDestroyed()) continue
+      this.options.log("info", "window browser closing", { window: win.id })
+      if (this.options.prepareWindow && !(await this.options.prepareWindow(win))) {
+        this.options.log("info", "window browser close rejected", { window: win.id })
+        this.send(win, "closeRejected")
+        return false
+      }
+    }
+    const release = async (phase: "prepare" | "stop") =>
+      (
+        await Promise.all(
+          windows.map((win) => {
+            if (win.isDestroyed() || !this.guarded.has(win)) return true
+            const known = this.releasing.get(win)
+            if (known) return known.promise
+            const pending = Promise.withResolvers<boolean>()
+            this.releasing.set(win, pending)
+            const started = Date.now()
+            this.options.log("info", "window resources closing", { window: win.id, phase })
+            this.send(win, "closeResources", phase)
+            return pending.promise.then((accepted) => {
+              this.options.log("info", "window resources closed", {
+                window: win.id,
+                phase,
+                accepted,
+                elapsed: Date.now() - started,
+              })
+              return accepted
+            })
+          }),
+        )
+      ).every(Boolean)
+    // Every window must freeze and persist successfully before any terminal is stopped.
+    const accepted = (await release("prepare")) && (await release("stop"))
+    if (!accepted) for (const win of windows) this.send(win, "closeCancelled")
+    return accepted
+  }
+
+  private requestClose(win: BrowserWindow) {
+    if (!this.guarded.has(win) || win.isDestroyed() || win.webContents.isDestroyed()) return Promise.resolve(true)
+    const known = this.closing.get(win)
+    if (known) return known.promise
+    const pending = Promise.withResolvers<boolean>()
+    this.closing.set(win, pending)
+    const started = Date.now()
+    this.options.log("info", "window close requested", { window: win.id })
+    this.send(win, "closeRequested")
+    return pending.promise.then((accepted) => {
+      this.options.log("info", "window close answered", { window: win.id, accepted, elapsed: Date.now() - started })
+      return accepted
+    })
+  }
+
+  async prepareClose() {
+    const windows = this.all()
+    if (!(await Promise.all(windows.map((win) => this.requestClose(win)))).every(Boolean)) return false
+    return this.releaseWindows(windows)
   }
 
   /** IPC only accepts windows created here */
@@ -265,6 +354,19 @@ export class Windows {
   }
 
   private track(win: BrowserWindow) {
+    win.on("close", (event) => {
+      if (!this.guarded.has(win) || this.accepted.has(win)) return
+      event.preventDefault()
+      void this.requestClose(win).then((accepted) => {
+        if (accepted && !win.isDestroyed())
+          void this.releaseWindows([win]).then((closed) => closed && this.closeAccepted(win))
+      })
+    })
+    win.webContents.on("render-process-gone", () => {
+      this.guarded.delete(win)
+      this.completeClose(win, false)
+      this.completeResourceClose(win, false)
+    })
     const save = () => {
       if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return
       const maximized = win.isMaximized()
@@ -285,11 +387,19 @@ export class Windows {
       clearTimeout(timer.current)
       this.list.delete(win)
       this.pending.delete(win)
+      this.completeClose(win, false)
+      this.completeResourceClose(win, false)
     })
     win.on("enter-full-screen", () => this.send(win, "fullscreen", true))
     win.on("leave-full-screen", () => this.send(win, "fullscreen", false))
 
     const contents = win.webContents
+    contents.on("did-start-navigation", (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return
+      this.guarded.delete(win)
+      this.completeClose(win, false)
+      this.completeResourceClose(win, false)
+    })
     contents.on("did-fail-load", (_event, code, description, url, mainFrame) => {
       // -3 (ERR_ABORTED) means a newer navigation interrupted the load
       if (!mainFrame || code === -3 || url.startsWith("data:")) return
