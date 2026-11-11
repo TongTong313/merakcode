@@ -343,7 +343,13 @@ test("observes shared branch refs for a linked worktree without changing the mai
         if (event.type === "vcs.head.updated" && event.properties.head !== before.head) updated = event.properties
     })().catch(() => {})
     git("-C", created.directory, "commit", "--quiet", "--allow-empty", "-m", "linked commit")
-    await expect.poll(() => updated, { timeout: 5000 }).toMatchObject({ branch: created.branch, branchChanged: false })
+    // Windows worktree watchers can lag behind the empty commit before emitting vcs.head.updated.
+    await expect
+      .poll(() => updated, { timeout: 20_000 })
+      .toMatchObject({
+        branch: created.branch,
+        branchChanged: false,
+      })
     expect(updated!.checkout).not.toBe(before.checkout)
     expect((await client.vcs.get({}, { throwOnError: true })).data.checkout).toBe(primary.checkout)
   } finally {
