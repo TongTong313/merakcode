@@ -99,7 +99,7 @@ func (s *State) Apply(fact event.Event) error {
 			return err
 		}
 		s.Members = slices.DeleteFunc(s.Members, func(item MemberLine) bool { return item.ID == member.ID })
-	case task.Created, task.Opened, task.QueuedEvent, task.Started, task.Reported, task.Closed, task.Updated, task.Reviewed, task.PhaseChanged:
+	case task.Created, task.Bound, task.Opened, task.QueuedEvent, task.Started, task.Reported, task.Closed, task.Updated, task.Reviewed, task.PhaseChanged:
 		card, err := event.Decode[task.Card](fact)
 		if err != nil {
 			return err

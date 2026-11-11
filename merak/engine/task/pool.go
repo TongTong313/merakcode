@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
@@ -19,6 +20,10 @@ var (
 	ErrNotMember = errors.New("task: only a worker member can be assigned")
 	ErrBusy      = errors.New("task: member already has an active claim")
 	ErrState     = errors.New("task: operation is not allowed in the current state")
+	// ErrAlreadyBound means the task has a group, which it keeps for good.
+	ErrAlreadyBound = errors.New("task: the task already belongs to a group")
+	// ErrNotFinished means only a finished task can be archived.
+	ErrNotFinished = errors.New("task: only a finished task can be archived")
 )
 
 type Pool struct {
@@ -31,11 +36,12 @@ type Pool struct {
 	loaded              bool
 	cards               map[event.ID]Card
 	causes              map[event.ID]event.ID
+	closedAt            map[event.ID]time.Time
 	queue               []event.ID
 }
 
 func New(storage store.Store, bus *event.Bus, newID func() event.ID, groups *group.Manager) *Pool {
-	return &Pool{store: storage, bus: bus, newID: newID, groups: groups, cards: map[event.ID]Card{}, causes: map[event.ID]event.ID{}}
+	return &Pool{store: storage, bus: bus, newID: newID, groups: groups, cards: map[event.ID]Card{}, causes: map[event.ID]event.ID{}, closedAt: map[event.ID]time.Time{}}
 }
 func (p *Pool) load(ctx context.Context) error {
 	if p.loaded {
@@ -57,6 +63,11 @@ func (p *Pool) load(ctx context.Context) error {
 	return nil
 }
 func (p *Pool) apply(fact event.Event, card Card) {
+	// A task keeps its group for good. When history is read back, the events a task wrote in its own stream before a
+	// group took it may sort after the ones in the stream of the group, so they must not take the group away.
+	if previous, ok := p.cards[card.ID]; ok && previous.Group != "" && card.Group == "" {
+		return
+	}
 	for _, claim := range card.Claims {
 		if claim.Status != ClaimQueued {
 			p.queue = slices.DeleteFunc(p.queue, func(id event.ID) bool { return id == claim.ID })
@@ -68,6 +79,9 @@ func (p *Pool) apply(fact event.Event, card Card) {
 	}
 	p.cards[card.ID] = card
 	p.causes[card.ID] = fact.ID
+	if fact.Type == Closed {
+		p.closedAt[card.ID] = fact.Time
+	}
 }
 
 // Observe refreshes the projection after its host's fact has been persisted.
@@ -96,12 +110,20 @@ func (p *Pool) emit(ctx context.Context, kind event.Type, card Card, actor event
 	if err != nil {
 		return err
 	}
-	fact, err := p.bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + card.Group), Scope: event.Scope{Group: card.Group, Task: card.ID}, Actor: actor, Type: kind, Cause: p.causes[card.ID], Payload: body})
+	fact, err := p.bus.Publish(ctx, event.Event{Stream: streamOf(card), Scope: event.Scope{Group: card.Group, Task: card.ID}, Actor: actor, Type: kind, Cause: p.causes[card.ID], Payload: body})
 	if err != nil {
 		return err
 	}
 	p.apply(fact, clone(card))
 	return nil
+}
+
+// streamOf names the stream of a card: the one of its group, or its own until a group takes it.
+func streamOf(card Card) event.Stream {
+	if card.Group == "" {
+		return event.Stream("task:" + card.ID)
+	}
+	return event.Stream("group:" + card.Group)
 }
 func clone(card Card) Card {
 	body, _ := json.Marshal(card)
@@ -115,9 +137,16 @@ func (p *Pool) Create(ctx context.Context, card Card) (Card, error) {
 	if err := p.load(ctx); err != nil {
 		return Card{}, err
 	}
-	_, err := p.groups.Get(ctx, card.Group)
-	if err != nil {
-		return Card{}, err
+	if card.Group == "" {
+		if strings.TrimSpace(card.Project) == "" || card.Parent != "" {
+			return Card{}, errors.New("a task without a group needs a project and cannot be a subtask")
+		}
+	} else {
+		state, err := p.groups.Get(ctx, card.Group)
+		if err != nil {
+			return Card{}, err
+		}
+		card.Project = state.Group.Project.Directory
 	}
 	if strings.TrimSpace(card.Title) == "" {
 		return Card{}, errors.New("task title is required")
@@ -147,6 +176,45 @@ func (p *Pool) Create(ctx context.Context, card Card) (Card, error) {
 	}
 	if err := p.emit(ctx, Created, card, card.CreatedBy); err != nil {
 		return Card{}, err
+	}
+	if card.Group != "" {
+		if err := p.emit(ctx, Bound, card, card.CreatedBy); err != nil {
+			return Card{}, err
+		}
+	}
+	return clone(card), nil
+}
+
+// Bind gives a task that no group has taken to a group. From then on its events are written in the stream of the
+// group, and the group's Leader receives the task as if it had just been opened there.
+func (p *Pool) Bind(ctx context.Context, id, groupID event.ID, kind, base string, actor event.Actor) (Card, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return Card{}, err
+	}
+	card, ok := p.cards[id]
+	if !ok {
+		return Card{}, store.ErrNotFound
+	}
+	if card.Group != "" {
+		return Card{}, ErrAlreadyBound
+	}
+	state, err := p.groups.Get(ctx, groupID)
+	if err != nil {
+		return Card{}, err
+	}
+	card.Group, card.Project = groupID, state.Group.Project.Directory
+	if card.Workspace == "" {
+		card.Workspace, card.Base = kind, base
+	}
+	if err := p.emit(ctx, Bound, card, actor); err != nil {
+		return Card{}, err
+	}
+	if card.Status == Open {
+		if err := p.emit(ctx, Opened, card, card.CreatedBy); err != nil {
+			return Card{}, err
+		}
 	}
 	return clone(card), nil
 }
@@ -477,5 +545,128 @@ func (p *Pool) List(ctx context.Context, groupID event.ID) ([]Card, error) {
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result, nil
+}
+
+// Retarget points the unfinished tasks of a group at another workspace. Tasks that were based on a commit of the
+// former one take the given base. It fails when a task of the group still has running or queued work.
+func (p *Pool) Retarget(ctx context.Context, groupID event.ID, directory, base string, actor event.Actor) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return err
+	}
+	ids := []event.ID{}
+	for id, card := range p.cards {
+		if card.Group == groupID && !card.Finished() {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		card := clone(p.cards[id])
+		card.Project = directory
+		if card.Workspace == "worktree" {
+			card.Base = base
+		}
+		if err := p.emit(ctx, Updated, card, actor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Working says whether a task of the group has a claim that is running or waiting to run.
+func (p *Pool) Working(ctx context.Context, groupID event.ID) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return false, err
+	}
+	for _, card := range p.cards {
+		if card.Group != groupID {
+			continue
+		}
+		for _, claim := range card.Claims {
+			if claim.Status == ClaimActive || claim.Status == ClaimQueued {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// Filter picks tasks across every group, and the ones no group has taken.
+type Filter struct {
+	// Project keeps the tasks of one workspace folder.
+	Project string
+	// Archived asks for the archived tasks instead of the visible ones.
+	Archived bool
+}
+
+// Find lists the tasks that match the filter, oldest first.
+func (p *Pool) Find(ctx context.Context, filter Filter) ([]Card, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return nil, err
+	}
+	result := []Card{}
+	for _, card := range p.cards {
+		if card.Archived == filter.Archived && (filter.Project == "" || card.Project == filter.Project) {
+			result = append(result, clone(card))
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result, nil
+}
+
+// Archive hides finished tasks from the board, or brings them back. The whole batch is refused when archiving one
+// that has not finished.
+func (p *Pool) Archive(ctx context.Context, ids []event.ID, archived bool, actor event.Actor) ([]Card, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		card, ok := p.cards[id]
+		if !ok {
+			return nil, store.ErrNotFound
+		}
+		if archived && !card.Finished() {
+			return nil, ErrNotFinished
+		}
+	}
+	result := []Card{}
+	for _, id := range ids {
+		card := clone(p.cards[id])
+		if card.Archived == archived {
+			result = append(result, card)
+			continue
+		}
+		card.Archived = archived
+		if err := p.emit(ctx, ArchivedEvent, card, actor); err != nil {
+			return nil, err
+		}
+		result = append(result, card)
+	}
+	return result, nil
+}
+
+// FinishedBefore lists the visible tasks that ended at or before the given time.
+func (p *Pool) FinishedBefore(ctx context.Context, limit time.Time) ([]event.ID, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return nil, err
+	}
+	result := []event.ID{}
+	for id, card := range p.cards {
+		if !card.Archived && card.Finished() && !p.closedAt[id].After(limit) {
+			result = append(result, id)
+		}
+	}
+	slices.Sort(result)
 	return result, nil
 }

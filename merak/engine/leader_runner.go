@@ -74,7 +74,7 @@ func (e *Engine) externalLeaderRuntime(ctx context.Context, g *groupRun, thread 
 	if err == nil {
 		thread.Session = saved
 	}
-	a := worker.Assignment{Leader: true, ReadOnly: true, Mode: p.Mode, Session: thread.Session.ID, Scope: thread.Session.Scope, Workdir: g.group.Project.Directory, Claim: task.Claim{Member: thread.Leader}}
+	a := worker.Assignment{Leader: true, ReadOnly: true, Mode: p.Mode, Session: thread.Session.ID, Scope: thread.Session.Scope, Workdir: g.configuration().Project.Directory, Claim: task.Claim{Member: thread.Leader}}
 	a.LeaderTurn = worker.NewLeaderTurn()
 	server := e.leaderMCPServer(g, thread, a.LeaderTurn.Finish)
 	for name, operation := range server.Tools.Tools {

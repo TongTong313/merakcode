@@ -27,7 +27,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 )
 
-func TestExternalLeaderSteersAnActiveTurnWithoutTakingAnotherRateSlot(t *testing.T) {
+func TestExternalLeaderSteersAnActiveTurnInsteadOfStartingAnother(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
 	defer cancel()
 	binary := filepath.Join(t.TempDir(), "claude.exe")
@@ -42,8 +42,7 @@ func TestExternalLeaderSteersAnActiveTurnWithoutTakingAnotherRateSlot(t *testing
 	lead := agent.DefaultLeader()
 	lead.ID, lead.Mode = "lead", permission.ModeTakeover
 	lead.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--leader-boundary"}}
-	one := 1
-	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Steering limit", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{TurnsPerMinute: &group.TurnLimits{Thread: &one, Group: &one}}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead})
+	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Steering", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +74,7 @@ func TestExternalLeaderSteersAnActiveTurnWithoutTakingAnotherRateSlot(t *testing
 				return
 			}
 		case <-ctx.Done():
-			t.Fatal("rate limit prevented steering an active turn")
+			t.Fatal("the active turn was not steered")
 		}
 	}
 }

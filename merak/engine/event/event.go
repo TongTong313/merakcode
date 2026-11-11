@@ -25,6 +25,7 @@ const (
 	ActorHuman    ActorKind = "human"
 	ActorAgent    ActorKind = "agent"
 	ActorExternal ActorKind = "external"
+	ActorSystem   ActorKind = "system"
 )
 
 type Actor struct {

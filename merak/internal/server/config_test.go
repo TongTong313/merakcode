@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/session"
+	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/credential"
 	"github.com/TongTong313/merakcode/merak/internal/server"
@@ -271,5 +273,49 @@ func TestSettingAKeyDoesNotCopyAnEnvironmentAddressIntoTheFile(t *testing.T) {
 	}
 	if !strings.Contains(string(saved), "keep this comment") || !strings.Contains(string(saved), `"context": 64000`) || strings.Contains(string(saved), "sk-new") {
 		t.Fatalf("the file lost content or kept the key:\n%s", saved)
+	}
+}
+
+func TestTheBoardArchivesAfterTheDaysConfigured(t *testing.T) {
+	ctx := t.Context()
+	home := t.TempDir()
+	var skew atomic.Int64
+	e, err := engine.New(engine.Deps{Workdir: home, Now: func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	c := connectAs(t, s, protocol.LocalHuman, protocol.Capabilities{})
+	var card task.Card
+	if err := c.Call(ctx, "task.create", map[string]any{"title": "Old news", "project": home}, &card); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Call(ctx, "task.cancel", map[string]any{"task": card.ID}, new(task.Card)); err != nil {
+		t.Fatal(err)
+	}
+	var listed []task.Card
+	archived := func() int {
+		if err := e.Board.ArchiveStale(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Call(ctx, "task.list", map[string]any{"archived": true}, &listed); err != nil {
+			t.Fatal(err)
+		}
+		return len(listed)
+	}
+	if err := c.Call(ctx, "config.set", map[string]any{"board": map[string]any{"autoArchiveDays": 7}}, new(config.Value)); err != nil {
+		t.Fatal(err)
+	}
+	skew.Store(int64(4 * 24 * time.Hour))
+	if archived() != 0 {
+		t.Fatal("archived after 4 days although 7 are configured")
+	}
+	skew.Store(int64(8 * 24 * time.Hour))
+	if archived() != 1 {
+		t.Fatal("not archived after 8 days with 7 configured")
 	}
 }

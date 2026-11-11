@@ -41,7 +41,6 @@ type Scheduler struct {
 	quietUntil time.Time
 	preempt    chan struct{}
 	digest     Digest
-	admit      func(context.Context) (time.Time, error)
 }
 
 type queuedEvent struct {
@@ -121,12 +120,6 @@ func (s *Scheduler) Next(ctx context.Context) (event.Event, error) {
 
 func (s *Scheduler) NextBatch(ctx context.Context) ([]event.Event, error) { return s.wait(ctx, 30) }
 
-func (s *Scheduler) SetAdmission(admit func(context.Context) (time.Time, error)) {
-	s.mu.Lock()
-	s.admit = admit
-	s.mu.Unlock()
-	s.Signal()
-}
 func (s *Scheduler) Signal() {
 	select {
 	case s.ready <- struct{}{}:
@@ -141,7 +134,6 @@ func (s *Scheduler) wait(ctx context.Context, limit int) ([]event.Event, error) 
 		}
 		s.mu.Lock()
 		var delay time.Duration
-		allowed := true
 		wake := false
 		for _, queued := range s.queue {
 			wake = wake || queued.wake
@@ -150,22 +142,6 @@ func (s *Scheduler) wait(ctx context.Context, limit int) ([]event.Event, error) 
 			delay = time.Until(s.quietUntil)
 		}
 		if wake && delay <= 0 {
-			if s.admit != nil {
-				deadline, err := s.admit(ctx)
-				if err != nil {
-					s.mu.Unlock()
-					return nil, err
-				}
-				if !deadline.IsZero() {
-					delay = time.Until(deadline)
-				}
-				if !deadline.IsZero() {
-					allowed = false
-					delay = max(delay, time.Millisecond)
-				}
-			}
-		}
-		if wake && delay <= 0 && allowed {
 			batch := s.take(limit)
 			s.mu.Unlock()
 			return batch, nil
@@ -275,14 +251,6 @@ type Threads struct {
 	state *State
 	newID func() event.ID
 	items map[event.ID]*Thread
-}
-
-func (t *Threads) Wake() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for _, thread := range t.items {
-		thread.Scheduler.Signal()
-	}
 }
 
 func (t *Threads) List() []*Thread {

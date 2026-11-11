@@ -10,6 +10,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
@@ -239,5 +240,79 @@ func TestOnlyTheOwnerChangesTheLeaderAndTaskThreadsFollowIt(t *testing.T) {
 	}
 	if err := owner.Call(t.Context(), "task.update", map[string]any{"task": card["id"], "leader": "x"}, nil); err == nil {
 		t.Fatal("task.update accepted a Leader")
+	}
+}
+
+func TestATaskCreatedAloneIsBoundToANewOrExistingGroupThroughTheProtocol(t *testing.T) {
+	r := newRoster(t)
+	elsewhere := t.TempDir()
+	var loose, other task.Card
+	for title, project := range map[string]string{"Alone": r.directory, "Elsewhere": elsewhere} {
+		var card task.Card
+		if err := r.client.Call(t.Context(), "task.create", map[string]any{"title": title, "project": project}, &card); err != nil {
+			t.Fatal(err)
+		}
+		if title == "Alone" {
+			loose = card
+		} else {
+			other = card
+		}
+	}
+	if loose.Group != "" || loose.Project != r.directory {
+		t.Fatalf("a task made alone: %+v", loose)
+	}
+	if err := r.client.Call(t.Context(), "task.create", map[string]any{"title": "No project"}, nil); err == nil {
+		t.Fatal("a task without a group and a project was created")
+	}
+	g, err := r.create("lead", r.directory, r.members(r.leader("lead")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bound task.Card
+	if err := r.client.Call(t.Context(), "group.bind", map[string]any{"group": g.ID, "task": loose.ID}, &bound); err != nil || bound.Group != g.ID {
+		t.Fatalf("bound=%+v err=%v", bound, err)
+	}
+	if err := r.client.Call(t.Context(), "group.bind", map[string]any{"group": g.ID, "task": loose.ID}, nil); code(err) != "MRK-6013" {
+		t.Fatalf("binding twice: %v", err)
+	}
+	var created group.Group
+	params := protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "For it", Leader: "lead2"}, Members: r.members(r.leader("lead2")), Task: other.ID}
+	if err := r.client.Call(t.Context(), "group.create", params, &created); err != nil || created.Project.Directory != elsewhere {
+		t.Fatalf("created=%+v err=%v", created.Project, err)
+	}
+	var listed []group.Listing
+	if err := r.client.Call(t.Context(), "group.list", struct{}{}, &listed); err != nil || len(listed) != 2 {
+		t.Fatalf("listed=%+v err=%v", listed, err)
+	}
+	for _, entry := range listed {
+		want := map[event.ID]event.ID{g.ID: loose.ID, created.ID: other.ID}[entry.ID]
+		if len(entry.Tasks) != 1 || entry.Tasks[0] != want {
+			t.Errorf("group %s lists tasks %v, want %s", entry.ID, entry.Tasks, want)
+		}
+	}
+}
+
+func TestTasksAreListedAndArchivedThroughTheProtocol(t *testing.T) {
+	r := newRoster(t)
+	var card task.Card
+	if err := r.client.Call(t.Context(), "task.create", map[string]any{"title": "Alone", "project": r.directory}, &card); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.client.Call(t.Context(), "task.archive", map[string]any{"tasks": []event.ID{card.ID}, "archived": true}, nil); code(err) != "MRK-6017" {
+		t.Fatalf("archiving a running task: %v", err)
+	}
+	if err := r.client.Call(t.Context(), "task.cancel", map[string]any{"task": card.ID}, new(task.Card)); err != nil {
+		t.Fatal(err)
+	}
+	var archived []task.Card
+	if err := r.client.Call(t.Context(), "task.archive", map[string]any{"tasks": []event.ID{card.ID}, "archived": true}, &archived); err != nil || len(archived) != 1 || !archived[0].Archived {
+		t.Fatalf("archived=%+v err=%v", archived, err)
+	}
+	var visible, hidden []task.Card
+	if err := r.client.Call(t.Context(), "task.list", map[string]any{"project": r.directory}, &visible); err != nil || len(visible) != 0 {
+		t.Fatalf("visible=%+v err=%v", visible, err)
+	}
+	if err := r.client.Call(t.Context(), "task.list", map[string]any{"archived": true}, &hidden); err != nil || len(hidden) != 1 {
+		t.Fatalf("hidden=%+v err=%v", hidden, err)
 	}
 }

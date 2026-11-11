@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -19,7 +20,8 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 		"group create": "group.create", "group add-member": "group.addMember", "group remove-member": "group.removeMember",
 		"group update": "group.update", "group board": "group.state", "group inbox": "inbox", "group say": "group.say",
 		"group pause": "group.pause", "group resume": "group.resume", "task create": "task.create", "task assign": "task.assign",
-		"task review": "task.review", "task update": "task.update", "task cancel": "task.cancel",
+		"task review": "task.review", "task update": "task.update", "task cancel": "task.cancel", "task list": "task.list",
+		"task archive": "task.archive", "group bind": "group.bind", "group list": "group.list",
 	}
 	method := methods[args[0]+" "+args[1]]
 	if method == "" {
@@ -29,9 +31,12 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 	flags.SetOutput(io.Discard)
 	file := flags.String("file", "", "")
 	values := map[string]*string{}
-	for _, key := range []string{"group", "task", "member", "thread", "title", "description", "workspace", "leader", "decision", "feedback", "text", "role"} {
+	for _, key := range []string{"group", "task", "member", "thread", "title", "description", "workspace", "leader", "decision", "feedback", "text", "role", "project"} {
 		values[key] = flags.String(key, "", "")
 	}
+	tasks := flags.String("tasks", "", "")
+	archived := flags.Bool("archived", false, "")
+	restore := flags.Bool("restore", false, "")
 	if flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
 		return 2
 	}
@@ -55,6 +60,19 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 		if *value != "" {
 			params[key], _ = json.Marshal(*value)
 		}
+	}
+	switch method {
+	case "task.list":
+		if *archived {
+			params["archived"] = json.RawMessage("true")
+		}
+	case "task.archive":
+		list := strings.FieldsFunc(*tasks, func(r rune) bool { return r == ',' })
+		if len(list) == 0 {
+			return 2
+		}
+		params["tasks"], _ = json.Marshal(list)
+		params["archived"], _ = json.Marshal(!*restore)
 	}
 	home, err := dataHome()
 	if err != nil {

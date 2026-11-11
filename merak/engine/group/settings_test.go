@@ -42,15 +42,6 @@ func TestGroupSettingsRequireAnAdminAndSurviveReload(t *testing.T) {
 			t.Fatal("invalid settings accepted")
 		}
 	}
-	for _, raw := range []string{`{"turnsPerMinute":{"thread":0}}`, `{"turnsPerMinute":{"group":-1}}`, `{"turnsPerMinute":{"thread":1.5}}`} {
-		var invalid group.Settings
-		if err := json.Unmarshal([]byte(raw), &invalid); err != nil {
-			continue
-		}
-		if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &invalid}); err == nil {
-			t.Fatalf("invalid rate accepted: %s", raw)
-		}
-	}
 	for _, host := range []string{"example.*.com", "https://example.com", "example.com:65536", "*", ""} {
 		t.Run("invalid host "+host, func(t *testing.T) {
 			if _, err := manager.Update(ctx, g.ID, "admin", group.Update{Settings: &group.Settings{AllowedHosts: []string{host}}}); err == nil {

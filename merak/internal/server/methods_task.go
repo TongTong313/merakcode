@@ -11,11 +11,17 @@ import (
 func (s *Server) taskMethods() map[string]handler {
 	return map[string]handler{
 		"task.create": run(func(ctx context.Context, c *connection, params protocol.TaskCreateParams) (any, error) {
-			card := task.Card{Group: params.Group, Title: params.Title, Description: params.Description, Acceptance: params.Acceptance, Areas: params.Areas, Review: params.Review, Priority: params.Priority, Workspace: params.Workspace, Inputs: params.Inputs, Budget: params.Budget, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: c.human}}
+			card := task.Card{Group: params.Group, Project: params.Project, Title: params.Title, Description: params.Description, Acceptance: params.Acceptance, Areas: params.Areas, Review: params.Review, Priority: params.Priority, Workspace: params.Workspace, Inputs: params.Inputs, Budget: params.Budget, CreatedBy: event.Actor{Kind: event.ActorHuman, ID: c.human}}
 			if params.Member != "" {
 				return s.engine.CreateAssignedTask(ctx, card, params.Member)
 			}
 			return s.engine.CreateTask(ctx, card)
+		}),
+		"task.list": run(func(ctx context.Context, _ *connection, params protocol.TaskListParams) (any, error) {
+			return s.engine.ListTasks(ctx, task.Filter{Project: params.Project, Archived: params.Archived})
+		}),
+		"task.archive": run(func(ctx context.Context, c *connection, params protocol.TaskArchiveParams) (any, error) {
+			return s.engine.ArchiveTasks(ctx, params.Tasks, params.Archived, event.Actor{Kind: event.ActorHuman, ID: c.human})
 		}),
 		"task.assign": run(func(ctx context.Context, c *connection, params protocol.TaskAssignParams) (any, error) {
 			return s.engine.AssignTask(ctx, params.Task, c.human, params.Member, params.Role, params.Scope)

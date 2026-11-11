@@ -10,7 +10,10 @@ export type BoardCard = TaskCard & {
   artifacts?: WorkspacePublished[]
 }
 export type Board = {
+  /** The default view: every task that is not archived, by status. */
   columns: Record<TaskStatus, BoardCard[]>
+  /** The archive view: the tasks that were archived and not restored. */
+  archive: BoardCard[]
   goals: GoalRow[]
   lastSeq: number
   queueOrder: string[]
@@ -30,24 +33,30 @@ export function emptyBoard(): Board {
       failed: [],
       cancelled: [],
     },
+    archive: [],
     goals: [],
     lastSeq: 0,
     queueOrder: [],
   }
 }
 
-/** Applies host task state and independent remote progress streams. */
+/**
+ * Applies task state from the stream of a group, from the stream of a task that no group has taken, and the
+ * independent progress streams of remote members. Every stream has its own cursor, so one board can follow many groups.
+ */
 export function applyToBoard(board: Board, event: EngineEvent): Board {
   const grouped = event.stream.startsWith("group:")
-  if (!grouped && (!event.stream.startsWith("device:") || event.type !== "task.progress")) return board
-  const previousSeq = grouped ? board.lastSeq : (board.streams?.[event.stream] ?? 0)
+  const loose = event.stream.startsWith("task:")
+  if (!grouped && !loose && (!event.stream.startsWith("device:") || event.type !== "task.progress")) return board
+  const previousSeq = board.streams?.[event.stream] ?? (grouped && !board.streams ? board.lastSeq : 0)
   if (!event.seq || event.seq <= previousSeq) return board
-  if (grouped && event.seq !== previousSeq + 1) throw new Error("Board event sequence gap")
-  const next: Board = grouped
-    ? { ...board, lastSeq: event.seq }
-    : { ...board, streams: { ...board.streams, [event.stream]: event.seq } }
+  if ((grouped || loose) && event.seq !== previousSeq + 1) throw new Error("Board event sequence gap")
+  const next: Board = { ...board, streams: { ...board.streams, [event.stream]: event.seq } }
+  if (grouped) next.lastSeq = event.seq
   switch (event.type) {
     case "task.created":
+    case "task.bound":
+    case "task.archived":
     case "task.opened":
     case "task.queued":
     case "task.started":
@@ -56,9 +65,9 @@ export function applyToBoard(board: Board, event: EngineEvent): Board {
     case "task.updated":
     case "task.closed":
     case "phase.changed": {
-      const previous = Object.values(board.columns)
-        .flat()
-        .find((card) => card.id === event.payload.id)
+      const previous = [...Object.values(board.columns).flat(), ...board.archive].find(
+        (card) => card.id === event.payload.id,
+      )
       const card: BoardCard = {
         ...(previous
           ? {
@@ -75,9 +84,16 @@ export function applyToBoard(board: Board, event: EngineEvent): Board {
       for (const status of Object.keys(next.columns) as TaskStatus[]) {
         next.columns[status] = board.columns[status].filter((previous) => previous.id !== card.id)
       }
-      next.columns[card.status as TaskStatus].push(card)
-      next.columns[card.status as TaskStatus].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
-      if (!card.parent) {
+      next.archive = board.archive.filter((previous) => previous.id !== card.id)
+      if (card.archived) {
+        next.archive.push(card)
+        next.archive.sort((a, b) => a.id.localeCompare(b.id))
+        next.goals = board.goals.filter((previous) => previous.id !== card.id)
+      } else {
+        next.columns[card.status as TaskStatus].push(card)
+        next.columns[card.status as TaskStatus].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
+      }
+      if (!card.parent && !card.archived) {
         const goal: GoalRow = {
           id: card.id,
           title: card.title,
@@ -121,6 +137,7 @@ export function applyToBoard(board: Board, event: EngineEvent): Board {
 }
 
 function changeCard(board: Board, id: string | undefined, change: (card: BoardCard) => BoardCard) {
+  board.archive = board.archive.map((card) => (card.id === id ? change(card) : card))
   board.columns = Object.fromEntries(
     Object.entries(board.columns).map(([status, cards]) => [
       status,

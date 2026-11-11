@@ -62,6 +62,7 @@ type Value struct {
 	Rules            Rules                `json:"rules,omitempty"`
 	EnabledProviders []string             `json:"enabledProviders,omitempty"`
 	Providers        map[string]Provider  `json:"providers"`
+	Board            Board                `json:"board"`
 	Warnings         []string             `json:"warnings,omitempty"`
 }
 
@@ -85,7 +86,22 @@ type ProviderPatch struct {
 	HasHeaders bool `json:"hasHeaders,omitempty"`
 }
 
+// Board holds the settings of the task board.
+type Board struct {
+	// AutoArchiveDays is how many days a finished task stays on the board before it is archived; 0 turns it off.
+	AutoArchiveDays int `json:"autoArchiveDays"`
+}
+
+// DefaultAutoArchiveDays applies while the file does not say.
+const DefaultAutoArchiveDays = 3
+
+// BoardPatch changes the settings of the board.
+type BoardPatch struct {
+	AutoArchiveDays *int `json:"autoArchiveDays,omitempty"`
+}
+
 type Patch struct {
+	Board            *BoardPatch               `json:"board,omitempty"`
 	Cloud            *Cloud                    `json:"cloud,omitempty"`
 	PermissionMode   *string                   `json:"permissionMode,omitempty"`
 	PermissionRules  *[]PermissionRule         `json:"permissionRules,omitempty"`

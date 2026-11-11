@@ -12,13 +12,14 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/internal/cloud"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/secret"
 )
 
 // ForwardCloud leaves cloud-owned commands and history interpretation to the host.
 func (e *Engine) ForwardCloud(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, bool, error) {
 	switch method {
-	case "group.create", "group.say", "group.update", "group.pause", "group.resume", "group.addMember", "group.removeMember", "group.state", "task.create", "task.assign", "task.update", "task.cancel", "task.review", "member.register", "member.remove", "doc.list", "doc.read", "doc.write", "permission.reply", "question.reply", "event.emit", "events.read", "events.find", "events.get", "session.snapshot", "session.send", "session.cancel":
+	case "group.create", "group.say", "group.update", "group.pause", "group.resume", "group.addMember", "group.removeMember", "group.state", "task.create", "task.assign", "task.update", "task.cancel", "task.review", "group.bind", "member.register", "member.remove", "doc.list", "doc.read", "doc.write", "permission.reply", "question.reply", "event.emit", "events.read", "events.find", "events.get", "session.snapshot", "session.send", "session.cancel":
 	default:
 		return nil, false, nil
 	}
@@ -78,6 +79,9 @@ func (e *Engine) ForwardCloud(ctx context.Context, method string, params json.Ra
 		}
 	}
 	selected := method == "group.create" && target.Kind == group.KindCloud
+	if selected && target.Task != "" {
+		return nil, true, coded(errorcode.CloudGroupTakesNoTask, errors.New("cloud groups do not take tasks yet"))
+	}
 	if !selected && groupID != "" {
 		owner, exists := e.hostedGroups.Load(groupID)
 		if exists && strings.HasPrefix(owner.(string), "remote:") {
@@ -96,6 +100,9 @@ func (e *Engine) ForwardCloud(ctx context.Context, method string, params json.Ra
 	}
 	if !selected {
 		return nil, false, nil
+	}
+	if method == "group.bind" {
+		return nil, true, coded(errorcode.CloudGroupTakesNoTask, errors.New("cloud groups do not take tasks yet"))
 	}
 	if host == nil || groupID != "" && !e.cloudGroupOwnedBy(ctx, groupID, host.id) {
 		return nil, true, cloud.ErrNoCloud

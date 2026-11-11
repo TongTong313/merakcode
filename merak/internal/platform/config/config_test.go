@@ -55,3 +55,36 @@ func TestConfigurationPersistsProviderChangesWithoutReturningKeys(t *testing.T) 
 		t.Fatal("stored derived credential metadata")
 	}
 }
+
+func TestBoardAutoArchiveDaysDefaultToThreeAndAreEditedInPlace(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "merakcode.jsonc")
+	original := "{\n  // keep this comment\n  \"locale\": \"en\"\n}\n"
+	if err := os.WriteFile(file, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := config.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if days := settings.Get().Board.AutoArchiveDays; days != 3 {
+		t.Fatalf("default days=%d", days)
+	}
+	for _, days := range []int{7, 0, 14} {
+		if _, err := settings.Update(config.Patch{Board: &config.BoardPatch{AutoArchiveDays: &days}}); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := config.Open(root)
+		if err != nil || reopened.Get().Board.AutoArchiveDays != days {
+			t.Fatalf("after setting %d: %+v %v", days, reopened.Get().Board, err)
+		}
+	}
+	saved, err := os.ReadFile(file)
+	if err != nil || !strings.Contains(string(saved), "keep this comment") || !strings.Contains(string(saved), `"autoArchiveDays": 14`) {
+		t.Fatalf("the file after the edits:\n%s %v", saved, err)
+	}
+	negative := -1
+	if _, err := settings.Update(config.Patch{Board: &config.BoardPatch{AutoArchiveDays: &negative}}); err == nil {
+		t.Fatal("a negative number of days was accepted")
+	}
+}

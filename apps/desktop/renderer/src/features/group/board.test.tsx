@@ -9,6 +9,7 @@ test("opens a board card's structured report and shows the goal phase", async ()
   const card: BoardCard = {
     id: "task",
     group: "group",
+    project: "/work/project",
     title: "Update the guide",
     description: "Document the new behavior.",
     acceptance: ["Examples pass"],

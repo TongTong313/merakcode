@@ -129,6 +129,7 @@ type Engine struct {
 	workerQuestions   map[event.ID]*pendingWorkerQuestion
 	Groups            *group.Manager
 	Tasks             *task.Pool
+	Board             *task.Board
 	Workspaces        *workspace.Manager
 	merging           map[event.ID]bool
 	claimRuns         map[event.ID]claimRun
@@ -221,6 +222,7 @@ func New(d Deps) (*Engine, error) {
 	e.Bus.Route = e.deviceStream
 	e.Groups = group.New(d.Store, e.Bus, e.newID)
 	e.Tasks = task.New(d.Store, e.Bus, e.newID, e.Groups)
+	e.Board = task.NewBoard(e.Tasks, e.Groups, d.Now)
 	e.Tasks.AuthorizeAssignment = e.authorizeMemberAssignment
 	e.permissions = &permission.Router{Bus: e.Bus, Groups: e.Groups, Tasks: e.Tasks, Human: d.Ask, Timeout: d.ApprovalTimeout}
 	e.permissions.TimedOut = e.approvalTimedOut
@@ -298,6 +300,7 @@ func New(d Deps) (*Engine, error) {
 		e.tools.Deferred[t.Spec().Name] = gate.Wrap(t)
 		delete(e.tools.Tools, t.Spec().Name)
 	}
+	e.workers.Go(func() { e.Board.Run(e.ctx, e.logger) })
 	e.watchSentinel(d.SentinelInterval)
 	return e, nil
 }

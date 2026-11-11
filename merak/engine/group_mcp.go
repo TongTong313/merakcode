@@ -16,7 +16,7 @@ import (
 )
 
 func (e *Engine) leaderMCPServer(g *groupRun, thread *leader.Thread, finish func(string)) *mcp.Server {
-	return &mcp.Server{Tools: tool.NewPool("leader.group", e.leaderTools(g, thread, finish)...), Env: tool.Env{Member: thread.Leader, Scope: thread.Session.Scope, Workdir: g.group.Project.Directory, MemoryOwners: e.memberMemoryOwners(e.ctx, g.group.Project.Directory, thread.Session.Scope, thread.Leader)}}
+	return &mcp.Server{Tools: tool.NewPool("leader.group", e.leaderTools(g, thread, finish)...), Env: tool.Env{Member: thread.Leader, Scope: thread.Session.Scope, Workdir: g.configuration().Project.Directory, MemoryOwners: e.memberMemoryOwners(e.ctx, g.configuration().Project.Directory, thread.Session.Scope, thread.Leader)}}
 }
 
 func (e *Engine) workerTools(a worker.Assignment, submit func(context.Context, task.Report) error) []tool.Tool {

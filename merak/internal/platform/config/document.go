@@ -23,7 +23,7 @@ var v03Keys = []string{
 // v1Keys are the top-level keys that only v1 has. None of them may share a name with a v0.3 key.
 var v1Keys = []string{
 	"cloud", "permissionMode", "workspaceTrust", "permissionRules", "permissionGrants", "unconfined", "allowedHosts",
-	"deniedHosts", "thinking",
+	"deniedHosts", "thinking", "board",
 }
 
 // ignoredKeys are v0.3 keys that v1 does not use any more.
@@ -117,6 +117,9 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 	var rules struct {
 		User []string `json:"user"`
 	}
+	var board struct {
+		AutoArchiveDays *int `json:"autoArchiveDays"`
+	}
 	var mcp map[string]json.RawMessage
 	var providers map[string]fileProvider
 	for _, field := range []struct {
@@ -125,7 +128,7 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 	}{
 		{"locale", &localeText}, {"logLevel", &level}, {"model", &value.Model}, {"small_model", &value.SmallModel},
 		{"thinking", &value.Thinking}, {"enabled_providers", &value.EnabledProviders}, {"disabled_providers", &disabled},
-		{"server", &server}, {"rules", &rules}, {"mcp", &mcp}, {"provider", &providers}, {"cloud", &value.Cloud},
+		{"server", &server}, {"board", &board}, {"rules", &rules}, {"mcp", &mcp}, {"provider", &providers}, {"cloud", &value.Cloud},
 		{"permissionMode", &value.PermissionMode}, {"workspaceTrust", &value.WorkspaceTrust},
 		{"permissionRules", &value.PermissionRules}, {"permissionGrants", &value.PermissionGrants},
 		{"unconfined", &value.Unconfined}, {"allowedHosts", &value.AllowedHosts}, {"deniedHosts", &value.DeniedHosts},
@@ -141,6 +144,10 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 		value.Warnings = append(value.Warnings, warnings...)
 	}
 	value.Server = Server{Port: server.Port, Hostname: server.Hostname}
+	value.Board.AutoArchiveDays = DefaultAutoArchiveDays
+	if board.AutoArchiveDays != nil {
+		value.Board.AutoArchiveDays = *board.AutoArchiveDays
+	}
 	for id, source := range providers {
 		value.Providers[id] = providerView(source)
 	}

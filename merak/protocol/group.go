@@ -9,6 +9,14 @@ import (
 type GroupCreateParams struct {
 	group.Group
 	Members []group.Member `json:"members"`
+	// Task is a task no group has taken; the new group works in its workspace and takes it.
+	Task event.ID `json:"task,omitempty"`
+}
+
+// GroupBindParams gives a task that no group has taken to an existing group.
+type GroupBindParams struct {
+	Group event.ID `json:"group"`
+	Task  event.ID `json:"task"`
 }
 type GroupIDParams struct {
 	Group event.ID `json:"group"`
@@ -39,7 +47,8 @@ type TaskCreateParams struct {
 	Member      event.ID    `json:"member,omitempty"`
 	Review      bool        `json:"review,omitempty"`
 	Priority    int         `json:"priority,omitempty"`
-	Group       event.ID    `json:"group"`
+	Group       event.ID    `json:"group,omitempty"`
+	Project     string      `json:"project,omitempty"`
 	Title       string      `json:"title"`
 	Description string      `json:"description,omitempty"`
 	Acceptance  []string    `json:"acceptance,omitempty"`
@@ -72,4 +81,16 @@ type TaskUpdateParams struct {
 
 type TaskCancelParams struct {
 	Task event.ID `json:"task"`
+}
+
+// TaskListParams filters the tasks of every group.
+type TaskListParams struct {
+	Project  string `json:"project,omitempty"`
+	Archived bool   `json:"archived,omitempty"`
+}
+
+// TaskArchiveParams hides finished tasks from the board, or brings them back.
+type TaskArchiveParams struct {
+	Tasks    []event.ID `json:"tasks"`
+	Archived bool       `json:"archived"`
 }

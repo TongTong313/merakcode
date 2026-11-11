@@ -33,6 +33,13 @@ func (p *Pool) SetPhase(ctx context.Context, id event.ID, next Phase, actor even
 	if card.Parent != "" && next != PhaseCancelled || card.Phase == PhaseDone || card.Phase == PhaseCancelled || card.Status == Done || card.Status == Cancelled || next == PhaseDone {
 		return ErrState
 	}
+	if card.Group == "" {
+		// A task no group has taken can only be cancelled, and only by the person who made it
+		if next != PhaseCancelled || actor.Kind != event.ActorHuman || actor.ID != card.CreatedBy.ID {
+			return ErrNotMember
+		}
+		return p.cancelSubtree(ctx, card, actor)
+	}
 	state, err := p.groups.Get(ctx, card.Group)
 	if err != nil {
 		return err

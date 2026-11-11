@@ -45,7 +45,9 @@ type Card struct {
 	PreviousStatus Status        `json:"previousStatus,omitempty"`
 	PlanPending    bool          `json:"planPending,omitempty"`
 	ID             event.ID      `json:"id"`
-	Group          event.ID      `json:"group"`
+	Group          event.ID      `json:"group,omitempty"`
+	Project        string        `json:"project"`
+	Archived       bool          `json:"archived,omitempty"`
 	Parent         event.ID      `json:"parent,omitempty"`
 	Title          string        `json:"title"`
 	Priority       int           `json:"priority"`
@@ -63,6 +65,11 @@ type Card struct {
 	Status         Status        `json:"status"`
 	Claims         []Claim       `json:"claims"`
 	CreatedBy      event.Actor   `json:"createdBy"`
+}
+
+// Finished says whether the task has ended, whatever the way it ended.
+func (c Card) Finished() bool {
+	return c.Status == Done || c.Status == Failed || c.Status == Cancelled
 }
 
 type Budget struct {
@@ -85,18 +92,20 @@ type Grant struct {
 }
 
 const (
-	Created      event.Type = "task.created"
-	Opened       event.Type = "task.opened"
-	QueuedEvent  event.Type = "task.queued"
-	Started      event.Type = "task.started"
-	Reported     event.Type = "task.reported"
-	Closed       event.Type = "task.closed"
-	Updated      event.Type = "task.updated"
-	Reviewed     event.Type = "task.reviewed"
-	PhaseChanged event.Type = "phase.changed"
+	Created       event.Type = "task.created"
+	Bound         event.Type = "task.bound"
+	ArchivedEvent event.Type = "task.archived"
+	Opened        event.Type = "task.opened"
+	QueuedEvent   event.Type = "task.queued"
+	Started       event.Type = "task.started"
+	Reported      event.Type = "task.reported"
+	Closed        event.Type = "task.closed"
+	Updated       event.Type = "task.updated"
+	Reviewed      event.Type = "task.reviewed"
+	PhaseChanged  event.Type = "phase.changed"
 )
 
-var kinds = []event.Type{Created, Opened, QueuedEvent, Started, Reported, Closed, Updated, Reviewed, PhaseChanged}
+var kinds = []event.Type{Created, Bound, ArchivedEvent, Opened, QueuedEvent, Started, Reported, Closed, Updated, Reviewed, PhaseChanged}
 
 func init() {
 	for _, kind := range kinds {

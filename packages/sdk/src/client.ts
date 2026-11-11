@@ -208,6 +208,8 @@ export async function connect(options: {
       create: (params: Methods["group.create"]["params"]) => call("group.create", params),
       addMember: (params: Methods["group.addMember"]["params"]) => call("group.addMember", params),
       state: (params: Methods["group.state"]["params"]) => call("group.state", params),
+      bind: (params: Methods["group.bind"]["params"]) => call("group.bind", params),
+      list: () => call("group.list", {}),
     },
     task: {
       update: (params: Methods["task.update"]["params"]) => call("task.update", params),
@@ -215,6 +217,8 @@ export async function connect(options: {
       assign: (params: Methods["task.assign"]["params"]) => call("task.assign", params),
       review: (params: Methods["task.review"]["params"]) => call("task.review", params),
       create: (params: Methods["task.create"]["params"]) => call("task.create", params),
+      list: (params: Methods["task.list"]["params"] = {}) => call("task.list", params),
+      archive: (params: Methods["task.archive"]["params"]) => call("task.archive", params),
     },
     doc: {
       list: (params: Methods["doc.list"]["params"]) => call("doc.list", params),

@@ -1555,21 +1555,6 @@
 .member-settings .field {
   margin-top: 10px;
 }
-.turn-limits {
-  min-width: 0;
-  padding: 0;
-  margin: 12px 0;
-  border: 0;
-}
-.turn-limits legend {
-  padding: 0;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-.turn-limits .field {
-  grid-template-columns: minmax(0, 1fr) 64px;
-  align-items: center;
-}
 .member-seat {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

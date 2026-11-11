@@ -216,6 +216,35 @@ func (m *Manager) AddMember(ctx context.Context, id event.ID, member Member) (Me
 	}
 	return member, nil
 }
+
+// Listing is a group with the ids of the tasks it owns.
+type Listing struct {
+	Group
+	Tasks []event.ID `json:"tasks"`
+}
+
+// List gives the local groups the human is a member of, oldest first.
+func (m *Manager) List(ctx context.Context, human event.ID) ([]Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	facts, err := m.store.Find(ctx, store.Query{Types: []event.Type{Created}})
+	if err != nil {
+		return nil, err
+	}
+	groups := []Group{}
+	for _, fact := range facts {
+		state, err := m.get(ctx, fact.Scope.Group)
+		if err != nil {
+			return nil, err
+		}
+		if state.Group.Kind != KindLocal || !slices.ContainsFunc(state.Members, func(member Member) bool { return member.ID == human && member.Kind == MemberHuman }) {
+			continue
+		}
+		groups = append(groups, state.Group)
+	}
+	return groups, nil
+}
+
 func (m *Manager) Get(ctx context.Context, id event.ID) (State, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

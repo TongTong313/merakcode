@@ -389,6 +389,32 @@
       "required": ["price"],
       "type": "object"
     },
+    "ConfigBoard": {
+      "additionalProperties": false,
+      "properties": {
+        "autoArchiveDays": {
+          "type": "integer"
+        }
+      },
+      "required": ["autoArchiveDays"],
+      "type": "object"
+    },
+    "ConfigBoardPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "autoArchiveDays": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ConfigCloud": {
       "additionalProperties": false,
       "properties": {
@@ -488,6 +514,16 @@
                   "type": "null"
                 }
               ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "board": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigBoardPatch"
             },
             {
               "type": "null"
@@ -975,6 +1011,9 @@
             }
           ]
         },
+        "board": {
+          "$ref": "#/$defs/ConfigBoard"
+        },
         "cloud": {
           "$ref": "#/$defs/ConfigCloud"
         },
@@ -1106,7 +1145,7 @@
           ]
         }
       },
-      "required": ["providers"],
+      "required": ["board", "providers"],
       "type": "object"
     },
     "EngineFileChanges": {
@@ -1566,6 +1605,47 @@
       "required": ["id", "kind", "leader", "name", "project"],
       "type": "object"
     },
+    "GroupListing": {
+      "additionalProperties": false,
+      "properties": {
+        "brief": {
+          "$ref": "#/$defs/GroupBrief"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "leader": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project": {
+          "$ref": "#/$defs/GroupProject"
+        },
+        "settings": {
+          "$ref": "#/$defs/GroupSettings"
+        },
+        "tasks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "leader", "name", "project", "tasks"],
+      "type": "object"
+    },
     "GroupMember": {
       "additionalProperties": false,
       "properties": {
@@ -1821,16 +1901,6 @@
               "type": "null"
             }
           ]
-        },
-        "turnsPerMinute": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/GroupTurnLimits"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "type": "object"
@@ -1891,32 +1961,6 @@
         }
       },
       "required": ["id", "then", "when"],
-      "type": "object"
-    },
-    "GroupTurnLimits": {
-      "additionalProperties": false,
-      "properties": {
-        "group": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "thread": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
       "type": "object"
     },
     "LeaderClaimLine": {
@@ -3035,6 +3079,19 @@
       "required": ["group", "member"],
       "type": "object"
     },
+    "ProtocolGroupBindParams": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": ["group", "task"],
+      "type": "object"
+    },
     "ProtocolGroupControlParams": {
       "additionalProperties": false,
       "properties": {
@@ -3084,6 +3141,9 @@
         },
         "settings": {
           "$ref": "#/$defs/GroupSettings"
+        },
+        "task": {
+          "type": "string"
         }
       },
       "required": ["id", "kind", "leader", "members", "name", "project"],
@@ -3161,6 +3221,16 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GroupProject"
             },
             {
               "type": "null"
@@ -3659,6 +3729,29 @@
       "required": ["subscription"],
       "type": "object"
     },
+    "ProtocolTaskArchiveParams": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "tasks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["archived", "tasks"],
+      "type": "object"
+    },
     "ProtocolTaskAssignParams": {
       "additionalProperties": false,
       "properties": {
@@ -3755,6 +3848,9 @@
         "priority": {
           "type": "integer"
         },
+        "project": {
+          "type": "string"
+        },
         "review": {
           "type": "boolean"
         },
@@ -3765,7 +3861,19 @@
           "type": "string"
         }
       },
-      "required": ["group", "title"],
+      "required": ["title"],
+      "type": "object"
+    },
+    "ProtocolTaskListParams": {
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "ProtocolTaskReviewParams": {
@@ -4517,6 +4625,9 @@
             }
           ]
         },
+        "archived": {
+          "type": "boolean"
+        },
         "areas": {
           "anyOf": [
             {
@@ -4657,6 +4768,9 @@
         "priority": {
           "type": "integer"
         },
+        "project": {
+          "type": "string"
+        },
         "review": {
           "type": "boolean"
         },
@@ -4670,7 +4784,7 @@
           "type": "string"
         }
       },
-      "required": ["acceptance", "claims", "createdBy", "description", "group", "id", "priority", "status", "title"],
+      "required": ["acceptance", "claims", "createdBy", "description", "id", "priority", "project", "status", "title"],
       "type": "object"
     },
     "TaskCheck": {
@@ -5536,6 +5650,12 @@
     "session.warning": {
       "$ref": "#/$defs/SessionDiagnostic"
     },
+    "task.archived": {
+      "$ref": "#/$defs/TaskCard"
+    },
+    "task.bound": {
+      "$ref": "#/$defs/TaskCard"
+    },
     "task.closed": {
       "$ref": "#/$defs/TaskCard"
     },
@@ -5924,12 +6044,40 @@
         "$ref": "#/$defs/GroupMember"
       }
     },
+    "group.bind": {
+      "params": {
+        "$ref": "#/$defs/ProtocolGroupBindParams"
+      },
+      "result": {
+        "$ref": "#/$defs/TaskCard"
+      }
+    },
     "group.create": {
       "params": {
         "$ref": "#/$defs/ProtocolGroupCreateParams"
       },
       "result": {
         "$ref": "#/$defs/GroupGroup"
+      }
+    },
+    "group.list": {
+      "params": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/GroupListing"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "group.pause": {
@@ -6262,6 +6410,24 @@
         "$ref": "#/$defs/SessionState"
       }
     },
+    "task.archive": {
+      "params": {
+        "$ref": "#/$defs/ProtocolTaskArchiveParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/TaskCard"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
     "task.assign": {
       "params": {
         "$ref": "#/$defs/ProtocolTaskAssignParams"
@@ -6284,6 +6450,24 @@
       },
       "result": {
         "$ref": "#/$defs/TaskCard"
+      }
+    },
+    "task.list": {
+      "params": {
+        "$ref": "#/$defs/ProtocolTaskListParams"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/TaskCard"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "task.review": {

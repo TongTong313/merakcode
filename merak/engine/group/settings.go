@@ -19,10 +19,6 @@ func validateSettings(settings Settings, members []Member) error {
 	if settings.ApprovalTimeout < 0 {
 		return errors.New("approval timeout must be nonnegative")
 	}
-	thread, group := settings.TurnsPerMinute.Values()
-	if thread <= 0 || group <= 0 {
-		return errors.New("turn limits must be positive integers")
-	}
 	if len(settings.Setup) > 128 || len(settings.Setup) > 0 && strings.TrimSpace(settings.Setup[0]) == "" {
 		return errors.New("setup requires an executable and at most 127 arguments")
 	}
@@ -130,6 +126,8 @@ type Update struct {
 	// Leader is the id of the agent that becomes the Leader; the engine turns it into a roster change.
 	Leader *event.ID `json:"leader,omitempty"`
 	Brief  *Brief    `json:"brief,omitempty"`
+	// Project moves the group to another workspace; the engine checks that no work is running there first.
+	Project *Project `json:"project,omitempty"`
 }
 
 func (m *Manager) Update(ctx context.Context, id, human event.ID, change Update) (Group, error) {
@@ -159,6 +157,9 @@ func (m *Manager) Update(ctx context.Context, id, human event.ID, change Update)
 	}
 	if change.Brief != nil {
 		state.Group.Brief = *change.Brief
+	}
+	if change.Project != nil {
+		state.Group.Project = *change.Project
 	}
 	body, err := json.Marshal(state.Group)
 	if err != nil {

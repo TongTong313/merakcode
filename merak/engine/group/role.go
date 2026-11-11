@@ -14,7 +14,6 @@ const (
 
 type Settings struct {
 	ApprovalTimeout   time.Duration `json:"approvalTimeout,omitempty"`
-	TurnsPerMinute    *TurnLimits   `json:"turnsPerMinute,omitempty"`
 	Setup             []string      `json:"setup,omitempty"`
 	Initiative        Initiative    `json:"initiative,omitempty"`
 	Triggers          []Trigger     `json:"triggers,omitempty"`
@@ -33,24 +32,6 @@ func (s Settings) ApprovalWait(fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return 30 * time.Minute
-}
-
-type TurnLimits struct {
-	Thread *int `json:"thread,omitempty"`
-	Group  *int `json:"group,omitempty"`
-}
-
-func (l *TurnLimits) Values() (thread, group int) {
-	thread, group = 6, 30
-	if l != nil {
-		if l.Thread != nil {
-			thread = *l.Thread
-		}
-		if l.Group != nil {
-			group = *l.Group
-		}
-	}
-	return
 }
 
 type Initiative string

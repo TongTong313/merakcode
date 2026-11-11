@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
 	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
@@ -19,6 +20,22 @@ func (e *Engine) UpdateGroup(ctx context.Context, id, human event.ID, change gro
 	}
 	if change.Leader != nil {
 		return e.replaceLeader(ctx, id, human, *change.Leader)
+	}
+	if change.Project != nil {
+		state, err := e.Groups.Get(ctx, id)
+		if err != nil {
+			return group.Group{}, err
+		}
+		if filepath.Clean(change.Project.Directory) != filepath.Clean(state.Group.Project.Directory) {
+			moved, err := e.moveGroup(ctx, state.Group, change.Project.Directory, human)
+			if err != nil {
+				return group.Group{}, err
+			}
+			change.Project = nil
+			if change.Settings == nil && change.Brief == nil {
+				return moved, nil
+			}
+		}
 	}
 	return e.Groups.Update(ctx, id, human, change)
 }

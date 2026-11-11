@@ -15,6 +15,7 @@ test.each([
   const card: BoardCard = {
     id: "task",
     group: "group",
+    project: "/work/project",
     title: "Review report",
     description: "",
     acceptance: [],
@@ -59,6 +60,7 @@ test("opens an integration task from its conflict badge and lists conflicting pa
   const original: BoardCard = {
     id: "original",
     group: "group",
+    project: "/work/project",
     title: "Update guide",
     description: "",
     acceptance: [],
@@ -138,6 +140,7 @@ test("retains descendant reports after delivery without reading a released works
   const goal: BoardCard = {
     id: "goal",
     group: "group",
+    project: "/work/project",
     title: "Deliver guide",
     description: "",
     acceptance: [],

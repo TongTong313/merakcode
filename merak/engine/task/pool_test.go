@@ -92,7 +92,7 @@ func TestTaskLifecycleQueuesBusyMembersAndRejectsChildren(t *testing.T) {
 	for _, fact := range facts {
 		types = append(types, fact.Type)
 	}
-	if !reflect.DeepEqual(types, []event.Type{"task.created", "task.opened", "task.queued", "task.started", "task.reported", "phase.changed", "phase.changed", "phase.changed", "phase.changed", "task.closed"}) {
+	if !reflect.DeepEqual(types, []event.Type{"task.created", "task.bound", "task.opened", "task.queued", "task.started", "task.reported", "phase.changed", "phase.changed", "phase.changed", "phase.changed", "task.closed"}) {
 		t.Fatalf("events=%v", types)
 	}
 }

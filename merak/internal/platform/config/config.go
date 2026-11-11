@@ -46,6 +46,9 @@ func Validate(value Value) error {
 			return errors.New("invalid cloud endpoint")
 		}
 	}
+	if value.Board.AutoArchiveDays < 0 {
+		return errors.New("invalid board.autoArchiveDays")
+	}
 	if value.PermissionMode != "" && value.PermissionMode != "ask" && value.PermissionMode != "auto" && value.PermissionMode != "takeover" {
 		return errors.New("invalid permission mode")
 	}

@@ -176,7 +176,7 @@ test("the member sidebar collapses to avatars and preserves its state", async ({
   await kit.page.screenshot({ path: info.outputPath("sandbox.png") })
   await kit.page.keyboard.press("Escape")
   await members.locator("summary").filter({ hasText: "群设置" }).click()
-  await expect(members.getByRole("spinbutton").first()).toBeVisible()
+  await expect(members.getByRole("combobox", { name: "主动程度" })).toBeVisible()
   await members.locator("summary").filter({ hasText: "群设置" }).click()
   await kit.page.screenshot({ path: info.outputPath("members.png") })
   await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()

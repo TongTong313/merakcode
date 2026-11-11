@@ -15,7 +15,6 @@ import { useSearchParams } from "@solidjs/router"
 import { GroupInbox } from "../group/inbox"
 import { TaskReview } from "../group/review"
 import { noticeText } from "../group/notice"
-import { TurnLimits } from "../group/turn-limits"
 import { GroupUsage } from "../group/usage"
 import { SandboxStatus } from "./sandbox-status"
 import ChevronsLeft from "lucide-solid/icons/chevrons-left"
@@ -354,19 +353,6 @@ export function GroupConversation(props: { id: string; directory: string }) {
               <div class="members-body scroll">
                 <details class="member-settings">
                   <summary>{t("group.settings")}</summary>
-                  <Show when={view()?.group}>
-                    {(group) => (
-                      <TurnLimits
-                        group={group()}
-                        editable={
-                          !!view()?.members.some(
-                            (member) =>
-                              member.id === localHuman && (member.role === "owner" || member.role === "admin"),
-                          )
-                        }
-                      />
-                    )}
-                  </Show>
                   <Show
                     when={view()?.members.some(
                       (member) => member.id === localHuman && (member.role === "owner" || member.role === "admin"),

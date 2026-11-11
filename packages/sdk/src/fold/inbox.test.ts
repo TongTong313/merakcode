@@ -19,6 +19,7 @@ test("ignores old checkpoint notices after review and accepts a later review", (
   const card = {
     id: "task",
     group: "group",
+    project: "/work/project",
     title: "Task",
     description: "",
     acceptance: [],
@@ -105,6 +106,7 @@ test("replaces review reminders and clears obsolete checkpoints when the phase c
       payload: {
         id: "task",
         group: "group",
+        project: "/work/project",
         title: "Replan",
         description: "",
         acceptance: [],

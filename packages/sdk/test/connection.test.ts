@@ -55,7 +55,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         available: true,
         caps: { steer: true, permission: true, mcp: false },
       })
-      const created = await client.session.create({ provider: "fake" })
+      const created = await client.session.create({ provider: "fake", workdir: home })
       let view: Conversation | undefined
       const watching = await watchConversation(client, created.session, (value) => {
         view = value
@@ -66,7 +66,7 @@ it("connects to a real merak serve and receives a completed conversation", async
         received.push(event)
         if (event.type === "turn.finished") done.resolve()
       })
-      const other = await client.session.create({ provider: "fake" })
+      const other = await client.session.create({ provider: "fake", workdir: home })
       const unrelated: EngineEvent[] = []
       const stopOther = await client.events.subscribe({ scope: { session: other.session } }, (event) =>
         unrelated.push(event),

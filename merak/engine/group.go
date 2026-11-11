@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -26,7 +27,6 @@ import (
 
 type groupRun struct {
 	latest       atomic.Pointer[group.Group]
-	limits       *leader.TurnLimiter
 	triggers     *leader.Triggers
 	group        group.Group
 	state        *leader.State
@@ -57,6 +57,47 @@ type completedLeader struct {
 }
 
 func (e *Engine) CreateGroup(ctx context.Context, g group.Group, members []group.Member) (group.Group, error) {
+	return e.CreateGroupForTask(ctx, g, members, "")
+}
+
+// CreateGroupForTask creates a local group for a task that no group has taken. The workspace of the group is the one
+// of the task, and once the group exists it takes the task.
+func (e *Engine) CreateGroupForTask(ctx context.Context, g group.Group, members []group.Member, taskID event.ID) (group.Group, error) {
+	if taskID == "" {
+		return e.createGroup(ctx, g, members)
+	}
+	if g.Kind != group.KindLocal {
+		return group.Group{}, coded(errorcode.CloudGroupTakesNoTask, errors.New("cloud groups do not take tasks yet"))
+	}
+	card, err := e.Tasks.Get(ctx, taskID)
+	if err != nil {
+		return group.Group{}, err
+	}
+	if card.Group != "" {
+		return group.Group{}, coded(errorcode.TaskAlreadyInGroup, task.ErrAlreadyBound)
+	}
+	if g.Project.Directory != "" && filepath.Clean(g.Project.Directory) != filepath.Clean(card.Project) {
+		return group.Group{}, coded(errorcode.GroupWorkspaceMismatch, errors.New("the workspace of the group is the one of its task"))
+	}
+	g.Project.Directory = card.Project
+	created, err := e.createGroup(ctx, g, members)
+	if err != nil {
+		return group.Group{}, err
+	}
+	var owner event.ID
+	for _, member := range members {
+		if member.Can(group.RoleOwner) {
+			owner = member.ID
+			break
+		}
+	}
+	if _, err := e.BindTask(ctx, created.ID, taskID, owner); err != nil {
+		return group.Group{}, err
+	}
+	return created, nil
+}
+
+func (e *Engine) createGroup(ctx context.Context, g group.Group, members []group.Member) (group.Group, error) {
 	if _, err := leader.NewTriggers(append(leader.DefaultTriggers(), g.Settings.Triggers...)); err != nil {
 		return group.Group{}, err
 	}
@@ -229,6 +270,9 @@ func (e *Engine) CreateAssignedTask(ctx context.Context, card task.Card, memberI
 }
 
 func (e *Engine) createTask(ctx context.Context, card task.Card, memberID event.ID) (task.Card, error) {
+	if card.Group == "" {
+		return e.createLooseTask(ctx, card)
+	}
 	if card.CreatedBy.Kind == event.ActorHuman {
 		actor, err := e.groupMember(ctx, card.Group, card.CreatedBy.ID)
 		if err != nil || !actor.Can(group.RoleMember) {
@@ -239,20 +283,9 @@ func (e *Engine) createTask(ctx context.Context, card task.Card, memberID event.
 	if err != nil {
 		return task.Card{}, err
 	}
-	if card.Workspace == "" && state.Group.Brief.TargetBranch != "" {
-		card.Workspace = workspace.KindWorktree
-	}
-	if card.Workspace == "" {
-		card.Workspace = workspace.KindFolder
-	}
-	if card.Workspace != workspace.KindFolder && card.Workspace != workspace.KindWorktree && card.Workspace != workspace.KindInplace && card.Workspace != workspace.KindNone {
-		return task.Card{}, errors.New("unsupported workspace kind")
-	}
-	if card.Workspace == workspace.KindWorktree && card.Base == "" {
-		card.Base, err = git.Commit(ctx, state.Group.Project.Directory, "refs/heads/"+state.Group.Brief.TargetBranch)
-		if err != nil {
-			return task.Card{}, err
-		}
+	card.Workspace, card.Base, err = e.workspaceFor(ctx, state.Group, card.Workspace, card.Base)
+	if err != nil {
+		return task.Card{}, err
 	}
 	created, err := e.Tasks.Create(ctx, card)
 	if err != nil {
@@ -264,6 +297,56 @@ func (e *Engine) createTask(ctx context.Context, card task.Card, memberID event.
 		_, err = e.Tasks.OpenAndAssign(ctx, created.ID, memberID)
 	}
 	if err != nil {
+		return task.Card{}, err
+	}
+	return e.Tasks.Get(ctx, created.ID)
+}
+
+// workspaceFor settles the kind of workspace of a task of the group: a worktree on its target branch when the group has
+// one, and a plain folder otherwise.
+func (e *Engine) workspaceFor(ctx context.Context, g group.Group, kind, base string) (string, string, error) {
+	if kind == "" && g.Brief.TargetBranch != "" {
+		kind = workspace.KindWorktree
+	}
+	if kind == "" {
+		kind = workspace.KindFolder
+	}
+	if err := checkWorkspaceKind(kind); err != nil {
+		return "", "", err
+	}
+	if kind == workspace.KindWorktree && base == "" {
+		commit, err := git.Commit(ctx, g.Project.Directory, "refs/heads/"+g.Brief.TargetBranch)
+		if err != nil {
+			return "", "", err
+		}
+		base = commit
+	}
+	return kind, base, nil
+}
+
+func checkWorkspaceKind(kind string) error {
+	if kind != workspace.KindFolder && kind != workspace.KindWorktree && kind != workspace.KindInplace && kind != workspace.KindNone {
+		return errors.New("unsupported workspace kind")
+	}
+	return nil
+}
+
+// createLooseTask creates a task that no group has taken yet. It lives in its own stream and wakes no Leader; its
+// kind of workspace is settled when a group takes it.
+func (e *Engine) createLooseTask(ctx context.Context, card task.Card) (task.Card, error) {
+	if err := workspace.Existing(card.Project); err != nil {
+		return task.Card{}, coded(errorcode.WorkspaceInvalid, err)
+	}
+	if card.Workspace != "" {
+		if err := checkWorkspaceKind(card.Workspace); err != nil {
+			return task.Card{}, err
+		}
+	}
+	created, err := e.Tasks.Create(ctx, card)
+	if err != nil {
+		return task.Card{}, err
+	}
+	if err := e.Tasks.Open(ctx, created.ID); err != nil {
 		return task.Card{}, err
 	}
 	return e.Tasks.Get(ctx, created.ID)
@@ -285,7 +368,6 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 	run := &groupRun{group: g, state: new(leader.State), started: map[event.ID]*leaderRun{}, handovers: map[event.ID]*pendingHandover{}, handoverDone: make(chan completedHandover, 16), leaderDone: make(chan completedLeader, 16)}
 	run.triggers = triggers
 	run.threads = leader.NewThreads(g, run.state, e.newID)
-	run.limits = leader.NewTurnLimiter(e.now, run.threads.Wake)
 	updates := map[event.ID]event.Event{}
 	var closed []event.Event
 	for {
@@ -384,16 +466,16 @@ func (e *Engine) startGroup(ctx context.Context, g group.Group) error {
 					if err := run.triggers.Update(append(leader.DefaultTriggers(), updated.Settings.Triggers...)); err != nil {
 						continue
 					}
+					moved := run.configuration().Project.Directory != updated.Project.Directory
 					run.latest.Store(&updated)
 					run.threads.UpdateGroup(updated)
 					thread := run.threads.Route(fact)
-					if thread != nil && thread.Leader != updated.Leader {
+					if thread != nil && (thread.Leader != updated.Leader || moved) {
 						e.beginHandOver(run, thread, fact)
 					} else {
 						// No thread of a former Leader is running, so there is nothing to hand over
 						e.dropFormerLeaders(e.ctx, updated)
 					}
-					run.threads.Wake()
 				}
 				if err := run.state.Apply(fact); err != nil {
 					continue
@@ -622,7 +704,7 @@ func (e *Engine) startClaim(g *groupRun, claim task.Claim) {
 	if err != nil {
 		return
 	}
-	workdir := g.group.Project.Directory
+	workdir := g.configuration().Project.Directory
 	if check := g.configuration().Brief.Check; check != "" {
 		p.System += "\nRun the group's check command before submitting your report: " + check
 	}
@@ -760,22 +842,6 @@ func (e *Engine) runLeader(ctx context.Context, g *groupRun, thread *leader.Thre
 	}
 	digest := leader.Digest{State: g.state, Focus: thread.Session.Scope.Task}
 	thread.Scheduler.SetDigest(digest)
-	thread.Scheduler.SetAdmission(func(ctx context.Context) (time.Time, error) {
-		state, err := e.Groups.Get(ctx, g.group.ID)
-		if err != nil {
-			return time.Time{}, err
-		}
-		if state.IsPaused(thread.Key) {
-			return time.Time{}, context.Canceled
-		}
-		threadMax, groupMax := state.Group.Settings.TurnsPerMinute.Values()
-		deadline := g.limits.Take(thread.Key, threadMax, groupMax)
-		if deadline.IsZero() {
-			return deadline, nil
-		}
-		return time.Now().Add(deadline.Sub(e.now())), nil
-	})
-	defer g.limits.Remove(thread.Key)
 	var runtime leaderRuntime
 	if p.Product != nil {
 		runtime, err = e.externalLeaderRuntime(ctx, g, thread, p, fail)
@@ -827,7 +893,7 @@ func (e *Engine) builtinLeaderRuntime(ctx context.Context, g *groupRun, thread *
 		if chosen, err = e.memberModel(p.Model); err != nil {
 			return nil, err
 		}
-		c, err = e.newConversation(ctx, SessionOptions{ID: thread.Session.ID, Scope: thread.Session.Scope, Member: thread.Leader, Role: "leader", Mode: p.Mode, Provider: chosen.Provider, Model: chosen.Model, Thinking: chosen.Thinking, Workdir: g.group.Project.Directory, System: p.System, ToolPool: "leader.default", Budget: p.Budget})
+		c, err = e.newConversation(ctx, SessionOptions{ID: thread.Session.ID, Scope: thread.Session.Scope, Member: thread.Leader, Role: "leader", Mode: p.Mode, Provider: chosen.Provider, Model: chosen.Model, Thinking: chosen.Thinking, Workdir: g.configuration().Project.Directory, System: p.System, ToolPool: "leader.default", Budget: p.Budget})
 	}
 	if err != nil {
 		return nil, err
@@ -865,4 +931,18 @@ func (e *Engine) otherOpenGoal(ctx context.Context, groupID, except event.ID) bo
 	return slices.ContainsFunc(cards, func(card task.Card) bool {
 		return card.Parent == "" && card.ID != except && card.Phase != task.PhaseDone && card.Phase != task.PhaseCancelled
 	})
+}
+
+// ListTasks gives the tasks of every group, and the ones that have no group yet.
+func (e *Engine) ListTasks(ctx context.Context, filter task.Filter) ([]task.Card, error) {
+	return e.Tasks.Find(ctx, filter)
+}
+
+// ArchiveTasks hides finished tasks from the board, or brings them back.
+func (e *Engine) ArchiveTasks(ctx context.Context, ids []event.ID, archived bool, actor event.Actor) ([]task.Card, error) {
+	cards, err := e.Tasks.Archive(ctx, ids, archived, actor)
+	if errors.Is(err, task.ErrNotFinished) {
+		return nil, coded(errorcode.TaskNotFinished, err)
+	}
+	return cards, err
 }

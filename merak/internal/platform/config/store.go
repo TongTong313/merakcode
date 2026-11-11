@@ -164,6 +164,9 @@ func (s *Store) update(patch Patch) (Value, error) {
 		upper := strings.ToUpper(*patch.Log)
 		text("logLevel", &upper)
 	}
+	if patch.Board != nil && patch.Board.AutoArchiveDays != nil {
+		edits = append(edits, edit{path: []string{"board", "autoArchiveDays"}, value: *patch.Board.AutoArchiveDays})
+	}
 	if patch.Cloud != nil {
 		edits = append(edits, edit{path: []string{"cloud"}, value: *patch.Cloud})
 	}

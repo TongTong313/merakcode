@@ -195,7 +195,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 					types = append(types, fact.Type)
 				}
 			}
-			if !reflect.DeepEqual(types, []event.Type{"task.created", "task.opened", "task.queued", "task.started", "task.updated", "task.progress", "task.reported", "task.closed"}) {
+			if !reflect.DeepEqual(types, []event.Type{"task.created", "task.bound", "task.opened", "task.queued", "task.started", "task.updated", "task.progress", "task.reported", "task.closed"}) {
 				t.Fatalf("events=%v", types)
 			}
 			final, err := e.Tasks.Get(ctx, goal.ID)

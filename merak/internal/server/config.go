@@ -184,6 +184,7 @@ func (s *Server) applyConfiguration(value config.Value) {
 		sources = append(sources, environmentSource(name))
 	}
 	s.engine.ConfigureModels(overrides)
+	s.engine.Board.Configure(value.Board.AutoArchiveDays)
 	provider, name, _ := strings.Cut(value.Model, "/")
 	s.engine.SetDefaultModel(provider, name, model.Thinking(value.Thinking))
 	s.engine.ConfigureCatalog(sources)

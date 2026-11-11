@@ -30,7 +30,13 @@ func (s *Server) groupMethods() map[string]handler {
 		}),
 		"group.removeMember": removeMember,
 		"group.create": run(func(ctx context.Context, _ *connection, params protocol.GroupCreateParams) (any, error) {
-			return s.engine.CreateGroup(ctx, params.Group, params.Members)
+			return s.engine.CreateGroupForTask(ctx, params.Group, params.Members, params.Task)
+		}),
+		"group.bind": run(func(ctx context.Context, c *connection, params protocol.GroupBindParams) (any, error) {
+			return s.engine.BindTask(ctx, params.Group, params.Task, c.human)
+		}),
+		"group.list": run(func(ctx context.Context, c *connection, _ struct{}) (any, error) {
+			return s.engine.Board.Groups(ctx, c.human)
 		}),
 		"group.addMember": run(func(ctx context.Context, c *connection, params protocol.GroupAddMemberParams) (any, error) {
 			return s.engine.AddGroupMember(ctx, params.Group, c.human, params.Member)

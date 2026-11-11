@@ -87,6 +87,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - Replace member profiles with agents (`merak agent`, `agent.*` methods): a group member is added by the id of an existing agent, never by an inline definition. A group has exactly one Leader agent and one Leader thread, changed in one step by the owner, and every group and conversation needs an existing workspace folder. Tasks no longer have a Leader of their own: the Leader of the group runs all of its goals. Data written by an earlier development build is refused with MRK-1008 instead of being read wrongly.
 
+- Make tasks belong to groups: a task can be created on its own (`merak task create --project`) and starts once a new group is made for it (`merak group create --task`) or an existing group takes it (`merak group bind`); a group can own many tasks and a task belongs to at most one group. A group moves to the workspace of the task it takes only when no work is running (MRK-6014). Add `task.list`, `group.list` and batch `task.archive`: finished tasks are archived after `board.autoArchiveDays` days (default 3, 0 turns it off). Remove the per-minute turn limits of Leaders.
+
 ### Fixed
 
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
@@ -230,6 +232,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 所有文件统一放在 `~/.merakcode` 一个目录下（`MERAKCODE_HOME` 可以挪动它），配置沿用 v0.3 的格式，不用改。在设置里改一项只改这一项，文件里的注释和其他内容保持原样；环境变量里的地址不再被写进配置文件。`merak serve` 的端口和地址取自配置里的 `server`。
 
 - 成员配置（profile）改为智能体（agent）（`merak agent`、`agent.*` 方法）：群成员只能按已有智能体的 id 加入，不再内联定义。一个群有且只有一个 Leader 智能体和一条 Leader 线程，只有群主能一步换掉它；每个群和会话都必须有一个已存在的工作区文件夹。任务不再有自己的 Leader，由群的 Leader 统一推进它所有的目标。早期开发版写下的数据会被 MRK-1008 拒绝，不会被读错。
+
+- 任务归属协作群：任务可以单独创建（`merak task create --project`），再为它新建协作群（`merak group create --task`）或交给已有协作群（`merak group bind`）后才开始推进；一个群可以有多个任务，一个任务最多属于一个群。群接收的任务工作空间不同时，只有群里没有进行中的工作才会搬过去（MRK-6014）。新增 `task.list`、`group.list` 和批量 `task.archive`：结束的任务在 `board.autoArchiveDays` 天后自动归档（默认 3 天，0 为关闭）。删除 Leader 的每分钟回合上限。
 
 ### 修复
 

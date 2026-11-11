@@ -4,6 +4,7 @@ import { applyToBoard, emptyBoard, type EngineEvent, type TaskCard } from "../in
 const card: TaskCard = {
   id: "goal",
   group: "group",
+  project: "/work/guide",
   title: "Deliver the guide",
   description: "Write the user guide",
   acceptance: ["Examples are verified"],
@@ -153,4 +154,67 @@ test("retains progress, queue positions, integration results and published artif
   const updated = applyToBoard(published, taskEvent(7, { ...second, status: "review" }))
   expect(updated.columns.review[0]?.progress).toEqual({ two: "Examples checked" })
   expect(queued.columns.queued.find((item) => item.id === "first")?.queue).toEqual({ one: 2 })
+})
+
+const loose: TaskCard = { ...card, id: "loose", group: undefined, title: "Written alone" }
+
+function streamEvent(
+  stream: string,
+  seq: number,
+  type: "task.created" | "task.bound" | "task.archived" | "task.closed" | "task.updated",
+  value: TaskCard,
+): EngineEvent {
+  return {
+    id: `${stream}-${seq}`,
+    stream,
+    seq,
+    time: "2026-11-08T00:00:00Z",
+    actor: { kind: "human", id: "owner" },
+    scope: { group: value.group, task: value.id },
+    type,
+    payload: value,
+  } as EngineEvent
+}
+
+test("a task that no group has taken folds from its own stream and keeps its place when a group takes it", () => {
+  const created = applyToBoard(emptyBoard(), streamEvent("task:loose", 1, "task.created", loose))
+  expect(created.columns.open.map((item) => item.id)).toEqual(["loose"])
+  expect(created.goals.map((item) => item.id)).toEqual(["loose"])
+  expect(() => applyToBoard(created, streamEvent("task:loose", 3, "task.updated", loose))).toThrow("sequence gap")
+  const owned = { ...loose, group: "group" }
+  const bound = applyToBoard(created, streamEvent("group:group", 1, "task.bound", owned))
+  expect(bound.columns.open).toHaveLength(1)
+  expect(bound.columns.open[0]?.group).toBe("group")
+  expect(bound.goals).toHaveLength(1)
+})
+
+test("one board folds the streams of several groups, each with its own cursor", () => {
+  const other: TaskCard = { ...card, id: "other", group: "second", title: "In another group" }
+  let board = applyToBoard(emptyBoard(), streamEvent("group:group", 1, "task.created", card))
+  board = applyToBoard(board, streamEvent("group:second", 1, "task.created", other))
+  board = applyToBoard(board, streamEvent("group:group", 2, "task.updated", { ...card, priority: 3 }))
+  expect(board.columns.open.map((item) => item.id).sort()).toEqual(["goal", "other"])
+  expect(board.streams).toMatchObject({ "group:group": 2, "group:second": 1 })
+  expect(() => applyToBoard(board, streamEvent("group:second", 3, "task.updated", other))).toThrow("sequence gap")
+})
+
+test("archived tasks leave the default view for the archive view and come back when restored", () => {
+  const done: TaskCard = { ...card, status: "cancelled", phase: "cancelled" }
+  let board = applyToBoard(emptyBoard(), streamEvent("group:group", 1, "task.closed", done))
+  expect(board.columns.cancelled.map((item) => item.id)).toEqual(["goal"])
+  board = applyToBoard(board, streamEvent("group:group", 2, "task.archived", { ...done, archived: true }))
+  expect(board.columns.cancelled).toEqual([])
+  expect(board.goals).toEqual([])
+  expect(board.archive.map((item) => item.id)).toEqual(["goal"])
+  const changed = applyToBoard(
+    board,
+    streamEvent("group:group", 3, "task.updated", { ...done, archived: true, priority: 5 }),
+  )
+  expect(changed.archive[0]?.priority).toBe(5)
+  expect(changed.columns.cancelled).toEqual([])
+  const restored = applyToBoard(changed, streamEvent("group:group", 4, "task.archived", { ...done, archived: false }))
+  expect(restored.archive).toEqual([])
+  expect(restored.columns.cancelled.map((item) => item.id)).toEqual(["goal"])
+  expect(restored.goals.map((item) => item.id)).toEqual(["goal"])
+  expect(board.archive).toHaveLength(1)
 })
