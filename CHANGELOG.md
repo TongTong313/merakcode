@@ -6,6 +6,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-13
+
 ### Changed
 
 - Replace fixed side-panel tabs with a conversation-owned editor for files, reviews, Git, independent terminals and browser pages. Restore independent layouts and drafts, keep tabs adjacent, open files directly for editing, and preview images safely. Preserve concurrent file changes and late-edited drafts. Closing waits for every window's decision, durable drafts and confirmed terminal process exit.
