@@ -15,7 +15,8 @@ test("Shift Enter inserts a newline and Enter sends the message once", async ({ 
   await input.press("Enter")
   await expect(kit.text("MULTILINE_OK")).toBeVisible()
   await expect(input).toHaveValue("")
-  expect(kit.requests()).toBe(1)
+  // The conversation turn is sent once; the title request that follows the reply has no tools and is not counted.
+  expect(kit.modelRequests().filter((request) => request.tools > 0)).toHaveLength(1)
 })
 
 test.describe("cancellation", () => {

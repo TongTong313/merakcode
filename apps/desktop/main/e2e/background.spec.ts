@@ -4,6 +4,8 @@ import { test, expect } from "./fixture"
 let writingMemory = false
 
 test.use({
+  // Idle extraction is off by default; this case needs it on.
+  config: { memory: { auto_extract: true } },
   script: {
     reply: async ({ system, closed }) => {
       if (!system.includes("Extract durable project facts")) return { text: "回复完了" }
