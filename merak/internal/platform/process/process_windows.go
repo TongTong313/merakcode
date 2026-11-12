@@ -43,7 +43,11 @@ func bashPath() (string, error) {
 	var candidates []string
 	if git, err := exec.LookPath("git"); err == nil {
 		dir := filepath.Dir(git)
-		candidates = append(candidates, filepath.Join(dir, "bash.exe"), filepath.Join(dir, "..", "bin", "bash.exe"))
+		candidates = append(candidates,
+			filepath.Join(dir, "bash.exe"),
+			filepath.Join(dir, "..", "bin", "bash.exe"),
+			filepath.Join(dir, "..", "..", "bin", "bash.exe"),
+		)
 	}
 	candidates = append(candidates, filepath.Join(os.Getenv("ProgramFiles"), "Git", "bin", "bash.exe"))
 	for _, path := range candidates {

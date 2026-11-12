@@ -8,6 +8,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Read and edit the `lsp` and `formatter` sections of a v0.3 configuration file with `config.get` and `config.set`, and override them entry by entry in a project. The engine does not run language servers or formatters, and `config.get` hides environment values.
 - Route routine Worker approvals to the task Leader, preserve escalation deadlines, and require per-server trust for workspace MCP configuration. Mount group tools in supported external products.
 
 - Run Claude Code, Codex and Pi as Leaders; preserve queued events across rate limits; patrol stalled tasks; run workspace setup and reuse idle worktrees.
@@ -71,6 +72,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- Leave the `plugin` and `plugin_options` keys of a v0.3 configuration file in place but report them as unused: v1.0.0 has no plugin module.
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
 
 - Replace conversation modes with Ask every time (`ask`, the default), Ask only for risky actions (`autoApprove`) and Full takeover (`fullTakeover`). The first two levels require per-operation confirmation when required isolation is unavailable. Full takeover chooses isolation or the current account before launch and never replays a failed command automatically. Dedicated official-plan tools preserve human edits, fixed execution snapshots and explicit start sources. Products use the SDK and external adapters use protocol 3.
@@ -113,6 +115,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Find Git Bash on Windows when `git` comes from a `mingw64\bin` folder, as it does in a Git Bash terminal.
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
 
 - Keep group usage folding in the SDK and preserve the newest context budget when history arrives out of order.
@@ -176,6 +179,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 新增
 
+- 可以用 `config.get` 和 `config.set` 读取和修改 v0.3 配置文件里的 `lsp` 和 `formatter` 两段，项目配置可以按条目覆盖。引擎不运行语言服务器和格式化工具，`config.get` 不返回环境变量的值。
 - 常规 Worker 审批先交给任务线程 Leader。升级后保留原截止时间。工作区 MCP 按服务器确认。外部产品可使用群工具。
 
 - Claude Code、Codex 和 Pi 可担任 Leader。限流期间保留待处理事件。引擎巡查停滞任务、运行工作区安装命令并复用空闲工作树。
@@ -239,6 +243,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- v0.3 配置文件里的 `plugin` 和 `plugin_options` 保留在文件里，但会提示不再使用：v1.0.0 没有插件模块。
 - 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
 
 - 权限级别改为每次询问（`ask`，默认）、仅询问危险行为（`autoApprove`）和全面接管（`fullTakeover`）。本次操作缺少所需隔离时，前两档逐次询问。全面接管在启动前选择沙箱或当前账户，不自动重跑失败命令。专用官方计划工具保留人工修改、固定执行快照和启动来源。产品通过 SDK 调用，外部适配器使用协议 3。
@@ -281,6 +286,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- Windows 上 `git` 来自 `mingw64\bin` 文件夹（例如在 Git Bash 终端里）时也能找到 Git Bash。
 - 模型刷新、连通测试和云端调用较慢时不再 10 秒就失败。群和智能体的失败用各自的错误码说明真实原因；内置 Leader 和 Worker 没有配置模型时使用默认模型。
 
 - 由 SDK 汇总群用量。历史事件乱序到达时保留最新上下文预算。

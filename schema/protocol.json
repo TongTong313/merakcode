@@ -600,6 +600,179 @@
       "required": ["template"],
       "type": "object"
     },
+    "ConfigFormatter": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "entries": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ConfigFormatterEntry"
+          },
+          "type": "object"
+        }
+      },
+      "required": ["disabled"],
+      "type": "object"
+    },
+    "ConfigFormatterEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "extensions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConfigFormatterPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entries": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ConfigFormatterEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigLSP": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "servers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ConfigLSPServer"
+          },
+          "type": "object"
+        }
+      },
+      "required": ["disabled"],
+      "type": "object"
+    },
+    "ConfigLSPPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "servers": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ConfigLSPServer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigLSPServer": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "extensions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "initialization": {}
+      },
+      "type": "object"
+    },
     "ConfigLaunchDecision": {
       "additionalProperties": false,
       "properties": {
@@ -856,6 +1029,16 @@
             }
           ]
         },
+        "formatter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigFormatterPatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "locale": {
           "anyOf": [
             {
@@ -870,6 +1053,16 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lsp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfigLSPPatch"
             },
             {
               "type": "null"
@@ -1468,11 +1661,17 @@
             }
           ]
         },
+        "formatter": {
+          "$ref": "#/$defs/ConfigFormatter"
+        },
         "locale": {
           "type": "string"
         },
         "log": {
           "type": "string"
+        },
+        "lsp": {
+          "$ref": "#/$defs/ConfigLSP"
         },
         "mcpServers": {
           "additionalProperties": {
@@ -1588,7 +1787,7 @@
           ]
         }
       },
-      "required": ["board", "compactionAuto", "memory", "providers", "skills", "snapshot"],
+      "required": ["board", "compactionAuto", "formatter", "lsp", "memory", "providers", "skills", "snapshot"],
       "type": "object"
     },
     "ConfigWarning": {
@@ -3266,25 +3465,6 @@
         }
       },
       "required": ["content", "revision", "session", "status"],
-      "type": "object"
-    },
-    "PluginFailedEvent": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "hook": {
-          "type": "string"
-        },
-        "plugin": {
-          "type": "string"
-        }
-      },
-      "required": ["code", "error", "hook", "plugin"],
       "type": "object"
     },
     "ProtocolAgentDeleteParams": {
@@ -7162,9 +7342,6 @@
     },
     "plan.updated": {
       "$ref": "#/$defs/PlanPlan"
-    },
-    "plugin.failed": {
-      "$ref": "#/$defs/PluginFailedEvent"
     },
     "question.answered": {
       "$ref": "#/$defs/QuestionAnswer"

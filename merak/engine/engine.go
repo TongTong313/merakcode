@@ -27,7 +27,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/plan"
-	"github.com/TongTong313/merakcode/merak/engine/plugin"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/question"
 	"github.com/TongTong313/merakcode/merak/engine/rules"
@@ -187,9 +186,6 @@ type Engine struct {
 	now               func() time.Time
 	tools             *tool.Pool
 	clientTools       *clienttool.Registry
-	plugins           atomic.Pointer[[]plugin.Spec]
-	pluginTimeout     atomic.Int64
-	pluginSessions    map[event.ID]*plugin.Session
 	schedules         schedule.Schedules
 	scheduleRunner    *schedule.Runner
 	scheduleNoticeMu  sync.Mutex

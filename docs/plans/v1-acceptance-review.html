@@ -1393,10 +1393,11 @@
         <td>
           v0.x 能做的 v1 都要能做，以 UI 分支
           <code>origin/tt/refactor/ui-side-panel</code> 为对照，一项不少：模型目录、MCP（含远程和
-          OAuth）、技能、插件、斜杠命令、计划、网页抓取和搜索、代码搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发、对话界面。只有三处变化：计划不再是单独的模式（D-15）；不提供
-          v0.3.1 的语言服务器（LSP）和改完文件自动格式化，只保留 <code>lsp</code>、<code>formatter</code> 两个配置项（见
-          R18 和 11 节）；不再提供 v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP
-          或纯命令行适配器，不用写代码。对照范围包括 v0.3.1 引擎的文件约定：<code>.merakcode/</code>
+          OAuth）、技能、斜杠命令、计划、网页抓取和搜索、代码搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发、对话界面。只有四处变化：计划不再是单独的模式（D-15）；v1.0.0
+          不做插件模块，以后另起一块设计（见 11 节）；不提供 v0.3.1 的语言服务器（LSP）和改完文件自动格式化，只保留
+          <code>lsp</code>、<code>formatter</code> 两个配置项（见 R18 和 11 节）；不再提供 v0.3.1 的
+          <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP 或纯命令行适配器，不用写代码。对照范围包括
+          v0.3.1 引擎的文件约定：<code>.merakcode/</code>
           下的规则、命令、智能体、技能目录（消解 C7）
         </td>
       </tr>
@@ -1716,7 +1717,10 @@ type Card struct {
       </tr>
       <tr>
         <td>设置</td>
-        <td>通用、模型与服务商、权限、MCP、技能、插件、规则、记忆、后台引擎、关于、云端（不在主流程）</td>
+        <td>
+          通用、模型与服务商、权限、MCP、技能、规则、记忆、后台引擎、关于、云端（不在主流程）；没有插件页（v1.0.0
+          不做插件）
+        </td>
         <td>R20 从 UI 分支恢复，加“后台引擎”</td>
       </tr>
     </table>
@@ -1882,8 +1886,8 @@ type Card struct {
       </tr>
       <tr>
         <td>插件：本地文件或 npm 包，钩子和自定义工具</td>
-        <td>缺</td>
-        <td>R15</td>
+        <td>v1.0.0 不做，以后另起一块设计（11 节）</td>
+        <td>无（R15 取消）</td>
       </tr>
       <tr>
         <td>网页抓取、网页搜索、代码搜索、多处编辑、Word 和 Excel 解析、Excel 写入、客户端注册的工具</td>
@@ -1922,7 +1926,7 @@ type Card struct {
       </tr>
       <tr>
         <td>
-          命令行：agent、session、export、import、provider、skill、plugin、mcp
+          命令行：agent、session、export、import、provider、skill、mcp
           管理、sandbox、stats、upgrade、doctor、logs、bug-report、generate
         </td>
         <td>缺</td>
@@ -2103,14 +2107,14 @@ type Card struct {
       </tr>
       <tr>
         <td>R15</td>
-        <td>插件</td>
-        <td>R14</td>
-        <td>D-16、7.5 节</td>
+        <td>插件（已取消：v1.0.0 不做，见 11 节）</td>
+        <td>—</td>
+        <td>7.5 节</td>
       </tr>
       <tr>
         <td>R16</td>
         <td>计划（任何模式）</td>
-        <td>R15</td>
+        <td>R14</td>
         <td>D-15</td>
       </tr>
       <tr>
@@ -2390,8 +2394,8 @@ type Card struct {
       </tr>
       <tr>
         <td><code>plugin</code>、<code>plugin_options</code></td>
-        <td>原样支持</td>
-        <td>R15</td>
+        <td>v1.0.0 不做插件：留在文件里，读出时记“不再使用”的警告，不做兼容（见 11 节）</td>
+        <td>—（R15 取消）</td>
       </tr>
       <tr>
         <td><code>tools</code></td>
@@ -3447,113 +3451,36 @@ type Card struct {
     <p><strong>不做：</strong>技能市场；在界面上编辑文件里的智能体。</p>
     <p><strong>验证：</strong>全量命令全绿。</p>
 
-    <h3 id="wo-r15">R15 插件</h3>
+    <h3 id="wo-r15">R15 插件（已取消）</h3>
     <p>
-      <strong>做完以后：</strong>v0.3.x 格式的插件（本地 <code>.js</code>、<code>.mjs</code> 文件或 npm
-      包，导出一个返回钩子的异步函数）照样能加载；设置里能添加、看状态、删除。
+      <strong>2026-11-12 决定：</strong>v1.0.0 不做插件模块。v0.3 的插件是为适配 OpenCode 写的（本地
+      <code>.js</code>、<code>.mjs</code> 文件或 npm 包，导出返回钩子的异步函数），MerakCode
+      的插件以后另起一块设计，不照搬这套接口；这一版不留这部分代码。
     </p>
-    <p class="muted">依赖：R14。解决：7.5 节。</p>
-    <p>
-      <strong>做法：</strong>Go 引擎不能直接运行 JavaScript，所以插件跑在一个单独的插件宿主进程里：一段内置的
-      JavaScript（用 <code>embed</code>
-      打进二进制，启动时写到缓存目录）由 Node 运行，加载每个插件，通过 stdio 上的 JSON-RPC 和引擎往来。Node
-      的来源：桌面端把 Electron 自带的 Node 交给引擎（环境变量
-      <code>MERAKCODE_NODE</code> 指向 Electron，加 <code>ELECTRON_RUN_AS_NODE=1</code>）；命令行用
-      <code>PATH</code> 里的 <code>node</code>；都没有时插件状态显示新码“需要 Node.js”。插件宿主和 MCP
-      服务器一样跑在沙箱里，工作区配置里的插件要经工作区信任确认。
-    </p>
-    <p>
-      <strong>先读：</strong
-      ><code>merak/engine/mcp/process.go</code
-      >（子进程和沙箱的写法）、<code>merak/engine/tool/pool.go</code>、<code>merak/engine/loop/loop.go</code>、<code>merak/engine/permission/gate.go</code>；UI
-      分支 <code>e2e/tools.spec.ts</code> 的插件用例、<code>settings.tsx</code> 的 <code>Plugins</code>。可以读
-      dev-v0.3.1 的
-      <code>packages/sdk/js/src/plugin/index.ts</code> 取钩子的名字和参数形状，插件作者写的代码要能不改就加载。
-    </p>
-    <p><strong>支持的钩子</strong>（引擎在这些点调用，插件可以改 <code>output</code>）：</p>
-    <table>
-      <tr>
-        <th style="width: 34%">钩子</th>
-        <th>调用点</th>
-      </tr>
-      <tr>
-        <td><code>config</code>、<code>event</code></td>
-        <td>加载配置后；每条引擎事件（只通知，不等返回）</td>
-      </tr>
-      <tr>
-        <td><code>tool</code></td>
-        <td>
-          插件声明的自定义工具，以延迟工具注册，名字 <code>plugin__&lt;插件&gt;__&lt;工具&gt;</code>，效果按执行类处理
-        </td>
-      </tr>
-      <tr>
-        <td><code>chat.message</code>、<code>chat.params</code>、<code>chat.headers</code></td>
-        <td>用户消息入史前；发模型请求前改参数和请求头</td>
-      </tr>
-      <tr>
-        <td><code>permission.ask</code></td>
-        <td>权限门判定后、问人前，可以改成允许或拒绝</td>
-      </tr>
-      <tr>
-        <td><code>tool.execute.before</code>、<code>tool.execute.after</code>、<code>tool.definition</code></td>
-        <td>工具执行前后；工具说明发给模型前</td>
-      </tr>
-      <tr>
-        <td><code>shell.env</code>、<code>command.execute.before</code></td>
-        <td><code>bash</code> 启动前补环境变量；斜杠命令展开前</td>
-      </tr>
-      <tr>
-        <td><code>auth</code></td>
-        <td>服务商的密钥或请求头由插件提供</td>
-      </tr>
-    </table>
-    <p>
-      插件拿到的上下文：<code>directory</code>、<code>worktree</code>、<code>project</code>，一个已连上守护进程的新 SDK
-      客户端，以及在工作区里运行命令的
-      <code>$</code>。每次钩子调用最多 10 秒，超时或出错只记日志并发 <code>plugin.failed</code>，不影响回合。<code
-        >experimental.*</code
-      >
-      钩子不支持，加载时在状态里列出被忽略的钩子。
-    </p>
-    <p>
-      <strong>方法：</strong><code>plugin.list {directory}</code>（每个插件的来源、状态 <code>loaded</code> 或
-      <code>failed</code> 带码、钩子和工具清单）、<code>plugin.add {spec, scope, directory}</code>（写进项目或全局配置的
-      <code>plugin</code> 数组；npm 包装进 <code>~/.merakcode/cache/plugins</code>）、<code
-        >plugin.remove {spec, scope, directory}</code
-      >。
-    </p>
-    <p><strong>先写的测试：</strong></p>
-    <ol>
+    <ul>
       <li>
-        测试里写一个 <code>.mjs</code> 插件，导出的函数返回 <code>tool.execute.before</code>：把
-        <code>bash</code> 的命令改成 <code>echo hooked</code>；假模型调 <code>bash</code> 后结果是 <code>hooked</code>。
+        引擎里没有插件宿主、钩子和自定义工具；没有
+        <code>plugin.list</code>、<code>plugin.add</code>、<code>plugin.remove</code>，没有
+        <code>merak plugin</code>，桌面端设置里没有“插件”页，也没有插件的 e2e 用例。
       </li>
       <li>
-        插件声明一个自定义工具；假模型经 <code>load_tools</code> 和 <code>call_tool</code> 调用它，拿到插件返回的结果。
-      </li>
-      <li><code>chat.params</code> 改温度，假模型收到的请求里温度是新值。</li>
-      <li>钩子抛异常和超时：回合正常完成，有一条 <code>plugin.failed</code>。</li>
-      <li>
-        <code>plugin.add</code> 一个本地文件后 <code>plugin.list</code> 显示 <code>loaded</code>，配置文件里有它；<code
-          >plugin.remove</code
-        >
-        后都没有了（UI 分支插件用例的引擎侧）。
+        配置文件里的 <code>plugin</code>、<code>plugin_options</code> 原样留在文件里，读出时各记一条 MRK-3002
+        警告“不再使用”；不做兼容。
       </li>
       <li>
-        没有 Node 时 <code>plugin.list</code> 显示“需要 Node.js”的码，回合不受影响。测试需要 Node，CI 的 Go 任务装上
-        Node。
+        上一轮做了一半的实现（Node 宿主 <code>engine/plugin</code>、引擎里的钩子接线、错误码
+        MRK-3003、3004、5012）已从仓库删掉，原样保存在提交 <code>522a121</code> 里，以后重新设计时可以读它作参考。
       </li>
-    </ol>
-    <p><strong>命令行：</strong><code>merak plugin list|add|remove</code>。</p>
-    <p><strong>不做：</strong><code>experimental.*</code> 钩子；插件市场。</p>
-    <p><strong>验证：</strong>全量命令全绿；<code>ci.yml</code> 的 go 任务加 <code>actions/setup-node</code>。</p>
+      <li>CI 的 go 任务不需要装 Node.js。</li>
+    </ul>
+    <p class="muted">依赖：无。后面的切片不再依赖它（R16 改为依赖 R14）。</p>
 
     <h3 id="wo-r16">R16 计划（任何模式）</h3>
     <p>
       <strong>做完以后：</strong
       >在每次询问、仅询问危险行为、全面接管三种模式下，智能体都能写计划；用户能让这条消息先出计划；计划在侧边面板里审阅、编辑，点“执行”或在对话里回复后按计划执行，执行中用待办列表跟踪。
     </p>
-    <p class="muted">依赖：R15。解决：D-15。</p>
+    <p class="muted">依赖：R14。解决：D-15。</p>
     <p>
       <strong>先读：</strong
       ><code>merak/engine/tool/*.go</code
@@ -3839,8 +3766,8 @@ type Card struct {
     <h3 id="wo-r20">R20 桌面端恢复（一）：外壳、单聊、设置、引导</h3>
     <p>
       <strong>做完以后：</strong>桌面端的外观和行为回到 UI
-      分支的水平：侧栏、单聊（消息、工具卡、撤回、编辑重发、重试、复制、改名）、输入框、权限与接管、沙箱控制、设置的全部页面（技能和插件除外）、引导页、与外部产品单聊；数据全部经新
-      SDK。
+      分支的水平：侧栏、单聊（消息、工具卡、撤回、编辑重发、重试、复制、改名）、输入框、权限与接管、沙箱控制、设置的全部页面（技能除外；v1.0.0
+      没有插件页）、引导页、与外部产品单聊；数据全部经新 SDK。
     </p>
     <p class="muted">依赖：R19。解决：4.5 节、D-20、B9、B16。</p>
     <p>
@@ -4163,7 +4090,7 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
     <h3 id="wo-r27">R27 命令行收尾</h3>
     <p>
       <strong>做完以后：</strong>v0.3.0 命令行剩下的命令在 v1
-      都有。能力切片已经各自加了命令（R3、R4、R7、R8、R11、R13、R14、R15、R19 的“命令行”一段），这一片补其余的。
+      都有。能力切片已经各自加了命令（R3、R4、R7、R8、R11、R13、R14、R19 的“命令行”一段），这一片补其余的。
     </p>
     <p class="muted">依赖：R19。解决：D-27。</p>
     <p>
@@ -4363,8 +4290,7 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
       </li>
       <li>
         不读、不复制 v0.3 的引擎、命令行、SDK，只有施工单点名的几个文件例外（R2 的 <code>schema/config.json</code> 和
-        <code>paths.ts</code>，R3 的兜底表，R15 的插件钩子定义，R27 的命令名，R28
-        的表结构和消息结构），而且只取格式、数据和行为，代码原创。
+        <code>paths.ts</code>，R3 的兜底表，R27 的命令名，R28 的表结构和消息结构），而且只取格式、数据和行为，代码原创。
       </li>
       <li>Go 模块只用标准库和已批准的依赖；需要新依赖时停下来问。</li>
       <li>
@@ -4428,6 +4354,16 @@ pnpm --dir apps/desktop/main test:e2e     # 本片涉及的 spec；R25 起跑全
           里待做；官方文档对格式化的说法不一致。v1 照这个做法：<code>lsp</code>、<code>formatter</code>
           可配置，引擎不提供语言服务器、<code>lsp</code>
           工具、诊断和自动格式化。上游恢复后再评估是否真的提供
+        </td>
+      </tr>
+      <tr>
+        <td>4.8 节、7.5 节、R15</td>
+        <td>
+          插件模块 v1.0.0 不做（2026-11-12 用户决定）：v0.3 的插件是为适配 OpenCode 写的，MerakCode
+          的插件以后另起一块设计，不照搬。R15 取消，R16 改为依赖 R14；没有 <code>plugin.*</code> 方法、
+          <code>merak plugin</code>、设置里的“插件”页和插件 e2e 用例；<code>plugin</code>、<code>plugin_options</code>
+          两个配置键留在文件里并记“不再使用”的警告，不做兼容；错误码 MRK-3003、3004、5012 删除。做了一半的实现保存在提交
+          <code>522a121</code> 里供以后参考
         </td>
       </tr>
       <tr>

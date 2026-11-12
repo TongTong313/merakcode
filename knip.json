@@ -9,7 +9,7 @@
       "entry": ["src/index.ts", "src/preload.ts", "script/*.ts", "e2e/fake-*.ts"]
     },
     "merak": {
-      "entry": ["script/*.ts", "engine/plugin/host.mjs"]
+      "entry": ["script/*.ts"]
     }
   }
 }

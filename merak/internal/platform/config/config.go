@@ -19,6 +19,7 @@ func public(value Value) Value {
 			server.Env[name] = ""
 		}
 	}
+	hideToolingSecrets(&value)
 	for id, provider := range value.Providers {
 		provider.HasHeaders = len(provider.Headers) > 0
 		provider.Headers = nil

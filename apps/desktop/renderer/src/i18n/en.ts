@@ -731,17 +731,6 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.badge.project": "Project",
   "settings.badge.global": "Global",
   "settings.badge.builtin": "Built-in",
-  "settings.plugins": "Plugins",
-  "settings.plugins.desc":
-    "Plugins add tools to the agent or change how it behaves. Changes apply from the next conversation",
-  "settings.plugins.empty": "No plugins yet",
-  "settings.plugins.add": "Add plugin",
-  "settings.plugins.specifier": "Plugin package or path",
-  "settings.plugins.specifierPlaceholder":
-    "An npm package (optionally with @version), or the path of a local plugin file",
-  "settings.plugins.active": "Loaded",
-  "settings.plugins.degraded": "Had errors while running",
-  "settings.plugins.failed": "Failed to load",
   "settings.rules": "Rules",
   "settings.rules.desc": "Standing instructions for the agent, included in every conversation",
   "settings.rules.user": "Personal rules (all projects)",

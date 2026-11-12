@@ -15,7 +15,9 @@ The `dev-v1.0.0` branch rebuilds the whole architecture. The user designs the ar
   feature must keep working; the only changes allowed are that planning is no longer a separate mode and that
   language servers (LSP) and automatic formatting after an edit are not built, as in OpenCode 2; only their `lsp` and
   `formatter` configuration keys stay configurable (slice R18; the user decided on 2026-11-12, see section 11 of
-  `docs/plans/v1-acceptance-review.html`).
+  `docs/plans/v1-acceptance-review.html`). The plugin module (v0.3 JavaScript plugins, slice R15) is not built in
+  v1.0.0 either: the user decided on 2026-11-12 that plugins get their own design later; the `plugin` and
+  `plugin_options` keys are only kept in the file and reported as unused.
 - Never move, skip or weaken a failing test to get CI green. Fix it, or list it in
   `apps/desktop/main/e2e/PENDING.md` with the slice that fixes it.
 - `docs/plans/v1-acceptance-review.html` sections 9 and 10 are the current work order. Where it differs from

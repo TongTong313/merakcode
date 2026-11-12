@@ -232,9 +232,61 @@ export const ConfigCommandSchema: z.ZodType<ConfigCommand> = z.lazy(() =>
     template: z.string(),
   }),
 )
+export type ConfigFormatter = { disabled: boolean; entries?: Record<string, ConfigFormatterEntry> }
+export const ConfigFormatterSchema: z.ZodType<ConfigFormatter> = z.lazy(() =>
+  z.strictObject({ disabled: z.boolean(), entries: z.record(z.string(), ConfigFormatterEntrySchema).optional() }),
+)
+export type ConfigFormatterEntry = {
+  command?: string[] | null
+  disabled?: boolean
+  environment?: Record<string, string>
+  extensions?: string[] | null
+}
+export const ConfigFormatterEntrySchema: z.ZodType<ConfigFormatterEntry> = z.lazy(() =>
+  z.strictObject({
+    command: z.union([z.array(z.string()), z.null()]).optional(),
+    disabled: z.boolean().optional(),
+    environment: z.record(z.string(), z.string()).optional(),
+    extensions: z.union([z.array(z.string()), z.null()]).optional(),
+  }),
+)
+export type ConfigFormatterPatch = { disabled?: boolean | null; entries?: Record<string, ConfigFormatterEntry | null> }
+export const ConfigFormatterPatchSchema: z.ZodType<ConfigFormatterPatch> = z.lazy(() =>
+  z.strictObject({
+    disabled: z.union([z.boolean(), z.null()]).optional(),
+    entries: z.record(z.string(), z.union([ConfigFormatterEntrySchema, z.null()])).optional(),
+  }),
+)
 export type ConfigLaunchDecision = { decision: string; member: string; project: string }
 export const ConfigLaunchDecisionSchema: z.ZodType<ConfigLaunchDecision> = z.lazy(() =>
   z.strictObject({ decision: z.string(), member: z.string(), project: z.string() }),
+)
+export type ConfigLSP = { disabled: boolean; servers?: Record<string, ConfigLSPServer> }
+export const ConfigLSPSchema: z.ZodType<ConfigLSP> = z.lazy(() =>
+  z.strictObject({ disabled: z.boolean(), servers: z.record(z.string(), ConfigLSPServerSchema).optional() }),
+)
+export type ConfigLSPPatch = { disabled?: boolean | null; servers?: Record<string, ConfigLSPServer | null> }
+export const ConfigLSPPatchSchema: z.ZodType<ConfigLSPPatch> = z.lazy(() =>
+  z.strictObject({
+    disabled: z.union([z.boolean(), z.null()]).optional(),
+    servers: z.record(z.string(), z.union([ConfigLSPServerSchema, z.null()])).optional(),
+  }),
+)
+export type ConfigLSPServer = {
+  command?: string[] | null
+  disabled?: boolean
+  env?: Record<string, string>
+  extensions?: string[] | null
+  initialization?: unknown
+}
+export const ConfigLSPServerSchema: z.ZodType<ConfigLSPServer> = z.lazy(() =>
+  z.strictObject({
+    command: z.union([z.array(z.string()), z.null()]).optional(),
+    disabled: z.boolean().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    extensions: z.union([z.array(z.string()), z.null()]).optional(),
+    initialization: z.unknown().optional(),
+  }),
 )
 export type ConfigMCPServer = {
   args?: string[] | null
@@ -300,8 +352,10 @@ export type ConfigPatch = {
   compactionAuto?: boolean | null
   defaultAgent?: string | null
   deniedHosts?: string[] | null | null
+  formatter?: ConfigFormatterPatch | null
   locale?: string | null
   log?: string | null
+  lsp?: ConfigLSPPatch | null
   mcp?: Record<string, ConfigMCPServer | null>
   memory?: ConfigMemoryPatch | null
   model?: string | null
@@ -324,8 +378,10 @@ export const ConfigPatchSchema: z.ZodType<ConfigPatch> = z.lazy(() =>
     compactionAuto: z.union([z.boolean(), z.null()]).optional(),
     defaultAgent: z.union([z.string(), z.null()]).optional(),
     deniedHosts: z.union([z.union([z.array(z.string()), z.null()]), z.null()]).optional(),
+    formatter: z.union([ConfigFormatterPatchSchema, z.null()]).optional(),
     locale: z.union([z.string(), z.null()]).optional(),
     log: z.union([z.string(), z.null()]).optional(),
+    lsp: z.union([ConfigLSPPatchSchema, z.null()]).optional(),
     mcp: z.record(z.string(), z.union([ConfigMCPServerSchema, z.null()])).optional(),
     memory: z.union([ConfigMemoryPatchSchema, z.null()]).optional(),
     model: z.union([z.string(), z.null()]).optional(),
@@ -467,8 +523,10 @@ export type ConfigValue = {
   defaultAgent?: string
   deniedHosts?: string[] | null
   enabledProviders?: string[] | null
+  formatter: ConfigFormatter
   locale?: string
   log?: string
+  lsp: ConfigLSP
   mcpServers?: Record<string, ConfigMCPServer>
   memory: ConfigMemory
   model?: string
@@ -499,8 +557,10 @@ export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
     defaultAgent: z.string().optional(),
     deniedHosts: z.union([z.array(z.string()), z.null()]).optional(),
     enabledProviders: z.union([z.array(z.string()), z.null()]).optional(),
+    formatter: ConfigFormatterSchema,
     locale: z.string().optional(),
     log: z.string().optional(),
+    lsp: ConfigLSPSchema,
     mcpServers: z.record(z.string(), ConfigMCPServerSchema).optional(),
     memory: ConfigMemorySchema,
     model: z.string().optional(),
@@ -1179,10 +1239,6 @@ export const PlanPlanSchema: z.ZodType<PlanPlan> = z.lazy(() =>
     snapshot: z.string().optional(),
     status: z.string(),
   }),
-)
-export type PluginFailedEvent = { code: string; error: string; hook: string; plugin: string }
-export const PluginFailedEventSchema: z.ZodType<PluginFailedEvent> = z.lazy(() =>
-  z.strictObject({ code: z.string(), error: z.string(), hook: z.string(), plugin: z.string() }),
 )
 export type ProtocolAgentDeleteParams = { agent: string }
 export const ProtocolAgentDeleteParamsSchema: z.ZodType<ProtocolAgentDeleteParams> = z.lazy(() =>
@@ -3023,17 +3079,6 @@ export type EngineEvent =
       actor: EventActor
       cause?: string
       id: string
-      payload: PluginFailedEvent
-      scope: EventScope
-      seq?: number
-      stream: string
-      time: string
-      type: "plugin.failed"
-    }
-  | {
-      actor: EventActor
-      cause?: string
-      id: string
       payload: QuestionAnswer
       scope: EventScope
       seq?: number
@@ -3949,17 +3994,6 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     stream: z.string(),
     time: z.string(),
     type: z.literal("plan.updated"),
-  }),
-  z.strictObject({
-    actor: EventActorSchema,
-    cause: z.string().optional(),
-    id: z.string(),
-    payload: PluginFailedEventSchema,
-    scope: EventScopeSchema,
-    seq: z.number().int().optional(),
-    stream: z.string(),
-    time: z.string(),
-    type: z.literal("plugin.failed"),
   }),
   z.strictObject({
     actor: EventActorSchema,

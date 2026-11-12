@@ -1,6 +1,6 @@
 # Pending desktop e2e cases
 
-These 20 cases fail today and are not in the `e2e-desktop` job of `.github/workflows/ci.yml`. They are not skipped or
+These 19 cases fail today and are not in the `e2e-desktop` job of `.github/workflows/ci.yml`. They are not skipped or
 weakened: each one is owned by a slice of `docs/plans/v1-acceptance-review.html` section 9 that makes it pass. When a
 slice fixes a case, delete its line here and add the spec to the CI list in the same pull request. This file is deleted
 when R25 finishes.
@@ -14,7 +14,6 @@ and still fails the same way (the "Permissions & security" section does not exis
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `e2e/settings-tools.spec.ts`       | MCP: a local server shows its tool count once connected; deleting removes it from config               |
 | `e2e/settings-tools.spec.ts`       | skills: installs a skill from a URL into the project; uninstalling deletes its directory               |
-| `e2e/settings-tools.spec.ts`       | plugins: a local plugin file shows as loaded; deleting removes it from project config                  |
 | `e2e/settings-tools.spec.ts`       | rules: personal rules are saved to global config and sent with the next message; edits and deletes too |
 | `e2e/settings-tools.spec.ts`       | rules: project rules: creates a rule file, saves edits to disk, deleting removes the file              |
 | `e2e/settings-tools.spec.ts`       | memory: lists, opens and deletes project memories (file and index); auto-remember can be enabled       |
@@ -38,5 +37,6 @@ and still fails the same way (the "Permissions & security" section does not exis
 | `e2e/branch-editor-race.spec.ts` | a delayed checkout reload does not target a closed editor after the same file is reopened           |
 | `e2e/worktree.spec.ts`           | runs a member claim in its own worktree with an alternate project path (fails on Windows only, B17) |
 
-The rules case of `settings-tools.spec.ts` is two tests in the file (`personal` and `project`), so the file holds seven
-cases in total.
+The rules case of `settings-tools.spec.ts` is two tests in the file (`personal` and `project`), so the file holds six
+cases in total. The plugins case was removed together with the plugin module, which v1.0.0 does not build (section 11
+of the acceptance review).

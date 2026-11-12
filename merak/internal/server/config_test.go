@@ -320,3 +320,47 @@ func TestTheBoardArchivesAfterTheDaysConfigured(t *testing.T) {
 		t.Fatal("not archived after 8 days with 7 configured")
 	}
 }
+
+func TestConfigSetStoresAnLspEntryAndConfigGetHidesItsEnvironmentValues(t *testing.T) {
+	ctx := t.Context()
+	home := t.TempDir()
+	e, err := engine.New(engine.Deps{Workdir: home, Providers: map[string]model.Provider{"fixture": fake.New(t)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	c, err := protocol.Connect(ctx, s.Info.Endpoint, s.Info.Token, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	patch := map[string]any{"lsp": map[string]any{"servers": map[string]any{"mine": map[string]any{
+		"command": []string{"my-lsp", "--stdio"}, "extensions": []string{".xyz"}, "env": map[string]string{"TOKEN": "secret"},
+	}}}}
+	var set config.Value
+	if err := c.Call(ctx, "config.set", patch, &set); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string]config.Value{"config.set": set, "config.get": func() config.Value {
+		var value config.Value
+		if err := c.Call(ctx, "config.get", struct{}{}, &value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}()} {
+		mine, ok := got.LSP.Servers["mine"]
+		if !ok || len(mine.Command) != 2 || mine.Command[0] != "my-lsp" || len(mine.Extensions) != 1 || mine.Extensions[0] != ".xyz" {
+			t.Fatalf("%s: the entry is missing or changed: %+v", name, got.LSP)
+		}
+		if value, ok := mine.Env["TOKEN"]; !ok || value != "" {
+			t.Fatalf("%s: the environment must keep its names and hide its values: %+v", name, mine.Env)
+		}
+	}
+	if err := c.Call(ctx, "config.set", map[string]any{"lsp": map[string]any{"servers": map[string]any{"bad": map[string]any{"extensions": []string{"xyz"}}}}}, new(config.Value)); err == nil {
+		t.Fatal("an extension without a dot was accepted")
+	}
+}

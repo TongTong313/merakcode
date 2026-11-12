@@ -27,8 +27,9 @@ var v1Keys = []string{
 	"deniedHosts", "thinking", "board",
 }
 
-// ignoredKeys are v0.3 keys that v1 does not use any more.
-var ignoredKeys = []string{"mode", "layout", "enterprise", "tool_discovery", "experimental"}
+// ignoredKeys are v0.3 keys that v1 does not use any more. The plugin keys are here because v1.0.0 has no plugin
+// module.
+var ignoredKeys = []string{"mode", "layout", "enterprise", "tool_discovery", "experimental", "plugin", "plugin_options"}
 
 type fileModel struct {
 	Name  string `json:"name"`
@@ -202,6 +203,9 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 	var agentWarnings []string
 	value.Agents, agentWarnings = parseAgents(agents)
 	value.warn(agentWarnings...)
+	if err := readTooling(&value, top); err != nil {
+		return Value{}, err
+	}
 	value.Skills = Skills{Paths: skills.Paths, URLs: skills.URLs}
 	value.Tools = tools
 	for name, entry := range commands {

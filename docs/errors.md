@@ -45,12 +45,10 @@ what to do.
 
 ## 3xxx 配置 · Configuration
 
-| 错误码 Code | 说明             | Meaning                            | 怎么办 · What to do                                                                                                                                                                                                                            |
-| ----------- | ---------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MRK-3001    | 命令参数无效     | Invalid command arguments          | 检查命令、模型名称和参数值。<br>Check the command, model name and argument values.                                                                                                                                                             |
-| MRK-3002    | 工作区配置无效   | Workspace configuration is invalid | 只保留一个配置文件，并检查注释、字段和 MCP 服务器格式。会话仍可继续。<br>Keep one configuration file and check its syntax, fields and MCP server definitions. The session can continue.                                                        |
-| MRK-3003    | 插件需要 Node.js | Plugins need Node.js               | 安装 Node.js 并让它出现在 PATH 里，或在桌面端使用自带的运行时。没有它对话照常进行，只是插件不起作用。<br>Install Node.js and put it on the PATH, or use the desktop app's own runtime. Conversations work without it; only the plugins do not. |
-| MRK-3004    | 插件加载失败     | A plugin failed to load            | 检查插件的路径或包名，以及它自己的报错。其他插件不受影响。<br>Check the path or package name of the plugin and its own error. The other plugins are not affected.                                                                              |
+| 错误码 Code | 说明           | Meaning                            | 怎么办 · What to do                                                                                                                                                                     |
+| ----------- | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MRK-3001    | 命令参数无效   | Invalid command arguments          | 检查命令、模型名称和参数值。<br>Check the command, model name and argument values.                                                                                                      |
+| MRK-3002    | 工作区配置无效 | Workspace configuration is invalid | 只保留一个配置文件，并检查注释、字段和 MCP 服务器格式。会话仍可继续。<br>Keep one configuration file and check its syntax, fields and MCP server definitions. The session can continue. |
 
 ## 4xxx 会话 · Sessions
 
@@ -87,7 +85,6 @@ what to do.
 | MRK-5009    | 成员的文件访问被拒绝     | Member file access was denied                       | 查看错误中的路径，并检查工作区范围、保护路径和读取限制。<br>Review the reported path, workspace scope, protected paths and read restrictions.                                                             |
 | MRK-5010    | MCP 服务器启动失败       | MCP server startup failed                           | 检查服务器命令、沙箱权限和 10 秒启动限制。会话已跳过这台服务器。<br>Check the server command, sandbox permissions and 10-second startup limit. This session skipped the server.                           |
 | MRK-5011    | 工作区安装失败           | Workspace setup failed                              | 查看安装日志，修正群的安装命令后重新认领任务。<br>Read the setup log, fix the group's setup command, then create a new claim.                                                                             |
-| MRK-5012    | 插件的钩子出错或超时     | A plugin hook failed or timed out                   | 这一次钩子被跳过，回合照常进行。检查插件的日志，钩子每次最多运行 10 秒。<br>The hook was skipped and the turn went on. Check the plugin; a hook may run for 10 seconds at most.                           |
 
 ## 6xxx 任务和协作群 · Tasks and groups
 

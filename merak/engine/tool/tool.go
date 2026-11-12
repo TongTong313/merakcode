@@ -77,11 +77,6 @@ type Env struct {
 	Attach func(file string) string
 	Jobs   *Jobs
 	Spill  func(context.Context, string, []byte) (Ref, error)
-	// PermissionAsk lets a plugin decide a request the policy would ask a person about: it returns "allow", "deny" or
-	// "ask"; nil asks.
-	PermissionAsk func(ctx context.Context, tool string, input json.RawMessage) string
-	// ShellEnv returns variables to add to a command of the shell tool; nil adds none.
-	ShellEnv func(ctx context.Context, cwd, callID string) map[string]string
 }
 
 type Ref string

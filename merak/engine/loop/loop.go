@@ -73,8 +73,6 @@ type Loop struct {
 	Budget   func(context.Context) (StopReason, error)
 	Deadline func(context.Context) (time.Time, error)
 	Finish   func() []model.Part
-	// Params may change the sampling parameters of a request just before it is sent; nil leaves them.
-	Params   func(context.Context, *model.Request)
 	Steer    Steer
 	Model    model.Provider
 	ModelID  string
@@ -186,9 +184,6 @@ func (l *Loop) RunTurn(ctx context.Context, s *session.State, in Input) (outcome
 			if err != nil {
 				return Outcome{}, err
 			}
-		}
-		if l.Params != nil {
-			l.Params(ctx, &request)
 		}
 		message, err := l.askStep(ctx, s, scope, request)
 		if err != nil {

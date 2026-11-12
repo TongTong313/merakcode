@@ -410,7 +410,7 @@
       </li>
       <li>
         <strong>不倒退。</strong>v0.x 能做的 v1 都能做：模型目录、MCP（含远程和
-        OAuth）、技能、插件、斜杠命令、计划、网页抓取和搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发。计划不再是单独的模式，任何模式下都能写计划。
+        OAuth）、技能、斜杠命令、计划、网页抓取和搜索、文档解析、定时任务、和外部产品单聊、撤回和编辑重发。计划不再是单独的模式，任何模式下都能写计划。
       </li>
     </ol>
 
@@ -2932,7 +2932,7 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
       </tr>
       <tr>
         <td><code>worker.default</code></td>
-        <td>基础工具集；延迟：文档工具、MCP 服务器的工具、插件的工具</td>
+        <td>基础工具集；延迟：文档工具、MCP 服务器的工具</td>
       </tr>
       <tr>
         <td><code>worker.readonly</code></td>
@@ -3207,14 +3207,6 @@ func (c Composer) Opening(ctx context.Context, sit Situation, memory []memory.No
         <code>mode(s)/*.md</code>
         读成智能体（头部给名字、说明、模型、工具、权限，正文是系统提示词），出现在智能体库里并标“来自文件”，能用于对话、协作群成员和
         <code>spawn {agent}</code>。
-      </li>
-      <li>
-        <strong>插件</strong>：v0.x 格式的 JavaScript 插件（本地文件或 npm 包，导出返回钩子的异步函数）跑在一个 Node
-        插件宿主进程里，经 stdio 上的 JSON-RPC 和引擎往来；桌面端用 Electron 自带的 Node，命令行用
-        <code>PATH</code> 里的
-        <code>node</code
-        >。支持的钩子：<code>config</code>、<code>event</code>、<code>tool</code>、<code>chat.message</code>、<code>chat.params</code>、<code>chat.headers</code>、<code>permission.ask</code>、<code>tool.execute.before</code>、<code>tool.execute.after</code>、<code>tool.definition</code>、<code>shell.env</code>、<code>command.execute.before</code>、<code>auth</code>；每次调用最多
-        10 秒，出错只记日志并发 <code>plugin.failed</code>。插件宿主在沙箱里跑。
       </li>
     </ul>
 
@@ -5909,10 +5901,6 @@ type Trust struct {
         <td>客户端注册自己执行的工具；引擎调用时向这个客户端发 <code>tool.call</code> 请求</td>
       </tr>
       <tr>
-        <td><code>plugin.list</code> / <code>plugin.add</code> / <code>plugin.remove</code></td>
-        <td>插件（4.8 节），写进项目或全局配置</td>
-      </tr>
-      <tr>
         <td><code>schedule.list</code> / <code>schedule.delete</code></td>
         <td>定时任务</td>
       </tr>
@@ -6127,10 +6115,10 @@ CREATE TABLE docs (
       </tr>
       <tr>
         <td>
-          <code>merak skill ...</code> / <code>merak command list</code> / <code>merak plugin ...</code> /
+          <code>merak skill ...</code> / <code>merak command list</code> /
           <code>merak schedule ...</code>
         </td>
-        <td>技能、斜杠命令、插件、定时任务</td>
+        <td>技能、斜杠命令、定时任务</td>
       </tr>
       <tr>
         <td><code>merak sandbox status|setup|reset</code></td>
@@ -6322,13 +6310,13 @@ type Null struct{}</code></pre>
       </li>
       <li>
         恢复要用到的协议能力（撤回、编辑重发、提交推送、对话
-        worktree、文件身份、MCP、规则、记忆、技能、插件、计划、斜杠命令、定时任务、和外部产品单聊）都在第 11.2
+        worktree、文件身份、MCP、规则、记忆、技能、计划、斜杠命令、定时任务、和外部产品单聊）都在第 11.2
         节的方法表里；逐项对照见验收报告 7.5 节。
       </li>
       <li>
         不恢复的只有一项：v0.3.1 的 <code>adapter-generator</code> 技能，接入别的命令行产品改用 ACP 或纯命令行适配器。
       </li>
-      <li>UI 分支的 51 个 spec 全部恢复并进 CI，验收标准就是它们通过。</li>
+      <li>UI 分支的 51 个 spec 全部恢复并进 CI（其中的插件用例随插件模块一起删掉），验收标准就是它们通过。</li>
     </ul>
 
     <h3 id="desktop-views">14.2 信息架构和新页面</h3>
@@ -6375,7 +6363,7 @@ type Null struct{}</code></pre>
       </tr>
       <tr>
         <td>设置</td>
-        <td>通用、模型与服务商、权限、MCP、技能、插件、规则、记忆、任务看板（自动归档天数）、后台引擎、关于、云端</td>
+        <td>通用、模型与服务商、权限、MCP、技能、规则、记忆、任务看板（自动归档天数）、后台引擎、关于、云端</td>
         <td>UI 分支原样恢复，加“任务看板”和“后台引擎”</td>
       </tr>
     </table>
@@ -6485,7 +6473,7 @@ export function applyToAssignments(view: Assignments, e: Event): Assignments</co
       </tr>
       <tr>
         <td>R15</td>
-        <td>插件</td>
+        <td>插件（已取消：v1.0.0 不做，见验收报告 11 节）</td>
       </tr>
       <tr>
         <td>R16</td>

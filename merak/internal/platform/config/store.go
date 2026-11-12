@@ -196,6 +196,20 @@ func (s *Store) update(patch Patch) (Value, error) {
 			edits = append(edits, edit{path: []string{"memory", "model"}, value: *patch.Memory.Model})
 		}
 	}
+	if patch.LSP != nil {
+		more, err := lspEdits(s.value.LSP, *patch.LSP)
+		if err != nil {
+			return Value{}, err
+		}
+		edits = append(edits, more...)
+	}
+	if patch.Formatter != nil {
+		more, err := formatterEdits(s.value.Formatter, *patch.Formatter)
+		if err != nil {
+			return Value{}, err
+		}
+		edits = append(edits, more...)
+	}
 	if patch.Snapshot != nil {
 		edits = append(edits, edit{path: []string{"snapshot"}, value: *patch.Snapshot})
 	}

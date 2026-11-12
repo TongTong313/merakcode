@@ -641,38 +641,5 @@ export namespace ErrorCode {
         en: "Check the default model, the chosen agent and that the folder still exists. The next run will try again.",
       },
     },
-    PLUGIN_NODE_MISSING: {
-      code: "MRK-3003",
-      domain: "config",
-      status: 503,
-      retryable: false,
-      title: { zh: "插件需要 Node.js", en: "Plugins need Node.js" },
-      hint: {
-        zh: "安装 Node.js 并让它出现在 PATH 里，或在桌面端使用自带的运行时。没有它对话照常进行，只是插件不起作用。",
-        en: "Install Node.js and put it on the PATH, or use the desktop app's own runtime. Conversations work without it; only the plugins do not.",
-      },
-    },
-    PLUGIN_LOAD_FAILED: {
-      code: "MRK-3004",
-      domain: "config",
-      status: 400,
-      retryable: false,
-      title: { zh: "插件加载失败", en: "A plugin failed to load" },
-      hint: {
-        zh: "检查插件的路径或包名，以及它自己的报错。其他插件不受影响。",
-        en: "Check the path or package name of the plugin and its own error. The other plugins are not affected.",
-      },
-    },
-    PLUGIN_HOOK_FAILED: {
-      code: "MRK-5012",
-      domain: "tool",
-      status: 500,
-      retryable: false,
-      title: { zh: "插件的钩子出错或超时", en: "A plugin hook failed or timed out" },
-      hint: {
-        zh: "这一次钩子被跳过，回合照常进行。检查插件的日志，钩子每次最多运行 10 秒。",
-        en: "The hook was skipped and the turn went on. Check the plugin; a hook may run for 10 seconds at most.",
-      },
-    },
   } as const satisfies Record<string, Spec>
 }

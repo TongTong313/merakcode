@@ -36,3 +36,38 @@ func TestLspAndFormatterKeysOfAV03FileAreKeptAndDoNothing(t *testing.T) {
 		}
 	}
 }
+
+// v1.0.0 has no plugin module. A v0.3 file that lists plugins still loads; each of the two keys is reported as not
+// used, and an edit of another key leaves them in the file.
+func TestPluginKeysOfAV03FileAreReportedAsNotUsedAndKept(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "merakcode.jsonc")
+	original := "{\n  \"plugin\": [\"./one.mjs\", [\"two\", { \"a\": 1 }]],\n  \"plugin_options\": { \"two\": { \"b\": 2 } },\n  \"model\": \"fake/before\"\n}\n"
+	if err := os.WriteFile(file, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := config.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, warning := range settings.Get().Warnings {
+		if warning.Code != "MRK-3002" || !strings.Contains(warning.Message, "not used") {
+			t.Fatalf("unexpected warning: %+v", warning)
+		}
+		paths = append(paths, warning.Path)
+	}
+	if strings.Join(paths, ",") != "plugin,plugin_options" {
+		t.Fatalf("warned about %v, want plugin and plugin_options", paths)
+	}
+	after := "fake/after"
+	if _, err := settings.Update(config.Patch{Model: &after}); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := os.ReadFile(file)
+	for _, want := range []string{`"plugin": ["./one.mjs", ["two", { "a": 1 }]]`, `"plugin_options": { "two": { "b": 2 } }`, `"model": "fake/after"`} {
+		if !strings.Contains(string(saved), want) {
+			t.Fatalf("the file lacks %q after an edit of another key:\n%s", want, saved)
+		}
+	}
+}

@@ -108,6 +108,10 @@ type Value struct {
 	Commands map[string]Command `json:"commands,omitempty"`
 	// Skills are the extra folders to find skills in and the default sources to install them from (v0.3 skills.paths and skills.urls).
 	Skills Skills `json:"skills"`
+	// LSP and Formatter are the v0.3 lsp and formatter sections. They can be read and changed, but the engine does
+	// not run language servers or formatters.
+	LSP       LSP       `json:"lsp"`
+	Formatter Formatter `json:"formatter"`
 	// Snapshot keeps the files of a conversation so a revert can put them back (default on).
 	Snapshot bool `json:"snapshot"`
 	// CompactionAuto lets a conversation shrink its own context when it fills up (default on).
@@ -192,6 +196,9 @@ type Patch struct {
 	// MCP adds or replaces servers by name; a null entry deletes the server.
 	MCP    map[string]*MCPServer `json:"mcp,omitempty"`
 	Memory *MemoryPatch          `json:"memory,omitempty"`
+	// LSP and Formatter change the lsp and formatter sections; the engine does not read them.
+	LSP       *LSPPatch       `json:"lsp,omitempty"`
+	Formatter *FormatterPatch `json:"formatter,omitempty"`
 	// Rules replaces the personal rules; nil leaves them.
 	Rules            *RulesPatch               `json:"rules,omitempty"`
 	DefaultAgent     *string                   `json:"defaultAgent,omitempty"`

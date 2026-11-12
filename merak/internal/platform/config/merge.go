@@ -32,6 +32,7 @@ func Merge(global, project Value) Value {
 		}
 		maps.Copy(merged.Agents, project.Agents)
 	}
+	mergeTooling(&merged, project)
 	merged.PermissionRules = append(merged.PermissionRules, project.PermissionRules...)
 	merged.Warnings = append(merged.Warnings, project.Warnings...)
 	return merged

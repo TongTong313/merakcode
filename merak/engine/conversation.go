@@ -28,7 +28,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/plugin"
 	"github.com/TongTong313/merakcode/merak/engine/schedule"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/skill"
@@ -68,9 +67,6 @@ type SessionOptions struct {
 }
 
 type conversation struct {
-	// plugins is the plugin host of this conversation; nil when it has none.
-	plugins          *plugin.Session
-	pluginsReady     bool
 	mcpServers       map[string]config.MCPServer
 	mcpReady         bool
 	suppressChildren bool
@@ -356,7 +352,6 @@ func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input
 	done := c.runner.Env.Sandbox.Hold()
 	defer done()
 	e.prepareMCP(ctx, c)
-	e.preparePlugins(ctx, c)
 	selected := session.Selection{Provider: c.state.Config.Provider, Model: c.state.Config.Model, Thinking: c.state.Config.Thinking}
 	if input.Selection != nil {
 		selected = *input.Selection
@@ -374,7 +369,7 @@ func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input
 	c.runner.Window.Summarize = e.summarizer(provider)
 	c.runner.Window.ManualOnly = e.autoCompactOff.Load()
 	c.runner.ModelID, c.runner.Thinking = selected.Model, selected.Thinking
-	parts := c.plugins.Message(ctx, input.Parts)
+	parts := input.Parts
 	entry := e.catalog.Get(selected.Provider, selected.Model)
 	c.runner.Window.Budget.Window = entry.Window
 	c.runner.Window.Budget.Reserve = max(entry.MaxOutput/4, 8192)

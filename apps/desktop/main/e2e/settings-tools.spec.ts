@@ -81,24 +81,6 @@ test("skills: installs a skill from a URL into the project; uninstalling deletes
   }
 })
 
-test("plugins: a local plugin file shows as loaded; deleting removes it from project config", async ({ kit }) => {
-  const plugin = path.join(kit.root, "e2e-plugin.mjs")
-  await writeFile(plugin, "export const E2E = async () => ({})\n")
-  const config = path.join(kit.project, ".merakcode", "merakcode.json")
-  const plugins = async () => JSON.stringify((await json(config)).plugin ?? [])
-  await kit.settings(/^插件$/)
-  const panel = kit.page.getByRole("region", { name: "插件" })
-  await panel.getByRole("textbox", { name: "插件包名或路径" }).fill(plugin)
-  await panel.getByRole("button", { name: "添加" }).click()
-  await expect(panel.getByText("e2e-plugin", { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(panel.getByText(/已加载/)).toBeVisible()
-  await expect.poll(plugins).toContain("e2e-plugin")
-
-  await panel.getByRole("button", { name: "删除 e2e-plugin" }).click()
-  await expect(panel.getByText("e2e-plugin", { exact: true })).toHaveCount(0)
-  await expect.poll(plugins).not.toContain("e2e-plugin")
-})
-
 test.describe("rules", () => {
   test.use({
     script: { reply: ({ system }) => ({ text: system.includes("E2E_RULE_TEXT") ? "RULE_SEEN" : "RULE_MISSING" }) },
