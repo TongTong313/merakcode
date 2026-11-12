@@ -146,11 +146,20 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 			}
 		}}
 	}
+	var mergeEvents atomic.Int32
 	providers["leader"] = groupScript{name: "leader", test: t, reply: func(req model.Request) fake.Reply {
-		last := req.Messages[len(req.Messages)-1]
-		// the one Leader thread of the group receives the events of both tasks in its batches: answer each of them
+		// the one Leader thread of the group receives the events of both tasks, in one message or in several that arrive
+		// before the model is asked: answer every event of the trailing user messages
+		trailing := req.Messages[len(req.Messages)-1:]
+		for from := len(req.Messages) - 1; from > 0 && req.Messages[from].Role == model.User && req.Messages[from-1].Role == model.User; from-- {
+			trailing = req.Messages[from-1:]
+		}
+		var parts []model.Part
+		for _, message := range trailing {
+			parts = append(parts, message.Parts...)
+		}
 		var calls []model.ToolCall
-		for _, part := range last.Parts {
+		for _, part := range parts {
 			if part.ToolResult != nil {
 				if part.ToolResult.IsError {
 					t.Errorf("leader tool failed: %+v", part.ToolResult)
@@ -177,7 +186,10 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 						calls = append(calls, integrationCall("request_merge", map[string]any{"task": card.ID, "claim": card.Claims[0].ID}).Calls...)
 					}
 				case strings.Contains(text, "(merge.done)"):
-					calls = append(calls, integrationCall("notify_human", map[string]any{"kind": "final", "text": "Integrated and verified."}).Calls...)
+					// one final notice closes the group, and it is refused until every goal is completed: send it after the last merge
+					if mergeEvents.Add(1) == 2 {
+						calls = append(calls, integrationCall("notify_human", map[string]any{"kind": "final", "text": "Integrated and verified."}).Calls...)
+					}
 				}
 			}
 		}
@@ -233,6 +245,7 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 		}
 	}
 	merged, delivered, conflicts, integrations := 0, 0, 0, 0
+	var seen []string
 	defer func() {
 		if ownerApproval && mergeApprovals.Load() < 2 {
 			t.Errorf("merge approvals=%d want at least 2", mergeApprovals.Load())
@@ -241,9 +254,10 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 			t.Errorf("disabled approval asked %d times", mergeApprovals.Load())
 		}
 	}()
-	for delivered < 2 {
+	for delivered < 1 {
 		select {
 		case fact := <-facts:
+			seen = append(seen, string(fact.Type)+"@"+string(fact.Scope.Task))
 			if fact.Type == task.Reported {
 				enterGoalIntegration(t, ctx, e, fact.Scope.Task)
 			}
@@ -283,7 +297,7 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 				}
 			}
 		case <-ctx.Done():
-			t.Fatalf("merged=%d delivered=%d conflicts=%d integrations=%d: %v", merged, delivered, conflicts, integrations, ctx.Err())
+			t.Fatalf("merged=%d delivered=%d conflicts=%d integrations=%d: %v\nevents: %s", merged, delivered, conflicts, integrations, ctx.Err(), strings.Join(seen, "\n"))
 		}
 	}
 	if merged != 2 {

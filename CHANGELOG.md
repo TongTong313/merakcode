@@ -116,6 +116,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### Fixed
 
 - Find Git Bash on Windows when `git` comes from a `mingw64\bin` folder, as it does in a Git Bash terminal.
+- Make identifiers made in one process grow strictly, also within one millisecond, so events made at the same moment keep their order.
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
 
 - Keep group usage folding in the SDK and preserve the newest context budget when history arrives out of order.
@@ -287,6 +288,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### 修复
 
 - Windows 上 `git` 来自 `mingw64\bin` 文件夹（例如在 Git Bash 终端里）时也能找到 Git Bash。
+- 同一进程生成的标识符严格递增，同一毫秒内生成的也一样，同一时刻产生的事件不再乱序。
 - 模型刷新、连通测试和云端调用较慢时不再 10 秒就失败。群和智能体的失败用各自的错误码说明真实原因；内置 Leader 和 Worker 没有配置模型时使用默认模型。
 
 - 由 SDK 汇总群用量。历史事件乱序到达时保留最新上下文预算。
