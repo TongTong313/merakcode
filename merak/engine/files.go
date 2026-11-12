@@ -11,6 +11,8 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine/code"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/review"
+	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -94,17 +96,13 @@ func (e *Engine) RepoCheckout(ctx context.Context, directory, branch string) err
 	return git.Checkout(ctx, e.directory(directory), branch)
 }
 
-func (e *Engine) RepoDiff(ctx context.Context, directory, base string, sessionID event.ID) ([]git.Change, error) {
+func (e *Engine) RepoDiff(ctx context.Context, directory, base string, sessionID, message event.ID) ([]git.Change, error) {
 	if sessionID != "" {
 		if base != "" {
 			return nil, errors.New("choose a session or a commit")
 		}
-		state, err := e.SessionSnapshot(ctx, sessionID)
-		if err != nil {
-			return nil, err
-		}
-		base = state.BaseCommit
-		directory = state.Config.Workdir
+		changes, err := e.reviewer().Changes(ctx, sessionID, message)
+		return changes, reviewError(err)
 	}
 	return git.Diff(ctx, e.directory(directory), base)
 }
@@ -283,4 +281,68 @@ func missing(directory string) bool {
 	}
 	_, err := os.Stat(directory)
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+// reviewer is the review of the engine's conversations, made on first use.
+func (e *Engine) reviewer() *review.Reviewer {
+	e.reviewOnce.Do(func() {
+		e.reviews = review.New(review.Deps{
+			Store:            e.store,
+			Session:          e.SessionSnapshot,
+			Directory:        e.directory,
+			Repo:             e.snapshotRepo,
+			SnapshotsEnabled: e.snapshotsEnabled,
+			External: func(ctx context.Context, id event.ID) (bool, error) {
+				e.mu.Lock()
+				defer e.mu.Unlock()
+				chat, err := e.externalChatOf(ctx, id)
+				return chat != nil, err
+			},
+			Announce: func(ctx context.Context, id event.ID, decision string, count int) {
+				e.mu.Lock()
+				defer e.mu.Unlock()
+				if c, err := e.openSession(ctx, id); err == nil {
+					_, _ = e.publishSession(ctx, c, session.ReviewUpdated, session.ReviewUpdate{Decision: decision, Count: count})
+				}
+			},
+		})
+	})
+	return e.reviews
+}
+
+// reviewError gives the errors of a review their codes.
+func reviewError(err error) error {
+	switch {
+	case errors.Is(err, review.ErrStale):
+		return coded(errorcode.ReviewStale, err)
+	case errors.Is(err, review.ErrNothingToUndo):
+		return coded(errorcode.NothingToUndo, err)
+	case errors.Is(err, review.ErrNoSuchTurn):
+		return coded(errorcode.RevertTargetInvalid, err)
+	}
+	return err
+}
+
+// ReviewAccept makes the current contents of files the starting point of the review of a conversation or one turn.
+func (e *Engine) ReviewAccept(ctx context.Context, id, message event.ID, files []review.File) (review.Status, error) {
+	status, err := e.reviewer().Accept(ctx, id, message, files)
+	return status, reviewError(err)
+}
+
+// ReviewReject puts the starting point of the review back into the working files.
+func (e *Engine) ReviewReject(ctx context.Context, id, message event.ID, files []review.File) (review.Status, error) {
+	status, err := e.reviewer().Reject(ctx, id, message, files)
+	return status, reviewError(err)
+}
+
+// ReviewUndo takes back the latest accept or reject of a conversation.
+func (e *Engine) ReviewUndo(ctx context.Context, id event.ID) (review.Status, error) {
+	status, err := e.reviewer().Undo(ctx, id)
+	return status, reviewError(err)
+}
+
+// ReviewStatus tells what the person can undo in a conversation's review.
+func (e *Engine) ReviewStatus(ctx context.Context, id event.ID) (review.Status, error) {
+	status, err := e.reviewer().Status(ctx, id)
+	return status, reviewError(err)
 }

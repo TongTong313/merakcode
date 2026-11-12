@@ -1,6 +1,9 @@
 package protocol
 
-import "github.com/TongTong313/merakcode/merak/engine/event"
+import (
+	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/review"
+)
 
 type DirectoryParams struct {
 	Directory string `json:"directory,omitempty"`
@@ -13,6 +16,16 @@ type RepoDiffParams struct {
 	DirectoryParams
 	Base    string   `json:"base,omitempty"`
 	Session event.ID `json:"session,omitempty"`
+	// Message limits a session review to the turn of that user message; "last" is the latest turn.
+	Message event.ID `json:"message,omitempty"`
+}
+
+// ReviewDecideParams accepts or rejects files of the review of a conversation.
+type ReviewDecideParams struct {
+	Session event.ID `json:"session"`
+	// Message names the turn the files belong to; empty is the whole conversation and "last" the latest turn.
+	Message event.ID      `json:"message,omitempty"`
+	Files   []review.File `json:"files"`
 }
 type RepoCheckoutParams struct {
 	DirectoryParams

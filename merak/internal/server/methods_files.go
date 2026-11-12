@@ -26,7 +26,19 @@ func (s *Server) fileMethods() map[string]handler {
 			return s.engine.RepoBranches(ctx, params.Directory)
 		}),
 		"repo.diff": run(func(ctx context.Context, _ *connection, params protocol.RepoDiffParams) (any, error) {
-			return s.engine.RepoDiff(ctx, params.Directory, params.Base, params.Session)
+			return s.engine.RepoDiff(ctx, params.Directory, params.Base, params.Session, params.Message)
+		}),
+		"review.accept": run(func(ctx context.Context, _ *connection, params protocol.ReviewDecideParams) (any, error) {
+			return s.engine.ReviewAccept(ctx, params.Session, params.Message, params.Files)
+		}),
+		"review.reject": run(func(ctx context.Context, _ *connection, params protocol.ReviewDecideParams) (any, error) {
+			return s.engine.ReviewReject(ctx, params.Session, params.Message, params.Files)
+		}),
+		"review.undo": run(func(ctx context.Context, _ *connection, params protocol.SessionCancelParams) (any, error) {
+			return s.engine.ReviewUndo(ctx, params.Session)
+		}),
+		"review.status": run(func(ctx context.Context, _ *connection, params protocol.SessionCancelParams) (any, error) {
+			return s.engine.ReviewStatus(ctx, params.Session)
 		}),
 		"repo.checkout": run(func(ctx context.Context, _ *connection, params protocol.RepoCheckoutParams) (any, error) {
 			return done(s.engine.RepoCheckout(ctx, params.Directory, params.Branch))

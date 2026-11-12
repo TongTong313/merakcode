@@ -1,5 +1,7 @@
+import CheckCheck from "lucide-solid/icons/check-check"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import MessageSquare from "lucide-solid/icons/message-square"
+import Undo2 from "lucide-solid/icons/undo-2"
 import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
 import { ReviewToolbar } from "./toolbar"
@@ -52,6 +54,31 @@ function PendingComments(props: { sessionID?: string; directory: string }) {
   )
 }
 
+/** Most recent decision with an undo button */
+export function LastDecision(props: { data: ReviewData }) {
+  return (
+    <Show when={props.data.data()?.last}>
+      {(last) => (
+        <div class="decision" role="status">
+          <span class="muted ellipsis">
+            {last().decision === "accept"
+              ? t("review.accepted", { count: last().count })
+              : t("review.rejected", { count: last().count })}
+          </span>
+          <button
+            class="button ghost sm"
+            disabled={props.data.working() || props.data.refreshing()}
+            onClick={() => void props.data.undo()}
+          >
+            <Undo2 class="icon icon-xs" />
+            {t("review.undo")}
+          </button>
+        </div>
+      )}
+    </Show>
+  )
+}
+
 /** File list with each file's hunks; the middle part shared by the panel and the maximized view */
 export function ReviewFiles(props: {
   sessionID?: string
@@ -94,7 +121,7 @@ export function ReviewFiles(props: {
           </div>
         </Match>
         <Match when={result() && !files().length}>
-          <div class="empty-state subtle">{t("review.empty")}</div>
+          <div class="empty-state subtle">{review.scope === "turn" ? t("review.emptyTurn") : t("review.empty")}</div>
         </Match>
       </Switch>
       <For each={files()}>
@@ -103,14 +130,45 @@ export function ReviewFiles(props: {
             file={file}
             data={props.data}
             sessionID={props.sessionID}
+            actions={result()!.actions}
             directory={props.directory}
             style={props.style}
             active={props.active?.file === file.file ? props.active.id : undefined}
-            disabled={props.data.refreshing()}
+            disabled={props.data.working() || props.data.refreshing()}
+            onDecide={props.data.decide}
           />
         )}
       </For>
     </div>
+  )
+}
+
+/** Accept all / reject all */
+export function BulkActions(props: { data: ReviewData }) {
+  const actions = () => props.data.data()?.actions
+  const any = () => (props.data.data()?.files.length ?? 0) > 0
+  return (
+    <>
+      <Show when={actions()?.reject && any()}>
+        <button
+          class="button reject"
+          disabled={props.data.working() || props.data.refreshing()}
+          onClick={() => void props.data.decide("reject")}
+        >
+          {t("review.rejectAll")}
+        </button>
+      </Show>
+      <Show when={actions()?.accept && any()}>
+        <button
+          class="button accept"
+          disabled={props.data.working() || props.data.refreshing()}
+          onClick={() => void props.data.decide("accept")}
+        >
+          <CheckCheck class="icon icon-sm" />
+          {t("review.acceptAll")}
+        </button>
+      </Show>
+    </>
   )
 }
 
@@ -128,6 +186,11 @@ export function ReviewPanel(props: { sessionID?: string; directory: string; data
         files={props.data.data()?.files.map((file) => file.file)}
       />
       <PendingComments sessionID={props.sessionID} directory={props.directory} />
+      <div class="review-foot">
+        <LastDecision data={props.data} />
+        <span class="spacer" />
+        <BulkActions data={props.data} />
+      </div>
     </>
   )
 }

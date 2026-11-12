@@ -229,10 +229,10 @@ test("closing the editor leaves a draft that can be resumed after remount", asyn
   await eventually(() => box()?.value).toBe("Resume this feedback")
 })
 
-test("review exposes comments without accepting or rejecting file changes", async () => {
+test("review offers to comment on lines and to accept or reject files", async () => {
   await mount()
-  expect(button(t("review.acceptFile"))).toBeUndefined()
-  expect(button(t("review.rejectFile"))).toBeUndefined()
+  expect(button(t("review.acceptFile"))).toBeDefined()
+  expect(button(t("review.rejectFile"))).toBeDefined()
   expect(host.querySelectorAll(".line-comment-add").length).toBeGreaterThan(0)
 })
 

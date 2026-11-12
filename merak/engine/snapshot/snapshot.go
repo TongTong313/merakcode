@@ -123,3 +123,49 @@ func (r Repo) pruneEmpty(dir string) {
 		dir = filepath.Dir(dir)
 	}
 }
+
+// Change is one file that differs between two moments.
+type Change struct {
+	Path string
+	// Status is added, modified or deleted: renames are two changes.
+	Status string
+}
+
+// Changes lists the files that differ between two trees returned by Track.
+func (r Repo) Changes(ctx context.Context, from, to string) ([]Change, error) {
+	if from == "" || to == "" {
+		return nil, errors.New("changes need two trees")
+	}
+	if from == to {
+		return nil, nil
+	}
+	out, err := r.git(ctx, nil, "diff-tree", "-r", "-z", "--no-renames", "--name-status", from, to)
+	if err != nil {
+		return nil, fmt.Errorf("compare workspace: %w", err)
+	}
+	fields := bytes.Split(bytes.TrimSuffix(out, []byte{0}), []byte{0})
+	var changes []Change
+	for i := 0; i+1 < len(fields); i += 2 {
+		status := map[string]string{"A": "added", "D": "deleted"}[string(fields[i])]
+		if status == "" {
+			status = "modified"
+		}
+		changes = append(changes, Change{Path: string(fields[i+1]), Status: status})
+	}
+	return changes, nil
+}
+
+// Blob reads a file as it was in a tree; a file that was not there reads as absent.
+func (r Repo) Blob(ctx context.Context, tree, path string) ([]byte, bool, error) {
+	if tree == "" {
+		return nil, false, errors.New("blob needs a tree")
+	}
+	if _, err := r.git(ctx, nil, "cat-file", "-e", tree+":"+path); err != nil {
+		return nil, false, nil
+	}
+	body, err := r.git(ctx, nil, "cat-file", "blob", tree+":"+path)
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	return body, true, nil
+}

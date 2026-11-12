@@ -21,6 +21,7 @@ func Canonical(directory string) (string, error) {
 	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
 		absolute = resolved
 	}
+	absolute = resolveJunctions(absolute)
 	absolute = filepath.Clean(absolute)
 	if runtime.GOOS == "windows" && len(absolute) >= 2 && absolute[1] == ':' {
 		absolute = strings.ToUpper(absolute[:1]) + absolute[1:]

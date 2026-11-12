@@ -64,3 +64,31 @@ test("archived groups are left out", () => {
   })
   expect(entries.map((entry) => entry.id)).toEqual(["kept"])
 })
+
+test("a conversation that runs in a worktree of the workspace is listed with it, not with another workspace", () => {
+  const sources = {
+    groups: [],
+    tasks: [],
+    sessions: [
+      { id: "s-tree", title: "In a worktree", directory: "/tmp/trees/app-1", time: { created: 1, updated: 10 } },
+      { id: "s-main", title: "In the folder", directory: "/work/app", time: { created: 1, updated: 5 } },
+    ],
+    worktrees: [{ path: "/tmp/trees/app-1", root: "/work/app" }],
+    updated: () => 1,
+  }
+  expect(entriesOf("/work/app", sources).map((entry) => entry.id)).toEqual(["s-tree", "s-main"])
+  expect(entriesOf("/work/docs", sources)).toEqual([])
+})
+
+test("a workspace opened through a link lists the conversations the engine placed in its real directory", () => {
+  const sources = {
+    groups: [],
+    tasks: [],
+    sessions: [{ id: "s", title: "Real", directory: "/real/app", time: { created: 1, updated: 10 } }],
+    canonical: (directory: string) => (directory === "/links/app" ? "/real/app" : directory),
+    updated: () => 1,
+  }
+  expect(entriesOf("/links/app", sources).map((entry) => entry.id)).toEqual(["s"])
+  expect(entriesOf("/real/app", sources).map((entry) => entry.id)).toEqual(["s"])
+  expect(entriesOf("/links/other", sources)).toEqual([])
+})

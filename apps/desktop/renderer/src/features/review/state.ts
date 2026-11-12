@@ -1,5 +1,12 @@
 /** Repository diffs, viewed files and comment drafts shared by the review views. */
-import { reviewData, type ReviewFile, type ReviewFileDetail, type ReviewResult, type ReviewScope } from "./data"
+import {
+  hunkText,
+  reviewData,
+  type ReviewFile,
+  type ReviewFileDetail,
+  type ReviewResult,
+  type ReviewScope,
+} from "./data"
 import type { ThemedToken } from "shiki/core"
 import {
   batch,
@@ -16,6 +23,8 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { t } from "../../i18n"
 import { tokenize } from "../../lib/tokens"
 import { client } from "../../state/client"
+import { codeOf } from "../../state/error"
+import { toast } from "../../ui/toast"
 import {
   checkoutOf,
   gitDirectory,
@@ -25,7 +34,7 @@ import {
   identityOf,
   resolveDirectory,
 } from "../../state/git"
-import { busy, listen } from "../../state/store"
+import { busy, listen, state } from "../../state/store"
 import { setUi } from "../../state/ui"
 import { openPanel } from "../panel/workspace"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
@@ -55,23 +64,23 @@ type Review = {
 }
 
 export const [review, setReview] = createStore<Review>({
-  scope: "session",
+  scope: "turn",
   comments: {},
   style: "split",
   files: {},
   seen: {},
 })
 
+export function selectScope(scope: ReviewScope) {
+  setReview({ scope, messageID: undefined })
+}
+
 let next = 1
 
 export function restoreReview(value: unknown) {
   const schema = z.object({
     directory: z.string().optional(),
-    // Layouts saved by older versions say "turn"; every review is now of the whole conversation
-    scope: z
-      .enum(["turn", "session"])
-      .transform(() => "session" as const)
-      .default("session"),
+    scope: z.enum(["turn", "session"]).default("turn"),
     messageID: z.string().optional(),
     focus: z.string().optional(),
     // A reveal is transient: one saved without its owner is dropped instead of discarding the comments beside it
@@ -98,7 +107,7 @@ export function restoreReview(value: unknown) {
   const restored = schema.safeParse(value)
   const result = restored.success
     ? restored.data
-    : { scope: "session" as const, comments: {}, style: "split" as const, files: {}, seen: {} }
+    : { scope: "turn" as const, comments: {}, style: "split" as const, files: {}, seen: {} }
   result.files = Object.fromEntries(
     Object.entries(result.files).map(([key, value]) => {
       const parts = key.split("\u0000")
@@ -122,7 +131,7 @@ export function openReview(view: { scope?: ReviewScope; messageID?: string; file
     {
       kind: "review",
       view: {
-        scope: view.scope ?? "session",
+        scope: view.scope ?? "turn",
         messageID: view.messageID,
         focus: view.file,
       },
@@ -130,6 +139,15 @@ export function openReview(view: { scope?: ReviewScope; messageID?: string; file
     true,
   )
 }
+
+/** User message for the turn scope: the chosen one, or the last one */
+function turnOf(sessionID: string) {
+  const marks = state.views[sessionID]?.state.marks ?? []
+  return marks.some((mark) => mark.id === review.messageID) ? review.messageID : marks.at(-1)?.id
+}
+
+export const scopeOptions = () =>
+  (["turn", "session"] as const).map((scope) => ({ value: scope, label: t(`review.scope.${scope}`) }))
 
 // Lists: one per review, refetched when stale
 
@@ -148,14 +166,28 @@ async function load(input: ReviewKey) {
   try {
     await resolveDirectory(input.directory)
     const connection = await client()
-    const changes = await connection.repo.diff({
-      directory: input.directory,
-      session: input.base ? undefined : input.sessionID,
-      base: input.base ?? (input.sessionID ? undefined : (identityOf(input.directory)?.head ?? undefined)),
-    })
+    // A turn review with no turn yet has nothing to ask the engine about
+    const turnless = input.scope === "turn" && !input.messageID && !input.base && !!input.sessionID
+    const changes = turnless
+      ? []
+      : await connection.repo.diff({
+          directory: input.directory,
+          session: input.base ? undefined : input.sessionID,
+          ...(input.scope === "turn" && input.messageID && !input.base ? { message: input.messageID } : {}),
+          base: input.base ?? (input.sessionID ? undefined : (identityOf(input.directory)?.head ?? undefined)),
+        })
     if (controller.signal.aborted || !currentContext(input)) return
     const converted = reviewData(changes ?? [])
-    const result: ReviewResult = { scope: "session", checkout: input.checkout ?? null, files: converted.files }
+    const decidable = !!input.sessionID && !input.base && !turnless
+    const status = decidable ? await connection.review.status({ session: input.sessionID! }) : undefined
+    if (controller.signal.aborted || !currentContext(input)) return
+    const result: ReviewResult = {
+      scope: input.scope,
+      checkout: input.checkout ?? null,
+      actions: { accept: decidable, reject: decidable },
+      ...(status?.last ? { last: status.last as ReviewResult["last"] } : {}),
+      files: converted.files,
+    }
     show(input, result)
     for (const file of result.files) {
       const detail = cell(detailKey(key, file))
@@ -222,7 +254,8 @@ function watch() {
     }
   })
   listen((directory, event) => {
-    if (["tool.completed", "turn.finished", "repo.changed", "file.changed"].includes(event.type)) stale(directory)
+    if (["tool.completed", "turn.finished", "repo.changed", "file.changed", "review.updated"].includes(event.type))
+      stale(directory)
   })
 }
 
@@ -252,6 +285,63 @@ function prune(list: string, files: ReviewFile[]) {
   for (const key of details.keys()) {
     if (details.size <= DETAILS) break
     if (!keep.has(key)) details.delete(key)
+  }
+}
+
+/** The review of a conversation, fetched now */
+export async function loadReview(input: ReviewKey) {
+  await load(input)
+  const entry = lists[keyOf(input)]
+  if (entry?.error) throw entry.error
+  return entry?.result
+}
+
+/** The hunks of one listed file */
+export const reviewDetail = (input: ReviewKey, file: ReviewFile) => loadDetail(input, file)
+
+/**
+ * Accepts or rejects files of the review, or all of it. A decision on some hunks of a file sends the text those
+ * hunks make; the engine refuses it when the file changed since it was listed.
+ */
+export async function decideReview(
+  input: ReviewKey,
+  decision: "accept" | "reject",
+  targets?: { file: string; hunks?: string[] }[],
+) {
+  // The list on screen, not a fresh one: a file that changed since it was shown must be refused
+  const listed = (lists[keyOf(input)]?.result ?? (await loadReview(input)))?.files ?? []
+  const chosen: { file: string; hunks?: string[] }[] = targets ?? listed.map((file) => ({ file: file.file }))
+  const files = await Promise.all(
+    chosen.map(async (target) => {
+      const file = listed.find((item) => item.file === target.file)
+      if (!file) throw new Error(t("review.stale"))
+      const partial = target.hunks && target.hunks.length < file.hunks
+      const detail = partial ? await loadDetail(input, file) : undefined
+      return {
+        file: file.file,
+        version: file.version,
+        ...(partial && detail ? { text: hunkText(decision, detail, target.hunks!) } : {}),
+      }
+    }),
+  )
+  const connection = await client()
+  try {
+    await connection.review[decision]({
+      session: input.sessionID!,
+      ...(input.scope === "turn" && input.messageID ? { message: input.messageID } : {}),
+      files,
+    })
+  } finally {
+    await load(input)
+  }
+}
+
+/** Takes back the latest decision */
+export async function undoReview(input: ReviewKey) {
+  try {
+    await (await client()).review.undo({ session: input.sessionID! })
+  } finally {
+    await load(input)
   }
 }
 
@@ -341,7 +431,7 @@ function useReviewList(
     (): ReviewKey => {
       const scope = scopeOf()
       const id = sessionID()
-      const messageID = undefined
+      const messageID = scope === "turn" && id ? turnOf(id) : undefined
       return {
         directory: directory(),
         scope,
@@ -425,6 +515,20 @@ export function useReview(
     }),
   )
 
+  const [working, setWorking] = createSignal(false)
+  const work = async (task: () => Promise<void>) => {
+    setWorking(true)
+    try {
+      await task()
+    } catch (error) {
+      // A file that changed after it was listed is not a failure: the list refreshes and the person decides again
+      if (codeOf(error) === "MRK-4030") toast({ kind: "info", title: t("review.stale") })
+      else toast({ kind: "error", title: error instanceof Error ? error.message : String(error), error })
+    } finally {
+      setWorking(false)
+    }
+  }
+
   const auto = createMemo(() => autoExpand(list()?.result?.files ?? []))
   const presentationKey = () => keyOf({ ...input(), checkout: null })
   const fileState = (file: ReviewFile) => review.files[openKey(presentationKey(), file.file)]
@@ -440,6 +544,15 @@ export function useReview(
     /** Showing a list while a newer one is fetched */
     refreshing: () => !!list()?.result && (!!list()?.loading || !!list()?.stale),
     refetch,
+    /** A decision is running */
+    working,
+    decide: (decision: "accept" | "reject", files?: { file: string; hunks?: string[] }[]) =>
+      work(() => decideReview(input(), decision, files)),
+    undo: () =>
+      work(async () => {
+        await undoReview(input())
+        toast({ kind: "info", title: t("review.undone") })
+      }),
     detail: (file: ReviewFile) => cell(detailKey(key(), file)).get(),
     loadDetail: (file: ReviewFile) => loadDetail(input(), file),
     loadTokens: (file: ReviewFile, lang: string | undefined) => loadTokens(input(), file, lang),
@@ -459,7 +572,7 @@ export function commentInView(target: CommentTarget, directory: string, sessionI
     target.sessionID === sessionID &&
     target.branch === identityOf(directory)?.branch &&
     target.scope === review.scope &&
-    target.messageID === undefined
+    target.messageID === (review.scope === "turn" && sessionID ? turnOf(sessionID) : undefined)
   )
 }
 
@@ -478,7 +591,7 @@ export function beginComment(
   compose = true,
 ) {
   if (!rows.length) return
-  const messageID = undefined
+  const messageID = review.scope === "turn" ? turnOf(sessionID) : undefined
   const context = gitDirectory(directory)
   const branch = identityOf(directory)?.branch
   const previous = review.commenting

@@ -5,7 +5,7 @@ import { engineFixture } from "../../test/engine"
 import { client } from "../../state/client"
 import { refreshBranches } from "../../state/git"
 import { buffersFor, releaseBuffers } from "./state"
-import { readDraft } from "./draft"
+import { flushDrafts, readDraft, writeDraft } from "./draft"
 
 // The code editor is a browser component; a plain text model stands in for it. Everything else is real.
 vi.mock("../../lib/monaco", () => ({
@@ -92,4 +92,20 @@ test("unsaved work survives closing the view as a draft and blocks releasing the
 test("a path outside the folder cannot be written", async () => {
   const connection = await client()
   await expect(connection.file.write({ directory: env.project, path: "../escape.txt", content: "x" })).rejects.toThrow()
+})
+
+test("a deleted file that was never committed still opens read-only when a draft of it was kept", async () => {
+  const buffer = buffersFor(env.project)
+  await buffer.open("never-committed.txt")
+  expect(buffer.tabs.some((item) => item.path === "never-committed.txt")).toBe(false)
+  expect(buffer.errors["never-committed.txt"]).toBeTruthy()
+
+  writeDraft(env.project, "never-committed.txt", { content: "kept edits\n", saved: "original\n" })
+  await flushDrafts()
+  await buffer.open("never-committed.txt")
+  const tab = buffer.tabs.find((item) => item.path === "never-committed.txt")!
+  expect(tab).toMatchObject({ missing: true, dirty: true, saved: "original\n" })
+  expect((tab.model as unknown as { getValue(): string }).getValue()).toBe("kept edits\n")
+  await buffer.close("never-committed.txt")
+  expect(await readDraft(env.project, "never-committed.txt")).toBeUndefined()
 })

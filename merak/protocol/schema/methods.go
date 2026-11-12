@@ -16,6 +16,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/plan"
+	"github.com/TongTong313/merakcode/merak/engine/review"
 	"github.com/TongTong313/merakcode/merak/engine/schedule"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/skill"
@@ -114,6 +115,10 @@ func Methods() []Method {
 		{"file.list", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[[]engine.FileNode]()},
 		{"repo.status", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[git.State]()},
 		{"repo.diff", reflect.TypeFor[protocol.RepoDiffParams](), reflect.TypeFor[[]git.Change]()},
+		{"review.accept", reflect.TypeFor[protocol.ReviewDecideParams](), reflect.TypeFor[review.Status]()},
+		{"review.reject", reflect.TypeFor[protocol.ReviewDecideParams](), reflect.TypeFor[review.Status]()},
+		{"review.undo", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[review.Status]()},
+		{"review.status", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[review.Status]()},
 		{"repo.branches", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[[]git.Branch]()},
 		{"repo.checkout", reflect.TypeFor[protocol.RepoCheckoutParams](), reflect.TypeFor[struct{}]()},
 		{"repo.commit", reflect.TypeFor[protocol.RepoCommitParams](), reflect.TypeFor[protocol.RepoCommitResult]()},

@@ -85,7 +85,13 @@ export async function restoreReviewProtection(directory: string) {
   for await (const review of savedReviews()) {
     if (managed.has(review.owner)) continue
     for (const location of review.locations) {
-      if (!(await sameRecoveryDirectory(location, directory))) continue
+      // A folder that cannot be reached and was never confirmed stays with its own owner; it must not stop other
+      // folders from loading their branches
+      const same = await sameRecoveryDirectory(location, directory).catch((error: unknown) => {
+        if (error instanceof MerakCodeError && error.code === "MRK-5023") return false
+        throw error
+      })
+      if (!same) continue
       if (!managed.has(review.owner)) next.set(review.key, review.owner)
       break
     }

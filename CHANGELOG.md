@@ -21,6 +21,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Give every method of the engine protocol a typed function in the SDK (`client.rules.read()`, `client.memory.list()` and so on), generated from the protocol.
 - Finish the command line: `merak stats` totals token usage and cost by day, model and agent (`--json` for scripts), `merak doctor` checks the engine, data folder, default model, sandbox, git and MCP servers, `merak logs [-f]` prints and follows the logs, `merak bug-report` packs a diagnostic archive and says where to send it, `merak sandbox status|setup|reset` shows, sets up and undoes the sandbox, `merak generate` prints the protocol JSON Schema, and `merak upgrade` answers that upgrading is not available yet.
 - Start the engine at login with `merak service install` (a macOS LaunchAgent, a Linux systemd user unit or a Windows `Run` registry value for the current user) and undo it with `merak service uninstall`.
+- Delete a conversation from the sidebar menu (with a confirmation): the engine removes its history and the window frees its panels, terminals and drafts. Hiding it from this device is still there.
+- Bring back accepting, rejecting and undoing agent changes in the review panel, for the whole conversation or one turn: per hunk, per file or all at once. Accepting moves the review baseline without touching files; rejecting writes the baseline back into the working file; the engine refuses a decision about a file that changed since it was listed (`review.accept`, `review.reject`, `review.undo`, `review.status`, and `message` on `repo.diff`). The review lists only the files the agent changed, not what you edit by hand beside it.
 - Import the data of a v0.3 installation on first start: conversations (which continue where they stopped), external product connections, role templates, groups as archived read-only groups, plans, memories and todo lists. The result is sent to the inbox, `merak import --from v0.3` runs it by hand, and the files of v0.3 are not changed.
 
 - Read and edit the `lsp` and `formatter` sections of a v0.3 configuration file with `config.get` and `config.set`, and override them entry by entry in a project. The engine does not run language servers or formatters, and `config.get` hides environment values.
@@ -130,6 +132,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- On Windows, a folder opened through a junction and its target are one workspace; a conversation that runs in a worktree or in the real directory behind a linked folder is listed under that folder in the sidebar; a deleted file with a kept draft opens read-only instead of failing.
 - Cancel the turn that runs a plan and the plan reads as stopped, so it can be started again; before, it stayed "executing" and its button stayed disabled.
 - Creating a group no longer adds duplicate agents, and one group failing to load no longer interrupts the other conversations.
 - Hide the date and recalled notes that the engine adds to the first message of a conversation from what the person sees, so editing or retrying a message no longer puts them back in the input.
@@ -211,6 +214,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - SDK 为引擎协议的每个方法生成带类型的函数（`client.rules.read()`、`client.memory.list()` 等）。
 - 补齐命令行：`merak stats` 按天、模型和智能体汇总 token 用量和费用（`--json` 供脚本使用），`merak doctor` 检查引擎、数据目录、默认模型、沙箱、git 和 MCP 服务器，`merak logs [-f]` 打印并跟随日志，`merak bug-report` 打包诊断包并告知提交位置，`merak sandbox status|setup|reset` 查看、初始化和清除沙箱，`merak generate` 打印协议的 JSON Schema，`merak upgrade` 目前会告知暂不能升级。
 - 用 `merak service install` 让引擎在登录时启动（macOS 写 LaunchAgent，Linux 写 systemd 用户单元，Windows 写当前用户的 `Run` 注册表项），用 `merak service uninstall` 取消。
+- 侧栏对话菜单新增“删除”（带确认）：引擎删除对话记录，窗口释放它的面板、终端和草稿；原来的“隐藏对话”仍然保留。
+- 审阅面板恢复接受、拒绝和撤销智能体的改动，范围可选整个对话或本轮，粒度可选单个块、单个文件或全部：接受只移动审阅基线、不改文件，拒绝把基线内容写回工作文件；文件在列出之后又被改过时，引擎拒绝这次决定（`review.accept`、`review.reject`、`review.undo`、`review.status`，`repo.diff` 新增 `message`）。审阅只列出智能体改过的文件，不含你自己手改的。
 - 第一次启动时导入 v0.3 的数据：历史对话（可以接着聊）、外部产品连接、角色模板、协作群（成为已归档的只读协作群）、计划、记忆和待办。结果发到收件箱，`merak import --from v0.3` 可以手动运行，v0.3 的文件不会被修改。
 
 - 可以用 `config.get` 和 `config.set` 读取和修改 v0.3 配置文件里的 `lsp` 和 `formatter` 两段，项目配置可以按条目覆盖。引擎不运行语言服务器和格式化工具，`config.get` 不返回环境变量的值。
@@ -320,6 +325,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- Windows 上通过目录连接（junction）打开的文件夹与它的目标是同一个工作区；在工作树或在链接文件夹真实目录里运行的对话，列在侧栏对应的文件夹下；已删除但留有草稿的文件改为只读打开，不再报错。
 - 取消正在执行计划的回合后，计划变为“已停止”，可以再次开始；以前它一直是“执行中”，按钮一直不能点。
 - 新建协作群不再重复生成智能体；一个协作群加载出错不再打断其他对话。
 - 引擎加在对话第一条消息前的日期和召回的记忆不再显示给用户，编辑或重试消息时也不会把它们放回输入框。

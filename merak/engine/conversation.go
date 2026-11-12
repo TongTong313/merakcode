@@ -705,6 +705,7 @@ func (e *Engine) DeleteSession(ctx context.Context, id event.ID) error {
 	if err != nil {
 		return err
 	}
+	_ = e.store.Delete(ctx, "review", string(id))
 	for _, victim := range removed {
 		if repo, err := e.snapshotRepo(victim, ""); err == nil {
 			_ = os.RemoveAll(repo.GitDir)

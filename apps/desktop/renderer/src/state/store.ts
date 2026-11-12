@@ -281,6 +281,22 @@ export async function hideSession(id: string) {
   await storage.set("hidden-sessions", state.hidden)
 }
 
+/**
+ * Removes a conversation for good: the engine deletes its history, the window forgets it. It is hidden first, while
+ * its folder is still known, so the panels, terminals and drafts of the conversation are released with it.
+ */
+export async function deleteSession(id: string) {
+  await (await client()).session.delete({ session: id })
+  await hideSession(id)
+  const watch = watches.get(id)
+  watches.delete(id)
+  void watch?.then((open) => open.close()).catch(failed)
+  batch(() => {
+    setState("sessions", (items) => items.filter((info) => info.id !== id))
+    setState("views", id, undefined!)
+  })
+}
+
 export async function ensureSession(id: string) {
   await messages(id)
   return session(id)

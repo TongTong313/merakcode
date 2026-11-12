@@ -53,11 +53,8 @@ test("single and group conversations restore separate editor layouts", async ({ 
   await kit.openPanel("git")
   await page.getByRole("button", { name: "新建协作群", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "新建协作群", exact: true })
-  await dialog.getByRole("button", { name: "添加成员", exact: true }).click()
-  await dialog.getByRole("button", { name: /^产品/ }).click()
-  await page.getByRole("option", { name: "Fake CLI", exact: true }).click()
-  await dialog.getByRole("textbox", { name: "姓名", exact: true }).fill("Member")
-  await dialog.getByRole("button", { name: "加入", exact: true }).click()
+  await dialog.getByRole("textbox", { name: "群名称" }).fill("Layout")
+  await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
   await dialog.getByRole("button", { name: "创建", exact: true }).click()
   await expect(page.getByRole("complementary", { name: "群成员", exact: true })).toBeVisible()
   const group = new URL(page.url()).pathname

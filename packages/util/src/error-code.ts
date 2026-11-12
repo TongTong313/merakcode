@@ -918,6 +918,28 @@ export namespace ErrorCode {
         en: "Reopen the file to see the latest content, or choose to overwrite and save again.",
       },
     },
+    REVIEW_STALE: {
+      code: "MRK-4030",
+      domain: "session",
+      status: 409,
+      retryable: true,
+      title: { zh: "审阅内容已经变了", en: "The review has changed" },
+      hint: {
+        zh: "文件在你查看之后又被改过，刷新审阅列表后再接受或拒绝。",
+        en: "The file changed after you looked at it. Refresh the review, then accept or reject again.",
+      },
+    },
+    NOTHING_TO_UNDO: {
+      code: "MRK-4031",
+      domain: "session",
+      status: 409,
+      retryable: false,
+      title: { zh: "没有可撤销的审阅操作", en: "Nothing to undo" },
+      hint: {
+        zh: "上一次接受或拒绝之后文件又变了，或者还没有审阅过。",
+        en: "The files changed after the last accept or reject, or nothing was reviewed yet.",
+      },
+    },
     DIRECTORY_MISSING: {
       code: "MRK-3009",
       domain: "config",

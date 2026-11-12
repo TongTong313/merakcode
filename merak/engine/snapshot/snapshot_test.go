@@ -91,3 +91,44 @@ func TestTheShadowRepositoryNeverTouchesTheProjectsOwnGit(t *testing.T) {
 		t.Fatal("tracking made a .git directory in the project")
 	}
 }
+
+func TestChangesListsWhatDiffersBetweenTwoMomentsAndBlobReadsFilesOfAMoment(t *testing.T) {
+	work := t.TempDir()
+	repo := snapshot.Repo{GitDir: filepath.Join(t.TempDir(), "shadow"), Workdir: work}
+	write(t, work, "keep.txt", "one")
+	write(t, work, "gone.txt", "bye")
+	before, err := repo.Track(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, work, "keep.txt", "two")
+	write(t, work, "made/new.txt", "fresh")
+	if err := os.Remove(filepath.Join(work, "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.Track(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes, err := repo.Changes(t.Context(), before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, change := range changes {
+		got[change.Path] = change.Status
+	}
+	want := map[string]string{"keep.txt": "modified", "made/new.txt": "added", "gone.txt": "deleted"}
+	if len(got) != len(want) || got["keep.txt"] != "modified" || got["made/new.txt"] != "added" || got["gone.txt"] != "deleted" {
+		t.Fatalf("changes = %v", got)
+	}
+	if body, present, err := repo.Blob(t.Context(), before, "keep.txt"); err != nil || !present || string(body) != "one" {
+		t.Fatalf("keep.txt then = %q %v %v", body, present, err)
+	}
+	if _, present, err := repo.Blob(t.Context(), before, "made/new.txt"); err != nil || present {
+		t.Fatalf("a file made later was present before: %v %v", present, err)
+	}
+	if changes, err := repo.Changes(t.Context(), after, after); err != nil || len(changes) != 0 {
+		t.Fatalf("the same moment differs from itself: %v %v", changes, err)
+	}
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/plan"
 	"github.com/TongTong313/merakcode/merak/engine/prompt"
 	"github.com/TongTong313/merakcode/merak/engine/question"
+	"github.com/TongTong313/merakcode/merak/engine/review"
 	"github.com/TongTong313/merakcode/merak/engine/rules"
 	"github.com/TongTong313/merakcode/merak/engine/schedule"
 	"github.com/TongTong313/merakcode/merak/engine/session"
@@ -163,6 +164,8 @@ type Engine struct {
 	mcpLoginOnce     sync.Once
 	mcpLoginSet      *mcp.Login
 	snapshotMu       sync.Mutex
+	reviewOnce       sync.Once
+	reviews          *review.Reviewer
 	worktreeOnce     sync.Once
 	worktreeSet      *code.Worktrees
 	snapshotDir      string

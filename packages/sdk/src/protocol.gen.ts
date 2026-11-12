@@ -1766,13 +1766,26 @@ export type ProtocolRepoCommitResult = { commit: string }
 export const ProtocolRepoCommitResultSchema: z.ZodType<ProtocolRepoCommitResult> = z.lazy(() =>
   z.strictObject({ commit: z.string() }),
 )
-export type ProtocolRepoDiffParams = { base?: string; directory?: string; session?: string }
+export type ProtocolRepoDiffParams = { base?: string; directory?: string; message?: string; session?: string }
 export const ProtocolRepoDiffParamsSchema: z.ZodType<ProtocolRepoDiffParams> = z.lazy(() =>
-  z.strictObject({ base: z.string().optional(), directory: z.string().optional(), session: z.string().optional() }),
+  z.strictObject({
+    base: z.string().optional(),
+    directory: z.string().optional(),
+    message: z.string().optional(),
+    session: z.string().optional(),
+  }),
 )
 export type ProtocolRepoPathsParams = { directory?: string; paths: string[] | null }
 export const ProtocolRepoPathsParamsSchema: z.ZodType<ProtocolRepoPathsParams> = z.lazy(() =>
   z.strictObject({ directory: z.string().optional(), paths: z.union([z.array(z.string()), z.null()]) }),
+)
+export type ProtocolReviewDecideParams = { files: ReviewFile[] | null; message?: string; session: string }
+export const ProtocolReviewDecideParamsSchema: z.ZodType<ProtocolReviewDecideParams> = z.lazy(() =>
+  z.strictObject({
+    files: z.union([z.array(ReviewFileSchema), z.null()]),
+    message: z.string().optional(),
+    session: z.string(),
+  }),
 )
 export type ProtocolRuleFileChange = { body?: string | null; name: string }
 export const ProtocolRuleFileChangeSchema: z.ZodType<ProtocolRuleFileChange> = z.lazy(() =>
@@ -2096,6 +2109,18 @@ export const QuestionRequestSchema: z.ZodType<QuestionRequest> = z.lazy(() =>
     to: z.string().optional(),
   }),
 )
+export type ReviewFile = { file: string; text?: string | null; version: string }
+export const ReviewFileSchema: z.ZodType<ReviewFile> = z.lazy(() =>
+  z.strictObject({ file: z.string(), text: z.union([z.string(), z.null()]).optional(), version: z.string() }),
+)
+export type ReviewLast = { count: number; decision: string }
+export const ReviewLastSchema: z.ZodType<ReviewLast> = z.lazy(() =>
+  z.strictObject({ count: z.number().int(), decision: z.string() }),
+)
+export type ReviewStatus = { last?: ReviewLast | null }
+export const ReviewStatusSchema: z.ZodType<ReviewStatus> = z.lazy(() =>
+  z.strictObject({ last: z.union([ReviewLastSchema, z.null()]).optional() }),
+)
 export type SandboxProtectionStatus = { path: string; state: string }
 export const SandboxProtectionStatusSchema: z.ZodType<SandboxProtectionStatus> = z.lazy(() =>
   z.strictObject({ path: z.string(), state: z.string() }),
@@ -2298,6 +2323,10 @@ export type SessionRevert = { current?: string; message: string; restored?: stri
 export const SessionRevertSchema: z.ZodType<SessionRevert> = z.lazy(() =>
   z.strictObject({ current: z.string().optional(), message: z.string(), restored: z.string().optional() }),
 )
+export type SessionReviewUpdate = { count: number; decision: string }
+export const SessionReviewUpdateSchema: z.ZodType<SessionReviewUpdate> = z.lazy(() =>
+  z.strictObject({ count: z.number().int(), decision: z.string() }),
+)
 export type SessionSelection = { model: string; provider: string; thinking?: string }
 export const SessionSelectionSchema: z.ZodType<SessionSelection> = z.lazy(() =>
   z.strictObject({ model: z.string(), provider: z.string(), thinking: z.string().optional() }),
@@ -2366,9 +2395,9 @@ export type SessionTodos = { items: ToolTodo[] | null }
 export const SessionTodosSchema: z.ZodType<SessionTodos> = z.lazy(() =>
   z.strictObject({ items: z.union([z.array(ToolTodoSchema), z.null()]) }),
 )
-export type SessionTrack = { index: number; tree: string }
+export type SessionTrack = { end?: boolean; index: number; tree: string }
 export const SessionTrackSchema: z.ZodType<SessionTrack> = z.lazy(() =>
-  z.strictObject({ index: z.number().int(), tree: z.string() }),
+  z.strictObject({ end: z.boolean().optional(), index: z.number().int(), tree: z.string() }),
 )
 export type SkillOffer = { description: string; files?: string[] | null; name: string }
 export const SkillOfferSchema: z.ZodType<SkillOffer> = z.lazy(() =>
@@ -3289,6 +3318,17 @@ export type EngineEvent =
       stream: string
       time: string
       type: "repo.changed"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: SessionReviewUpdate
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "review.updated"
     }
   | {
       actor: EventActor
@@ -4225,6 +4265,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: SessionReviewUpdateSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("review.updated"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: LeaderFindingSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -4749,6 +4800,10 @@ export type Methods = {
   "repo.stage": { params: ProtocolRepoPathsParams; result: {} }
   "repo.status": { params: ProtocolDirectoryParams; result: GitState }
   "repo.unstage": { params: ProtocolRepoPathsParams; result: {} }
+  "review.accept": { params: ProtocolReviewDecideParams; result: ReviewStatus }
+  "review.reject": { params: ProtocolReviewDecideParams; result: ReviewStatus }
+  "review.status": { params: ProtocolSessionCancelParams; result: ReviewStatus }
+  "review.undo": { params: ProtocolSessionCancelParams; result: ReviewStatus }
   "rules.change": { params: ProtocolRulesChangeParams; result: {} }
   "rules.read": { params: ProtocolDirectoryParams; result: ProtocolRulesReadResult }
   "sandbox.setup": { params: {}; result: {} }
@@ -4876,6 +4931,10 @@ export const methodSchemas = {
   "repo.stage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
   "repo.status": { params: ProtocolDirectoryParamsSchema, result: GitStateSchema },
   "repo.unstage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
+  "review.accept": { params: ProtocolReviewDecideParamsSchema, result: ReviewStatusSchema },
+  "review.reject": { params: ProtocolReviewDecideParamsSchema, result: ReviewStatusSchema },
+  "review.status": { params: ProtocolSessionCancelParamsSchema, result: ReviewStatusSchema },
+  "review.undo": { params: ProtocolSessionCancelParamsSchema, result: ReviewStatusSchema },
   "rules.change": { params: ProtocolRulesChangeParamsSchema, result: z.strictObject({}) },
   "rules.read": { params: ProtocolDirectoryParamsSchema, result: ProtocolRulesReadResultSchema },
   "sandbox.setup": { params: z.strictObject({}), result: z.strictObject({}) },

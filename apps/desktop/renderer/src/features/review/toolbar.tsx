@@ -1,12 +1,16 @@
 import LoaderCircle from "lucide-solid/icons/loader-circle"
 import { Show } from "solid-js"
 import { t } from "../../i18n"
+import { Segmented } from "../../ui/segmented"
 import type { ReviewData } from "./review"
+import { review, scopeOptions, selectScope } from "./state"
 
 export function ReviewToolbar(props: { data: ReviewData; sessionID?: string }) {
   return (
     <div class="review-toolbar" role="toolbar" aria-label={t("review.toolbar")}>
-      <span>{t("review.scope.session")}</span>
+      <Show when={props.sessionID}>
+        <Segmented label={t("review.scope")} options={scopeOptions()} value={review.scope} onChange={selectScope} />
+      </Show>
       <button class="button ghost sm" onClick={() => void props.data.refetch()}>
         {t("git.refresh")}
       </button>

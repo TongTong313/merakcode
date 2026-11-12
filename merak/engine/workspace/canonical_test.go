@@ -2,6 +2,7 @@ package workspace_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -79,5 +80,53 @@ func TestOnWindowsDriveLettersAndCaseDoNotMakeADifferentDirectory(t *testing.T) 
 	b, _ := workspace.Canonical(dir)
 	if a != b {
 		t.Errorf("%q != %q", a, b)
+	}
+}
+
+func TestOnWindowsAJunctionAndItsTargetAreOneDirectory(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows only")
+	}
+	dir := t.TempDir()
+	junction := filepath.Join(t.TempDir(), "junction")
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", junction, dir).CombinedOutput(); err != nil {
+		t.Skipf("no junctions here: %v %s", err, out)
+	}
+	got, err := workspace.Canonical(junction)
+	want, _ := workspace.Canonical(dir)
+	if err != nil || got != want {
+		t.Errorf("Canonical(junction) = %q, %v; want %q", got, err, want)
+	}
+	if !workspace.SameDirectory(junction, dir) {
+		t.Error("a junction and its target are one directory")
+	}
+}
+
+func TestOnWindowsASubstDriveKeepsItsLetterBecauseItMayGoOffline(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows only")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var drive string
+	for _, letter := range "YZXWV" {
+		candidate := string(letter) + ":"
+		if _, err := os.Stat(candidate + `\`); err != nil {
+			drive = candidate
+			break
+		}
+	}
+	if drive == "" {
+		t.Skip("no free drive letter")
+	}
+	if out, err := exec.Command("subst.exe", drive, dir).CombinedOutput(); err != nil {
+		t.Skipf("no subst here: %v %s", err, out)
+	}
+	defer func() { _ = exec.Command("subst.exe", drive, "/D").Run() }()
+	got, err := workspace.Canonical(drive + `\old`)
+	if err != nil || got != drive+`\old` {
+		t.Errorf("Canonical of a folder on %s = %q, %v; the drive letter must stay", drive, got, err)
 	}
 }

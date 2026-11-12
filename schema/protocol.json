@@ -4792,6 +4792,9 @@
         "directory": {
           "type": "string"
         },
+        "message": {
+          "type": "string"
+        },
         "session": {
           "type": "string"
         }
@@ -4819,6 +4822,32 @@
         }
       },
       "required": ["paths"],
+      "type": "object"
+    },
+    "ProtocolReviewDecideParams": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ReviewFile"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["files", "session"],
       "type": "object"
     },
     "ProtocolRuleFileChange": {
@@ -5695,6 +5724,58 @@
       "required": ["text"],
       "type": "object"
     },
+    "ReviewFile": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": ["file", "version"],
+      "type": "object"
+    },
+    "ReviewLast": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "decision": {
+          "type": "string"
+        }
+      },
+      "required": ["count", "decision"],
+      "type": "object"
+    },
+    "ReviewStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "last": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewLast"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "SandboxProtectionStatus": {
       "additionalProperties": false,
       "properties": {
@@ -6210,6 +6291,19 @@
       "required": ["message"],
       "type": "object"
     },
+    "SessionReviewUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "decision": {
+          "type": "string"
+        }
+      },
+      "required": ["count", "decision"],
+      "type": "object"
+    },
     "SessionSelection": {
       "additionalProperties": false,
       "properties": {
@@ -6443,6 +6537,9 @@
     "SessionTrack": {
       "additionalProperties": false,
       "properties": {
+        "end": {
+          "type": "boolean"
+        },
         "index": {
           "type": "integer"
         },
@@ -7644,6 +7741,9 @@
     "repo.changed": {
       "$ref": "#/$defs/EngineRepoChanges"
     },
+    "review.updated": {
+      "$ref": "#/$defs/SessionReviewUpdate"
+    },
     "sentinel.flagged": {
       "$ref": "#/$defs/LeaderFinding"
     },
@@ -8603,6 +8703,38 @@
         "additionalProperties": false,
         "properties": {},
         "type": "object"
+      }
+    },
+    "review.accept": {
+      "params": {
+        "$ref": "#/$defs/ProtocolReviewDecideParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ReviewStatus"
+      }
+    },
+    "review.reject": {
+      "params": {
+        "$ref": "#/$defs/ProtocolReviewDecideParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ReviewStatus"
+      }
+    },
+    "review.status": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ReviewStatus"
+      }
+    },
+    "review.undo": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ReviewStatus"
       }
     },
     "rules.change": {

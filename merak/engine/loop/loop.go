@@ -425,6 +425,9 @@ func (l *Loop) emit(ctx context.Context, s *session.State, scope event.Scope, ac
 	if actor.Kind == event.ActorAgent && actor.ID == "" {
 		actor.ID = s.Config.Member
 	}
+	if kind == TurnFinished {
+		l.trackEnd(ctx, s, scope)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return event.Event{}, err
@@ -445,6 +448,25 @@ func (l *Loop) emit(ctx context.Context, s *session.State, scope event.Scope, ac
 		}
 	}
 	return e, nil
+}
+
+// trackEnd records the workspace when a turn that took snapshots finishes, so the review of that turn ends where the
+// turn did, not at whatever the person edits afterwards.
+func (l *Loop) trackEnd(ctx context.Context, s *session.State, scope event.Scope) {
+	if l.Track == nil || len(s.Marks) == 0 {
+		return
+	}
+	started := s.Marks[len(s.Marks)-1].Index
+	changed := false
+	for _, track := range s.Tracks {
+		changed = changed || (track.Index > started && !track.End)
+	}
+	if !changed {
+		return
+	}
+	if tree, err := l.Track(context.WithoutCancel(ctx)); err == nil && tree != "" {
+		_, _ = l.emit(context.WithoutCancel(ctx), s, scope, event.Actor{Kind: event.ActorAgent, ID: s.Config.Member}, session.Tracked, session.Track{Tree: tree, End: true}, "")
+	}
 }
 
 // track records the workspace before a batch of calls that may change files. A workspace that cannot be recorded

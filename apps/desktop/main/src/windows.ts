@@ -31,6 +31,8 @@ export type Options = {
   log: (level: "info" | "warn" | "error", message: string, extra?: Record<string, unknown>) => void
 }
 
+/** Set by the end-to-end tests: windows are never shown, so a run cannot cover or interrupt what the person is doing */
+const quiet = !!process.env.MERAKCODE_NO_FOCUS
 const WIDTH = 1280
 const HEIGHT = 832
 
@@ -158,6 +160,7 @@ export class Windows {
 
   focus(win: BrowserWindow) {
     if (win.isMinimized()) win.restore()
+    if (quiet) return
     win.show()
     win.focus()
   }
@@ -221,13 +224,17 @@ export class Windows {
         nodeIntegration: false,
         webviewTag: false,
         spellcheck: false,
+        // A window that is never shown still has to render and run timers for the tests
+        backgroundThrottling: !quiet,
       },
     })
     this.list.add(win)
     if (saved?.maximized && !others.length) win.maximize()
     this.harden(win)
     this.track(win)
-    win.once("ready-to-show", () => win.show())
+    win.once("ready-to-show", () => {
+      if (!quiet) win.show()
+    })
     this.load(win, route)
     return win
   }
@@ -318,7 +325,7 @@ export class Windows {
     const escape = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
     const html = `<!doctype html><meta charset="utf-8"><title>MerakCode</title><style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font:14px system-ui,sans-serif;background:${dark ? "#131315" : "#fff"};color:${dark ? "#d4d4d8" : "#52525b"};-webkit-app-region:drag}p{margin:0;max-width:560px;text-align:center;line-height:1.6;-webkit-user-select:text;-webkit-app-region:no-drag}h1{margin:0;font-size:16px;font-weight:600}</style><h1>${escape(title)}</h1>${detail ? `<p>${escape(detail)}</p>` : ""}`
     void win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html)).catch(() => {})
-    if (!win.isVisible()) win.show()
+    if (!quiet && !win.isVisible()) win.show()
   }
 
   private harden(win: BrowserWindow) {

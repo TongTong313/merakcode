@@ -336,6 +336,8 @@ export const test = base.extend<{
           MERAKCODE_BROWSER_LEAVE_UNLOAD: "1",
           MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
           MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
+          // Windows are never shown, so a run does not cover the screen or take the focus from the person using it (E2E_FOCUS=1 shows them)
+          ...(process.env.E2E_FOCUS ? {} : { MERAKCODE_NO_FOCUS: "1" }),
         },
         timeout: 60_000,
       })

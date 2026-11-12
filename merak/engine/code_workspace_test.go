@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -275,5 +277,71 @@ func TestAFolderThatIsGoneIsReportedWithItsOwnCode(t *testing.T) {
 	}
 	if _, err = e.ListFiles(ctx, gone, "."); !errors.As(err, &failure) || failure.Code != errorcode.DirectoryMissing {
 		t.Fatalf("listing a missing folder: %v", err)
+	}
+}
+
+// linkFolder makes link another way into target: a symbolic link, or on Windows a junction, which needs no privilege.
+func linkFolder(t *testing.T, target, link string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
+			t.Skipf("no junctions here: %v %s", err, out)
+		}
+		return
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+}
+
+func TestAFileReachedThroughALinkedFolderHasTheIdentityOfItsRealPlace(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	if err := os.MkdirAll(filepath.Join(repo, "actual"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkFolder(t, filepath.Join(repo, "actual"), filepath.Join(repo, "alias"))
+	if err := os.WriteFile(filepath.Join(repo, "actual", "kept.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The file need not exist: a deleted file keeps the place its tab and draft were stored under
+	for _, asked := range []string{"alias/kept.txt", "actual/kept.txt", "alias/removed.txt", "actual/removed.txt", "alias/new/deep.txt"} {
+		identity, err := e.FileIdentity(ctx, repo, asked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "actual/" + asked[strings.Index(asked, "/")+1:]
+		if identity.Path != want {
+			t.Errorf("asked %q, identity %q; want %q", asked, identity.Path, want)
+		}
+	}
+	outside := t.TempDir()
+	linkFolder(t, outside, filepath.Join(repo, "elsewhere"))
+	identity, err := e.FileIdentity(ctx, repo, "elsewhere/file.txt")
+	if err != nil || identity.Path != "elsewhere/file.txt" {
+		t.Errorf("a link that leaves the folder keeps the path as asked: %+v err=%v", identity, err)
+	}
+}
+
+func TestAnAbsolutePathInsideTheFolderIsNamedRelativeToItWhateverSpellingAskedForIt(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	linkFolder(t, repo, alias)
+	for _, c := range []struct{ directory, asked string }{
+		{repo, filepath.Join(repo, "src", "app.ts")},
+		{alias, filepath.Join(alias, "src", "app.ts")},
+		{alias, filepath.Join(repo, "src", "app.ts")},
+		{repo, filepath.Join(alias, "src", "app.ts")},
+		{alias, filepath.ToSlash(filepath.Join(alias, "src", "new.ts"))},
+	} {
+		identity, err := e.FileIdentity(ctx, c.directory, c.asked)
+		want := "src/" + filepath.Base(c.asked)
+		if err != nil || identity.Path != want {
+			t.Errorf("identity of %q in %q = %+v err=%v; want path %q", c.asked, c.directory, identity, err, want)
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "other.txt")
+	identity, err := e.FileIdentity(ctx, repo, outside)
+	if err != nil || filepath.ToSlash(identity.Path) != filepath.ToSlash(outside) {
+		t.Errorf("a path outside the folder stays as asked: %+v err=%v", identity, err)
 	}
 }

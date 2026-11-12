@@ -1,5 +1,6 @@
 import type { ReviewFile, ReviewHunk, ReviewLine } from "./data"
 import type { ThemedToken } from "shiki/core"
+import Check from "lucide-solid/icons/check"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import LoaderCircle from "lucide-solid/icons/loader-circle"
@@ -7,6 +8,7 @@ import MessageSquare from "lucide-solid/icons/message-square"
 import MessageSquarePlus from "lucide-solid/icons/message-square-plus"
 import SquarePen from "lucide-solid/icons/square-pen"
 import Trash2 from "lucide-solid/icons/trash"
+import X from "lucide-solid/icons/x"
 import { createEffect, createMemo, For, Index, Match, Show, Switch } from "solid-js"
 import { t } from "../../i18n"
 import { languageOf } from "../../lib/highlight"
@@ -285,20 +287,26 @@ function LineComments(props: LineContext & { index: number }) {
   )
 }
 
+export type Decide = (decision: "accept" | "reject", files?: { file: string; hunks?: string[] }[]) => Promise<void>
+
 function Hunk(props: {
   file: ReviewFile
   hunk: ReviewHunk
   n: number
   directory: string
   sessionID?: string
+  actions: { accept: boolean; reject: boolean }
   rejectLabel: string
   style: "unified" | "split"
   tokens: Tokens
   /** Lines to render; the rest wait for "show the rest" */
   limit?: number
   active: boolean
+  onDecide: Decide
   disabled?: boolean
 }) {
+  const decide = (decision: "accept" | "reject") =>
+    void props.onDecide(decision, [{ file: props.file.file, hunks: [props.hunk.id] }])
   return (
     <div
       class="hunk"
@@ -313,6 +321,24 @@ function Hunk(props: {
         </span>
         <span class="ctx">{props.hunk.heading ?? ""}</span>
         <span class="spacer" />
+        <Show when={props.actions.reject}>
+          <button class="button reject sm" disabled={props.disabled} onClick={() => decide("reject")}>
+            <X class="icon icon-xs" />
+            {props.rejectLabel}
+            <Show when={props.active}>
+              <kbd aria-hidden="true">R</kbd>
+            </Show>
+          </button>
+        </Show>
+        <Show when={props.actions.accept}>
+          <button class="button accept sm" disabled={props.disabled} onClick={() => decide("accept")}>
+            <Check class="icon icon-xs" />
+            {t("review.accept")}
+            <Show when={props.active}>
+              <kbd aria-hidden="true">A</kbd>
+            </Show>
+          </button>
+        </Show>
       </div>
       <Show when={props.hunk.lines.length}>
         <Show when={props.style === "split"} fallback={<Unified {...props} />}>
@@ -324,7 +350,7 @@ function Hunk(props: {
 }
 
 /**
- * Changes to one file: a header followed by its hunks. The hunks are displayed when
+ * Changes to one file: a header (accept / reject the whole file) followed by its hunks. The hunks are displayed when
  * the file is opened (often already prefetched), highlighted in a worker, and only the first lines render until the
  * rest is asked for.
  */
@@ -332,9 +358,11 @@ export function FileDiff(props: {
   file: ReviewFile
   data: ReviewData
   sessionID?: string
+  actions: { accept: boolean; reject: boolean }
   directory: string
   style: "unified" | "split"
   active?: string
+  onDecide: Decide
   disabled?: boolean
 }) {
   let root!: HTMLElement
@@ -419,6 +447,7 @@ export function FileDiff(props: {
     return hunks().reduce((sum, hunk, index) => sum + hunk.lines.length - counts[index]!, 0)
   }
   const rejectLabel = () => t("review.reject")
+  const whole = (decision: "accept" | "reject") => void props.onDecide(decision, [{ file: props.file.file }])
   return (
     <section
       ref={root}
@@ -467,6 +496,16 @@ export function FileDiff(props: {
           />
           {t("review.seen")}
         </label>
+        <Show when={props.actions.reject}>
+          <button class="button reject sm" disabled={props.disabled} onClick={() => whole("reject")}>
+            {t("review.rejectFile")}
+          </button>
+        </Show>
+        <Show when={props.actions.accept}>
+          <button class="button accept sm" disabled={props.disabled} onClick={() => whole("accept")}>
+            {t("review.acceptFile")}
+          </button>
+        </Show>
       </header>
       <Show when={!collapsed()}>
         <Show when={props.file.binary || props.file.truncated}>
@@ -490,12 +529,14 @@ export function FileDiff(props: {
                 hunk={hunk}
                 n={index() + 1}
                 sessionID={props.sessionID}
+                actions={props.actions}
                 rejectLabel={rejectLabel()}
                 style={props.style}
                 tokens={detail().tokens ?? {}}
                 limit={shown()?.[index()]}
                 active={props.active === hunk.id}
                 disabled={props.disabled}
+                onDecide={props.onDecide}
               />
             </Show>
           )}

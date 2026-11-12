@@ -22,6 +22,37 @@ type Change struct {
 	Version string `json:"version"`
 }
 
+// NewChange describes how a file went from its before to its after contents. The version names that pair, so a
+// client that read one version can tell the pair has changed since.
+func NewChange(file File, before, after []byte) Change {
+	version := sha256.New()
+	version.Write(before)
+	version.Write([]byte{0})
+	version.Write(after)
+	change := Change{File: file, Version: fmt.Sprintf("%x", version.Sum(nil))}
+	change.Binary = bytes.ContainsRune(before, 0) || bytes.ContainsRune(after, 0) || !utf8.Valid(before) || !utf8.Valid(after)
+	if !change.Binary {
+		change.Before, change.After = string(before), string(after)
+	}
+	return change
+}
+
+// BytesAt reads a file as it was at a commit; a file that did not exist there, or an empty base, reads as absent.
+func BytesAt(ctx context.Context, directory, base, name string) ([]byte, bool, error) {
+	if base == "" {
+		return nil, false, nil
+	}
+	prefix, err := run(ctx, directory, "rev-parse", "--show-prefix")
+	if err != nil {
+		return nil, false, err
+	}
+	if _, err := run(ctx, directory, "cat-file", "-e", base+":"+strings.TrimSpace(string(prefix))+name); err != nil {
+		return nil, false, nil
+	}
+	body, err := run(ctx, directory, "show", base+":"+strings.TrimSpace(string(prefix))+name)
+	return body, err == nil, err
+}
+
 func Diff(ctx context.Context, directory, base string) ([]Change, error) {
 	var resolved []byte
 	var err error
@@ -115,15 +146,7 @@ func Diff(ctx context.Context, directory, base string) ([]Change, error) {
 				return nil, err
 			}
 		}
-		version := sha256.New()
-		version.Write(before)
-		version.Write([]byte{0})
-		version.Write(after)
-		change := Change{File: file, Version: fmt.Sprintf("%x", version.Sum(nil))}
-		change.Binary = bytes.ContainsRune(before, 0) || bytes.ContainsRune(after, 0) || !utf8.Valid(before) || !utf8.Valid(after)
-		if !change.Binary {
-			change.Before, change.After = string(before), string(after)
-		}
+		change := NewChange(file, before, after)
 		encoded, _ := json.Marshal(change)
 		remaining -= len(encoded) + 1
 		if remaining < 0 {

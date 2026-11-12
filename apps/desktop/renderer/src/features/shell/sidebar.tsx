@@ -11,7 +11,7 @@ import Users from "lucide-solid/icons/users"
 import Search from "lucide-solid/icons/search"
 import Settings from "lucide-solid/icons/settings"
 import ArrowUpCircle from "lucide-solid/icons/circle-arrow-up"
-import { createSignal, For, Match, Show, Switch } from "solid-js"
+import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js"
 import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
@@ -22,9 +22,10 @@ import { createdAt, taskUpdated, tasks } from "../../state/tasks"
 import { TaskCreate } from "../tasks/create"
 import { entriesOf, type Entry } from "./entries"
 import { GroupCreate } from "../conversation/group-create"
-import { unsavedReason } from "../../state/git"
+import { gitDirectory, resolveDirectory, unsavedReason } from "../../state/git"
 import {
   closeFolder,
+  deleteSession,
   hideSession,
   type SessionSummary,
   openFolder,
@@ -73,6 +74,7 @@ function Status(props: { status: ReturnType<typeof statusOf> }) {
 
 function Conversation(props: { session: SessionSummary; folder: Folder; current?: string }) {
   const navigate = useNavigate()
+  const [hiding, setHiding] = createSignal(false)
   const [deleting, setDeleting] = createSignal(false)
   const [renaming, setRenaming] = createSignal(false)
   const status = () => statusOf(props.session.id)
@@ -80,11 +82,20 @@ function Conversation(props: { session: SessionSummary; folder: Folder; current?
     ({ running: t("status.running"), approval: t("status.approval"), question: t("status.question"), idle: "" })[
       status()
     ]
-  const remove = async () => {
-    await hideSession(props.session.id)
-    setDeleting(false)
+  const leave = () => {
     if (props.current === props.session.id) navigate(sessionPath(props.folder.directory))
   }
+  const hide = async () => {
+    await hideSession(props.session.id)
+    setHiding(false)
+    leave()
+  }
+  const remove = async () => {
+    setDeleting(false)
+    leave()
+    await deleteSession(props.session.id)
+  }
+  const failed = (error: Error) => toast({ kind: "error", title: error.message, error })
   return (
     <div class="conversation-row">
       <A
@@ -112,22 +123,27 @@ function Conversation(props: { session: SessionSummary; folder: Folder; current?
         trigger={<Ellipsis class="icon icon-sm" />}
         items={[
           { label: t("sidebar.rename"), onSelect: () => setRenaming(true) },
-          { label: t("sidebar.hide"), danger: true, onSelect: () => setDeleting(true) },
+          { label: t("sidebar.hide"), onSelect: () => setHiding(true) },
+          { label: t("sidebar.delete"), danger: true, onSelect: () => setDeleting(true) },
         ]}
       />
       <Rename session={props.session} open={renaming()} onClose={() => setRenaming(false)} />
       <Confirm
-        open={deleting()}
+        open={hiding()}
         title={t("sidebar.hideConfirm", { title: props.session.title })}
         description={t("sidebar.hideDetail")}
         confirm={t("sidebar.hide")}
         cancel={t("common.cancel")}
+        onResult={(ok) => (ok ? void hide().catch(failed) : setHiding(false))}
+      />
+      <Confirm
+        open={deleting()}
+        title={t("sidebar.deleteConfirm", { title: props.session.title })}
+        description={t("sidebar.deleteDetail")}
+        confirm={t("sidebar.delete")}
+        cancel={t("common.cancel")}
         danger
-        onResult={(ok) =>
-          ok
-            ? void remove().catch((error: Error) => toast({ kind: "error", title: error.message, error }))
-            : setDeleting(false)
-        }
+        onResult={(ok) => (ok ? void remove().catch(failed) : setDeleting(false))}
       />
     </div>
   )
@@ -291,6 +307,10 @@ function workspaces(): Folder[] {
 export function Sidebar(props: { directory?: string; current?: string; group?: string; task?: string }) {
   const navigate = useNavigate()
   const directory = () => props.directory ?? state.folders[0]?.directory
+  // A folder opened through a link lists the conversations the engine placed in the real directory
+  createEffect(() => {
+    for (const folder of workspaces()) void resolveDirectory(folder.directory).catch(() => undefined)
+  })
   const newConversation = () => {
     const dir = directory()
     if (dir) navigate(sessionPath(dir))
@@ -301,6 +321,8 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
       groups: groups(),
       tasks: tasks(),
       sessions: conversations(),
+      worktrees: state.worktrees,
+      canonical: gitDirectory,
       updated: (kind, id) => (kind === "group" ? groupView(id)?.updated || createdAt(id) : taskUpdated(id)),
     })
   return (

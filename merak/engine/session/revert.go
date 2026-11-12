@@ -31,6 +31,9 @@ type Mark struct {
 type Track struct {
 	Index int    `json:"index"`
 	Tree  string `json:"tree"`
+	// End marks the snapshot taken when a turn that changed files finished: it bounds the review of that turn and is
+	// never a place to revert to.
+	End bool `json:"end,omitempty"`
 }
 
 // Revert is the payload of Reverted: the message that was reverted to, the workspace before the files were put
@@ -64,7 +67,18 @@ func (s *State) MarkOf(id event.ID) (Mark, bool) {
 // before the first step that followed it.
 func (s *State) RestoreTree(index int) string {
 	for _, track := range s.Tracks {
-		if track.Index > index {
+		if track.Index > index && !track.End {
+			return track.Tree
+		}
+	}
+	return ""
+}
+
+// EndTree returns the snapshot taken when the turn of the message at index finished, or "" while it still runs or
+// when it changed no file. next is the index of the following message, or -1.
+func (s *State) EndTree(index, next int) string {
+	for _, track := range s.Tracks {
+		if track.End && track.Index > index && (next < 0 || track.Index <= next) {
 			return track.Tree
 		}
 	}
@@ -138,7 +152,7 @@ func (s *State) shiftAfterRebuild(to int) {
 	var tracks []Track
 	for _, t := range s.Tracks {
 		if t.Index > to {
-			tracks = append(tracks, Track{Index: t.Index - to + 1, Tree: t.Tree})
+			tracks = append(tracks, Track{Index: t.Index - to + 1, Tree: t.Tree, End: t.End})
 		}
 	}
 	s.Marks, s.Tracks = marks, tracks

@@ -57,7 +57,7 @@ func FileIdentity(ctx context.Context, directory, name string) (Identity, error)
 	if err != nil {
 		return Identity{}, err
 	}
-	identity := Identity{Directory: canonical, Path: diskSpelling(canonical, relative(name))}
+	identity := Identity{Directory: canonical, Path: diskSpelling(canonical, throughLinks(canonical, underSpelling(directory, relative(name))))}
 	if root, err := git.Root(ctx, canonical); err == nil {
 		if identity.Root, err = workspace.Canonical(root); err != nil {
 			return Identity{}, err
@@ -101,6 +101,60 @@ func FindFiles(ctx context.Context, directory, query string, limit int) ([]strin
 		}
 	}
 	return found, nil
+}
+
+// underSpelling turns an absolute path inside the folder, as the caller spells the folder, into a relative one. This
+// works even when the folder is only a link that no longer resolves, or its spelling differs from the canonical one.
+func underSpelling(directory, name string) string {
+	if !filepath.IsAbs(filepath.FromSlash(name)) {
+		return name
+	}
+	base, err := filepath.Abs(directory)
+	if err != nil {
+		return name
+	}
+	inside, err := filepath.Rel(base, filepath.FromSlash(name))
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return name
+	}
+	return filepath.ToSlash(inside)
+}
+
+// throughLinks names a file by the real place of its folder, so a linked folder and its target give one identity.
+// The file itself need not exist: the deepest folder that does is resolved and the rest is kept. A link that leads
+// out of the root leaves the path as asked.
+func throughLinks(root, name string) string {
+	if name == "." || name == "" || name == ".." || strings.HasPrefix(name, "../") {
+		return name
+	}
+	full := filepath.FromSlash(name)
+	if !filepath.IsAbs(full) {
+		full = filepath.Join(root, full)
+	}
+	existing := filepath.Dir(full)
+	for {
+		if _, err := os.Stat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return name
+		}
+		existing = parent
+	}
+	real, err := workspace.Canonical(existing)
+	if err != nil {
+		return name
+	}
+	rest, err := filepath.Rel(existing, full)
+	if err != nil {
+		return name
+	}
+	inside, err := filepath.Rel(root, filepath.Join(real, rest))
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return name
+	}
+	return filepath.ToSlash(inside)
 }
 
 // diskSpelling writes a relative path the way the disk spells it: a part that differs from the stored name only in

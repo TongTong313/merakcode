@@ -6,7 +6,7 @@ export const commentTargetSchema = z.object({
   key: z.string(),
   directory: z.string(),
   sessionID: z.string(),
-  scope: z.enum(["turn", "session"]).transform(() => "session" as const),
+  scope: z.enum(["turn", "session"]),
   messageID: z.string().optional(),
   branch: z.string().nullable().optional(),
   file: z.string(),

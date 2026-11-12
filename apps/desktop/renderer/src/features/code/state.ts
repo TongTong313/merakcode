@@ -122,7 +122,10 @@ function createBuffers(directory: string) {
       pending.set(path, request)
       if (checkoutOf(directory) === undefined) await refreshBranches(directory)
       const token = checkoutOf(directory)
-      const content = await read(path, planSessionID).catch((error: Error) => {
+      const content = await read(path, planSessionID).catch(async (error: Error) => {
+        // A file that is gone and was never committed cannot be read, but its kept draft still opens it as deleted
+        if (!planSessionID && !(await exists(path)) && (await readDraft(gitDirectory(directory), path)))
+          return { type: "text", content: "", missing: true } as FileContent & { planRootSessionID?: string }
         setErrors(path, error.message)
         return undefined
       })
