@@ -29,6 +29,9 @@ func (s *Server) groupMethods() map[string]handler {
 			return worker.Catalog(ctx), nil
 		}),
 		"group.removeMember": removeMember,
+		"group.renameMember": run(func(ctx context.Context, c *connection, params protocol.GroupRenameMemberParams) (any, error) {
+			return s.engine.Groups.RenameMember(ctx, params.Group, c.human, params.Member, params.Name)
+		}),
 		"group.create": run(func(ctx context.Context, _ *connection, params protocol.GroupCreateParams) (any, error) {
 			return s.engine.CreateGroupForTask(ctx, params.Group, params.Members, params.Task)
 		}),

@@ -73,6 +73,30 @@ func Run(args []string, stdin io.Reader, stdout io.Writer) (code int) {
 	if len(args) > 0 && args[0] == "diagnose" {
 		return diagnoseCommand(args[1:], stdout, ui)
 	}
+	if len(args) > 0 && args[0] == "service" {
+		return serviceCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "doctor" {
+		return doctorCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "sandbox" {
+		return sandboxCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "bug-report" {
+		return bugReportCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "logs" {
+		return logsCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "upgrade" {
+		return upgradeCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "stats" {
+		return statsCommand(args[1:], stdout, ui)
+	}
+	if len(args) > 0 && args[0] == "generate" {
+		return generateCommand(args[1:], stdout)
+	}
 	if len(args) > 0 && args[0] == "serve" {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()

@@ -70,3 +70,51 @@ func TestGroupAddMemberRequiresAnAdmin(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupRenameMemberRequiresAnAdminAndKeepsNamesMentionable(t *testing.T) {
+	ctx := context.Background()
+	e, err := engine.New(engine.Deps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.New(e, "token")
+	defer handler.Close()
+	host := httptest.NewServer(handler)
+	defer host.Close()
+	as := func(human event.ID) *protocol.Client {
+		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
+	}
+	g, err := e.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader},
+		{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker},
+		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
+		{ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rename := func(human event.ID, name string) (group.Member, error) {
+		var renamed group.Member
+		err := as(human).Call(ctx, "group.renameMember", map[string]any{"group": g.ID, "member": "worker", "name": name}, &renamed)
+		return renamed, err
+	}
+	if _, err := rename("observer", "Poet"); err == nil {
+		t.Fatal("an observer renamed a member")
+	}
+	if _, err := rename("owner", "Fast Poet"); err == nil {
+		t.Fatal("a name with a space was accepted")
+	}
+	renamed, err := rename("owner", "Poet")
+	if err != nil || renamed.Name != "Poet" {
+		t.Fatalf("renamed=%+v err=%v", renamed, err)
+	}
+	state, err := e.Groups.Get(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range state.Members {
+		if member.ID == "worker" && member.Name != "Poet" {
+			t.Fatalf("the roster still says %q", member.Name)
+		}
+	}
+}

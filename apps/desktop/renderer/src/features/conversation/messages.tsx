@@ -2,14 +2,22 @@ import type { ModelPart, ToolView } from "@merakcode/sdk"
 import Brain from "lucide-solid/icons/brain"
 import ChevronRight from "lucide-solid/icons/chevron-right"
 import Copy from "lucide-solid/icons/copy"
+import Pencil from "lucide-solid/icons/pencil"
+import RotateCcw from "lucide-solid/icons/rotate-ccw"
+import Undo2 from "lucide-solid/icons/undo-2"
 import { createEffect, createSignal, For, Index, Show } from "solid-js"
 import { locale, t } from "../../i18n"
+import { bridge } from "../../lib/bridge"
 import { explain } from "../../state/error"
 import { state } from "../../state/store"
 import { Markdown } from "../../ui/markdown"
+import { toast } from "../../ui/toast"
 import { AttachmentPreview } from "./attachment"
+import { fill } from "./composer"
+import { PlanCard } from "./plan"
+import { retry, revertTo, submissionOf } from "./send"
 import { Tool } from "./tools"
-import { answer, turns, work, type Turn } from "./turns"
+import { answer, turns, visibleParts, work, type Turn } from "./turns"
 
 function Reasoning(props: { text: string }) {
   const [open, setOpen] = createSignal(false)
@@ -29,7 +37,12 @@ function Reasoning(props: { text: string }) {
   )
 }
 
-function Parts(props: { parts: ModelPart[]; sessionID: string; directory: string; onReview?: (file: string) => void }) {
+export function Parts(props: {
+  parts: ModelPart[]
+  sessionID: string
+  directory: string
+  onReview?: (file: string) => void
+}) {
   return (
     <Index each={props.parts}>
       {(part) => (
@@ -79,23 +92,85 @@ function Parts(props: { parts: ModelPart[]; sessionID: string; directory: string
   )
 }
 
-function CopyAction(props: { parts: ModelPart[] }) {
+const failed = (error: Error) => toast({ kind: "error", title: t("error.request", { message: error.message }), error })
+
+const copy = (text: string) =>
+  (bridge ? bridge.writeClipboardText(text) : navigator.clipboard.writeText(text)).then(
+    () => toast({ kind: "success", title: t("common.copied") }),
+    failed,
+  )
+
+const textOf = (parts: ModelPart[]) =>
+  parts
+    .map((part) => part.text ?? "")
+    .filter(Boolean)
+    .join("\n")
+
+/**
+ * A message the user sent. Hovering shows Edit (revert to before it and put its text back in the composer) and Revert
+ * (hide it and the later messages, restore the files).
+ */
+function UserBubble(props: { turn: Turn; sessionID: string; directory: string }) {
+  const user = () => props.turn.user!
+  const revert = () => revertTo(props.sessionID, props.turn.mark!).catch(failed)
+  const edit = async () => {
+    const draft = submissionOf(user()).text
+    await revertTo(props.sessionID, props.turn.mark!)
+    fill(props.sessionID, draft)
+  }
   return (
-    <div class="message-actions">
-      <button
-        class="icon-button sm"
-        aria-label={t("common.copy")}
-        onClick={() =>
-          void navigator.clipboard.writeText(
-            props.parts
-              .map((part) => part.text ?? "")
-              .filter(Boolean)
-              .join("\n"),
-          )
-        }
-      >
-        <Copy class="icon icon-sm" />
-      </button>
+    <article class="user-turn" aria-label={t("conversation.you")}>
+      <Show when={props.turn.mark}>
+        <div class="message-actions">
+          <button
+            class="icon-button sm"
+            aria-label={t("conversation.edit")}
+            title={t("conversation.edit")}
+            onClick={() => void edit().catch(failed)}
+          >
+            <Pencil class="icon icon-xs" />
+          </button>
+          <button
+            class="icon-button sm"
+            aria-label={t("conversation.revert")}
+            title={t("conversation.revertHint")}
+            onClick={() => void revert()}
+          >
+            <Undo2 class="icon icon-xs" />
+          </button>
+        </div>
+      </Show>
+      <div class="user-message selectable">
+        <Parts parts={visibleParts(user())} sessionID={props.sessionID} directory={props.directory} />
+      </div>
+    </article>
+  )
+}
+
+/** Actions after a turn's reply: copy the answer, and retry on the last turn. */
+function TurnActions(props: { turn: Turn; last: boolean; sessionID: string; directory: string; text: string }) {
+  return (
+    <div class="turn-actions">
+      <Show when={props.text}>
+        <button
+          class="icon-button sm"
+          aria-label={t("common.copy")}
+          title={t("common.copy")}
+          onClick={() => void copy(props.text)}
+        >
+          <Copy class="icon icon-xs" />
+        </button>
+      </Show>
+      <Show when={props.last && props.turn.mark}>
+        <button
+          class="icon-button sm"
+          aria-label={t("conversation.retryTurn")}
+          title={t("conversation.retryTurn")}
+          onClick={() => void retry(props.sessionID, props.directory, props.turn).catch(failed)}
+        >
+          <RotateCcw class="icon icon-xs" />
+        </button>
+      </Show>
     </div>
   )
 }
@@ -198,25 +273,19 @@ export function Messages(props: {
             {t("conversation.rebuilt")}
           </div>
         </Show>
-        <Index each={turns(view()?.state.messages ?? [])}>
+        <Index each={turns(view()?.state.messages ?? [], view()?.state.marks)}>
           {(turn, index) => (
             <section class="turn">
               <Show when={turn().user}>
-                {(user) => (
-                  <div class="user-turn">
-                    <div class="user-message selectable">
-                      <Parts parts={user().parts ?? []} sessionID={props.sessionID} directory={props.directory} />
-                    </div>
-                    <CopyAction parts={user().parts ?? []} />
-                  </div>
-                )}
+                <UserBubble turn={turn()} sessionID={props.sessionID} directory={props.directory} />
               </Show>
               <div class="assistant-message selectable">
                 <Show when={work(turn()).length}>
                   <details
                     class="turn-work"
                     open={
-                      view()?.state.status === "running" && index === turns(view()?.state.messages ?? []).length - 1
+                      view()?.state.status === "running" &&
+                      index === turns(view()?.state.messages ?? [], view()?.state.marks).length - 1
                     }
                   >
                     <summary class="step-head turn-summary">{t("conversation.work")}</summary>
@@ -235,8 +304,14 @@ export function Messages(props: {
                     directory={props.directory}
                     onReview={props.onReviewFile}
                   />
-                  <CopyAction parts={answer(turn())} />
                 </Show>
+                <TurnActions
+                  turn={turn()}
+                  last={index === turns(view()?.state.messages ?? [], view()?.state.marks).length - 1}
+                  sessionID={props.sessionID}
+                  directory={props.directory}
+                  text={textOf(answer(turn()))}
+                />
                 <Changes
                   turn={turn()}
                   tools={view()?.tools ?? {}}
@@ -247,6 +322,7 @@ export function Messages(props: {
             </section>
           )}
         </Index>
+        <PlanCard sessionID={props.sessionID} directory={props.directory} />
         <Show when={view()?.live}>
           {(live) => (
             <section class="turn assistant-turn" aria-live="polite">

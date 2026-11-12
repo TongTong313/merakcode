@@ -4,7 +4,7 @@ import Columns2 from "lucide-solid/icons/columns-2"
 import Minimize2 from "lucide-solid/icons/minimize-2"
 import Rows2 from "lucide-solid/icons/rows-2"
 import type { ReviewFile } from "./data"
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createMemo, For, onCleanup, onMount, Show } from "solid-js"
 import { t } from "../../i18n"
 import { session } from "../../state/store"
 import { setUi } from "../../state/ui"
@@ -21,12 +21,20 @@ import { beginComment, commentsOf, review, setReview, useReview } from "./state"
 /**
  * Review filling the whole window: file list on the left, hunks in the middle (side by side by default), comments on the right. Keys: J / K next / previous hunk, C comment, ] next file.
  */
-export function ReviewFull(props: { sessionID?: string; directory: string }) {
-  const data = useReview(
-    () => props.sessionID,
-    () => props.directory,
-  )
-  const [active, setActive] = createSignal<{ file: string; id?: string }>()
+export function ReviewFull(props: { sessionID?: string; directory: string; data?: ReturnType<typeof useReview> }) {
+  const data =
+    props.data ??
+    useReview(
+      () => props.sessionID,
+      () => props.directory,
+    )
+  const active = () => review.active
+  let disposed = false
+  let navigation = 0
+  onCleanup(() => {
+    disposed = true
+  })
+  const setActive = (value: { file: string; id?: string }) => setReview("active", value)
   const files = () => data.data()?.files ?? []
   // Every hunk in order; a file whose hunks are not loaded yet stands in as one entry without an id
   const hunks = createMemo(() =>
@@ -40,11 +48,14 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
   const comments = () => commentsOf(props.sessionID, props.directory)
 
   const focus = (file: ReviewFile, id: string | undefined) => {
+    const request = ++navigation
+    const context = data.context()
     setActive({ file: file.file, id })
     if (!id) return
     data.setOpen(file, true)
     data.showAll(file)
     requestAnimationFrame(() => {
+      if (disposed || request !== navigation || context !== data.context()) return
       const el = document.querySelector(
         `[data-file="${CSS.escape(file.file)}"] [data-hunk="${CSS.escape(id)}"] .hunk-bar`,
       )
@@ -53,8 +64,11 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
   }
   /** Opens a file from the list: centers the file header and highlights it */
   const openFile = async (file: ReviewFile) => {
+    const request = ++navigation
+    const context = data.context()
     data.setOpen(file, true)
     const detail = await data.loadDetail(file)
+    if (disposed || request !== navigation || context !== data.context()) return
     const id = detail?.hunks[0]?.id
     setActive({ file: file.file, id })
     const el = document.querySelector(`[data-file="${CSS.escape(file.file)}"] .diff-file-head`)
@@ -62,8 +76,11 @@ export function ReviewFull(props: { sessionID?: string; directory: string }) {
   }
   /** Opens a file, loads its hunks if needed, then centers the requested hunk */
   const reveal = async (file: ReviewFile, last = false) => {
+    const request = ++navigation
+    const context = data.context()
     data.setOpen(file, true)
     const detail = await data.loadDetail(file)
+    if (disposed || request !== navigation || context !== data.context()) return
     focus(file, (last ? detail?.hunks.at(-1) : detail?.hunks[0])?.id)
   }
   const move = (step: number) => {

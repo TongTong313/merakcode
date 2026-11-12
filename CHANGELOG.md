@@ -8,6 +8,21 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Bring back the desktop side panel on the new engine: per-conversation tabs for files, review, Git, plan, terminal and browser, a code editor that saves only over the version it read, Git staging, commit and push, branch switching, conversations that start in their own worktree, and recovery of drafts, terminals and browser pages after restarts and renamed or offline folders.
+- Add a home page with an inbox, a global task board and recent groups and conversations, with a corner notice for every new message (and a system notice when the window is in the background); messages that wait for your decision can be marked read from the home inbox and the tray.
+- Add an Agents page: one-click adding of the products found on this machine and a four-step wizard that configures everything about an agent (harness, model, role name, duties, permissions, hosts, environment); each agent in the list shows its harness, model and duties.
+- Make a group a set of existing agents with exactly one Leader: creating a group picks members and a Leader agent, never saves or changes an agent, and the Leader runs on the model set on its agent. The Leader's work and replies stream in the group chat with delivery receipts and a stop button, and the right column shows the task breakdown and the roster.
+- Let a task be created on its own and started with a new or an existing group; archive, restore and auto-archive finished tasks from a global board.
+- Group the sidebar by workspace into groups, tasks and conversations, with Home, New conversation, New agent, New group and New task on top.
+- Add `file.write` (saves only over the version that was read), `repo.stage` and `repo.unstage`, and let `repo.commit`, `repo.status`, `file.read`, `file.list`, `file.identity` and `worktree.create` carry what the editor and the Git panel need.
+- Add `group.renameMember` and let stopping a group conversation stop the turn of a built-in Leader.
+- Bring back the conversation actions of the desktop app: edit and resend a message, revert to a message (and restore it) with the files the agent changed, retry the last turn, and a copy button that takes the final answer. Settings pages for MCP servers, skills, rules, memory and permission rules, and a "no model connected" notice next to the input that opens the model settings.
+- Show configuration entries that cannot be used: a notice at startup and a list under General that names each entry and opens its file. In your own configuration file an unusable MCP entry is skipped with a warning instead of stopping the engine; configuration files of a project stay strict.
+- Give every method of the engine protocol a typed function in the SDK (`client.rules.read()`, `client.memory.list()` and so on), generated from the protocol.
+- Finish the command line: `merak stats` totals token usage and cost by day, model and agent (`--json` for scripts), `merak doctor` checks the engine, data folder, default model, sandbox, git and MCP servers, `merak logs [-f]` prints and follows the logs, `merak bug-report` packs a diagnostic archive and says where to send it, `merak sandbox status|setup|reset` shows, sets up and undoes the sandbox, `merak generate` prints the protocol JSON Schema, and `merak upgrade` answers that upgrading is not available yet.
+- Start the engine at login with `merak service install` (a macOS LaunchAgent, a Linux systemd user unit or a Windows `Run` registry value for the current user) and undo it with `merak service uninstall`.
+- Import the data of a v0.3 installation on first start: conversations (which continue where they stopped), external product connections, role templates, groups as archived read-only groups, plans, memories and todo lists. The result is sent to the inbox, `merak import --from v0.3` runs it by hand, and the files of v0.3 are not changed.
+
 - Read and edit the `lsp` and `formatter` sections of a v0.3 configuration file with `config.get` and `config.set`, and override them entry by entry in a project. The engine does not run language servers or formatters, and `config.get` hides environment values.
 - Route routine Worker approvals to the task Leader, preserve escalation deadlines, and require per-server trust for workspace MCP configuration. Mount group tools in supported external products.
 
@@ -115,6 +130,9 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- Cancel the turn that runs a plan and the plan reads as stopped, so it can be started again; before, it stayed "executing" and its button stayed disabled.
+- Creating a group no longer adds duplicate agents, and one group failing to load no longer interrupts the other conversations.
+- Hide the date and recalled notes that the engine adds to the first message of a conversation from what the person sees, so editing or retrying a message no longer puts them back in the input.
 - Find Git Bash on Windows when `git` comes from a `mingw64\bin` folder, as it does in a Git Bash terminal.
 - Make identifiers made in one process grow strictly, also within one millisecond, so events made at the same moment keep their order.
 - Wait long enough for slow model refreshes, connection tests and cloud calls instead of failing after 10 seconds. Report the real cause of group and agent failures with their own error codes, and run the built-in Leader and Workers on the default model when they have none.
@@ -179,6 +197,21 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - Image attachments in the composer and sent messages show thumbnails; clicking one opens the full image.
 
 ### 新增
+
+- 在新引擎上恢复桌面端侧边面板：每个对话各有标签页（文件、审阅、Git、计划、终端、浏览器）；代码编辑器只在读到的版本上保存；Git 暂存、提交、推送和切换分支；对话可在独立工作树里开始；重启、目录改名或离线后恢复草稿、终端和浏览器页面。
+- 新增首页：收件箱、全局任务看板、最近的协作群和对话；新消息在右下角弹出提醒（窗口在后台时发系统通知）；等待你决定的消息也能在首页收件箱和托盘里标为已读。
+- 新增智能体页：一键添加本机探测到的产品；四步向导完整配置智能体（产品、模型、角色名、职责、权限、主机、环境变量）；列表里每个智能体显示它的产品、模型和职责。
+- 协作群由已有智能体组成，并有唯一的 Leader：新建协作群只挑成员和 Leader 智能体，不会保存或修改智能体，Leader 用它的智能体上设置的模型。Leader 的工作和回复在群聊里流式显示，有送达回执和停止按钮，右栏显示任务拆解和名册。
+- 任务可以单独新建，再新建或选择协作群来启动；已结束的任务可在全局看板上归档、恢复，也会自动归档。
+- 侧栏按工作空间分组，列出协作群、任务和对话，顶部是首页、新建对话、新建智能体、新建协作群和新建任务。
+- 新增 `file.write`（只在读到的版本上保存）、`repo.stage` 和 `repo.unstage`，并让 `repo.commit`、`repo.status`、`file.read`、`file.list`、`file.identity` 和 `worktree.create` 带上编辑器和 Git 面板要用的信息。
+- 新增 `group.renameMember`，停止协作群对话时也会停止内置 Leader 的回合。
+- 桌面端恢复对话里的操作：编辑并重发消息、退回到某条消息（可恢复，智能体改过的文件一起恢复）、重试最后一轮，复制按钮复制最终答案。设置里恢复 MCP 服务器、技能、规则、记忆和权限规则页，输入框旁出现“还没有连接模型”提示，点它打开模型设置。
+- 配置里不能用的条目会提示：启动时弹出通知，“通用”里列出每一条并可打开所在文件。你自己的配置文件里不能用的 MCP 条目会被跳过并告警，不再让引擎起不来；项目的配置文件仍然严格检查。
+- SDK 为引擎协议的每个方法生成带类型的函数（`client.rules.read()`、`client.memory.list()` 等）。
+- 补齐命令行：`merak stats` 按天、模型和智能体汇总 token 用量和费用（`--json` 供脚本使用），`merak doctor` 检查引擎、数据目录、默认模型、沙箱、git 和 MCP 服务器，`merak logs [-f]` 打印并跟随日志，`merak bug-report` 打包诊断包并告知提交位置，`merak sandbox status|setup|reset` 查看、初始化和清除沙箱，`merak generate` 打印协议的 JSON Schema，`merak upgrade` 目前会告知暂不能升级。
+- 用 `merak service install` 让引擎在登录时启动（macOS 写 LaunchAgent，Linux 写 systemd 用户单元，Windows 写当前用户的 `Run` 注册表项），用 `merak service uninstall` 取消。
+- 第一次启动时导入 v0.3 的数据：历史对话（可以接着聊）、外部产品连接、角色模板、协作群（成为已归档的只读协作群）、计划、记忆和待办。结果发到收件箱，`merak import --from v0.3` 可以手动运行，v0.3 的文件不会被修改。
 
 - 可以用 `config.get` 和 `config.set` 读取和修改 v0.3 配置文件里的 `lsp` 和 `formatter` 两段，项目配置可以按条目覆盖。引擎不运行语言服务器和格式化工具，`config.get` 不返回环境变量的值。
 - 常规 Worker 审批先交给任务线程 Leader。升级后保留原截止时间。工作区 MCP 按服务器确认。外部产品可使用群工具。
@@ -287,6 +320,9 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 取消正在执行计划的回合后，计划变为“已停止”，可以再次开始；以前它一直是“执行中”，按钮一直不能点。
+- 新建协作群不再重复生成智能体；一个协作群加载出错不再打断其他对话。
+- 引擎加在对话第一条消息前的日期和召回的记忆不再显示给用户，编辑或重试消息时也不会把它们放回输入框。
 - Windows 上 `git` 来自 `mingw64\bin` 文件夹（例如在 Git Bash 终端里）时也能找到 Git Bash。
 - 同一进程生成的标识符严格递增，同一毫秒内生成的也一样，同一时刻产生的事件不再乱序。
 - 模型刷新、连通测试和云端调用较慢时不再 10 秒就失败。群和智能体的失败用各自的错误码说明真实原因；内置 Leader 和 Worker 没有配置模型时使用默认模型。

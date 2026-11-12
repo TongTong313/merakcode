@@ -1,20 +1,35 @@
 import { createEffect, on, Show, For } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
+import z from "zod"
 import { t } from "../../i18n"
-import { sameDir } from "../../lib/route"
-import { gitDirectory, identityOf, onCheckoutChange, registerDirty } from "../../state/git"
+import { sameDirectory, identityOf, onCheckoutChange, registerDirty } from "../../state/git"
 import { addComment, commentDirectory, commentsOf, commentInView, review, setReview } from "./state"
-import { commentLocation, type CommentTarget } from "./selection"
+import { commentLocation, commentTargetSchema, type CommentTarget } from "./selection"
 
 type Draft = { target: CommentTarget; text: string; stale?: boolean }
 const [drafts, setDrafts] = createStore<Record<string, Draft>>({})
+export function draftSnapshot() {
+  return JSON.parse(JSON.stringify(drafts)) as Record<string, Draft>
+}
+export function restoreDraftSnapshot(value: unknown) {
+  const result = z
+    .record(z.string(), z.object({ target: commentTargetSchema, text: z.string(), stale: z.boolean().optional() }))
+    .safeParse(value)
+  setDrafts(reconcile(result.success ? result.data : {}))
+}
+
+export function releaseReviewDrafts(directory: string, sessionID: string) {
+  for (const [key, draft] of Object.entries(drafts))
+    if (draft.target.sessionID === sessionID) setDrafts(key, undefined!)
+  registerDirty(directory, `draft:${sessionID}`, 0)
+}
 const sync = (target: CommentTarget) =>
   registerDirty(
     target.directory,
     `draft:${target.sessionID}`,
     Object.values(drafts).filter(
       (draft) =>
-        sameDir(gitDirectory(draft.target.directory), gitDirectory(target.directory)) &&
+        sameDirectory(draft.target.directory, target.directory) &&
         draft.target.sessionID === target.sessionID &&
         draft.text.trim(),
     ).length,
@@ -22,7 +37,7 @@ const sync = (target: CommentTarget) =>
 onCheckoutChange((directory, change) => {
   if (!change.branchChanged) return
   for (const [key, draft] of Object.entries(drafts))
-    if (sameDir(gitDirectory(draft.target.directory), gitDirectory(directory))) setDrafts(key, "stale", true)
+    if (sameDirectory(draft.target.directory, directory)) setDrafts(key, "stale", true)
 })
 
 /** The selected code owns its editor; drafts survive a diff or layout remount. */
@@ -114,7 +129,7 @@ export function CommentComposer(props: { target: CommentTarget }) {
 /** Inactive drafts stay reachable even after their source hunk leaves the pending list. */
 export function CommentDrafts(props: { directory: string; sessionID?: string; files: string[] | undefined }) {
   const matches = (target: CommentTarget) =>
-    sameDir(gitDirectory(target.directory), gitDirectory(props.directory)) && target.sessionID === props.sessionID
+    sameDirectory(target.directory, props.directory) && target.sessionID === props.sessionID
   const inactive = () =>
     Object.entries(drafts).filter(
       ([key, draft]) =>

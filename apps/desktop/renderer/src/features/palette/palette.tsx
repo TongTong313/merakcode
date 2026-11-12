@@ -15,8 +15,10 @@ import { baseName, decodeDir, sessionPath } from "../../lib/route"
 import { client } from "../../state/client"
 import { sessionsOf, state, type Folder, type SessionSummary } from "../../state/store"
 import { setUi, togglePanel, ui } from "../../state/ui"
+import { toast } from "../../ui/toast"
 import { Dialog } from "../../ui/dialog"
 import { openReview } from "../review/state"
+import { openPanel, panelContext, releasePanels } from "../panel/workspace"
 import { pickFolder } from "../shell/sidebar"
 
 type Item = {
@@ -114,7 +116,23 @@ export function Palette() {
         label: t("palette.cmd.terminal"),
         icon: SquareTerminal,
         group: t("palette.commands"),
-        run: () => setUi("terminal", true),
+        run: () => {
+          setUi("panel", true)
+          void openPanel({ kind: "terminal" }, true)
+        },
+      },
+      {
+        id: "release-panels",
+        label: t("panel.releaseResources"),
+        icon: PanelRight,
+        group: t("palette.commands"),
+        run: () => {
+          const context = panelContext()
+          if (context)
+            void releasePanels(context).catch((error: unknown) =>
+              toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+            )
+        },
       },
       { id: "panel", label: t("palette.cmd.panel"), icon: PanelRight, group: t("palette.commands"), run: togglePanel },
       {

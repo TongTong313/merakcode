@@ -186,7 +186,7 @@ func (s *Server) applyConfiguration(value config.Value) {
 		sources = append(sources, environmentSource(name))
 	}
 	s.engine.ConfigureModels(overrides)
-	s.engine.Board.Configure(value.Board.AutoArchiveDays)
+	s.engine.ConfigureBoard(value.Board.AutoArchiveDays)
 	commands := make(map[string]command.Entry, len(value.Commands))
 	for name, entry := range value.Commands {
 		commands[name] = command.Entry{Template: entry.Template, Description: entry.Description, Agent: entry.Agent, Model: entry.Model}

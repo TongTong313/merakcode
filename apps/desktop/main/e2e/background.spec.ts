@@ -22,7 +22,11 @@ test("once the reply is done the conversation stops reading as running, even whi
   await kit.send("你好")
   await expect(kit.text("回复完了")).toBeVisible()
   await expect.poll(() => writingMemory, { timeout: 45_000 }).toBe(true)
-  const row = kit.page.getByRole("navigation", { name: "对话" }).getByRole("link").first()
+  const row = kit.page
+    .getByRole("navigation", { name: "对话" })
+    .getByRole("link")
+    .filter({ hasNotText: /^(首页|Home)$/ })
+    .first()
   await expect(row).toContainText("你好")
   await expect(row).not.toContainText("运行中")
 })

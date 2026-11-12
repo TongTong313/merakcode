@@ -29,6 +29,7 @@ export type Theme = "system" | "light" | "dark"
 export type BrowserBounds = { x: number; y: number; width: number; height: number }
 
 export type BrowserState = {
+  id: string
   url: string
   title: string
   loading: boolean
@@ -37,6 +38,7 @@ export type BrowserState = {
 }
 
 export type BrowserConsole = {
+  id: string
   level: "debug" | "info" | "warn" | "error"
   message: string
   source: string
@@ -55,6 +57,13 @@ export interface DesktopBridge {
   /** Restarts the local backend by hand (the "retry" button) */
   restartBackend(): Promise<void>
   reloadWindow(): Promise<void>
+  installCloseGuard(): Promise<void>
+  completeResourceClose(accepted: boolean): Promise<void>
+  onCloseResources(fn: (phase: "prepare" | "stop") => void): () => void
+  onCloseRejected(fn: () => void): () => void
+  onCloseCancelled(fn: () => void): () => void
+  completeClose(accepted: boolean): Promise<boolean>
+  onCloseRequested(fn: () => void): () => void
 
   /** Native menus and dialogs follow the UI language */
   getLocale(): Promise<AppLocale>
@@ -85,13 +94,19 @@ export interface DesktopBridge {
   // Browser panel: the page lives in a main-process WebContentsView (separate session partition, no preload) laid over
   // the panel area. Call browserHide while the UI shows an overlay (dialog, menu), or the page covers it.
   /** Shows the page at these bounds; if no page has been opened yet, only remembers the bounds */
-  browserShow(bounds: BrowserBounds): Promise<void>
-  browserHide(): Promise<void>
-  browserNavigate(url: string): Promise<void>
-  browserBack(): Promise<void>
-  browserForward(): Promise<void>
-  browserReload(): Promise<void>
-  browserDevtools(): Promise<void>
+  browserShow(id: string, bounds: BrowserBounds): Promise<void>
+  browserHide(id?: string): Promise<void>
+  browserNavigate(id: string, url: string): Promise<boolean>
+  /** Keeps an existing page; uses the URL only when the native page needs to be recreated. */
+  browserRestore(id: string, url: string): Promise<boolean>
+  /** Retires the tab ID, rejecting late navigation and restore requests. */
+  browserClose(id: string): Promise<boolean>
+  /** Releases the native page while keeping the tab restorable. */
+  browserRelease(id: string): Promise<boolean>
+  browserBack(id: string): Promise<void>
+  browserForward(id: string): Promise<void>
+  browserReload(id: string): Promise<void>
+  browserDevtools(id: string): Promise<void>
   onBrowserState(fn: (state: BrowserState) => void): () => void
   onBrowserConsole(fn: (entry: BrowserConsole) => void): () => void
 
@@ -124,6 +139,8 @@ export interface DesktopBridge {
 
   /** Settings and other persisted data live in the app data directory, so they survive backend port changes */
   storageGet(bucket: string, key: string): Promise<string | null>
+  storageEntries(bucket: string): Promise<[string, string][]>
+  storageBuckets(): Promise<string[]>
   storageSet(bucket: string, key: string, value: string): Promise<void>
   storageRemove(bucket: string, key: string): Promise<void>
   log(

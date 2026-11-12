@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import path from "node:path"
 import { test, expect } from "./fixture"
@@ -130,40 +130,43 @@ test.describe("rules", () => {
   })
 })
 
-test("memory: lists, opens and deletes project memories (file and index); auto-remember can be enabled", async ({
-  kit,
-}) => {
-  const config = path.join(kit.root, "merakcode.json")
-  const panel = kit.page.getByRole("region", { name: "记忆" })
-  await kit.settings(/^记忆$/)
-  await expect(panel.getByText("还没有记忆")).toBeVisible()
-  // Memory directories are per project, and the UI shows the location
-  const dir = (await panel.getByText(/memory[\\/]projects[\\/]/).textContent())!.trim()
-  const file = path.join(dir, "feedback", "use-pnpm.md")
-  await mkdir(path.dirname(file), { recursive: true })
-  await writeFile(
-    file,
-    "---\nname: use-pnpm\ndescription: 这个项目用 pnpm 装依赖\ntype: feedback\n---\n\n用 pnpm，不要用 npm。E2E_MEMORY_BODY\n",
-  )
-  await writeFile(path.join(dir, "MEMORY.md"), "- [用 pnpm](feedback/use-pnpm.md) — 这个项目用 pnpm 装依赖\n")
+test.describe("memory", () => {
+  // The agent saves a note with its remember tool; memories are notes of the project, not files
+  test.use({
+    script: {
+      reply: ({ toolResults }) =>
+        toolResults.length
+          ? { text: "记住了" }
+          : {
+              tool: "remember",
+              args: { kind: "preference", text: "这个项目用 pnpm 装依赖\n用 pnpm，不要用 npm。E2E_MEMORY_BODY" },
+            },
+    },
+  })
 
-  // Switch away and back to reload the list
-  const nav = kit.page.getByRole("navigation", { name: "设置" })
-  await nav.getByRole("button", { name: "通用" }).click()
-  await nav.getByRole("button", { name: "记忆" }).click()
-  await expect(panel.getByText("这个项目用 pnpm 装依赖")).toBeVisible()
-  await panel.getByRole("button", { name: "查看 use-pnpm" }).click()
-  await expect(panel.getByText(/E2E_MEMORY_BODY/)).toBeVisible()
-  await panel.getByRole("button", { name: "删除 use-pnpm" }).click()
-  await expect(panel.getByText("还没有记忆")).toBeVisible()
-  await expect.poll(() => readFile(file, "utf8").catch(() => "")).toBe("")
-  await expect.poll(() => readFile(path.join(dir, "MEMORY.md"), "utf8")).not.toContain("use-pnpm")
+  test("lists, opens and deletes project memories; auto-remember can be enabled", async ({ kit }) => {
+    const config = path.join(kit.root, "merakcode.json")
+    const panel = kit.page.getByRole("region", { name: "记忆" })
+    await kit.settings(/^记忆$/)
+    await expect(panel.getByText("还没有记忆")).toBeVisible()
+    await kit.page.keyboard.press("Escape")
+    await kit.mode(/全面接管|Full takeover/)
+    await kit.send("记一下")
+    await expect(kit.text("记住了")).toBeVisible()
 
-  // The fixture turns auto-remember off; turning it on writes the default "signals"
-  const auto = panel.getByRole("switch", { name: "自动记住" })
-  await expect(auto).toHaveAttribute("aria-checked", "false")
-  await auto.click()
-  await expect.poll(async () => (await json(config)).memory?.auto_extract).toBe("signals")
+    await kit.settings(/^记忆$/)
+    await expect(panel.getByText("这个项目用 pnpm 装依赖")).toBeVisible()
+    await panel.getByRole("button", { name: "查看 这个项目用 pnpm 装依赖" }).click()
+    await expect(panel.getByText(/E2E_MEMORY_BODY/)).toBeVisible()
+    await panel.getByRole("button", { name: "删除 这个项目用 pnpm 装依赖" }).click()
+    await expect(panel.getByText("还没有记忆")).toBeVisible()
+
+    // Automatic remembering is off until it is turned on
+    const auto = panel.getByRole("switch", { name: "自动记住" })
+    await expect(auto).toHaveAttribute("aria-checked", "false")
+    await auto.click()
+    await expect.poll(async () => (await json(config)).memory?.auto_extract).toBe(true)
+  })
 })
 
 test.describe("invalid config", () => {

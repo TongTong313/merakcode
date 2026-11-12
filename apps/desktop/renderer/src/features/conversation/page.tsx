@@ -10,6 +10,7 @@ import { openReview } from "../review/state"
 import { Composer } from "./composer"
 import { Approval, Question } from "./dock"
 import { Messages } from "./messages"
+import { RevertBar } from "./revert-bar"
 import { send, stop } from "./send"
 import { ContextBudget } from "./context-budget"
 
@@ -62,6 +63,7 @@ export function Conversation(props: { id: string; directory: string }) {
           />
           <div class="dock">
             <div class="dock-inner">
+              <RevertBar sessionID={props.id} />
               <Show when={state.views[props.id]?.budget}>{(report) => <ContextBudget report={report()} />}</Show>
               <Show when={exhausted()}>
                 <label class="row">

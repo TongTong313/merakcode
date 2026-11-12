@@ -207,6 +207,10 @@ func (e *Engine) Cancel(id event.ID) error {
 	defer e.mu.Unlock()
 	c := e.sessions[id]
 	if c == nil {
+		if stop := e.leaderStops[id]; stop != nil {
+			stop()
+			return nil
+		}
 		if chat := e.externals[id]; chat != nil {
 			chat.pending = nil
 			if chat.active != nil {
@@ -216,6 +220,7 @@ func (e *Engine) Cancel(id event.ID) error {
 		}
 		return errors.New("MRK-4001")
 	}
+	running := len(c.turns) > 0
 	for turn := range c.turns {
 		turn.cancel()
 	}
@@ -226,7 +231,19 @@ func (e *Engine) Cancel(id event.ID) error {
 	if c.memoryCancel != nil {
 		c.memoryCancel()
 	}
+	if running {
+		e.stopPlanOfCancelledTurn(id)
+	}
 	return nil
+}
+
+// stopPlanOfCancelledTurn marks the plan of a conversation as stopped when its turn is cancelled while the plan runs,
+// so the person can start it again; a plan that is not running is left as it is.
+func (e *Engine) stopPlanOfCancelledTurn(id event.ID) {
+	ctx := context.WithoutCancel(e.ctx)
+	if stopped, err := e.plans.Stop(ctx, id); err == nil {
+		e.announcePlan(ctx, stopped)
+	}
 }
 
 func (e *Engine) Send(ctx context.Context, id event.ID, parts []model.Part, selections ...session.Selection) error {
@@ -388,10 +405,10 @@ func (e *Engine) runInput(ctx context.Context, c *conversation, input loop.Input
 				}
 			}
 			if recallErr == nil && len(notes) > 0 {
-				parts = append([]model.Part{{Text: memory.Format(notes)}}, parts...)
+				parts = append([]model.Part{{Text: memory.Format(notes), Synthetic: true}}, parts...)
 			}
 		}
-		parts = append([]model.Part{{Text: "Current date and time: " + e.now().Format(time.RFC3339)}}, parts...)
+		parts = append([]model.Part{{Text: "Current date and time: " + e.now().Format(time.RFC3339), Synthetic: true}}, parts...)
 	}
 	e.mu.Lock()
 	expanded := c.fromCommand && input.Actor.Kind == event.ActorHuman
@@ -718,7 +735,7 @@ func (e *Engine) maybeTitle(c *conversation) {
 			continue
 		}
 		for _, part := range message.Parts {
-			if part.Text != "" && !strings.HasPrefix(part.Text, "Current date and time:") && target.Len() < 2000 {
+			if part.Text != "" && !part.Synthetic && target.Len() < 2000 {
 				target.WriteString(part.Text + "\n")
 			}
 		}

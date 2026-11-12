@@ -14,16 +14,25 @@ import {
 } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { t } from "../../i18n"
-import { storage } from "../../lib/bridge"
-import { sameDir } from "../../lib/route"
 import { tokenize } from "../../lib/tokens"
 import { client } from "../../state/client"
-import { checkoutOf, gitDirectory, onCheckoutChange, registerDirty, identityOf } from "../../state/git"
+import {
+  checkoutOf,
+  gitDirectory,
+  sameDirectory,
+  onCheckoutChange,
+  registerDirty,
+  identityOf,
+  resolveDirectory,
+} from "../../state/git"
 import { busy, listen } from "../../state/store"
-import { showTab } from "../../state/ui"
+import { setUi } from "../../state/ui"
+import { openPanel } from "../panel/workspace"
 import { autoExpand, detailKey, detailSize, keyOf, PREFETCH, prefetchQueue, type ReviewKey } from "./cache"
 
 import { commentLocation, excerptOf, refreshTarget, type CommentTarget, type SelectedLine } from "./selection"
+import { commentTargetSchema } from "./selection"
+import z from "zod"
 
 export type Comment = CommentTarget & { id: number; text: string }
 
@@ -40,20 +49,86 @@ type Review = {
   selecting?: CommentTarget
   comments: Record<string, Comment[]>
   style: "unified" | "split"
+  files: Record<string, { open?: boolean; all?: boolean }>
+  seen: Record<string, true>
+  active?: { file: string; id?: string }
 }
 
-export const [review, setReview] = createStore<Review>({ scope: "session", comments: {}, style: "split" })
+export const [review, setReview] = createStore<Review>({
+  scope: "session",
+  comments: {},
+  style: "split",
+  files: {},
+  seen: {},
+})
 
 let next = 1
 
+export function restoreReview(value: unknown) {
+  const schema = z.object({
+    directory: z.string().optional(),
+    // Layouts saved by older versions say "turn"; every review is now of the whole conversation
+    scope: z
+      .enum(["turn", "session"])
+      .transform(() => "session" as const)
+      .default("session"),
+    messageID: z.string().optional(),
+    focus: z.string().optional(),
+    // A reveal is transient: one saved without its owner is dropped instead of discarding the comments beside it
+    reveal: z
+      .object({
+        hunk: z.string(),
+        index: z.number(),
+        side: z.enum(["old", "new", "unified"]),
+        directory: z.string(),
+        sessionID: z.string(),
+      })
+      .optional()
+      .catch(undefined),
+    commenting: commentTargetSchema.optional(),
+    selecting: commentTargetSchema.optional(),
+    comments: z
+      .record(z.string(), z.array(commentTargetSchema.extend({ id: z.number(), text: z.string() })))
+      .default({}),
+    style: z.enum(["unified", "split"]).default("split"),
+    files: z.record(z.string(), z.object({ open: z.boolean().optional(), all: z.boolean().optional() })).default({}),
+    seen: z.record(z.string(), z.literal(true)).default({}),
+    active: z.object({ file: z.string(), id: z.string().optional() }).optional(),
+  })
+  const restored = schema.safeParse(value)
+  const result = restored.success
+    ? restored.data
+    : { scope: "session" as const, comments: {}, style: "split" as const, files: {}, seen: {} }
+  result.files = Object.fromEntries(
+    Object.entries(result.files).map(([key, value]) => {
+      const parts = key.split("\u0000")
+      if (parts.length >= 6) parts[4] = ""
+      return [parts.join("\u0000"), value]
+    }),
+  )
+  setReview(reconcile(result))
+  next = Math.max(
+    next,
+    ...Object.values(result.comments)
+      .flat()
+      .map((comment) => comment.id + 1),
+  )
+}
+
 /** Opens the review, optionally at a scope, a turn, or a file */
 export function openReview(view: { scope?: ReviewScope; messageID?: string; file?: string } = {}) {
-  setReview({
-    ...(view.scope ? { scope: view.scope } : {}),
-    messageID: view.messageID,
-    focus: view.file,
-  })
-  showTab("review")
+  setUi({ panel: true, maximized: false })
+  void openPanel(
+    {
+      kind: "review",
+      view: {
+        scope: view.scope ?? "session",
+        messageID: view.messageID,
+        focus: view.file,
+      },
+    },
+    true,
+  )
 }
 
 // Lists: one per review, refetched when stale
@@ -71,6 +146,7 @@ async function load(input: ReviewKey) {
   controllers.set(key, controller)
   setLists(key, (current) => ({ ...current, input, loading: true, stale: false }))
   try {
+    await resolveDirectory(input.directory)
     const connection = await client()
     const changes = await connection.repo.diff({
       directory: input.directory,
@@ -98,15 +174,18 @@ function show(input: ReviewKey, result: ReviewResult) {
   batch(() => {
     setLists(key, (previous) => ({ ...previous, input, loading: false, stale: false, error: undefined }))
     setLists(key, "result", reconcile(result, { key: "file" }))
-    setLists(key, { loading: false, error: undefined })
   })
   prune(key, result.files)
+  for (const oldest of Object.keys(lists)) {
+    if (Object.keys(lists).length <= 32) break
+    if (oldest !== key) dropList(oldest)
+  }
   if (input.sessionID) {
     const files = new Set(result.files.map((file) => file.file))
     setReview("comments", input.sessionID, (comments = []) =>
       comments.map((comment) => {
         const applies =
-          sameDir(gitDirectory(comment.directory), gitDirectory(input.directory)) &&
+          sameDirectory(comment.directory, input.directory) &&
           (input.scope === "session" || (comment.scope === input.scope && comment.messageID === input.messageID))
         return applies && !files.has(comment.file) && !comment.stale ? { ...comment, stale: true } : comment
       }),
@@ -117,7 +196,7 @@ function show(input: ReviewKey, result: ReviewResult) {
 /** Marks the visible review stale after an operation completes. */
 function stale(directory: string) {
   for (const [key, list] of Object.entries(lists))
-    if (sameDir(list.input.directory, directory)) setLists(key, "stale", true)
+    if (sameDirectory(list.input.directory, directory)) setLists(key, "stale", true)
 }
 
 let watching = false
@@ -126,18 +205,18 @@ function watch() {
   watching = true
   onCheckoutChange((directory, change) => {
     for (const [key, list] of Object.entries(lists)) {
-      if (!sameDir(gitDirectory(list.input.directory), directory)) continue
+      if (!sameDirectory(list.input.directory, directory)) continue
       controllers.get(key)?.abort()
       controllers.delete(key)
       setLists(key, undefined!)
       for (const detail of details.keys()) if (detail.startsWith(`${key}\u0000`)) details.delete(detail)
     }
     prefetching++
-    const shown = review.directory && sameDir(gitDirectory(review.directory), directory)
+    const shown = review.directory && sameDirectory(review.directory, directory)
     if (shown && change.branchChanged) setReview({ commenting: undefined, selecting: undefined })
     if (change.branchChanged) {
       for (const [sessionID, value] of commentDirectories) {
-        if (!sameDir(gitDirectory(value), directory)) continue
+        if (!sameDirectory(value, directory)) continue
         setReview("comments", sessionID, (comments = []) => comments.map((comment) => ({ ...comment, stale: true })))
       }
     }
@@ -222,8 +301,26 @@ function prefetch(input: ReviewKey, files: ReviewFile[]) {
 
 // Open state of each file, by list and path, so it survives refreshes and scope switches
 
-const [opened, setOpened] = createStore<Record<string, { open?: boolean; all?: boolean }>>({})
 const openKey = (list: string, file: string) => `${list}\u0000${file}`
+
+function dropList(key: string) {
+  controllers.get(key)?.abort()
+  controllers.delete(key)
+  setLists(key, undefined!)
+  for (const detail of details.keys()) if (detail.startsWith(`${key}\u0000`)) details.delete(detail)
+}
+
+/** Durable tab snapshots survive runtime eviction; deleted conversations also relinquish dirty ownership. */
+export function releaseReview(directory: string, sessionID?: string, deleted = false) {
+  for (const [key, list] of Object.entries(lists))
+    if (sameDirectory(list.input.directory, directory) && list.input.sessionID === sessionID) dropList(key)
+  prefetching++
+  if (!sessionID) return
+  if (!deleted) return
+  commentDirectories.delete(sessionID)
+  setReview("comments", sessionID, undefined!)
+  registerDirty(directory, `comments:${sessionID}`, 0)
+}
 
 /** Waits this long after a list goes stale before refreshing it, so a burst of changes is one refresh */
 const REFRESH = 1000
@@ -289,6 +386,18 @@ function useReviewList(
   return { input, key, list, refetch: () => load(input()) }
 }
 
+/** Git navigation needs only the pending file names, without loading review details. */
+export function usePendingReview(sessionID: () => string | undefined, directory: () => string) {
+  const { list, refetch } = useReviewList(
+    sessionID,
+    directory,
+    () => true,
+    () => "session",
+    () => undefined,
+  )
+  return { files: () => list()?.result?.files.map((file) => file.file) ?? [], refetch }
+}
+
 /** Review details, presentation state and decisions are owned by the review view. */
 export function useReview(
   sessionID: () => string | undefined,
@@ -300,6 +409,7 @@ export function useReview(
   createEffect(
     on([directory, visible], ([value, shown]) => {
       if (shown) setReview("directory", value)
+      if (shown && sessionID()) commentDirectory(sessionID()!, value)
     }),
   )
   const versions = createMemo(() =>
@@ -316,11 +426,13 @@ export function useReview(
   )
 
   const auto = createMemo(() => autoExpand(list()?.result?.files ?? []))
-  const fileState = (file: ReviewFile) => opened[openKey(key(), file.file)]
+  const presentationKey = () => keyOf({ ...input(), checkout: null })
+  const fileState = (file: ReviewFile) => review.files[openKey(presentationKey(), file.file)]
   const setFile = (file: ReviewFile, change: { open?: boolean; all?: boolean }) =>
-    setOpened(openKey(key(), file.file), (current) => ({ ...current, ...change }))
+    setReview("files", openKey(presentationKey(), file.file), (current) => ({ ...current, ...change }))
 
   return {
+    context: key,
     data: () => list()?.result,
     error: () => list()?.error,
     /** Nothing to show yet: the first fetch of this list is running */
@@ -343,7 +455,7 @@ export function useReview(
 /** Inline selections belong to one checkout, conversation and review turn. */
 export function commentInView(target: CommentTarget, directory: string, sessionID: string | undefined) {
   return (
-    sameDir(gitDirectory(target.directory), gitDirectory(directory)) &&
+    sameDirectory(target.directory, directory) &&
     target.sessionID === sessionID &&
     target.branch === identityOf(directory)?.branch &&
     target.scope === review.scope &&
@@ -353,7 +465,7 @@ export function commentInView(target: CommentTarget, directory: string, sessionI
 
 export const commentsOf = (sessionID: string | undefined, directory?: string) =>
   (sessionID ? (review.comments[sessionID] ?? []) : []).filter(
-    (comment) => !directory || sameDir(gitDirectory(comment.directory), gitDirectory(directory)),
+    (comment) => !directory || sameDirectory(comment.directory, directory),
   )
 
 export function beginComment(
@@ -454,8 +566,7 @@ const commentDirectories = new Map<string, string>()
 
 export function commentDirectory(sessionID: string, directory: string) {
   const previous = commentDirectories.get(sessionID)
-  if (previous && !sameDir(gitDirectory(previous), gitDirectory(directory)))
-    registerDirty(previous, `comments:${sessionID}`, 0)
+  if (previous && !sameDirectory(previous, directory)) registerDirty(previous, `comments:${sessionID}`, 0)
   commentDirectories.set(sessionID, directory)
   registerDirty(directory, `comments:${sessionID}`, commentsOf(sessionID, directory).length)
 }
@@ -492,47 +603,40 @@ export function commentMessage(comments: Comment[]) {
   return `${t("review.commentPrompt")}\n\n${body}`
 }
 
-export function clearComments(sessionID: string, submitted?: Comment[], directory?: string) {
-  setReview("comments", sessionID, (comments = []) =>
-    comments.filter((comment) => {
-      if (directory && !sameDir(gitDirectory(comment.directory), gitDirectory(directory))) return true
-      return submitted
-        ? !submitted.some(
-            (sent) =>
-              sent.id === comment.id &&
-              sent.version === comment.version &&
-              sent.scope === comment.scope &&
-              sent.messageID === comment.messageID &&
-              sent.branch === comment.branch &&
-              sent.side === comment.side &&
-              commentMessage([sent]) === commentMessage([comment]),
-          )
-        : false
-    }),
-  )
-  syncComments(sessionID)
+export function remainingComments(comments: Comment[], submitted?: Comment[], directory?: string) {
+  return comments.filter((comment) => {
+    if (directory && !sameDirectory(comment.directory, directory)) return true
+    return submitted
+      ? !submitted.some(
+          (sent) =>
+            sent.id === comment.id &&
+            sent.version === comment.version &&
+            sent.scope === comment.scope &&
+            sent.messageID === comment.messageID &&
+            sent.branch === comment.branch &&
+            sent.side === comment.side &&
+            commentMessage([sent]) === commentMessage([comment]),
+        )
+      : false
+  })
 }
 
-/** Number of pending hunks in this review. */
-export function progress(data: ReviewResult | undefined) {
-  const files = data?.files ?? []
-  return {
-    total: files.reduce((sum, file) => sum + file.hunks, 0),
-  }
+export function clearComments(sessionID: string, submitted?: Comment[], directory?: string) {
+  setReview("comments", sessionID, (comments = []) => remainingComments(comments, submitted, directory))
+  syncComments(sessionID)
 }
 
 /** A file is marked viewed for one version of its contents; once they change, it is no longer viewed */
 const fingerprint = (file: ReviewFile) => `${file.file}:${file.version}`
 
-const SEEN = "review.seen"
-const [seen, setSeen] = createStore<Record<string, true>>({})
-void storage.get<Record<string, true>>(SEEN, {}).then((saved) => setSeen(saved))
-
-export const isSeen = (file: ReviewFile) => !!seen[fingerprint(file)]
+export const isSeen = (file: ReviewFile) => !!review.seen[fingerprint(file)]
 
 export function toggleSeen(file: ReviewFile) {
   const key = fingerprint(file)
-  setSeen(produce((draft) => (draft[key] ? delete draft[key] : (draft[key] = true))))
+  setReview(
+    "seen",
+    produce((draft) => (draft[key] ? delete draft[key] : (draft[key] = true))),
+  )
   // Keep only the most recent entries so the record does not grow forever
-  void storage.set(SEEN, Object.fromEntries(Object.entries(seen).slice(-500)))
+  setReview("seen", reconcile(Object.fromEntries(Object.entries(review.seen).slice(-500))))
 }

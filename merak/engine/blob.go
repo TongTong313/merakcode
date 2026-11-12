@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 )
@@ -34,4 +35,12 @@ func (e *Engine) ReadBlob(ctx context.Context, ref string, offset, limit int) ([
 
 func (e *Engine) ModelCatalog(overrides ...catalog.Override) []catalog.Model {
 	return e.catalog.List(overrides...)
+}
+
+// blobs makes a provider read the images that messages keep as blob references.
+func (e *Engine) blobs(p model.Provider) model.Provider {
+	return model.Blobs{Provider: p, Read: func(ctx context.Context, key string) ([]byte, error) {
+		doc, err := e.store.Fetch(ctx, "blob", key)
+		return doc.Body, err
+	}}
 }

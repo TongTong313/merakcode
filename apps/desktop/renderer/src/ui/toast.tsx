@@ -17,6 +17,8 @@ type Toast = {
   /** The failure behind an error toast: shows its code and offers "Copy details" */
   error?: unknown
   action?: { label: string; run: () => void }
+  /** Clicking the message goes somewhere, like a new message in the inbox */
+  onSelect?: () => void
 }
 
 const [toasts, setToasts] = createStore<Toast[]>([])
@@ -33,7 +35,7 @@ export function toast(input: Omit<Toast, "id">) {
 const dismiss = (id: number) => setToasts((list) => list.filter((item) => item.id !== id))
 
 /** Copies the error's code, message, request id and app version, ready to paste into a bug report */
-function copyDetails(error: unknown) {
+export function copyDetails(error: unknown) {
   const text = details(error, {
     version: bridge?.version ?? "dev",
     platform: bridge?.os ?? navigator.platform,
@@ -59,7 +61,23 @@ export function Toasts() {
                 <CircleAlert class="icon" />
               </Match>
             </Switch>
-            <div class="body selectable">
+            <div
+              class="body selectable"
+              classList={{ linked: !!item.onSelect }}
+              data-toast-open={item.onSelect ? "" : undefined}
+              role={item.onSelect ? "link" : undefined}
+              tabIndex={item.onSelect ? 0 : undefined}
+              onClick={() => {
+                if (!item.onSelect) return
+                item.onSelect()
+                dismiss(item.id)
+              }}
+              onKeyDown={(event) => {
+                if (!item.onSelect || event.key !== "Enter") return
+                item.onSelect()
+                dismiss(item.id)
+              }}
+            >
               <div class="title">{explain(item.error, locale())?.title ?? item.title}</div>
               <Show when={explain(item.error, locale())?.hint}>{(hint) => <div class="muted">{hint()}</div>}</Show>
               <Show when={item.detail}>

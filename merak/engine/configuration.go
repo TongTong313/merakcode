@@ -55,7 +55,7 @@ func (e *Engine) SetProvider(name string, provider model.Provider) {
 		delete(e.providers, name)
 		return
 	}
-	e.providers[name] = &model.Retrying{Provider: provider, Price: func(id string, usage model.Usage) model.Usage { return e.catalog.Get(name, id).Price.Apply(usage) }}
+	e.providers[name] = &model.Retrying{Provider: e.blobs(provider), Price: func(id string, usage model.Usage) model.Usage { return e.catalog.Get(name, id).Price.Apply(usage) }}
 }
 
 func (e *Engine) provider(name string) model.Provider {
@@ -65,6 +65,20 @@ func (e *Engine) provider(name string) model.Provider {
 }
 
 func (e *Engine) ConfigureModels(overrides []catalog.Override) { e.catalog.Configure(overrides) }
+
+// ConfigureBoard sets how many days a finished task stays on the board and archives the ones that are already older
+// without waiting for the next hourly pass, so every client sees the new setting at once.
+func (e *Engine) ConfigureBoard(autoArchiveDays int) {
+	e.Board.Configure(autoArchiveDays)
+	if e.ctx.Err() != nil {
+		return
+	}
+	e.workers.Go(func() {
+		if err := e.Board.ArchiveStale(e.ctx); err != nil && e.ctx.Err() == nil {
+			e.logger.Warn("finished tasks could not be archived")
+		}
+	})
+}
 
 // SessionSettings are the configuration keys that decide what a conversation keeps.
 type SessionSettings struct {

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { submissionParts } from "./send"
+import { submissionOf, submissionParts } from "./send"
 
 test("sends text, images and documents in the engine's message format", () => {
   expect(
@@ -25,3 +25,16 @@ test.each(["https://example.com/file", "data:text/plain;base64,Y===", "data:text
     )
   },
 )
+
+test("editing or retrying a message sends back only what the person wrote, never the date or notes the engine added", () => {
+  const submission = submissionOf({
+    role: "user",
+    parts: [
+      { text: "Current date and time: 2026-11-12T14:00:00+08:00", synthetic: true },
+      { text: "你好" },
+      { image: { mime: "image/png", data: "AAAA" } },
+    ],
+  })
+  expect(submission.text).toBe("你好")
+  expect(submission.files).toEqual([{ filename: "image", mime: "image/png", url: "data:image/png;base64,AAAA" }])
+})

@@ -32,6 +32,13 @@ type GroupRemoveMemberParams struct {
 	Member event.ID `json:"member"`
 }
 
+// GroupRenameMemberParams gives a member another name in one group.
+type GroupRenameMemberParams struct {
+	Group  event.ID `json:"group"`
+	Member event.ID `json:"member"`
+	Name   string   `json:"name"`
+}
+
 type GroupUpdateParams struct {
 	Group event.ID `json:"group"`
 	group.Update

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,8 @@ type Identity struct {
 	// Root is the top of the Git repository that holds it; empty when the folder is not in one.
 	Root string `json:"root,omitempty"`
 	Path string `json:"path"`
+	// Worktree is the key of the worktree the engine made at this folder; empty for any other folder.
+	Worktree string `json:"worktree,omitempty"`
 }
 
 func relative(name string) string { return path.Clean(filepath.ToSlash(name)) }
@@ -54,7 +57,7 @@ func FileIdentity(ctx context.Context, directory, name string) (Identity, error)
 	if err != nil {
 		return Identity{}, err
 	}
-	identity := Identity{Directory: canonical, Path: relative(name)}
+	identity := Identity{Directory: canonical, Path: diskSpelling(canonical, relative(name))}
 	if root, err := git.Root(ctx, canonical); err == nil {
 		if identity.Root, err = workspace.Canonical(root); err != nil {
 			return Identity{}, err
@@ -98,4 +101,43 @@ func FindFiles(ctx context.Context, directory, query string, limit int) ([]strin
 		}
 	}
 	return found, nil
+}
+
+// diskSpelling writes a relative path the way the disk spells it: a part that differs from the stored name only in
+// case takes the stored spelling, so two spellings of one file get one identity. A part with no
+// match, and everything below it, stays as asked; a volume that tells both names apart keeps both.
+func diskSpelling(root, name string) string {
+	if name == "." || name == "" || filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") {
+		return name
+	}
+	parts := strings.Split(name, "/")
+	directory := root
+	for i, part := range parts {
+		if _, err := os.Lstat(filepath.Join(directory, part)); err == nil {
+			// The exact spelling exists; on a case-insensitive volume it may still differ from the stored one
+			entries, readErr := os.ReadDir(directory)
+			if readErr != nil {
+				return strings.Join(parts, "/")
+			}
+			for _, entry := range entries {
+				if entry.Name() == part {
+					break
+				}
+				if strings.EqualFold(entry.Name(), part) && sameFile(filepath.Join(directory, entry.Name()), filepath.Join(directory, part)) {
+					parts[i] = entry.Name()
+					break
+				}
+			}
+			directory = filepath.Join(directory, parts[i])
+			continue
+		}
+		return strings.Join(parts, "/")
+	}
+	return strings.Join(parts, "/")
+}
+
+func sameFile(a, b string) bool {
+	left, errA := os.Stat(a)
+	right, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(left, right)
 }

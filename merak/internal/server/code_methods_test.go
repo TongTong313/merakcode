@@ -95,3 +95,93 @@ func TestCodeMethodsCommitFindFilesAndShareOneWorktreePerKey(t *testing.T) {
 		t.Fatalf("a message for no changes: %v", err)
 	}
 }
+
+func TestFileWriteRPCSavesOverTheVersionTheClientRead(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e, err := engine.New(engine.Deps{Workdir: dir, DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.New(e, "token")
+	defer handler.Close()
+	host := httptest.NewServer(handler)
+	defer host.Close()
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	where := protocol.FileParams{DirectoryParams: protocol.DirectoryParams{Directory: dir}, Path: "note.txt"}
+	var read engine.FileContent
+	if err := client.Call(ctx, "file.read", where, &read); err != nil || read.Checksum == "" {
+		t.Fatalf("read=%+v err=%v", read, err)
+	}
+	var saved protocol.FileWriteResult
+	if err := client.Call(ctx, "file.write", protocol.FileWriteParams{FileParams: where, Content: "two\n", Checksum: read.Checksum}, &saved); err != nil || saved.Checksum == "" {
+		t.Fatalf("saved=%+v err=%v", saved, err)
+	}
+	var failure *protocol.Error
+	err = client.Call(ctx, "file.write", protocol.FileWriteParams{FileParams: where, Content: "three\n", Checksum: read.Checksum}, nil)
+	if !errors.As(err, &failure) || failure.Data.Code != "MRK-4029" {
+		t.Fatalf("a stale save: %v", err)
+	}
+	if err := client.Call(ctx, "file.write", protocol.FileWriteParams{FileParams: where, Content: "three\n", Checksum: read.Checksum, Force: true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := os.ReadFile(filepath.Join(dir, "note.txt")); string(body) != "three\n" {
+		t.Fatalf("file=%q", body)
+	}
+}
+
+func TestStageUnstageAndAStagedCommitOverRPC(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-b", "main")
+	gitIn(t, repo, "config", "user.name", "Fixture")
+	gitIn(t, repo, "config", "user.email", "fixture@example.invalid")
+	for name, body := range map[string]string{"a.txt": "a\n", "b.txt": "b\n"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-m", "Baseline")
+	e, err := engine.New(engine.Deps{Workdir: repo, DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.New(e, "token")
+	defer handler.Close()
+	host := httptest.NewServer(handler)
+	defer host.Close()
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("changed\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	where := protocol.DirectoryParams{Directory: repo}
+	if err := client.Call(ctx, "repo.stage", protocol.RepoPathsParams{DirectoryParams: where, Paths: []string{"a.txt", "b.txt"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "repo.unstage", protocol.RepoPathsParams{DirectoryParams: where, Paths: []string{"b.txt"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var committed protocol.RepoCommitResult
+	if err := client.Call(ctx, "repo.commit", protocol.RepoCommitParams{DirectoryParams: where, Message: "Staged only", Staged: true}, &committed); err != nil || committed.Commit != gitIn(t, repo, "rev-parse", "HEAD") {
+		t.Fatalf("commit=%+v err=%v", committed, err)
+	}
+	if files := strings.Fields(gitIn(t, repo, "show", "--name-only", "--format=", "HEAD")); len(files) != 1 || files[0] != "a.txt" {
+		t.Fatalf("the commit holds %v", files)
+	}
+}

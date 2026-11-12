@@ -1,5 +1,6 @@
 import { z } from "zod"
 import metadata from "../package.json" with { type: "json" }
+import { createApi } from "./api"
 import {
   EngineEventSchema,
   PROTOCOL_VERSION,
@@ -203,75 +204,11 @@ export async function connect(options: {
     }
   }
 
+  const api = createApi(call)
   return {
     hello,
     closed: closed.promise,
-    cloud: {
-      members: () => call("cloud.members", {}),
-      status: () => call("cloud.status", {}),
-      login: (params: Methods["cloud.login"]["params"]) => call("cloud.login", params),
-      logout: () => call("cloud.logout", {}),
-    },
-    remote: {
-      connect: (params: Methods["remote.connect"]["params"]) => call("remote.connect", params),
-      members: () => call("remote.members", {}),
-    },
-    config: {
-      get: () => call("config.get", {}),
-      set: (params: Methods["config.set"]["params"]) => call("config.set", params),
-    },
-    model: {
-      list: () => call("model.list", {}),
-      refresh: (params: Methods["model.refresh"]["params"] = {}) => call("model.refresh", params),
-      discover: (params: Methods["model.discover"]["params"]) => call("model.discover", params),
-    },
-    sandbox: {
-      setup: () => call("sandbox.setup", {}),
-      status: (params: Methods["sandbox.status"]["params"]) => call("sandbox.status", params),
-    },
-    agent: {
-      catalog: () => call("agent.catalog", {}),
-      delete: (params: Methods["agent.delete"]["params"]) => call("agent.delete", params),
-      list: (params: Methods["agent.list"]["params"] = {}) => call("agent.list", params),
-      save: (params: Methods["agent.save"]["params"]) => call("agent.save", params),
-      test: (params: Methods["agent.test"]["params"]) => call("agent.test", params),
-    },
-    group: {
-      pause: (params: Methods["group.pause"]["params"]) => call("group.pause", params),
-      resume: (params: Methods["group.resume"]["params"]) => call("group.resume", params),
-      removeMember: (params: Methods["group.removeMember"]["params"]) => call("group.removeMember", params),
-      update: (params: Methods["group.update"]["params"]) => call("group.update", params),
-      say: (params: Methods["group.say"]["params"]) => call("group.say", params),
-      create: (params: Methods["group.create"]["params"]) => call("group.create", params),
-      addMember: (params: Methods["group.addMember"]["params"]) => call("group.addMember", params),
-      state: (params: Methods["group.state"]["params"]) => call("group.state", params),
-      bind: (params: Methods["group.bind"]["params"]) => call("group.bind", params),
-      list: () => call("group.list", {}),
-    },
-    task: {
-      update: (params: Methods["task.update"]["params"]) => call("task.update", params),
-      cancel: (params: Methods["task.cancel"]["params"]) => call("task.cancel", params),
-      assign: (params: Methods["task.assign"]["params"]) => call("task.assign", params),
-      review: (params: Methods["task.review"]["params"]) => call("task.review", params),
-      create: (params: Methods["task.create"]["params"]) => call("task.create", params),
-      list: (params: Methods["task.list"]["params"] = {}) => call("task.list", params),
-      archive: (params: Methods["task.archive"]["params"]) => call("task.archive", params),
-    },
-    doc: {
-      list: (params: Methods["doc.list"]["params"]) => call("doc.list", params),
-      read: (params: Methods["doc.read"]["params"]) => call("doc.read", params),
-      write: (params: Methods["doc.write"]["params"]) => call("doc.write", params),
-    },
-    permission: {
-      reply: (params: Methods["permission.reply"]["params"]) => call("permission.reply", params),
-    },
-    question: {
-      reply: (params: Methods["question.reply"]["params"]) => call("question.reply", params),
-    },
-    schedule: {
-      list: () => call("schedule.list", {}),
-      delete: (params: Methods["schedule.delete"]["params"]) => call("schedule.delete", params),
-    },
+    ...api,
     tool: {
       /** Offers a tool to the models as client__<name>; the handler runs here when a model calls it. */
       register: async (definition: ClientToolDefinition, handler: ClientToolHandler) => {
@@ -288,47 +225,12 @@ export async function connect(options: {
         toolHandlers.delete(name)
       },
     },
-    engine: {
-      stop: () => call("engine.stop", {}),
-    },
-    diagnostics: {
-      bundle: (params: Methods["diagnostics.bundle"]["params"] = {}) => call("diagnostics.bundle", params),
-    },
     blob: {
-      read: (params: Methods["blob.read"]["params"]) => call("blob.read", params),
+      ...api.blob,
       get: getBlob,
     },
-    terminal: {
-      list: (params: Methods["terminal.list"]["params"] = {}) => call("terminal.list", params),
-      create: (params: Methods["terminal.create"]["params"]) => call("terminal.create", params),
-      get: (params: Methods["terminal.get"]["params"]) => call("terminal.get", params),
-      update: (params: Methods["terminal.update"]["params"]) => call("terminal.update", params),
-      remove: (params: Methods["terminal.remove"]["params"]) => call("terminal.remove", params),
-    },
-    file: {
-      read: (params: Methods["file.read"]["params"]) => call("file.read", params),
-      list: (params: Methods["file.list"]["params"]) => call("file.list", params),
-    },
-    repo: {
-      status: (params: Methods["repo.status"]["params"]) => call("repo.status", params),
-      diff: (params: Methods["repo.diff"]["params"]) => call("repo.diff", params),
-      branches: (params: Methods["repo.branches"]["params"]) => call("repo.branches", params),
-      checkout: (params: Methods["repo.checkout"]["params"]) => call("repo.checkout", params),
-    },
-    session: {
-      snapshot: (params: Methods["session.snapshot"]["params"]) => call("session.snapshot", params),
-      list: () => call("session.list", {}),
-      create: (params: Methods["session.create"]["params"]) => call("session.create", params),
-      send: (params: Methods["session.send"]["params"]) => call("session.send", params),
-      cancel: (params: Methods["session.cancel"]["params"]) => call("session.cancel", params),
-    },
-    event: {
-      emit: (params: Methods["event.emit"]["params"]) => call("event.emit", params),
-    },
     events: {
-      read: (params: Methods["events.read"]["params"]) => call("events.read", params),
-      find: (params: Methods["events.find"]["params"]) => call("events.find", params),
-      get: (params: Methods["events.get"]["params"]) => call("events.get", params),
+      ...api.events,
       subscribe: async (filter: EventFilter, listener: (event: EngineEvent) => void) => {
         listeners.set(listener, filter)
         let subscription: string

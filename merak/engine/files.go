@@ -2,18 +2,15 @@ package engine
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/TongTong313/merakcode/merak/engine/code"
 	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/tool"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
@@ -23,12 +20,20 @@ type FileContent struct {
 	Type    string `json:"type"`
 	Content string `json:"content"`
 	MIME    string `json:"mime,omitempty"`
+	// Checksum names the exact bytes that were read; saving against it detects an outside change.
+	Checksum string `json:"checksum,omitempty"`
+	// Head is the text the last commit holds for this file; absent when the file is not tracked.
+	Head *string `json:"head,omitempty"`
+	// Missing marks a tracked file that was deleted from disk; Content is then its last committed text.
+	Missing bool `json:"missing,omitempty"`
 }
 
 type FileNode struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Type string `json:"type"`
+	// Ignored marks an entry Git ignores, so a tree can hide it.
+	Ignored bool `json:"ignored,omitempty"`
 }
 
 func (e *Engine) directory(directory string) string {
@@ -38,36 +43,14 @@ func (e *Engine) directory(directory string) string {
 	return canonicalDirectory(directory)
 }
 
-func (e *Engine) ReadFile(ctx context.Context, directory, path string) (FileContent, error) {
-	input, _ := json.Marshal(map[string]string{"path": path})
-	result, err := (tool.ReadFile{}).Run(ctx, tool.Call{Input: input, Env: tool.Env{Workdir: e.directory(directory)}})
-	if err != nil {
-		return FileContent{}, err
-	}
-	if result.IsError {
-		return FileContent{}, errors.New("file read failed")
-	}
-	content := FileContent{Type: "text"}
-	for _, part := range result.Parts {
-		if part.Image != nil {
-			return FileContent{Type: "binary", MIME: part.Image.MIME, Content: base64.StdEncoding.EncodeToString(part.Image.Data)}, nil
-		}
-		if part.Document != nil {
-			return FileContent{Type: "binary", MIME: part.Document.MIME, Content: base64.StdEncoding.EncodeToString(part.Document.Data)}, nil
-		}
-		if !utf8.ValidString(part.Text) {
-			return FileContent{Type: "binary"}, nil
-		}
-		content.Content += part.Text
-	}
-	return content, nil
-}
-
 func (e *Engine) ListFiles(ctx context.Context, directory, path string) ([]FileNode, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	directory = e.directory(directory)
+	if missing(directory) {
+		return nil, coded(errorcode.DirectoryMissing, errors.New("the folder does not exist"))
+	}
 	absolute := path
 	if !filepath.IsAbs(path) {
 		absolute = filepath.Join(directory, path)
@@ -86,6 +69,15 @@ func (e *Engine) ListFiles(ctx context.Context, directory, path string) ([]FileN
 			node.Type = "directory"
 		}
 		result = append(result, node)
+	}
+	paths := make([]string, len(result))
+	for i, node := range result {
+		paths[i] = node.Path
+	}
+	if ignored := git.IgnoredAmong(ctx, directory, paths); len(ignored) > 0 {
+		for i := range result {
+			result[i].Ignored = ignored[result[i].Path]
+		}
 	}
 	return result, nil
 }
@@ -134,6 +126,21 @@ func (e *Engine) RepoCommit(ctx context.Context, directory, message string, path
 	return git.CommitChanges(ctx, e.directory(directory), message, paths)
 }
 
+// RepoStage adds files to the index.
+func (e *Engine) RepoStage(ctx context.Context, directory string, paths []string) error {
+	return git.Stage(ctx, e.directory(directory), paths)
+}
+
+// RepoUnstage takes files out of the index and leaves the working files alone.
+func (e *Engine) RepoUnstage(ctx context.Context, directory string, paths []string) error {
+	return git.Unstage(ctx, e.directory(directory), paths)
+}
+
+// RepoCommitStaged records what the index holds.
+func (e *Engine) RepoCommitStaged(ctx context.Context, directory, message string) (string, error) {
+	return git.CommitStaged(ctx, e.directory(directory), message)
+}
+
 // RepoPush sends the current branch to its remote.
 func (e *Engine) RepoPush(ctx context.Context, directory string) error {
 	return git.Push(ctx, e.directory(directory))
@@ -168,7 +175,12 @@ func (e *Engine) RepoCommitMessage(ctx context.Context, directory string) (strin
 
 // CreateWorktree makes the worktree of a key for a conversation, or returns the one that key already has.
 func (e *Engine) CreateWorktree(ctx context.Context, directory, key, branch string) (code.Worktree, error) {
-	return e.worktrees().Create(ctx, e.directory(directory), key, branch)
+	return e.CreateWorktreeFrom(ctx, directory, key, branch, "")
+}
+
+// CreateWorktreeFrom makes the worktree of a key starting from the given branch, which stays checked out where it is.
+func (e *Engine) CreateWorktreeFrom(ctx context.Context, directory, key, branch, base string) (code.Worktree, error) {
+	return e.worktrees().CreateFrom(ctx, e.directory(directory), key, branch, base)
 }
 
 // ListWorktrees lists the worktrees this engine made for the repository of a directory.
@@ -218,7 +230,24 @@ func (e *Engine) FileStatus(ctx context.Context, directory, path string) (code.S
 
 // FileIdentity names the canonical folder and the repository root of a path.
 func (e *Engine) FileIdentity(ctx context.Context, directory, path string) (code.Identity, error) {
-	return code.FileIdentity(ctx, e.directory(directory), path)
+	directory = e.directory(directory)
+	if missing(directory) {
+		return code.Identity{}, coded(errorcode.DirectoryMissing, errors.New("the folder does not exist"))
+	}
+	identity, err := code.FileIdentity(ctx, directory, path)
+	if err != nil || identity.Root == "" {
+		return identity, err
+	}
+	trees, err := e.worktrees().All(ctx)
+	if err != nil {
+		return identity, err
+	}
+	for _, tree := range trees {
+		if workspace.SameDirectory(tree.Path, identity.Root) {
+			identity.Worktree = tree.Key
+		}
+	}
+	return identity, nil
 }
 
 // FindFiles finds project files by a part of their path.
@@ -228,3 +257,30 @@ func (e *Engine) FindFiles(ctx context.Context, directory, query string, limit i
 
 // Directory returns the canonical folder of a request; an empty one is the engine's own folder.
 func (e *Engine) Directory(directory string) string { return e.directory(directory) }
+
+// ReadFile returns a file as the editor shows it; see code.ReadFile.
+func (e *Engine) ReadFile(ctx context.Context, directory, path string) (FileContent, error) {
+	read, err := code.ReadFile(ctx, e.directory(directory), path)
+	if err != nil {
+		return FileContent{}, err
+	}
+	return FileContent{Type: read.Type, Content: read.Content, MIME: read.MIME, Checksum: read.Checksum, Head: read.Head, Missing: read.Missing}, nil
+}
+
+// WriteFile saves the text of the editor over the version it read; see code.WriteFile.
+func (e *Engine) WriteFile(ctx context.Context, directory, path, content, expected string, force bool) (string, error) {
+	checksum, err := code.WriteFile(ctx, e.directory(directory), path, content, expected, force)
+	if errors.Is(err, code.ErrChanged) {
+		return "", coded(errorcode.FileChanged, err)
+	}
+	return checksum, err
+}
+
+// missing says the folder of a request is gone; an empty one means the engine's own folder.
+func missing(directory string) bool {
+	if directory == "" {
+		return false
+	}
+	_, err := os.Stat(directory)
+	return errors.Is(err, fs.ErrNotExist)
+}

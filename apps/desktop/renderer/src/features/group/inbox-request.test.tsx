@@ -5,8 +5,9 @@ import { EngineEventSchema } from "@merakcode/sdk"
 import { engineFixture } from "../../test/engine"
 import { client } from "../../state/client"
 import { setLocale } from "../../i18n"
-import { localHuman } from "../../state/groups"
-import { GroupConversation } from "../conversation/group-page"
+import { connectGroups, groupsLoaded, loadGroups, localHuman } from "../../state/groups"
+import { HomeInbox } from "../start/inbox"
+import { connect } from "../../state/store"
 
 test.each(["question", "permission"] as const)("answers a group %s as the named human", async (kind) => {
   const engine = await engineFixture({
@@ -98,14 +99,23 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
         },
       ],
     })
-    dispose = render(
+    const stopStore = connect()
+    const stopGroups = connectGroups()
+    await loadGroups()
+    await groupsLoaded()
+    const unmount = render(
       () => (
         <Router>
-          <Route path="/" component={() => <GroupConversation id={group.id} directory={engine.project} />} />
+          <Route path="/" component={() => <HomeInbox />} />
         </Router>
       ),
       host,
     )
+    dispose = () => {
+      unmount()
+      stopGroups()
+      stopStore()
+    }
     if (kind === "question") await connection.group.say({ group: group.id, text: "Ask me to choose the color." })
     else
       await connection.task.create({
@@ -116,10 +126,13 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
       })
     const button = (label: string, root: ParentNode = document) =>
       [...root.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === label)
-    button("Inbox", host)!.click()
+    const open = (text: string) =>
+      [...host.querySelectorAll<HTMLElement>("article[data-pending=true]")]
+        .find((article) => article.textContent?.includes(text))
+        ?.querySelector<HTMLButtonElement>("button[data-open]")
     const title = kind === "question" ? "Which color?" : "write_file"
-    await expect.poll(() => button(title, host), { timeout: 10000 }).toBeDefined()
-    button(title, host)!.click()
+    await expect.poll(() => open(title), { timeout: 10000 }).toBeDefined()
+    open(title)!.click()
     const region = kind === "question" ? "Question" : "Approval"
     await expect.poll(() => document.querySelector(`[aria-label="${region}"]`)).not.toBeNull()
     const request = document.querySelector(`[aria-label="${region}"]`)!
@@ -142,15 +155,15 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
         { timeout: 10000 },
       )
       .toEqual({ text: kind === "question" ? "Blue" : "allow", human: localHuman })
-    await expect.poll(() => host.querySelector('[aria-label="To do"]')?.textContent).not.toContain(title)
+    await expect.poll(() => host.querySelector('[aria-label="Inbox"]')?.textContent).not.toContain(title)
     if (kind === "question") {
-      await expect.poll(() => button("Which shape?", host), { timeout: 10000 }).toBeDefined()
-      button("Which shape?", host)!.click()
+      await expect.poll(() => open("Which shape?"), { timeout: 10000 }).toBeDefined()
+      open("Which shape?")!.click()
       expect(document.querySelector('[aria-label="Question"]')?.textContent ?? "").not.toContain("Which color?")
       await expect.poll(() => document.querySelector('[aria-label="Question"]')?.textContent).toContain("Which shape?")
       button("Circle", document.querySelector('[aria-label="Question"]')!)!.click()
       button("Submit", document.querySelector('[aria-label="Question"]')!)!.click()
-      await expect.poll(() => host.querySelector('[aria-label="To do"]')?.textContent).not.toContain("Which shape?")
+      await expect.poll(() => host.querySelector('[aria-label="Inbox"]')?.textContent).not.toContain("Which shape?")
     }
   } finally {
     dispose()

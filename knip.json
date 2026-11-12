@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["go"],
+  "ignoreBinaries": ["go", "subst.exe"],
   "workspaces": {
     ".": {
       "entry": ["script/*.ts"]

@@ -190,7 +190,7 @@ func ReadProject(root string) (Value, error) {
 		if err != nil || len(data) > 1<<20 {
 			return Value{}, errors.New("workspace configuration could not be read")
 		}
-		value, err := load(data)
+		value, err := load(data, true)
 		if err != nil {
 			return Value{}, err
 		}

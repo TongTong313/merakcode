@@ -34,6 +34,8 @@ type State = {
   titles: Record<string, string>
   hidden: string[]
   updated: Record<string, number>
+  /** Worktrees the engine made for the open folders; a conversation in one is listed under its folder */
+  worktrees: { path: string; root: string }[]
 }
 
 export const [state, setState] = createStore<State>({
@@ -45,6 +47,7 @@ export const [state, setState] = createStore<State>({
   titles: {},
   hidden: [],
   updated: {},
+  worktrees: [],
 })
 const listeners = new Set<(directory: string, event: EngineEvent) => void>()
 const watches = new Map<string, Promise<{ close(): Promise<void> }>>()
@@ -64,8 +67,12 @@ function receive(event: EngineEvent) {
       ...items,
       { id: event.payload.id, createdAt: event.time, config: event.payload.config },
     ])
-    if (state.folders.some((folder) => sameDir(folder.directory, event.payload.config.workdir)))
+    if (
+      !event.payload.config.member &&
+      state.folders.some((folder) => sameDir(folder.directory, event.payload.config.workdir))
+    )
       void messages(event.payload.id).catch(failed)
+    else void loadWorktrees().catch(failed)
   }
   if (id && event.seq) setState("updated", id, Date.parse(event.time))
   const directory =
@@ -146,16 +153,37 @@ export async function loadProviders() {
   })
 }
 
+/** Reads the worktrees of every open folder, so conversations that run in one are listed with their project. */
+async function loadWorktrees() {
+  const connection = await client()
+  const lists = await Promise.all(
+    state.folders.map((folder) => connection.worktree.list({ directory: folder.directory }).catch(() => [])),
+  )
+  const known = lists.flatMap((list) => list ?? [])
+  setState("worktrees", reconcile(known.map((tree) => ({ path: tree.path, root: tree.root }))))
+  await Promise.all(
+    state.sessions
+      .filter((info) => known.some((tree) => sameDir(tree.path, info.config.workdir)))
+      .map((info) => messages(info.id)),
+  )
+}
+
 async function refresh(connection?: EngineClient) {
   const active = connection ?? (await client())
   const list = await active.session.list()
   setState("sessions", reconcile(list ?? []))
+  await loadWorktrees()
   await loadProviders()
-  await Promise.all(
+  // The threads of group members are read when a group page or a task shows them; watching all of them here would
+  // make the start wait for every running agent
+  const results = await Promise.allSettled(
     state.sessions
-      .filter((info) => state.folders.some((folder) => sameDir(folder.directory, info.config.workdir)))
+      .filter(
+        (info) => !info.config.member && state.folders.some((folder) => sameDir(folder.directory, info.config.workdir)),
+      )
       .map((info) => messages(info.id)),
   )
+  for (const result of results) if (result.status === "rejected") failed(result.reason)
 }
 
 export async function bootstrap() {
@@ -226,17 +254,21 @@ export function session(id: string): SessionSummary | undefined {
   }
 }
 
-export function sessionsOf(folder: Folder) {
+/** Every conversation the person started, newest change first; the sidebar and the home page list these. */
+export function conversations() {
   return state.sessions
-    .filter(
-      (info) =>
-        !info.config.parent &&
-        !info.config.member &&
-        !state.hidden.includes(info.id) &&
-        sameDir(info.config.workdir, folder.directory),
-    )
+    .filter((info) => !info.config.parent && !info.config.member && !state.hidden.includes(info.id))
     .map((info) => session(info.id)!)
     .toSorted((a, b) => b.time.updated - a.time.updated)
+}
+
+/** The conversations of a folder, also those that run in a worktree of it. */
+export function sessionsOf(folder: Folder) {
+  return conversations().filter(
+    (item) =>
+      sameDir(item.directory, folder.directory) ||
+      state.worktrees.some((tree) => sameDir(tree.root, folder.directory) && sameDir(tree.path, item.directory)),
+  )
 }
 
 export async function renameSession(id: string, title: string) {

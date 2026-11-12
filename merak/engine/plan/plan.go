@@ -172,3 +172,22 @@ func (p *Plans) Finish(ctx context.Context, session event.ID) (Plan, error) {
 func (p *Plans) Stop(ctx context.Context, session event.ID) (Plan, error) {
 	return p.end(ctx, session, Stopped)
 }
+
+// Import stores the plan of a conversation of an earlier version as it ended: Done or Stopped, with its content as
+// the snapshot it ran from. It refuses to replace a plan that is already there.
+func (p *Plans) Import(ctx context.Context, session event.ID, content string, status Status) (Plan, error) {
+	if status != Done && status != Stopped {
+		return Plan{}, ErrState
+	}
+	if strings.TrimSpace(content) == "" {
+		return Plan{}, errors.New("a plan needs content")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, _, err := p.load(ctx, session); err == nil {
+		return Plan{}, ErrState
+	} else if !errors.Is(err, ErrNone) {
+		return Plan{}, err
+	}
+	return p.put(ctx, Plan{Session: session, Content: content, Status: status, Revision: 1, Snapshot: content}, 0)
+}

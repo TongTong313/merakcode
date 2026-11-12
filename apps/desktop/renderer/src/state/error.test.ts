@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { details, summary } from "./error"
+import { codeOf, details, MerakCodeError, summary } from "./error"
 
 describe("error summary", () => {
   test("shows the code and request id of an engine error", () => {
@@ -50,4 +50,18 @@ test("the new SDK's coded Error is recognized in summaries and copied details", 
   const error = new Error("MRK-1001")
   expect(summary(error)).toBe("MRK-1001")
   expect(details(error, { version: "1", platform: "win32", time: "now" })).toContain("code: MRK-1001")
+})
+
+test("a localized wrapper keeps the engine code available for diagnostics", () => {
+  const cause = new Error("MRK-1001")
+  const error = new MerakCodeError({ code: "MRK-4026", message: "Could not read editor state", cause })
+  expect(summary(error)).toBe("MRK-4026")
+  const wrapper = new Error("Recovery failed", { cause })
+  expect(summary(wrapper)).toBe("MRK-1001")
+  expect(codeOf(wrapper)).toBe("MRK-1001")
+  expect(codeOf(error)).toBe("MRK-4026")
+  expect(codeOf(new Error("plain"))).toBeUndefined()
+  const cycle = new Error("cycle")
+  cycle.cause = cycle
+  expect(summary(cycle)).toBeUndefined()
 })

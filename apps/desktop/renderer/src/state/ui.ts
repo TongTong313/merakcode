@@ -1,74 +1,75 @@
 import { createStore } from "solid-js/store"
 import { storage } from "../lib/bridge"
+import { openPanel, panels, togglePanels } from "../features/panel/workspace"
+import { t } from "../i18n"
+import { toast } from "../ui/toast"
 
-export type Tab = "review" | "git" | "code" | "browser"
-export type SettingsSection = "general" | "models" | "profiles" | "cloud" | "about"
+export type SettingsSection =
+  "general" | "models" | "permissions" | "mcp" | "skills" | "rules" | "memory" | "board" | "cloud" | "about"
 
 /** UI layout state; panel width, tab and terminal height are saved and restored on the next launch */
 type UI = {
   settings?: SettingsSection
   palette: boolean
-  /** The new-team dialog is open */
+  /** The new-group dialog is open */
   newTeam: boolean
+  /** The new-task dialog is open */
+  newTask: boolean
   panel: boolean
   /** The member column of a group conversation shows only avatars */
   membersCollapsed: boolean
-  tab: Tab
   /** The review fills the whole window */
   maximized: boolean
-  terminal: boolean
   panelWidth: number
-  terminalHeight: number
   /** Onboarding was skipped during this launch */
   skipped: boolean
-  /** File to open in the code tab (relative to the conversation directory); at lets the same file open again */
-  openFile?: { path: string; at: number }
 }
 
 export const [ui, setUi] = createStore<UI>({
   palette: false,
   newTeam: false,
+  newTask: false,
   panel: false,
   membersCollapsed: false,
-  tab: "review",
   maximized: false,
-  terminal: false,
   panelWidth: 560,
-  terminalHeight: 260,
   skipped: false,
 })
 
 const KEY = "layout"
-type Saved = Pick<UI, "panel" | "membersCollapsed" | "tab" | "panelWidth" | "terminalHeight">
+type Saved = Pick<UI, "membersCollapsed">
 
 export async function restoreLayout() {
   const saved = await storage.get<Partial<Saved>>(KEY, {})
-  setUi({ ...saved })
+  if (typeof saved.membersCollapsed === "boolean") setUi("membersCollapsed", saved.membersCollapsed)
 }
 
 export function saveLayout() {
+  void panels()?.update({ visible: ui.panel, width: ui.panelWidth })
   void storage.set(KEY, {
-    panel: ui.panel,
     membersCollapsed: ui.membersCollapsed,
-    tab: ui.tab,
-    panelWidth: ui.panelWidth,
-    terminalHeight: ui.terminalHeight,
   })
 }
 
 /** Opens a file in the side panel's code tab (from the review or a file-edit card) */
 export function openInCode(path: string) {
-  setUi({ panel: true, tab: "code", maximized: false, openFile: { path, at: Date.now() } })
-  saveLayout()
-}
-
-export function showTab(tab: Tab) {
-  setUi({ panel: true, tab })
+  setUi({ panel: true, maximized: false })
+  void openPanel({ kind: "file", path: path.replace(/\\/g, "/") }).catch((error: unknown) =>
+    toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+  )
   saveLayout()
 }
 
 export function togglePanel() {
-  setUi("panel", (open) => !open)
-  if (!ui.panel) setUi("maximized", false)
+  setUi("maximized", false)
+  void togglePanels()
+}
+
+/** Opens the one editable session plan in the existing code editor. */
+export function openPlanInCode(sessionID: string) {
+  setUi({ panel: true, maximized: false })
+  void openPanel({ kind: "file", path: `Plan-${sessionID}.md`, planSessionID: sessionID }).catch((error: unknown) =>
+    toast({ kind: "error", title: t("error.request", { message: String(error) }), error }),
+  )
   saveLayout()
 }

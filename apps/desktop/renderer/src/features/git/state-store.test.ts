@@ -63,7 +63,7 @@ test("a refresh arriving during the initial Git load preserves its result", asyn
         () => ({
           error: changes.error()?.message,
           loading: changes.loading(),
-          files: changes.data()?.files?.map((file) => file.path),
+          files: [...(changes.data()?.staged ?? []), ...(changes.data()?.unstaged ?? [])].map((file) => file.file),
         }),
         { timeout: 5000 },
       )
@@ -115,14 +115,14 @@ test("external file changes and commits refresh Git and review views", async () 
     await expect.poll(() => review.data(), { timeout: 5000 }).toBeDefined()
     await writeFile(path.join(env.project, "watched.txt"), "External file\n")
     await expect
-      .poll(() => changes.data()?.files?.map((file) => file.path), { timeout: 10_000 })
+      .poll(() => (changes.data()?.unstaged ?? []).map((file) => file.file), { timeout: 10_000 })
       .toContain("watched.txt")
     await expect.poll(() => review.data()?.files.map((file) => file.file), { timeout: 3000 }).toContain("watched.txt")
     await env.git("add", "watched.txt")
     await env.git("commit", "-m", "External commit")
     const head = await env.git("rev-parse", "HEAD")
     await expect.poll(() => identityOf(env.project)?.head, { timeout: 10_000 }).toBe(head)
-    await expect.poll(() => changes.data()?.files?.map((file) => file.path)).not.toContain("watched.txt")
+    await expect.poll(() => (changes.data()?.unstaged ?? []).map((file) => file.file)).not.toContain("watched.txt")
   } finally {
     dispose()
     const closed = connection.closed

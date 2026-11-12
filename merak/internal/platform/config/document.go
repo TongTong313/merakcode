@@ -117,7 +117,10 @@ func decodeKey(top map[string]json.RawMessage, key string, target any) error {
 
 // buildValue turns the parsed file into a value. Keys that v1 does not know or does not use are listed in the
 // warnings, not rejected.
-func buildValue(top map[string]json.RawMessage) (Value, error) {
+//
+// strict is set for the configuration files of a project, which come from outside: an entry that cannot be used makes
+// the file fail. The file of the user is lenient: such an entry is skipped with a warning and the rest still loads.
+func buildValue(top map[string]json.RawMessage, strict bool) (Value, error) {
 	value := Value{Providers: map[string]Provider{}}
 	var level, localeText string
 	var disabled []string
@@ -233,21 +236,29 @@ func buildValue(top map[string]json.RawMessage) (Value, error) {
 		provider.Disabled = true
 		value.Providers[id] = provider
 	}
-	for name, raw := range mcp {
+	for _, name := range slices.Sorted(maps.Keys(mcp)) {
 		var source fileMCP
-		if err := json.Unmarshal(raw, &source); err != nil {
-			return Value{}, fmt.Errorf("invalid mcp.%s", name)
+		if err := json.Unmarshal(mcp[name], &source); err != nil {
+			if strict {
+				return Value{}, fmt.Errorf("invalid mcp.%s", name)
+			}
+			value.warn("mcp." + name + ": this entry is not valid and is skipped")
+			continue
 		}
 		if source.Type != "local" && source.Type != "remote" {
 			value.warn("mcp." + name + ": unknown server type, skipped")
 			continue
 		}
-		if value.MCPServers == nil {
-			value.MCPServers = map[string]MCPServer{}
-		}
 		server, err := mcpServer(name, source)
 		if err != nil {
-			return Value{}, err
+			if strict {
+				return Value{}, err
+			}
+			value.warn("mcp." + name + ": this entry is not valid and is skipped")
+			continue
+		}
+		if value.MCPServers == nil {
+			value.MCPServers = map[string]MCPServer{}
 		}
 		value.MCPServers[name] = server
 	}

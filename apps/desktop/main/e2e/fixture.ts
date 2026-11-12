@@ -22,6 +22,7 @@ import os from "node:os"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { connect } from "@merakcode/sdk"
+import { installRpc, type Rpc } from "./rpc"
 
 const alive = (pid: number) => {
   try {
@@ -96,6 +97,15 @@ export type Kit = {
   settings: (section?: RegExp) => Promise<void>
   /** Right-hand side panel */
   panel: () => Locator
+  /** Opens a tab of the side panel, reusing an open one unless fresh is set */
+  openPanel: (kind: "file" | "review" | "plan" | "git" | "browser" | "terminal", fresh?: boolean) => Promise<void>
+  /** Closes the app (or kills it when crash is set), starts it again on the same data and waits for the input */
+  restart: (crash?: boolean) => Promise<void>
+  /**
+   * Puts a proxy in front of the page's engine connection and reloads the page, so a spec can watch, hold, fail or
+   * lose engine calls. Call it before the interaction under test; asking again returns the same proxy.
+   */
+  rpc: () => Promise<Rpc>
   /** Runs git in the project directory */
   git: (...args: string[]) => string
 }
@@ -105,11 +115,15 @@ const electron = createRequire(path.join(main, "package.json"))("electron") as u
 
 type Message = { role: string; content?: unknown }
 
+// The engine puts the date in front of the first message; a scenario answers what the person wrote
+const withoutDate = (value: string) =>
+  value.replace(/^Current date and time: \d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)/, "")
+
 const text = (content: unknown) =>
   typeof content === "string"
-    ? content
+    ? withoutDate(content)
     : Array.isArray(content)
-      ? content.map((part: { text?: string }) => part.text ?? "").join("")
+      ? withoutDate(content.map((part: { text?: string }) => part.text ?? "").join(""))
       : ""
 
 /** OpenAI-compatible streaming reply */
@@ -304,26 +318,29 @@ export const test = base.extend<{
       const key = Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH"
       env[key] = `${bin}${path.delimiter}${env[key] ?? ""}`
     }
-    const app = await _electron.launch({
-      executablePath: electron,
-      args: [
-        main,
-        ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
-        `--user-data-dir=${path.join(root, "electron")}`,
-        `merakcode://open-project?directory=${encodeURIComponent(project)}`,
-      ],
-      env: {
-        ...env,
-        MERAKCODE_HOME: root,
-        MERAKCODE_DISABLE_AUTOUPDATE: "1",
-        MERAKCODE_DISABLE_CATALOG_FETCH: "1",
-        MERAKCODE_SANDBOX_MODE: "off",
-        MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
-        MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
-      },
-      timeout: 60_000,
-    })
-    const page = await app.firstWindow()
+    const launch = () =>
+      _electron.launch({
+        executablePath: electron,
+        args: [
+          main,
+          ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
+          `--user-data-dir=${path.join(root, "electron")}`,
+          `merakcode://open-project?directory=${encodeURIComponent(project)}`,
+        ],
+        env: {
+          ...env,
+          MERAKCODE_HOME: root,
+          MERAKCODE_DISABLE_AUTOUPDATE: "1",
+          MERAKCODE_DISABLE_CATALOG_FETCH: "1",
+          MERAKCODE_SANDBOX_MODE: "off",
+          MERAKCODE_BROWSER_LEAVE_UNLOAD: "1",
+          MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
+          MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
+        },
+        timeout: 60_000,
+      })
+    let app = await launch()
+    let page = await app.firstWindow()
     const output: string[] = []
     page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
     page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
@@ -355,6 +372,15 @@ export const test = base.extend<{
     const mode = async (name: RegExp) => {
       await modeButton().click()
       await page.getByRole("option", { name }).click()
+      // The engine only starts a session in full takeover after an explicit confirmation (MRK-4006)
+      const confirm = page.getByRole("dialog", { name: /^(启用全面接管？|Enable full takeover\?)$/ })
+      if (
+        await confirm.waitFor({ timeout: 1000 }).then(
+          () => true,
+          () => false,
+        )
+      )
+        await confirm.getByRole("button", { name: /^(启用全面接管|Enable full takeover)$/ }).click()
     }
     const modeButton = () =>
       page
@@ -375,13 +401,97 @@ export const test = base.extend<{
       if (section) await page.getByText(section).filter({ visible: true }).first().click()
     }
     const panel = () => page.getByRole("complementary", { name: /^(右侧面板|Side panel)$/ })
+    const openPanel: Kit["openPanel"] = async (kind, fresh = false) => {
+      if (!(await panel().isVisible())) await page.getByRole("button", { name: "右侧面板", exact: true }).click()
+      const names = {
+        file: "打开文件",
+        review: "审阅",
+        plan: "计划",
+        git: "Git 管理",
+        browser: "浏览器",
+        terminal: "终端",
+      }
+      const known = panel()
+        .getByRole("tab", { name: kind === "file" ? /^notes\.txt/ : new RegExp(`^${names[kind]}`) })
+        .last()
+      if (!fresh && (await known.isVisible())) {
+        await known.click()
+        return
+      }
+      await panel().getByRole("button", { name: "新标签页", exact: true }).click()
+      await panel().getByRole("button", { name: names[kind], exact: true }).click()
+    }
+    const exited = () => appProcess.exitCode !== null || appProcess.signalCode !== null
+    /**
+     * Closes the app the way a person does: if the close guard asks about unsaved drafts, keeps them and closes. The
+     * wait ends when the process exits; one that has not exited after a bounded time is killed with its children.
+     */
+    const closeApp = async () => {
+      if (exited()) return
+      void app.close().catch(() => {})
+      const keep = page
+        .getByRole("dialog", { name: /^(关闭窗口？|Close window?)$/ })
+        .getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ })
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline && !exited()) {
+        if (await keep.isVisible().catch(() => false)) await keep.click({ timeout: 2000 }).catch(() => {})
+        await delay(250)
+      }
+      if (exited()) return
+      const pid = appProcess.pid
+      if (pid && process.platform === "win32") {
+        try {
+          execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
+        } catch {
+          /* The process may have exited meanwhile. */
+        }
+      } else {
+        try {
+          appProcess.kill("SIGKILL")
+        } catch {
+          /* The process may have exited meanwhile. */
+        }
+      }
+      for (let wait = 0; wait < 100 && !exited(); wait++) await delay(100)
+    }
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
-    const tracing = app.context().tracing
+    let tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
-    const appProcess = app.process()
+    let appProcess = app.process()
+    let proxied: { page: Page; rpc: Rpc } | undefined
+    const rpc = async () => {
+      if (proxied?.page === page) return proxied.rpc
+      const value = await installRpc(page, root)
+      await page.reload()
+      await input().waitFor()
+      proxied = { page, rpc: value }
+      return value
+    }
     await use({
-      app,
-      page,
+      get app() {
+        return app
+      },
+      get page() {
+        return page
+      },
+      restart: async (crash = false) => {
+        await tracing.stop()
+        if (crash) {
+          const exited = new Promise<void>((resolve) => appProcess.once("exit", () => resolve()))
+          await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
+          await exited
+        } else {
+          await closeApp()
+        }
+        app = await launch()
+        appProcess = app.process()
+        page = await app.firstWindow()
+        page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
+        page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
+        tracing = app.context().tracing
+        await tracing.start({ screenshots: true, snapshots: true, sources: true })
+        await input().waitFor({ timeout: 120_000 })
+      },
       project,
       root,
       requests: fake.count,
@@ -394,6 +504,8 @@ export const test = base.extend<{
       approval,
       settings,
       panel,
+      openPanel,
+      rpc,
       git: run,
     })
     const alreadyExited = appProcess.exitCode !== null || appProcess.signalCode !== null
@@ -402,13 +514,9 @@ export const test = base.extend<{
       await tracing.stop({ path: trace })
       await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
     } else if (!alreadyExited) await tracing.stop()
-    // Closing waits for the output of the app to end, which the background engine may still hold open: once the app
-    // has exited, stop the engine, then wait for the close to finish
-    const closing = app.close().catch(() => undefined)
-    for (let wait = 0; wait < 400 && appProcess.exitCode === null && appProcess.signalCode === null; wait++)
-      await delay(25)
+    // The app may be waiting on its close dialog (unsaved drafts): answer it, and never leave a process behind
+    await closeApp()
     await stopEngine(root)
-    await closing
     fake.close()
     const initializedSandbox = await readFile(path.join(root, "data", "sandbox", "state.json")).then(
       () => true,

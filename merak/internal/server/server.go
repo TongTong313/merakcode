@@ -19,6 +19,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/question"
+	"github.com/TongTong313/merakcode/merak/internal/migrate"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	"github.com/TongTong313/merakcode/merak/internal/platform/websocket"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -32,6 +33,8 @@ type Server struct {
 	Level      *slog.LevelVar
 	dataDir    string
 	configRoot string
+	// migration imports the data of v0.3 that this machine may hold; it is made when the server starts.
+	migration *migrate.Migration
 	// human is the person the connections that carry the token act as; identities lists other tokens and their people.
 	human       event.ID
 	identities  map[string]event.ID
@@ -51,7 +54,7 @@ type Server struct {
 
 func New(e *engine.Engine, token string) *Server {
 	e.SetLocalHuman(protocol.LocalHuman)
-	return &Server{engine: e, human: protocol.LocalHuman, token: token, identities: map[string]event.ID{}, connections: make(map[*websocket.Conn]bool), desktops: make(map[*websocket.Conn]string), approvals: make(map[event.ID]*approval), questions: make(map[event.ID]*pendingQuestion), forwarded: make(map[*websocket.Conn]chan struct{}), done: make(chan struct{})}
+	return &Server{engine: e, migration: migrate.New(migrate.Options{Human: protocol.LocalHuman, Engine: e}), human: protocol.LocalHuman, token: token, identities: map[string]event.ID{}, connections: make(map[*websocket.Conn]bool), desktops: make(map[*websocket.Conn]string), approvals: make(map[event.ID]*approval), questions: make(map[event.ID]*pendingQuestion), forwarded: make(map[*websocket.Conn]chan struct{}), done: make(chan struct{})}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -319,6 +322,7 @@ func (s *Server) Close() error {
 		s.mu.Lock()
 		s.closed = true
 		s.mu.Unlock()
+		s.migration.Close()
 		s.closeErr = s.engine.Shutdown(ctx)
 		s.mu.Lock()
 		var forwarded []chan struct{}

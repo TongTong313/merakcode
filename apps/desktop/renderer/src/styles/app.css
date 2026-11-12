@@ -604,6 +604,11 @@
   display: flex;
   gap: 2px;
   margin-top: -6px;
+  opacity: 0;
+}
+.assistant-message:hover .turn-actions,
+.turn-actions:focus-within {
+  opacity: 1;
 }
 .turn-actions:empty {
   display: none;
@@ -1448,74 +1453,16 @@
   max-width: 60%;
 }
 
-/* Terminal */
-.terminal {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  flex: none;
-}
-.terminal-resize,
+/* Native terminal viewport and editor resize handle */
 .panel-resize {
   position: absolute;
   z-index: 5;
-}
-.terminal-resize {
-  top: -3px;
-  left: 0;
-  right: 0;
-  height: 6px;
-  cursor: row-resize;
-}
-.terminal-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 8px 0 12px;
-  font-size: var(--text-sm);
-  flex: none;
 }
 .terminal-host {
   flex: 1;
   min-height: 0;
   padding: 0 8px 6px 12px;
   overflow: hidden;
-}
-.terminal-tabs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-}
-.terminal-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 2px 0 8px;
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.terminal-tab:hover {
-  background: var(--surface-hover);
-}
-.terminal-tab[aria-selected="true"] {
-  background: var(--surface-active);
-  color: var(--text);
-}
-.terminal-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.terminal-host.hidden {
-  display: none;
 }
 
 /* Conversation body: the chat and, in a group, the member column beside it */
@@ -2187,4 +2134,354 @@
 .group-create input[type="checkbox"],
 .group-create input[type="radio"] {
   flex: none;
+}
+
+/* Home */
+.home {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 40px 48px;
+}
+.home-inner {
+  display: grid;
+  gap: 28px;
+  max-width: 1100px;
+}
+.home-section h2 {
+  margin: 0 0 8px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.home-section .row {
+  align-items: center;
+}
+.home-inbox {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+.home-inbox .inbox-notice {
+  margin-bottom: 0;
+}
+.home-inbox .inbox-notice[data-read="true"] {
+  opacity: 0.65;
+}
+.home-recent {
+  display: grid;
+  gap: 2px;
+  max-width: 760px;
+}
+.home-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+.home-recent-row:hover {
+  background: var(--surface-hover);
+}
+.home-recent-row .subtle {
+  min-width: 0;
+  max-width: 40%;
+}
+.home-quick .row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Toasts that lead somewhere */
+.toast .body.linked {
+  cursor: pointer;
+}
+.toast .body.linked:hover .title {
+  text-decoration: underline;
+}
+
+/* Agents */
+.agent-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.agent-card .setting-row {
+  align-items: center;
+}
+.agent-wizard .wizard-steps {
+  margin: 0;
+}
+.agent-wizard .env-row {
+  align-items: center;
+  gap: 6px;
+}
+.agent-wizard .env-row .input {
+  min-width: 0;
+  flex: 1;
+}
+.add-member {
+  display: grid;
+  gap: 8px;
+}
+.add-member .agent-card {
+  padding: 8px 12px;
+}
+
+/* Tasks */
+.task-card-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+.task-card-wrap .task-card {
+  margin-bottom: 0;
+}
+.task-card-archive {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+}
+.task-card-wrap:hover .task-card-archive,
+.task-card-archive:focus-visible {
+  opacity: 1;
+}
+.tasks-page {
+  max-width: 1400px;
+  min-width: 0;
+}
+.archive-list {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.archive-row .task-card {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.task-page {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.task-page h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+.task-page h2 {
+  margin: 8px 0 0;
+  font-size: var(--text-md);
+}
+.task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.task-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+}
+.task-facts dt {
+  color: var(--text-muted);
+}
+.task-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+.task-start {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px dashed var(--border-strong);
+}
+.task-start p {
+  margin: 0;
+}
+.task-claim {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.choose-group {
+  display: grid;
+  gap: 8px;
+}
+.choose-row {
+  padding: 10px 12px;
+}
+.choose-row.busy {
+  opacity: 0.6;
+}
+.choose-row p {
+  margin: 4px 0 0;
+}
+
+/* Group chat and the right column */
+.breakdown .group-todo-card {
+  margin-top: 8px;
+}
+.group-reply {
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+.group-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.group-work {
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+.group-task-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(var(--content-width), 100%);
+  margin: 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.group-task-card:hover {
+  background: var(--surface-hover);
+}
+.group-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(var(--content-width), 100%);
+  margin: 0 auto;
+  min-width: 0;
+}
+.receipt {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+}
+.user-turn .receipt {
+  margin-left: 6px;
+}
+.members-subtitle {
+  margin: 12px 0 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.breakdown {
+  display: grid;
+  gap: 2px;
+}
+.breakdown-row {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px 6px calc(8px + var(--depth, 0) * 14px);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.breakdown-row:hover {
+  background: var(--surface-hover);
+}
+.breakdown-row.finished .breakdown-title {
+  color: var(--text-subtle);
+  text-decoration: line-through;
+}
+.breakdown-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.breakdown-assignee .avatar {
+  width: 18px;
+  height: 18px;
+  font-size: var(--text-xs);
+}
+.breakdown-progress {
+  overflow-wrap: anywhere;
+}
+.group-todo-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-muted);
+}
+.group-todo-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.group-todo-head[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+.group-todo-count {
+  flex: none;
+  font-weight: 600;
+}
+.group-todo-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 12px 10px 36px;
+  list-style: none;
+}
+.group-todo-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.group-todo-item::before {
+  content: "○";
+  flex: none;
+  width: 12px;
+  color: var(--text-subtle);
+}
+.group-todo-item[data-status="in_progress"]::before {
+  content: "◐";
+  color: var(--accent);
+}
+.group-todo-item[data-status="completed"] {
+  color: var(--text-muted);
+}
+.group-todo-item[data-status="completed"]::before {
+  content: "✓";
+  color: var(--success);
+}
+
+.agent-duties {
+  display: block;
+  margin-top: 2px;
+  white-space: pre-wrap;
 }

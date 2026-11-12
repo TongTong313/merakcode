@@ -1,13 +1,15 @@
-import type { GroupGroup, GroupMember, AgentAgent, ProtocolCloudStatus, WorkerProductInfo } from "@merakcode/sdk"
-import { createEffect, createSignal, For, on, Show } from "solid-js"
-import { t } from "../../i18n"
-import { bridge } from "../../lib/bridge"
+import type { AgentAgent, GroupGroup, GroupListing, GroupMember, ProtocolCloudStatus, TaskCard } from "@merakcode/sdk"
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
+import { locale, t } from "../../i18n"
+import { agents, loadAgents } from "../../state/agents"
 import { client } from "../../state/client"
-import { choice } from "../../state/models"
-import { localHuman } from "../../state/groups"
+import { groupView, loadGroup, localHuman } from "../../state/groups"
 import { Dialog } from "../../ui/dialog"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
+import { WorkspacePicker } from "../shell/workspace-picker"
+import { memberName } from "../group/roster"
+import { copyGroup } from "./group-copy"
 
 const cloudMemberKey = (member: GroupMember) => JSON.stringify([member.device, member.group, member.id])
 
@@ -16,12 +18,12 @@ export function GroupCreate(props: {
   open: boolean
   onClose: () => void
   onCreated: (group: GroupGroup) => void
+  /** The task this group is made for: its workspace is the group's and cannot be changed, and the group takes it */
+  task?: TaskCard
 }) {
   const [name, setName] = createSignal("")
   const [directory, setDirectory] = createSignal(props.directory)
-  const [profiles, setProfiles] = createSignal<AgentAgent[]>([])
-  const [products, setProducts] = createSignal<WorkerProductInfo[]>([])
-  const [leader, setLeader] = createSignal("builtin-leader")
+  const [leader, setLeader] = createSignal("")
   const [workers, setWorkers] = createSignal<string[]>([])
   const [busy, setBusy] = createSignal(false)
   const [loading, setLoading] = createSignal(true)
@@ -30,6 +32,8 @@ export function GroupCreate(props: {
   const [cloud, setCloud] = createSignal<ProtocolCloudStatus>()
   const [cloudMembers, setCloudMembers] = createSignal<GroupMember[]>([])
   const [sharing, setSharing] = createSignal(false)
+  const [listed, setListed] = createSignal<GroupListing[]>([])
+  const [copied, setCopied] = createSignal<{ from: string; skipped: string[] }>()
   const added = new Set<string>()
   const fail = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
   createEffect(
@@ -42,22 +46,24 @@ export function GroupCreate(props: {
         setCloud(undefined)
         setCloudMembers([])
         setSharing(false)
-        setLeader("builtin-leader")
+        setLeader("")
+        setCopied(undefined)
         added.clear()
         setName("")
-        setDirectory(props.directory)
+        setDirectory(props.task?.project ?? props.directory)
         setWorkers([])
         setLoading(true)
         void client()
           .then(async (connection) => {
-            const [list, catalog, status] = await Promise.all([
-              connection.agent.list({}),
-              connection.agent.catalog(),
+            const [, status, groups] = await Promise.all([
+              loadAgents(),
               connection.cloud.status(),
+              connection.group.list(),
             ])
-            setProfiles(list ?? [])
-            setProducts(catalog ?? [])
             setCloud(status)
+            setListed(groups ?? [])
+            const first = agents().find((agent) => agent.role === "leader")
+            setLeader(agents().find((agent) => agent.id === "builtin-leader")?.id ?? first?.id ?? "")
             setLoading(false)
             const members = status.account ? await connection.cloud.members() : []
             setCloudMembers((members ?? []).filter((member) => member.agentRole === "worker"))
@@ -67,6 +73,7 @@ export function GroupCreate(props: {
       },
     ),
   )
+  const leaders = createMemo(() => agents().filter((agent) => agent.role === "leader"))
   const choices = (): AgentAgent[] =>
     kind() === "cloud"
       ? cloudMembers().map((member) => ({
@@ -79,43 +86,25 @@ export function GroupCreate(props: {
           model: { provider: "", model: "" },
           toolPool: "worker.default",
         }))
-      : [
-          ...profiles().filter((profile) => profile.role === "worker"),
-          ...products()
-            .filter((product) => product.kind !== "builtin" && product.available)
-            .map((product): AgentAgent => ({
-              id: `product:${product.kind}`,
-              name: product.name,
-              role: "worker",
-              shared: true,
-              summary: "Implement and verify assigned work.",
-              duties: "",
-              model: { provider: "", model: "" },
-              toolPool: "worker.default",
-              product: { kind: product.kind, binary: product.binary ?? "" },
-            })),
-        ]
-  const selectedLeader = () => profiles().find((profile) => profile.id === leader())
-  const model = () => choice(undefined, directory()).model
+      : agents().filter((agent) => agent.role === "worker")
+  const selectedLeader = () => leaders().find((agent) => agent.id === leader())
   const ready = () =>
     (kind() === "local" || (!!cloud()?.account && sharing())) &&
     !!directory().trim() &&
     !!selectedLeader() &&
-    !!(selectedLeader()?.model.provider || model()) &&
     !loading() &&
     !busy()
-  const save = async (profile: AgentAgent) => {
-    if (!profile.id.startsWith("builtin-") && !profile.id.startsWith("product:")) return profile
-    const selected = model()
-    return (await client()).agent.save({
-      agent: {
-        ...profile,
-        id: "",
-        model: profile.product
-          ? profile.model
-          : { provider: selected?.providerID ?? "", model: selected?.modelID ?? "" },
-      },
-    })
+  const copy = (id: string) => {
+    const source = listed().find((item) => item.id === id)
+    if (!source) return
+    void loadGroup(id)
+      .then(() => {
+        const result = copyGroup({ name: source.name, members: groupView(id)?.members ?? [] }, agents())
+        setName(result.name)
+        setWorkers(result.workers)
+        setCopied({ from: id, skipped: result.skipped })
+      })
+      .catch(fail)
   }
   const create = async () => {
     if (!ready()) return
@@ -123,22 +112,23 @@ export function GroupCreate(props: {
     try {
       const connection = await client()
       if (!created()) {
-        const profile = await save(selectedLeader()!)
+        const profile = selectedLeader()!
         const id = crypto.randomUUID()
         setCreated(
           await connection.group.create({
             id: "",
             kind: kind(),
-            name: name().trim() || t("group.title"),
+            name: name().trim() || props.task?.title || t("group.title"),
             project: { directory: directory().trim() },
             leader: id,
+            ...(props.task ? { task: props.task.id } : {}),
             members: [
               { id: localHuman, group: "", kind: "human", name: t("group.you"), role: "owner", status: "idle" },
               {
                 id,
                 group: "",
                 kind: "agent",
-                name: profile.name,
+                name: memberName(profile.name, "Leader"),
                 agentRole: "leader",
                 agent: profile.id,
                 owner: localHuman,
@@ -153,24 +143,20 @@ export function GroupCreate(props: {
         if (kind() === "cloud") {
           const member = cloudMembers().find((member) => cloudMemberKey(member) === id)
           if (member) {
-            await connection.group.addMember({
-              group: created()!.id,
-              member,
-            })
+            await connection.group.addMember({ group: created()!.id, member })
             added.add(id)
           }
           continue
         }
-        const draft = choices().find((profile) => profile.id === id)
-        if (!draft) continue
-        const profile = await save(draft)
+        const profile = choices().find((agent) => agent.id === id)
+        if (!profile) continue
         await connection.group.addMember({
           group: created()!.id,
           member: {
             id: crypto.randomUUID(),
             group: created()!.id,
             kind: "agent",
-            name: profile.name,
+            name: memberName(profile.name, "Worker"),
             agentRole: "worker",
             agent: profile.id,
             owner: localHuman,
@@ -187,17 +173,12 @@ export function GroupCreate(props: {
       setBusy(false)
     }
   }
-  const pick = async () => {
-    const value = await bridge?.openDirectoryPicker({ title: t("sidebar.openProject") })
-    const picked = Array.isArray(value) ? value[0] : value
-    if (picked) setDirectory(picked)
-  }
   return (
     <Dialog
       open={props.open}
       onOpenChange={(open) => !open && props.onClose()}
-      title={t("group.title")}
-      description={t("group.lead")}
+      title={t("groupCreate.title")}
+      description={props.task ? t("groupCreate.fromTask", { title: props.task.title }) : t("groupCreate.lead")}
       class="group-create"
       footer={
         <>
@@ -211,7 +192,7 @@ export function GroupCreate(props: {
       }
     >
       <div class="dialog-body form">
-        <fieldset class="field" disabled={busy() || !!created()}>
+        <fieldset class="field" disabled={busy() || !!created() || !!props.task}>
           <legend>{t("group.kind")}</legend>
           <For each={["local", "cloud"] as const}>
             {(value) => (
@@ -248,63 +229,88 @@ export function GroupCreate(props: {
           </label>
           <p class="subtle">{t("group.cloud.data")}</p>
         </Show>
+        <WorkspacePicker value={directory()} onChange={setDirectory} disabled={busy() || !!created() || !!props.task} />
+        <Show when={props.task}>
+          <p class="subtle">{t("workspace.fixed")}</p>
+        </Show>
+        <Show when={listed().length && !props.task && !created()}>
+          <div class="field">
+            <span>{t("group.copyFrom")}</span>
+            <Select
+              class="chip outlined"
+              label={t("group.copyFrom")}
+              placeholder={t("group.copyFromPlaceholder")}
+              value={copied()?.from}
+              options={listed().map((item) => ({
+                value: item.id,
+                label: item.name,
+                description: item.project.directory,
+              }))}
+              onChange={copy}
+            />
+            <Show when={copied()?.skipped.length}>
+              <p class="subtle group-copy-skipped" role="status">
+                {t("group.copySkipped", { names: copied()!.skipped.join(locale() === "zh" ? "、" : ", ") })}
+              </p>
+            </Show>
+          </div>
+        </Show>
         <label class="field">
           <span>{t("group.name")}</span>
           <input
             class="input"
             aria-label={t("group.name")}
+            placeholder={t("group.namePlaceholder")}
             disabled={busy() || !!created()}
             value={name()}
             onInput={(event) => setName(event.currentTarget.value)}
           />
         </label>
-        <label class="field">
-          <span>{t("group.directory")}</span>
-          <input
-            class="input"
-            aria-label={t("group.directory")}
-            disabled={busy() || !!created()}
-            value={directory()}
-            onInput={(event) => setDirectory(event.currentTarget.value)}
-          />
-        </label>
-        <button class="button secondary" disabled={busy() || !!created()} onClick={() => void pick().catch(fail)}>
-          {t("sidebar.openProject")}
-        </button>
         <Show when={loading()}>
           <p role="status">{t("group.checking")}</p>
         </Show>
-        <Select
-          label={t("group.leader")}
-          disabled={busy() || !!created()}
-          value={leader()}
-          options={profiles()
-            .filter((profile) => profile.role === "leader" && !profile.product)
-            .map((profile) => ({ value: profile.id, label: profile.name }))}
-          onChange={setLeader}
-        />
-        <For each={choices()}>
-          {(profile) => (
-            <label class="row">
-              <input
-                type="checkbox"
-                disabled={busy() || !!created()}
-                aria-label={t("group.selectProfile", { name: profile.name })}
-                checked={workers().includes(profile.id)}
-                onChange={(event) =>
-                  setWorkers((items) =>
-                    event.currentTarget.checked ? [...items, profile.id] : items.filter((id) => id !== profile.id),
-                  )
-                }
-              />
-              <span>{profile.name}</span>
-              <span class="subtle">{profile.summary}</span>
-            </label>
-          )}
-        </For>
-        <Show when={!loading() && !selectedLeader()?.model.provider && !model()}>
-          <p role="status">{t("group.modelRequired")}</p>
+        <Show when={!loading() && !leaders().length}>
+          <p class="member-problem" role="status">
+            {t("groupCreate.noLeader")}
+          </p>
         </Show>
+        <div class="field">
+          <span>{t("group.leader")}</span>
+          <Select
+            class="chip outlined"
+            label={t("group.leader")}
+            disabled={busy() || !!created()}
+            value={leader() || undefined}
+            options={leaders().map((agent) => ({ value: agent.id, label: agent.name, description: agent.summary }))}
+            onChange={(value) => {
+              setLeader(value)
+            }}
+          />
+        </div>
+        <div class="field">
+          <span>{t("groupCreate.members")}</span>
+          <Show when={choices().length || loading()} fallback={<p class="subtle">{t("groupCreate.noWorkers")}</p>}>
+            <For each={choices()}>
+              {(profile) => (
+                <label class="row">
+                  <input
+                    type="checkbox"
+                    disabled={busy() || !!created()}
+                    aria-label={t("group.selectProfile", { name: profile.name })}
+                    checked={workers().includes(profile.id)}
+                    onChange={(event) =>
+                      setWorkers((items) =>
+                        event.currentTarget.checked ? [...items, profile.id] : items.filter((id) => id !== profile.id),
+                      )
+                    }
+                  />
+                  <span>{profile.name}</span>
+                  <span class="subtle">{profile.summary}</span>
+                </label>
+              )}
+            </For>
+          </Show>
+        </div>
       </div>
     </Dialog>
   )

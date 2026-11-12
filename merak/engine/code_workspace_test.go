@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/model/fake"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 )
 
 func codeEngine(t *testing.T, replies ...fake.Reply) (*engine.Engine, string, context.Context) {
@@ -187,5 +189,91 @@ func TestFileStatusIdentityAndFind(t *testing.T) {
 	}
 	if found, _ = e.FindFiles(ctx, repo, "s", 1); len(found) != 1 {
 		t.Fatalf("limit ignored: %v", found)
+	}
+}
+
+func TestAWorktreeCanStartFromAnotherBranchWithoutTouchingTheMainCheckout(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	main := strings.TrimSpace(fixtureGit(t, repo, "branch", "--show-current"))
+	fixtureGit(t, repo, "switch", "--quiet", "-c", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("from feature\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fixtureGit(t, repo, "add", ".")
+	fixtureGit(t, repo, "commit", "-m", "feature base")
+	fixtureGit(t, repo, "switch", "--quiet", main)
+
+	tree, err := e.CreateWorktreeFrom(ctx, repo, "from-feature", "", "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, err := os.ReadFile(filepath.Join(tree.Path, "base.txt")); err != nil || string(body) != "from feature\n" {
+		t.Fatalf("the worktree does not start from the chosen branch: %q %v", body, err)
+	}
+	if tree.Branch != "merak/chat/from-feature" {
+		t.Fatalf("the worktree works on %q, not on a branch of its own", tree.Branch)
+	}
+	if got := strings.TrimSpace(fixtureGit(t, repo, "branch", "--show-current")); got != main {
+		t.Fatalf("the main checkout moved to %q", got)
+	}
+	if _, err := e.CreateWorktreeFrom(ctx, repo, "missing-base", "", "no-such-branch"); err == nil {
+		t.Fatal("a worktree started from a branch that does not exist")
+	}
+}
+
+func TestAFolderMadeByTheEngineAsAWorktreeSaysSoInItsIdentity(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	tree, err := e.CreateWorktree(ctx, repo, "managed-one", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := e.FileIdentity(ctx, tree.Path, ".")
+	if err != nil || identity.Worktree != "managed-one" {
+		t.Fatalf("worktree identity=%+v err=%v", identity, err)
+	}
+	if identity, err = e.FileIdentity(ctx, repo, "."); err != nil || identity.Worktree != "" {
+		t.Fatalf("the main checkout is not a worktree: %+v err=%v", identity, err)
+	}
+}
+
+func TestAFileIdentityNamesAPathWithTheSpellingTheDiskHas(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	if err := os.MkdirAll(filepath.Join(repo, "Src", "Deep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "Src", "Deep", "Notes.TXT"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, asked := range []string{"Src/Deep/Notes.TXT", "src/deep/notes.txt", "SRC/DEEP/NOTES.TXT", "./src/../Src/deep/notes.txt"} {
+		identity, err := e.FileIdentity(ctx, repo, asked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, insensitive := os.Stat(filepath.Join(repo, "src", "deep", "notes.txt"))
+		if asked == "Src/Deep/Notes.TXT" || insensitive == nil {
+			if identity.Path != "Src/Deep/Notes.TXT" {
+				t.Fatalf("asked %q, the disk spells it %q", asked, identity.Path)
+			}
+			continue
+		}
+		if identity.Path == "Src/Deep/Notes.TXT" {
+			t.Fatalf("a case-sensitive volume must not merge %q into another file", asked)
+		}
+	}
+	if identity, err := e.FileIdentity(ctx, repo, "new/not/yet.txt"); err != nil || identity.Path != "new/not/yet.txt" {
+		t.Fatalf("a path that does not exist stays as asked: %+v err=%v", identity, err)
+	}
+}
+
+func TestAFolderThatIsGoneIsReportedWithItsOwnCode(t *testing.T) {
+	e, repo, ctx := codeEngine(t)
+	gone := filepath.Join(repo, "removed-folder")
+	_, err := e.FileIdentity(ctx, gone, ".")
+	var failure *engine.Error
+	if !errors.As(err, &failure) || failure.Code != errorcode.DirectoryMissing {
+		t.Fatalf("identity of a missing folder: %v", err)
+	}
+	if _, err = e.ListFiles(ctx, gone, "."); !errors.As(err, &failure) || failure.Code != errorcode.DirectoryMissing {
+		t.Fatalf("listing a missing folder: %v", err)
 	}
 }

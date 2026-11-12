@@ -96,8 +96,15 @@ func importCommand(args []string, input io.Reader, output io.Writer, ui *rendere
 	flags := flag.NewFlagSet("import", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	named := flags.String("file", "", "")
+	from := flags.String("from", "", "")
 	if flags.Parse(args) != nil || flags.NArg() > 1 || flags.NArg() == 1 && *named != "" {
 		return 2
+	}
+	if *from != "" {
+		if flags.NArg() != 0 || *named != "" {
+			return 2
+		}
+		return importLegacy(*from, output, ui)
 	}
 	path := *named
 	if flags.NArg() == 1 {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
@@ -16,12 +17,20 @@ type File struct {
 	OldPath string `json:"oldPath,omitempty"`
 	Status  string `json:"status"`
 	Staged  bool   `json:"staged"`
+	// Unstaged says the working tree differs from the index for this file, so it is listed as unstaged too.
+	Unstaged bool `json:"unstaged,omitempty"`
 }
 
 type State struct {
 	Branch string `json:"branch"`
 	Head   string `json:"head"`
 	Files  []File `json:"files"`
+	// Remote is the remote a push goes to; empty when the repository has none.
+	Remote string `json:"remote,omitempty"`
+	// Upstream says the branch tracks a remote branch; Ahead and Behind count commits against it.
+	Upstream bool `json:"upstream,omitempty"`
+	Ahead    int  `json:"ahead,omitempty"`
+	Behind   int  `json:"behind,omitempty"`
 }
 
 // Keep repository replies below the transport's four MiB frame limit.
@@ -78,6 +87,14 @@ func Status(ctx context.Context, directory string) (State, error) {
 	state.Branch = strings.TrimSpace(string(branch))
 	head, _ := run(ctx, directory, "rev-parse", "--verify", "HEAD")
 	state.Head = strings.TrimSpace(string(head))
+	state.Remote = pushRemote(ctx, directory)
+	if counts, err := run(ctx, directory, "rev-list", "--left-right", "--count", "@{upstream}...HEAD"); err == nil {
+		if fields := strings.Fields(string(counts)); len(fields) == 2 {
+			state.Upstream = true
+			state.Behind, _ = strconv.Atoi(fields[0])
+			state.Ahead, _ = strconv.Atoi(fields[1])
+		}
+	}
 	entries := strings.Split(string(body), "\x00")
 	for i := 0; i < len(entries); i++ {
 		entry := entries[i]
@@ -85,7 +102,7 @@ func Status(ctx context.Context, directory string) (State, error) {
 			continue
 		}
 		code := entry[:2]
-		file := File{Path: strings.TrimPrefix(entry[3:], rootPrefix), Status: "modified", Staged: code[0] != ' ' && code[0] != '?'}
+		file := File{Path: strings.TrimPrefix(entry[3:], rootPrefix), Status: "modified", Staged: code[0] != ' ' && code[0] != '?', Unstaged: code[1] != ' '}
 		switch {
 		case code == "??":
 			file.Status = "untracked"

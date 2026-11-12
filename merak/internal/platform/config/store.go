@@ -36,7 +36,7 @@ func Open(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	value, err := load(data)
+	value, err := load(data, false)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +46,12 @@ func Open(root string) (*Store, error) {
 }
 
 // load parses a configuration file and validates what it contains.
-func load(data []byte) (Value, error) {
+func load(data []byte, strict bool) (Value, error) {
 	top, err := parseFile(data)
 	if err != nil {
 		return Value{}, err
 	}
-	value, err := buildValue(top)
+	value, err := buildValue(top, strict)
 	if err != nil {
 		return Value{}, err
 	}
@@ -111,7 +111,7 @@ func (s *Store) write(edits ...edit) error {
 		}
 		text = next
 	}
-	value, err := load(text)
+	value, err := load(text, false)
 	if err != nil {
 		return err
 	}

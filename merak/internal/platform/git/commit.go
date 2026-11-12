@@ -86,24 +86,29 @@ func Push(ctx context.Context, directory string) error {
 	if err != nil || strings.TrimSpace(string(branch)) == "" {
 		return errors.New("push needs a branch")
 	}
-	remotes, err := Remotes(ctx, directory)
-	if err != nil {
-		return err
-	}
-	if len(remotes) == 0 {
+	remote := pushRemote(ctx, directory)
+	if remote == "" {
 		return errors.New("the repository has no remote")
-	}
-	remote := "origin"
-	if _, ok := remotes[remote]; !ok {
-		names := make([]string, 0, len(remotes))
-		for name := range remotes {
-			names = append(names, name)
-		}
-		slices.Sort(names)
-		remote = names[0]
 	}
 	_, err = run(ctx, directory, "push", "--set-upstream", "--", remote, "HEAD")
 	return err
+}
+
+// pushRemote is the remote a push goes to: origin, or the first one alphabetically; empty without a remote.
+func pushRemote(ctx context.Context, directory string) string {
+	remotes, err := Remotes(ctx, directory)
+	if err != nil || len(remotes) == 0 {
+		return ""
+	}
+	if _, ok := remotes["origin"]; ok {
+		return "origin"
+	}
+	names := make([]string, 0, len(remotes))
+	for name := range remotes {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names[0]
 }
 
 // Worktree is one checked-out copy of a repository.
@@ -184,4 +189,79 @@ func ListFiles(ctx context.Context, directory string) ([]string, error) {
 		}
 	}
 	return files, nil
+}
+
+// IgnoredAmong reports which of the paths, written relative to the directory, Git ignores. A folder outside any
+// repository ignores nothing.
+func IgnoredAmong(ctx context.Context, directory string, paths []string) map[string]bool {
+	ignored := map[string]bool{}
+	for len(paths) > 0 {
+		batch := paths[:min(len(paths), 100)]
+		paths = paths[len(batch):]
+		body, err := run(ctx, directory, append([]string{"check-ignore", "--"}, batch...)...)
+		if err != nil {
+			continue
+		}
+		for _, name := range strings.Split(string(body), "\n") {
+			if name = strings.TrimSuffix(name, "\r"); name != "" {
+				ignored[name] = true
+			}
+		}
+	}
+	return ignored
+}
+
+// Head returns the text a file has in the last commit; false when there is no such file or no repository.
+func Head(ctx context.Context, directory, name string) (string, bool) {
+	slashed := filepath.ToSlash(name)
+	if slashed == "" || strings.HasPrefix(slashed, "-") {
+		return "", false
+	}
+	body, err := run(ctx, directory, "show", "HEAD:./"+slashed)
+	if err != nil {
+		return "", false
+	}
+	return string(body), true
+}
+
+// Stage adds the paths to the index.
+func Stage(ctx context.Context, directory string, paths []string) error {
+	cleaned, err := cleanPaths(paths)
+	if err != nil || len(cleaned) == 0 {
+		return errors.Join(err, errors.New("there is nothing to stage"))
+	}
+	_, err = run(ctx, directory, append([]string{"add", "-A", "--"}, cleaned...)...)
+	return err
+}
+
+// Unstage takes the paths out of the index and leaves the working files as they are, also before the first commit.
+func Unstage(ctx context.Context, directory string, paths []string) error {
+	cleaned, err := cleanPaths(paths)
+	if err != nil || len(cleaned) == 0 {
+		return errors.Join(err, errors.New("there is nothing to unstage"))
+	}
+	if _, err := Current(ctx, directory); err != nil {
+		_, err = run(ctx, directory, append([]string{"rm", "--cached", "-r", "-q", "--"}, cleaned...)...)
+		return err
+	}
+	_, err = run(ctx, directory, append([]string{"reset", "-q", "HEAD", "--"}, cleaned...)...)
+	return err
+}
+
+// CommitStaged records what the index holds and returns the id of the commit.
+func CommitStaged(ctx context.Context, directory, message string) (string, error) {
+	if strings.TrimSpace(message) == "" {
+		return "", errors.New("a commit needs a message")
+	}
+	staged, err := run(ctx, directory, "diff", "--cached", "--name-only")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(string(staged)) == "" {
+		return "", errors.New("there is nothing to commit")
+	}
+	if _, err := run(ctx, directory, "commit", "--quiet", "-m", message); err != nil {
+		return "", err
+	}
+	return Current(ctx, directory)
 }

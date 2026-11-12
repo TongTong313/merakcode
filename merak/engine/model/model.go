@@ -59,7 +59,9 @@ type Message struct {
 }
 
 type Part struct {
-	Text       string      `json:"text,omitempty"`
+	Text string `json:"text,omitempty"`
+	// Synthetic marks text the engine added for the model, such as the date and recalled notes; a client does not show it.
+	Synthetic  bool        `json:"synthetic,omitempty"`
 	Reasoning  *Reasoning  `json:"reasoning,omitempty"`
 	ToolCall   *ToolCall   `json:"toolCall,omitempty"`
 	ToolResult *ToolResult `json:"toolResult,omitempty"`

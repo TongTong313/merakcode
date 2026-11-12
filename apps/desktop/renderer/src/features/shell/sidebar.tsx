@@ -1,4 +1,7 @@
+import Bot from "lucide-solid/icons/bot"
 import CircleHelp from "lucide-solid/icons/circle-question-mark"
+import House from "lucide-solid/icons/house"
+import ListChecks from "lucide-solid/icons/list-checks"
 import Ellipsis from "lucide-solid/icons/ellipsis"
 import FolderOpen from "lucide-solid/icons/folder-open"
 import FolderPlus from "lucide-solid/icons/folder-plus"
@@ -12,9 +15,12 @@ import { createSignal, For, Match, Show, Switch } from "solid-js"
 import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
-import { baseName, groupPath, sameDir, sessionPath } from "../../lib/route"
+import { baseName, groupPath, sameDir, sessionPath, taskPath } from "../../lib/route"
 import { groups, groupView, loadGroups, unreadGroup } from "../../state/groups"
-import type { GroupGroup } from "@merakcode/sdk"
+import type { GroupGroup, TaskCard, TaskStatus } from "@merakcode/sdk"
+import { createdAt, taskUpdated, tasks } from "../../state/tasks"
+import { TaskCreate } from "../tasks/create"
+import { entriesOf, type Entry } from "./entries"
 import { GroupCreate } from "../conversation/group-create"
 import { unsavedReason } from "../../state/git"
 import {
@@ -22,7 +28,8 @@ import {
   hideSession,
   type SessionSummary,
   openFolder,
-  sessionsOf,
+  conversations,
+  session as conversationOf,
   state,
   statusOf,
   type Folder,
@@ -83,6 +90,7 @@ function Conversation(props: { session: SessionSummary; folder: Folder; current?
       <A
         href={sessionPath(props.folder.directory, props.session.id)}
         class="conversation"
+        data-entry={`session:${props.session.id}`}
         aria-current={props.current === props.session.id ? "page" : undefined}
       >
         <Status status={status()} />
@@ -134,6 +142,7 @@ function GroupLink(props: { group: GroupGroup; current?: string }) {
   return (
     <A
       class="conversation"
+      data-entry={`group:${props.group.id}`}
       href={groupPath(props.group.project.directory, props.group.id)}
       aria-current={props.current === props.group.id ? "page" : undefined}
     >
@@ -153,11 +162,35 @@ function GroupLink(props: { group: GroupGroup; current?: string }) {
   )
 }
 
-function Group(props: { folder: Folder; current?: string; route?: string; group?: string }) {
+function TaskLink(props: { task: TaskCard; current?: string }) {
+  return (
+    <A
+      class="conversation"
+      data-entry={`task:${props.task.id}`}
+      href={taskPath(props.task.id)}
+      aria-current={props.current === props.task.id ? "page" : undefined}
+    >
+      <ListChecks class="icon icon-sm" />
+      <span class="body">
+        <span class="title">{props.task.title}</span>
+        <span class="meta">{t(`task.status.${props.task.status as TaskStatus}`)}</span>
+      </span>
+      <span class="time">{ago(taskUpdated(props.task.id))}</span>
+    </A>
+  )
+}
+
+function Group(props: {
+  folder: Folder
+  entries: Entry[]
+  current?: string
+  route?: string
+  group?: string
+  task?: string
+}) {
   const navigate = useNavigate()
   const name = () => baseName(props.folder.directory)
-  const list = () => sessionsOf(props.folder)
-  const teams = () => groups().filter((group) => sameDir(group.project.directory, props.folder.directory))
+  const listed = () => state.folders.some((folder) => sameDir(folder.directory, props.folder.directory))
   const remove = async () => {
     const directory = props.folder.directory
     const directories = [directory]
@@ -179,8 +212,10 @@ function Group(props: { folder: Folder; current?: string; route?: string; group?
     <section class="group" aria-label={name()}>
       <div class="group-title">
         <FolderOpen class="icon icon-sm" />
-        <span class="ellipsis">{name()}</span>
-        <span class="count">{list().length + teams().length || ""}</span>
+        <span class="ellipsis" title={props.folder.directory}>
+          {name()}
+        </span>
+        <span class="count">{props.entries.length || ""}</span>
         <Menu
           class="icon-button sm row-menu"
           label={t("sidebar.projectMenu")}
@@ -191,17 +226,29 @@ function Group(props: { folder: Folder; current?: string; route?: string; group?
               icon: Plus,
               onSelect: () => navigate(sessionPath(props.folder.directory)),
             },
-            "separator",
-            { label: t("sidebar.removeProject"), onSelect: remove },
+            ...(listed() ? (["separator", { label: t("sidebar.removeProject"), onSelect: remove }] as const) : []),
           ]}
         />
       </div>
-      <For each={teams()}>{(group) => <GroupLink group={group} current={props.group} />}</For>
-      <Show when={!list().length && !teams().length}>
+      <Show when={!props.entries.length}>
         <div class="group-empty subtle">{t("sidebar.empty")}</div>
       </Show>
-      <For each={list()}>
-        {(session) => <Conversation session={session} folder={props.folder} current={props.current} />}
+      <For each={props.entries}>
+        {(entry) => (
+          <Switch>
+            <Match when={entry.kind === "group" && entry}>
+              {(item) => <GroupLink group={item().group} current={props.group} />}
+            </Match>
+            <Match when={entry.kind === "task" && entry}>
+              {(item) => <TaskLink task={item().task} current={props.task} />}
+            </Match>
+            <Match when={entry.kind === "session" && entry}>
+              {(item) => (
+                <Conversation session={conversationOf(item().id)!} folder={props.folder} current={props.current} />
+              )}
+            </Match>
+          </Switch>
+        )}
       </For>
     </section>
   )
@@ -228,17 +275,34 @@ function UpdateNotice() {
   )
 }
 
-/** Sidebar: new conversation, search, conversations grouped by project (with run status), settings */
-export function Sidebar(props: { directory?: string; current?: string; group?: string }) {
+/**
+ * The folders the sidebar shows: the ones the person opened, then any other folder that has a group or a task of its
+ * own, so work is never hidden because its folder was taken off the list.
+ */
+function workspaces(): Folder[] {
+  const opened = state.folders
+  const others = [...groups().map((group) => group.project.directory), ...tasks().map((task) => task.project)]
+    .filter((directory) => directory && !opened.some((folder) => sameDir(folder.directory, directory)))
+    .filter((directory, index, all) => all.findIndex((other) => sameDir(other, directory)) === index)
+  return [...opened, ...others.map((directory) => ({ directory }))]
+}
+
+/** Sidebar: the five entries, then every workspace with its groups, tasks and conversations, settings */
+export function Sidebar(props: { directory?: string; current?: string; group?: string; task?: string }) {
   const navigate = useNavigate()
   const directory = () => props.directory ?? state.folders[0]?.directory
-  const otherGroups = () =>
-    groups().filter((group) => !state.folders.some((folder) => sameDir(folder.directory, group.project.directory)))
   const newConversation = () => {
     const dir = directory()
     if (dir) navigate(sessionPath(dir))
     else void pickFolder(navigate)
   }
+  const entries = (folder: Folder) =>
+    entriesOf(folder.directory, {
+      groups: groups(),
+      tasks: tasks(),
+      sessions: conversations(),
+      updated: (kind, id) => (kind === "group" ? groupView(id)?.updated || createdAt(id) : taskUpdated(id)),
+    })
   return (
     <nav class="sidebar" aria-label={t("sidebar.label")}>
       <div class="sidebar-top drag">
@@ -248,16 +312,31 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
         </div>
       </div>
       <div class="sidebar-actions">
+        <A href="/" end class="nav-row">
+          <House class="icon" />
+          {t("sidebar.home")}
+        </A>
+
         <button class="nav-row" onClick={newConversation}>
           <Plus class="icon" />
           {t("sidebar.new")}
           <kbd aria-hidden="true">{mod} N</kbd>
         </button>
 
-        <button class="nav-row" disabled={!directory()} onClick={() => setUi("newTeam", true)}>
+        <button class="nav-row" onClick={() => navigate("/agents?new=1")}>
+          <Bot class="icon" />
+          {t("sidebar.agent")}
+        </button>
+
+        <button class="nav-row" onClick={() => setUi("newTeam", true)}>
           <Users class="icon" />
-          {t("group.title")}
+          {t("sidebar.group")}
           <kbd aria-hidden="true">{mod} G</kbd>
+        </button>
+
+        <button class="nav-row" onClick={() => setUi("newTask", true)}>
+          <ListChecks class="icon" />
+          {t("sidebar.task")}
         </button>
 
         <button class="nav-row" onClick={() => setUi("palette", true)}>
@@ -267,14 +346,26 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
         </button>
       </div>
       <div class="sidebar-scroll scroll">
-        <Show when={otherGroups().length}>
-          <section class="group" aria-label={t("group.groups")}>
-            <div class="group-title">{t("group.groups")}</div>
-            <For each={otherGroups()}>{(group) => <GroupLink group={group} current={props.group} />}</For>
-          </section>
+        <Show when={!state.folders.length}>
+          <Show when={!workspaces().length}>
+            <div class="group-empty subtle">{t("sidebar.noWorkspace")}</div>
+          </Show>
+          <button class="nav-row" onClick={() => void pickFolder(navigate)}>
+            <FolderOpen class="icon" />
+            {t("sidebar.openFolder")}
+          </button>
         </Show>
-        <For each={state.folders}>
-          {(folder) => <Group folder={folder} current={props.current} route={props.directory} group={props.group} />}
+        <For each={workspaces()}>
+          {(folder) => (
+            <Group
+              folder={folder}
+              entries={entries(folder)}
+              current={props.current}
+              route={props.directory}
+              group={props.group}
+              task={props.task}
+            />
+          )}
         </For>
       </div>
       <GroupCreate
@@ -286,6 +377,12 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
             .then(() => navigate(groupPath(group.project.directory, group.id)))
             .catch((error) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error }))
         }}
+      />
+      <TaskCreate
+        directory={directory()}
+        open={ui.newTask}
+        onClose={() => setUi("newTask", false)}
+        onCreated={(task) => navigate(taskPath(task.id))}
       />
       <UpdateNotice />
       <div class="sidebar-bottom">

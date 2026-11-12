@@ -36,6 +36,9 @@ func (e *Engine) Recover(ctx context.Context) error {
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
+		if state.Group.Archived {
+			continue
+		}
 		if err := e.startGroup(ctx, state.Group); err != nil {
 			return err
 		}

@@ -60,6 +60,8 @@ type Group struct {
 	Leader   event.ID `json:"leader"`
 	Brief    Brief    `json:"brief,omitempty"`
 	Settings Settings `json:"settings,omitempty"`
+	// Archived marks a group that only keeps its record: nobody can say anything in it and no run starts for it.
+	Archived bool `json:"archived,omitempty"`
 }
 type Member struct {
 	Remote     bool              `json:"remote,omitempty"`

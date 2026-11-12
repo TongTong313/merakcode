@@ -1,7 +1,7 @@
 import { render } from "solid-js/web"
 import { expect, test } from "vitest"
 import { setLocale } from "../../i18n"
-import { GroupInbox } from "./inbox"
+import { InboxColumn } from "../start/inbox"
 
 test.each([
   ["en", "Project file watcher exceeded its scan limit", "50000 files"],
@@ -11,12 +11,11 @@ test.each([
   const host = document.createElement("div")
   const dispose = render(
     () => (
-      <GroupInbox
-        inbox={{
-          todo: [],
-          lastSeq: 1,
-          info: [
-            {
+      <InboxColumn
+        notices={[
+          {
+            pending: false,
+            notice: {
               id: "notice",
               kind: "info",
               text: "MRK-1005",
@@ -24,8 +23,8 @@ test.each([
               scope: { group: "group" },
               time: "2026-11-09T00:00:00Z",
             },
-          ],
-        }}
+          },
+        ]}
         onTask={() => {}}
       />
     ),

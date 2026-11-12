@@ -5,12 +5,12 @@ import { afterAll, beforeAll, expect, test } from "vitest"
 import { EngineEventSchema, type GroupGroup } from "@merakcode/sdk"
 import { engineFixture } from "../../test/engine"
 import { cloudFixture } from "../../test/cloud"
-import { groups, groupView, loadGroups, localHuman } from "../../state/groups"
+import { groups, groupsLoaded, groupView, loadGroups, localHuman } from "../../state/groups"
 import { client } from "../../state/client"
 import { setLocale } from "../../i18n"
 import { setState } from "../../state/store"
 import { GroupCreate } from "./group-create"
-import { Profiles } from "../settings/profiles"
+import { CloudMembers } from "../settings/cloud-members"
 
 let engine: Awaited<ReturnType<typeof engineFixture>>
 beforeAll(async () => {
@@ -84,6 +84,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
     await expect.poll(() => created, { timeout: 10000 }).toBeDefined()
     expect(created?.kind).toBe("cloud")
     await loadGroups()
+    await groupsLoaded()
     expect(groups().some((group) => group.id === created?.id)).toBe(true)
     expect(groupView(created!.id)?.group?.kind).toBe("cloud")
     expect(
@@ -121,10 +122,9 @@ test("creates a cloud group and folds its forwarded history through the shared g
     })
     expect(source.kind).toBe("local")
     dispose()
-    dispose = render(() => <Profiles group={created!.id} kind="cloud" />, host)
+    dispose = render(() => <CloudMembers group={created!.id} />, host)
     await expect.poll(() => host.querySelector('button[aria-label="Add Device Worker"]')).not.toBeNull()
     expect(host.querySelector('input[type="password"]')).toBeNull()
-    expect(host.querySelector('button[aria-label="Copy Worker"]')).toBeNull()
     host.querySelector<HTMLButtonElement>('button[aria-label="Add Device Worker"]')!.click()
     await expect
       .poll(() =>
@@ -150,9 +150,11 @@ test("creates a cloud group and folds its forwarded history through the shared g
     await expect.poll(() => groupView(created!.id)?.inbox.todo).toEqual([])
     await connection.close()
     await loadGroups()
+    await groupsLoaded()
     expect(groupView(created!.id)?.inbox.todo).toEqual([])
     await (await client()).cloud.logout()
     await loadGroups()
+    await groupsLoaded()
     expect(groups().some((group) => group.id === created?.id)).toBe(false)
     expect(groupView(created!.id)).toBeUndefined()
   } finally {
@@ -171,6 +173,7 @@ afterAll(async () => {
 })
 
 test("creates a local group from default profiles and adds the selected worker", async () => {
+  const before = (await (await client()).agent.list({}))!.length
   let created: GroupGroup | undefined
   const host = document.createElement("div")
   document.body.appendChild(host)
@@ -203,7 +206,7 @@ test("creates a local group from default profiles and adds the selected worker",
     await expect.poll(() => create.disabled).toBe(false)
     create.click()
     expect(name.disabled).toBe(true)
-    expect(document.querySelector<HTMLInputElement>('input[aria-label="Project directory"]')!.disabled).toBe(true)
+    expect(document.querySelector<HTMLButtonElement>('button[aria-label="Workspace"]')!.disabled).toBe(true)
     await expect.poll(() => created, { timeout: 10000 }).toBeDefined()
     expect(created?.kind).toBe("local")
     expect(created?.project.directory).toBe(engine.project)
@@ -213,8 +216,127 @@ test("creates a local group from default profiles and adds the selected worker",
     const initial = facts?.find((event) => event.type === "group.created")
     expect(initial?.payload.members?.some((member) => member.kind === "human" && member.role === "owner")).toBe(true)
     expect(facts?.some((event) => event.type === "member.added" && event.payload.agentRole === "worker")).toBe(true)
+    expect((await (await client()).agent.list({}))!.length).toBe(before)
   } finally {
     dispose()
     host.remove()
+  }
+})
+
+const opened = () => document.querySelector<HTMLElement>('[role="dialog"]:not([data-closed])')!
+const pick = async (label: string) => {
+  const trigger = () => opened().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+  await expect.poll(() => trigger()?.textContent, { timeout: 10000 }).toBeTruthy()
+  trigger().dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+  await expect.poll(() => document.querySelectorAll('[role="option"]').length, { timeout: 10000 }).toBeGreaterThan(0)
+  return [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+}
+
+test("the Leader list holds Leader agents only, includes a product, and the dialog has no model choice", async () => {
+  const connection = await client()
+  await connection.agent.save({
+    agent: {
+      id: "",
+      name: "Plain worker",
+      role: "worker",
+      summary: "",
+      duties: "",
+      toolPool: "worker.default",
+      model: { provider: "fake", model: "fixture" },
+    },
+  })
+  await connection.agent.save({
+    agent: {
+      id: "",
+      name: "Claude lead",
+      role: "leader",
+      summary: "",
+      duties: "",
+      toolPool: "leader.default",
+      model: { provider: "", model: "" },
+      product: { kind: "claude-code", binary: "claude" },
+    },
+  })
+  const host = document.createElement("div")
+  document.body.appendChild(host)
+  const dispose = render(
+    () => <GroupCreate directory={engine.project} open onClose={() => {}} onCreated={() => {}} />,
+    host,
+  )
+  try {
+    await expect
+      .poll(() => opened()?.querySelector('input[aria-label="Select Plain worker"]'), { timeout: 10000 })
+      .not.toBeNull()
+    expect(opened().querySelector('button[aria-label^="Configure model"]')).toBeNull()
+    const options = (await pick("Leader")).map((option) => option.textContent ?? "")
+    expect(options.some((label) => label.includes("Plain worker"))).toBe(false)
+    expect(options.some((label) => label.includes("Claude lead"))).toBe(true)
+    expect(options.some((label) => label.startsWith("Leader"))).toBe(true)
+  } finally {
+    dispose()
+    host.remove()
+    document.querySelectorAll(".dialog-positioner").forEach((node) => node.remove())
+  }
+})
+
+test("creating groups saves and changes no agent, and the Leader runs on the model set on its agent", async () => {
+  const connection = await client()
+  const lead = await connection.agent.save({
+    agent: {
+      id: "",
+      name: "Chosen model lead",
+      role: "leader",
+      summary: "Leads on its own model.",
+      duties: "",
+      toolPool: "leader.default",
+      model: { provider: "fake", model: "fixture" },
+    },
+  })
+  const snapshot = async () => JSON.stringify(await connection.agent.list({}))
+  const before = await snapshot()
+  const created: GroupGroup[] = []
+  const host = document.createElement("div")
+  document.body.appendChild(host)
+  const dispose = render(
+    () => <GroupCreate directory={engine.project} open onClose={() => {}} onCreated={(group) => created.push(group)} />,
+    host,
+  )
+  try {
+    await expect
+      .poll(() => opened()?.querySelector('input[aria-label="Select Worker"]'), { timeout: 10000 })
+      .not.toBeNull()
+    ;(await pick("Leader")).find((option) => option.textContent?.includes("Chosen model lead"))!.click()
+    const create = () =>
+      [...opened().querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === "Create")!
+    await expect.poll(() => create().disabled, { timeout: 15000 }).toBe(false)
+    create().click()
+    await expect.poll(() => created.length, { timeout: 15000 }).toBe(1)
+    expect(await snapshot()).toBe(before)
+    const group = created[0]!
+    await connection.group.say({ group: group.id, text: "Start now" })
+    await expect
+      .poll(
+        async () => {
+          const facts = await connection.events.find({ scope: { group: group.id }, types: ["session.created"] })
+          const event = facts
+            ?.map((fact) => EngineEventSchema.parse(fact))
+            .find((item) => item.type === "session.created")
+          return event?.type === "session.created"
+            ? [event.payload.config.provider, event.payload.config.model]
+            : undefined
+        },
+        { timeout: 15000 },
+      )
+      .toEqual(["fake", "fixture"])
+    const members = (await connection.events.find({ scope: { group: group.id }, types: ["group.created"] }))!.map(
+      (fact) => EngineEventSchema.parse(fact),
+    )
+    const first = members[0]!
+    if (first.type !== "group.created") throw new Error("group.created is missing")
+    expect(first.payload.members?.find((member) => member.agentRole === "leader")?.agent).toBe(lead.id)
+  } finally {
+    dispose()
+    host.remove()
+    document.querySelectorAll(".dialog-positioner").forEach((node) => node.remove())
   }
 })

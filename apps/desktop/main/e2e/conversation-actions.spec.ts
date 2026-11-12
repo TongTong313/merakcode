@@ -14,7 +14,7 @@ test.use({
       if (prompt.includes("写文件"))
         return toolResults.length
           ? { text: "写好了" }
-          : { tool: "write", args: { filePath: path.join(current.project, "made.txt"), content: "made\n" } }
+          : { tool: "write_file", args: { path: path.join(current.project, "made.txt"), content: "made\n" } }
       count += 1
       return { text: `第${count}次回答：${prompt}` }
     },

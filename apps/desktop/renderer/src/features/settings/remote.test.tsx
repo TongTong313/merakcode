@@ -5,7 +5,7 @@ import { engineFixture } from "../../test/engine"
 import { client } from "../../state/client"
 import { localHuman } from "../../state/groups"
 import { setLocale } from "../../i18n"
-import { Profiles } from "./profiles"
+import { RemoteMembers } from "./remote"
 
 test("connects another engine and registers a selected remote worker without saving its token in the profile", async () => {
   const [first, second] = await Promise.all([engineFixture(), engineFixture()])
@@ -52,7 +52,7 @@ test("connects another engine and registers a selected remote worker without sav
   try {
     const group = await makeGroup(connection, first.project + "/..", false)
     await makeGroup(other, second.project + "/..", true)
-    dispose = render(() => <Profiles group={group.id} />, host)
+    dispose = render(() => <RemoteMembers group={group.id} onAdded={() => {}} />, host)
     await expect.poll(() => host.querySelector('input[aria-label="Remote server"]')).not.toBeNull()
     const input = (label: string, value: string) => {
       const field = host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!

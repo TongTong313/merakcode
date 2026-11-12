@@ -1,22 +1,14 @@
 import { useNavigate } from "@solidjs/router"
 import { createEffect, onCleanup } from "solid-js"
-import { t, type Key } from "../../i18n"
+import { toast } from "../../ui/toast"
+import { noticeHref } from "../start/inbox"
+import { noticeTitle } from "../group/inbox"
+import { t } from "../../i18n"
 import { bridge } from "../../lib/bridge"
 import { groupPath, sessionPath } from "../../lib/route"
 import { listen, session, sessionsOf, state } from "../../state/store"
-import { groups, groupView, localHuman, markNoticesRead, noticeRead } from "../../state/groups"
+import { groups, groupView, localHuman, markNoticesRead, noticeRead, unseenNotices } from "../../state/groups"
 import { noticeText } from "../group/notice"
-
-const noticeTitles: Record<string, Key> = {
-  permission: "notify.approval",
-  question: "notify.question",
-  review: "task.status.review",
-  plan: "task.phase.planning",
-  blocked: "task.status.blocked",
-  info: "inbox.info",
-  receipt: "inbox.receipt",
-  sentinel: "notify.sentinel",
-}
 
 /** Background notifications navigate to the parent conversation for child requests. */
 export function Notify() {
@@ -27,8 +19,8 @@ export function Notify() {
       return {
         id: group.id,
         title: group.name,
-        href: `${groupPath(group.project.directory, group.id)}?view=inbox`,
-        unseen: !!inbox && (inbox.todo.length > 0 || inbox.info.some((notice) => !noticeRead(notice.id))),
+        href: groupPath(group.project.directory, group.id),
+        unseen: !!inbox && [...inbox.todo, ...inbox.info].some((notice) => !noticeRead(notice.id)),
       }
     })
     const conversations = state.folders.flatMap((folder) =>
@@ -48,22 +40,29 @@ export function Notify() {
   if (bridge)
     onCleanup(
       bridge.onClearNotifications(() => {
-        markNoticesRead(groups().flatMap((group) => groupView(group.id)?.inbox.info.map((notice) => notice.id) ?? []))
+        markNoticesRead(unseenNotices())
       }),
     )
+  const announced = new Set<string>()
   onCleanup(
     listen((directory, event) => {
-      if (document.hasFocus() || typeof Notification === "undefined") return
-      if (event.scope.group) {
-        if (event.type !== "notice.sent" || !event.payload.to?.includes(localHuman)) return
+      if (event.type === "notice.sent" && event.payload.to?.includes(localHuman) && event.payload.kind !== "receipt") {
+        if (announced.has(event.id)) return
+        announced.add(event.id)
+        const notice = { id: event.id, kind: event.payload.kind, scope: event.scope }
         const group = groups().find((group) => group.id === event.scope.group)
-        if (!group) return
-        const key = noticeTitles[event.payload.kind] ?? "inbox.info"
-        const href = `${groupPath(group.project.directory, group.id)}?view=inbox&notice=${encodeURIComponent(event.id)}`
-        const notification = new Notification(t(key), { body: `${group.name}: ${noticeText(event.payload.text)}` })
+        const body = group ? `${group.name}: ${noticeText(event.payload.text)}` : noticeText(event.payload.text)
+        const href = noticeHref(notice)
+        if (document.hasFocus() || typeof Notification === "undefined") {
+          toast({ kind: "info", title: noticeTitle(notice), detail: body, onSelect: () => navigate(href) })
+          return
+        }
+        const notification = new Notification(noticeTitle(notice), { body })
         notification.onclick = () => (bridge ? void bridge.focusAndNavigate(href) : navigate(href))
         return
       }
+      if (document.hasFocus() || typeof Notification === "undefined") return
+      if (event.scope.group) return
       if (!event.scope.session) return
       const current = session(event.scope.session)
       const id = current?.parentID ?? event.scope.session

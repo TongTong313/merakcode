@@ -4,6 +4,7 @@ import { setLocale, t } from "../../i18n"
 import { Toasts } from "../../ui/toast"
 import { setState } from "../../state/store"
 import { choice } from "../../state/models"
+import { setUi, ui } from "../../state/ui"
 import { Composer, type Submission } from "./composer"
 
 let dispose = () => {}
@@ -107,4 +108,24 @@ test("rejects attachments when their combined decoded size exceeds two MiB", asy
   document.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click()
   await expect.poll(() => sent.length).toBe(1)
   expect(sent[0]!.files.map((file) => file.filename)).toEqual(["first.png"])
+})
+
+test("without a connected model the bar says so and a click opens the model settings", () => {
+  mount(() => {})
+  setState("models", [])
+  setState("config", { providers: {} } as never)
+  const chip = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent === "No model connected yet",
+  )
+  expect(chip).toBeDefined()
+  chip!.click()
+  expect(ui.settings).toBe("models")
+  setUi("settings", undefined)
+})
+
+test("with a connected model the bar does not show the no-model notice", () => {
+  mount(() => {})
+  expect(
+    [...document.querySelectorAll("button")].some((button) => button.textContent === "No model connected yet"),
+  ).toBe(false)
 })

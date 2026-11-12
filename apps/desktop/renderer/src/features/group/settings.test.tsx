@@ -50,23 +50,26 @@ test("owners change group initiative and receive later settings updates", async 
       ),
       host,
     )
-    const selector = () => host.querySelector<HTMLSelectElement>('select[aria-label="Initiative"]')
-    await expect.poll(() => selector()?.value).toBe("normal")
+    const selector = () => host.querySelector<HTMLButtonElement>('button[aria-label="Initiative"]')
+    await expect.poll(() => selector()?.textContent).toContain("Normal")
     expect(groupView(group.id)?.group?.settings?.planNeedsApproval).toBe(true)
     await connection.group.say({ group: group.id, text: "Report current status", to: ["leader"] })
     await expect
       .poll(() => groupView(group.id)?.events.some((event) => event.type === "turn.finished"), { timeout: 10000 })
       .toBe(true)
     await expect.poll(() => groupView(group.id)?.events.some((event) => event.type === "session.budget")).toBe(true)
-    selector()!.value = "passive"
-    selector()!.dispatchEvent(new Event("change", { bubbles: true }))
+    selector()!.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
+    await expect.poll(() => document.querySelectorAll('[role="option"]').length).toBeGreaterThan(0)
+    ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((option) => option.textContent?.includes("Passive"))!
+      .click()
     await expect.poll(() => groupView(group.id)?.group?.settings?.initiative).toBe("passive")
     expect(groupView(group.id)?.group?.settings?.planNeedsApproval).toBe(true)
     await connection.group.update({
       group: group.id,
       settings: { ...group.settings, initiative: "eager" },
     })
-    await expect.poll(() => selector()?.value).toBe("eager")
+    await expect.poll(() => selector()?.textContent).toContain("Eager")
     await expect.poll(() => groups().find((item) => item.id === group.id)?.settings?.initiative).toBe("eager")
     await loadGroups()
     expect(groups().find((item) => item.id === group.id)?.settings?.initiative).toBe("eager")

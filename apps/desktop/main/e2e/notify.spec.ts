@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+import { connect } from "@merakcode/sdk"
 import { test, expect, type Kit } from "./fixture"
 
 // System notifications while the window is in the background: turn finished, approval needed, question asked.
@@ -68,6 +71,26 @@ test("suppresses a foreground completion before notifying for a later background
   await expect.poll(async () => (await sent()).map((item) => item.title)).toEqual(["对话完成"])
 })
 
+/** The engine of the app, for the facts a person does not cause by clicking, such as a task a group finishes. */
+async function engineOf(kit: Kit) {
+  const info = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8"))
+  return connect(info)
+}
+
+/** Finishes tasks in the only group, so each one puts a "task finished" message in the inbox. */
+async function finishTasks(kit: Kit, titles: string[]) {
+  const rpc = await engineOf(kit)
+  try {
+    const [group] = (await rpc.group.list())!
+    for (const title of titles) {
+      const card = await rpc.task.create({ group: group!.id, title })
+      await rpc.task.cancel({ task: card.id })
+    }
+  } finally {
+    await rpc.close()
+  }
+}
+
 test.describe("group inbox", () => {
   test.use({
     git: true,
@@ -95,7 +118,32 @@ test.describe("group inbox", () => {
     await expect(question).toContainText("Choose a color")
     await question.getByRole("button", { name: "Blue", exact: true }).click()
     await question.getByRole("button", { name: "提交", exact: true }).click()
-    await expect(kit.page.getByRole("region", { name: "要我做的", exact: true })).toContainText("暂无待办")
+    await expect(kit.page.getByRole("region", { name: "收件箱", exact: true })).not.toContainText("Choose a color")
+  })
+})
+
+test.describe("inbox toast", () => {
+  test.use({ git: true, script: { reply: () => ({ tool: "say", args: { text: "Ready." } }) } })
+
+  test("a new message pops up once in the corner, goes away by itself and leads to its task", async ({ kit }) => {
+    await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await dialog.getByRole("textbox", { name: "群名称" }).fill("弹窗协作")
+    await dialog.getByRole("button", { name: "创建", exact: true }).click()
+    await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
+    await kit.page.evaluate(() => {
+      document.hasFocus = () => true
+    })
+    await finishTasks(kit, ["弹窗任务"])
+    const toast = kit.page.getByRole("status").getByText("弹窗协作: 弹窗任务", { exact: false })
+    await expect(toast).toHaveCount(1)
+    await expect(toast).toHaveCount(0, { timeout: 10_000 })
+    await finishTasks(kit, ["点击任务"])
+    await kit.page
+      .getByRole("status")
+      .getByRole("link", { name: /点击任务/ })
+      .click()
+    await expect(kit.page.getByRole("heading", { name: "点击任务", exact: true })).toBeVisible()
   })
 })
 
@@ -107,23 +155,15 @@ test.describe("inbox tray state", () => {
     const dialog = kit.page.getByRole("dialog")
     await dialog.getByRole("textbox", { name: "群名称" }).fill("共享收件箱")
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
-    await kit.page.getByRole("tab", { name: "任务看板", exact: true }).click()
-    for (const title of ["通知甲", "通知乙"]) {
-      await kit.page.getByRole("button", { name: "新建任务", exact: true }).click()
-      await dialog.getByRole("textbox", { name: "标题", exact: true }).fill(title)
-      await dialog.getByRole("button", { name: "新建任务", exact: true }).click()
-      await expect(dialog).toBeHidden()
-      await kit.page.getByRole("button", { name: title, exact: true }).click()
-      await dialog.getByRole("button", { name: "取消任务", exact: true }).click()
-      await dialog.getByRole("button", { name: "关闭", exact: true }).click()
-    }
-    await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
+    await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
+    await finishTasks(kit, ["通知甲", "通知乙"])
+    await kit.page.getByRole("link", { name: "首页", exact: true }).click()
     const opened = kit.app.waitForEvent("window")
     await kit.page.evaluate(() => window.__MERAKCODE_DESKTOP__!.openWindow())
     const other = await opened
     await other.goto(kit.page.url())
-    const first = kit.page.getByRole("region", { name: "告诉我的", exact: true })
-    const second = other.getByRole("region", { name: "告诉我的", exact: true })
+    const first = kit.page.getByRole("region", { name: "收件箱", exact: true })
+    const second = other.getByRole("region", { name: "收件箱", exact: true })
     await expect(second.getByRole("button", { name: "标为已读", exact: true })).toHaveCount(2)
     await first.getByRole("article").filter({ hasText: "通知甲" }).getByRole("button", { name: "标为已读" }).click()
     await second.getByRole("article").filter({ hasText: "通知乙" }).getByRole("button", { name: "标为已读" }).click()
@@ -163,14 +203,7 @@ test.describe("inbox tray state", () => {
     await expect.poll(labels).toContain("收件状态")
     await expect.poll(image).toBeTruthy()
     const plain = await image()
-    await kit.page.getByRole("tab", { name: "任务看板", exact: true }).click()
-    await kit.page.getByRole("button", { name: "新建任务", exact: true }).click()
-    await dialog.getByRole("textbox", { name: "标题", exact: true }).fill("检查通知")
-    await dialog.getByRole("button", { name: "新建任务", exact: true }).click()
-    await expect(dialog).toBeHidden()
-    await kit.page.getByRole("button", { name: "检查通知", exact: true }).click()
-    await dialog.getByRole("button", { name: "取消任务", exact: true }).click()
-    await dialog.getByRole("button", { name: "关闭", exact: true }).click()
+    await finishTasks(kit, ["检查通知"])
     await expect.poll(labels).toContain("● 收件状态")
     await expect.poll(image).not.toBe(plain)
     await kit.app.evaluate(() => {
@@ -182,8 +215,8 @@ test.describe("inbox tray state", () => {
     await expect.poll(labels).toContain("收件状态")
     await expect.poll(labels).not.toContain("清除通知")
     await expect.poll(image).toBe(plain)
-    await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
-    const information = kit.page.getByRole("region", { name: "告诉我的", exact: true })
+    await kit.page.getByRole("link", { name: "首页", exact: true }).click()
+    const information = kit.page.getByRole("region", { name: "收件箱", exact: true })
     await expect(information).toContainText("检查通知")
     await expect(information.getByText("已读", { exact: true })).toHaveCount(1)
     await kit.page.reload()

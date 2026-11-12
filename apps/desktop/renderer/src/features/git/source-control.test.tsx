@@ -1,17 +1,22 @@
+import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { expect, test } from "vitest"
 import { setLocale, t } from "../../i18n"
 import { GitFiles } from "./source-control"
 
-test("Git groups display staged and unstaged files with review navigation", () => {
+test("Git groups expose review navigation only while that file is pending review", () => {
   setLocale("zh")
+  const [pending, setPending] = createSignal(["a.txt"])
   const host = document.createElement("div")
   document.body.append(host)
-  const file = { path: "a.txt", status: "modified", staged: true }
+  const file = { file: "a.txt", status: "modified" as const }
   const dispose = render(
     () => (
       <GitFiles
-        data={{ head: "head", branch: "main", files: [file, { ...file, staged: false }] }}
+        data={{ checkout: "c", staged: [file], unstaged: [file] }}
+        pending={pending()}
+        working={false}
+        onChange={async () => {}}
         onReview={() => {}}
       />
     ),
@@ -22,31 +27,37 @@ test("Git groups display staged and unstaged files with review navigation", () =
     expect(host.querySelectorAll(`button[aria-label="${t("git.reviewFile", { file: "a.txt" })}"]`)).toHaveLength(2)
     expect(host.querySelector(".diff")).toBeNull()
     expect(host.querySelector('input[type="checkbox"][data-seen]')).toBeNull()
-    expect(host.textContent).not.toContain(t("git.stageAll"))
-    expect(host.textContent).not.toContain(t("git.unstageAll"))
+    setPending([])
+    expect(host.querySelectorAll(`button[aria-label="${t("git.reviewFile", { file: "a.txt" })}"]`)).toHaveLength(0)
+    expect(host.querySelectorAll(".git-file")).toHaveLength(2)
+    expect(host.textContent).toContain(t("git.stage"))
+    expect(host.textContent).toContain(t("git.unstage"))
   } finally {
     dispose()
     host.remove()
   }
 })
 
-test("a conflicted file remains readable for review", () => {
+test("a conflicted file remains available for explicit staging after editing its resolution", () => {
   setLocale("zh")
   const host = document.createElement("div")
   document.body.append(host)
   const dispose = render(
     () => (
       <GitFiles
-        data={{ head: "head", branch: "main", files: [{ path: "a.txt", status: "conflicted", staged: false }] }}
+        data={{ checkout: "c", staged: [], unstaged: [{ file: "a.txt", status: "conflicted" }] }}
+        pending={[]}
+        working={false}
+        onChange={async () => {}}
         onReview={() => {}}
       />
     ),
     host,
   )
   try {
-    const open = host.querySelector<HTMLButtonElement>(`button[aria-label="${t("git.reviewFile", { file: "a.txt" })}"]`)
-    expect(open?.disabled).toBe(false)
-    expect(host.textContent).toContain(t("git.status.conflicted"))
+    const stage = host.querySelector<HTMLButtonElement>(`button[aria-label="${t("git.stage")} a.txt"]`)
+    expect(stage?.disabled).toBe(false)
+    expect(host.querySelector<HTMLInputElement>("input")?.disabled).toBe(false)
   } finally {
     dispose()
     host.remove()

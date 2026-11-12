@@ -140,3 +140,88 @@ func TestAChildReadsThePlanOfItsParentAndPlanSavesWithAStaleRevisionAreRefused(t
 		t.Fatal("the plan of a missing session was returned")
 	}
 }
+
+// Cancelling the turn that runs a plan stops the plan, so it can be started again; before, the plan stayed
+// "executing" for ever and nothing could start it.
+func TestCancellingTheTurnThatRunsAPlanStopsThePlanAndItCanBeRunAgain(t *testing.T) {
+	hold := make(chan struct{})
+	provider := fake.New(t,
+		fake.Reply{Calls: integrationCall("write_plan", map[string]any{"content": "# Plan\n1. Step one"}).Calls},
+		fake.Reply{Text: "Working.", Hold: hold},
+		fake.Reply{Text: "Working again."},
+	)
+	project := t.TempDir()
+	e, err := engine.New(engine.Deps{Workdir: project, Providers: map[string]model.Provider{"fake": provider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	id, err := e.CreateSession(t.Context(), engine.SessionOptions{Provider: "fake", Workdir: project, Mode: permission.ModeTakeover})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns, stop := e.Bus.Subscribe(turnFilter(id))
+	defer stop()
+	if err := e.SendPlanned(t.Context(), id, []model.Part{{Text: "Do it"}}); err != nil {
+		t.Fatal(err)
+	}
+	<-turns
+	started, stopStarted := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Session: id}, Types: []event.Type{"turn.started"}})
+	defer stopStarted()
+	if _, err := e.ExecutePlan(t.Context(), id); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := e.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+	close(hold)
+	<-turns
+	waitFor(t, t.Context(), "the cancelled plan to read as stopped", func() bool {
+		current, err := e.GetPlan(t.Context(), id)
+		return err == nil && current.Status == plan.Stopped
+	})
+	if _, err := e.ExecutePlan(t.Context(), id); err != nil {
+		t.Fatalf("a stopped plan must be able to run again: %v", err)
+	}
+}
+
+// A turn that is cancelled while it is not running a plan leaves the plan alone.
+func TestCancellingAnOrdinaryTurnLeavesAPlanUnderReviewAsItIs(t *testing.T) {
+	hold := make(chan struct{})
+	provider := fake.New(t,
+		fake.Reply{Calls: integrationCall("write_plan", map[string]any{"content": "# Plan\n1. Step one"}).Calls},
+		fake.Reply{Text: "A question's answer.", Hold: hold},
+	)
+	project := t.TempDir()
+	e, err := engine.New(engine.Deps{Workdir: project, Providers: map[string]model.Provider{"fake": provider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	id, err := e.CreateSession(t.Context(), engine.SessionOptions{Provider: "fake", Workdir: project, Mode: permission.ModeTakeover})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns, stop := e.Bus.Subscribe(turnFilter(id))
+	defer stop()
+	if err := e.SendPlanned(t.Context(), id, []model.Part{{Text: "Plan it"}}); err != nil {
+		t.Fatal(err)
+	}
+	<-turns
+	started, stopStarted := e.Bus.Subscribe(event.Filter{Scope: event.Scope{Session: id}, Types: []event.Type{"turn.started"}})
+	defer stopStarted()
+	if err := e.Send(t.Context(), id, []model.Part{{Text: "Another question"}}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := e.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+	close(hold)
+	<-turns
+	got, err := e.GetPlan(t.Context(), id)
+	if err != nil || got.Status != plan.Review {
+		t.Fatalf("the plan under review changed: %+v err=%v", got, err)
+	}
+}

@@ -1,22 +1,29 @@
-import FolderOpen from "lucide-solid/icons/folder-open"
-import { createEffect, createMemo, createResource, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
+import { createEffect, createMemo, createResource, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { Navigate, Route, Router, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { t } from "./i18n"
 import { bridge, log, mac } from "./lib/bridge"
 import { decodeDir, sessionPath } from "./lib/route"
-import { bootstrap, connect, openFolder, state } from "./state/store"
+import { bootstrap, connect, listen, openFolder, session, state } from "./state/store"
 import { restoreLayout, setUi, togglePanel, ui } from "./state/ui"
-import { Toasts } from "./ui/toast"
+import { openPanel, releasePanels } from "./features/panel/workspace"
+import { CloseEditor } from "./features/panel/close"
+import { toast, Toasts } from "./ui/toast"
 import { Compose } from "./features/conversation/compose"
 import { Conversation } from "./features/conversation/page"
 import { Onboarding } from "./features/onboarding/onboarding"
 import { Palette } from "./features/palette/palette"
 import { Settings } from "./features/settings/settings"
+import { freshWarnings } from "./features/settings/warnings"
 import { Notify } from "./features/shell/notify"
-import { pickFolder, Sidebar } from "./features/shell/sidebar"
+import { Sidebar } from "./features/shell/sidebar"
 import { Startup } from "./features/shell/startup"
+import { StartPage } from "./features/start/page"
+import { AgentsPage } from "./features/agents/agents"
+import { TaskBoardPage } from "./features/tasks/board"
+import { TaskPage } from "./features/tasks/page"
 import { GroupConversation } from "./features/conversation/group-page"
 import { connectGroups, loadGroups } from "./state/groups"
+import { connectTasks } from "./state/tasks"
 
 /** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, G new group, "," settings, J terminal, B side panel */
 function Shortcuts() {
@@ -30,10 +37,12 @@ function Shortcuts() {
       const key = event.key.toLowerCase()
       if (key === "k") setUi("palette", !ui.palette)
       else if (key === "n" && directory()) navigate(sessionPath(directory()!))
-      else if (key === "g" && directory()) setUi("newTeam", true)
+      else if (key === "g") setUi("newTeam", true)
       else if (key === ",") setUi("settings", "general")
-      else if (key === "j") setUi("terminal", !ui.terminal)
-      else if (key === "b") togglePanel()
+      else if (key === "j") {
+        setUi("panel", true)
+        void openPanel({ kind: "terminal" }, true)
+      } else if (key === "b") togglePanel()
       else return
       event.preventDefault()
       event.stopPropagation()
@@ -51,20 +60,71 @@ function Shortcuts() {
   return null
 }
 
+/** Entries of the configuration that were skipped: each new one is announced once; "View" opens the list in settings. */
+function Warnings() {
+  const seen = new Set<string>()
+  createEffect(() => {
+    const warnings = state.config?.warnings ?? []
+    const fresh = freshWarnings(warnings, seen)
+    if (!fresh.length) return
+    toast({
+      kind: "error",
+      title: t("config.warnings", { count: warnings.length }),
+      detail: fresh[0]!.path,
+      action: { label: t("config.view"), run: () => setUi("settings", "general") },
+    })
+  })
+  return null
+}
+
+/** Frees the panel resources of a conversation that was archived or removed; a failure offers a retry. */
+function release(directory: string, sessionID: string, deleted: boolean) {
+  void releasePanels({ directory, sessionID }, deleted).catch((error: unknown) =>
+    toast({
+      kind: "error",
+      title: t("error.request", { message: String(error) }),
+      error,
+      action: { label: t("panel.retry"), run: () => release(directory, sessionID, deleted) },
+    }),
+  )
+}
+
 function Root(props: { children?: JSX.Element }) {
   const [ready, { refetch }] = createResource(async () => {
     await Promise.all([bootstrap(), restoreLayout(), loadGroups()])
     return true
   })
   onMount(() => onCleanup(connect()))
+  onMount(() =>
+    onCleanup(
+      listen((directory, event) => {
+        const sessionID = event.type === "session.updated" && event.payload.archived ? event.scope.session : undefined
+        if (sessionID) release(directory, sessionID, false)
+      }),
+    ),
+  )
+  // A removed conversation never comes back, so its panels, terminals and drafts are released for good
+  createEffect(
+    on(
+      () => [...state.hidden],
+      (ids, previous = []) => {
+        for (const id of ids.filter((value) => !previous.includes(value)))
+          release(session(id)?.directory ?? "", id, true)
+      },
+      { defer: true },
+    ),
+  )
   onMount(() => onCleanup(connectGroups()))
+  onMount(() => onCleanup(connectTasks()))
   createEffect(() => ready.error && log("error", "bootstrap failed", { error: String(ready.error) }))
   return (
     <>
       <Startup ready={ready} onRetry={() => void refetch()}>
         {props.children}
         <Shortcuts />
+        <CloseEditor />
         <Notify />
+        <Warnings />
         <Palette />
         <Onboarding />
         <Show when={ui.settings}>
@@ -81,33 +141,7 @@ function Root(props: { children?: JSX.Element }) {
   )
 }
 
-/** Home: opens the most recent project, or asks the user to open a folder when there is none */
-export function Home() {
-  const navigate = useNavigate()
-  return (
-    <Show
-      when={state.folders[0]}
-      fallback={
-        <div class="app">
-          <Sidebar />
-          <main class="main">
-            <div class="topbar drag" />
-            <div class="compose-page">
-              <h1 class="compose-heading">{t("home.title")}</h1>
-              <p class="muted">{t("home.lead")}</p>
-              <button class="button primary lg" onClick={() => void pickFolder(navigate)}>
-                <FolderOpen class="icon" />
-                {t("home.open")}
-              </button>
-            </div>
-          </main>
-        </div>
-      }
-    >
-      {(folder) => <Navigate href={sessionPath(folder().directory)} />}
-    </Show>
-  )
-}
+export { StartPage as Home }
 
 /** Inside a project: the sidebar plus a new or existing conversation */
 export function Workspace() {
@@ -141,7 +175,10 @@ export function Workspace() {
 export function App() {
   return (
     <Router root={Root}>
-      <Route path="/" component={Home} />
+      <Route path="/" component={StartPage} />
+      <Route path="/agents" component={AgentsPage} />
+      <Route path="/tasks" component={TaskBoardPage} />
+      <Route path="/task/:id" component={TaskPage} />
       <Route path="/:dir/session/:id?" component={Workspace} />
       <Route path="/:dir/group/:id" component={GroupWorkspace} />
       <Route path="*" component={() => <Navigate href="/" />} />

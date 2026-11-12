@@ -37,7 +37,20 @@ type builtinLeader struct {
 
 func (r *builtinLeader) Send(ctx context.Context, input loop.Input) error {
 	r.reset()
-	outcome, err := r.engine.runInput(ctx, r.conversation, input)
+	id := r.conversation.state.ID
+	turn, cancel := context.WithCancel(ctx)
+	r.engine.mu.Lock()
+	r.engine.leaderStops[id] = cancel
+	r.engine.mu.Unlock()
+	outcome, err := r.engine.runInput(turn, r.conversation, input)
+	r.engine.mu.Lock()
+	delete(r.engine.leaderStops, id)
+	r.engine.mu.Unlock()
+	cancel()
+	// A person who stopped the turn ended it on purpose: the input is not sent again.
+	if err != nil && ctx.Err() == nil && errors.Is(err, context.Canceled) {
+		return nil
+	}
 	if err == nil && loop.BudgetStop(outcome.Stop) {
 		return worker.BudgetExceeded{Limit: outcome.Stop}
 	}

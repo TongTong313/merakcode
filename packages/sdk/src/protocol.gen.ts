@@ -153,9 +153,14 @@ export const CatalogTierSchema: z.ZodType<CatalogTier> = z.lazy(() =>
     price: CatalogPriceSchema,
   }),
 )
-export type CodeIdentity = { directory: string; path: string; root?: string }
+export type CodeIdentity = { directory: string; path: string; root?: string; worktree?: string }
 export const CodeIdentitySchema: z.ZodType<CodeIdentity> = z.lazy(() =>
-  z.strictObject({ directory: z.string(), path: z.string(), root: z.string().optional() }),
+  z.strictObject({
+    directory: z.string(),
+    path: z.string(),
+    root: z.string().optional(),
+    worktree: z.string().optional(),
+  }),
 )
 export type CodeStatus = { path: string; staged?: boolean; status?: string }
 export const CodeStatusSchema: z.ZodType<CodeStatus> = z.lazy(() =>
@@ -593,13 +598,27 @@ export const EngineFileChangesSchema: z.ZodType<EngineFileChanges> = z.lazy(() =
     paths: z.union([z.array(z.string()), z.null()]),
   }),
 )
-export type EngineFileContent = { content: string; mime?: string; type: string }
+export type EngineFileContent = {
+  checksum?: string
+  content: string
+  head?: string | null
+  mime?: string
+  missing?: boolean
+  type: string
+}
 export const EngineFileContentSchema: z.ZodType<EngineFileContent> = z.lazy(() =>
-  z.strictObject({ content: z.string(), mime: z.string().optional(), type: z.string() }),
+  z.strictObject({
+    checksum: z.string().optional(),
+    content: z.string(),
+    head: z.union([z.string(), z.null()]).optional(),
+    mime: z.string().optional(),
+    missing: z.boolean().optional(),
+    type: z.string(),
+  }),
 )
-export type EngineFileNode = { name: string; path: string; type: string }
+export type EngineFileNode = { ignored?: boolean; name: string; path: string; type: string }
 export const EngineFileNodeSchema: z.ZodType<EngineFileNode> = z.lazy(() =>
-  z.strictObject({ name: z.string(), path: z.string(), type: z.string() }),
+  z.strictObject({ ignored: z.boolean().optional(), name: z.string(), path: z.string(), type: z.string() }),
 )
 export type EngineRepoChanges = {
   branch: string
@@ -694,6 +713,7 @@ export type GitChange = {
   path: string
   staged: boolean
   status: string
+  unstaged?: boolean
   version: string
 }
 export const GitChangeSchema: z.ZodType<GitChange> = z.lazy(() =>
@@ -705,20 +725,43 @@ export const GitChangeSchema: z.ZodType<GitChange> = z.lazy(() =>
     path: z.string(),
     staged: z.boolean(),
     status: z.string(),
+    unstaged: z.boolean().optional(),
     version: z.string(),
   }),
 )
-export type GitFile = { oldPath?: string; path: string; staged: boolean; status: string }
+export type GitFile = { oldPath?: string; path: string; staged: boolean; status: string; unstaged?: boolean }
 export const GitFileSchema: z.ZodType<GitFile> = z.lazy(() =>
-  z.strictObject({ oldPath: z.string().optional(), path: z.string(), staged: z.boolean(), status: z.string() }),
+  z.strictObject({
+    oldPath: z.string().optional(),
+    path: z.string(),
+    staged: z.boolean(),
+    status: z.string(),
+    unstaged: z.boolean().optional(),
+  }),
 )
 export type GitRevision = { id: string; paths: string[] | null }
 export const GitRevisionSchema: z.ZodType<GitRevision> = z.lazy(() =>
   z.strictObject({ id: z.string(), paths: z.union([z.array(z.string()), z.null()]) }),
 )
-export type GitState = { branch: string; files: GitFile[] | null; head: string }
+export type GitState = {
+  ahead?: number
+  behind?: number
+  branch: string
+  files: GitFile[] | null
+  head: string
+  remote?: string
+  upstream?: boolean
+}
 export const GitStateSchema: z.ZodType<GitState> = z.lazy(() =>
-  z.strictObject({ branch: z.string(), files: z.union([z.array(GitFileSchema), z.null()]), head: z.string() }),
+  z.strictObject({
+    ahead: z.number().int().optional(),
+    behind: z.number().int().optional(),
+    branch: z.string(),
+    files: z.union([z.array(GitFileSchema), z.null()]),
+    head: z.string(),
+    remote: z.string().optional(),
+    upstream: z.boolean().optional(),
+  }),
 )
 export type GroupAction = { kind: string; member?: string; priority?: number; template?: string }
 export const GroupActionSchema: z.ZodType<GroupAction> = z.lazy(() =>
@@ -751,6 +794,7 @@ export const GroupDocumentInfoSchema: z.ZodType<GroupDocumentInfo> = z.lazy(() =
   z.strictObject({ group: z.string(), key: z.string(), rev: z.number().int(), title: z.string() }),
 )
 export type GroupGroup = {
+  archived?: boolean
   brief?: GroupBrief
   id: string
   kind: string
@@ -761,6 +805,7 @@ export type GroupGroup = {
 }
 export const GroupGroupSchema: z.ZodType<GroupGroup> = z.lazy(() =>
   z.strictObject({
+    archived: z.boolean().optional(),
     brief: GroupBriefSchema.optional(),
     id: z.string(),
     kind: z.string(),
@@ -771,6 +816,7 @@ export const GroupGroupSchema: z.ZodType<GroupGroup> = z.lazy(() =>
   }),
 )
 export type GroupListing = {
+  archived?: boolean
   brief?: GroupBrief
   id: string
   kind: string
@@ -782,6 +828,7 @@ export type GroupListing = {
 }
 export const GroupListingSchema: z.ZodType<GroupListing> = z.lazy(() =>
   z.strictObject({
+    archived: z.boolean().optional(),
     brief: GroupBriefSchema.optional(),
     id: z.string(),
     kind: z.string(),
@@ -1134,6 +1181,7 @@ export type ModelPart = {
   document?: ModelDocument | null
   image?: ModelImage | null
   reasoning?: ModelReasoning | null
+  synthetic?: boolean
   text?: string
   toolCall?: ModelToolCall | null
   toolResult?: ModelToolResult | null
@@ -1143,6 +1191,7 @@ export const ModelPartSchema: z.ZodType<ModelPart> = z.lazy(() =>
     document: z.union([ModelDocumentSchema, z.null()]).optional(),
     image: z.union([ModelImageSchema, z.null()]).optional(),
     reasoning: z.union([ModelReasoningSchema, z.null()]).optional(),
+    synthetic: z.boolean().optional(),
     text: z.string().optional(),
     toolCall: z.union([ModelToolCallSchema, z.null()]).optional(),
     toolResult: z.union([ModelToolResultSchema, z.null()]).optional(),
@@ -1389,6 +1438,26 @@ export type ProtocolFileParams = { directory?: string; path: string }
 export const ProtocolFileParamsSchema: z.ZodType<ProtocolFileParams> = z.lazy(() =>
   z.strictObject({ directory: z.string().optional(), path: z.string() }),
 )
+export type ProtocolFileWriteParams = {
+  checksum?: string
+  content: string
+  directory?: string
+  force?: boolean
+  path: string
+}
+export const ProtocolFileWriteParamsSchema: z.ZodType<ProtocolFileWriteParams> = z.lazy(() =>
+  z.strictObject({
+    checksum: z.string().optional(),
+    content: z.string(),
+    directory: z.string().optional(),
+    force: z.boolean().optional(),
+    path: z.string(),
+  }),
+)
+export type ProtocolFileWriteResult = { checksum: string }
+export const ProtocolFileWriteResultSchema: z.ZodType<ProtocolFileWriteResult> = z.lazy(() =>
+  z.strictObject({ checksum: z.string() }),
+)
 export type ProtocolGroupAddMemberParams = { group: string; member: GroupMember }
 export const ProtocolGroupAddMemberParamsSchema: z.ZodType<ProtocolGroupAddMemberParams> = z.lazy(() =>
   z.strictObject({ group: z.string(), member: GroupMemberSchema }),
@@ -1402,6 +1471,7 @@ export const ProtocolGroupControlParamsSchema: z.ZodType<ProtocolGroupControlPar
   z.strictObject({ group: z.string(), thread: z.string().optional() }),
 )
 export type ProtocolGroupCreateParams = {
+  archived?: boolean
   brief?: GroupBrief
   id: string
   kind: string
@@ -1414,6 +1484,7 @@ export type ProtocolGroupCreateParams = {
 }
 export const ProtocolGroupCreateParamsSchema: z.ZodType<ProtocolGroupCreateParams> = z.lazy(() =>
   z.strictObject({
+    archived: z.boolean().optional(),
     brief: GroupBriefSchema.optional(),
     id: z.string(),
     kind: z.string(),
@@ -1432,6 +1503,10 @@ export const ProtocolGroupIDParamsSchema: z.ZodType<ProtocolGroupIDParams> = z.l
 export type ProtocolGroupRemoveMemberParams = { group: string; member: string }
 export const ProtocolGroupRemoveMemberParamsSchema: z.ZodType<ProtocolGroupRemoveMemberParams> = z.lazy(() =>
   z.strictObject({ group: z.string(), member: z.string() }),
+)
+export type ProtocolGroupRenameMemberParams = { group: string; member: string; name: string }
+export const ProtocolGroupRenameMemberParamsSchema: z.ZodType<ProtocolGroupRenameMemberParams> = z.lazy(() =>
+  z.strictObject({ group: z.string(), member: z.string(), name: z.string() }),
 )
 export type ProtocolGroupSayParams = { group: string; task?: string; text: string; to?: string[] | null }
 export const ProtocolGroupSayParamsSchema: z.ZodType<ProtocolGroupSayParams> = z.lazy(() =>
@@ -1469,6 +1544,76 @@ export const ProtocolHelloParamsSchema: z.ZodType<ProtocolHelloParams> = z.lazy(
 export type ProtocolHelloResult = { engine: string; human: string; protocol: number }
 export const ProtocolHelloResultSchema: z.ZodType<ProtocolHelloResult> = z.lazy(() =>
   z.strictObject({ engine: z.string(), human: z.string(), protocol: z.number().int() }),
+)
+export type ProtocolImportCounts = {
+  agents: number
+  blobs: number
+  groups: number
+  memories: number
+  messages: number
+  plans: number
+  roles: number
+  sessions: number
+  todos: number
+}
+export const ProtocolImportCountsSchema: z.ZodType<ProtocolImportCounts> = z.lazy(() =>
+  z.strictObject({
+    agents: z.number().int(),
+    blobs: z.number().int(),
+    groups: z.number().int(),
+    memories: z.number().int(),
+    messages: z.number().int(),
+    plans: z.number().int(),
+    roles: z.number().int(),
+    sessions: z.number().int(),
+    todos: z.number().int(),
+  }),
+)
+export type ProtocolImportProgressPayload = { done: number; from: string; total: number }
+export const ProtocolImportProgressPayloadSchema: z.ZodType<ProtocolImportProgressPayload> = z.lazy(() =>
+  z.strictObject({ done: z.number().int(), from: z.string(), total: z.number().int() }),
+)
+export type ProtocolImportResult = {
+  adapters?: string[] | null
+  from: string
+  imported: ProtocolImportCounts
+  skipped: ProtocolImportSkip[] | null
+}
+export const ProtocolImportResultSchema: z.ZodType<ProtocolImportResult> = z.lazy(() =>
+  z.strictObject({
+    adapters: z.union([z.array(z.string()), z.null()]).optional(),
+    from: z.string(),
+    imported: ProtocolImportCountsSchema,
+    skipped: z.union([z.array(ProtocolImportSkipSchema), z.null()]),
+  }),
+)
+export type ProtocolImportSkip = { code: string; id: string; kind: string; reason?: string }
+export const ProtocolImportSkipSchema: z.ZodType<ProtocolImportSkip> = z.lazy(() =>
+  z.strictObject({ code: z.string(), id: z.string(), kind: z.string(), reason: z.string().optional() }),
+)
+export type ProtocolImportStartParams = { from: string }
+export const ProtocolImportStartParamsSchema: z.ZodType<ProtocolImportStartParams> = z.lazy(() =>
+  z.strictObject({ from: z.string() }),
+)
+export type ProtocolImportStartResult = { started: boolean }
+export const ProtocolImportStartResultSchema: z.ZodType<ProtocolImportStartResult> = z.lazy(() =>
+  z.strictObject({ started: z.boolean() }),
+)
+export type ProtocolImportStatus = {
+  done: number
+  found: boolean
+  result?: ProtocolImportResult | null
+  state: string
+  total: number
+}
+export const ProtocolImportStatusSchema: z.ZodType<ProtocolImportStatus> = z.lazy(() =>
+  z.strictObject({
+    done: z.number().int(),
+    found: z.boolean(),
+    result: z.union([ProtocolImportResultSchema, z.null()]).optional(),
+    state: z.string(),
+    total: z.number().int(),
+  }),
 )
 export type ProtocolMCPAuthenticateResult = { url: string }
 export const ProtocolMCPAuthenticateResultSchema: z.ZodType<ProtocolMCPAuthenticateResult> = z.lazy(() =>
@@ -1603,12 +1748,18 @@ export type ProtocolRepoCommitMessageResult = { message: string }
 export const ProtocolRepoCommitMessageResultSchema: z.ZodType<ProtocolRepoCommitMessageResult> = z.lazy(() =>
   z.strictObject({ message: z.string() }),
 )
-export type ProtocolRepoCommitParams = { directory?: string; message: string; paths?: string[] | null }
+export type ProtocolRepoCommitParams = {
+  directory?: string
+  message: string
+  paths?: string[] | null
+  staged?: boolean
+}
 export const ProtocolRepoCommitParamsSchema: z.ZodType<ProtocolRepoCommitParams> = z.lazy(() =>
   z.strictObject({
     directory: z.string().optional(),
     message: z.string(),
     paths: z.union([z.array(z.string()), z.null()]).optional(),
+    staged: z.boolean().optional(),
   }),
 )
 export type ProtocolRepoCommitResult = { commit: string }
@@ -1618,6 +1769,10 @@ export const ProtocolRepoCommitResultSchema: z.ZodType<ProtocolRepoCommitResult>
 export type ProtocolRepoDiffParams = { base?: string; directory?: string; session?: string }
 export const ProtocolRepoDiffParamsSchema: z.ZodType<ProtocolRepoDiffParams> = z.lazy(() =>
   z.strictObject({ base: z.string().optional(), directory: z.string().optional(), session: z.string().optional() }),
+)
+export type ProtocolRepoPathsParams = { directory?: string; paths: string[] | null }
+export const ProtocolRepoPathsParamsSchema: z.ZodType<ProtocolRepoPathsParams> = z.lazy(() =>
+  z.strictObject({ directory: z.string().optional(), paths: z.union([z.array(z.string()), z.null()]) }),
 )
 export type ProtocolRuleFileChange = { body?: string | null; name: string }
 export const ProtocolRuleFileChangeSchema: z.ZodType<ProtocolRuleFileChange> = z.lazy(() =>
@@ -1916,9 +2071,14 @@ export type ProtocolWorkerRunParams = { packet: string; profile: AgentAgent; ses
 export const ProtocolWorkerRunParamsSchema: z.ZodType<ProtocolWorkerRunParams> = z.lazy(() =>
   z.strictObject({ packet: z.string(), profile: AgentAgentSchema, session: z.string(), workdir: z.string() }),
 )
-export type ProtocolWorktreeCreateParams = { branch?: string; directory?: string; key: string }
+export type ProtocolWorktreeCreateParams = { base?: string; branch?: string; directory?: string; key: string }
 export const ProtocolWorktreeCreateParamsSchema: z.ZodType<ProtocolWorktreeCreateParams> = z.lazy(() =>
-  z.strictObject({ branch: z.string().optional(), directory: z.string().optional(), key: z.string() }),
+  z.strictObject({
+    base: z.string().optional(),
+    branch: z.string().optional(),
+    directory: z.string().optional(),
+    key: z.string(),
+  }),
 )
 export type ProtocolWorktreePathParams = { path: string }
 export const ProtocolWorktreePathParamsSchema: z.ZodType<ProtocolWorktreePathParams> = z.lazy(() =>
@@ -2832,6 +2992,17 @@ export type EngineEvent =
       stream: string
       time: string
       type: "human.said"
+    }
+  | {
+      actor: EventActor
+      cause?: string
+      id: string
+      payload: ProtocolImportProgressPayload
+      scope: EventScope
+      seq?: number
+      stream: string
+      time: string
+      type: "import.progress"
     }
   | {
       actor: EventActor
@@ -3757,6 +3928,17 @@ export const EngineEventSchema: z.ZodType<EngineEvent> = z.union([
     actor: EventActorSchema,
     cause: z.string().optional(),
     id: z.string(),
+    payload: ProtocolImportProgressPayloadSchema,
+    scope: EventScopeSchema,
+    seq: z.number().int().optional(),
+    stream: z.string(),
+    time: z.string(),
+    type: z.literal("import.progress"),
+  }),
+  z.strictObject({
+    actor: EventActorSchema,
+    cause: z.string().optional(),
+    id: z.string(),
     payload: LoopConsumedSchema,
     scope: EventScopeSchema,
     seq: z.number().int().optional(),
@@ -4522,17 +4704,21 @@ export type Methods = {
   "file.list": { params: ProtocolFileParams; result: EngineFileNode[] | null }
   "file.read": { params: ProtocolFileParams; result: EngineFileContent }
   "file.status": { params: ProtocolFileParams; result: CodeStatus }
+  "file.write": { params: ProtocolFileWriteParams; result: ProtocolFileWriteResult }
   "group.addMember": { params: ProtocolGroupAddMemberParams; result: GroupMember }
   "group.bind": { params: ProtocolGroupBindParams; result: TaskCard }
   "group.create": { params: ProtocolGroupCreateParams; result: GroupGroup }
   "group.list": { params: {}; result: GroupListing[] | null }
   "group.pause": { params: ProtocolGroupControlParams; result: {} }
   "group.removeMember": { params: ProtocolGroupRemoveMemberParams; result: {} }
+  "group.renameMember": { params: ProtocolGroupRenameMemberParams; result: GroupMember }
   "group.resume": { params: ProtocolGroupControlParams; result: {} }
   "group.say": { params: ProtocolGroupSayParams; result: string }
   "group.state": { params: ProtocolGroupIDParams; result: LeaderView }
   "group.update": { params: ProtocolGroupUpdateParams; result: GroupGroup }
   hello: { params: ProtocolHelloParams; result: ProtocolHelloResult }
+  "import.start": { params: ProtocolImportStartParams; result: ProtocolImportStartResult }
+  "import.status": { params: {}; result: ProtocolImportStatus }
   "mcp.authenticate": { params: ProtocolMCPServerParams; result: ProtocolMCPAuthenticateResult }
   "mcp.logout": { params: ProtocolMCPServerParams; result: {} }
   "mcp.status": { params: ProtocolMCPStatusParams; result: McpStatus[] | null }
@@ -4560,7 +4746,9 @@ export type Methods = {
   "repo.commitMessage": { params: ProtocolDirectoryParams; result: ProtocolRepoCommitMessageResult }
   "repo.diff": { params: ProtocolRepoDiffParams; result: GitChange[] | null }
   "repo.push": { params: ProtocolDirectoryParams; result: {} }
+  "repo.stage": { params: ProtocolRepoPathsParams; result: {} }
   "repo.status": { params: ProtocolDirectoryParams; result: GitState }
+  "repo.unstage": { params: ProtocolRepoPathsParams; result: {} }
   "rules.change": { params: ProtocolRulesChangeParams; result: {} }
   "rules.read": { params: ProtocolDirectoryParams; result: ProtocolRulesReadResult }
   "sandbox.setup": { params: {}; result: {} }
@@ -4637,17 +4825,21 @@ export const methodSchemas = {
   "file.list": { params: ProtocolFileParamsSchema, result: z.union([z.array(EngineFileNodeSchema), z.null()]) },
   "file.read": { params: ProtocolFileParamsSchema, result: EngineFileContentSchema },
   "file.status": { params: ProtocolFileParamsSchema, result: CodeStatusSchema },
+  "file.write": { params: ProtocolFileWriteParamsSchema, result: ProtocolFileWriteResultSchema },
   "group.addMember": { params: ProtocolGroupAddMemberParamsSchema, result: GroupMemberSchema },
   "group.bind": { params: ProtocolGroupBindParamsSchema, result: TaskCardSchema },
   "group.create": { params: ProtocolGroupCreateParamsSchema, result: GroupGroupSchema },
   "group.list": { params: z.strictObject({}), result: z.union([z.array(GroupListingSchema), z.null()]) },
   "group.pause": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
   "group.removeMember": { params: ProtocolGroupRemoveMemberParamsSchema, result: z.strictObject({}) },
+  "group.renameMember": { params: ProtocolGroupRenameMemberParamsSchema, result: GroupMemberSchema },
   "group.resume": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
   "group.say": { params: ProtocolGroupSayParamsSchema, result: z.string() },
   "group.state": { params: ProtocolGroupIDParamsSchema, result: LeaderViewSchema },
   "group.update": { params: ProtocolGroupUpdateParamsSchema, result: GroupGroupSchema },
   hello: { params: ProtocolHelloParamsSchema, result: ProtocolHelloResultSchema },
+  "import.start": { params: ProtocolImportStartParamsSchema, result: ProtocolImportStartResultSchema },
+  "import.status": { params: z.strictObject({}), result: ProtocolImportStatusSchema },
   "mcp.authenticate": { params: ProtocolMCPServerParamsSchema, result: ProtocolMCPAuthenticateResultSchema },
   "mcp.logout": { params: ProtocolMCPServerParamsSchema, result: z.strictObject({}) },
   "mcp.status": { params: ProtocolMCPStatusParamsSchema, result: z.union([z.array(McpStatusSchema), z.null()]) },
@@ -4681,7 +4873,9 @@ export const methodSchemas = {
   "repo.commitMessage": { params: ProtocolDirectoryParamsSchema, result: ProtocolRepoCommitMessageResultSchema },
   "repo.diff": { params: ProtocolRepoDiffParamsSchema, result: z.union([z.array(GitChangeSchema), z.null()]) },
   "repo.push": { params: ProtocolDirectoryParamsSchema, result: z.strictObject({}) },
+  "repo.stage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
   "repo.status": { params: ProtocolDirectoryParamsSchema, result: GitStateSchema },
+  "repo.unstage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
   "rules.change": { params: ProtocolRulesChangeParamsSchema, result: z.strictObject({}) },
   "rules.read": { params: ProtocolDirectoryParamsSchema, result: ProtocolRulesReadResultSchema },
   "sandbox.setup": { params: z.strictObject({}), result: z.strictObject({}) },

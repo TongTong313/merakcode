@@ -51,6 +51,11 @@ func docKey(root, key string) string {
 // Create makes the worktree of a key, or returns the one that already exists for it. A branch name is optional;
 // without one the branch is named after the key.
 func (w *Worktrees) Create(ctx context.Context, directory, key, branch string) (Worktree, error) {
+	return w.CreateFrom(ctx, directory, key, branch, "")
+}
+
+// CreateFrom is Create with the branch the new worktree starts from; without one it starts from the current head.
+func (w *Worktrees) CreateFrom(ctx context.Context, directory, key, branch, base string) (Worktree, error) {
 	if strings.TrimSpace(key) == "" {
 		return Worktree{}, errors.New("a worktree needs a key")
 	}
@@ -94,6 +99,18 @@ func (w *Worktrees) Create(ctx context.Context, directory, key, branch string) (
 	for _, known := range branches {
 		exists = exists || known.Name == branch
 	}
+	if base != "" {
+		found := false
+		for _, known := range branches {
+			found = found || known.Name == base
+		}
+		if !found {
+			return Worktree{}, errors.New("the starting branch does not exist")
+		}
+		if head, err = git.Commit(ctx, root, base); err != nil {
+			return Worktree{}, err
+		}
+	}
 	if !exists {
 		if err := git.CreateBranch(ctx, root, branch, head); err != nil {
 			return Worktree{}, err
@@ -124,7 +141,7 @@ func (w *Worktrees) List(ctx context.Context, directory string) ([]Worktree, err
 	if root, err = workspace.Canonical(root); err != nil {
 		return nil, err
 	}
-	all, err := w.all(ctx)
+	all, err := w.All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +154,8 @@ func (w *Worktrees) List(ctx context.Context, directory string) ([]Worktree, err
 	return result, nil
 }
 
-func (w *Worktrees) all(ctx context.Context) ([]Worktree, error) {
+// All returns every worktree this engine made.
+func (w *Worktrees) All(ctx context.Context) ([]Worktree, error) {
 	metas, err := w.Store.List(ctx, worktreeKind, "")
 	if err != nil {
 		return nil, err
@@ -157,7 +175,7 @@ func (w *Worktrees) all(ctx context.Context) ([]Worktree, error) {
 }
 
 func (w *Worktrees) known(ctx context.Context, path string) (Worktree, string, error) {
-	all, err := w.all(ctx)
+	all, err := w.All(ctx)
 	if err != nil {
 		return Worktree{}, "", err
 	}

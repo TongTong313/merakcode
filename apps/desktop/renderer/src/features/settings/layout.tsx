@@ -12,13 +12,13 @@ export function Section(props: { title: string; lead?: string; children: unknown
   )
 }
 
-export function Row(props: { label: string; desc?: string; children: unknown }) {
+export function Row(props: { label: string; desc?: unknown; children: unknown }) {
   return (
     <div class="setting-row">
       <div class="grow">
         <div class="label">{props.label}</div>
         <Show when={props.desc}>
-          <div class="desc">{props.desc}</div>
+          <div class="desc">{props.desc as never}</div>
         </Show>
       </div>
       {props.children as never}

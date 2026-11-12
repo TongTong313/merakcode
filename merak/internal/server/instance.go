@@ -19,6 +19,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 	"github.com/TongTong313/merakcode/merak/engine/question"
+	"github.com/TongTong313/merakcode/merak/internal/migrate"
 	"github.com/TongTong313/merakcode/merak/internal/platform/config"
 	platformlog "github.com/TongTong313/merakcode/merak/internal/platform/log"
 	"github.com/TongTong313/merakcode/merak/protocol"
@@ -123,6 +124,7 @@ func StartWith(e *engine.Engine, options Options) (*Instance, error) {
 	handler.settings = settings
 	e.ConfigureNetworkSettings(settings)
 	handler.dataDir, handler.configRoot = home, options.Config
+	handler.migration = migrate.New(migrate.Options{Root: options.Config, Human: protocol.LocalHuman, Engine: e})
 	handler.applyConfiguration(settings.Private())
 	handler.logRoot, _ = platformlog.Root()
 	instance := &Instance{Info: info, http: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}, server: handler, lock: lock, home: home}
@@ -137,6 +139,7 @@ func StartWith(e *engine.Engine, options Options) (*Instance, error) {
 	}
 	go func() { _ = instance.http.Serve(listener) }()
 	handler.restoreCloud()
+	handler.migration.StartIfNeeded(context.Background())
 	return instance, nil
 }
 

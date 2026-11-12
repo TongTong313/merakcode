@@ -4,9 +4,11 @@ import Paperclip from "lucide-solid/icons/paperclip"
 import Square from "lucide-solid/icons/square"
 import X from "lucide-solid/icons/x"
 import { createEffect, createSignal, For, on, onMount, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { choice, choiceKey, choose, find, usage } from "../../state/models"
 import { connected } from "../../state/store"
+import { setUi } from "../../state/ui"
 import { PermissionModeSelect } from "./permission-mode"
 import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
@@ -17,6 +19,13 @@ import { SandboxStatus } from "./sandbox-status"
 export type Attachment = { filename: string; mime: string; url: string }
 export type Submission = { text: string; files: Attachment[] }
 export type ComposerDraft = Submission
+
+/**
+ * Text pushed into the composer from outside (when editing a sent message), keyed by conversation; an open composer
+ * picks it up immediately.
+ */
+const [fills, setFills] = createStore<Record<string, { text: string; at: number }>>({})
+export const fill = (key: string, text: string) => setFills(key, { text, at: Date.now() })
 const attachmentBytes = (url: string) => {
   const data = url.slice(url.indexOf(",") + 1)
   return (data.length * 3) / 4 - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
@@ -65,6 +74,20 @@ export function Composer(props: {
     input.style.height = "auto"
     input.style.height = `${Math.min(input.scrollHeight, 320)}px`
   }
+  createEffect(
+    on(
+      () => fills[key()]?.at,
+      (stamp) => {
+        if (!stamp || props.disabled) return
+        setText(fills[key()]!.text)
+        queueMicrotask(() => {
+          resize()
+          input.focus()
+          input.setSelectionRange(input.value.length, input.value.length)
+        })
+      },
+    ),
+  )
   const submit = async () => {
     if (!usable() || sending() || (!text().trim() && !files().length)) return
     const target = key()
@@ -196,6 +219,11 @@ export function Composer(props: {
             onClick={() => picker.click()}
           >
             <Paperclip class="icon icon-sm" />
+          </button>
+        </Show>
+        <Show when={!props.group && !connected()}>
+          <button class="chip accent" onClick={() => setUi("settings", "models")}>
+            {t("prompt.noModel")}
           </button>
         </Show>
         <span class="spacer" />

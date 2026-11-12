@@ -798,7 +798,8 @@
         v0.3.1，但保存时回写公开视图（B8）；八家官方服务商的名单写了三份：<code>internal/server/config.go:46</code>、<code>state/models.ts:7</code>、<code>settings/models.tsx:16</code>。
       </li>
       <li>
-        单聊用模型选择器；档案用手填文本框（B9）；群 Leader 的模型从输入框的选择隐式带入（B11）。同一件事三种做法。
+        单聊用模型选择器；档案用手填文本框（B9）；群 Leader 的模型从输入框的选择隐式带入（B11）。同一件事三种做法。v1
+        的做法是一种：模型在智能体的表单里用模型选择器配好，群里不再选。
       </li>
       <li>
         方案 3.3 节列了 <code>model/gemini</code> 子包，实际没有，Gemini 按 OpenAI
@@ -1664,8 +1665,8 @@ type Card struct {
         <text class="t" x="640" y="46" dominant-baseline="middle">智能体</text>
         <text x="640" y="76" dominant-baseline="middle">本机探测到的产品：一键添加</text>
         <text x="640" y="102" dominant-baseline="middle">我的智能体：编辑、复制、测试、删除</text>
-        <text x="640" y="128" dominant-baseline="middle">新建向导：产品、模型、职责、权限</text>
-        <text class="s" x="640" y="160" dominant-baseline="middle">模型一步用对话里的模型选择器</text>
+        <text x="640" y="128" dominant-baseline="middle">新建向导：产品、模型、角色名、职责、权限</text>
+        <text class="s" x="640" y="160" dominant-baseline="middle">模型、角色都在智能体里配好，群里不再选模型</text>
 
         <rect class="b blue" x="270" y="240" width="320" height="210" rx="6" />
         <text class="t" x="290" y="266" dominant-baseline="middle">协作群</text>
@@ -3907,8 +3908,9 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
         <code>agent.catalog</code> 里可用的产品；点“添加”后“我的智能体”多一条，再点不重复添加，按钮变为“已添加”。
       </li>
       <li>
-        新建向导选 MerakCode
-        时，模型一步是对话里的模型选择器组件；选外部产品时没有模型选择器，有命令、参数、环境变量（值用密码框）。
+        新建向导和编辑已有智能体用同一个表单，至少能配：用哪个产品（harness）、用哪个大模型、角色名、角色说明和职责。选
+        MerakCode
+        时，模型一步是对话里的模型选择器组件；选外部产品时没有模型选择器，有命令、参数、环境变量（值用密码框）。智能体列表里每一行能看到产品、模型、名字和职责；改过以后再打开，改动都在。
       </li>
       <li>删除仍在某个协作群里的智能体：显示 <code>MRK-6004</code> 的标题和提示，列表不变。</li>
     </ol>
@@ -3960,7 +3962,10 @@ offline-directory-recovery  offline-transfer-recovery  worktree</code></pre>
         <code>agent.list</code> 的数量不变（B1）。
       </li>
       <li>
-        Leader 是 MerakCode 时表单里有它的模型选择器，默认是设置里的默认模型（B11）；纳管产品也能被选为 Leader（B12）。
+        建群表单里没有模型选择器：模型只在智能体里配（2026-11-12 用户决定，见 11
+        节）。群里只从已建的智能体里挑成员（可以挑若干个），再指定其中一个 Leader 角色的智能体做群的
+        Leader；建群不新建也不修改任何智能体。群的 Leader
+        用的就是它的智能体里配的模型，没配时用设置里的默认模型（B11）；纳管产品也能被选为 Leader（B12）。
       </li>
       <li>
         人发言后 Leader
@@ -4364,6 +4369,15 @@ pnpm --dir apps/desktop/main test:e2e     # 本片涉及的 spec；R25 起跑全
           <code>merak plugin</code>、设置里的“插件”页和插件 e2e 用例；<code>plugin</code>、<code>plugin_options</code>
           两个配置键留在文件里并记“不再使用”的警告，不做兼容；错误码 MRK-3003、3004、5012 删除。做了一半的实现保存在提交
           <code>522a121</code> 里供以后参考
+        </td>
+      </tr>
+      <tr>
+        <td>R22、R23、B11、4.8 节</td>
+        <td>
+          模型只在智能体里配，群里不选模型（2026-11-12
+          用户决定）：智能体的表单至少配产品（harness）、大模型、角色名、角色说明和职责；建群只从已建智能体里挑成员并指定一个
+          Leader，不新建、不改智能体，所以不再有“Leader 的模型选择器”和为选了别的模型而生成的“Leader · 模型”变体。群的
+          Leader 用智能体里配的模型，没配用设置里的默认模型。成员名里的空格换成连字符，让 @ 能用
         </td>
       </tr>
       <tr>

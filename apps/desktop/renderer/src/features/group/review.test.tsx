@@ -10,11 +10,14 @@ import { EngineEventSchema } from "@merakcode/sdk"
 import { engineFixture } from "../../test/engine"
 import { client } from "../../state/client"
 import { setLocale } from "../../i18n"
-import { localHuman } from "../../state/groups"
-import { GroupConversation } from "../conversation/group-page"
+import { connectGroups, groupsLoaded, loadGroups, localHuman } from "../../state/groups"
+import { connect } from "../../state/store"
+import { connectTasks, loadTasks } from "../../state/tasks"
+import { TaskPage } from "../tasks/page"
 import { TaskReview } from "./review"
 
 let engine: Awaited<ReturnType<typeof engineFixture>>
+let stopLive = () => {}
 beforeAll(async () => {
   vi.stubGlobal("requestIdleCallback", (callback: IdleRequestCallback) =>
     window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0),
@@ -25,8 +28,17 @@ beforeAll(async () => {
   await engine.git("commit", "-m", "Fixture")
   location.href = engine.url
   setLocale("en")
+  const stopStore = connect()
+  const stopGroups = connectGroups()
+  const stopTasks = connectTasks()
+  stopLive = () => {
+    stopTasks()
+    stopGroups()
+    stopStore()
+  }
 })
 afterAll(async () => {
+  stopLive()
   await (await client()).close()
   await engine?.close()
   vi.unstubAllGlobals()
@@ -91,16 +103,21 @@ test("reviews the task baseline, returns collected feedback to the original clai
     promisify(execFile)("git", args, { cwd: workspace.payload.directory, windowsHide: true })
   await git("add", ".")
   await git("commit", "-m", "Reviewed fixture")
+  await loadGroups()
+  await groupsLoaded()
+  await loadTasks()
+  window.history.replaceState({}, "", `/task/${card.id}`)
   const host = document.createElement("div")
   document.body.append(host)
-  const dispose = render(
+  const unsubscribe = render(
     () => (
       <Router>
-        <Route path="/" component={() => <GroupConversation id={group.id} directory={engine.project} />} />
+        <Route path="/task/:id" component={TaskPage} />
       </Router>
     ),
     host,
   )
+  const dispose = unsubscribe
   const click = async (label: string) => {
     const button = () =>
       [...host.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.trim() === label)
@@ -108,8 +125,7 @@ test("reviews the task baseline, returns collected feedback to the original clai
     button()!.click()
   }
   try {
-    await click("Inbox")
-    await click("Review guide")
+    await click("Review task")
     await expect
       .poll(() => host.querySelector('[aria-label="Task review"]')?.textContent)
       .toContain("Feedback received")

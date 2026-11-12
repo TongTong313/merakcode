@@ -12,9 +12,17 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/tool"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 )
 
 func (e *Engine) SayGroup(ctx context.Context, groupID, taskID, human event.ID, message group.Message) (event.ID, error) {
+	state, err := e.Groups.Get(ctx, groupID)
+	if err != nil {
+		return "", err
+	}
+	if state.Group.Archived {
+		return "", coded(errorcode.GroupArchived, errors.New("the group is archived and read-only"))
+	}
 	member, err := e.groupMember(ctx, groupID, human)
 	if err != nil {
 		return "", err

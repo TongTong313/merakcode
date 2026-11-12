@@ -38,7 +38,7 @@ var errMethodNotFound = errors.New("method not found")
 func (s *Server) methods() map[string]handler {
 	table := map[string]handler{}
 	for _, part := range []map[string]handler{
-		s.sessionMethods(), s.groupMethods(), s.taskMethods(), s.fileMethods(), s.configMethods(), s.eventMethods(), s.cloudMethods(), s.toolMethods(), s.scheduleMethods(),
+		s.sessionMethods(), s.groupMethods(), s.taskMethods(), s.fileMethods(), s.configMethods(), s.eventMethods(), s.cloudMethods(), s.toolMethods(), s.scheduleMethods(), s.importMethods(),
 	} {
 		maps.Copy(table, part)
 	}

@@ -148,60 +148,62 @@ type Engine struct {
 	claimRuns         map[event.ID]claimRun
 	claimPreparing    map[event.ID]*claimPreparation
 	claimRestarts     map[event.ID][]loop.Input
-	externals         map[event.ID]*externalChat
-	inviteMu          sync.Mutex
-	keyMu             sync.Mutex
-	personal          atomic.Pointer[[]string]
-	toolSwitches      atomic.Pointer[map[string]bool]
-	plans             *plan.Plans
-	commandSet        atomic.Pointer[map[string]slash.Entry]
-	skillRoots        atomic.Pointer[skillRoots]
-	memoryExtractOff  atomic.Bool
-	memoryRecallOff   atomic.Bool
-	mcpLoginOnce      sync.Once
-	mcpLoginSet       *mcp.Login
-	snapshotMu        sync.Mutex
-	worktreeOnce      sync.Once
-	worktreeSet       *code.Worktrees
-	snapshotDir       string
-	snapshotTemp      bool
-	snapshotsOff      atomic.Bool
-	autoCompactOff    atomic.Bool
-	retentionDays     atomic.Int64
-	groupRuns         map[event.ID]*groupRun
-	groupSessions     map[event.ID]bool
-	runnerFor         func(agent.Agent, *sandbox.Launcher) worker.Runner
-	Terminals         *terminal.Manager
-	providersMu       sync.RWMutex
-	logger            *slog.Logger
-	notes             *memory.Repository
-	memoryIdle        time.Duration
-	Bus               *event.Bus
-	providers         map[string]model.Provider
-	model             string
-	thinking          model.Thinking
-	newID             func() event.ID
-	workdir           string
-	system            string
-	now               func() time.Time
-	tools             *tool.Pool
-	clientTools       *clienttool.Registry
-	schedules         schedule.Schedules
-	scheduleRunner    *schedule.Runner
-	scheduleNoticeMu  sync.Mutex
-	localHuman        event.ID
-	store             store.Store
-	manager           *session.Manager
-	counter           *window.Counter
-	catalog           *catalog.Catalog
-	mu                sync.Mutex
-	sessions          map[event.ID]*conversation
-	ctx               context.Context
-	cancel            context.CancelFunc
-	workers           sync.WaitGroup
-	shutdownOnce      sync.Once
-	shutdownDone      chan struct{}
-	shutdownErr       error
+	// leaderStops holds the way to end the turn that a built-in Leader thread is running, by session.
+	leaderStops      map[event.ID]context.CancelFunc
+	externals        map[event.ID]*externalChat
+	inviteMu         sync.Mutex
+	keyMu            sync.Mutex
+	personal         atomic.Pointer[[]string]
+	toolSwitches     atomic.Pointer[map[string]bool]
+	plans            *plan.Plans
+	commandSet       atomic.Pointer[map[string]slash.Entry]
+	skillRoots       atomic.Pointer[skillRoots]
+	memoryExtractOff atomic.Bool
+	memoryRecallOff  atomic.Bool
+	mcpLoginOnce     sync.Once
+	mcpLoginSet      *mcp.Login
+	snapshotMu       sync.Mutex
+	worktreeOnce     sync.Once
+	worktreeSet      *code.Worktrees
+	snapshotDir      string
+	snapshotTemp     bool
+	snapshotsOff     atomic.Bool
+	autoCompactOff   atomic.Bool
+	retentionDays    atomic.Int64
+	groupRuns        map[event.ID]*groupRun
+	groupSessions    map[event.ID]bool
+	runnerFor        func(agent.Agent, *sandbox.Launcher) worker.Runner
+	Terminals        *terminal.Manager
+	providersMu      sync.RWMutex
+	logger           *slog.Logger
+	notes            *memory.Repository
+	memoryIdle       time.Duration
+	Bus              *event.Bus
+	providers        map[string]model.Provider
+	model            string
+	thinking         model.Thinking
+	newID            func() event.ID
+	workdir          string
+	system           string
+	now              func() time.Time
+	tools            *tool.Pool
+	clientTools      *clienttool.Registry
+	schedules        schedule.Schedules
+	scheduleRunner   *schedule.Runner
+	scheduleNoticeMu sync.Mutex
+	localHuman       event.ID
+	store            store.Store
+	manager          *session.Manager
+	counter          *window.Counter
+	catalog          *catalog.Catalog
+	mu               sync.Mutex
+	sessions         map[event.ID]*conversation
+	ctx              context.Context
+	cancel           context.CancelFunc
+	workers          sync.WaitGroup
+	shutdownOnce     sync.Once
+	shutdownDone     chan struct{}
+	shutdownErr      error
 }
 
 func New(d Deps) (*Engine, error) {
@@ -243,6 +245,7 @@ func New(d Deps) (*Engine, error) {
 		workerQuestions: make(map[event.ID]*pendingWorkerQuestion),
 		claimPreparing:  make(map[event.ID]*claimPreparation),
 		claimRestarts:   make(map[event.ID][]loop.Input),
+		leaderStops:     make(map[event.ID]context.CancelFunc),
 		externals:       make(map[event.ID]*externalChat),
 		taskApprovals:   make(map[event.ID]*taskApproval),
 		logger:          d.Logger,
@@ -323,7 +326,7 @@ func New(d Deps) (*Engine, error) {
 	}
 	e.catalog = d.Catalog
 	for name, p := range d.Providers {
-		e.providers[name] = &model.Retrying{Provider: p, Price: func(id string, u model.Usage) model.Usage { return e.catalog.Get(name, id).Price.Apply(u) }}
+		e.providers[name] = &model.Retrying{Provider: e.blobs(p), Price: func(id string, u model.Usage) model.Usage { return e.catalog.Get(name, id).Price.Apply(u) }}
 	}
 	for _, t := range []tool.Tool{tool.Spawn{}, tool.WaitChild{}, tool.ReadFile{Memory: e.notes}, tool.Remember{Memory: e.notes}, tool.Recall{Memory: e.notes}, tool.WriteFile{}, tool.EditFile{}, tool.Bash{}, tool.Glob{}, tool.Grep{}, tool.ListDir{}, tool.Lookup{Store: d.Store}, tool.BashOutput{}, tool.TodoWrite{}, tool.WritePlan{}, tool.MultiEdit{}, tool.DocxRead{}, tool.ExcelRead{}, tool.ExcelWrite{}, web.Fetch{}, web.Search{}, web.Code{}} {
 		if d.ToolPool == "worker.readonly" && t.Spec().Effect != tool.EffectRead {
@@ -392,32 +395,14 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 	if options.Thinking == "" {
 		options.Thinking = e.thinking
 	}
-	situation := prompt.Situation{
-		Role:   options.Role,
-		System: e.system + "\n" + options.System, Environment: prompt.Environment{OS: runtime.GOOS, Shell: "bash", Workdir: options.Workdir},
-		Deferred: e.sessionTools(session.Config{Parent: options.Parent, ToolPool: options.ToolPool, Switches: options.Switches}).DeferredSpecs(),
-	}
-	projectRules, err := rules.Load(ctx, options.Workdir)
+	system, describes, err := e.composeSystem(ctx, options)
 	if err != nil {
 		return nil, err
-	}
-	situation.Personal = e.personalRules()
-	skills, err := e.skills(options.Workdir)
-	if err != nil {
-		return nil, err
-	}
-	if options.Parent == "" {
-		situation.Skills = skills.Section()
-	}
-	situation.Instructions = projectRules.Sections(nil)
-	if options.Parent != "" {
-		situation.Deferred = e.sessionTools(session.Config{Parent: options.Parent, Switches: options.Switches}).DeferredSpecs()
-		situation.System += "\nYou are a read-only child. Research the assigned question and return a concise report. You cannot modify files, claim tasks or start children."
 	}
 	if options.ID == "" {
 		options.ID = e.newID()
 	}
-	state := &session.State{ID: options.ID, Scope: options.Scope, System: (prompt.Composer{}).System(situation), Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir, Switches: options.Switches}}
+	state := &session.State{ID: options.ID, Scope: options.Scope, System: system, Config: session.Config{Mode: options.Mode, Member: options.Member, ToolPool: options.ToolPool, Parent: options.Parent, Provider: options.Provider, Model: options.Model, Thinking: options.Thinking, Workdir: options.Workdir, Switches: options.Switches}}
 	state.Config.Budget = options.Budget
 	if options.Budget.MaxWallClock > 0 {
 		state.Config.BudgetDeadline = e.now().Add(options.Budget.MaxWallClock)
@@ -439,7 +424,7 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 		}
 		c.state.Tools = c.runner.Tools.Specs()
 	}
-	if err == nil && (projectRules.HasDescribed() || options.Parent == "" && len(skills.Skills) > 0) {
+	if err == nil && describes {
 		c.state.Tools = c.runner.Tools.Specs()
 	}
 	if err == nil && len(options.MCPServers) > 0 {
@@ -447,6 +432,38 @@ func (e *Engine) newConversation(ctx context.Context, options SessionOptions) (*
 		_ = json.Unmarshal(body, &c.mcpServers)
 	}
 	return c, err
+}
+
+// composeSystem builds the system prompt of a conversation in a folder: the product prompt, the user's and the
+// project's rules, and the skills. A folder that is gone has neither rules nor skills. describes says that the rules
+// or skills carry descriptions the model loads tools for.
+func (e *Engine) composeSystem(ctx context.Context, options SessionOptions) (system string, describes bool, err error) {
+	situation := prompt.Situation{
+		Role:   options.Role,
+		System: e.system + "\n" + options.System, Environment: prompt.Environment{OS: runtime.GOOS, Shell: "bash", Workdir: options.Workdir},
+		Deferred: e.sessionTools(session.Config{Parent: options.Parent, ToolPool: options.ToolPool, Switches: options.Switches}).DeferredSpecs(),
+	}
+	situation.Personal = e.personalRules()
+	if workspace.Existing(options.Workdir) == nil {
+		projectRules, err := rules.Load(ctx, options.Workdir)
+		if err != nil {
+			return "", false, err
+		}
+		skills, err := e.skills(options.Workdir)
+		if err != nil {
+			return "", false, err
+		}
+		describes = projectRules.HasDescribed() || options.Parent == "" && len(skills.Skills) > 0
+		if options.Parent == "" {
+			situation.Skills = skills.Section()
+		}
+		situation.Instructions = projectRules.Sections(nil)
+	}
+	if options.Parent != "" {
+		situation.Deferred = e.sessionTools(session.Config{Parent: options.Parent, Switches: options.Switches}).DeferredSpecs()
+		situation.System += "\nYou are a read-only child. Research the assigned question and return a concise report. You cannot modify files, claim tasks or start children."
+	}
+	return (prompt.Composer{}).System(situation), describes, nil
 }
 
 func (e *Engine) conversationFor(state *session.State) (*conversation, error) {

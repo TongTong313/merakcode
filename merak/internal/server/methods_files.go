@@ -12,6 +12,10 @@ func (s *Server) fileMethods() map[string]handler {
 		"file.read": run(func(ctx context.Context, _ *connection, params protocol.FileParams) (any, error) {
 			return s.engine.ReadFile(ctx, params.Directory, params.Path)
 		}),
+		"file.write": run(func(ctx context.Context, _ *connection, params protocol.FileWriteParams) (any, error) {
+			checksum, err := s.engine.WriteFile(ctx, params.Directory, params.Path, params.Content, params.Checksum, params.Force)
+			return protocol.FileWriteResult{Checksum: checksum}, err
+		}),
 		"file.list": run(func(ctx context.Context, _ *connection, params protocol.FileParams) (any, error) {
 			return s.engine.ListFiles(ctx, params.Directory, params.Path)
 		}),
@@ -28,8 +32,18 @@ func (s *Server) fileMethods() map[string]handler {
 			return done(s.engine.RepoCheckout(ctx, params.Directory, params.Branch))
 		}),
 		"repo.commit": run(func(ctx context.Context, _ *connection, params protocol.RepoCommitParams) (any, error) {
+			if params.Staged {
+				commit, err := s.engine.RepoCommitStaged(ctx, params.Directory, params.Message)
+				return protocol.RepoCommitResult{Commit: commit}, err
+			}
 			commit, err := s.engine.RepoCommit(ctx, params.Directory, params.Message, params.Paths)
 			return protocol.RepoCommitResult{Commit: commit}, err
+		}),
+		"repo.stage": run(func(ctx context.Context, _ *connection, params protocol.RepoPathsParams) (any, error) {
+			return done(s.engine.RepoStage(ctx, params.Directory, params.Paths))
+		}),
+		"repo.unstage": run(func(ctx context.Context, _ *connection, params protocol.RepoPathsParams) (any, error) {
+			return done(s.engine.RepoUnstage(ctx, params.Directory, params.Paths))
 		}),
 		"repo.push": run(func(ctx context.Context, _ *connection, params protocol.DirectoryParams) (any, error) {
 			return done(s.engine.RepoPush(ctx, params.Directory))
@@ -39,7 +53,7 @@ func (s *Server) fileMethods() map[string]handler {
 			return protocol.RepoCommitMessageResult{Message: message}, err
 		}),
 		"worktree.create": run(func(ctx context.Context, _ *connection, params protocol.WorktreeCreateParams) (any, error) {
-			return s.engine.CreateWorktree(ctx, params.Directory, params.Key, params.Branch)
+			return s.engine.CreateWorktreeFrom(ctx, params.Directory, params.Key, params.Branch, params.Base)
 		}),
 		"worktree.list": run(func(ctx context.Context, _ *connection, params protocol.DirectoryParams) (any, error) {
 			return s.engine.ListWorktrees(ctx, params.Directory)

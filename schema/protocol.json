@@ -422,6 +422,9 @@
         },
         "root": {
           "type": "string"
+        },
+        "worktree": {
+          "type": "string"
         }
       },
       "required": ["directory", "path"],
@@ -1841,11 +1844,27 @@
     "EngineFileContent": {
       "additionalProperties": false,
       "properties": {
+        "checksum": {
+          "type": "string"
+        },
         "content": {
           "type": "string"
         },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "mime": {
           "type": "string"
+        },
+        "missing": {
+          "type": "boolean"
         },
         "type": {
           "type": "string"
@@ -1857,6 +1876,9 @@
     "EngineFileNode": {
       "additionalProperties": false,
       "properties": {
+        "ignored": {
+          "type": "boolean"
+        },
         "name": {
           "type": "string"
         },
@@ -2069,6 +2091,9 @@
         "status": {
           "type": "string"
         },
+        "unstaged": {
+          "type": "boolean"
+        },
         "version": {
           "type": "string"
         }
@@ -2090,6 +2115,9 @@
         },
         "status": {
           "type": "string"
+        },
+        "unstaged": {
+          "type": "boolean"
         }
       },
       "required": ["path", "staged", "status"],
@@ -2121,6 +2149,12 @@
     "GitState": {
       "additionalProperties": false,
       "properties": {
+        "ahead": {
+          "type": "integer"
+        },
+        "behind": {
+          "type": "integer"
+        },
         "branch": {
           "type": "string"
         },
@@ -2139,6 +2173,12 @@
         },
         "head": {
           "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "upstream": {
+          "type": "boolean"
         }
       },
       "required": ["branch", "files", "head"],
@@ -2241,6 +2281,9 @@
     "GroupGroup": {
       "additionalProperties": false,
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "brief": {
           "$ref": "#/$defs/GroupBrief"
         },
@@ -2269,6 +2312,9 @@
     "GroupListing": {
       "additionalProperties": false,
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "brief": {
           "$ref": "#/$defs/GroupBrief"
         },
@@ -3258,6 +3304,9 @@
             }
           ]
         },
+        "synthetic": {
+          "type": "boolean"
+        },
         "text": {
           "type": "string"
         },
@@ -3869,6 +3918,38 @@
       "required": ["path"],
       "type": "object"
     },
+    "ProtocolFileWriteParams": {
+      "additionalProperties": false,
+      "properties": {
+        "checksum": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["content", "path"],
+      "type": "object"
+    },
+    "ProtocolFileWriteResult": {
+      "additionalProperties": false,
+      "properties": {
+        "checksum": {
+          "type": "string"
+        }
+      },
+      "required": ["checksum"],
+      "type": "object"
+    },
     "ProtocolGroupAddMemberParams": {
       "additionalProperties": false,
       "properties": {
@@ -3911,6 +3992,9 @@
     "ProtocolGroupCreateParams": {
       "additionalProperties": false,
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "brief": {
           "$ref": "#/$defs/GroupBrief"
         },
@@ -3973,6 +4057,22 @@
         }
       },
       "required": ["group", "member"],
+      "type": "object"
+    },
+    "ProtocolGroupRenameMemberParams": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "member": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["group", "member", "name"],
       "type": "object"
     },
     "ProtocolGroupSayParams": {
@@ -4084,6 +4184,163 @@
         }
       },
       "required": ["engine", "human", "protocol"],
+      "type": "object"
+    },
+    "ProtocolImportCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "agents": {
+          "type": "integer"
+        },
+        "blobs": {
+          "type": "integer"
+        },
+        "groups": {
+          "type": "integer"
+        },
+        "memories": {
+          "type": "integer"
+        },
+        "messages": {
+          "type": "integer"
+        },
+        "plans": {
+          "type": "integer"
+        },
+        "roles": {
+          "type": "integer"
+        },
+        "sessions": {
+          "type": "integer"
+        },
+        "todos": {
+          "type": "integer"
+        }
+      },
+      "required": ["agents", "blobs", "groups", "memories", "messages", "plans", "roles", "sessions", "todos"],
+      "type": "object"
+    },
+    "ProtocolImportProgressPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "type": "integer"
+        },
+        "from": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": ["done", "from", "total"],
+      "type": "object"
+    },
+    "ProtocolImportResult": {
+      "additionalProperties": false,
+      "properties": {
+        "adapters": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "imported": {
+          "$ref": "#/$defs/ProtocolImportCounts"
+        },
+        "skipped": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ProtocolImportSkip"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["from", "imported", "skipped"],
+      "type": "object"
+    },
+    "ProtocolImportSkip": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "id", "kind"],
+      "type": "object"
+    },
+    "ProtocolImportStartParams": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        }
+      },
+      "required": ["from"],
+      "type": "object"
+    },
+    "ProtocolImportStartResult": {
+      "additionalProperties": false,
+      "properties": {
+        "started": {
+          "type": "boolean"
+        }
+      },
+      "required": ["started"],
+      "type": "object"
+    },
+    "ProtocolImportStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "type": "integer"
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProtocolImportResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": ["done", "found", "state", "total"],
       "type": "object"
     },
     "ProtocolMCPAuthenticateResult": {
@@ -4508,6 +4765,9 @@
               "type": "null"
             }
           ]
+        },
+        "staged": {
+          "type": "boolean"
         }
       },
       "required": ["message"],
@@ -4536,6 +4796,29 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "ProtocolRepoPathsParams": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["paths"],
       "type": "object"
     },
     "ProtocolRuleFileChange": {
@@ -5345,6 +5628,9 @@
     "ProtocolWorktreeCreateParams": {
       "additionalProperties": false,
       "properties": {
+        "base": {
+          "type": "string"
+        },
         "branch": {
           "type": "string"
         },
@@ -7277,6 +7563,9 @@
     "human.said": {
       "$ref": "#/$defs/GroupMessage"
     },
+    "import.progress": {
+      "$ref": "#/$defs/ProtocolImportProgressPayload"
+    },
     "input.consumed": {
       "$ref": "#/$defs/LoopConsumed"
     },
@@ -7834,6 +8123,14 @@
         "$ref": "#/$defs/CodeStatus"
       }
     },
+    "file.write": {
+      "params": {
+        "$ref": "#/$defs/ProtocolFileWriteParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolFileWriteResult"
+      }
+    },
     "group.addMember": {
       "params": {
         "$ref": "#/$defs/ProtocolGroupAddMemberParams"
@@ -7898,6 +8195,14 @@
         "type": "object"
       }
     },
+    "group.renameMember": {
+      "params": {
+        "$ref": "#/$defs/ProtocolGroupRenameMemberParams"
+      },
+      "result": {
+        "$ref": "#/$defs/GroupMember"
+      }
+    },
     "group.resume": {
       "params": {
         "$ref": "#/$defs/ProtocolGroupControlParams"
@@ -7938,6 +8243,24 @@
       },
       "result": {
         "$ref": "#/$defs/ProtocolHelloResult"
+      }
+    },
+    "import.start": {
+      "params": {
+        "$ref": "#/$defs/ProtocolImportStartParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolImportStartResult"
+      }
+    },
+    "import.status": {
+      "params": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolImportStatus"
       }
     },
     "mcp.authenticate": {
@@ -8254,12 +8577,32 @@
         "type": "object"
       }
     },
+    "repo.stage": {
+      "params": {
+        "$ref": "#/$defs/ProtocolRepoPathsParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
     "repo.status": {
       "params": {
         "$ref": "#/$defs/ProtocolDirectoryParams"
       },
       "result": {
         "$ref": "#/$defs/GitState"
+      }
+    },
+    "repo.unstage": {
+      "params": {
+        "$ref": "#/$defs/ProtocolRepoPathsParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
       }
     },
     "rules.change": {

@@ -29,7 +29,9 @@ test("settings and group views contain long content in a small window", async ({
   const check = async (name: string) => {
     await kit.page.screenshot({ path: info.outputPath(`${name}.png`) })
     const overflow = await kit.page
-      .locator(".settings-inner, .setting-row, .profile-card, .member-seat, .group-inbox, .dialog-head, .dialog-body")
+      .locator(
+        ".settings-inner, .setting-row, .agent-card, .member-form, .home-inbox, .task-page, .dialog-head, .dialog-body",
+      )
       .evaluateAll((elements) =>
         elements
           .filter(
@@ -42,7 +44,7 @@ test("settings and group views contain long content in a small window", async ({
   await kit.settings()
   for (const theme of ["light", "dark"] as const) {
     await kit.page.emulateMedia({ colorScheme: theme })
-    for (const section of ["通用", "模型与供应商", "成员与档案", "云端账号", "关于与更新"]) {
+    for (const section of ["通用", "模型与供应商", "任务看板", "云端账号", "关于与更新"]) {
       await kit.page
         .getByRole("navigation", { name: "设置", exact: true })
         .getByRole("button", { name: section, exact: true })
@@ -61,22 +63,23 @@ test("settings and group views contain long content in a small window", async ({
   await dialog.getByRole("button", { name: "创建", exact: true }).click()
   await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
   await check("group")
-  await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
-  await check("inbox")
-  await kit.page.getByRole("tab", { name: "用量与费用", exact: true }).click()
+  await kit.page.getByText("群设置", { exact: true }).click()
   await check("usage")
-  await kit.page.getByRole("tab", { name: "任务看板", exact: true }).click()
   await kit.page.getByRole("button", { name: "新建任务", exact: true }).click()
   await dialog.getByRole("textbox", { name: "标题", exact: true }).fill(name)
-  await dialog.getByRole("button", { name: "新建任务", exact: true }).click()
+  await check("task-create")
+  await dialog.getByRole("button", { name: "创建任务", exact: true }).click()
   await expect(dialog).toBeHidden()
-  await kit.page.getByRole("button", { name, exact: true }).last().click()
-  await check("task-dialog")
-  await kit.page.keyboard.press("Escape")
+  await expect(kit.page.getByRole("heading", { name, exact: true })).toBeVisible()
+  await check("task-page")
   await kit.page.emulateMedia({ colorScheme: "dark" })
+  await check("task-page-dark")
+  await kit.page.getByRole("link", { name: "首页", exact: true }).click()
+  await expect(kit.page.getByRole("button", { name: "展开", exact: true })).toBeVisible()
+  await check("home-dark")
+  await kit.page.getByRole("button", { name: "展开", exact: true }).click()
+  await expect(kit.page.getByRole("region", { name: "待开始", exact: true })).toContainText(name)
   await check("board-dark")
-  await kit.page.getByRole("tab", { name: "群聊", exact: true }).click()
-  await check("group-dark")
 })
 
 test.describe("long messages", () => {
@@ -101,7 +104,7 @@ test.describe("long messages", () => {
       )
     expect(overflow).toEqual([])
     await kit.page.locator(".assistant-message").hover()
-    await expect(kit.page.locator(".assistant-message .message-actions")).toHaveCSS("opacity", "1")
+    await expect(kit.page.locator(".assistant-message .turn-actions")).toHaveCSS("opacity", "1")
   })
 })
 
@@ -176,11 +179,12 @@ test("the member sidebar collapses to avatars and preserves its state", async ({
   await kit.page.screenshot({ path: info.outputPath("sandbox.png") })
   await kit.page.keyboard.press("Escape")
   await members.locator("summary").filter({ hasText: "群设置" }).click()
-  await expect(members.getByRole("combobox", { name: "主动程度" })).toBeVisible()
+  await expect(members.getByRole("button", { name: /^主动程度/ })).toBeVisible()
   await members.locator("summary").filter({ hasText: "群设置" }).click()
   await kit.page.screenshot({ path: info.outputPath("members.png") })
   await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
   await expect(members.getByRole("button", { name: "展开成员栏", exact: true })).toBeVisible()
+  await kit.openPanel("review")
   await kit.panel().getByRole("button", { name: "铺满", exact: true }).click()
   await expect(kit.page.getByRole("navigation", { name: "对话", exact: true })).toBeHidden()
   await kit.page.getByRole("button", { name: "还原", exact: true }).click()
@@ -194,8 +198,8 @@ test.describe("panel layout", () => {
     await kit.page.getByRole("button", { name: "右侧面板", exact: true }).click()
     for (const theme of ["light", "dark"] as const) {
       await kit.page.emulateMedia({ colorScheme: theme })
-      for (const tab of ["审阅", "Git 管理", "代码", "浏览器"]) {
-        await kit.panel().getByRole("tab", { name: tab, exact: true }).click()
+      for (const tab of ["审阅", "Git 管理", "代码", "浏览器"] as const) {
+        await kit.openPanel(({ 审阅: "review", "Git 管理": "git", 代码: "file", 浏览器: "browser" } as const)[tab])
         if (tab === "代码") {
           await kit.panel().getByRole("treeitem", { name: "notes.txt", exact: true }).click()
           await expect(kit.panel().locator(".monaco-editor")).toContainText("hello from e2e")
@@ -212,5 +216,47 @@ test.describe("panel layout", () => {
     await kit.page.keyboard.press("ControlOrMeta+J")
     await expect(kit.page.getByRole("region", { name: "终端", exact: true })).toBeVisible()
     await kit.page.screenshot({ path: info.outputPath("terminal-dark.png") })
+  })
+})
+
+test.describe("beside Git management", () => {
+  test.use({ git: true, script: { reply: ({ prompt }) => ({ text: `Reply: ${prompt}` }) } })
+
+  test("the composer stays usable beside Git management when the window shrinks and reloads", async ({ kit }) => {
+    const { page } = kit
+    await kit.send("Open this conversation")
+    await expect(kit.text("Reply: Open this conversation")).toBeVisible()
+    await page.getByRole("button", { name: "右侧面板" }).click()
+    await kit.openPanel("git")
+    const input = page.getByRole("textbox", { name: "消息", exact: true })
+    for (const [index, width] of [1440, 1024, 800, 1280, 1024].entries()) {
+      await kit.app.evaluate(
+        ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 720),
+        width,
+      )
+      if (index === 4) await page.reload()
+      await expect(input).toBeVisible()
+      if (width === 800) {
+        const close = kit.panel().getByRole("button", { name: "关闭面板" })
+        await expect(close).toBeInViewport({ ratio: 1 })
+        await kit.openPanel("browser")
+        await expect(kit.panel().getByRole("tab", { name: "浏览器" })).toHaveAttribute("aria-selected", "true")
+        await kit.openPanel("git")
+        await close.click()
+        await expect(kit.panel()).toBeHidden()
+        await page.getByRole("button", { name: "右侧面板" }).click()
+        await expect(kit.panel()).toBeVisible()
+      }
+      await expect
+        .poll(async () => {
+          const box = await input.boundingBox()
+          const panel = await kit.panel().boundingBox()
+          return Boolean(box && panel && box.width > 0 && box.x + box.width <= panel.x + 1)
+        })
+        .toBe(true)
+      const prompt = `Message at ${width}, turn ${index}`
+      await kit.send(prompt)
+      await expect(kit.text(`Reply: ${prompt}`)).toBeVisible()
+    }
   })
 })

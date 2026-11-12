@@ -1,6 +1,12 @@
 import ArrowLeft from "lucide-solid/icons/arrow-left"
+import Brain from "lucide-solid/icons/brain"
 import Cpu from "lucide-solid/icons/cpu"
 import Info from "lucide-solid/icons/info"
+import ListChecks from "lucide-solid/icons/list-checks"
+import Plug from "lucide-solid/icons/plug"
+import Puzzle from "lucide-solid/icons/puzzle"
+import ScrollText from "lucide-solid/icons/scroll-text"
+import ShieldCheck from "lucide-solid/icons/shield-check"
 import SettingsIcon from "lucide-solid/icons/settings"
 import { createSignal, For, Match, onCleanup, onMount, Switch as Pick } from "solid-js"
 import { Dynamic } from "solid-js/web"
@@ -18,8 +24,14 @@ import { trackOverlay } from "../../ui/overlay"
 import { updateState } from "../update/state"
 import { Row, Section } from "./layout"
 import { Models } from "./models"
-import { Profiles } from "./profiles"
+import { BoardSettings } from "./board"
 import { Cloud } from "./cloud"
+import { ConfigWarnings } from "./warnings"
+import { Mcp } from "./mcp"
+import { Permissions } from "./permissions"
+import { Memory } from "./memory"
+import { Rules } from "./rules"
+import { Skills } from "./skills"
 
 const fail = (error: Error) => {
   toast({ kind: "error", title: t("error.request", { message: error.message }), error: error })
@@ -70,6 +82,7 @@ function General() {
           />
         </Row>
       </div>
+      <ConfigWarnings />
     </Section>
   )
 }
@@ -165,7 +178,12 @@ function About() {
 const SECTIONS: { id: SettingsSection; label: () => string; icon: typeof Cpu; view: () => unknown }[] = [
   { id: "general", label: () => t("settings.general"), icon: SettingsIcon, view: General },
   { id: "models", label: () => t("settings.models"), icon: Cpu, view: Models },
-  { id: "profiles", label: () => t("profiles.title"), icon: Cpu, view: Profiles },
+  { id: "permissions", label: () => t("settings.permissions"), icon: ShieldCheck, view: Permissions },
+  { id: "mcp", label: () => t("settings.mcp"), icon: Plug, view: Mcp },
+  { id: "skills", label: () => t("settings.skills"), icon: Puzzle, view: Skills },
+  { id: "rules", label: () => t("settings.rules"), icon: ScrollText, view: Rules },
+  { id: "memory", label: () => t("settings.memory"), icon: Brain, view: Memory },
+  { id: "board", label: () => t("settings.board"), icon: ListChecks, view: BoardSettings },
   { id: "cloud", label: () => t("cloud.title"), icon: SettingsIcon, view: Cloud },
   { id: "about", label: () => t("settings.about"), icon: Info, view: About },
 ]

@@ -74,3 +74,41 @@ func TestAnExecutingPlanCanBeStoppedAndAWrittenPlanReplacesTheOldOne(t *testing.
 		t.Fatalf("a plan that was never executed finished: %v", err)
 	}
 }
+
+func TestAnImportedPlanKeepsItsEndedStatusAndNeverReplacesAPlanThatIsThere(t *testing.T) {
+	ctx := t.Context()
+	for _, test := range []struct {
+		name   string
+		status plan.Status
+		ok     bool
+	}{
+		{"done", plan.Done, true},
+		{"stopped", plan.Stopped, true},
+		{"review is not an ended status", plan.Review, false},
+		{"executing is not an ended status", plan.Executing, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plans := plan.New(memory.New())
+			imported, err := plans.Import(ctx, "root", "# Old plan\n1. Do it", test.status)
+			if (err == nil) != test.ok {
+				t.Fatalf("err = %v, want ok=%v", err, test.ok)
+			}
+			if !test.ok {
+				return
+			}
+			if imported.Status != test.status || imported.Snapshot != imported.Content || imported.Revision != 1 {
+				t.Fatalf("imported = %+v", imported)
+			}
+			got, err := plans.Get(ctx, "root")
+			if err != nil || got != imported {
+				t.Fatalf("stored = %+v (%v), want %+v", got, err, imported)
+			}
+			if _, err := plans.Import(ctx, "root", "A second plan", test.status); !errors.Is(err, plan.ErrState) {
+				t.Fatalf("importing over an existing plan: %v", err)
+			}
+		})
+	}
+	if _, err := plan.New(memory.New()).Import(ctx, "root", "  ", plan.Done); err == nil {
+		t.Fatal("an empty plan was imported")
+	}
+}

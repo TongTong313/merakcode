@@ -24,6 +24,13 @@ type RepoCommitParams struct {
 	Message string `json:"message"`
 	// Paths are the files to commit; without them everything is committed.
 	Paths []string `json:"paths,omitempty"`
+	// Staged commits what the index holds and nothing else; it takes no paths.
+	Staged bool `json:"staged,omitempty"`
+}
+
+type RepoPathsParams struct {
+	DirectoryParams
+	Paths []string `json:"paths"`
 }
 
 type RepoCommitResult struct {
@@ -39,6 +46,8 @@ type WorktreeCreateParams struct {
 	// Key is chosen by the client; asking again with it returns the same worktree.
 	Key    string `json:"key"`
 	Branch string `json:"branch,omitempty"`
+	// Base is the branch the worktree starts from; the current head when empty.
+	Base string `json:"base,omitempty"`
 }
 
 type WorktreePathParams struct {
@@ -49,4 +58,17 @@ type FileFindParams struct {
 	DirectoryParams
 	Query string `json:"query"`
 	Limit int    `json:"limit,omitempty"`
+}
+
+type FileWriteParams struct {
+	FileParams
+	Content string `json:"content"`
+	// Checksum is the version of the file the client read; the write is refused when the file no longer has it.
+	Checksum string `json:"checksum,omitempty"`
+	// Force writes over any version.
+	Force bool `json:"force,omitempty"`
+}
+
+type FileWriteResult struct {
+	Checksum string `json:"checksum"`
 }

@@ -20,6 +20,8 @@ export function decodeDir(segment: string) {
 export const sessionPath = (directory: string, sessionID?: string) =>
   `/${encodeDir(directory)}/session${sessionID ? `/${encodeURIComponent(sessionID)}` : ""}`
 
+export const taskPath = (id: string) => `/task/${encodeURIComponent(id)}`
+
 export const groupPath = (directory: string, id: string) => `/${encodeDir(directory)}/group/${encodeURIComponent(id)}`
 
 /**

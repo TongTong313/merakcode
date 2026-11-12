@@ -484,11 +484,13 @@ test.describe("task artifact review", () => {
       const reported = (await facts()).find((event) => event.type === "task.reported" && event.scope.task === taskID)!
       if (reported.type !== "task.reported") throw new Error("Report is missing")
       claimID = reported.payload.claims![0]!.id
-      await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
+      await kit.page.getByRole("link", { name: "首页", exact: true }).click()
       await kit.page
-        .getByRole("region", { name: "要我做的", exact: true })
-        .getByRole("button", { name: "审核文档" })
+        .getByRole("article")
+        .filter({ hasText: "审核文档" })
+        .getByRole("button", { name: "去处理", exact: true })
         .click()
+      await kit.page.getByRole("button", { name: "审核任务", exact: true }).click()
       const review = kit.page.getByRole("region", { name: "任务审核", exact: true })
       await expect(review).toContainText("Artifact is ready for review.")
       await expect(review).toContainText("等待队长发布")
@@ -610,11 +612,13 @@ test.describe("task worktree review", () => {
       })
       const events = async () =>
         (await rpc.events.read({ stream: `group:${groupID}`, from: 1 }))!.map((event) => EngineEventSchema.parse(event))
-      await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
+      await kit.page.getByRole("link", { name: "首页", exact: true }).click()
       await kit.page
-        .getByRole("region", { name: "要我做的", exact: true })
-        .getByRole("button", { name: "审核代码" })
+        .getByRole("article")
+        .filter({ hasText: "审核代码" })
+        .getByRole("button", { name: "去处理", exact: true })
         .click()
+      await kit.page.getByRole("button", { name: "审核任务", exact: true }).click()
       const review = kit.page.getByRole("region", { name: "任务审核", exact: true })
       await expect(review.getByRole("region", { name: "成员报告", exact: true })).toContainText("Checked revision 1")
       const file = review.getByRole("region", { name: "notes.txt", exact: true })
@@ -640,10 +644,11 @@ test.describe("task worktree review", () => {
       await review.getByRole("button", { name: "通过", exact: true }).click()
       const reviewURL = kit.page.url()
       await kit.page.removeLocatorHandler(kit.approval())
-      await kit.page.getByRole("tab", { name: "收件箱", exact: true }).click()
+      await kit.page.getByRole("link", { name: "首页", exact: true }).click()
       await kit.page
-        .getByRole("region", { name: "要我做的", exact: true })
-        .getByRole("button", { name: "request_merge", exact: true })
+        .getByRole("article")
+        .filter({ hasText: "request_merge" })
+        .getByRole("button", { name: "去处理", exact: true })
         .click()
       await kit.page.getByRole("dialog").getByRole("button", { name: "允许这一次", exact: true }).click()
       await expect

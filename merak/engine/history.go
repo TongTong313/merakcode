@@ -6,7 +6,9 @@ import (
 	"errors"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/memory"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
+	"github.com/TongTong313/merakcode/merak/engine/plan"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/store"
 	"slices"
@@ -124,4 +126,76 @@ func (e *Engine) ExportSession(ctx context.Context, id event.ID) ([]event.Event,
 // ImportSession adds an exported conversation as a new one and returns its id.
 func (e *Engine) ImportSession(ctx context.Context, facts []event.Event) (event.ID, error) {
 	return e.manager.Import(ctx, facts, e.newID)
+}
+
+// ImportConversation adds a conversation of an earlier version as a new one and returns its id. The system prompt
+// is composed here, as for a new conversation in its folder, because the earlier prompt is not carried over; a
+// folder that is gone only loses its rules and skills.
+func (e *Engine) ImportConversation(ctx context.Context, facts []event.Event) (event.ID, error) {
+	if len(facts) == 0 || facts[0].Type != session.Created {
+		return "", errors.New("an imported conversation starts with session.created")
+	}
+	created, err := event.Decode[session.State](facts[0])
+	if err != nil {
+		return "", err
+	}
+	if created.System == "" {
+		created.System, _, err = e.composeSystem(ctx, SessionOptions{Workdir: created.Config.Workdir, Parent: created.Config.Parent})
+		if err != nil {
+			return "", err
+		}
+		body, err := json.Marshal(created)
+		if err != nil {
+			return "", err
+		}
+		facts = slices.Clone(facts)
+		facts[0].Payload = body
+	}
+	return e.ImportSession(ctx, facts)
+}
+
+// ImportPlan stores the plan of a conversation of an earlier version as it ended, Done or Stopped.
+func (e *Engine) ImportPlan(ctx context.Context, id event.ID, content string, status plan.Status) (plan.Plan, error) {
+	value, err := e.plans.Import(ctx, id, content, status)
+	return value, planError(err)
+}
+
+// ImportNote stores a memory note of an earlier version with the id and time it had. A note that looks like it holds
+// a credential is refused with memory.ErrSecret.
+func (e *Engine) ImportNote(ctx context.Context, note memory.Note) (memory.Note, error) {
+	return e.notes.Remember(ctx, note)
+}
+
+// Notify puts a notice into the inbox of a person, addressed to them.
+func (e *Engine) Notify(ctx context.Context, human event.ID, notice group.Notice) error {
+	notice.To = []event.ID{human}
+	body, err := json.Marshal(notice)
+	if err != nil {
+		return err
+	}
+	stream := event.Stream("inbox:" + human)
+	e.scheduleNoticeMu.Lock()
+	defer e.scheduleNoticeMu.Unlock()
+	if err := e.resumeDeviceStream(ctx, stream); err != nil {
+		return err
+	}
+	_, err = e.Bus.Publish(ctx, event.Event{Stream: stream, Type: group.NoticeSent, Actor: event.Actor{Kind: event.ActorSystem}, Payload: body})
+	return err
+}
+
+const importKind = "import"
+
+// ReadImport returns the record a migration keeps under a key, with its revision; store.ErrNotFound when there is
+// none.
+func (e *Engine) ReadImport(ctx context.Context, key string) ([]byte, uint64, error) {
+	doc, err := e.store.Fetch(ctx, importKind, key)
+	if err != nil {
+		return nil, 0, err
+	}
+	return doc.Body, doc.Rev, nil
+}
+
+// WriteImport saves the record of a migration; rev is the revision that was read, 0 for a record that is new.
+func (e *Engine) WriteImport(ctx context.Context, key string, body []byte, rev uint64) error {
+	return e.store.Put(ctx, store.Doc{Kind: importKind, Key: key, Rev: rev, Body: body})
 }

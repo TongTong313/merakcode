@@ -121,3 +121,29 @@ func TestInvalidMCPServersFailValidationWithoutBreakingTheOthers(t *testing.T) {
 		t.Fatalf("valid servers were rejected: %v", err)
 	}
 }
+
+func TestALocalMcpServerWithoutACommandIsSkippedWithAWarningAndTheRestOfTheFileLoads(t *testing.T) {
+	for name, entry := range map[string]string{
+		"no command":    `{ "type": "local" }`,
+		"empty command": `{ "type": "local", "command": [] }`,
+		"null part":     `{ "type": "local", "command": ["node", null] }`,
+		"remote no url": `{ "type": "remote" }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings, file := openText(t, `{ "model": "fake/m", "mcp": { "broken": `+entry+`, "good": { "type": "local", "command": ["node", "ok.mjs"] } } }`)
+			got := settings.Get()
+			if got.Model != "fake/m" {
+				t.Fatalf("the rest of the file must load: %+v", got)
+			}
+			if _, ok := got.MCPServers["broken"]; ok {
+				t.Fatal("the unusable entry must be skipped")
+			}
+			if good := got.MCPServers["good"]; good.Command != "node" {
+				t.Fatalf("a good entry next to it must stay: %+v", got.MCPServers)
+			}
+			if len(got.Warnings) != 1 || got.Warnings[0].Path != "mcp.broken" || got.Warnings[0].Code != "MRK-3002" || got.Warnings[0].File != file {
+				t.Fatalf("warnings = %v", got.Warnings)
+			}
+		})
+	}
+}
