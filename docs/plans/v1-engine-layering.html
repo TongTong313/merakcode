@@ -236,6 +236,7 @@
             <li><a href="#c5">C5 wire 和连接函数</a></li>
             <li><a href="#c6">C6 云端链路</a></li>
             <li><a href="#c7">C7 服务端走门面</a></li>
+            <li><a href="#c8">C8 路径函数搬到 infra</a></li>
           </ul>
         </li>
         <li>
@@ -293,7 +294,7 @@
       <h1>MerakCode v1.0.0 引擎分层重构方案</h1>
       <p class="muted">
         2026-11-13 定稿。本方案只依据当前代码仓库编写，没有参考 <code>docs/plans</code> 下的其他文件。数字和附录在分支
-        <code>dev-v1.0.0</code>、提交 <code>26dfefd</code> 加当时已暂存的改动上核对。
+        <code>dev-v1.0.0</code>、提交 <code>fbb17b3</code> 上核对。
       </p>
 
       <div class="box note">
@@ -304,10 +305,9 @@
       </div>
 
       <div class="box warn">
-        <strong>开工前先看这一条：</strong>附录和所有数字最后一次核对，是在提交
-        <code>26dfefd</code> 加上当时已经暂存、还没提交的改动上做的（根包 66 个源文件、88 个测试文件、145
-        个对外方法、118 个字段、74
-        处大锁，全部核对脚本的结果和附录一致）。开工时先把这些改动提交。如果之后根包又有改动，附录里的函数名可能有少量出入：附录是默认值，第
+        <strong>开工前先看这一条：</strong>附录和所有数字最后一次核对，是在提交 <code>fbb17b3</code> 上做的（根包 66
+        个源文件、88 个测试文件、145 个对外方法、118 个字段、74
+        处大锁，全部核对脚本的结果和附录一致）。如果这个提交之后根包又有改动，附录里的函数名可能有少量出入：附录是默认值，第
         5.2 节和附录 D 末尾的规则才是依据，判断不了就问用户。开始轨道 D 之前，根包不应再有别人在改。
       </div>
 
@@ -323,7 +323,7 @@
       <ul>
         <li>产品行为。</li>
         <li>协议在线上的格式：方法名、事件类型名、每条消息的 JSON 字段。</li>
-        <li>根包对外方法的名字。</li>
+        <li>根包已有的对外方法的名字。只增加，不减少，不改名。</li>
         <li><code>go.mod</code> 的依赖，不新增第三方模块。</li>
       </ul>
       <p><strong>会变：</strong></p>
@@ -410,11 +410,11 @@
         </tr>
         <tr>
           <td><code>Engine</code> 对象</td>
-          <td>118 个字段、17 把锁、约 400 个方法（146 个对外）</td>
+          <td>118 个字段、17 把锁、约 400 个方法（145 个对外）</td>
         </tr>
         <tr>
           <td>大锁 <code>e.mu</code></td>
-          <td>72 处加锁，所有领域都在用</td>
+          <td>74 处加锁，所有领域都在用</td>
         </tr>
         <tr>
           <td>测试里的 <code>engine.New</code></td>
@@ -503,7 +503,10 @@
               >watch</code
             >
           </td>
-          <td><code>core</code>：所有领域共用的只读依赖（D2 建）</td>
+          <td>
+            <code>core</code>：所有领域共用的只读依赖（D2 建）<br /><code>folder</code
+            >：文件夹路径的规范化和存在性检查（C8 建）
+          </td>
         </tr>
         <tr>
           <td><code>agent</code></td>
@@ -625,8 +628,8 @@ storage、cloudlink、migrate、diagnose、testkit → engine
         <ol>
           <li>不改产品行为。发现现有行为有问题，记下来告诉用户，不在这次重构里修。</li>
           <li>
-            不改测试的期望值和判断条件。测试文件只允许这几类修改：引用路径；被测的东西改了包、改了名字或改了参数形式时，测试里对应的写法跟着改；文件路径；引擎的启动参数；轨道
-            F 里的搬目录。新增测试是允许的。
+            不改测试的期望值和判断条件。测试文件只允许这几类修改：引用路径；被测的东西改了包、改了名字或改了参数形式时，测试里对应的写法跟着改；文件路径；引擎的启动参数；D12
+            里把测试准备状态和读结果的写法改成门面方法；轨道 F 里的搬目录。新增测试是允许的。
           </li>
           <li>不跳过、不删除、不削弱任何失败的测试。</li>
           <li>
@@ -639,7 +642,7 @@ storage、cloudlink、migrate、diagnose、testkit → engine
           <li>不留兼容层：不写类型别名（<code>type X = other.X</code>）来保留旧名字，不写新旧名字对照表。</li>
           <li>不往 <code>go.mod</code> 加模块。</li>
           <li>不往根包加新的业务代码。</li>
-          <li>SDK 和桌面端的代码只允许一种修改：把旧的类型名换成新的类型名。</li>
+          <li>SDK 和桌面端的代码只允许两种修改：把旧的类型名换成新的类型名；B3 里写明的一个测试文件的路径。</li>
         </ol>
       </div>
 
@@ -987,7 +990,10 @@ pnpm generate:protocol</code></pre>
           <td>1</td>
           <td>引擎门面：<code>*engine.Engine</code> 的对外方法，加上事件总线里的事件</td>
           <td>调用以后的返回值、事件流里出现的事件、再次读取到的状态</td>
-          <td>根包 88 个场景测试文件，全部走这个接缝</td>
+          <td>
+            根包 88 个场景测试文件。其中 81 个现在还直接用 <code>Engine</code> 的 6 个对象字段来准备状态和读结果，D12
+            改成只走门面方法
+          </td>
         </tr>
         <tr>
           <td>2</td>
@@ -1034,7 +1040,7 @@ pnpm generate:protocol</code></pre>
       <h3 id="ratchets">7.3 清单测试</h3>
       <p>
         每条清单测试守着一个结构目标。清单里写的是“还没达标的东西”。做法永远是同一个：<strong>先从清单里删掉这一片要解决的几行（红灯），再改代码（绿灯）</strong>。清单只许变短，不许变长，除非切片卡片明确写了要加哪一行（门面清单在
-        C7 加 20 行、D12 加几个只读方法；字段清单加
+        C7 加 19 行、D12 加几个只读方法；字段清单加
         <code>core</code>
         和每个领域自己的名字；根包文件清单加三个门面文件）；测试同时检查“清单里写的东西是否还存在”，所以清单不会过期。
       </p>
@@ -1067,7 +1073,7 @@ pnpm generate:protocol</code></pre>
           <td>字段测试<br /><code>TestEngineHoldsOnlyTheListedFields</code></td>
           <td><code>merak/engine/facade_test.go</code><br />清单：<code>testdata/fields.txt</code></td>
           <td><code>Engine</code> 结构体只有清单里的字段</td>
-          <td>D2 到 D11</td>
+          <td>D2 到 D12</td>
         </tr>
         <tr>
           <td>大锁测试<br /><code>TestTheBigLockShrinks</code></td>
@@ -1079,7 +1085,7 @@ pnpm generate:protocol</code></pre>
           <td>门面测试<br /><code>TestFacadeKeepsItsMethods</code></td>
           <td><code>merak/engine/facade_test.go</code><br />清单：<code>testdata/facade.txt</code></td>
           <td>
-            <code>Engine</code> 的对外方法和清单完全一致。这张清单是“必须保留的东西”，除了 C7 加 20 个、D12
+            <code>Engine</code> 的对外方法和清单完全一致。这张清单是“必须保留的东西”，除了 C7 加 19 个、D12
             加几个只读方法，任何切片都不许改它
           </td>
           <td>C7、D12；轨道 D 全程靠它保证没丢方法</td>
@@ -1305,7 +1311,14 @@ go tool cover -func=/tmp/cover.out | awk '$NF=="0.0%"'</code></pre>
         <tr>
           <td><a href="#c7">C7</a></td>
           <td>服务端和数据导入只通过门面方法使用引擎</td>
-          <td>服务端架构测试，门面清单加 20 行</td>
+          <td>服务端架构测试，门面清单加 19 行</td>
+          <td>低</td>
+          <td>只读过代码</td>
+        </tr>
+        <tr>
+          <td><a href="#c8">C8</a></td>
+          <td>文件夹路径函数从 <code>workspace</code> 搬到 <code>infra/folder</code></td>
+          <td>自查命令</td>
           <td>低</td>
           <td>只读过代码</td>
         </tr>
@@ -1420,7 +1433,7 @@ go tool cover -func=/tmp/cover.out | awk '$NF=="0.0%"'</code></pre>
         </tr>
         <tr>
           <td><a href="#e7">E7</a></td>
-          <td>写盘清单测试收口</td>
+          <td>写盘清单收口</td>
           <td>测试本身</td>
           <td>低</td>
         </tr>
@@ -2356,7 +2369,8 @@ func layerOf(pkg string) int {
       <p>
         分层测试的 <code>known</code> 里有 10
         行。这条轨道每片删掉其中几行（红灯），再把对应的反向依赖解开（绿灯）。改引用都用第 6.4 节的办法，SDK
-        类型名变了按第 6.3 节处理。<strong>切片的顺序不能换</strong>：C4 依赖 C2、C3 先做完。
+        类型名变了按第 6.3 节处理。<strong>切片的顺序不能换</strong>：C4 依赖 C2、C3 先做完；C5 依赖 C1 先做完（搬到
+        <code>wire</code> 的消息类型用到 <code>Caps</code>，它要先离开 <code>worker</code> 包，否则会循环引用）。
       </p>
       <p>
         <strong>行为保护（每片都一样）：</strong
@@ -2623,10 +2637,13 @@ func Need(req permission.Request, ws workspace.Workspace, g group.Group) group.R
               </li>
               <li>
                 新的行为测试（接缝
-                6），放在根包的场景测试里：<strong>没有给连接函数的引擎拒绝连接远程引擎</strong>。创建引擎时不传
+                6），放在根包的场景测试里：<strong>没有给连接函数的引擎拒绝连接远程引擎</strong>。创建引擎时<strong>传数据目录</strong>但不传
                 <code>Dial</code>，调用 <code>ConnectRemote</code>，期望返回的错误是
                 <code>MRK-3001</code>。这和旁边“没有数据目录时”返回的错误相同，不新增错误码。现在 <code>Deps</code> 没有
-                <code>Dial</code> 字段，所以红灯是编译失败。
+                <code>Dial</code>
+                字段，所以红灯先是编译失败；加上字段以后测试仍然要失败（这时引擎会真的去连接），实现了“没有
+                <code>Dial</code>
+                就拒绝”才通过。测试里必须传数据目录：不传的话，现有的“没有数据目录”检查会先返回同一个错误，测试什么都没测到。
               </li>
             </ol>
           </td>
@@ -2782,7 +2799,7 @@ NewLink func() wire.Link</code></pre>
                 5 处和第二张表里服务端的 15 处。
               </li>
               <li>
-                在 <code>engine/testdata/facade.txt</code> 里加 20 行：下面两张表里的新方法名。运行门面测试，失败：20 行
+                在 <code>engine/testdata/facade.txt</code> 里加 19 行：下面两张表里的新方法名。运行门面测试，失败：19 行
                 <code>the facade lost …</code>。
               </li>
             </ol>
@@ -2791,13 +2808,16 @@ NewLink func() wire.Link</code></pre>
         <tr>
           <th>绿灯</th>
           <td>
-            加 20 个门面方法，服务端和
+            加 19 个门面方法，服务端和
             <code>migrate</code> 改成调用它们。两条测试都通过。场景测试这一片不动，它们继续用那 6 个字段，到 D12 再改
           </td>
         </tr>
         <tr>
           <th>行为保护</th>
-          <td><code>server</code> 里规则、模型发现、成员产品列表的已有测试</td>
+          <td>
+            <code>server</code> 里规则、模型发现、成员产品列表、终端、任务、群成员的已有测试；<code>migrate</code>
+            的导入测试；端到端测试
+          </td>
         </tr>
       </table>
       <p>
@@ -2883,7 +2903,10 @@ NewLink func() wire.Link</code></pre>
         <tr>
           <td><code>server/methods_task.go</code></td>
           <td><code>Tasks.Get</code>（2 处）；<code>Tasks.SetPhase</code>，阶段固定为“已取消”</td>
-          <td><code>Task</code>；<code>CancelTask(ctx, id, human)</code></td>
+          <td>
+            <code>Task</code>；取消任务不加新方法，改成调用已有的 <code>UpdateTask</code>，参数是
+            <code>task.Update{Phase: task.PhaseCancelled}</code>
+          </td>
         </tr>
         <tr>
           <td><code>server/server.go</code></td>
@@ -2897,9 +2920,72 @@ NewLink func() wire.Link</code></pre>
         </tr>
       </table>
       <p class="muted">
-        15 个新方法的参数和返回值与被替换的那次调用相同，方法体就是那次调用。<code>CancelTask</code> 的方法体是原来那次
-        <code>SetPhase</code>，阶段写死为“已取消”，操作者是传进来的这个人。
+        14 个新方法的参数和返回值与被替换的那次调用相同，方法体就是那次调用。已核对：<code>UpdateTask</code>
+        在只给阶段、不给预算时，做的就是 <code>Tasks.SetPhase</code>，所以取消任务可以直接用它。
       </p>
+      <h4 id="c8">C8 文件夹路径函数从 <code>workspace</code> 搬到新包 <code>engine/infra/folder</code></h4>
+      <table class="card">
+        <tr>
+          <th>目标</th>
+          <td>
+            <code>collab/workspace</code>
+            包里有三个只做路径计算的函数：<code>Canonical</code>、<code>SameDirectory</code>、<code>Existing</code>。根包里将来属于
+            <code>agent</code> 层的代码在用它们（<code>registry</code> 的 <code>canonicalDirectory</code>，<code
+              >conversation</code
+            >
+            的 <code>newConversation</code>、<code>composeSystem</code>）。<code>agent</code> 层不能引用
+            <code>collab</code> 层，所以先把这三个函数搬到 <code>infra</code> 层
+          </td>
+        </tr>
+        <tr>
+          <th>红灯</th>
+          <td>
+            没有清单可删：根包不受分层测试约束，这个问题现在看不出来。用自查命令当检查，现在有输出，做完没有输出：
+            <pre><code>grep -rnE 'workspace\.(Canonical|SameDirectory|Existing)\(' --include='*.go' merak</code></pre>
+            不做这一片，D2 的“搬家”提交会被分层测试拦住：<code
+              >engine/agent/registry -&gt; engine/collab/workspace breaks the layering</code
+            >
+          </td>
+        </tr>
+        <tr>
+          <th>绿灯</th>
+          <td>
+            <ol>
+              <li>
+                <code>git mv</code> 这 5 个文件，从 <code>engine/collab/workspace/</code> 到
+                <code>engine/infra/folder/</code
+                >：<code>canonical.go</code>、<code>canonical_test.go</code>、<code>final_other.go</code>、<code>final_windows.go</code>、<code>required.go</code>。
+              </li>
+              <li>
+                <code>package workspace</code> 改成 <code>package folder</code>，测试文件改成
+                <code>package folder_test</code>。
+              </li>
+              <li>
+                所有 <code>workspace.Canonical</code>、<code>workspace.SameDirectory</code>、<code
+                  >workspace.Existing</code
+                >
+                改成 <code>folder.</code> 开头（第 6.4 节的办法）。
+              </li>
+            </ol>
+          </td>
+        </tr>
+        <tr>
+          <th>行为保护</th>
+          <td>
+            <code>canonical_test.go</code> 跟着搬；<code>directory_spelling_test.go</code>、<code
+              >code_workspace_test.go</code
+            >
+            等场景测试
+          </td>
+        </tr>
+      </table>
+      <p class="muted">
+        已核对：这 5 个文件不引用任何引擎包；<code>workspace</code> 包里别的文件没有用到它们；<code
+          >canonical_test.go</code
+        >
+        只测 <code>Canonical</code> 和 <code>SameDirectory</code>。
+      </p>
+
       <p>
         <strong>轨道 C 结束时</strong>分层测试的 <code>known</code> 只剩一行：<code>engine -&gt; storage/memory</code
         >，它在 E3 解决。
@@ -3097,7 +3183,8 @@ NewLink func() wire.Link</code></pre>
         <tr>
           <td>3 锁</td>
           <td>
-            把 <code>testdata/biglock.txt</code> 里的数字减去这个领域用大锁的次数。运行
+            先数出这一片要改掉的加锁处：本领域函数里的，加上别的领域的函数里只读写本领域字段的（拆锁的规则第 2、3
+            条）。把 <code>testdata/biglock.txt</code> 里的数字减去这个数。运行
             <code>TestTheBigLockShrinks</code>，失败：<code>the root package takes the big lock N times, … says M</code>
           </td>
           <td>
@@ -3131,13 +3218,14 @@ NewLink func() wire.Link</code></pre>
             <code>package</code> 行。结构体改成大写开头的对外类型，加
             <code>New</code>
             函数接收依赖。被别的包用到的名字改成大写开头：方法、函数、类型、结构体字段、注入接口里的方法。靠编译错误找。SDK
-            类型名变了按第 6.3 节处理
+            类型名变了按第 6.3 节处理。搬完运行分层测试：新包引用了更高层的包，测试会报
+            <code>… breaks the layering</code>。按附录 D 第三张表处理，不许把它加进 <code>known</code>
           </td>
         </tr>
       </table>
       <p><strong>每个领域做完的标准：</strong></p>
       <ol>
-        <li>五条清单测试和分层测试通过；分层测试的 <code>known</code> 没有变长。</li>
+        <li>全部清单测试通过；分层测试的 <code>known</code> 没有变长。</li>
         <li>新包里没有任何对根包 <code>engine</code> 的引用（分层测试的规则三会查）。</li>
         <li>CI 的 <code>go test -race</code> 通过。</li>
         <li>D3、D5、D7 做完各跑一遍桌面端端到端测试。</li>
@@ -3179,7 +3267,8 @@ NewLink func() wire.Link</code></pre>
         </li>
         <li>
           <strong>加锁段同时读写两个以上领域的字段：停下来问用户。</strong>已知的有 3
-          处。下表给出默认做法，但动手前要把这段代码和默认做法发给用户确认：
+          处。下表给出默认做法，但动手前要把这段代码和默认做法发给用户确认。后两处留在根包里，会分几次改：它们涉及哪个领域的字段，就在那个领域的切片里改那一部分（对话表在
+          D3，群会话表在 D5），大锁本身在 D11 才删：
           <table>
             <tr>
               <th style="width: 24%">函数</th>
@@ -3251,10 +3340,6 @@ NewLink func() wire.Link</code></pre>
           <td>全部已有测试。错误码怎么传到客户端，<code>server</code> 的测试有覆盖</td>
         </tr>
       </table>
-      <p>
-        根包的 <code>errors.go</code> 里有 <code>Error</code> 类型和 <code>coded</code> 函数，根包里有 83
-        处在用。领域搬出根包以后不能再引用根包，所以先把它们搬到最底层。
-      </p>
       <ol>
         <li>
           在 <code>engine/infra/errorcode</code> 里新建 <code>error.go</code>，把
@@ -3380,6 +3465,10 @@ type Hooks struct {
 	Environment func(ctx context.Context, state session.State, env *tool.Env) error
 	// Project returns the folder a session works in when its member runs on another machine.
 	Project func(ctx context.Context, scope event.Scope, workdir string) (string, error)
+	// Children creates the runner of the background children of a session; run executes one child.
+	Children func(ctx context.Context, run ChildRun) Children
+	// ChildAgent returns the agent name a child was started as, or "" for a plain child.
+	ChildAgent func(ctx context.Context) string
 	// Pending lists the permission requests of a session that still wait for a person.
 	Pending func(ctx context.Context, session event.ID) []permission.Pending
 	// Loop adds tools and callbacks to the loop of a session (plan, schedule, snapshots).
@@ -3394,6 +3483,20 @@ type Hooks struct {
 	Cancelled []func(ctx context.Context, session event.ID)
 	// Deleted runs when a session is deleted (removing its snapshots).
 	Deleted []func(ctx context.Context, session event.ID)
+}
+
+// ChildRun executes one child session and returns its outcome.
+type ChildRun = func(ctx context.Context, child event.ID, prompt string) (loop.Outcome, error)
+
+// Children is what a conversation needs from the runner of its background children.
+type Children interface {
+	tool.Children
+	tool.AgentChildren
+	loop.Steer
+	Ready() &lt;-chan struct{}
+	SetRun(run ChildRun)
+	Cancel()
+	Close()
 }
 
 // External is implemented by the execution domain.
@@ -3435,6 +3538,17 @@ type External interface {
           <td><code>prepareMCP</code> 里调用 <code>executionProject</code></td>
           <td><code>Project</code></td>
           <td><code>remote</code></td>
+        </tr>
+        <tr>
+          <td>
+            <code>conversationFor</code> 里的 <code>builtin.New(…)</code>；<code>childRun</code> 里的
+            <code>builtin.AgentOf(ctx)</code>；对话对象的字段 <code>children *builtin.Runner</code>
+          </td>
+          <td><code>Children</code>、<code>ChildAgent</code></td>
+          <td>
+            装配直接登记 <code>collab/worker/builtin</code> 包的 <code>New</code> 和
+            <code>AgentOf</code>。对话对象的字段类型改成接口 <code>Children</code>
+          </td>
         </tr>
         <tr>
           <td><code>snapshotPermissions</code> 里调用 <code>PendingPermissions</code></td>
@@ -3780,10 +3894,17 @@ type External interface {
           <th>绿灯</th>
           <td>
             <ol>
-              <li>
-                启动恢复和关闭里剩下的 3 处大锁按“拆锁的规则”第 4 条处理（用户已确认的做法），删掉 <code>mu</code>。
-              </li>
+              <li>启动恢复和关闭里剩下的大锁按“拆锁的规则”第 4 条处理（用户已确认的做法），删掉 <code>mu</code>。</li>
               <li>根包里剩下的代码改用 <code>e.core</code>，删掉 <code>Engine</code> 上重复的公共依赖字段。</li>
+              <li>
+                附录
+                C“装配时传给需要的领域”那一行的字段（<code>catalog</code>、<code>notes</code>、<code>manager</code>、<code
+                  >gate</code
+                >
+                等）也从 <code>Engine</code> 里删掉：它们在
+                <code>New</code> 里是局部变量，创建以后传给各个领域，各领域自己保存。那 6 个对外的对象字段除外，留到
+                D12。
+              </li>
               <li>根包文件里已经空了的删掉。</li>
             </ol>
           </td>
@@ -3834,21 +3955,24 @@ type External interface {
         <tr>
           <th>红灯</th>
           <td>
-            从 <code>testdata/fields.txt</code> 删掉这 6 行。运行字段测试，失败：6 行
-            <code>the engine still holds …</code>。提交 1 另外要在
-            <code>testdata/facade.txt</code> 里加新的只读方法名，门面测试失败：<code>the facade lost …</code>
+            提交 1：在 <code>testdata/facade.txt</code> 里加新的只读方法名，门面测试失败：<code>the facade lost …</code
+            >。提交 2、3 没有清单可删，靠编译和测试。提交 4：从 <code>testdata/fields.txt</code> 删掉这 6
+            行，字段测试失败：6 行
+            <code>the engine still holds …</code>。每个提交的红灯和绿灯在同一个提交里，前三个提交不动字段清单
           </td>
         </tr>
         <tr>
           <th>绿灯</th>
-          <td>分三个提交改测试，见下。最后一个提交把 6 个字段从 <code>Engine</code> 里删掉</td>
+          <td>前三个提交改测试，见下。提交 4 把这 6 个字段从 <code>Engine</code> 里去掉</td>
         </tr>
         <tr>
           <th>字段去哪</th>
           <td>
-            这 6 个对象仍然在装配时创建，传给需要它们的领域，<code>Engine</code>
-            自己不再保存。门面方法转给拥有它的领域：终端转给 <code>project</code>；群、任务、看板、工作区转给
-            <code>roster</code> 或 <code>coordinator</code>；事件总线在 <code>core</code> 里
+            这 6
+            个对象仍然在装配时创建，传给需要它们的领域。根包自己还要用的（例如关闭时要关掉终端和工作区）改成小写开头的私有字段，其余的不再保存。做完以后
+            <code>Engine</code> 没有任何大写开头的字段。门面方法转给拥有它的领域：终端转给
+            <code>project</code>；群、任务、看板、工作区转给 <code>roster</code> 或 <code>coordinator</code>；事件总线在
+            <code>core</code> 里
           </td>
         </tr>
         <tr>
@@ -3860,12 +3984,12 @@ type External interface {
         <tr>
           <th>完成标准</th>
           <td>
-            第 6.2 节，加端到端测试。Go 测试总数不变（搬到别的包的测试不算丢）。<code>testdata/fields.txt</code> 只剩
-            <code>core</code>、每个领域一行、关闭用的 4 个
+            第 6.2 节，加端到端测试。Go 测试总数不变（搬到别的包的测试不算丢）。<code>testdata/fields.txt</code>
+            里没有大写开头的名字
           </td>
         </tr>
       </table>
-      <p class="file">提交 1：只读的用法，约 209 处，机械替换</p>
+      <p class="file">提交 1：机械替换，约 233 处</p>
       <table>
         <tr>
           <th style="width: 34%">现在的写法</th>
@@ -3885,7 +4009,7 @@ type External interface {
         <tr>
           <td><code>e.Groups.Get</code>、<code>e.Groups.List</code></td>
           <td>15</td>
-          <td>新加只读方法 <code>Group</code>、<code>Groups</code></td>
+          <td>新加只读方法 <code>Group</code>、<code>ListGroups</code>（不能叫 <code>Groups</code>，和字段重名）</td>
         </tr>
         <tr>
           <td><code>e.Tasks.List</code></td>
@@ -3902,8 +4026,13 @@ type External interface {
           <td>3</td>
           <td><code>e.BoardGroups</code>（C7 已加）</td>
         </tr>
+        <tr>
+          <td><code>e.Tasks.SetPhase(ctx, id, phase, actor)</code></td>
+          <td>24</td>
+          <td><code>e.UpdateTask(ctx, id, task.Update{Phase: phase}, actor)</code>。两者做的是同一件事</td>
+        </tr>
       </table>
-      <p class="file">提交 2：门面已有方法能做同一件事的，约 87 处，逐个测试改</p>
+      <p class="file">提交 2：门面已有方法能做同一件事的，约 63 处，逐个测试改</p>
       <table>
         <tr>
           <th style="width: 34%">现在的写法</th>
@@ -3915,11 +4044,7 @@ type External interface {
           <td>31</td>
           <td><code>e.CreateGroup</code></td>
         </tr>
-        <tr>
-          <td><code>e.Tasks.SetPhase</code></td>
-          <td>24</td>
-          <td>按阶段选：<code>e.CancelTask</code>、<code>e.UpdateTask</code>、<code>e.ReviewTask</code></td>
-        </tr>
+
         <tr>
           <td><code>e.Bus.Publish</code></td>
           <td>15</td>
@@ -3963,6 +4088,11 @@ type External interface {
       <p>
         提交 2、3 里凡是改写了准备步骤的测试，按第 7.5 节第 4
         步“改坏一次”确认它还能发现问题：临时改坏它保护的那段代码，看到它失败，再撤掉。
+      </p>
+      <p class="file">提交 4：去掉字段</p>
+      <p>
+        确认测试里已经没有对这 6
+        个字段的使用：把它们改成小写开头，编译不过的地方就是漏改的。然后按卡片“字段去哪”一栏处理。
       </p>
       <p class="muted">
         处数是写这份方案时用文本匹配数的，以开工时编译器报的为准：把 6 个字段改成小写开头，编译错误就是完整的清单。
@@ -4118,7 +4248,8 @@ type External interface {
         <li>
           删掉引擎里自己拼路径和退到系统临时目录的代码（例如 <code>filepath.Join(e.dataDir, "snapshots")</code>、<code
             >os.MkdirTemp("", "merak-snapshots-")</code
-          >）。原来的路径规则原样搬到 <code>cli</code>。
+          >）。原来的路径规则原样搬到 <code>cli</code>。<code>Deps</code> 里已有的 <code>SandboxStateDir</code> 并进
+          <code>Dirs.SandboxState</code>，不要两个都留。
         </li>
       </ol>
 
@@ -4184,11 +4315,11 @@ type External interface {
         </tr>
       </table>
 
-      <h4 id="e7">E7 写盘清单测试收口</h4>
+      <h4 id="e7">E7 写盘清单收口</h4>
       <table class="card">
         <tr>
           <th>目标</th>
-          <td>引擎里只有清单上的包直接写磁盘，以后新增就失败</td>
+          <td>引擎里只有清单上的包直接写磁盘，以后新增就失败。测试在 E5 已经上线，这一片把清单整理到最终状态</td>
         </tr>
         <tr>
           <th>测试</th>
@@ -4294,10 +4425,10 @@ type External interface {
                 位置测试的 <code>pending</code>、分层测试的 <code>known</code>、<code>pendingTests</code> 都是空的。
               </li>
               <li>
-                <code>testdata/biglock.txt</code> 是 <code>0</code>；<code>testdata/fields.txt</code> 是 D11
-                的最终清单。
+                <code>testdata/biglock.txt</code> 是 <code>0</code>；<code>testdata/fields.txt</code> 是 D12
+                做完以后的清单，里面没有大写开头的名字。
               </li>
-              <li><code>testdata/facade.txt</code> 和 A4 生成的那份相比，只多了 C7 的 20 行和 D12 加的只读方法。</li>
+              <li><code>testdata/facade.txt</code> 和 A4 生成的那份相比，只多了 C7 的 19 行和 D12 加的只读方法。</li>
               <li><code>AGENTS.md</code> 和 <code>CONTRIBUTING.md</code> 的布局说明与实际一致。</li>
               <li>把清单已经空了的测试里“清单”相关的注释改成说明现在的规则，测试本身保留，继续防止以后退回去。</li>
             </ol>
@@ -4608,7 +4739,7 @@ type External interface {
           <th>装配时传给需要的领域</th>
           <td>
             <code>catalog</code
-            >、<code>notes</code>、<code>manager</code>、<code>Groups</code>、<code>Tasks</code>、<code>Board</code>、<code>Workspaces</code>、<code>gate</code>、<code>permissions</code>、<code>runnerFor</code>、<code>vault</code>、<code>sandboxStateDir</code>、<code>mcpCommand</code>、<code>askQuestion</code>、<code>askPermission</code>、<code>cloud</code>、<code
+            >、<code>notes</code>、<code>manager</code>、<code>Groups</code>、<code>Tasks</code>、<code>Board</code>、<code>Workspaces</code>、<code>gate</code>、<code>permissions</code>、<code>runnerFor</code>、<code>vault</code>、<code>sandboxStateDir</code>、<code>mcpCommand</code>、<code>askQuestion</code>、<code>askPermission</code>、<code
               >Terminals</code
             >
           </td>
@@ -4709,9 +4840,7 @@ type External interface {
           <td><code>remote</code></td>
           <td>
             <code>remoteLookups</code
-            >、<code>remoteImportMu</code>、<code>remoteHosts</code>、<code>deviceRuns</code>、<code>cloudWorkCtx</code>、<code>cloudWorkCancel</code>、<code>cloudWake</code>、<code>cloudReplyMu</code>、<code>cloudReplies</code>、<code>cloudPublishMu</code>、<code>cloudLoops</code>、<code>cloudLifecycle</code>、<code>cloudJobs</code>、<code>cloudDone</code>、<code>cloudCredentials</code>、<code>cloudCancel</code>、<code
-              >cloudAnswers</code
-            >
+            >、<code>remoteImportMu</code>、<code>remoteHosts</code>、<code>deviceRuns</code>、<code>cloudWorkCtx</code>、<code>cloudWorkCancel</code>、<code>cloudWake</code>、<code>cloudReplyMu</code>、<code>cloudReplies</code>、<code>cloudPublishMu</code>、<code>cloudLoops</code>、<code>cloudLifecycle</code>、<code>cloudJobs</code>、<code>cloudDone</code>、<code>cloudCredentials</code>、<code>cloudCancel</code>、<code>cloudAnswers</code>、<code>cloud</code>（登录云端时会换成新的链路，所以不是只读的公共依赖）
           </td>
         </tr>
         <tr>
@@ -4892,6 +5021,67 @@ type External interface {
           <td>唯一的下层使用方是 <code>conversationFor</code> 里要搬到 <code>Environment</code> 接入点的那一段</td>
         </tr>
       </table>
+      <p class="file">领域的代码引用了更高层的包</p>
+      <p>
+        前两张表查的是根包内部谁用了谁。这张表查的是另一件事：一个领域的代码用到了哪些子包，这些子包是不是比它将来所在的层更高。根包不受分层测试约束，所以这类问题要等领域搬成独立的包才会被测试发现。
+      </p>
+      <table>
+        <tr>
+          <th style="width: 14%">领域（层）</th>
+          <th style="width: 40%">用到了更高层的什么</th>
+          <th>在哪里解决</th>
+        </tr>
+        <tr>
+          <td rowspan="3"><code>registry</code><br />（<code>agent</code>）</td>
+          <td><code>worker.Kind…</code>（<code>validateAgent</code>、<code>validateAgentNetwork</code>）</td>
+          <td>C1 以后是 <code>definition.Kind…</code></td>
+        </tr>
+        <tr>
+          <td><code>workspace.Canonical</code>（<code>canonicalDirectory</code>）</td>
+          <td>C8</td>
+        </tr>
+        <tr>
+          <td><code>group.Member</code>（<code>loadAgentByID</code>）</td>
+          <td>
+            <code>loadAgent</code> 拆成两半以后（附录 B 末尾），<code>registry</code>
+            的那个函数的参数是智能体的编号，不是群成员
+          </td>
+        </tr>
+        <tr>
+          <td rowspan="5"><code>conversation</code><br />（<code>agent</code>）</td>
+          <td><code>worker.KindBuiltin</code>（<code>CreateSession</code>）</td>
+          <td>C1</td>
+        </tr>
+        <tr>
+          <td><code>workspace.Existing</code>（<code>newConversation</code>、<code>composeSystem</code>）</td>
+          <td>C8</td>
+        </tr>
+        <tr>
+          <td><code>task.Claim</code>、<code>worker.Assignment</code>（<code>conversationFor</code>）</td>
+          <td>在搬到接入点 <code>Environment</code> 的那一段里，跟着走（D3）</td>
+        </tr>
+        <tr>
+          <td>
+            <code>worker/builtin</code> 的 <code>Runner</code>、<code>New</code>、<code>AgentOf</code>（后台子会话）
+          </td>
+          <td>
+            接入点 <code>Children</code>、<code>ChildAgent</code>（D3）。<code>builtin</code> 包留在
+            <code>collab</code> 层不动：它是用运行器的通用启动函数 <code>worker.Launch</code> 写的，搬到
+            <code>agent</code> 层要改它发出的事件，属于改行为。用户已决定后台子会话这次不动
+          </td>
+        </tr>
+        <tr>
+          <td><code>plan</code>、<code>schedule</code>、<code>command</code>、<code>snapshot</code> 包</td>
+          <td>
+            用到它们的函数按附录 B 归 <code>sessions</code>，或者在搬到接入点 <code>Loop</code> 的那几段里（D3、D8）
+          </td>
+        </tr>
+        <tr>
+          <td><code>collab</code> 层的四个领域</td>
+          <td>没有用到 <code>feature</code> 层的包</td>
+          <td>—</td>
+        </tr>
+      </table>
       <p><strong>遇到表里没有的上行引用，按这个顺序判断：</strong></p>
       <ol>
         <li>被用到的东西只是读数据、查东西或纯计算，而且它自己不用更高的领域：下沉到最低的那个使用方所在的领域。</li>
@@ -4944,7 +5134,7 @@ type External interface {
           <td>方法</td>
           <td>
             全部大写开头的 <code>Engine</code> 方法，<strong>名字</strong>不变。由门面测试
-            <code>TestFacadeKeepsItsMethods</code> 和清单 <code>testdata/facade.txt</code> 保证（A4 建立，C7 加 20
+            <code>TestFacadeKeepsItsMethods</code> 和清单 <code>testdata/facade.txt</code> 保证（A4 建立，C7 加 19
             行，D12 加几个只读方法，此外不许改）。参数里用到的类型换了包（例如 <code>SessionOptions</code>）是允许的
           </td>
         </tr>
@@ -5316,6 +5506,13 @@ engine/folderwatch             engine/feature/folderwatch</code></pre>
             最后一次在当前代码上重跑。 把归属写成表，用脚本检查根包全部 750
             处内部方法调用、对类型和普通函数的引用，以及每个函数读写了哪个领域的字段。剩下的上行引用和附录 D、D3
             的接入点表列出的一致。脚本只做文本匹配，不能代替编译器
+          </td>
+        </tr>
+        <tr>
+          <td>附录 D 第三张表</td>
+          <td>
+            用脚本查了每个领域的代码用到了哪些引擎子包（文本匹配）。接入点 <code>Children</code> 的接口定义对着真实的
+            <code>builtin.Runner</code> 编译通过。C8 没有执行
           </td>
         </tr>
         <tr>
