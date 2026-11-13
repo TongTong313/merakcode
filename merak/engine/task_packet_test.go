@@ -55,7 +55,7 @@ func TestClaimMaterialsIncludeGroupGoalDocumentsDependenciesAndBoundedDiscussion
 	}
 	defer e.Close()
 	e.ConfigureModels([]catalog.Override{{Provider: "worker", Window: new(32000)}})
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider, work.ID, work.Model.Provider = "lead", "leader", "work", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Material group", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},

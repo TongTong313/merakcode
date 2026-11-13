@@ -30,7 +30,7 @@ func TestRemoteBudgetBlocksHostAndIncludesPriorTaskUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer b.Close()
-			source := agent.DefaultWorker()
+			source := agent.DefaultMerakCode()
 			source.ID, source.Model.Provider = "source-profile", "fake"
 			if prior < 0 {
 				source.Budget.MaxWallClock = time.Second
@@ -38,7 +38,7 @@ func TestRemoteBudgetBlocksHostAndIncludesPriorTaskUsage(t *testing.T) {
 			if _, err := b.SaveAgent(ctx, "owner", source); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: source.ID}}); err != nil {
+			if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: source.ID}}); err != nil {
 				t.Fatal(err)
 			}
 			peer, err := server.Start(b, t.TempDir())
@@ -65,13 +65,13 @@ func TestRemoteBudgetBlocksHostAndIncludesPriorTaskUsage(t *testing.T) {
 			if err := client.Call(ctx, "remote.connect", protocol.RemoteConnectParams{Endpoint: peer.Info.Endpoint, Token: peer.Info.Token}, &connection); err != nil {
 				t.Fatal(err)
 			}
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.ID = "remote-profile"
 			p.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker"}}
 			if _, err := a.SaveAgent(ctx, "owner", p); err != nil {
 				t.Fatal(err)
 			}
-			g, err := a.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Host", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Remote: true}, {ID: "local", Name: "Local", Kind: group.MemberAgent, AgentRole: group.AgentWorker}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+			g, err := a.Groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Host", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}, {ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID, Remote: true}, {ID: "local", Name: "Local", Kind: group.MemberAgent, AgentRole: group.AgentWorker}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -87,7 +87,7 @@ func TestRemoteBudgetBlocksHostAndIncludesPriorTaskUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			if prior > 0 {
-				local := agent.DefaultWorker()
+				local := agent.DefaultMerakCode()
 				local.Model.Provider = "local"
 				run, err := a.StartWorker(ctx, local, worker.Assignment{Session: "prior", Claim: task.Claim{Member: "local"}, Scope: event.Scope{Group: g.ID, Task: card.ID}, Workdir: t.TempDir(), Packet: "Start"})
 				if err != nil {

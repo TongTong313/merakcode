@@ -38,13 +38,13 @@ func checkLeader(g *Group, members []Member) error {
 	case len(found) == 0:
 		return coded(errorcode.GroupLeaderMissing, "a group needs a Leader agent")
 	case len(found) > 1:
-		return coded(errorcode.GroupLeaderMultiple, "a group has exactly one Leader agent")
+		return coded(errorcode.GroupLeaderMultiple, "a group has exactly one Leader")
 	}
 	if g.Leader == "" {
 		g.Leader = found[0].ID
 	}
 	if g.Leader != found[0].ID {
-		return coded(errorcode.LeaderAgentRequired, "the Leader of a group must be its Leader agent")
+		return coded(errorcode.LeaderAgentRequired, "the Leader of a group must be its Leader member")
 	}
 	return nil
 }
@@ -69,7 +69,7 @@ func (m *Manager) ReplaceLeader(ctx context.Context, id, human event.ID, next Me
 		return Group{}, errors.New("changing the Leader requires the owner")
 	}
 	if next.Kind != MemberAgent || next.AgentRole != AgentLeader {
-		return Group{}, coded(errorcode.LeaderAgentRequired, "the Leader of a group must be a Leader agent")
+		return Group{}, coded(errorcode.LeaderAgentRequired, "the Leader of a group must be a Leader member")
 	}
 	if next.ID == "" {
 		next.ID = m.newID()

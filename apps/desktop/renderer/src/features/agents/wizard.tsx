@@ -19,7 +19,6 @@ type Step = (typeof steps)[number]
 const blank = (): AgentAgent => ({
   id: "",
   name: "",
-  role: "worker",
   summary: "",
   duties: "",
   toolPool: "worker.default",
@@ -64,15 +63,6 @@ export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose:
   const patch = (change: Partial<AgentAgent>) => setDraft((agent) => ({ ...agent, ...change }))
   const patchProduct = (change: Partial<NonNullable<AgentAgent["product"]>>) =>
     setDraft((agent) => ({ ...agent, product: { kind: "", binary: "", ...agent.product, ...change } }))
-  const setRole = (role: "leader" | "worker") => {
-    const allowed = role === "worker" || productsFor("leader", catalog()).some((item) => item.kind === kind())
-    setDraft((agent) => ({
-      ...agent,
-      role,
-      toolPool: role === "leader" ? "leader.default" : "worker.default",
-      ...(allowed ? {} : { product: undefined }),
-    }))
-  }
   const setProduct = (value: string) => {
     if (value === "builtin") {
       patch({ product: undefined })
@@ -136,13 +126,9 @@ export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose:
   }
   const productOptions = createMemo(() => [
     { value: "builtin", label: t("agents.product.builtin") },
-    ...productsFor(draft().role, catalog()).map((item) => ({ value: item.kind, label: item.name })),
-    ...(draft().role === "worker"
-      ? [
-          { value: "acp", label: t("agents.product.acp") },
-          { value: "command", label: t("agents.product.command") },
-        ]
-      : []),
+    ...productsFor(catalog()).map((item) => ({ value: item.kind, label: item.name })),
+    { value: "acp", label: t("agents.product.acp") },
+    { value: "command", label: t("agents.product.command") },
   ])
   return (
     <Dialog
@@ -180,18 +166,6 @@ export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose:
           {index() + 1} / {steps.length} · {t(`agents.step.${step()}`)}
         </p>
         <Show when={step() === "product"}>
-          <div class="field">
-            <span>{t("agents.role")}</span>
-            <Segmented
-              label={t("agents.role")}
-              value={draft().role as "leader" | "worker"}
-              onChange={setRole}
-              options={[
-                { value: "worker", label: t("agents.role.worker") },
-                { value: "leader", label: t("agents.role.leader"), hint: t("agents.role.leaderHint") },
-              ]}
-            />
-          </div>
           <div class="field">
             <span>{t("agents.product")}</span>
             <Segmented label={t("agents.product")} value={kind()} onChange={setProduct} options={productOptions()} />

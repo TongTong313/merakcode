@@ -81,7 +81,7 @@ func TestWindowsEngineReclaimsTheOldestIdleSessionAndResumesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-session-account-fixture"}}
 	runSession := func(id event.ID) string {
 		t.Helper()
@@ -131,7 +131,7 @@ func TestWindowsEngineSharesAndReturnsTheSessionAccount(t *testing.T) {
 	if status, err := e.SandboxStatus(ctx, workspace, permission.ModeAsk); err != nil || !status.Available {
 		t.Fatalf("engine sandbox status=%+v error=%v", status, err)
 	}
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	path := filepath.Join(workspace, "ordinary.txt")
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-protection-event-fixture", path}}
 	for range 3 {

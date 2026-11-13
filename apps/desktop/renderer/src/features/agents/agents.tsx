@@ -80,8 +80,6 @@ function AgentCard(props: {
         : t("agents.modelDefault")
   const detail = () => (
     <>
-      <span>{props.agent.role === "leader" ? t("agents.role.leader") : t("agents.role.worker")}</span>
-      {" · "}
       <span data-harness>{harness()}</span>
       {" · "}
       <span data-model>{model()}</span>

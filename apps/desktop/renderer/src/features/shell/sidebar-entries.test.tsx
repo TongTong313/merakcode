@@ -115,7 +115,7 @@ test("a workspace lists its groups, tasks and conversations by latest change", a
         kind: "agent",
         name: "Leader",
         agentRole: "leader",
-        agent: "builtin-leader",
+        agent: "builtin-merakcode",
         status: "idle",
       },
     ],

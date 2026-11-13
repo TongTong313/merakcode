@@ -43,7 +43,7 @@ func inplaceCommits(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	if kind == worker.KindCommand {
@@ -140,7 +140,7 @@ func TestWatcherOverloadNotifiesTheOwnerOnce(t *testing.T) {
 	defer e.Close()
 	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{"sentinel.flagged", group.NoticeSent}})
 	defer stop()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "profile", "leader"
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()

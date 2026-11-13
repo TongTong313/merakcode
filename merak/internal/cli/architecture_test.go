@@ -66,7 +66,7 @@ func forbiddenEngineReferences(name string, file *ast.File) []string {
 		"engine/model/catalog": "Model",
 		"engine/model/fake":    "Reply",
 		"engine/permission":    "Allow Deny Reply Request Requested",
-		"engine/agent":         "DefaultWorker Product",
+		"engine/agent":         "DefaultMerakCode Product",
 		"engine/question":      "Answer Asked Request",
 		"engine/session":       "Completion MessageCompleted MessageDelta",
 		"engine/task":          "Report",

@@ -29,7 +29,7 @@ test("creates a task, gives it to a group, assigns a worker and opens its live p
   await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
   const dialog = kit.page.getByRole("dialog")
   await dialog.getByRole("textbox", { name: "群名称" }).fill("报告协作")
-  await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+  await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
   await dialog.getByRole("button", { name: "创建", exact: true }).click()
   await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
   await kit.page.getByRole("button", { name: "新建任务", exact: true }).click()
@@ -47,11 +47,11 @@ test("creates a task, gives it to a group, assigns a worker and opens its live p
   await expect(kit.page.getByText("任务要交给协作群才会开始", { exact: true })).toHaveCount(0)
   await expect(kit.page.getByRole("button", { name: "报告协作", exact: true })).toBeVisible()
   await kit.page.getByRole("button", { name: /^指派成员 .+/ }).click()
-  await kit.page.getByRole("option", { name: "Worker", exact: true }).click()
+  await kit.page.getByRole("option", { name: "MerakCode2", exact: true }).click()
   await kit.page.getByRole("button", { name: "指派成员", exact: true }).click()
   try {
     await expect(kit.page.getByText("Checking the guide.", { exact: true })).toBeVisible()
-    await expect(kit.page.getByText("Worker 负责")).toBeVisible()
+    await expect(kit.page.getByText("MerakCode2 负责")).toBeVisible()
     await kit.page.locator("summary").filter({ hasText: "执行过程" }).click()
     await kit.page
       .getByRole("log")

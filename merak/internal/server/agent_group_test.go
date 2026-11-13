@@ -44,11 +44,11 @@ func (r *roster) members(extra ...group.Member) []group.Member {
 }
 
 func (r *roster) leader(id string) group.Member {
-	return group.Member{ID: event.ID(id), Name: id, Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}
+	return group.Member{ID: event.ID(id), Name: id, Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}
 }
 
 func (r *roster) worker(id string) group.Member {
-	return group.Member{ID: event.ID(id), Name: id, Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}
+	return group.Member{ID: event.ID(id), Name: id, Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"}
 }
 
 func (r *roster) create(leader event.ID, directory string, members []group.Member) (group.Group, error) {
@@ -84,7 +84,7 @@ func TestTheOldProfileAndRegistrationMethodsAreGoneAndAgentsTakeTheirPlace(t *te
 		}
 	}
 	var agents []agent.Agent
-	if err := r.client.Call(t.Context(), "agent.list", struct{}{}, &agents); err != nil || len(agents) < 2 {
+	if err := r.client.Call(t.Context(), "agent.list", struct{}{}, &agents); err != nil || len(agents) < 1 {
 		t.Fatalf("agent.list = %d agents, %v", len(agents), err)
 	}
 	var saved agent.Agent
@@ -108,10 +108,10 @@ func TestAMemberIsAddedByTheIdOfAnExistingAgentAndNeverByAnInlineOne(t *testing.
 		t.Fatal(err)
 	}
 	var added group.Member
-	if err := r.client.Call(t.Context(), "group.addMember", map[string]any{"group": g.ID, "member": r.worker("helper")}, &added); err != nil || added.Agent != "builtin-worker" {
+	if err := r.client.Call(t.Context(), "group.addMember", map[string]any{"group": g.ID, "member": r.worker("helper")}, &added); err != nil || added.Agent != "builtin-merakcode" {
 		t.Fatalf("addMember = %+v, %v", added, err)
 	}
-	inline := map[string]any{"group": g.ID, "member": r.worker("other"), "agent": agent.DefaultWorker()}
+	inline := map[string]any{"group": g.ID, "member": r.worker("other"), "agent": agent.DefaultMerakCode()}
 	if err := r.client.Call(t.Context(), "group.addMember", inline, nil); err == nil {
 		t.Fatal("an inline agent was accepted")
 	}
@@ -156,14 +156,11 @@ func TestTheLeaderIsChangedInOneStepAndNeverAddedOrRemovedOnItsOwn(t *testing.T)
 	if err := r.client.Call(t.Context(), "group.removeMember", map[string]any{"group": g.ID, "member": "lead"}, nil); code(err) != "MRK-6012" {
 		t.Fatalf("removing the Leader: code=%q err=%v", code(err), err)
 	}
-	draft := agent.DefaultLeader()
+	draft := agent.DefaultMerakCode()
 	draft.Name = "Second Leader"
 	var next agent.Agent
 	if err := r.client.Call(t.Context(), "agent.save", map[string]any{"agent": draft}, &next); err != nil {
 		t.Fatal(err)
-	}
-	if err := r.client.Call(t.Context(), "group.update", map[string]any{"group": g.ID, "leader": "builtin-worker"}, nil); code(err) != "MRK-6010" {
-		t.Fatalf("a Worker as Leader: code=%q err=%v", code(err), err)
 	}
 	var changed group.Group
 	if err := r.client.Call(t.Context(), "group.update", map[string]any{"group": g.ID, "leader": next.ID}, &changed); err != nil {
@@ -218,14 +215,14 @@ func TestOnlyTheOwnerChangesTheLeaderAndTaskThreadsFollowIt(t *testing.T) {
 	if err := owner.Call(t.Context(), "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Leaders", Project: group.Project{Directory: directory}}, Members: []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 		{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
-		{ID: "first", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "first", Name: "First", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
 	}}, &g); err != nil {
 		t.Fatal(err)
 	}
 	if g.Leader != "first" {
 		t.Fatalf("the Leader of a group with one Leader agent is %q", g.Leader)
 	}
-	if err := admin.Call(t.Context(), "group.update", map[string]any{"group": g.ID, "leader": "builtin-leader"}, nil); err == nil {
+	if err := admin.Call(t.Context(), "group.update", map[string]any{"group": g.ID, "leader": "builtin-merakcode"}, nil); err == nil {
 		t.Fatal("an admin changed the Leader")
 	}
 	var card map[string]any

@@ -107,7 +107,7 @@ function MemberForm(props: {
   )
 }
 
-/** Adds an agent of this machine to the group; the ones that are already in it are marked and cannot be added again. */
+/** Adds an agent of this machine to the group as a member. An agent in the group already is marked; it can take another seat. */
 function AddMember(props: {
   group: string
   kind?: string
@@ -117,8 +117,7 @@ function AddMember(props: {
 }) {
   const [agents, { refetch }] = createResource(
     () => props.open,
-    async (open) =>
-      open ? ((await (await client()).agent.list({})) ?? []).filter((agent) => agent.role === "worker") : [],
+    async (open) => (open ? ((await (await client()).agent.list({})) ?? []).filter((agent) => !agent.disabled) : []),
   )
   const [busy, setBusy] = createSignal("")
   const inGroup = (agent: AgentAgent) => props.members.some((member) => member.agent === agent.id)
@@ -170,16 +169,17 @@ function AddMember(props: {
                   <span class="subtle ellipsis">{agent.summary}</span>
                 </span>
                 <span class="spacer" />
-                <Show when={!inGroup(agent)} fallback={<span class="badge neutral">{t("group.alreadyIn")}</span>}>
-                  <button
-                    class="button secondary sm"
-                    aria-label={t("profiles.add", { name: agent.name })}
-                    disabled={!!busy()}
-                    onClick={() => void add(agent)}
-                  >
-                    {t("common.add")}
-                  </button>
+                <Show when={inGroup(agent)}>
+                  <span class="badge neutral">{t("group.alreadyIn")}</span>
                 </Show>
+                <button
+                  class="button secondary sm"
+                  aria-label={t("profiles.add", { name: agent.name })}
+                  disabled={!!busy()}
+                  onClick={() => void add(agent)}
+                >
+                  {t("common.add")}
+                </button>
               </div>
             </article>
           )}

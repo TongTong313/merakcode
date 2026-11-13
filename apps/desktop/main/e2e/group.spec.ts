@@ -18,17 +18,17 @@ test("creates a local group and restores member activity and chat after reload",
   await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
   const dialog = kit.page.getByRole("dialog")
   await dialog.getByRole("textbox", { name: "群名称" }).fill("本地协作")
-  await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+  await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
   await dialog.getByRole("button", { name: "创建", exact: true }).click()
   await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
   await expect(kit.page.getByRole("link", { name: "本地协作" })).toBeVisible()
   await kit.page
     .getByRole("complementary", { name: "群成员" })
-    .getByRole("button", { name: "Leader", exact: true })
+    .getByRole("button", { name: "MerakCode", exact: true })
     .click()
-  await kit.page.getByRole("button", { name: "向 Leader 发消息", exact: true }).click()
+  await kit.page.getByRole("button", { name: "向 MerakCode 发消息", exact: true }).click()
   await kit.send("确认协作流程")
-  const leader = () => kit.page.getByRole("group", { name: "成员 Leader", exact: true })
+  const leader = () => kit.page.getByRole("group", { name: "成员 MerakCode", exact: true })
   try {
     await expect(leader()).toContainText("忙碌")
     await kit.page.reload()
@@ -66,15 +66,15 @@ test.describe("worker progress", () => {
     await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
     const dialog = kit.page.getByRole("dialog")
     await dialog.getByRole("textbox", { name: "群名称" }).fill("进度协作")
-    await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+    await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     await expect(kit.page.getByRole("log", { name: "群聊" })).toBeVisible()
-    await kit.send("@Worker 检查三个验收条件")
-    const worker = () => kit.page.getByRole("group", { name: "成员 Worker", exact: true })
+    await kit.send("@MerakCode2 检查三个验收条件")
+    const worker = () => kit.page.getByRole("group", { name: "成员 MerakCode2", exact: true })
     const breakdown = () => kit.page.getByRole("region", { name: "任务拆解", exact: true })
     try {
       await expect(worker()).toContainText("忙碌")
-      await expect(breakdown()).toContainText("@Worker 检查三个验收条件")
+      await expect(breakdown()).toContainText("@MerakCode2 检查三个验收条件")
       await expect(breakdown()).toContainText("已检查全部三项。")
       await expect(kit.page.getByRole("log", { name: "群聊" })).not.toContainText("已检查第一项。")
       await kit.page.reload()
@@ -119,7 +119,7 @@ test.describe("full duplex", () => {
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     const log = kit.page.getByRole("log", { name: "群聊" })
     await expect(log).toBeVisible()
-    const leader = () => kit.page.getByRole("group", { name: "成员 Leader", exact: true })
+    const leader = () => kit.page.getByRole("group", { name: "成员 MerakCode", exact: true })
     try {
       await kit.send("长时间思考")
       await expect(leader()).toContainText("忙碌")
@@ -142,7 +142,7 @@ test.describe("full duplex", () => {
   })
 })
 
-test("a group has one Leader chosen among Leader agents, configures no model, and creating groups adds no agents", async ({
+test("a group has one Leader chosen among the agents that can lead, configures no model, and creating groups adds no agents", async ({
   kit,
 }) => {
   const agents = async () => {

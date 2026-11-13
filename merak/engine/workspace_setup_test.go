@@ -71,7 +71,7 @@ func TestPooledWorkspaceKeepsSuccessfulSetupAcrossClaims(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Model.Provider, work.Mode = "work", "worker", permission.ModeTakeover
 	binary, err := os.Executable()
@@ -169,7 +169,7 @@ func TestWorkspaceSetupRunsBeforeWorkerAndFailureBlocksWithLog(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+			lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 			lead.ID, lead.Model.Provider = "lead", "leader"
 			work.ID, work.Model.Provider, work.Mode = "work", "worker", permission.ModeTakeover
 			if mode == "protected" {

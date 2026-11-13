@@ -57,7 +57,6 @@ afterEach(() => {
 const external = (name: string, extra: Partial<AgentAgent> = {}): AgentAgent => ({
   id: "",
   name,
-  role: "worker",
   summary: "",
   duties: "",
   toolPool: "worker.default",

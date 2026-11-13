@@ -66,7 +66,7 @@ test.each(["question", "permission"] as const)("answers a group %s as the named 
       agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const worker = await connection.agent.save({
-      agent: { ...profiles![1]!, id: "", model: { provider: "fake", model: "fixture" } },
+      agent: { ...profiles![0]!, id: "", model: { provider: "fake", model: "fixture" } },
     })
     const group = await connection.group.create({
       id: "",

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TongTong313/merakcode/merak/engine/agent"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
@@ -127,9 +126,6 @@ func (e *Engine) runDeviceAssignment(live *deviceRun) error {
 	p, err := e.memberAgent(prepared, member)
 	if err != nil {
 		return err
-	}
-	if p.Role == agent.Leader {
-		p.Role, p.ToolPool = agent.Worker, "worker.default"
 	}
 	card, err := e.Tasks.Get(prepared, a.Claim.Task)
 	if err != nil {

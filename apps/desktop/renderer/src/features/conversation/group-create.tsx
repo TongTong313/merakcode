@@ -10,7 +10,8 @@ import { Select } from "../../ui/select"
 import { Switch } from "../../ui/switch"
 import { toast } from "../../ui/toast"
 import { WorkspacePicker } from "../shell/workspace-picker"
-import { memberName } from "../group/roster"
+import { canLead } from "../agents/draft"
+import { nameFor } from "../group/roster"
 import { copyGroup } from "./group-copy"
 
 const cloudMemberKey = (member: GroupMember) => JSON.stringify([member.device, member.group, member.id])
@@ -37,6 +38,7 @@ export function GroupCreate(props: {
   const [listed, setListed] = createSignal<GroupListing[]>([])
   const [copied, setCopied] = createSignal<{ from: string; skipped: string[] }>()
   const added = new Set<string>()
+  const taken: string[] = [t("group.you")]
   const fail = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-6001" }), error })
   createEffect(
     on(
@@ -51,6 +53,7 @@ export function GroupCreate(props: {
         setLeader("")
         setCopied(undefined)
         added.clear()
+        taken.length = 1
         setName("")
         setDirectory(props.task?.project ?? props.directory)
         setWorkers([])
@@ -64,8 +67,8 @@ export function GroupCreate(props: {
             ])
             setCloud(status)
             setListed(groups ?? [])
-            const first = agents().find((agent) => agent.role === "leader")
-            setLeader(agents().find((agent) => agent.id === "builtin-leader")?.id ?? first?.id ?? "")
+            const first = agents().find((agent) => !agent.disabled && canLead(agent))
+            setLeader(agents().find((agent) => agent.id === "builtin-merakcode")?.id ?? first?.id ?? "")
             setLoading(false)
             const members = status.account ? await connection.cloud.members() : []
             setCloudMembers((members ?? []).filter((member) => member.agentRole === "worker"))
@@ -75,20 +78,20 @@ export function GroupCreate(props: {
       },
     ),
   )
-  const leaders = createMemo(() => agents().filter((agent) => agent.role === "leader"))
+  // No agent is a Leader or a member by nature: any agent can take either seat, the Leader seat only when it can lead.
+  const leaders = createMemo(() => agents().filter((agent) => !agent.disabled && canLead(agent)))
   const choices = (): AgentAgent[] =>
     kind() === "cloud"
       ? cloudMembers().map((member) => ({
           id: cloudMemberKey(member),
           name: member.name,
-          role: "worker",
           shared: true,
           summary: member.summary ?? "",
           duties: "",
           model: { provider: "", model: "" },
           toolPool: "worker.default",
         }))
-      : agents().filter((agent) => agent.role === "worker")
+      : agents().filter((agent) => !agent.disabled)
   const selectedLeader = () => leaders().find((agent) => agent.id === leader())
   const ready = () =>
     (kind() === "local" || (!!cloud()?.account && sharing())) &&
@@ -115,7 +118,12 @@ export function GroupCreate(props: {
       const connection = await client()
       if (!created()) {
         const profile = selectedLeader()!
+        const leaderName = nameFor(
+          profile.name,
+          taken.map((name) => ({ name }) as GroupMember),
+        )
         const id = crypto.randomUUID()
+        taken.push(leaderName)
         setCreated(
           await connection.group.create({
             id: "",
@@ -130,7 +138,7 @@ export function GroupCreate(props: {
                 id,
                 group: "",
                 kind: "agent",
-                name: memberName(profile.name, "Leader"),
+                name: leaderName,
                 agentRole: "leader",
                 agent: profile.id,
                 owner: localHuman,
@@ -152,13 +160,19 @@ export function GroupCreate(props: {
         }
         const profile = choices().find((agent) => agent.id === id)
         if (!profile) continue
+        // The same agent can hold several seats, so a seat's name is made free among the ones taken
+        const seatName = nameFor(
+          profile.name,
+          taken.map((name) => ({ name }) as GroupMember),
+        )
+        taken.push(seatName)
         await connection.group.addMember({
           group: created()!.id,
           member: {
             id: crypto.randomUUID(),
             group: created()!.id,
             kind: "agent",
-            name: memberName(profile.name, "Worker"),
+            name: seatName,
             agentRole: "worker",
             agent: profile.id,
             owner: localHuman,

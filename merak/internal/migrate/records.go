@@ -103,7 +103,7 @@ func (r *run) importProduct(key string, connection v03Product) {
 	if connection.Model != nil {
 		product.Model = connection.Model.ID
 	}
-	saved, err := r.m.options.Engine.SaveAgent(r.ctx, r.m.options.Human, agent.Agent{ID: event.ID("v03-product-" + agentID(key)), Name: name, Role: agent.Worker, ToolPool: "worker.default", Product: product})
+	saved, err := r.m.options.Engine.SaveAgent(r.ctx, r.m.options.Human, agent.Agent{ID: event.ID("v03-product-" + agentID(key)), Name: name, ToolPool: "worker.default", Product: product})
 	if err != nil {
 		r.skip("agent", key, codeRecord, err)
 		return
@@ -121,7 +121,7 @@ func (r *run) importRole(key string, template v03Role) {
 		r.skip("role", key, codeRecord, errors.New("the role template has no name"))
 		return
 	}
-	saved, err := r.m.options.Engine.SaveAgent(r.ctx, r.m.options.Human, agent.Agent{ID: event.ID("v03-role-" + agentID(key)), Name: template.Name, Role: agent.Worker, Summary: template.Role, Duties: template.Duty, ToolPool: "worker.default"})
+	saved, err := r.m.options.Engine.SaveAgent(r.ctx, r.m.options.Human, agent.Agent{ID: event.ID("v03-role-" + agentID(key)), Name: template.Name, Summary: template.Role, Duties: template.Duty, ToolPool: "worker.default"})
 	if err != nil {
 		r.skip("role", key, codeRecord, err)
 		return

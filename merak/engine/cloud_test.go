@@ -494,13 +494,13 @@ func TestCloudShutdownUploadsInterruptedClaimsBeforeClosingTheLink(t *testing.T)
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.ID = "worker-profile"
 			p.Model.Provider = "fake"
 			if _, err = e.SaveAgent(ctx, "owner", p); err != nil {
 				t.Fatal(err)
 			}
-			_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
+			_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -596,7 +596,7 @@ func TestCloudCodeToolReturnsSandboxedReadsAndRejectsWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "reader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "reader", Name: "Reader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "reader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "reader", Name: "Reader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +668,7 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID = "local-profile"
 	p.Model.Provider = provider.Name()
 	p.Mode = permission.ModeAsk
@@ -676,7 +676,7 @@ func TestCloudAssignmentWaitsForApprovalAndUploadsTheReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: saved.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: directory}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: saved.ID}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +772,7 @@ func TestCloudConnectionAnnouncesRegisteredMembersAndForwardsCreation(t *testing
 		t.Fatal(err)
 	}
 	defer e.Close()
-	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}})
+	_, err = e.Groups.Create(ctx, group.Group{ID: "local", Kind: group.KindLocal, Name: "Local", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}})
 	if err != nil {
 		t.Fatal(err)
 	}

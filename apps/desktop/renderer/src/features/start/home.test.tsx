@@ -94,7 +94,7 @@ async function newGroup(name: string) {
       agent: { ...agents[0]!, id: "", name: `${name} lead`, model: { provider: "fake", model: "fixture" } },
     }),
     connection.agent.save({
-      agent: { ...agents[1]!, id: "", name: `${name} writer`, model: { provider: "fake", model: "fixture" } },
+      agent: { ...agents[0]!, id: "", name: `${name} writer`, model: { provider: "fake", model: "fixture" } },
     }),
   ])
   const group = await connection.group.create({

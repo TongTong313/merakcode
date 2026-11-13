@@ -60,9 +60,6 @@
             }
           ]
         },
-        "role": {
-          "type": "string"
-        },
         "shared": {
           "type": "boolean"
         },
@@ -98,7 +95,7 @@
           ]
         }
       },
-      "required": ["duties", "id", "model", "name", "role", "summary", "toolPool"],
+      "required": ["duties", "id", "model", "name", "summary", "toolPool"],
       "type": "object"
     },
     "AgentModelRef": {

@@ -39,7 +39,7 @@ func TestAHumanWordRestartsAClaimOfAMemberThatCannotTakeMessagesMidRun(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader"
 	work.ID, work.Mode = "worker-agent", permission.ModeTakeover
 	work.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "hold-once"}}
@@ -102,7 +102,7 @@ func TestEveryInputDeliveredToARunningMemberIsReceiptedAndLaterConsumed(t *testi
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader"
 	work.ID, work.Model.Provider = "worker-agent", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Receipts", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
@@ -209,7 +209,7 @@ func TestLeaderAndWorkerBothHaveTheTodoTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader"
 	work.ID, work.Model.Provider = "worker-agent", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Todos", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{

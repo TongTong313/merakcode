@@ -770,7 +770,7 @@ test.describe("task artifact review", () => {
     await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
     const dialog = kit.page.getByRole("dialog")
     await dialog.getByRole("textbox", { name: "群名称" }).fill("产物审核")
-    await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+    await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     await expect(kit.page.getByRole("log", { name: "群聊", exact: true })).toBeVisible()
     const engineInfo = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")) as {
@@ -908,7 +908,7 @@ test.describe("task worktree review", () => {
     await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
     const dialog = kit.page.getByRole("dialog")
     await dialog.getByRole("textbox", { name: "群名称" }).fill("代码审核")
-    await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+    await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
     await dialog.getByRole("button", { name: "创建", exact: true }).click()
     await expect(kit.page.getByRole("log", { name: "群聊", exact: true })).toBeVisible()
     const engineInfo = JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")) as {
@@ -949,7 +949,7 @@ test.describe("task worktree review", () => {
       await review.getByRole("button", { name: "添加", exact: true }).click()
       await review.getByRole("textbox", { name: "审核意见", exact: true }).fill("补充例子")
       await review.getByRole("button", { name: "返工", exact: true }).click()
-      await expect(review).toContainText("Worker 已收到意见并开始返工")
+      await expect(review).toContainText("MerakCode2 已收到意见并开始返工")
       await expect(review.getByRole("region", { name: "成员报告", exact: true })).toContainText("Checked revision 2")
       expect(
         kit

@@ -37,7 +37,7 @@ func TestADirectoryWrittenInAnotherWayIsTheSameWorkspaceEverywhere(t *testing.T)
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-agent", "fake"
 	spelled := otherSpellings(dir)[0]
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Spelling", Project: group.Project{Directory: spelled}, Leader: "leader"}, []group.Member{

@@ -46,7 +46,7 @@ func debugWorker(args []string, stdin io.Reader, stdout io.Writer) int {
 		return 1
 	}
 	defer closeHost()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Product = &agent.Product{Kind: worker.Kind(*kind), Binary: *binary}
 	id := event.NewID()
 	if err := client.Call(ctx, "events.subscribe", event.Filter{Scope: event.Scope{Session: id}}, nil); err != nil {

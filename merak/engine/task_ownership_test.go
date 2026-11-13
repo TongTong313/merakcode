@@ -57,7 +57,7 @@ func newOwnership(t *testing.T) *ownership {
 	}
 	t.Cleanup(func() { e.Close() })
 	o.e = e
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader-model"
 	work.ID, work.Model.Provider = "worker-agent", "worker-model"
 	o.group, err = createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: o.dir}, Leader: "leader"}, []group.Member{
@@ -367,7 +367,7 @@ func TestTasksTheLeaderCreatesBelongToItsGroupAndWorkersCannotCreateTasks(t *tes
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader-model"
 	work.ID, work.Model.Provider = "worker-agent", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
@@ -477,10 +477,10 @@ func TestALeaderCannotAssignOrReadTheCardOfAnotherGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader-model"
 	work.ID, work.Model.Provider = "worker-agent", "worker-model"
-	quiet := agent.DefaultLeader()
+	quiet := agent.DefaultMerakCode()
 	quiet.ID, quiet.Model.Provider = "quiet-agent", "quiet-model"
 	newGroup := func(name string, lead agent.Agent) group.Group {
 		g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: name, Project: group.Project{Directory: dir}, Leader: "leader-" + event.ID(name)}, []group.Member{
@@ -676,7 +676,7 @@ func TestOwnershipAndRoutingSurviveARestart(t *testing.T) {
 		return e
 	}
 	first := start()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader-model"
 	g, err := createGroup(t, first, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},

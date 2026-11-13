@@ -211,7 +211,7 @@ func TestConfiguredDefaultModelRunsMembersWithoutAModel(t *testing.T) {
 	}
 	var g group.Group
 	if err := c.Call(ctx, "group.create", map[string]any{"name": "Defaults", "kind": "local", "project": group.Project{Directory: home}, "leader": "leader", "members": []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 	}}, &g); err != nil {
 		t.Fatal(err)

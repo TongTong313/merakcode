@@ -29,7 +29,7 @@ func TestAHandledPathRuleCreatesOneTaskWithoutWakingTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "profile", "leader"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{Triggers: []group.Trigger{{ID: "docs", When: event.Filter{Types: []event.Type{"file.changed"}}, Where: "docs/**/*.md", Cooldown: time.Minute, Then: group.Action{Kind: group.CreateTask, Template: "Sync English documentation"}}}}}, []group.Member{{ID: "owner", Kind: group.MemberHuman, Name: "Owner", Role: group.RoleOwner}, {ID: "leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Name: "Leader", Agent: lead.ID}}, []agent.Agent{lead})
 	if err != nil {
@@ -221,7 +221,7 @@ func triggerGroup(t *testing.T, settings group.Settings, providers map[string]mo
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = e.Close() })
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := createGroup(t, e, context.Background(), group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: settings}, []group.Member{

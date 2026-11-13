@@ -149,7 +149,7 @@ test("an @ names the member, the roster renames and removes members, and the add
   const agents = (await connection.agent.list({}))!
   const [writer, checker] = await Promise.all(
     ["Writer", "Checker"].map((name) =>
-      connection.agent.save({ agent: { ...agents[1]!, id: "", name, model: { provider: "fake", model: "fixture" } } }),
+      connection.agent.save({ agent: { ...agents[0]!, id: "", name, model: { provider: "fake", model: "fixture" } } }),
     ),
   )
   const lead = await leaderAgent()

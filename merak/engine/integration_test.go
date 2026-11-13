@@ -72,7 +72,7 @@ func TestNestedFolderGroupDoesNotUseItsParentRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Nested folder", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 	if err != nil {
@@ -215,10 +215,10 @@ func runGroupIntegration(t *testing.T, conflict, review, ownerApproval bool) {
 	members := []group.Member{{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}}
 	var profiles []agent.Agent
 	for _, name := range []string{"leader", "a", "b"} {
-		p := agent.DefaultWorker()
+		p := agent.DefaultMerakCode()
 		role := group.AgentWorker
 		if name == "leader" {
-			p = agent.DefaultLeader()
+			p = agent.DefaultMerakCode()
 			role = group.AgentLeader
 		}
 		p.ID, p.Model.Provider = event.ID(name+"-profile"), name

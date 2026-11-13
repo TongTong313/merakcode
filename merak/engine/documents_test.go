@@ -35,7 +35,7 @@ func TestLeaderCanWriteAndListSharedDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Docs", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 	if err != nil {

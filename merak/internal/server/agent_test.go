@@ -39,16 +39,16 @@ func TestAgentsListDefaultsAndSaveAnOwnedCopy(t *testing.T) {
 	if err := as("owner").Call(ctx, "agent.list", struct{}{}, &defaults); err != nil {
 		t.Fatal(err)
 	}
-	if len(defaults) != 2 || defaults[0].Role != agent.Leader || defaults[1].Role != agent.Worker || defaults[0].ID == "" || defaults[1].ID == "" {
+	if len(defaults) != 1 || defaults[0].ID != "builtin-merakcode" {
 		t.Fatalf("defaults=%+v", defaults)
 	}
-	draft := defaults[1]
+	draft := defaults[0]
 	draft.ID, draft.Name, draft.Duties = "", "Documentation", "Write and verify documentation."
 	var saved agent.Agent
 	if err := as("owner").Call(ctx, "agent.save", map[string]any{"agent": draft}, &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.ID == "" || saved.ID == defaults[1].ID {
+	if saved.ID == "" || saved.ID == defaults[0].ID {
 		t.Fatalf("copy id=%s", saved.ID)
 	}
 	saved.Name = "Documentation reviewer"
@@ -62,13 +62,13 @@ func TestAgentsListDefaultsAndSaveAnOwnedCopy(t *testing.T) {
 	if err := as("owner").Call(ctx, "agent.list", struct{}{}, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 3 || list[2].Name != saved.Name || list[2].Duties != draft.Duties {
+	if len(list) != 2 || list[1].Name != saved.Name || list[1].Duties != draft.Duties {
 		t.Fatalf("profiles=%+v", list)
 	}
 	if err := as("other").Call(ctx, "agent.list", struct{}{}, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 {
+	if len(list) != 1 {
 		t.Fatal("private profile leaked to another human")
 	}
 	if err := as("other").Call(ctx, "agent.delete", map[string]any{"agent": saved.ID}, new(struct{})); err == nil {
@@ -77,7 +77,7 @@ func TestAgentsListDefaultsAndSaveAnOwnedCopy(t *testing.T) {
 	if err := as("owner").Call(ctx, "agent.delete", map[string]any{"agent": saved.ID}, new(struct{})); err != nil {
 		t.Fatal(err)
 	}
-	if err := as("owner").Call(ctx, "agent.list", struct{}{}, &list); err != nil || len(list) != 2 {
+	if err := as("owner").Call(ctx, "agent.list", struct{}{}, &list); err != nil || len(list) != 1 {
 		t.Fatalf("deleted profile remains visible: %+v %v", list, err)
 	}
 	if err := as("owner").Call(ctx, "agent.save", map[string]any{"profile": defaults[0]}, new(agent.Agent)); err == nil {
@@ -87,16 +87,12 @@ func TestAgentsListDefaultsAndSaveAnOwnedCopy(t *testing.T) {
 		name   string
 		change func(*agent.Agent)
 	}{
-		{"external leader", func(p *agent.Agent) {
-			p.Role = agent.Leader
-			p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: "claude"}
-		}},
 		{"unknown product", func(p *agent.Agent) { p.Product = &agent.Product{Kind: "unknown", Binary: "anything"} }},
 		{"missing binary", func(p *agent.Agent) { p.Product = &agent.Product{Kind: worker.KindCommand} }},
 		{"leader tools on worker", func(p *agent.Agent) { p.ToolPool = "leader.default" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			bad := defaults[1]
+			bad := defaults[0]
 			bad.ID = ""
 			tc.change(&bad)
 			if err := as("owner").Call(ctx, "agent.save", map[string]any{"agent": bad}, new(agent.Agent)); err == nil {
@@ -128,12 +124,12 @@ func TestAnOwnedAgentJoinsAGroupByItsId(t *testing.T) {
 	}
 	var g group.Group
 	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, Members: []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader", Owner: "owner"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode", Owner: "owner"},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 	}}, &g); err != nil {
 		t.Fatal(err)
 	}
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Name = "Reviewer"
 	var saved agent.Agent
 	if err := as("owner").Call(ctx, "agent.save", map[string]any{"agent": p}, &saved); err != nil {

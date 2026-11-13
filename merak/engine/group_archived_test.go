@@ -22,7 +22,7 @@ func TestAnArchivedGroupIsReadOnlyAndSayingInItIsRefusedWithItsCode(t *testing.T
 	defer e.Close()
 	members := []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader", Owner: "human"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode", Owner: "human"},
 	}
 	for _, test := range []struct {
 		name     string
@@ -70,7 +70,7 @@ func TestRecoveringTheEngineLeavesAnArchivedGroupAloneAndItsHistoryReadable(t *t
 	defer cancel()
 	members := []group.Member{
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader", Owner: "human"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode", Owner: "human"},
 	}
 	id := event.ID("old-group")
 	if _, err := first.Groups.Create(ctx, group.Group{ID: id, Kind: group.KindLocal, Name: "Old", Project: group.Project{Directory: dir}, Leader: "leader", Archived: true}, members); err != nil {

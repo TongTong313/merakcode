@@ -47,7 +47,7 @@ func TestPausedGroupRetainsMessagesUntilAnAdminResumesIt(t *testing.T) {
 	as := func(human event.ID) *protocol.Client {
 		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
 	}
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Paused", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}, {ID: "observer", Name: "Observer", Kind: group.MemberHuman, Role: "observer"}, {ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})
 	if err != nil {

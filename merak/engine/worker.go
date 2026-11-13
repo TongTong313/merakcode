@@ -71,7 +71,7 @@ func (e *Engine) StartWorker(ctx context.Context, p agent.Agent, a worker.Assign
 			return nil, errors.New("unsupported worker product")
 		}
 	}
-	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" && !(a.Leader && p.Role == agent.Leader && p.ToolPool == "leader.default") {
+	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" && !(a.Leader && p.ToolPool == "leader.default") {
 		return nil, errors.New("unsupported worker tool pool")
 	}
 	if a.ReadOnly || p.ToolPool == "worker.readonly" || a.Leader {

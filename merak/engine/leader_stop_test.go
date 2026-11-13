@@ -35,7 +35,7 @@ func TestStoppingALeaderTurnEndsTheTurnAndTheLeaderAnswersTheNextMessage(t *test
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { e.Close() })
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader-model"
 	dir := t.TempDir()
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{

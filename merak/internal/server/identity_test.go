@@ -53,7 +53,7 @@ func TestAConnectionActsAsTheMachinesPersonAndNamesNobodyElse(t *testing.T) {
 		t.Fatal("a request named a person")
 	}
 	var mine, theirs []struct{ ID string }
-	if err := client.Call(ctx, "agent.save", map[string]any{"agent": map[string]any{"name": "Mine", "role": "worker", "toolPool": "worker.default"}}, new(any)); err != nil {
+	if err := client.Call(ctx, "agent.save", map[string]any{"agent": map[string]any{"name": "Mine", "toolPool": "worker.default"}}, new(any)); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Call(ctx, "agent.list", struct{}{}, &mine); err != nil {

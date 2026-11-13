@@ -65,7 +65,7 @@ func FromFiles(project, global string) []Agent {
 // parseFile reads the front matter (name, description, model, tools, permission) and the body, which is the system prompt.
 func parseFile(fallback, text string) Agent {
 	text = strings.ReplaceAll(strings.TrimPrefix(text, "\ufeff"), "\r\n", "\n")
-	a := Agent{Name: fallback, Role: Worker, ToolPool: "worker.default", Source: SourceFile}
+	a := Agent{Name: fallback, ToolPool: "worker.default", Source: SourceFile}
 	body := text
 	if rest, ok := strings.CutPrefix(text, "---\n"); ok {
 		if head, tail, found := strings.Cut(rest, "\n---"); found {

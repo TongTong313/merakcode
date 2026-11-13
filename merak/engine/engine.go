@@ -490,7 +490,7 @@ func (e *Engine) conversationFor(state *session.State) (*conversation, error) {
 	}
 	runner.Env.Sandbox = launcher
 	runner.Env.SandboxProfile = configuration
-	memberAgent := agent.DefaultWorker()
+	memberAgent := agent.DefaultMerakCode()
 	if state.Scope.Group != "" && state.Config.Member != "" {
 		groupID, memberID := e.executionSource(state.Scope, state.Config.Member)
 		member, err := e.groupMember(e.ctx, groupID, memberID)

@@ -15,7 +15,6 @@ async function groupAt(kit: Kit, directory: string) {
       agent: {
         id: "",
         name: "Claude Code",
-        role: "worker",
         summary: "",
         duties: "",
         toolPool: "worker.default",
@@ -37,7 +36,7 @@ async function groupAt(kit: Kit, directory: string) {
           kind: "agent",
           name: "Leader",
           agentRole: "leader",
-          agent: "builtin-leader",
+          agent: "builtin-merakcode",
           owner: rpc.hello.human,
           status: "idle",
         },

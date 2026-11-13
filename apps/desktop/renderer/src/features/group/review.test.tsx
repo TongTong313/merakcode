@@ -63,13 +63,13 @@ async function createGroup() {
     settings: { mergeNeedsOwner: false },
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
-      ...(["leader", "worker"] as const).map((role, index) => ({
+      ...(["leader", "worker"] as const).map((role) => ({
         id: role,
         group: "",
         kind: "agent" as const,
         name: role,
         agentRole: role,
-        agent: profiles[index]!.id,
+        agent: profiles[0]!.id,
         owner: localHuman,
         status: "idle",
       })),

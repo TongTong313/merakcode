@@ -109,7 +109,7 @@ func TestBuiltinWorkerTakeoverUsesTheMemberMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Model.Provider, p.Mode = "fixture", permission.ModeTakeover
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -140,7 +140,7 @@ func TestAutoWorkerWritesLocallyAndFallsBackToHumanWithoutSandbox(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode, p.Model.Provider = permission.ModeAuto, "fixture"
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: event.NewID(), Workdir: dir, Packet: "Write"})
 	if err != nil {

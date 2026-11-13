@@ -51,7 +51,7 @@ func TestClaudeCodeForwardsToolApprovalsToTheEngine(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Mode = test.mode
 			p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--request-permission"}}
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

@@ -132,7 +132,7 @@ func TestLocalGroupDelegatesReportsAndDeliversWithoutIdleModelCalls(t *testing.T
 		t.Fatal(err)
 	}
 	defer e.Close()
-	leaderProfile, workerProfile := agent.DefaultLeader(), agent.DefaultWorker()
+	leaderProfile, workerProfile := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	leaderProfile.ID, leaderProfile.Model.Provider = "leader-profile", "leader-model"
 	workerProfile.ID, workerProfile.Model.Provider = "worker-profile", "worker-model"
 	created, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{Review: new(false)}}, []group.Member{
@@ -231,7 +231,7 @@ func TestGroupsCanReuseAnExistingLeaderProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "shared-profile", "fake"
 	for _, id := range []event.ID{"leader-a", "leader-b"} {
 		_, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: string(id), Project: group.Project{Directory: dir}, Leader: id}, []group.Member{{ID: id, Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}, []agent.Agent{p})

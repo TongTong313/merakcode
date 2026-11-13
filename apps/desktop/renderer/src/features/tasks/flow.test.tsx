@@ -116,7 +116,7 @@ test("a task in a group is assigned from its page, and its worker's report and p
   const connection = await client()
   const agents = (await connection.agent.list({}))!
   const [lead, worker] = await Promise.all(
-    [agents[0]!, agents[1]!].map((agent, index) =>
+    [agents[0]!, agents[0]!].map((agent, index) =>
       connection.agent.save({
         agent: { ...agent, id: "", name: index ? "Writer" : "Chief", model: { provider: "fake", model: "fixture" } },
       }),

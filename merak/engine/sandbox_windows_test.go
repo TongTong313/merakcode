@@ -53,7 +53,7 @@ func TestUnavailableSandboxKeepsCommandSearchPathAndExplicitMemberEnvironment(t 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	output := filepath.Join(workspace, "environment.json")
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-environment-fixture", output}, Env: map[string]string{"MERAKCODE_ENV_EXPLICIT_FIXTURE": "configured"}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -97,7 +97,7 @@ func TestUnavailableSandboxLeaderSeesTheMemberRisk(t *testing.T) {
 	defer e.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider, work.ID = "leader-profile", "fixture", "worker-profile"
 	work.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Member risk", Project: group.Project{Directory: workspace}, Leader: "leader"}, []group.Member{
@@ -161,7 +161,7 @@ func TestUnavailableSandboxRemembersStartupDecisionByMemberAndProject(t *testing
 					t.Fatal(err)
 				}
 				marker := filepath.Join(current.workdir, fmt.Sprintf("run-%d.txt", index))
-				p := agent.DefaultWorker()
+				p := agent.DefaultMerakCode()
 				p.ID = event.ID(current.member)
 				p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -197,7 +197,7 @@ func TestUnavailableSandboxSessionChoiceDoesNotAuthorizeAnotherSession(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID = "command-profile"
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", filepath.Join(workspace, "started.txt")}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -240,12 +240,12 @@ func TestUnavailableSandboxGroupStartupRequiresAdmin(t *testing.T) {
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 				{ID: "admin", Name: "Admin", Kind: group.MemberHuman, Role: group.RoleAdmin},
 				{ID: "approver", Name: "Approver", Kind: group.MemberHuman, Role: group.RoleApprover},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
 			}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
 			p, err = e.SaveAgent(ctx, "owner", p)
 			if err != nil {
@@ -366,7 +366,7 @@ func TestUnavailableSandboxAsksBeforeStartingAnUnconfinedMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Name = "Command member"
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: os.Args[0], Args: []string{"--merak-engine-launch-fixture", marker}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

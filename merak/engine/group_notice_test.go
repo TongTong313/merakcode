@@ -54,9 +54,9 @@ func TestGroupPermissionsNotifyQualifiedHumansAndRejectLowerRoles(t *testing.T) 
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead := agent.DefaultLeader()
+			lead := agent.DefaultMerakCode()
 			lead.ID, lead.Model.Provider = "leader-profile", "fake"
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.ID, p.Model.Provider = "worker-profile", "fake"
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Review", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
@@ -109,9 +109,9 @@ func TestTaskReviewAndCompletionReachTheHumanInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},

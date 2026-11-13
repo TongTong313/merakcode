@@ -66,7 +66,7 @@ func testTaskMemory(t *testing.T, restart bool, binary string) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider, work.ID, work.Model.Provider = "lead", "fixture", "work", "fixture"
 	if binary != "" {
 		work.Model = agent.ModelRef{}

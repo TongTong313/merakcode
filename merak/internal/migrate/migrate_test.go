@@ -399,13 +399,13 @@ func TestExternalProductsBecomeAgentsRoleTemplatesBecomeWorkersAndAHandWrittenAd
 		byName[one.Name] = one
 	}
 	claude, runner, reviewer := byName["Claude Code"], byName["Runner"], byName["Reviewer"]
-	if claude.Product == nil || claude.Product.Kind != worker.KindClaudeCode || claude.Product.Binary != "claude-bin" || !reflect.DeepEqual(claude.Product.Args, []string{"--verbose"}) || claude.Product.Model != "opus" || claude.Role != agent.Worker {
+	if claude.Product == nil || claude.Product.Kind != worker.KindClaudeCode || claude.Product.Binary != "claude-bin" || !reflect.DeepEqual(claude.Product.Args, []string{"--verbose"}) || claude.Product.Model != "opus" {
 		t.Fatalf("claude = %+v", claude)
 	}
 	if runner.Product == nil || runner.Product.Kind != worker.KindCommand || runner.Product.Binary != "run-it" {
 		t.Fatalf("runner = %+v", runner)
 	}
-	if reviewer.Product != nil || reviewer.Summary != "Code reviewer" || reviewer.Duties != "Reads every change before it is merged." || reviewer.Role != agent.Worker {
+	if reviewer.Product != nil || reviewer.Summary != "Code reviewer" || reviewer.Duties != "Reads every change before it is merged." {
 		t.Fatalf("reviewer = %+v", reviewer)
 	}
 	if _, found := byName["Scribe"]; found {
@@ -415,8 +415,8 @@ func TestExternalProductsBecomeAgentsRoleTemplatesBecomeWorkersAndAHandWrittenAd
 	if err != nil || again.Imported.Agents != 0 || again.Imported.Roles != 0 {
 		t.Fatalf("second run = %+v (%v)", again, err)
 	}
-	if listed, _ = e.ListAgents(t.Context(), human); len(listed) != 5 {
-		t.Fatalf("%d agents after a second run, want the two builtin and three imported", len(listed))
+	if listed, _ = e.ListAgents(t.Context(), human); len(listed) != 4 {
+		t.Fatalf("%d agents after a second run, want the builtin one and three imported", len(listed))
 	}
 }
 
@@ -530,7 +530,7 @@ func TestACollaborationGroupBecomesAnArchivedReadOnlyGroupWithItsMembersAndMessa
 	if len(members) != 4 || members["Owner"].Kind != group.MemberHuman || !members["Owner"].Can(group.RoleOwner) {
 		t.Fatalf("members = %+v", state.Members)
 	}
-	if lead := members["Lead"]; lead.AgentRole != group.AgentLeader || lead.Agent != "builtin-leader" || state.Group.Leader != lead.ID {
+	if lead := members["Lead"]; lead.AgentRole != group.AgentLeader || lead.Agent != "builtin-merakcode" || state.Group.Leader != lead.ID {
 		t.Fatalf("leader = %+v of group %+v", lead, state.Group)
 	}
 	byName := map[string]agent.Agent{}

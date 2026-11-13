@@ -25,7 +25,7 @@ func TestGroupAndTaskCommandsUseTheRunningEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "leader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-leader"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
+	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "leader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-merakcode"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
 	path := filepath.Join(home, "group-input.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestTaskCommandsCreateListBindAndArchiveTasks(t *testing.T) {
 	if err := json.Unmarshal(run("task", "list", "--project", elsewhere), &listed); err != nil || len(listed) != 1 || listed[0].ID != other.ID {
 		t.Fatalf("listed=%+v %v", listed, err)
 	}
-	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "leader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-leader"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
+	body, _ := json.Marshal(map[string]any{"kind": "local", "name": "CLI group", "project": map[string]string{"directory": home}, "leader": "leader", "members": []map[string]string{{"id": "leader", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-merakcode"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
 	path := filepath.Join(home, "group-input.json")
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestTaskCommandsCreateListBindAndArchiveTasks(t *testing.T) {
 		t.Fatalf("bound=%+v %v", bound, err)
 	}
 	var made group.Group
-	body, _ = json.Marshal(map[string]any{"kind": "local", "name": "For the other", "leader": "lead2", "members": []map[string]string{{"id": "lead2", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-leader"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
+	body, _ = json.Marshal(map[string]any{"kind": "local", "name": "For the other", "leader": "lead2", "members": []map[string]string{{"id": "lead2", "kind": "agent", "name": "Leader", "agentRole": "leader", "agent": "builtin-merakcode"}, {"id": "local-human", "kind": "human", "name": "Owner", "role": "owner"}}})
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
 	}

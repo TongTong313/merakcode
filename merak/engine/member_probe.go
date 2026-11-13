@@ -44,7 +44,7 @@ func (e *Engine) TestAgent(ctx context.Context, human event.ID, p agent.Agent) (
 		return worker.Caps{}, err
 	}
 	defer os.RemoveAll(dir)
-	p.Role, p.ToolPool = agent.Worker, "worker.readonly"
+	p.ToolPool = "worker.readonly"
 	if p.Product != nil && (p.Product.Kind == worker.KindCommand || p.Product.Kind == worker.KindACP) {
 		p.ToolPool = "worker.default"
 	}

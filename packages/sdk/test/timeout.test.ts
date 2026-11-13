@@ -84,7 +84,6 @@ it("agent.test waits for a command product that answers after 15 seconds", { tim
       agent: {
         id: "",
         name: "Slow command",
-        role: "worker",
         summary: "Answers slowly",
         duties: "Reply OK",
         model: { provider: "", model: "" },

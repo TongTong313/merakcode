@@ -1,0 +1,2638 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>MerakCode v1.0.0 引擎分层重构方案</title>
+    <style>
+      :root {
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --code: #f6f8fa;
+        --warn: #fff8c5;
+        --note: #ddf4ff;
+        --ok: #dafbe1;
+        --stop: #ffebe9;
+      }
+      body {
+        font:
+          15px/1.7 -apple-system,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        color: var(--fg);
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 26px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+      h2 {
+        font-size: 20px;
+        margin-top: 40px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 6px;
+      }
+      h3 {
+        font-size: 16px;
+        margin-top: 24px;
+      }
+      code {
+        font:
+          13px/1.5 Consolas,
+          "Cascadia Code",
+          monospace;
+        background: var(--code);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+      pre {
+        background: var(--code);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px 14px;
+        overflow-x: auto;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+      }
+      .file {
+        font-weight: 600;
+        margin: 16px 0 4px;
+      }
+      .box {
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 12px 0;
+      }
+      .warn {
+        background: var(--warn);
+        border: 1px solid #d4a72c;
+      }
+      .note {
+        background: var(--note);
+        border: 1px solid #54aeff;
+      }
+      .ok {
+        background: var(--ok);
+        border: 1px solid #4ac26b;
+      }
+      .stop {
+        background: var(--stop);
+        border: 1px solid #ff8182;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 6px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--code);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .toc {
+        columns: 2;
+      }
+      .toc a {
+        text-decoration: none;
+        color: #0969da;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MerakCode v1.0.0 引擎分层重构方案</h1>
+    <p class="muted">
+      2026-11-13 定稿。本方案只依据当前代码仓库编写，没有参考 <code>docs/plans</code> 下的其他文件。数字和附录在分支
+      <code>dev-v1.0.0</code>、提交 <code>2dfee6a</code> 加当天工作区里的改动上核对。
+    </p>
+
+    <div class="box note">
+      <strong>怎么用这份文档：</strong>先读第 1 到 5 节弄清目标和规则，再读第 6 节的执行守则，然后按第 7 节的步骤 S0 到
+      S8 依次做。每一步只做该步写明的事，做完跑该步的验收。附录是执行时要查的表。遇到第 6.6
+      节列出的情况，停下来问用户，不要自己想办法绕过去。
+    </div>
+
+    <div class="box warn">
+      <strong>开工前先看这一条：</strong>核对这份方案时，工作区里有另一项正在进行、还没提交的改动（88 个 Go
+      文件，内容是去掉智能体的 Leader、Worker 角色）。所以附录里的函数名和你开工时的代码可能有少量出入，例如
+      <code>DefaultWorker</code> 可能已经改名。附录是默认值，第 5.2 节和附录 D
+      末尾的规则才是依据。名字对不上时按规则判断，判断不了就问用户。开始 S5 之前，根包不应再有别人在改。
+    </div>
+
+    <h2>目录</h2>
+    <ul class="toc">
+      <li><a href="#goal">1. 目标和不变的东西</a></li>
+      <li><a href="#terms">2. 术语</a></li>
+      <li><a href="#now">3. 现状</a></li>
+      <li><a href="#target">4. 目标结构</a></li>
+      <li><a href="#rules">5. 规则</a></li>
+      <li><a href="#conduct">6. 执行守则</a></li>
+      <li><a href="#steps">7. 执行步骤 S0 到 S8</a></li>
+      <li><a href="#app-a">附录 A 根包文件去向</a></li>
+      <li><a href="#app-b">附录 B 要拆开的文件</a></li>
+      <li><a href="#app-c">附录 C 字段归属</a></li>
+      <li><a href="#app-d">附录 D 跨领域引用的处理</a></li>
+      <li><a href="#app-e">附录 E 根包对外的名字</a></li>
+      <li><a href="#app-f">附录 F 包搬迁表</a></li>
+      <li><a href="#app-g">附录 G 风险</a></li>
+      <li><a href="#app-h">附录 H 这份方案验证到什么程度</a></li>
+    </ul>
+
+    <h2 id="goal">1. 目标和不变的东西</h2>
+    <p><strong>目标：</strong></p>
+    <ol>
+      <li>引擎分成四层：基础设施、单个智能体、多智能体与人机协同、产品能力。上层可以用下层，下层不能用上层。</li>
+      <li>根包 <code>merak/engine</code> 只剩门面和装配，不再放业务逻辑。</li>
+      <li>存储的实现全部在引擎之外，引擎只定义接口。</li>
+      <li>取消 <code>internal</code> 目录。</li>
+    </ol>
+    <p><strong>不变：</strong></p>
+    <ul>
+      <li>产品行为。</li>
+      <li>协议在线上的格式：方法名、事件类型名、每条消息的 JSON 字段。</li>
+      <li>根包对外方法的名字。</li>
+      <li><code>go.mod</code> 的依赖，不新增第三方模块。</li>
+    </ul>
+    <p><strong>会变：</strong></p>
+    <ul>
+      <li>Go 的包路径和引擎的启动参数。</li>
+      <li>
+        SDK 里一部分<strong>类型的名字</strong>。SDK 的类型名是“Go 包名 +
+        类型名”拼出来的，类型换了包，名字就跟着变，例如
+        <code>AgentAgent</code> 变成 <code>DefinitionAgent</code>。只变名字，结构不变。SDK
+        和桌面端里用到旧名字的地方跟着改名。
+      </li>
+      <li>几份文档里的布局说明。</li>
+    </ul>
+    <div class="box note">
+      <strong>不留兼容层。</strong
+      >现在用户不多，不为了“老代码不用改”而写多余的代码。类型或函数搬了家，就把所有引用改成新名字；不留类型别名，不留旧名字，不写新旧名字对照表。所有引用都在这个仓库里，Go
+      和 TypeScript 的编译器会把漏改的地方全部报出来。
+    </div>
+
+    <h2 id="terms">2. 术语</h2>
+    <table>
+      <tr>
+        <th style="width: 18%">词</th>
+        <th>意思</th>
+      </tr>
+      <tr>
+        <td>包</td>
+        <td>Go 里一个文件夹就是一个包。同一个包里的代码可以互相访问私有内容，不同包只能访问大写开头的名字。</td>
+      </tr>
+      <tr>
+        <td>根包</td>
+        <td><code>merak/engine/</code> 这个文件夹本身（不含子文件夹）里的代码。</td>
+      </tr>
+      <tr>
+        <td>门面</td>
+        <td>
+          根包里对外的
+          <code>Engine</code> 对象和它的方法。服务端只调用门面。重构后门面方法只做一件事：把调用转给对应的模块。
+        </td>
+      </tr>
+      <tr>
+        <td>装配</td>
+        <td><code>engine.New</code> 创建所有模块并把它们接在一起。只有这里引用全部引擎包。</td>
+      </tr>
+      <tr>
+        <td>领域</td>
+        <td>根包里一组属于同一件事的代码和状态，例如“远程和云端”。每个领域最后变成一个独立的包。</td>
+      </tr>
+      <tr>
+        <td>上行引用</td>
+        <td>下层代码用了上层的函数或类型。这是本方案要消除的东西。</td>
+      </tr>
+      <tr>
+        <td>下沉</td>
+        <td>把一个函数或类型搬到更低的层，让原来的上行引用变成合法的向下引用。</td>
+      </tr>
+      <tr>
+        <td>注入</td>
+        <td>下层定义一个接口或函数类型，写明“我需要这个能力”；上层实现它，装配时传给下层。下层不认识上层。</td>
+      </tr>
+      <tr>
+        <td>接入点</td>
+        <td>注入的一种：对话核心在固定的几个位置调用外面登记进来的函数（S5.4）。</td>
+      </tr>
+    </table>
+
+    <h2 id="now">3. 现状</h2>
+    <table>
+      <tr>
+        <th style="width: 40%">项</th>
+        <th>数字</th>
+      </tr>
+      <tr>
+        <td>根包源文件</td>
+        <td>66 个，约 13,500 行</td>
+      </tr>
+      <tr>
+        <td>根包测试文件</td>
+        <td>88 个，约 17,900 行，全部是黑盒测试（<code>package engine_test</code>）</td>
+      </tr>
+      <tr>
+        <td><code>Engine</code> 对象</td>
+        <td>118 个字段、17 把锁、约 400 个方法（146 个对外）</td>
+      </tr>
+      <tr>
+        <td>大锁 <code>e.mu</code></td>
+        <td>72 处加锁，所有领域都在用</td>
+      </tr>
+      <tr>
+        <td>测试里的 <code>engine.New</code></td>
+        <td>338 处；根包 228 处中约 180 处没有传存储，靠引擎的默认值</td>
+      </tr>
+    </table>
+    <p>现有的反向依赖（按第 4 节的分层，用 <code>go list</code> 算出，共 10 条）：</p>
+    <table>
+      <tr>
+        <th style="width: 6%">#</th>
+        <th style="width: 52%">谁引用了谁</th>
+        <th>在哪一步解决</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td><code>agent</code>（智能体定义）→ <code>worker</code></td>
+        <td>S4.2</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>tool</code> → <code>task</code></td>
+        <td>S4.3</td>
+      </tr>
+      <tr>
+        <td>3 到 5</td>
+        <td><code>permission</code> → <code>group</code>、<code>task</code>、<code>workspace</code></td>
+        <td>S4.4</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><code>window</code> → <code>task</code></td>
+        <td>S4.5</td>
+      </tr>
+      <tr>
+        <td>7、8</td>
+        <td><code>worker/remote</code> → <code>protocol</code>；根包 → <code>protocol</code></td>
+        <td>S4.6</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td>根包 → <code>internal/cloud</code></td>
+        <td>S4.7</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td>根包 → 内存存储（引擎自带的默认实现）</td>
+        <td>S7</td>
+      </tr>
+    </table>
+    <p class="muted">
+      另有一条永久例外：<code>mcp</code> 引用模块根包取版本号。模块根包只有版本号，没有任何依赖，不处理。
+    </p>
+
+    <h2 id="target">4. 目标结构</h2>
+    <pre><code>merak/
+├── cmd/merak/     入口
+├── cli/           命令行
+├── server/        协议服务端
+├── protocol/      协议消息、Go 客户端；子包 websocket
+├── storage/       落盘的实现：localstore（SQLite）、memory（内存）、vault（凭据库）、
+│                  configfile（配置文件）、logfile（日志文件）
+├── cloudlink/     云端链路和远程连接的实现
+├── migrate/       v0.3 数据导入
+├── diagnose/      诊断包
+├── testkit/       共用的测试辅助：testacp、testcloud、testmcp、testpdf、storetest、enginetest
+└── engine/
+    ├── engine.go  门面和装配
+    ├── infra/     基础设施
+    ├── agent/     单个智能体
+    ├── collab/    多智能体与人机协同
+    ├── feature/   产品能力
+    └── scenario/  驱动整个引擎的场景测试（只有测试文件）</code></pre>
+
+    <h3>4.1 四层里各有哪些包</h3>
+    <table>
+      <tr>
+        <th style="width: 12%">层</th>
+        <th style="width: 40%">已有的包</th>
+        <th>本方案新建的包</th>
+      </tr>
+      <tr>
+        <td><code>infra</code></td>
+        <td>
+          <code>event</code
+          >、<code>store</code>、<code>config</code>、<code>credential</code>、<code>errorcode</code>、<code>git</code>、<code>log</code>、<code>pathglob</code>、<code>pdf</code>、<code>process</code>、<code>pty</code>、<code>sandbox</code>、<code>secret</code>、<code
+            >watch</code
+          >
+        </td>
+        <td><code>core</code>：所有领域共用的只读依赖（S6 建）</td>
+      </tr>
+      <tr>
+        <td><code>agent</code></td>
+        <td>
+          <code>model</code>（含
+          <code>anthropic</code
+          >、<code>openai</code>、<code>catalog</code>、<code>fake</code>）、<code>tool</code>、<code>permission</code>、<code>session</code>、<code>window</code>、<code>memory</code>、<code>prompt</code>、<code>loop</code>、<code>definition</code>、<code>question</code>、<code>mcp</code>、<code>skill</code>、<code>rules</code>、<code>web</code>、<code
+            >clienttool</code
+          >
+        </td>
+        <td>
+          <code>registry</code>：运行时的设置和注册表（模型厂商、默认模型、智能体定义的读取、工具开关、技能目录、MCP
+          的定义和登录对象）<br />
+          <code>conversation</code>：跑一个对话的核心，含每个回合的 MCP 准备
+        </td>
+      </tr>
+      <tr>
+        <td><code>collab</code></td>
+        <td>
+          <code>task</code>、<code>group</code>、<code>worker</code>（含 8 个适配器和
+          <code>stdio</code>）、<code>workspace</code>、<code>leader</code>
+        </td>
+        <td>
+          <code>kit</code>：给模型用的协作工具（认领、报告）<br />
+          <code>approval</code>：群里由谁审批<br />
+          <code>wire</code>：引擎连接另一台引擎和云端时用的接口和消息类型<br />
+          <code>roster</code>：群的基础查询（成员、角色、群文档、任务范围）<br />
+          <code>execution</code>：成员的运行（沙箱、预算、任务材料、外部产品对话）<br />
+          <code>remote</code>：云端和远程设备的编排<br />
+          <code>coordinator</code>：群的运行和 Leader 的运行
+        </td>
+      </tr>
+      <tr>
+        <td><code>feature</code></td>
+        <td>
+          <code>review</code
+          >、<code>code</code>、<code>terminal</code>、<code>snapshot</code>、<code>plan</code>、<code>schedule</code>、<code>command</code>、<code
+            >folderwatch</code
+          >
+        </td>
+        <td>
+          <code>sessions</code>：会话上的产品能力（计划、定时、斜杠命令、回退、导入导出、清理）<br />
+          <code>project</code>：项目面板（文件、仓库、工作树、审核、目录监视）<br />
+          <code>admin/definition</code
+          >、<code>admin/skill</code>、<code>admin/rules</code>、<code>admin/mcp</code>、<code>admin/memory</code>：给人用的管理
+        </td>
+      </tr>
+    </table>
+    <div class="box note">
+      新建的包一律是新包，不往已有的包里塞代码。<code>admin</code> 是一个只起分组作用的文件夹，里面没有 Go 文件。<code
+        >admin/skill</code
+      >
+      和 <code>agent/skill</code>
+      同名是允许的；同一个文件同时引用两者时，在这个文件的引用行里给其中一个起个本地名字。
+    </div>
+
+    <h2 id="rules">5. 规则</h2>
+    <h3>5.1 依赖方向</h3>
+    <pre><code>cmd → cli → server → protocol → engine
+storage、cloudlink、migrate、diagnose、testkit → engine
+引擎内：feature → collab → agent → infra</code></pre>
+    <ol>
+      <li>引擎内只能向下引用。同一层的包可以互相引用，但 Go 不允许循环。</li>
+      <li>
+        <code>engine/</code> 里的源码不引用 <code>engine/</code> 之外的本项目代码。唯一例外是模块根包
+        <code>merak</code>（只有版本号）。测试文件和 <code>testdata</code> 里的程序不受这条限制。
+      </li>
+      <li>下层需要上层的能力时，下层定义接口，上层传实现。</li>
+      <li>对自己数据的基本操作在下层；给人用的管理流程在 <code>feature/admin</code>。</li>
+      <li>不留兼容层（第 1 节）。</li>
+    </ol>
+
+    <h3>5.2 一段代码该放哪一层</h3>
+    <table>
+      <tr>
+        <th style="width: 60%">问题</th>
+        <th>答“是”就放</th>
+      </tr>
+      <tr>
+        <td>它和智能体的业务无关吗（进程、git、沙箱、日志），或者它是事件、存储接口？</td>
+        <td><code>infra</code></td>
+      </tr>
+      <tr>
+        <td>单个智能体跑一个对话就需要它吗？</td>
+        <td><code>agent</code></td>
+      </tr>
+      <tr>
+        <td>它是因为有多个智能体或多个人才存在的吗（群、任务、运行器、远程）？</td>
+        <td><code>collab</code></td>
+      </tr>
+      <tr>
+        <td>它是因为客户端要展示某个功能，或者给人做安装、卸载、增删改才存在的吗？</td>
+        <td><code>feature</code></td>
+      </tr>
+    </table>
+    <p>按上表从上往下问，第一个答“是”的就是答案。</p>
+
+    <h3>5.3 存储</h3>
+    <ol>
+      <li>换一台机器也要跟着走的数据（对话、群、任务、记忆、附件），只走存储接口 <code>store.Store</code>。</li>
+      <li>密钥只走凭据接口 <code>credential.Vault</code>。</li>
+      <li>这两个接口的实现，以及配置文件和日志文件的落盘，都在 <code>merak/storage/</code>。</li>
+      <li>
+        引擎直接写磁盘只限两处：用户的项目文件夹，和启动方传进来的工作目录。引擎不自己拼路径，也不退到系统临时目录。
+      </li>
+    </ol>
+
+    <h3>5.4 测试</h3>
+    <ol>
+      <li>每个包自己的测试和源码放在同一个文件夹，这是 Go 的要求。</li>
+      <li>驱动整个引擎的场景测试放在 <code>engine/scenario/</code>，按领域分子文件夹。</li>
+      <li>多个包共用的测试辅助放在 <code>merak/testkit/</code>。</li>
+      <li>同时需要服务端或云端链路的测试，放在 <code>server/</code> 或 <code>cloudlink/</code>。</li>
+    </ol>
+
+    <h2 id="conduct">6. 执行守则</h2>
+    <h3>6.1 红线</h3>
+    <div class="box stop">
+      <ol>
+        <li>不改产品行为。发现现有行为有问题，记下来告诉用户，不在这次重构里修。</li>
+        <li>
+          不改测试的期望值和判断条件。测试文件只允许这几类修改：引用路径；被测的东西改了包、改了名字或改了参数形式时，测试里对应的写法跟着改；文件路径；引擎的启动参数；S8
+          里的搬目录。
+        </li>
+        <li>不跳过、不删除、不削弱任何失败的测试。</li>
+        <li>
+          不手改生成的文件（<code>*.gen.go</code>、<code>protocol.gen.ts</code>、<code>schema/</code> 下的文件）。
+        </li>
+        <li>
+          重新生成协议文件（<code>pnpm generate:protocol</code>）之后，必须用第 6.3
+          节的办法证明只有类型名变了。证明不了就不许提交。
+        </li>
+        <li>不留兼容层：不写类型别名（<code>type X = other.X</code>）来保留旧名字，不写新旧名字对照表。</li>
+        <li>不往 <code>go.mod</code> 加模块。</li>
+        <li>不往根包加新的业务代码。</li>
+        <li>SDK 和桌面端的代码只允许一种修改：把旧的类型名换成新的类型名。</li>
+      </ol>
+    </div>
+
+    <h3>6.2 每个提交都要过的验收</h3>
+    <p>在仓库根目录运行。全部通过才能提交。</p>
+    <pre><code>pnpm --dir merak typecheck
+pnpm --dir merak test
+pnpm check
+pnpm test:script</code></pre>
+    <ul>
+      <li>
+        <code>pnpm check</code> 里包含 <code>check:protocol</code>。它报“out of date”说明 SDK 的类型名变了，按第 6.3
+        节处理。
+      </li>
+      <li>只编译通过不算数，必须跑测试。搬目录这类改动，很多问题（测试里写死的路径）只有运行时才暴露。</li>
+      <li>
+        本机只能跑本机系统的测试。Linux 的 <code>-race</code> 和三个系统的专属测试由 CI 跑，所以每一步都要开 PR 并等 CI
+        全绿。
+      </li>
+      <li>
+        <code>TestWindowsSandboxHelperDeathKillsTheMemberTree</code>
+        在整套测试一起跑时偶尔超时，单独重跑能过。遇到它失败先单独重跑一次；别的测试失败不许这样处理。
+      </li>
+      <li>S3、S6、S7 结束时另外跑一遍桌面端的端到端测试（命令见 <code>CONTRIBUTING.md</code>）。</li>
+    </ul>
+
+    <h3 id="sdk-names">6.3 SDK 类型名变了怎么办</h3>
+    <p>
+      <code>pnpm check:protocol</code> 报“out of
+      date”时，按下面的顺序做。目的是证明<strong>只有名字变了</strong>，消息的结构一点没变。
+    </p>
+    <ol>
+      <li>
+        把下面的脚本存到仓库外的临时位置，例如 <code>/tmp/schema-renames.mjs</code>：
+        <pre><code>import fs from "node:fs"
+const [before, after, renames] = process.argv.slice(2).map((file) => fs.readFileSync(file, "utf8"))
+let text = before
+for (const [from, to] of Object.entries(JSON.parse(renames)))
+  text = text.split(`"${from}"`).join(`"${to}"`).split(`/$defs/${from}"`).join(`/$defs/${to}"`)
+const sorted = (value) =>
+  Array.isArray(value)
+    ? value.map(sorted)
+    : value &amp;&amp; typeof value === "object"
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])]))
+      : value
+const same = JSON.stringify(sorted(JSON.parse(text))) === JSON.stringify(sorted(JSON.parse(after)))
+console.log(same ? "OK: only type names changed" : "DIFFERENT: more than type names changed")
+process.exit(same ? 0 : 1)</code></pre>
+      </li>
+      <li>
+        保存旧的协议文件，然后重新生成：
+        <pre><code>git show HEAD:schema/protocol.json > /tmp/schema-before.json
+pnpm generate:protocol</code></pre>
+      </li>
+      <li>
+        列出哪些名字没了、哪些名字是新的：
+        <pre><code>diff &lt;(grep -oE '^    "[A-Z][A-Za-z0-9]*": \{' /tmp/schema-before.json | sort) \
+     &lt;(grep -oE '^    "[A-Z][A-Za-z0-9]*": \{' schema/protocol.json | sort)</code></pre>
+      </li>
+      <li>
+        把“旧名字 → 新名字”写成 <code>/tmp/renames.json</code>，例如
+        <code>{ "AgentAgent": "DefinitionAgent", "AgentModelRef": "DefinitionModelRef" }</code
+        >。每个消失的名字都必须对应一个新名字。
+      </li>
+      <li>
+        运行
+        <code>node /tmp/schema-renames.mjs /tmp/schema-before.json schema/protocol.json /tmp/renames.json</code
+        >。必须输出 <code>OK</code>。输出 <code>DIFFERENT</code> 说明结构也变了，这是错误，回去检查这一步的改动。
+      </li>
+      <li>
+        在 <code>packages/sdk/src</code>（<code>protocol.gen.ts</code> 除外）和
+        <code>apps/desktop</code> 里把每个旧名字换成新名字。这些名字都是唯一的大写开头单词，可以整词替换。然后跑
+        <code>pnpm check</code>，TypeScript 会报出漏改的地方。
+      </li>
+      <li>把这张新旧名字表写进提交说明。</li>
+    </ol>
+    <p>
+      如果生成器报“两个不同的类型得到同一个名字”（S0 加的检查），说明两个包里有同名的类型都进了协议。给其中一个 Go
+      类型改个更具体的名字，不要绕过检查。
+    </p>
+
+    <h3 id="rename">6.4 通用改名办法</h3>
+    <p>
+      把一个类型或函数从包 <code>a</code> 搬到包 <code>b</code> 以后，所有写着 <code>a.Name</code> 的地方要改成
+      <code>b.Name</code>。按下面的顺序做，S1、S4、S6 都用它。
+    </p>
+    <ol>
+      <li>
+        只替换“包名.名字”这种带包名的写法，并且要求前面不是点号或字母，避免改到别人的字段：
+        <pre><code>sed -i -E 's/(^|[^.A-Za-z0-9_])a\.(Name1|Name2)\b/\1b.\2/g' 文件</code></pre>
+        不要替换单独的 <code>Name</code>，也不要替换单独的 <code>a.</code>。
+      </li>
+      <li>给用到 <code>b.</code> 的文件加上 <code>b</code> 的引用行，然后 <code>gofmt -w</code>。</li>
+      <li>
+        反复运行 <code>go build ./...</code> 和 <code>go vet ./...</code>（<code>vet</code>
+        会连测试文件一起编译），按报错逐条改，直到两个命令都没有输出。常见的报错和处理：
+        <table>
+          <tr>
+            <th style="width: 44%">报错</th>
+            <th>处理</th>
+          </tr>
+          <tr>
+            <td><code>"…" imported and not used</code></td>
+            <td>删掉这一行引用</td>
+          </tr>
+          <tr>
+            <td><code>undefined: b</code></td>
+            <td>加上 <code>b</code> 的引用行</td>
+          </tr>
+          <tr>
+            <td><code>b.Name undefined (type … has no field or method Name)</code></td>
+            <td>
+              这个文件里有个局部变量也叫 <code>b</code>，挡住了包名。把那个局部变量改个名字。已知的一处：<code
+                >engine/workspace_mcp_test.go</code
+              >
+              里叫 <code>definition</code> 的局部变量，改成 <code>server</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>import cycle not allowed</code></td>
+            <td>不要自己想办法绕，对照这一步的说明检查顺序；解决不了就问用户</td>
+          </tr>
+        </table>
+      </li>
+      <li>
+        在被搬走的文件内部做替换时要小心三种写法，它们<strong>不是</strong>对类型的引用，不能加包名：方法名（<code
+          >func (r *Router) Ask(</code
+        >）、结构体字面量里的字段名（<code>Reply{Decision: x}</code>）、点号后面的字段（<code>reply.Decision</code>）。
+      </li>
+      <li>
+        这个仓库在 Windows 上很多文件的行尾是 CRLF。改 <code>package</code> 行时不要用
+        <code>^package x$</code> 这种写法，它会匹配不上；用
+        <code>s/^package x(\r?)$/package y\1/</code>，改完逐个文件确认。
+      </li>
+    </ol>
+
+    <h3>6.5 提交方式</h3>
+    <ul>
+      <li>一个小步一个提交。小步的编号是 S4.1、S5.2 这样的。</li>
+      <li>搬文件用 <code>git mv</code>，保留历史。</li>
+      <li>提交信息按 <code>CONTRIBUTING.md</code> 的格式，不加任何署名行。</li>
+      <li>这次重构用户看不到变化，不写 <code>CHANGELOG.md</code>。</li>
+    </ul>
+
+    <h3>6.6 遇到这些情况，停下来问用户</h3>
+    <div class="box warn">
+      <ol>
+        <li>要让测试通过，必须改测试的期望值或判断条件。</li>
+        <li>第 6.3 节的脚本输出 <code>DIFFERENT</code>，并且找不到原因。</li>
+        <li>出现循环引用，按这一步的说明和附录 D 的规则解决不了。</li>
+        <li>一段加锁的代码同时改了两个领域的状态（S5.3）。</li>
+        <li>出现附录 D 没列出的上行引用，并且拿不准该下沉还是注入。</li>
+        <li>对话需要附录之外的新接入点（S5.4）。</li>
+        <li>附录里的归属和实际代码对不上，并且按规则判断不了。</li>
+        <li>仓库里的其他计划文件和本方案冲突。</li>
+      </ol>
+    </div>
+
+    <h3>6.7 各步的难度</h3>
+    <table>
+      <tr>
+        <th style="width: 10%">步</th>
+        <th style="width: 40%">内容</th>
+        <th style="width: 10%">难度</th>
+        <th>说明</th>
+      </tr>
+      <tr>
+        <td>S0</td>
+        <td>协议生成器加撞名检查</td>
+        <td>低</td>
+        <td>改一个文件</td>
+      </tr>
+      <tr>
+        <td>S1</td>
+        <td>包 <code>agent</code> 改名 <code>definition</code></td>
+        <td>低</td>
+        <td>机械；已预演</td>
+      </tr>
+      <tr>
+        <td>S2</td>
+        <td>测试里编译假程序的路径改成不依赖目录位置</td>
+        <td>低</td>
+        <td>机械；已预演</td>
+      </tr>
+      <tr>
+        <td>S3</td>
+        <td>目录大搬迁，取消 <code>internal</code>，写入分层测试</td>
+        <td>低</td>
+        <td>机械但改动面大；已预演并跑过整套 Go 测试。单独一个 PR，期间不合并其他 Go 改动</td>
+      </tr>
+      <tr>
+        <td>S4</td>
+        <td>解开包之间的反向依赖</td>
+        <td>中</td>
+        <td>8 个小步；S4.3 到 S4.5 已预演</td>
+      </tr>
+      <tr>
+        <td>S5</td>
+        <td>根包原地分家</td>
+        <td><strong>高</strong></td>
+        <td>每个小步都要人审；涉及并发；没有预演</td>
+      </tr>
+      <tr>
+        <td>S6</td>
+        <td>根包搬家</td>
+        <td>中</td>
+        <td>S5 做对了，这一步是机械的</td>
+      </tr>
+      <tr>
+        <td>S7</td>
+        <td>存储实现移出引擎，启动参数改为必须传入</td>
+        <td>中</td>
+        <td>要改约 300 处测试的启动参数</td>
+      </tr>
+      <tr>
+        <td>S8</td>
+        <td>测试归位，收尾</td>
+        <td>低</td>
+        <td>机械</td>
+      </tr>
+    </table>
+
+    <h2 id="steps">7. 执行步骤</h2>
+    <p class="muted">下面的命令里，<code>M</code> 都是 <code>github.com/TongTong313/merakcode/merak</code>。</p>
+
+    <h3 id="s0">S0 协议生成器加撞名检查</h3>
+    <p>
+      <strong>为什么：</strong><code>merak/protocol/schema/document.go</code> 用“包名的最后一段 +
+      类型名”给每个类型起名。两个不同包里的同名类型会得到同一个名字，现在的代码遇到这种情况会悄悄把第二个丢掉。后面要新建
+      <code>admin/skill</code>、<code>admin/memory</code> 这些和已有包同名的包，必须先有这个检查。
+    </p>
+    <p><strong>先写测试</strong>（新文件 <code>merak/protocol/schema/document_test.go</code>）：</p>
+    <ol>
+      <li>两个不同的 Go 类型得到同一个名字时，生成失败，错误信息里写出这两个类型的完整路径。</li>
+      <li>同一个类型出现多次时照常生成。</li>
+    </ol>
+    <p>
+      <strong>再改代码：</strong>生成器里记下每个名字属于哪个
+      <code>reflect.Type</code>。同一个名字第二次出现而类型不同，就返回错误。
+    </p>
+    <p><strong>验收：</strong>第 6.2 节。生成的文件没有任何变化。</p>
+
+    <h3 id="s1">S1 包 <code>agent</code> 改名 <code>definition</code></h3>
+    <p><strong>为什么：</strong>腾出 <code>engine/agent/</code> 这个文件夹名给“单个智能体”这一层用。</p>
+    <ol>
+      <li><code>git mv merak/engine/agent merak/engine/definition</code>。</li>
+      <li>
+        这个文件夹里每个文件的 <code>package agent</code> 改成 <code>package definition</code>（注意第 6.4 节第 5 条）。
+      </li>
+      <li>
+        算出这个包对外的全部名字，然后在所有引用它的文件里改引用路径和带包名的写法：
+        <pre><code>names=$( { grep -hoE '^(type|func|var|const) [A-Z][A-Za-z0-9]*' merak/engine/definition/*.go | awk '{print $2}'
+           awk '/^(const|var) \($/{b=1;next} b&amp;&amp;/^\)/{b=0} b&amp;&amp;/^\t[A-Z]/{print $1}' merak/engine/definition/*.go
+         } | sort -u | tr '\n' '|' | sed 's/|$//' )
+grep -rlE "\"$M/engine/agent\"" --include='*.go' merak | while read -r f; do
+  sed -i -E "s#\"$M/engine/agent\"#\"$M/engine/definition\"#; s/(^|[^.A-Za-z0-9_])agent\.($names)\b/\1definition.\2/g" "$f"
+done
+gofmt -w merak</code></pre>
+      </li>
+      <li>
+        <code>merak/internal/cli/architecture_test.go</code> 里有一张按包路径写的表，把其中的键
+        <code>"engine/agent"</code> 改成 <code>"engine/definition"</code>。
+      </li>
+      <li>按第 6.4 节第 3 条反复编译到没有报错。</li>
+      <li>
+        按第 6.3 节处理 SDK 的类型名。预期的变化是 4
+        个：<code>AgentAgent</code>、<code>AgentModelRef</code>、<code>AgentProduct</code>、<code
+          >AgentRemoteSource</code
+        >
+        的前缀 <code>Agent</code> 变成 <code>Definition</code>。
+      </li>
+    </ol>
+    <p><strong>验收：</strong>第 6.2 节。</p>
+
+    <h3 id="s2">S2 测试里编译假程序的路径改成不依赖目录位置</h3>
+    <p>
+      <strong>为什么：</strong>很多测试用相对路径编译假程序，例如
+      <code>"./worker/claudecode/testdata/fakeclaude"</code>。搬目录以后这些路径会失效。改成完整的引用路径以后，S3
+      的脚本会自动把它们更新到新位置。
+    </p>
+    <p><strong>要改的</strong>（只有“交给 <code>go build</code> 编译的程序路径”这一种）：</p>
+    <table>
+      <tr>
+        <th style="width: 40%">现在的写法</th>
+        <th style="width: 26%">出现在</th>
+        <th>改成</th>
+      </tr>
+      <tr>
+        <td><code>"./worker/X/testdata/fakeY"</code></td>
+        <td><code>merak/engine/*_test.go</code></td>
+        <td><code>"M/engine/worker/X/testdata/fakeY"</code></td>
+      </tr>
+      <tr>
+        <td><code>"./worker/"</code>（后面用加号拼接）</td>
+        <td>
+          <code>engine/external_leader_test.go</code
+          >、<code>engine/group_mcp_test.go</code>、<code>engine/worker_test.go</code>，共 7 处
+        </td>
+        <td><code>"M/engine/worker/"</code></td>
+      </tr>
+      <tr>
+        <td><code>"./mcp/testdata/localserver"</code>、<code>"./mcp/testdata/promptserver"</code></td>
+        <td><code>engine/mcp_remote_test.go</code></td>
+        <td><code>"M/engine/mcp/testdata/…"</code></td>
+      </tr>
+      <tr>
+        <td><code>"../cmd/merak"</code></td>
+        <td><code>merak/engine/*_test.go</code>，共 4 处</td>
+        <td><code>"M/cmd/merak"</code></td>
+      </tr>
+      <tr>
+        <td><code>"./testdata/fakeX"</code>、<code>"./testdata/promptserver"</code></td>
+        <td><code>engine/worker/X/</code> 和 <code>engine/mcp/</code> 下的测试</td>
+        <td><code>"M/engine/worker/X/testdata/fakeX"</code>，即“测试文件所在的文件夹”加上后面的部分</td>
+      </tr>
+      <tr>
+        <td><code>"./command/testdata/fakecommand"</code></td>
+        <td><code>engine/worker/catalog_test.go</code></td>
+        <td><code>"M/engine/worker/command/testdata/fakecommand"</code></td>
+      </tr>
+      <tr>
+        <td><code>"../../engine/worker/X/testdata/fakeY"</code></td>
+        <td><code>internal/cli</code>、<code>internal/server</code> 下的测试</td>
+        <td><code>"M/engine/worker/X/testdata/fakeY"</code></td>
+      </tr>
+    </table>
+    <p><strong>不要改的：</strong></p>
+    <ul>
+      <li>
+        读数据文件的路径：<code>"../testdata/conversation.json"</code>、<code>"../../../schema/testdata"</code>、<code>"testdata/…"</code>。
+      </li>
+      <li><code>"./..."</code>（<code>go list</code> 的参数）。</li>
+      <li>测试“路径逃逸”用的输入：<code>"../outside.txt"</code>、<code>"../escape"</code> 这一类。</li>
+      <li>
+        <code>internal/cli/remote_process_test.go</code> 里的 <code>"../.."</code> 和
+        <code>"./cmd/merak"</code>。它先切换工作目录再编译，留到 S3 处理。
+      </li>
+    </ul>
+    <p>
+      <strong>做完自查：</strong>下面的命令列出测试里所有以 <code>./</code> 或
+      <code>../</code> 开头的字符串，结果里应该只剩“不要改的”那几类。
+    </p>
+    <pre><code>grep -rhoE '"\.\.?/[^"]*"' --include='*_test.go' merak | sort | uniq -c</code></pre>
+    <p><strong>验收：</strong>第 6.2 节。</p>
+
+    <h3 id="s3">S3 目录大搬迁</h3>
+    <p>
+      <strong>为什么：</strong>先把所有包放到最终位置，后面新建的包直接建在正确的地方。这一步只改位置，不改任何逻辑。
+    </p>
+    <p><strong>开始前：</strong>工作区干净；没有别的未合并的 Go 改动。</p>
+    <ol>
+      <li>
+        把附录 F 的搬迁表存成文件 <code>moves.txt</code>（放在仓库外的临时位置），每行两列：旧路径、新路径，顺序和附录 F
+        一致。文件的最后一行后面要有一个换行，否则下面的脚本会漏掉最后一行。
+      </li>
+      <li>
+        在
+        <code>merak/</code> 里按表逐行搬。每一行的旧文件夹必须存在，新文件夹必须不存在，否则说明顺序错了，停下来检查：
+        <pre><code>cd merak
+while read -r old new; do
+  [ -d "$old" ] &amp;&amp; [ ! -e "$new" ] || { echo "BAD ROW: $old $new"; break; }
+  mkdir -p "$(dirname "$new")" &amp;&amp; git mv "$old" "$new"
+done &lt; moves.txt</code></pre>
+      </li>
+      <li>
+        改所有 Go 文件里的引用路径，同时更新命令行架构测试里按包路径写的那张表：
+        <pre><code>while read -r old new; do
+  grep -rlE "\"$M/$old(/|\")" --include='*.go' . | while read -r f; do
+    sed -i -E "s#\"$M/$old(/|\")#\"$M/$new\1#g" "$f"
+  done
+  sed -i -E "s#\"$old(\"|/|\.)#\"$new\1#g" cli/architecture_test.go
+done &lt; moves.txt
+gofmt -w .</code></pre>
+        第一条 <code>sed</code> 只替换带引号的完整引用路径，S2 改过的编译路径也会被一起更新。
+      </li>
+      <li>
+        <code>merak/cloudlink</code> 里每个文件的 <code>package cloud</code> 改成
+        <code>package cloudlink</code>，测试文件里的 <code>package cloud_test</code> 改成
+        <code>package cloudlink_test</code>。引用它的文件里，把 <code>cloud.</code> 开头的写法改成
+        <code>cloudlink.</code>（第 6.4 节的办法）。要替换的名字用 S1 第 3 条同样的命令从
+        <code>cloudlink/*.go</code> 算出来，不要手抄。核对时是这 11
+        个：<code>Credentials</code>、<code>ErrNoCloud</code>、<code>ErrUnavailable</code>、<code>Identity</code>、<code>Inbound</code>、<code>Link</code>、<code>LoginDevelopment</code>、<code>NewWebSocket</code>、<code>Null</code>、<code>ValidEndpoint</code>、<code>WebSocket</code>。
+      </li>
+      <li>
+        下面这些测试里有写死的路径，文件夹的位置或深度变了，要跟着改：
+        <table>
+          <tr>
+            <th style="width: 38%">文件（新位置）</th>
+            <th>旧 → 新</th>
+          </tr>
+          <tr>
+            <td><code>cli/cli_test.go</code></td>
+            <td>
+              <code>filepath.Join("..", "..", "testdata", "hello.json")</code> →
+              <code>filepath.Join("..", "testdata", "hello.json")</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>cli/remote_process_test.go</code></td>
+            <td>工作目录 <code>"../.."</code> → <code>".."</code>；<code>"./cmd/merak"</code> 不变</td>
+          </tr>
+          <tr>
+            <td><code>engine/agent/loop/golden_test.go</code></td>
+            <td>
+              <code>filepath.Join("..", "..", "..", "schema", …)</code> →
+              <code>filepath.Join("..", "..", "..", "..", "schema", …)</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>engine/worker_test.go</code>（2 处）</td>
+            <td>
+              <code>filepath.Abs("worker/pi/testdata/conversation.jsonl")</code> →
+              <code>filepath.Abs("collab/worker/pi/testdata/conversation.jsonl")</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>engine/agent/model/anthropic/boundary_test.go</code></td>
+            <td>
+              <code>filepath.Join(filepath.Dir(file), "..", "..", "..")</code> 多加一个 <code>".."</code>；<code
+                >module+"engine/model/anthropic"</code
+              >
+              → <code>module+"engine/agent/model/anthropic"</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>engine/infra/pdf/boundary_test.go</code></td>
+            <td>
+              <code>module+"internal/platform/pdf"</code> → <code>module+"engine/infra/pdf"</code>（<code>".."</code>
+              的个数不变）
+            </td>
+          </tr>
+        </table>
+      </li>
+      <li>
+        命令行的架构测试 <code>cli/architecture_test.go</code> 规定“命令行不直接用引擎的包”。原来在
+        <code>internal/platform</code> 下的包不算引擎，命令行可以直接用；现在它们搬进了
+        <code>engine/infra</code>，要把这条豁免写出来。把判断那一行改成：
+        <pre><code>if !owned || path != "engine" &amp;&amp; !strings.HasPrefix(path, "engine/") || platform(path) {</code></pre>
+        并在文件末尾加上：
+        <pre><code>// platform reports the infrastructure packages that know nothing about agents: process, files, logs and the like.
+// Product commands may use them directly. Events and the storage contract are engine data and stay under the rule.
+func platform(path string) bool {
+	return strings.HasPrefix(path, "engine/infra/") &amp;&amp; path != "engine/infra/event" &amp;&amp; path != "engine/infra/store"
+}</code></pre>
+      </li>
+      <li>
+        改三个脚本里的路径，然后重新生成：
+        <table>
+          <tr>
+            <th style="width: 46%">文件</th>
+            <th>旧 → 新</th>
+          </tr>
+          <tr>
+            <td><code>script/generate-errors.ts</code></td>
+            <td>
+              <code>merak/internal/platform/errorcode/catalog.gen.go</code> →
+              <code>merak/engine/infra/errorcode/catalog.gen.go</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>script/generate-store.ts</code></td>
+            <td>
+              <code>merak/internal/localstore/schema.gen.go</code> → <code>merak/storage/localstore/schema.gen.go</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>apps/desktop/renderer/src/test/cloud.ts</code></td>
+            <td>
+              <code>./internal/testcloud/testdata/desktop</code> → <code>./testkit/testcloud/testdata/desktop</code>
+            </td>
+          </tr>
+        </table>
+        运行 <code>pnpm generate:errors</code> 和 <code>pnpm generate:store</code>，确认两个生成文件的内容和搬之前一样。
+      </li>
+      <li>
+        确认 <code>merak/internal</code> 和
+        <code>merak/engine/collab/worker/internal</code> 里已经没有任何文件，删掉这些空文件夹。运行
+        <code>go build ./...</code> 和 <code>go vet ./...</code>，两个都必须没有输出。
+      </li>
+      <li>用分层测试替换 <code>merak/engine/architecture_test.go</code> 里的文件冻结清单。要求见下面的“分层测试”。</li>
+      <li>
+        改文档里的布局说明：<code>AGENTS.md</code>（Layout 和 Go code
+        两节）、<code>CONTRIBUTING.md</code>（中文和英文各两处）、<code>merak/engine/agent/memory/README.md</code>、<code>merak/engine/agent/model/README.md</code>、<code>THIRD_PARTY_NOTICES.md</code>。<code
+          >AGENTS.md</code
+        >
+        里对应的三句话换成：
+        <pre><code>- `merak` — the Go module of the `merak` program. `engine/` is the engine in four layers (`infra`, `agent`,
+  `collab`, `feature`); `cli`, `server`, `protocol`, `storage`, `cloudlink`, `migrate`, `diagnose` and `testkit`
+  sit next to it; `cmd/merak` is the entry. There is no `internal/` directory. The module root package reads the
+  product version from the `package.json` next to it, which only wraps the Go commands for pnpm and turbo.
+
+- Dependencies point one way: `cli` → `server` → `protocol` → `engine`; inside the engine `feature` → `collab` →
+  `agent` → `infra`. Engine code imports nothing of this module outside `engine/` except the module root package.
+  `engine.New` is the only place that imports every engine package. `engine/architecture_test.go` enforces this.
+
+- Logging goes through `log/slog` configured by `engine/infra/log`; ...</code></pre>
+      </li>
+    </ol>
+    <p class="file">分层测试（<code>merak/engine/architecture_test.go</code>）</p>
+    <ul>
+      <li>用标准库 <code>go/parser</code> 只读每个文件的引用部分，不启动外部进程。</li>
+      <li>扫描 <code>merak/engine/</code> 下所有非测试的 <code>.go</code> 文件，跳过 <code>testdata</code> 文件夹。</li>
+      <li>层的高低：<code>infra</code> 0，<code>agent</code> 1，<code>collab</code> 2，<code>feature</code> 3。</li>
+      <li>
+        规则一：<code>engine/某层/</code> 里的文件引用
+        <code>engine/另一层/</code> 时，被引用的层不能更高。根包的文件不受这条限制。
+      </li>
+      <li>规则二：<code>engine/</code> 里的文件不能引用本模块在 <code>engine/</code> 之外的包。模块根包除外。</li>
+      <li>规则三：四层里的文件不能引用根包 <code>engine</code>。</li>
+      <li>
+        测试里写一张“已知违规”清单，每项是“引用方的包 →
+        被引用的包”。出现清单外的违规就失败；清单里的某项已经不存在也失败，提示把它从清单里删掉。
+      </li>
+    </ul>
+    <p>清单的初始内容（搬完后用 <code>go list</code> 算出来的，正好 10 条）：</p>
+    <pre><code>engine/agent/definition     -> engine/collab/worker
+engine/agent/tool           -> engine/collab/task
+engine/agent/permission     -> engine/collab/group
+engine/agent/permission     -> engine/collab/task
+engine/agent/permission     -> engine/collab/workspace
+engine/agent/window         -> engine/collab/task
+engine/collab/worker/remote -> protocol
+engine                      -> protocol
+engine                      -> cloudlink
+engine                      -> storage/memory</code></pre>
+    <p>
+      <strong>验收：</strong>第 6.2 节，加桌面端端到端测试。SDK 类型名在这一步不会变，因为每个包名的最后一段都没变。
+    </p>
+
+    <h3 id="s4">S4 解开包之间的反向依赖</h3>
+    <p>
+      每个小步做完，从分层测试的清单里删掉对应的项。每个小步都可能改变 SDK 类型名，按第 6.3 节处理。改引用都用第 6.4
+      节的办法。<strong>小步的顺序不能换</strong>，S4.5 依赖 S4.3 和 S4.4 先做完。
+    </p>
+
+    <p class="file">S4.1 错误类型下沉到 <code>errorcode</code></p>
+    <p>
+      根包的 <code>errors.go</code> 里有 <code>Error</code> 类型和 <code>coded</code> 函数，根包里有 83
+      处在用。领域搬出根包以后不能再引用根包，所以先把它们搬到最底层。
+    </p>
+    <ol>
+      <li>
+        在 <code>engine/infra/errorcode</code> 里新建 <code>error.go</code>，把
+        <code>Error</code> 类型和它的两个方法原样搬过去，<code>coded</code> 改名为 <code>Coded</code>。删掉根包的
+        <code>errors.go</code>。
+      </li>
+      <li>
+        根包里所有 <code>coded(</code> 改成 <code>errorcode.Coded(</code>，<code>&amp;Error{</code> 和
+        <code>*Error</code> 改成 <code>errorcode.Error</code> 的对应写法。
+      </li>
+      <li>根包以外的 <code>engine.Error</code>（<code>server</code> 等，12 处）改成 <code>errorcode.Error</code>。</li>
+    </ol>
+
+    <p class="file">S4.2 <code>worker.Kind</code>、<code>worker.Caps</code> 下沉到 <code>definition</code></p>
+    <ol>
+      <li>
+        把 <code>engine/collab/worker/worker.go</code> 里 <code>type Kind string</code>、它下面的 8 个
+        <code>Kind…</code> 常量、<code>type Caps struct</code> 的定义剪切到
+        <code>engine/agent/definition</code> 里的一个新文件 <code>product.go</code>。
+      </li>
+      <li>
+        <code>definition</code> 包里把 <code>worker.Kind</code>、<code>worker.Caps</code> 改成
+        <code>Kind</code>、<code>Caps</code>，删掉对 <code>worker</code> 的引用。
+      </li>
+      <li>
+        其他所有地方的 <code>worker.Kind</code>、<code>worker.Kind…</code>、<code>worker.Caps</code> 改成
+        <code>definition.</code> 开头。<code>worker</code> 包自己内部用到这些名字的地方（5 个文件）也加上
+        <code>definition.</code> 前缀，注意第 6.4 节第 4 条：字段名 <code>Kind</code> 和方法名
+        <code>Caps()</code> 不加前缀。
+      </li>
+      <li>
+        <code>cli/architecture_test.go</code> 的表里，把 <code>"engine/collab/worker"</code> 那一行里的
+        <code>Kind…</code> 名字挪到 <code>"engine/agent/definition"</code> 那一行。
+      </li>
+      <li>SDK 预期变化：<code>WorkerCaps</code> → <code>DefinitionCaps</code>。</li>
+    </ol>
+    <p class="muted">已核对：<code>definition</code> 保留的其他引用都到不了 <code>worker</code>，不会出现循环引用。</p>
+
+    <p class="file">S4.3 协作工具上移到新包 <code>engine/collab/kit</code></p>
+    <ol>
+      <li>
+        在 <code>engine/agent/tool</code> 包内把两个私有函数改成大写开头（共 166 处调用，只在这个文件夹里替换）：
+        <pre><code>sed -i -E 's/\bdecodeInput\(/DecodeInput(/g; s/\bfailure\(/Failure(/g' engine/agent/tool/*.go</code></pre>
+      </li>
+      <li>
+        <code>git mv</code> <code>engine/agent/tool/</code> 下的 <code>claim.go</code>、<code>report.go</code>、<code
+          >report_test.go</code
+        >
+        到 <code>engine/collab/kit/</code>。<code>package tool</code> 改成 <code>package kit</code>，<code
+          >package tool_test</code
+        >
+        改成 <code>package kit_test</code>。
+      </li>
+      <li>
+        在 <code>kit</code> 的两个源文件里，给来自 <code>tool</code> 包的名字加上
+        <code>tool.</code>
+        前缀并加引用行：<code>Spec</code>（类型，不是方法名）、<code>Call</code>、<code>Result</code>、<code>EffectGroup</code>、<code>DecodeInput</code>、<code>Failure</code>。
+      </li>
+      <li>
+        删掉 <code>engine/agent/tool/artifact.go</code>。它只有一行 <code>type Artifact = task.Artifact</code>。用到
+        <code>tool.Artifact</code> 的 3 处改成 <code>task.Artifact</code>。
+      </li>
+      <li>
+        用到 <code>tool.ClaimTask</code>、<code>tool.ReportProgress</code>、<code>tool.SubmitReport</code> 的地方改成
+        <code>kit.</code> 开头：根包的 <code>group_mcp.go</code>、<code>leader_runner.go</code>，以及两个测试文件。
+      </li>
+      <li>自查：<code>grep -l 'collab/task' engine/agent/tool/*.go</code> 没有输出。</li>
+    </ol>
+
+    <p class="file">S4.4 <code>permission</code> 拆出新包 <code>engine/collab/approval</code></p>
+    <p>
+      <code>permission</code> 包里和群有关的是三样东西：审批路由器 <code>Router</code>、挑选通知对象的
+      <code>Recipients</code>、判断“这个操作需要哪一级的人来批”的 <code>Need</code>。前两样搬走；<code>Need</code>
+      的判断逻辑留下，但不再接收群和工作区对象。
+    </p>
+    <p>
+      <strong>留在 <code>permission</code> 的改动：</strong>
+    </p>
+    <ol>
+      <li>
+        <code>route.go</code>：把 <code>Recipients</code> 整个函数剪走（下面第 6 条用）。<code>Need</code> 的函数头改成
+        <pre><code>func Need(req Request, directory string, options NeedOptions) string {</code></pre>
+        函数体只做替换，不改逻辑：<code>ws.Directory</code> → <code>directory</code>；<code
+          >g.Settings.MergeApprovalRequired()</code
+        >
+        → <code>!options.MergeWithoutOwner</code>；<code>g.Settings.AllowedHosts</code> →
+        <code>options.AllowedHosts</code>；<code>g.Settings.DeniedHosts</code> →
+        <code>options.DeniedHosts</code>；<code>group.RoleOwner</code>、<code>group.RoleAdmin</code>、<code
+          >group.RoleApprover</code
+        >
+        → <code>NeedOwner</code>、<code>NeedAdmin</code>、<code>NeedApprover</code>。在文件末尾加上：
+        <pre><code>// The level of person an operation needs. A group maps each to its role of the same name.
+const (
+	NeedApprover = "approver"
+	NeedAdmin    = "admin"
+	NeedOwner    = "owner"
+)
+
+// NeedOptions carries what the owner of a session decided about approvals; the zero value is the strictest.
+type NeedOptions struct {
+	MergeWithoutOwner bool
+	AllowedHosts      []string
+	DeniedHosts       []string
+}</code></pre>
+        <span class="muted"
+          >字段叫 <code>MergeWithoutOwner</code> 而不是反过来，是因为原来“空的群”等于“合并需要 Owner
+          批准”，这样零值的含义和原来一致。<code>group.Role</code> 本来就是
+          <code>string</code> 的别名，三个常量的值和群角色的值相同。</span
+        >
+      </li>
+      <li>
+        <code>gate.go</code>：<code>Request.RequiredRole</code> 的类型从 <code>group.Role</code> 改成
+        <code>string</code>（JSON 不变）。<code>Gate.Router</code> 字段的类型从 <code>*Router</code> 改成新接口
+        <code>Asker</code>：
+        <pre><code>// Asker finds a person to answer a request. The gate knows no groups; the layer above supplies one.
+type Asker interface {
+	Ask(ctx context.Context, req Request) (Reply, error)
+}</code></pre>
+      </li>
+      <li>
+        事件类型 <code>Routed</code>、<code>Escalated</code> 和登记它们的 <code>init</code> 函数从
+        <code>router.go</code> 剪到 <code>gate.go</code>（放在 <code>Requested</code>、<code>Replied</code>
+        旁边）。<strong>它们必须留在 <code>permission</code>：</strong><code>session</code> 包在用它们，搬走会让
+        <code>session</code> 反过来引用上层。
+      </li>
+      <li>
+        <code>policy.go</code>：那一处调用改成 <code>Need(req, call.Env.Workdir, NeedOptions{}) != NeedApprover</code>。
+      </li>
+      <li>删掉这几个文件里对 <code>group</code>、<code>workspace</code> 的引用。</li>
+    </ol>
+    <p>
+      <strong>新包 <code>approval</code>：</strong>
+    </p>
+    <ol start="6">
+      <li>
+        <code>git mv</code> <code>router.go</code>、<code>router_test.go</code>、<code>route_test.go</code> 到
+        <code>engine/collab/approval/</code>，改 <code>package</code> 行。新建
+        <code>approval/route.go</code>，放入剪过来的 <code>Recipients</code>，再加一个把群设置转成
+        <code>NeedOptions</code> 的函数：
+        <pre><code>// Need classifies an operation with the settings of the group it happens in.
+func Need(req permission.Request, ws workspace.Workspace, g group.Group) group.Role {
+	return permission.Need(req, ws.Directory, permission.NeedOptions{
+		MergeWithoutOwner: !g.Settings.MergeApprovalRequired(),
+		AllowedHosts:      g.Settings.AllowedHosts,
+		DeniedHosts:       g.Settings.DeniedHosts,
+	})
+}</code></pre>
+      </li>
+      <li>
+        <code>approval/router.go</code> 里，给来自 <code>permission</code> 的名字加上
+        <code>permission.</code>
+        前缀：<code>Request</code>、<code>Reply</code>、<code>Decision</code>、<code>ModeAuto</code>、<code>Ask</code>、<code>Allow</code>、<code>Deny</code>、<code>Replied</code>、<code>Requested</code>、<code>Routed</code>、<code>Escalated</code>。注意第
+        6.4 节第 4 条：方法名 <code>Ask</code>、字段名 <code>Decision:</code> 不加。
+      </li>
+      <li>
+        别处的引用：<code>permission.Router</code>、<code>permission.Need</code>、<code>permission.Recipients</code>
+        改成 <code>approval.</code> 开头（根包的 <code>engine.go</code>、<code>device_worker.go</code>，<code
+          >server</code
+        >
+        里两处，以及搬过来的两个测试）。<code>permission.Routed</code>、<code>permission.Escalated</code> 不变。
+      </li>
+      <li>
+        自查：<code
+          >grep -rl 'engine/collab/' --include='*.go' engine/agent/permission engine/agent/session | grep -v _test</code
+        >
+        没有输出。
+      </li>
+    </ol>
+
+    <p class="file">S4.5 任务材料包上移到 <code>task</code></p>
+    <ol>
+      <li>
+        <code>git mv engine/agent/window/packet.go engine/collab/task/packet.go</code>，<code>package window</code> 改成
+        <code>package task</code>。
+      </li>
+      <li>
+        文件里删掉对 <code>task</code> 的引用行，把 <code>task.</code> 前缀去掉；<code>EstimateText(</code> 改成
+        <code>window.EstimateText(</code> 并加上 <code>window</code> 的引用行。
+      </li>
+      <li>
+        用到 <code>window.Packet</code>、<code>window.Excerpt</code>、<code>window.ReportRef</code>、<code
+          >window.DocRef</code
+        >
+        的地方（根包的 <code>task_packet.go</code>、<code>worker.go</code>）改成 <code>task.</code> 开头。
+      </li>
+    </ol>
+    <p class="muted">
+      这一步让 <code>task</code> 引用 <code>window</code>。如果 S4.3、S4.4 还没做，会出现循环引用（<code>task</code> →
+      <code>window</code> → <code>session</code> → <code>tool</code>、<code>permission</code> → <code>task</code>）。
+    </p>
+
+    <p class="file">S4.6 引擎不再引用 <code>protocol</code>：新包 <code>engine/collab/wire</code></p>
+    <p>
+      引擎里有 5
+      处直接创建协议客户端（<code>worker/remote/adapter.go</code>、<code>worker/remote/connect.go</code>、根包的
+      <code>remote_delivery.go</code>、<code>sandbox.go</code>），另外用了 20 多个定义在
+      <code>protocol</code> 里的消息类型。
+    </p>
+    <ol>
+      <li>
+        在 <code>wire</code> 包里定义连接接口。现有的协议客户端正好只有这三个动作：
+        <pre><code>// Conn is a connection to another engine.
+type Conn interface {
+	Call(ctx context.Context, method string, params, result any) error
+	Events() &lt;-chan event.Event
+	Close() error
+}
+
+// Dial connects to the engine at endpoint and performs the protocol handshake. Client names the caller in the
+// handshake; an empty name sends none.
+type Dial func(ctx context.Context, endpoint, token, client string) (Conn, error)</code></pre>
+      </li>
+      <li>
+        把引擎用到的消息类型的定义从 <code>protocol</code> 剪到
+        <code>wire</code>，名字不变。判断办法：引擎源码里出现的每一个
+        <code>protocol.X</code> 类型都搬，它的字段里用到的其他 <code>protocol</code> 类型也跟着搬。具体是：<code
+          >protocol/remote.go</code
+        >
+        的全部内容（含常量 <code>RemoteLookupRequested</code> 和登记它的 <code>init</code>）；<code
+          >protocol/cloud.go</code
+        >
+        里的
+        <code>CloudStatus</code
+        >、<code>CloudInbound</code>、<code>DeviceAssignment</code>、<code>DeviceMessage</code>、<code>DeviceToolCall</code>；<code
+          >protocol/protocol.go</code
+        >
+        里的
+        <code>SandboxStatusParams</code>、<code>QuestionReplyParams</code>、<code>PermissionReplyParams</code>；<code
+          >protocol/events.go</code
+        >
+        里的 <code>EventsReadParams</code>。
+      </li>
+      <li>
+        所有引用改成 <code>wire.</code> 开头：引擎里的，<code>protocol</code> 包自己剩下的文件里的（包括
+        <code>protocol/schema/methods.go</code>），以及
+        <code>server</code>、<code>cli</code>、<code>cloudlink</code>、<code>testkit</code> 里的（约 30 个文件、90
+        多处）。<code>protocol</code> 里不留别名。
+      </li>
+      <li>
+        引擎里 5 处 <code>protocol.Connect(ctx, endpoint, token, protocol.HelloParams{…})</code> 改成调用装配时传进来的
+        <code>Dial</code
+        >。客户端名字照原样传：<code>"merak-remote"</code>（两处）、<code>"merak-delivery"</code>（一处）；<code
+          >sandbox.go</code
+        >
+        那一处原来没有名字，传空字符串。<code>client.Events</code> 改成 <code>conn.Events()</code>。
+      </li>
+      <li>
+        <code>engine.Deps</code> 加字段 <code>Dial wire.Dial</code>。在 <code>merak/cloudlink</code> 里实现它：调用
+        <code>protocol.Connect</code>，握手参数是
+        <code>protocol.HelloParams{Protocol: protocol.Version}</code>，名字不为空时再加
+        <code>Client: protocol.ClientInfo{Name: client}</code>；返回值包一层，让 <code>Events()</code> 返回客户端的
+        <code>Events</code> 通道。<code>cli</code> 创建引擎时传入。
+      </li>
+      <li>用到远程连接的测试，在启动参数里加 <code>Dial: cloudlink.Dial</code>。</li>
+      <li>
+        SDK 预期变化：搬走的类型前缀从 <code>Protocol</code> 变成 <code>Wire</code>，例如
+        <code>ProtocolRemoteStartParams</code> → <code>WireRemoteStartParams</code>。
+      </li>
+    </ol>
+
+    <p class="file">S4.7 云端链路接口进 <code>wire</code></p>
+    <ol>
+      <li>
+        把 <code>merak/cloudlink</code> 里引擎源码用到的定义剪到 <code>wire</code> 包：<code>Link</code>
+        接口、<code>Null</code>、<code>Credentials</code>、<code>Inbound</code>、<code>ErrNoCloud</code>、<code>ErrUnavailable</code>，以及两个只做计算的函数
+        <code>Identity</code>、<code>ValidEndpoint</code>。引用改成 <code>wire.</code> 开头。
+      </li>
+      <li>
+        引擎现在在登录云端时自己创建链路（根包 <code>cloud.go</code> 里的
+        <code
+          >switch e.cloud.(type) { case cloudlink.Null, *cloudlink.WebSocket: e.cloud = cloudlink.NewWebSocket() }</code
+        >）。改成由启动方提供：<code>engine.Deps</code> 里的 <code>Cloud</code> 字段换成
+        <pre><code>// NewLink creates the link of one cloud login. Nil means this engine has no cloud.
+NewLink func() wire.Link</code></pre>
+        引擎启动时的链路固定是 <code>wire.Null{}</code>。那段 <code>switch</code> 换成：<code>NewLink</code>
+        为空就解锁并返回 <code>wire.ErrNoCloud</code>，否则 <code>e.cloud = e.newLink()</code>。
+      </li>
+      <li>
+        <code>cli</code> 创建引擎时传 <code>NewLink: func() wire.Link { return cloudlink.NewWebSocket() }</code>。测试里
+        9 处 <code>Cloud: cloudlink.NewWebSocket()</code> 换成同样的 <code>NewLink</code>。
+      </li>
+      <li>
+        <code>cloudlink</code>
+        里留下：<code>WebSocket</code>、<code>NewWebSocket</code>、<code>LoginDevelopment</code>，以及 S4.6 加的
+        <code>Dial</code>。做完后引擎不再引用 <code>cloudlink</code>。
+      </li>
+    </ol>
+    <p class="muted">
+      已核对：现在传给 <code>Deps.Cloud</code> 的只有
+      <code>cloudlink.NewWebSocket()</code> 一种，没有别的链路实现，所以“总是新建一条”和原来的
+      <code>switch</code> 行为相同。
+    </p>
+
+    <p class="file">S4.8 服务端只通过门面调用引擎的功能</p>
+    <p>
+      桌面端只用 SDK，SDK 只走协议，这条链路现在是完整的。但服务端有 5
+      处绕过门面，直接调用了引擎子包的函数。把它们收回到门面，保证“SDK 能做的事都经过门面”。
+    </p>
+    <table>
+      <tr>
+        <th style="width: 34%">位置</th>
+        <th style="width: 26%">现在直接调用</th>
+        <th>改成调用门面的新方法</th>
+      </tr>
+      <tr>
+        <td><code>server/methods_config.go</code></td>
+        <td><code>rules.Load</code></td>
+        <td><code>Rules(ctx, directory)</code></td>
+      </tr>
+      <tr>
+        <td><code>server/methods_config.go</code></td>
+        <td><code>rules.WriteFile</code>、<code>rules.DeleteFile</code></td>
+        <td><code>WriteRule(root, name, text)</code>、<code>DeleteRule(root, name)</code></td>
+      </tr>
+      <tr>
+        <td><code>server/methods_group.go</code></td>
+        <td><code>worker.Catalog</code></td>
+        <td><code>WorkerProducts(ctx)</code></td>
+      </tr>
+      <tr>
+        <td><code>server/config.go</code> 的 <code>discoverModels</code></td>
+        <td><code>catalog.New</code> 加 <code>Refresh</code></td>
+        <td><code>DiscoverModels(ctx, provider)</code>，把这个函数的函数体原样搬进引擎</td>
+      </tr>
+    </table>
+    <ol>
+      <li>每个新方法的参数和返回值与被替换的函数完全一样，方法体就是原来那次调用。</li>
+      <li>
+        服务端可以继续使用引擎子包的<strong>类型和常量</strong>，以及只做类型转换的写法（例如
+        <code>permission.Mode(x)</code>）。不允许的是调用子包的函数。
+      </li>
+      <li>
+        在 <code>server</code> 里加一条架构测试，写法参照 <code>cli/architecture_test.go</code>（用
+        <code>go/parser</code>
+        找出对引擎子包的函数调用）。允许清单里只放创建模型厂商的构造函数（<code>anthropic</code>、<code>openai</code>
+        包），因为那是启动方的装配工作。
+      </li>
+    </ol>
+    <p><strong>S4 结束时</strong>分层测试的清单只剩一项：<code>engine -&gt; storage/memory</code>。</p>
+
+    <h3 id="s5">S5 根包原地分家</h3>
+    <div class="box warn">
+      这是全方案最难的一步。所有改动都在根包这一个包里做，<strong>不搬任何文件</strong>。同一个包里代码怎么互相引用都能编译，所以每改一小点都能马上跑测试。等这一步把领域之间的边界理清了，S6
+      的搬家才是机械的。开始前按附录 E 导出一份对外方法的清单。
+    </div>
+    <p><strong>领域和它们的高低顺序</strong>（低的在前，低的不能直接用高的）：</p>
+    <table>
+      <tr>
+        <th style="width: 6%">序</th>
+        <th style="width: 16%">领域</th>
+        <th style="width: 30%">最终的包</th>
+        <th>包含什么</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td><code>registry</code></td>
+        <td><code>engine/agent/registry</code></td>
+        <td>
+          模型厂商、默认模型、智能体定义的读取和校验、工具开关、技能目录、MCP 的定义和登录对象、网络设置、路径规范化
+        </td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>conversation</code></td>
+        <td><code>engine/agent/conversation</code></td>
+        <td>会话表、创建、发送、取消、压缩、删除、自动标题、读事件、对话记忆提取、每回合的 MCP 准备</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><code>roster</code></td>
+        <td><code>engine/collab/roster</code></td>
+        <td>查成员、查角色、查 Leader、群文档、任务范围、群工具的外壳</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><code>execution</code></td>
+        <td><code>engine/collab/execution</code></td>
+        <td>成员的运行、沙箱、预算、任务材料、工作区准备、运行器的 MCP 绑定、外部产品驱动的对话</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><code>remote</code></td>
+        <td><code>engine/collab/remote</code></td>
+        <td>云端连接和转发、设备、远程成员、跨机器的资料查找</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><code>coordinator</code></td>
+        <td><code>engine/collab/coordinator</code></td>
+        <td>群的运行、Leader 的运行、哨兵、快速通道、合并、任务记忆提取</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><code>sessions</code></td>
+        <td><code>engine/feature/sessions</code></td>
+        <td>计划、定时任务、斜杠命令、回退、导入导出、搜索、清理</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><code>project</code></td>
+        <td><code>engine/feature/project</code></td>
+        <td>文件、仓库、工作树、审核、目录监视</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><code>admin</code></td>
+        <td><code>engine/feature/admin/*</code></td>
+        <td>智能体定义的增删改、技能安装卸载、规则文件、MCP 登录登出、记忆的列表查看删除</td>
+      </tr>
+    </table>
+    <p class="muted">
+      Leader 的运行和群的运行互相调用非常多，所以放在同一个领域 <code>coordinator</code> 里，不拆开。已有的
+      <code>leader</code> 包（调度器、群状态、触发规则）不动，它是 <code>coordinator</code> 使用的下层库。序号同为 7
+      的三个领域之间现在没有互相调用，以后也不许有。
+    </p>
+
+    <p class="file">S5.1 建立领域对象</p>
+    <ol>
+      <li>
+        在根包里给每个领域建一个结构体（私有，名字和领域相同），再建一个公共依赖结构体 <code>core</code>。<code
+          >Engine</code
+        >
+        里放每个领域一个指针。
+      </li>
+      <li>
+        <code>core</code> 里放所有领域都只读使用的东西，完整清单见附录 C。每个领域对象都持有同一个 <code>core</code>。
+      </li>
+      <li>这一小步只加结构体，不动任何字段和方法。</li>
+    </ol>
+
+    <p class="file">S5.2 字段归位</p>
+    <ol>
+      <li>按附录 C，把 <code>Engine</code> 的字段一个领域一个领域地搬进对应的结构体。一个领域一个提交。</li>
+      <li>
+        每搬一个字段，把所有 <code>e.字段</code> 改成 <code>e.领域.字段</code>。用编译错误找遗漏：字段从
+        <code>Engine</code>
+        删掉以后，所有没改到的地方都会报错。
+      </li>
+      <li>
+        字段的类型如果是根包里定义的类型（例如 <code>claimRun</code>），这个类型的归属跟着字段走（附录 D 第二张表）。
+      </li>
+      <li>这一小步不改任何逻辑，也不改锁。</li>
+    </ol>
+
+    <p class="file">S5.3 拆大锁</p>
+    <p>
+      <code>e.mu</code>
+      一把锁保护了多份状态：会话表、认领运行表、认领准备表、提问表、合并标记、启动授权、任务审批等。拆成每个领域一把自己的锁。
+    </p>
+    <ol>
+      <li>每个持有可变状态的领域结构体加一个字段 <code>mu sync.Mutex</code>。</li>
+      <li>
+        逐个看 72 处 <code>e.mu.Lock()</code>。看从加锁到解锁之间读写了哪些字段：
+        <ul>
+          <li>全部属于同一个领域：换成那个领域的锁。</li>
+          <li>属于两个以上领域：<strong>停下来问用户</strong>。把这一处的文件、行号、涉及的字段列出来。</li>
+        </ul>
+      </li>
+      <li>
+        <strong>持有一个领域的锁时，不许调用另一个领域的方法。</strong
+        >需要的话，先把要用的值取出来，解锁，再调用。原来就是这样写的地方保持原样。
+      </li>
+      <li>一个领域一个提交。全部换完后删掉 <code>Engine.mu</code>。</li>
+    </ol>
+    <p><strong>这一小步的额外验收：</strong>每个提交都要等 CI 的 <code>go test -race</code> 通过，不能只看本机。</p>
+
+    <p class="file">S5.4 方法归位</p>
+    <ol>
+      <li>
+        按附录 A 和附录 B，把每个方法的接收者从 <code>*Engine</code> 改成它所属的领域结构体。例如
+        <code>func (e *Engine) groupMember(…)</code> 改成
+        <code>func (r *roster) groupMember(…)</code>。普通函数（没有接收者的）和类型的归属见附录 D 第二张表。
+      </li>
+      <li>
+        对外的方法（大写开头）在 <code>Engine</code> 上保留一个同名的方法，方法体只有一行转发：
+        <pre><code>func (e *Engine) ListSchedules(ctx context.Context) ([]schedule.Schedule, error) {
+	return e.sessions.ListSchedules(ctx)
+}</code></pre>
+      </li>
+      <li>
+        领域之间的引用：
+        <ul>
+          <li>高的用低的：高的领域结构体里放一个指向低的领域的指针，直接用。</li>
+          <li>
+            低的用高的（上行引用）：查附录
+            D。写着“下沉”的，把被用到的函数或类型搬到表里指定的更低的领域。写着“注入”的，在低的领域的文件里定义一个接口或函数类型，只列它需要的东西；低的领域结构体里放这个类型的字段；在
+            <code>engine.New</code> 里把高的领域对象赋给它。
+          </li>
+        </ul>
+      </li>
+      <li>
+        注入的写法。<strong>接口里不能出现更高领域的类型。</strong>出现了，就把那个类型下沉到定义接口的领域。
+        <pre><code>// In a file of the roster domain. The interface lists only what roster and the domains above it need.
+type placement interface {
+	executionSource(scope event.Scope, member event.ID) (group, source event.ID)
+	executionProject(ctx context.Context, scope event.Scope, workdir string) (string, error)
+}
+
+type roster struct {
+	core      *core
+	placement placement // set in engine.New to the remote domain
+}</code></pre>
+      </li>
+      <li>
+        一个领域一个提交，从低的领域开始：<code>registry</code>、<code>conversation</code>、<code>roster</code>，依次往上。
+      </li>
+    </ol>
+    <p class="file">对话的接入点</p>
+    <p>
+      <code>conversation</code> 领域现在直接调用了更高领域的 20
+      多个函数（外部对话、沙箱和成员环境、预算、计划、定时、快照）。改成对话只提供接入点，高的领域在装配时登记自己的函数。接入点固定为下面这些，不许增加（要增加先问用户）：
+    </p>
+    <pre><code>// Hooks lets higher layers take part in a conversation. The conversation knows none of them.
+type Hooks struct {
+	// External handles the sessions whose agent is run by an external product. Nil means there are none.
+	External External
+	// Environment fills the sandbox, the network policy and the memory owners of a session.
+	Environment func(ctx context.Context, state session.State, env *tool.Env) error
+	// Project returns the folder a session works in when its member runs on another machine.
+	Project func(ctx context.Context, scope event.Scope, workdir string) (string, error)
+	// Pending lists the permission requests of a session that still wait for a person.
+	Pending func(ctx context.Context, session event.ID) []permission.Pending
+	// Loop adds tools and callbacks to the loop of a session (plan, schedule, snapshots).
+	Loop []func(state session.State, runner *loop.Loop)
+	// Input may rewrite what a person sent (slash commands, skill suggestions) and returns what to run.
+	Input []func(ctx context.Context, state session.State, input loop.Input) (loop.Input, error)
+	// BeforeTurn runs before each turn (execution budgets).
+	BeforeTurn []func(ctx context.Context, state session.State) error
+	// AfterTurn runs after each turn (snapshots, releasing the sandbox).
+	AfterTurn []func(ctx context.Context, state session.State, outcome loop.Outcome)
+	// Cancelled runs when a turn is cancelled (stopping a plan).
+	Cancelled []func(ctx context.Context, session event.ID)
+	// Deleted runs when a session is deleted (removing its snapshots).
+	Deleted []func(ctx context.Context, session event.ID)
+}
+
+// External is implemented by the execution domain.
+type External interface {
+	Create(ctx context.Context, agent definition.Agent, options SessionOptions) (event.ID, error)
+	Send(ctx context.Context, session event.ID, parts []model.Part) (handled bool, err error)
+	Cancel(session event.ID) (handled bool)
+}</code></pre>
+    <p>现在的代码和接入点的对应关系：</p>
+    <table>
+      <tr>
+        <th style="width: 50%">现在的代码</th>
+        <th style="width: 16%">接入点</th>
+        <th>由谁登记</th>
+      </tr>
+      <tr>
+        <td>
+          <code>CreateSession</code> 里调用 <code>createExternalChat</code>；<code>SendWithBudget</code> 里调用
+          <code>externalChatOf</code>、<code>sendExternal</code>；<code>Cancel</code> 里对外部对话的处理
+        </td>
+        <td><code>External</code></td>
+        <td><code>execution</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>conversationFor</code> 里从创建 <code>sandbox.Launcher</code> 到设置
+          <code>runner.Env.MemoryOwners</code> 的那一段（用到
+          <code>memberSandboxProfile</code
+          >、<code>denyProductState</code>、<code>executionSource</code>、<code>groupMember</code>、<code>memberAgent</code>、<code>workerNetworkPolicy</code>、<code>connectSandboxNetwork</code>、<code>keepSandbox</code>、<code>memberMemoryOwners</code>）
+        </td>
+        <td><code>Environment</code></td>
+        <td><code>execution</code>，整段搬成它的一个函数</td>
+      </tr>
+      <tr>
+        <td><code>prepareMCP</code> 里调用 <code>executionProject</code></td>
+        <td><code>Project</code></td>
+        <td><code>remote</code></td>
+      </tr>
+      <tr>
+        <td><code>snapshotPermissions</code> 里调用 <code>PendingPermissions</code></td>
+        <td><code>Pending</code></td>
+        <td><code>coordinator</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>conversationFor</code> 里加 <code>WritePlan</code> 工具、设置 <code>runner.Finish</code> 和
+          <code>runner.OnTodos</code> 的那一段；加三个定时任务工具的那一段；<code
+            >runner.Track = e.trackWorkspace(…)</code
+          >
+        </td>
+        <td><code>Loop</code></td>
+        <td><code>sessions</code>，三段各搬成一个函数，按原来的先后顺序登记</td>
+      </tr>
+      <tr>
+        <td><code>runInput</code> 里的斜杠命令展开和技能推荐</td>
+        <td><code>Input</code></td>
+        <td><code>sessions</code></td>
+      </tr>
+      <tr>
+        <td><code>runInput</code> 里调用 <code>blockBudgetTask</code>、<code>configureExecutionBudget</code></td>
+        <td><code>BeforeTurn</code></td>
+        <td><code>execution</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>startConversation</code> 和 <code>childRun</code> 里调用 <code>releaseSandbox</code>；回合结束后的快照
+        </td>
+        <td><code>AfterTurn</code></td>
+        <td><code>execution</code>、<code>sessions</code></td>
+      </tr>
+      <tr>
+        <td><code>Cancel</code> 里调用 <code>stopPlanOfCancelledTurn</code></td>
+        <td><code>Cancelled</code></td>
+        <td><code>sessions</code></td>
+      </tr>
+      <tr>
+        <td><code>DeleteSession</code> 里调用 <code>snapshotRepo</code> 并删除快照仓库</td>
+        <td><code>Deleted</code></td>
+        <td><code>sessions</code></td>
+      </tr>
+    </table>
+    <ul>
+      <li>参数和返回值的具体类型以实际代码需要为准，可以调整。不许调整的是：接入点里不能出现更高层的包的类型。</li>
+      <li>同一个接入点登记了多个函数时，按登记顺序执行。登记顺序要和现在代码里的执行顺序一致，否则行为会变。</li>
+      <li>
+        对话在<strong>原来的位置</strong>调用接入点，前后的代码顺序不变。例如
+        <code>SendWithBudget</code> 先校验模型选择，再判断是不是外部对话；改完以后仍然是先校验，再调用
+        <code>External.Send</code>。
+      </li>
+      <li>
+        对话记忆提取和自动标题（<code>extractMemory</code>、<code>maybeTitle</code>）本来就属于
+        <code>conversation</code>，直接调用，不走接入点。
+      </li>
+    </ul>
+
+    <p class="file">S5.5 自查</p>
+    <p>全部做完后，下面每一条都必须成立。不成立说明还有没理清的地方。</p>
+    <ol>
+      <li><code>Engine</code> 的字段只有：<code>core</code>、每个领域一个指针。没有锁，没有表。</li>
+      <li>
+        <code>Engine</code> 的方法只有三种：<code>New</code> 里的装配、一行转发的对外方法、关闭和启动恢复。运行
+        <code>grep -c '^func (e \*Engine) [a-z]' merak/engine/*.go</code
+        >，除了装配、关闭、恢复用到的少数几个，结果应接近 0。
+      </li>
+      <li>低的领域的结构体里，没有任何字段的类型是更高领域的结构体指针。只能是接口或函数类型。</li>
+      <li>低的领域的代码里，不出现更高领域定义的类型名、函数名、常量名。</li>
+      <li>
+        每个文件只属于一个领域。原来混着几个领域的文件（附录 B）已经按领域拆成多个文件，文件名用领域名开头，例如
+        <code>conversation_core.go</code>、<code>sessions_plan.go</code>。
+      </li>
+    </ol>
+
+    <h3 id="s6">S6 根包搬家</h3>
+    <p>S5 做完以后，每个领域搬成一个包。从低的领域开始，一个领域一个提交。</p>
+    <ol>
+      <li>
+        第一个提交：新建包 <code>engine/infra/core</code>，把 <code>core</code> 结构体搬过去，改成大写开头的
+        <code>core.Core</code>，字段也改成大写开头。
+      </li>
+      <li>
+        之后每个领域：建文件夹（路径见 S5 的表），<code>git mv</code> 这个领域的所有文件过去，改
+        <code>package</code> 行。
+      </li>
+      <li>
+        领域结构体改成大写开头的对外类型，加一个
+        <code>New</code> 函数接收它的依赖（<code>core.Core</code>、更低领域的对象、注入的接口）。
+      </li>
+      <li>
+        凡是被别的包用到的名字都改成大写开头：方法、函数、类型、<strong>结构体字段</strong>、<strong>注入接口里的方法</strong>（接口的方法是小写的话，别的包没法实现它）。只被本领域自己用的保持小写。用编译错误找：搬过去以后，所有从外面访问小写名字的地方都会报错。
+      </li>
+      <li>
+        根包里原来对外的类型和常量（附录 E）已经跟着领域走了。根包以外用到它们的地方（约 18 处）改成新包名开头，例如
+        <code>engine.SessionOptions</code> 改成
+        <code>conversation.SessionOptions</code>。门面方法的参数类型也跟着变，这是允许的；方法名不许变。
+      </li>
+      <li>根包的场景测试这一步只改引用到的类型名，别的不动。</li>
+      <li>
+        每个提交按第 6.3 节处理 SDK 类型名。预期变化：原来前缀是
+        <code>Engine</code>
+        的类型（<code>EngineFileChanges</code>、<code>EngineFileContent</code>、<code>EngineFileNode</code>、<code
+          >EngineRepoChanges</code
+        >
+        等）前缀变成所在的新包名，例如 <code>ProjectFileNode</code>。
+      </li>
+    </ol>
+    <p><strong>S6 结束时根包只剩这些文件：</strong></p>
+    <table>
+      <tr>
+        <th style="width: 34%">文件</th>
+        <th>内容</th>
+      </tr>
+      <tr>
+        <td><code>engine.go</code></td>
+        <td><code>Deps</code>、<code>Engine</code>、<code>New</code>（装配）</td>
+      </tr>
+      <tr>
+        <td><code>facade_agent.go</code><br /><code>facade_collab.go</code><br /><code>facade_feature.go</code></td>
+        <td>全部对外方法，每个一行转发，按层分三个文件</td>
+      </tr>
+      <tr>
+        <td><code>shutdown.go</code>、<code>recovery.go</code></td>
+        <td>关闭、启动时的恢复</td>
+      </tr>
+    </table>
+    <p><strong>验收：</strong>第 6.2 节，附录 E 的方法名核对，加桌面端端到端测试。</p>
+
+    <h3 id="s7">S7 存储实现移出引擎，启动参数改为必须传入</h3>
+    <p class="file">S7.1 凭据库</p>
+    <ol>
+      <li>
+        <code>engine/infra/credential</code> 只留
+        <code>Vault</code>
+        接口。系统钥匙串和文件的实现（<code>credential.go</code>、<code>system_unix.go</code>、<code>system_windows.go</code>）和内存实现搬到新包
+        <code>merak/storage/vault</code>。
+      </li>
+      <li>
+        删掉根包 <code>engine.go</code> 里的 <code>newVault</code>。<code>Deps.Vault</code> 为空时
+        <code>New</code> 返回错误。原来 <code>newVault</code> 里选哪种实现的判断，原样搬到
+        <code>cli</code> 创建引擎的地方。
+      </li>
+    </ol>
+    <p class="file">S7.2 存储</p>
+    <ol>
+      <li><code>Deps.Store</code> 为空时 <code>New</code> 返回错误，删掉默认的内存存储。</li>
+      <li>
+        <code>merak/cli/serve.go</code> 里创建临时引擎的那一处（现在没有传存储）改成传
+        <code>memory.New()</code>。内存存储是正式代码在用的实现，所以它在 <code>storage/</code>，不在
+        <code>testkit/</code>。
+      </li>
+    </ol>
+    <p class="file">S7.3 工作目录</p>
+    <ol>
+      <li>
+        <code>Deps</code> 加一组目录，由启动方算好传入：
+        <pre><code>type Dirs struct {
+	Snapshots    string // shadow Git repositories of sessions
+	Worktrees    string // worktrees of conversations
+	SkillCache   string // downloaded skill sources
+	SandboxState string // sandbox state and lock files
+}</code></pre>
+      </li>
+      <li>
+        删掉引擎里自己拼路径和退到系统临时目录的代码（例如 <code>filepath.Join(e.dataDir, "snapshots")</code>、<code
+          >os.MkdirTemp("", "merak-snapshots-")</code
+        >）。原来的路径规则原样搬到 <code>cli</code>。
+      </li>
+    </ol>
+    <p class="file">S7.4 配置文件和日志文件</p>
+    <ol>
+      <li>
+        <code>engine/infra/config</code>：配置的类型、合并、校验留下。读写 <code>merakcode.json</code> 的代码（<code
+          >store.go</code
+        >
+        里的 <code>Open</code> 和写文件的部分、<code>keys.go</code>）搬到新包
+        <code>merak/storage/configfile</code>。配置对象需要落盘时，通过一个只有“保存”一个方法的接口，由
+        <code>configfile</code> 实现。读取项目文件夹里工作区配置的
+        <code>ReadWorkspace</code> 留在引擎，它读的是用户的项目文件。
+      </li>
+      <li>
+        <code>engine/infra/log</code>：只留
+        <code>With</code
+        >。创建日志文件、轮转、算日志目录的代码（<code>New</code>、<code>Root</code>、<code>Directory</code>、<code>rotation.go</code>、<code>handler.go</code>）搬到新包
+        <code>merak/storage/logfile</code>。
+      </li>
+    </ol>
+    <p class="muted">
+      S7.4
+      是全方案里唯一没有逐个文件核对过的一步。动手前先列出这两个包里每个文件、每个对外函数被谁使用，再决定切在哪里；切不干净就问用户。
+    </p>
+    <p class="file">S7.5 改测试的启动参数</p>
+    <ol>
+      <li>
+        在 <code>merak/testkit/enginetest</code> 里提供一个函数，返回一份填好内存存储、内存凭据库、临时目录的
+        <code>engine.Deps</code>。
+      </li>
+      <li>
+        约 300 处没有传存储的
+        <code>engine.New(engine.Deps{…})</code>，补上缺的启动参数。只加参数，不改别的。原来传了的保持原样。
+      </li>
+    </ol>
+    <p class="file">S7.6 新增两条架构测试</p>
+    <ol>
+      <li>
+        <code>engine/</code>
+        里调用写文件函数（<code>os.WriteFile</code>、<code>os.Create</code>、<code>os.OpenFile</code>、<code>os.MkdirAll</code>、<code>os.Rename</code>、<code>os.MkdirTemp</code>、<code>os.CreateTemp</code>）的包必须在清单里。清单的初始内容是做完本步以后实际在调用的那些包。
+      </li>
+      <li>分层测试的清单这时应该是空的。</li>
+    </ol>
+    <p><strong>验收：</strong>第 6.2 节，加桌面端端到端测试。</p>
+
+    <h3 id="s8">S8 测试归位，收尾</h3>
+    <ol>
+      <li>
+        根包测试里被多个文件共用的辅助函数（<code>createGroup</code>、<code>integrationCall</code>、<code>waitFor</code>、<code>integrationRepository</code>、<code>fixtureGit</code>、<code>enterGoalIntegration</code>、<code
+          >call</code
+        >
+        等）搬到 <code>merak/testkit/enginetest</code>，改成大写开头，调用处跟着改名。
+      </li>
+      <li>
+        根包的测试文件 <code>git mv</code> 到
+        <code>merak/engine/scenario/</code>
+        下，按领域分子文件夹：<code>conversation</code>、<code>group</code>、<code>task</code>、<code>remote</code>、<code>sandbox</code>、<code>worker</code>、<code>feature</code>。<code
+          >package</code
+        >
+        行改成“文件夹名加 <code>_test</code>”。
+      </li>
+      <li>
+        搬过去以后文件夹深了两层。测试里相对当前文件夹的路径要跟着改，已知的两处：<code
+          >configuration_external_test.go</code
+        >
+        的 <code>filepath.Abs("..")</code>，<code>worker_test.go</code> 的
+        <code>filepath.Abs("collab/worker/pi/…")</code>。再用 S2 末尾的命令和
+        <code>grep -rnE 'filepath\.(Abs|Join)\("' </code> 找一遍。
+      </li>
+      <li>
+        所有沙箱相关的测试放在同一个文件夹
+        <code>scenario/sandbox</code>。它们共用本机的沙箱账号池，分到多个包里并行跑会互相抢。
+      </li>
+      <li>
+        4
+        个同时需要服务端或云端链路的测试（<code>cloud_test.go</code>、<code>cloud_privacy_test.go</code>、<code>remote_git_test.go</code>、<code>task_ownership_test.go</code>）：引用了
+        <code>server</code> 的搬到 <code>merak/server/</code>，其余搬到 <code>merak/cloudlink/</code>。
+      </li>
+      <li>
+        带系统后缀的测试文件（<code>_linux_test.go</code>、<code>_windows_test.go</code>）和带构建标记的文件，后缀和标记原样保留。
+      </li>
+      <li>
+        新增架构测试：根包的源文件只能是 S6 末尾那张表里的文件；<code>Engine</code> 结构体里不能有
+        <code>sync.Mutex</code>
+        类型的字段。
+      </li>
+      <li>再核对一遍 <code>AGENTS.md</code> 和 <code>CONTRIBUTING.md</code> 的布局说明与实际一致。</li>
+    </ol>
+    <p><strong>验收：</strong>第 6.2 节。</p>
+
+    <h2 id="app-a">附录 A 根包文件去向</h2>
+    <p>66 个源文件。标“拆”的文件见附录 B；“另取”“除了”后面列的是这个文件里归别的领域的函数和类型。</p>
+    <table>
+      <tr>
+        <th style="width: 16%">领域</th>
+        <th>文件</th>
+      </tr>
+      <tr>
+        <td>留在根包</td>
+        <td>
+          <code>engine.go</code>（拆）、<code>shutdown.go</code>、<code>recovery.go</code>。<code>errors.go</code> 在
+          S4.1 已经搬走
+        </td>
+      </tr>
+      <tr>
+        <td><code>registry</code></td>
+        <td>
+          <code>default_model.go</code
+          >、<code>configuration.go</code>、<code>agents.go</code>（拆）、<code>workspace_mcp.go</code>（拆）。另取：<code
+            >files.go</code
+          >
+          的 <code>directory</code>、<code>canonicalDirectory</code>、<code>missing</code>；<code>sandbox.go</code> 的
+          <code>resolvedSandboxPath</code>；<code>blob.go</code> 的 <code>blobs</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>conversation</code></td>
+        <td>
+          <code>conversation.go</code
+          >（拆）、<code>history.go</code>（拆）、<code>memory.go</code>（拆）、<code>blob.go</code>（除了
+          <code>blobs</code>）
+        </td>
+      </tr>
+      <tr>
+        <td><code>roster</code></td>
+        <td>
+          <code>group_lookup.go</code>（除了
+          <code>groupLookup</code>、<code>readGroupDoc</code>）、<code>documents.go</code>。另取：<code>group.go</code>
+          的 <code>groupMember</code>、<code>memberAgent</code>、<code>loadAgent</code>；<code>group_tools.go</code> 的
+          <code>scopedTask</code>、<code>taskRoot</code>、<code>groupTool</code>、<code>decodeGroupInput</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>execution</code></td>
+        <td>
+          <code>worker.go</code
+          >、<code>worker_budget.go</code>、<code>member_execution.go</code>、<code>member_probe.go</code>、<code>execution_budget.go</code>、<code>task_budget.go</code>（除了
+          <code>updateTaskTool</code>）、<code>task_packet.go</code>、<code>sandbox.go</code>（除了
+          <code>resolvedSandboxPath</code
+          >）、<code>network_policy.go</code>、<code>workspace_setup.go</code>、<code>external.go</code>。另取：<code
+            >group_mcp.go</code
+          >
+          的
+          <code>bindWorkerMCP</code
+          >、<code>memberMCP</code>、<code>mcpWorkerRun</code>、<code>mcpConfiguration</code>；<code>fastlane.go</code>
+          的类型 <code>claimRun</code>、<code>claimPreparation</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>remote</code></td>
+        <td>
+          <code>cloud.go</code
+          >、<code>cloud_events.go</code>、<code>cloud_forward.go</code>、<code>cloud_projection.go</code>、<code>device_host.go</code>、<code>device_question.go</code>、<code>device_recovery.go</code>、<code>device_source.go</code>、<code>device_tool.go</code>、<code>device_worker.go</code>、<code>remote.go</code>、<code>remote_delivery.go</code>、<code>remote_lookup.go</code>、<code>remote_peer.go</code>、<code>remote_workspace.go</code>。另取：<code
+            >group_lookup.go</code
+          >
+          的 <code>groupLookup</code>、<code>readGroupDoc</code>；<code>group_question.go</code> 的类型
+          <code>pendingWorkerQuestion</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>coordinator</code></td>
+        <td>
+          <code>group.go</code
+          >、<code>group_approval_timeout.go</code>、<code>group_handover.go</code>、<code>group_mcp.go</code>（<code>leaderMCPServer</code>、<code>workerTools</code>）、<code>group_notice.go</code>、<code>group_pause.go</code>、<code>group_permission.go</code>、<code>group_phase.go</code>、<code>group_publish.go</code>、<code>group_question.go</code>、<code>group_question_route.go</code>、<code>group_queue.go</code>、<code>group_recovery.go</code>、<code>group_review.go</code>、<code>group_say.go</code>、<code>group_settings.go</code>、<code>group_tools.go</code>、<code>group_trigger.go</code>、<code>group_watch.go</code>、<code>group_workspace.go</code>、<code>merge.go</code>、<code>leader_failure.go</code>、<code>leader_runner.go</code>、<code>sentinel.go</code>、<code>fastlane.go</code>。另取：<code
+            >task_budget.go</code
+          >
+          的 <code>updateTaskTool</code>；<code>memory.go</code> 的 <code>extractTaskMemory</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>project</code></td>
+        <td><code>files.go</code>（除了归 <code>registry</code> 的三个函数）</td>
+      </tr>
+    </table>
+
+    <h2 id="app-b">附录 B 要拆开的文件</h2>
+    <table>
+      <tr>
+        <th style="width: 16%">文件</th>
+        <th style="width: 16%">去向</th>
+        <th>函数和类型</th>
+      </tr>
+      <tr>
+        <td rowspan="2"><code>engine.go</code></td>
+        <td>根包</td>
+        <td><code>Deps</code>、<code>Engine</code>、<code>New</code>、<code>Chat</code>（转发）、<code>Vault</code></td>
+      </tr>
+      <tr>
+        <td><code>conversation</code></td>
+        <td>
+          <code>newConversation</code>、<code>composeSystem</code>、<code>conversationFor</code>（中间几段按 S5.4
+          的表搬走）、<code>childRun</code>、<code>sessionTools</code>、<code>spill</code>、<code>spillScoped</code>
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="4"><code>conversation.go</code></td>
+        <td><code>conversation</code></td>
+        <td>
+          <code>SessionOptions</code
+          >、<code>conversation</code>、<code>conversationTurn</code>、<code>CreateSession</code>、<code>startConversation</code>、<code>Cancel</code>、<code>Send</code>、<code>SendWithBudget</code>、<code>runConversation</code>、<code>runInput</code>、<code>unavailableProvider</code>、<code>openSession</code>、<code>publishSession</code>、<code>UpdateSession</code>、<code>waitIdle</code>、<code>CompactSession</code>、<code>DeleteSession</code>、<code>maybeTitle</code>、<code>titleSource</code>、<code>writeTitle</code>、<code>cleanTitle</code>、<code>cleanTitleTo</code>、<code>steeredInput</code>、<code>unseenSteered</code>、<code>createKeyed</code>、<code>sha256Key</code>、<code>SetLocalHuman</code>、<code
+            >contextReport</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>execution</code></td>
+        <td>
+          <code>externalChat</code
+          >、<code>createExternalChat</code>、<code>externalChatOf</code>、<code>ExternalAgent</code>、<code>TakeOverSession</code>、<code>waitExternalIdle</code>、<code>sendExternal</code>、<code>driveExternal</code>、<code
+            >titleExternal</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>sessions</code></td>
+        <td>
+          回退：<code>snapshotRepo</code>、<code>trackWorkspace</code>、<code>RevertSession</code>、<code>UnrevertSession</code>、<code
+            >snapshotsEnabled</code
+          ><br />
+          清理：<code>PruneSessions</code>、<code>pruneDaily</code><br />
+          斜杠命令：<code>ConfigureCommands</code>、<code>configuredCommands</code>、<code>CommandList</code>、<code>mcpPrompts</code>、<code>RunCommand</code>、<code
+            >expandPrompt</code
+          ><br />
+          计划：<code>todosChanged</code>、<code>planRoot</code>、<code>planError</code>、<code>announcePlan</code>、<code>writePlan</code>、<code>GetPlan</code>、<code>SavePlan</code>、<code>ExecutePlan</code>、<code>StopPlan</code>、<code>SendPlanned</code>、<code
+            >stopPlanOfCancelledTurn</code
+          ><br />
+          定时：<code>CreateSchedule</code>、<code>ListSchedules</code>、<code>DeleteSchedule</code>、<code>CheckSchedules</code>、<code>watchSchedules</code>、<code>fireSchedule</code>、<code>missedSchedule</code>、<code>runSchedule</code>、<code>noticeSchedule</code>、<code>findAgent</code>、<code>sessionScheduler</code>、<code
+            >scheduleInfo</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td>其他</td>
+        <td>
+          <code>startMCP</code> → <code>registry</code>；<code>loadAgentByID</code> → <code>registry</code>；<code
+            >Close</code
+          >
+          → 根包
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="3"><code>agents.go</code></td>
+        <td><code>registry</code></td>
+        <td>
+          <code>builtinAgents</code
+          >、<code>overlay</code>、<code>configAgents</code>、<code>ListAgents</code>、<code>ListAgentsFor</code>、<code>agentSecretKey</code>、<code>withAgentSecrets</code>、<code>agentNamed</code>、<code>ConfigureAgents</code>、<code>configuredJobModel</code>、<code>jobModel</code>、<code>summarizer</code>、<code>validateAgent</code>、<code
+            >validateAgentNetwork</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>conversation</code></td>
+        <td>
+          <code>applyDefaultAgent</code>、<code>useAgent</code>。它们修改的是 <code>SessionOptions</code>，这个类型属于
+          <code>conversation</code>
+        </td>
+      </tr>
+      <tr>
+        <td>其他</td>
+        <td>
+          <code>SaveAgent</code>、<code>DeleteAgent</code>、<code>keepAgentSecrets</code> →
+          <code>admin/definition</code>；<code>authorizeMemberAssignment</code> → <code>roster</code>
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="2"><code>history.go</code></td>
+        <td><code>conversation</code></td>
+        <td>
+          <code>ReadEvents</code
+          >、<code>GetEvent</code>、<code>ListSessions</code>、<code>SearchSessions</code>、<code>SessionSnapshot</code>、<code
+            >snapshotPermissions</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>sessions</code></td>
+        <td>
+          <code>FindEvents</code
+          >、<code>Notify</code>、<code>ExportSession</code>、<code>ImportSession</code>、<code>ImportConversation</code>、<code>ImportPlan</code>、<code>ImportNote</code>、<code>ReadImport</code>、<code
+            >WriteImport</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="3"><code>memory.go</code></td>
+        <td><code>conversation</code></td>
+        <td>
+          <code>extractMemory</code
+          >、<code>extractorModel</code>、<code>memoryExtractOn</code>、<code>memoryRecallOn</code>、<code
+            >ConfigureMemory</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>coordinator</code></td>
+        <td><code>extractTaskMemory</code></td>
+      </tr>
+      <tr>
+        <td>其他</td>
+        <td>
+          <code>MemoryList</code>、<code>MemoryRead</code>、<code>MemoryDelete</code> →
+          <code>admin/memory</code>；<code>ConfigureRules</code>、<code>personalRules</code> → <code>registry</code>
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="4"><code>workspace_mcp.go</code></td>
+        <td><code>conversation</code></td>
+        <td>
+          <code>prepareMCP</code
+          >、<code>mcpWarning</code>、<code>publishMCPWarning</code>、<code>confirmWorkspaceMCP</code>、<code>startWorkspaceConfirmation</code>、<code>recoverWorkspaceConfirmations</code>。这
+          6 个函数操作的是对话对象自己的字段，每个回合运行一次
+        </td>
+      </tr>
+      <tr>
+        <td><code>registry</code></td>
+        <td>
+          <code>mcpLogin</code>、<code>mcpDefinitions</code>、<code>ConfigureSkills</code>、<code>skills</code>、类型
+          <code>skillRoots</code
+          >、<code>RegisterClientTool</code>、<code>UnregisterClientTool</code>、<code>DropClientTools</code>、<code
+            >ClientTools</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>admin/mcp</code></td>
+        <td><code>MCPStatus</code>、<code>MCPAuthenticate</code>、<code>MCPLogout</code></td>
+      </tr>
+      <tr>
+        <td><code>admin/skill</code></td>
+        <td>
+          <code>SkillList</code
+          >、<code>SkillSources</code>、<code>skillTarget</code>、<code>SkillDiscover</code>、<code>SkillInstall</code>、<code>SkillUninstall</code>、<code>isGit</code>、<code
+            >skillCache</code
+          >
+        </td>
+      </tr>
+    </table>
+    <p>另外三件事：</p>
+    <ul>
+      <li>
+        <code>loadAgent</code
+        >（<code>group.go</code>）拆成两半：“按编号读取一个智能体定义”的部分（查内置定义、从存储读取、判断是否已删除）成为
+        <code>registry</code> 的一个函数，<code>loadAgentByID</code> 调用它；“按成员匹配内置定义”的部分留在
+        <code>roster</code> 的 <code>loadAgent</code> 里，它再调用 <code>registry</code> 的那个函数。
+      </li>
+      <li>
+        把 <code>engine/agent/skill/install.go</code>（安装、卸载、从 Git 发现）整个文件搬到
+        <code>engine/feature/admin/skill</code>；把 <code>engine/agent/rules</code> 里的 <code>WriteFile</code>、<code
+          >DeleteFile</code
+        >
+        搬到新包 <code>engine/feature/admin/rules</code>（S4.8 新增的门面方法 <code>WriteRule</code>、<code
+          >DeleteRule</code
+        >
+        转发到这里）。它们用到的原包私有函数改成大写开头。
+      </li>
+      <li>
+        <code>engine/agent/memory/manage.go</code> 里的列表、查看、删除是记忆仓库对象自己的方法，Go
+        要求方法和对象在同一个包，所以留在原处。<code>admin/memory</code> 放的是调用它们的管理入口。
+      </li>
+    </ul>
+
+    <h2 id="app-c">附录 C 字段归属</h2>
+    <p>118 个字段。归属规则：</p>
+    <ol>
+      <li>只有一个领域使用：归那个领域。</li>
+      <li>多个领域使用，而且创建以后不再改变：放进 <code>core</code>，或者在装配时作为依赖传给每个需要它的领域。</li>
+      <li>多个领域使用，而且会变：归表里指定的领域，其他领域通过它的方法访问。</li>
+    </ol>
+    <p class="file">公共依赖（规则 2）</p>
+    <table>
+      <tr>
+        <th style="width: 30%">放进 <code>core</code></th>
+        <td>
+          <code>store</code
+          >、<code>now</code>、<code>newID</code>、<code>ctx</code>、<code>Bus</code>、<code>logger</code>、<code>workers</code>（后台任务的等待组）、<code>dataDir</code>、<code
+            >workdir</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <th>装配时传给需要的领域</th>
+        <td>
+          <code>catalog</code
+          >、<code>notes</code>、<code>manager</code>、<code>Groups</code>、<code>Tasks</code>、<code>Board</code>、<code>Workspaces</code>、<code>gate</code>、<code>permissions</code>、<code>runnerFor</code>、<code>vault</code>、<code>sandboxStateDir</code>、<code>mcpCommand</code>、<code>askQuestion</code>、<code>askPermission</code>、<code>cloud</code>、<code
+            >Terminals</code
+          >
+        </td>
+      </tr>
+    </table>
+    <p class="file">被多个领域使用的可变状态（规则 3）</p>
+    <table>
+      <tr>
+        <th style="width: 44%">字段</th>
+        <th style="width: 18%">归属</th>
+        <th>现在的使用方</th>
+      </tr>
+      <tr>
+        <td><code>mu</code></td>
+        <td>拆掉（S5.3）</td>
+        <td>全部领域</td>
+      </tr>
+      <tr>
+        <td><code>hostedGroups</code></td>
+        <td><code>roster</code></td>
+        <td>对话、Leader、远程、运行</td>
+      </tr>
+      <tr>
+        <td><code>memberMu</code>、<code>memberExecutions</code>、<code>memberChanges</code></td>
+        <td><code>execution</code></td>
+        <td>Leader、远程、运行</td>
+      </tr>
+      <tr>
+        <td><code>claimRuns</code>、<code>claimPreparing</code>、<code>groupSessions</code></td>
+        <td><code>execution</code></td>
+        <td>群、Leader、运行</td>
+      </tr>
+      <tr>
+        <td><code>sandboxMu</code>、<code>mcpProcesses</code></td>
+        <td><code>registry</code></td>
+        <td>对话的 MCP 准备、运行</td>
+      </tr>
+      <tr>
+        <td><code>agentMu</code></td>
+        <td><code>registry</code></td>
+        <td>群、智能体定义</td>
+      </tr>
+      <tr>
+        <td><code>workerQuestions</code></td>
+        <td><code>remote</code></td>
+        <td>群、远程</td>
+      </tr>
+      <tr>
+        <td><code>cloudMu</code>、<code>cloudHost</code></td>
+        <td><code>remote</code></td>
+        <td>远程、读事件</td>
+      </tr>
+      <tr>
+        <td><code>skillRoots</code></td>
+        <td><code>registry</code></td>
+        <td>对话、技能</td>
+      </tr>
+      <tr>
+        <td><code>autoCompactOff</code></td>
+        <td><code>conversation</code></td>
+        <td>对话、设置入口</td>
+      </tr>
+      <tr>
+        <td><code>snapshotsOff</code>、<code>retentionDays</code></td>
+        <td><code>sessions</code></td>
+        <td>对话、设置入口</td>
+      </tr>
+    </table>
+    <p class="file">只有一个领域使用的字段（规则 1）</p>
+    <table>
+      <tr>
+        <th style="width: 18%">领域</th>
+        <th>字段</th>
+      </tr>
+      <tr>
+        <td><code>registry</code></td>
+        <td>
+          <code>providers</code
+          >、<code>providersMu</code>、<code>catalogOnce</code>、<code>defaultModel</code>、<code>smallModel</code>、<code>agentSettings</code>、<code>toolSwitches</code>、<code>networkSettings</code>、<code>networkMu</code>、<code>mcpLoginSet</code>、<code>mcpLoginOnce</code>、<code>clientTools</code>、<code
+            >personal</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>conversation</code></td>
+        <td>
+          <code>sessions</code
+          >、<code>keyMu</code>、<code>counter</code>、<code>localHuman</code>、<code>memoryModel</code>、<code>memoryIdle</code>、<code>memoryExtractions</code>、<code>memoryExtractOff</code>、<code>memoryRecallOff</code>、<code>workspacePending</code>、<code
+            >workspaceMu</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>execution</code></td>
+        <td><code>sandboxes</code>、<code>sandboxErr</code>、<code>launchGrants</code>、<code>externals</code></td>
+      </tr>
+      <tr>
+        <td><code>remote</code></td>
+        <td>
+          <code>remoteLookups</code
+          >、<code>remoteImportMu</code>、<code>remoteHosts</code>、<code>deviceRuns</code>、<code>cloudWorkCtx</code>、<code>cloudWorkCancel</code>、<code>cloudWake</code>、<code>cloudReplyMu</code>、<code>cloudReplies</code>、<code>cloudPublishMu</code>、<code>cloudLoops</code>、<code>cloudLifecycle</code>、<code>cloudJobs</code>、<code>cloudDone</code>、<code>cloudCredentials</code>、<code>cloudCancel</code>、<code
+            >cloudAnswers</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>coordinator</code></td>
+        <td>
+          <code>taskApprovals</code
+          >、<code>merging</code>、<code>groupRuns</code>、<code>sentinelSeen</code>、<code>sentinelMu</code>、<code>inviteMu</code>、<code>claimRestarts</code>、<code
+            >leaderStops</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>sessions</code></td>
+        <td>
+          <code>snapshotDir</code
+          >、<code>snapshotTemp</code>、<code>snapshotMu</code>、<code>plans</code>、<code>commandSet</code>、<code>schedules</code>、<code>scheduleRunner</code>、<code
+            >scheduleNoticeMu</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td><code>project</code></td>
+        <td>
+          <code>worktreeSet</code>、<code>worktreeOnce</code>、<code>reviews</code>、<code>reviewOnce</code>、<code
+            >directoryWatches</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td>留在根包</td>
+        <td>
+          <code>shutdownOnce</code
+          >、<code>shutdownErr</code>、<code>shutdownDone</code>、<code>cancel</code>；<code>tools</code>、<code>thinking</code>、<code>system</code>、<code
+            >model</code
+          >
+          只在装配时使用，装配完传给 <code>conversation</code>
+        </td>
+      </tr>
+    </table>
+    <p class="muted">
+      表里没出现的字段，按规则 1 到 3 自己判断：先用
+      <code>grep -n 'e\.字段名\b' merak/engine/*.go</code> 看哪些文件在用，再对照附录 A。
+    </p>
+
+    <h2 id="app-d">附录 D 跨领域引用的处理</h2>
+    <p>
+      按附录 A、B 的归属，用脚本检查了根包里全部 750
+      处内部方法调用，以及对根包里所有类型、普通函数、常量的引用。检查结果是：除了下面两张表列出的，没有别的上行引用。
+    </p>
+    <p class="file">方法调用</p>
+    <table>
+      <tr>
+        <th style="width: 12%">办法</th>
+        <th style="width: 46%">低的领域调用了高的领域的什么</th>
+        <th>怎么做</th>
+      </tr>
+      <tr>
+        <td>接入点</td>
+        <td>
+          <code>conversation</code> 调用 <code>execution</code>、<code>remote</code>、<code>coordinator</code>、<code
+            >sessions</code
+          >
+          的 21 个函数
+        </td>
+        <td>S5.4 的接入点，逐条对应见那里的表</td>
+      </tr>
+      <tr>
+        <td rowspan="4">注入</td>
+        <td>
+          <code>roster</code> 的 <code>memberMemoryOwners</code> 和 <code>execution</code> 的
+          <code>acquireMember</code>、<code>approveUnconfinedMember</code> 调用 <code>executionSource</code>、<code
+            >executionProject</code
+          >
+        </td>
+        <td>
+          接口定义在 <code>roster</code>（最低的使用方），由 <code>remote</code> 实现；<code>execution</code> 通过
+          <code>roster</code> 持有的这个接口来用
+        </td>
+      </tr>
+      <tr>
+        <td><code>execution</code> 的 <code>remoteSandboxStatus</code> 调用 <code>remoteCredentials</code></td>
+        <td><code>execution</code> 定义一个函数类型的字段，由 <code>remote</code> 提供</td>
+      </tr>
+      <tr>
+        <td>
+          <code>execution</code> 的 <code>bindWorkerMCP</code>、<code>runAssignment</code> 调用 <code>workerTools</code>
+        </td>
+        <td><code>execution</code> 定义一个函数类型的字段，由 <code>coordinator</code> 提供</td>
+      </tr>
+      <tr>
+        <td><code>remote</code> 的 <code>replyRemoteEvent</code> 调用 <code>approvalTimedOut</code></td>
+        <td><code>remote</code> 定义一个函数类型的字段，由 <code>coordinator</code> 提供</td>
+      </tr>
+      <tr>
+        <td>拆开</td>
+        <td><code>registry</code> 的 <code>loadAgentByID</code> 调用 <code>roster</code> 的 <code>loadAgent</code></td>
+        <td>按附录 B 末尾的说明把 <code>loadAgent</code> 拆成两半</td>
+      </tr>
+    </table>
+    <p class="file">类型、普通函数（附录 A 里“另取”的那些，这里说明原因）</p>
+    <table>
+      <tr>
+        <th style="width: 34%">名字（所在文件）</th>
+        <th style="width: 16%">归属</th>
+        <th>原因</th>
+      </tr>
+      <tr>
+        <td><code>canonicalDirectory</code>、<code>missing</code>（<code>files.go</code>）</td>
+        <td><code>registry</code></td>
+        <td>纯路径函数，被对话、群、远程使用</td>
+      </tr>
+      <tr>
+        <td><code>resolvedSandboxPath</code>（<code>sandbox.go</code>）</td>
+        <td><code>registry</code></td>
+        <td>纯路径函数，被 MCP 定义和对话的 MCP 准备使用</td>
+      </tr>
+      <tr>
+        <td><code>blobs</code>（<code>blob.go</code>）</td>
+        <td><code>registry</code></td>
+        <td>登记模型厂商时要用</td>
+      </tr>
+      <tr>
+        <td><code>skillRoots</code>（<code>workspace_mcp.go</code>）</td>
+        <td><code>registry</code></td>
+        <td>跟着同名字段走</td>
+      </tr>
+      <tr>
+        <td><code>validateAgent</code>、<code>validateAgentNetwork</code>（<code>agents.go</code>）</td>
+        <td><code>registry</code></td>
+        <td>运行成员前也要校验，不只是保存时</td>
+      </tr>
+      <tr>
+        <td><code>applyDefaultAgent</code>、<code>useAgent</code>（<code>agents.go</code>）</td>
+        <td><code>conversation</code></td>
+        <td>参数是 <code>SessionOptions</code></td>
+      </tr>
+      <tr>
+        <td>
+          <code>groupTool</code>、<code>decodeGroupInput</code>、<code>taskRoot</code>（<code>group_tools.go</code>）
+        </td>
+        <td><code>roster</code></td>
+        <td>群文档工具和运行领域的工具都在用</td>
+      </tr>
+      <tr>
+        <td><code>groupLookup</code>、<code>readGroupDoc</code>（<code>group_lookup.go</code>）</td>
+        <td><code>remote</code></td>
+        <td>它们包了一层跨机器查找（<code>remoteLookupTool</code>）</td>
+      </tr>
+      <tr>
+        <td><code>pendingWorkerQuestion</code>（<code>group_question.go</code>）</td>
+        <td><code>remote</code></td>
+        <td>跟着字段 <code>workerQuestions</code> 走</td>
+      </tr>
+      <tr>
+        <td><code>claimRun</code>、<code>claimPreparation</code>（<code>fastlane.go</code>）</td>
+        <td><code>execution</code></td>
+        <td>跟着字段 <code>claimRuns</code>、<code>claimPreparing</code> 走</td>
+      </tr>
+      <tr>
+        <td>
+          <code>bindWorkerMCP</code
+          >、<code>memberMCP</code>、<code>mcpWorkerRun</code>、<code>mcpConfiguration</code>（<code>group_mcp.go</code>）
+        </td>
+        <td><code>execution</code></td>
+        <td>启动成员时要用；留在上面的话，注入的接口里会出现上层的类型</td>
+      </tr>
+      <tr>
+        <td><code>updateTaskTool</code>（<code>task_budget.go</code>）</td>
+        <td><code>coordinator</code></td>
+        <td>参数是群的运行对象 <code>groupRun</code></td>
+      </tr>
+      <tr>
+        <td><code>denyProductState</code>（<code>sandbox.go</code>）</td>
+        <td><code>execution</code>（不动）</td>
+        <td>唯一的下层使用方是 <code>conversationFor</code> 里要搬到 <code>Environment</code> 接入点的那一段</td>
+      </tr>
+    </table>
+    <p><strong>遇到表里没有的上行引用，按这个顺序判断：</strong></p>
+    <ol>
+      <li>被用到的东西只是读数据、查东西或纯计算，而且它自己不用更高的领域：下沉到最低的那个使用方所在的领域。</li>
+      <li>使用方那个函数按第 5.2 节本来就该属于更高的领域：把使用方上移。</li>
+      <li>一个类型跟着保存它的字段走（附录 C）。</li>
+      <li>以上都不是：注入。</li>
+      <li>拿不准：停下来问用户。</li>
+    </ol>
+
+    <h2 id="app-e">附录 E 根包对外的名字</h2>
+    <table>
+      <tr>
+        <th style="width: 22%">种类</th>
+        <th>名字和处理</th>
+      </tr>
+      <tr>
+        <td>留在根包</td>
+        <td><code>Engine</code>、<code>Deps</code>、<code>New</code></td>
+      </tr>
+      <tr>
+        <td>S4.1 搬到 <code>errorcode</code></td>
+        <td><code>Error</code></td>
+      </tr>
+      <tr>
+        <td>S6 跟着领域走的类型</td>
+        <td>
+          <code>AgentSettings</code
+          >、<code>FileChanges</code>、<code>FileContent</code>、<code>FileNode</code>、<code>MCPServer</code>、<code>MemorySettings</code>、<code>NetworkSettings</code>、<code>RemotePeer</code>、<code>RepoChanges</code>、<code>SessionOptions</code>、<code>SessionSettings</code>、<code
+            >WorkspaceTrust</code
+          >
+        </td>
+      </tr>
+      <tr>
+        <td>S6 跟着领域走的常量</td>
+        <td>
+          <code>DeviceInterrupted</code
+          >、<code>DeviceReported</code>、<code>MCPChanged</code>、<code>RepoChanged</code>、<code>FileChanged</code>、<code>SentinelFlagged</code>。<code
+            >Shutdown</code
+          >
+          留在根包
+        </td>
+      </tr>
+      <tr>
+        <td>方法</td>
+        <td>
+          全部大写开头的 <code>Engine</code> 方法，<strong>名字</strong>不变。开始 S5 之前（这时已经包含 S4.8 新增的 5
+          个）用下面的命令导出方法名清单存起来，S6 结束后再导出一份，两份必须完全相同：
+          <pre><code>grep -hoE '^func \(e \*Engine\) [A-Z][A-Za-z0-9]*' merak/engine/*.go | awk '{print $NF}' | sort</code></pre>
+          参数里用到的类型换了包（例如 <code>SessionOptions</code>）是允许的。
+        </td>
+      </tr>
+    </table>
+
+    <h2 id="app-f">附录 F 包搬迁表（S3 用）</h2>
+    <p>
+      路径都相对于 <code>merak/</code>。必须从上到下一行一行做：有的行依赖前面的行已经搬完（<code>stdio</code>
+      那一行用的是 <code>worker</code> 搬完以后的新路径）。S1 之后 <code>engine/agent</code> 已经改名为
+      <code>engine/definition</code>。这张表按原样预演过，56 行全部成功。
+    </p>
+    <pre><code>engine/store/memory            storage/memory
+engine/store/storetest         testkit/storetest
+internal/platform/websocket    protocol/websocket
+internal/platform/config       engine/infra/config
+internal/platform/credential   engine/infra/credential
+internal/platform/errorcode    engine/infra/errorcode
+internal/platform/git          engine/infra/git
+internal/platform/log          engine/infra/log
+internal/platform/pathglob     engine/infra/pathglob
+internal/platform/pdf          engine/infra/pdf
+internal/platform/process      engine/infra/process
+internal/platform/pty          engine/infra/pty
+internal/platform/sandbox      engine/infra/sandbox
+internal/platform/secret       engine/infra/secret
+internal/platform/watch        engine/infra/watch
+engine/event                   engine/infra/event
+engine/store                   engine/infra/store
+engine/model                   engine/agent/model
+engine/tool                    engine/agent/tool
+engine/permission              engine/agent/permission
+engine/session                 engine/agent/session
+engine/window                  engine/agent/window
+engine/memory                  engine/agent/memory
+engine/prompt                  engine/agent/prompt
+engine/loop                    engine/agent/loop
+engine/definition              engine/agent/definition
+engine/question                engine/agent/question
+engine/mcp                     engine/agent/mcp
+engine/skill                   engine/agent/skill
+engine/rules                   engine/agent/rules
+engine/web                     engine/agent/web
+engine/clienttool              engine/agent/clienttool
+engine/task                    engine/collab/task
+engine/group                   engine/collab/group
+engine/worker                  engine/collab/worker
+engine/collab/worker/internal/stdio  engine/collab/worker/stdio
+engine/workspace               engine/collab/workspace
+engine/leader                  engine/collab/leader
+engine/review                  engine/feature/review
+engine/code                    engine/feature/code
+engine/terminal                engine/feature/terminal
+engine/snapshot                engine/feature/snapshot
+engine/plan                    engine/feature/plan
+engine/schedule                engine/feature/schedule
+engine/command                 engine/feature/command
+engine/folderwatch             engine/feature/folderwatch
+internal/localstore            storage/localstore
+internal/cloud                 cloudlink
+internal/testacp               testkit/testacp
+internal/testcloud             testkit/testcloud
+internal/testmcp               testkit/testmcp
+internal/testpdf               testkit/testpdf
+internal/cli                   cli
+internal/server                server
+internal/migrate               migrate
+internal/diagnose              diagnose</code></pre>
+    <p>
+      子包（例如
+      <code>engine/model/anthropic</code>、<code>engine/worker/claudecode</code>）跟着上级文件夹一起搬，不用单独列。
+    </p>
+
+    <h2 id="app-g">附录 G 风险</h2>
+    <table>
+      <tr>
+        <th style="width: 36%">风险</th>
+        <th style="width: 12%">在哪一步</th>
+        <th>对策</th>
+      </tr>
+      <tr>
+        <td>拆大锁引入并发问题。现在有些操作在一把锁里同时改几份状态</td>
+        <td>S5.3</td>
+        <td>一个领域一个提交；每个提交等 CI 的 <code>-race</code>；跨领域的加锁段一律先问用户；持锁时不调用别的领域</td>
+      </tr>
+      <tr>
+        <td>对话接入点的执行顺序和原来不一致，行为悄悄变了</td>
+        <td>S5.4</td>
+        <td>登记顺序照抄现在代码里的调用顺序；在原来的位置调用；场景测试不改期望值</td>
+      </tr>
+      <tr>
+        <td>改 SDK 类型名时顺手改了结构</td>
+        <td>S1、S4、S6</td>
+        <td>第 6.3 节的脚本逐次证明只有名字变了</td>
+      </tr>
+      <tr>
+        <td>搬目录以后，测试里写死的路径只在运行时出错</td>
+        <td>S3、S8</td>
+        <td>已知的都列进了表；验收必须跑完整测试，不能只编译</td>
+      </tr>
+      <tr>
+        <td>S3 改动面大，和别的改动冲突</td>
+        <td>S3</td>
+        <td>单独一个 PR；期间不合并其他 Go 改动；只改位置不改逻辑</td>
+      </tr>
+      <tr>
+        <td>附录里的归属和实际代码有出入（代码在这份方案之后又变了）</td>
+        <td>S5、S6</td>
+        <td>附录是默认值，规则才是依据；对不上就问用户；S5 开始前根包停止其他改动</td>
+      </tr>
+      <tr>
+        <td>场景测试分到多个包以后并行跑，抢本机的沙箱账号池或端口</td>
+        <td>S8</td>
+        <td>沙箱相关的测试全部放在同一个文件夹</td>
+      </tr>
+    </table>
+
+    <h2 id="app-h">附录 H 这份方案验证到什么程度</h2>
+    <table>
+      <tr>
+        <th style="width: 22%">内容</th>
+        <th>怎么验证的</th>
+      </tr>
+      <tr>
+        <td>S1、S2、S3</td>
+        <td>
+          在仓库的一份临时副本上执行。执行完 <code>go build</code>、<code>go vet</code> 没有输出。整套 Go
+          测试跑了一遍：54 个包通过，3 个包里共 4 个测试失败。其中 3 个是写死的路径和命令行架构测试的豁免，修正已写进
+          S3，修正后这 3 个测试重跑通过；另 1 个是沙箱测试超时，单独重跑通过（第 6.2
+          节）。修正之后没有再把整套测试从头跑一遍
+        </td>
+      </tr>
+      <tr>
+        <td>第 6.3 节的脚本</td>
+        <td>用 S1 的真实改动试过：给出正确的名字表时输出 <code>OK</code>，给空表时输出 <code>DIFFERENT</code></td>
+      </tr>
+      <tr>
+        <td>S4.3、S4.4、S4.5</td>
+        <td>
+          在副本上实际做了一遍，全模块编译和 <code>vet</code> 通过，相关包的测试通过。“事件类型必须留在
+          <code>permission</code>”“S4.5 必须排在后面”都是预演里发现的
+        </td>
+      </tr>
+      <tr>
+        <td>S4.2</td>
+        <td>用 <code>go list</code> 确认不会产生循环引用；没有实际执行</td>
+      </tr>
+      <tr>
+        <td>S4.1、S4.6、S4.7、S4.8</td>
+        <td>逐处读过涉及的代码；没有实际执行</td>
+      </tr>
+      <tr>
+        <td>附录 A、B、D</td>
+        <td>
+          把归属写成表，用脚本检查根包全部 750 处内部方法调用，以及对类型、普通函数、常量的引用。剩下的上行引用和附录 D
+          列出的完全一致。脚本只做文本匹配，不能代替编译器
+        </td>
+      </tr>
+      <tr>
+        <td>附录 C</td>
+        <td>按“哪些文件用了这个字段”统计得出；没有实际搬过</td>
+      </tr>
+      <tr>
+        <td>S5、S6、S7、S8</td>
+        <td>没有执行过。S5.3 拆锁和 S5.4 的接入点顺序，只有实际执行并跑测试才能确认</td>
+      </tr>
+    </table>
+  </body>
+</html>

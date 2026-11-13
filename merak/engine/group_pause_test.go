@@ -45,7 +45,7 @@ func TestGroupPauseReachesAnActiveWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lp, wp := agent.DefaultLeader(), agent.DefaultWorker()
+	lp, wp := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lp.ID, lp.Model.Provider, wp.ID, wp.Model.Provider = "lp", "leader", "wp", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Pause", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
@@ -82,7 +82,7 @@ func TestPausedGroupRetainsMessagesAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "lp", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Paused", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},

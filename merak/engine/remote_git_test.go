@@ -75,14 +75,14 @@ func runRemoteWorktree(t *testing.T, review bool) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	wp := agent.DefaultWorker()
+	wp := agent.DefaultMerakCode()
 	wp.ID, wp.Model.Provider = "source-worker", "device"
 	if _, err := b.SaveAgent(ctx, "local-human", wp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{
 		{ID: "local-human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -145,21 +145,21 @@ func runRemoteWorktree(t *testing.T, review bool) {
 	if !strings.Contains(string(body), `"checkouts"`) {
 		t.Fatal("remote discovery dropped declared checkouts")
 	}
-	lp := agent.DefaultLeader()
+	lp := agent.DefaultMerakCode()
 	lp.ID, lp.Model.Provider = "host-leader", "leader"
-	rp := agent.DefaultWorker()
+	rp := agent.DefaultMerakCode()
 	rp.ID = "remote-worker"
 	rp.Product = &agent.Product{Kind: worker.KindRemote, Remote: &agent.RemoteSource{Connection: connection.ID, Group: "source", Member: "worker", Caps: worker.Caps{Steer: true, Permission: true}}}
-	// the same remote source as a Leader agent: it cannot even be saved
-	remoteLeader := agent.DefaultLeader()
+	// the same remote source as a Leader: it can be saved, but it cannot take the Leader seat
+	remoteLeader := agent.DefaultMerakCode()
 	remoteLeader.ID, remoteLeader.Product = "remote-leader", rp.Product
 	for _, a := range []agent.Agent{lp, rp} {
 		if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: a}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: remoteLeader}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6007") {
-		t.Fatalf("a Leader agent with a remote source: %v", err)
+	if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: remoteLeader}, nil); err != nil {
+		t.Fatalf("an agent with a remote source: %v", err)
 	}
 	var g group.Group
 	if err := client.Call(ctx, "group.create", protocol.GroupCreateParams{Group: group.Group{Kind: group.KindLocal, Name: "Host", Project: group.Project{Directory: aDir}, Leader: "leader", Brief: group.Brief{Check: "git diff --exit-code"}}, Members: []group.Member{
@@ -168,6 +168,9 @@ func runRemoteWorktree(t *testing.T, review bool) {
 		{ID: "remote", Name: "Remote", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: rp.ID},
 	}}, &g); err != nil {
 		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "group.update", map[string]any{"group": g.ID, "leader": remoteLeader.ID}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6007") {
+		t.Fatalf("a remote source in the Leader seat: %v", err)
 	}
 	for _, kind := range []string{"folder", "inplace"} {
 		if err := client.Call(ctx, "task.create", protocol.TaskCreateParams{Group: g.ID, Member: "remote", Title: "Rejected " + kind, Workspace: kind}, nil); err == nil || !strings.Contains(err.Error(), "MRK-6001") {

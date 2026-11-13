@@ -19,7 +19,7 @@ test("settings and group views contain long content in a small window", async ({
   const rpc = await connect(endpoint)
   const name = "Worker-" + "LongProjectName".repeat(8)
   try {
-    const worker = (await rpc.agent.list({}))!.find((profile) => profile.role === "worker")!
+    const worker = (await rpc.agent.list({}))!.find((profile) => profile.id === "builtin-merakcode")!
     await rpc.agent.save({
       agent: { ...worker, id: "", name, model: { provider: "openai", model: "e2e" } },
     })
@@ -155,7 +155,7 @@ test("the member sidebar collapses to avatars and preserves its state", async ({
   await kit.page.keyboard.press(process.platform === "darwin" ? "Meta+g" : "Control+g")
   const dialog = kit.page.getByRole("dialog")
   await dialog.getByRole("textbox", { name: "群名称" }).fill("协作项目")
-  await dialog.getByRole("checkbox", { name: "选择 Worker", exact: true }).check()
+  await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
   await dialog.getByRole("button", { name: "创建", exact: true }).click()
   const members = kit.page.getByRole("complementary", { name: "群成员" })
   await expect(members).toBeVisible()
@@ -163,17 +163,20 @@ test("the member sidebar collapses to avatars and preserves its state", async ({
     .soft(kit.page.getByRole("region", { name: "project", exact: true }).getByRole("link", { name: /协作项目/ }))
     .toBeVisible({ timeout: 2000 })
   await expect
-    .soft(members.getByRole("button", { name: "Worker", exact: true }))
+    .soft(members.getByRole("button", { name: "MerakCode2", exact: true }))
     .toHaveAttribute("aria-expanded", "false", { timeout: 2000 })
   await members.getByRole("button", { name: "收起成员栏", exact: true }).click({ timeout: 2000 })
   expect((await members.boundingBox())!.width).toBe(52)
   await kit.page.reload()
   await expect(members.getByRole("button", { name: "展开成员栏", exact: true })).toBeVisible()
-  await members.getByRole("button", { name: "Worker", exact: true }).click()
-  await expect(members.getByRole("group", { name: "成员 Worker", exact: true })).toBeVisible()
-  await expect(members.getByRole("button", { name: "Worker", exact: true })).toHaveAttribute("aria-expanded", "true")
-  await expect(members.getByRole("button", { name: "向 Worker 发消息", exact: true })).toBeVisible()
-  await expect(members.getByRole("button", { name: "向 Worker 发消息", exact: true })).toBeEnabled()
+  await members.getByRole("button", { name: "MerakCode2", exact: true }).click()
+  await expect(members.getByRole("group", { name: "成员 MerakCode2", exact: true })).toBeVisible()
+  await expect(members.getByRole("button", { name: "MerakCode2", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  )
+  await expect(members.getByRole("button", { name: "向 MerakCode2 发消息", exact: true })).toBeVisible()
+  await expect(members.getByRole("button", { name: "向 MerakCode2 发消息", exact: true })).toBeEnabled()
   await members.getByRole("button", { name: "沙箱状态", exact: true }).click()
   await expect(kit.page.getByRole("dialog", { name: "沙箱状态", exact: true })).toBeVisible()
   await kit.page.screenshot({ path: info.outputPath("sandbox.png") })

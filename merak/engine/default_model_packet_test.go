@@ -45,8 +45,8 @@ func TestWorkerTaskPacketIsSizedForTheDefaultModelWindow(t *testing.T) {
 			e.SetDefaultModel("fake", "default-model", "")
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Sizing", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
-				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
-				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"},
+				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
+				{ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"},
 			}, nil)
 			if err != nil {
 				t.Fatal(err)

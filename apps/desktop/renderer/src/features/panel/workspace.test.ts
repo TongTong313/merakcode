@@ -425,3 +425,31 @@ test("cancelling a failed transfer releases both owners and preserves only share
   await releasePanels(target, true)
   expect(await readDraft(directory, "shared.txt")).toMatchObject({ content: "Shared edits" })
 })
+
+test("a file open that finishes late does not take the selection from the tab the person picked meanwhile", async () => {
+  const directory = await folder("workspace")
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  await selectPanels({ directory })
+  await openPanel({ kind: "git" })
+  const opened = await selectPanels({ directory })
+  const git = opened.state.tabs.find((tab) => tab.kind === "git")!
+  held.set(directory, { entered: entered.resolve, release: release.promise })
+  const opening = openPanel({ kind: "file", path: "notes.txt" })
+  await entered.promise
+  opened.activate(git.id)
+  release.resolve()
+  await opening
+  expect(opened.state.tabs.map((tab) => tab.kind).sort()).toEqual(["file", "git"])
+  expect(opened.state.selected).toBe(git.id)
+})
+
+test("a file open with no other choice made meanwhile selects its tab", async () => {
+  const directory = await folder("workspace")
+  await selectPanels({ directory })
+  await openPanel({ kind: "git" })
+  await openPanel({ kind: "file", path: "notes.txt" })
+  const opened = await selectPanels({ directory })
+  const file = opened.state.tabs.find((tab) => tab.kind === "file")!
+  expect(opened.state.selected).toBe(file.id)
+})

@@ -22,7 +22,7 @@ func TestObserverCannotMutateGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "leader-profile", "quiet"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Roles", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"},
@@ -42,7 +42,7 @@ func TestObserverCannotMutateGroup(t *testing.T) {
 	if _, err := e.CreateTask(ctx, task.Card{Group: g.ID, Title: "Unauthorized", CreatedBy: event.Actor{Kind: event.ActorHuman, ID: "observer"}}); err == nil {
 		t.Error("observer created a task")
 	}
-	if _, err := e.AddGroupMember(ctx, g.ID, "observer", group.Member{Name: "Unauthorized", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}); err == nil {
+	if _, err := e.AddGroupMember(ctx, g.ID, "observer", group.Member{Name: "Unauthorized", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"}); err == nil {
 		t.Error("observer registered a member")
 	}
 	after, err := e.ReadEvents(ctx, event.Stream("group:"+g.ID), 1, 100)
@@ -61,7 +61,7 @@ func TestPrivateMemberAcceptsOnlyItsOwnersAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID = "private"
 	if err := json.Unmarshal([]byte(`{"shared":false}`), &p); err != nil {
 		t.Fatal(err)

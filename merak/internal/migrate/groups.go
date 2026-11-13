@@ -109,9 +109,9 @@ func (r *run) groupMembers(id event.ID, stored v03Group) ([]group.Member, event.
 		if strings.TrimSpace(seat.Name) == "" {
 			return nil, "", errors.New("a seat has no name")
 		}
-		role, builtin := group.AgentWorker, event.ID("builtin-worker")
+		role, builtin := group.AgentWorker, event.ID("builtin-merakcode")
 		if seat.Leader {
-			role, builtin = group.AgentLeader, "builtin-leader"
+			role, builtin = group.AgentLeader, "builtin-merakcode"
 		}
 		member := group.Member{ID: event.NewID(), Group: id, Kind: group.MemberAgent, Name: seat.Name, Role: seat.Role, Summary: seat.Duty, AgentRole: role, Owner: r.m.options.Human, Agent: r.seatAgent(seat, role, builtin, listed), Status: group.Offline}
 		if seat.Leader && leader == "" {
@@ -128,9 +128,8 @@ func (r *run) groupMembers(id event.ID, stored v03Group) ([]group.Member, event.
 // seatAgent finds the agent of a seat: the agent that has the seat's name and role, else the imported agent of the
 // seat's product, else the built-in agent of its role.
 func (r *run) seatAgent(seat v03Seat, role group.AgentRole, builtin event.ID, listed []agent.Agent) event.ID {
-	want := agent.Role(role)
 	for _, candidate := range listed {
-		if candidate.Role == want && strings.EqualFold(candidate.Name, seat.Name) {
+		if strings.EqualFold(candidate.Name, seat.Name) {
 			return candidate.ID
 		}
 	}

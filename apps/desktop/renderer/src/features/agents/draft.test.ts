@@ -13,7 +13,6 @@ const claude: WorkerProductInfo = {
 const worker = (extra: Partial<AgentAgent> = {}): AgentAgent => ({
   id: "a1",
   name: "Worker",
-  role: "worker",
   summary: "",
   duties: "",
   toolPool: "worker.default",
@@ -25,7 +24,6 @@ test("a detected product becomes a worker that runs it", () => {
   expect(productDraft(claude)).toMatchObject({
     id: "",
     name: "Claude Code",
-    role: "worker",
     toolPool: "worker.default",
     product: { kind: "claude-code", binary: "/bin/claude" },
   })
@@ -45,8 +43,7 @@ test("only products that can lead are offered for a Leader", () => {
     { ...claude, kind: "pi", name: "Pi" },
     { ...claude, kind: "codex", name: "Codex", available: false },
   ]
-  expect(productsFor("leader", products).map((item) => item.kind)).toEqual(["claude-code", "pi"])
-  expect(productsFor("worker", products).map((item) => item.kind)).toEqual(["claude-code", "opencode", "pi"])
+  expect(productsFor(products).map((item) => item.kind)).toEqual(["claude-code", "opencode", "pi"])
 })
 
 test("environment rows keep a saved secret without showing it and drop rows that were never filled", () => {

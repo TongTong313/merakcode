@@ -53,7 +53,7 @@ func TestExternalWorkerCancellationRetainsOutputAndClosesPendingCalls(t *testing
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Product = &agent.Product{Kind: kind, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "hold"}}
 			run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify", Claim: task.Claim{ID: "claim"}})
 			if err != nil {
@@ -122,7 +122,7 @@ func TestCodexAndPiAcceptMessagesDuringExecution(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Product = &agent.Product{Kind: kind, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "steer"}}
 			run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Verify"})
 			if err != nil {
@@ -159,7 +159,7 @@ func TestExternalReworkKeepsTheSessionAndPreviousContext(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Product = &agent.Product{Kind: kind, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "history"}}
 			a := worker.Assignment{Session: "session", Workdir: t.TempDir(), Packet: "Original brief", Claim: task.Claim{ID: "claim", Member: "member"}}
 			for _, text := range []string{"Original brief", "Rework"} {
@@ -222,7 +222,7 @@ func TestEngineStartsEveryExternalWorkerKind(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Product = &agent.Product{Kind: kind, Binary: binary}
 			if _, err := e.Tasks.Create(ctx, task.Card{ID: "task", Group: "group", Title: "Verify"}); err != nil {
 				t.Fatal(err)
@@ -277,7 +277,7 @@ func TestARegisteredMemberRunsOneAssignmentAtATime(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Model.Provider = "fake"
 	a := worker.Assignment{Session: "first-assignment", Claim: task.Claim{ID: "first-claim", Member: "registered-member"}, Workdir: t.TempDir(), Packet: "First"}
 	first, err := e.StartWorker(ctx, p, a)
@@ -319,7 +319,7 @@ func TestReadonlyProfileRestrictsExternalProductTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ToolPool = "worker.readonly"
 	p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary}
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "readonly", Workdir: dir, Packet: "Research only"})
@@ -358,7 +358,7 @@ func TestReadonlyAssignmentsConstrainOrRejectExternalProducts(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.ToolPool = "worker.readonly"
 			p.Product = &agent.Product{Kind: kind, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_READONLY": "1"}}
 			if kind == "pi" {
@@ -420,13 +420,13 @@ func TestWorkerUsesProfileInstructionsAndKeepsGroupAttribution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	config := agent.DefaultWorker()
+	config := agent.DefaultMerakCode()
 	config.Model.Provider = "fake"
 	config.System = "Focus on tests."
 	config.ToolPool = "worker.readonly"
 	_, err = e.Groups.Create(ctx, group.Group{ID: "group", Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
-		{ID: "member", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
+		{ID: "member", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"},
 		{ID: "human", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 	})
 	if err != nil {
@@ -489,7 +489,7 @@ func TestTaskWorkerRequestsAReportOnceBeforeSynthesizing(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			config := agent.DefaultWorker()
+			config := agent.DefaultMerakCode()
 			config.Model.Provider = "fake"
 			run, err := e.StartWorker(ctx, config, worker.Assignment{Session: "worker", Claim: task.Claim{ID: "claim", Task: "task", Member: "member"}, Packet: "Verify"})
 			if err != nil {

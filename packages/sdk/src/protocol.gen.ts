@@ -12,7 +12,6 @@ export type AgentAgent = {
   name: string
   network?: string[] | null
   product?: AgentProduct | null
-  role: string
   shared?: boolean
   source?: string
   summary: string
@@ -33,7 +32,6 @@ export const AgentAgentSchema: z.ZodType<AgentAgent> = z.lazy(() =>
     name: z.string(),
     network: z.union([z.array(z.string()), z.null()]).optional(),
     product: z.union([AgentProductSchema, z.null()]).optional(),
-    role: z.string(),
     shared: z.boolean().optional(),
     source: z.string().optional(),
     summary: z.string(),

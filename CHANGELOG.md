@@ -93,6 +93,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- An agent has no fixed role. The Leader and the members are chosen when a group is made, and the same agent can lead one group and work in another; MerakCode is one built-in agent that can take either seat, and several of it can sit in one group with different roles. An agent that runs an external product can take the Leader seat only when its product supports MCP and mid-turn messages; this is checked when it is seated.
 - The group kind and cloud consent in the new-group dialog, and the assignee and review choices in the task forms, use the app's own segmented, switch and select controls.
 - Leave the `plugin` and `plugin_options` keys of a v0.3 configuration file in place but report them as unused: v1.0.0 has no plugin module.
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
@@ -137,6 +138,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- A folder inside a repository shares the branch and the unsaved-work protection of that repository: switching branches is blocked while a review comment or an edited file sits in a subfolder, as in v0.3.1.
+- Opening a file no longer takes the selection from the tab you picked while it was still opening.
 - On Windows, a folder opened through a junction and its target are one workspace; a conversation that runs in a worktree or in the real directory behind a linked folder is listed under that folder in the sidebar; a deleted file with a kept draft opens read-only instead of failing.
 - A review comment you wrote before closing the app opens again in its inline box after you come back to the conversation; before, it only showed as a "resume draft" row until the branch list had been loaded.
 - Cancel the turn that runs a plan and the plan reads as stopped, so it can be started again; before, it stayed "executing" and its button stayed disabled.
@@ -292,6 +295,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 智能体没有固定身份：Leader 和成员在拉群时指定，同一个智能体可以在一个群里当 Leader、在另一个群里当成员；内置只有一个 MerakCode，两个座位都能坐，一个群里也可以有多个 MerakCode 各担不同身份。运行外部产品的智能体，只有它的产品支持 MCP 和中途消息时才能坐 Leader 座位，入座时检查。
 - 新建协作群对话框里的群类型和云端同意，以及任务表单里的负责人和审核选项，改用应用自带的分段控件、开关和下拉框。
 - v0.3 配置文件里的 `plugin` 和 `plugin_options` 保留在文件里，但会提示不再使用：v1.0.0 没有插件模块。
 - 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
@@ -336,6 +340,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 仓库里的子文件夹与整个仓库共用分支和未保存内容的保护：子文件夹里有评审评论或改过的文件时，同样不能切换分支，与 v0.3.1 一致。
+- 打开文件时，如果你在它还没打开完的时候点了别的标签，不会再被抢走选中。
 - Windows 上通过目录连接（junction）打开的文件夹与它的目标是同一个工作区；在工作树或在链接文件夹真实目录里运行的对话，列在侧栏对应的文件夹下；已删除但留有草稿的文件改为只读打开，不再报错。
 - 关闭应用前写下的审阅评论，回到对话后会重新在原位置的输入框里打开；以前要等分支列表加载后，它才从“继续评论草稿”一行变回输入框。
 - 取消正在执行计划的回合后，计划变为“已停止”，可以再次开始；以前它一直是“执行中”，按钮一直不能点。

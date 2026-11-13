@@ -57,7 +57,7 @@ func TestTaskAndProfileBudgetsAccumulateAcrossClaimSessions(t *testing.T) {
 			}
 			defer e.Close()
 			e.ConfigureModels([]catalog.Override{{Provider: "fixture", Price: &catalog.Price{Input: 1000, Currency: "USD"}}})
-			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+			lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 			lead.ID, work.ID = "lead", "work"
 			lead.Model.Provider, work.Model.Provider, work.Budget = "fixture", "fixture", tc.profile
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
@@ -131,7 +131,7 @@ func TestProfileBudgetsStopWorkersWithBlockedReports(t *testing.T) {
 			}
 			defer e.Close()
 			e.ConfigureModels([]catalog.Override{{Provider: "fake", Price: &catalog.Price{Input: 1000, Currency: "USD"}}})
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Model.Provider = "fake"
 			body, _ := json.Marshal(map[string]any{"budget": map[string]any{tc.field: tc.value}})
 			if err := json.Unmarshal(body, &p); err != nil {
@@ -182,7 +182,7 @@ func TestExternalWorkerWallClockBudgetProducesABlockedReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode = permission.ModeTakeover
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "hold"}}
 	p.Budget.MaxWallClock = 150 * time.Millisecond
@@ -226,7 +226,7 @@ func TestExternalWorkerStopsAtReportedUsageLimits(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Mode, p.Budget = permission.ModeTakeover, tc.budget
 			p.Product = &agent.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget"}}
 			run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Continue"})
@@ -261,7 +261,7 @@ func TestExternalWorkerReworkPreservesTaskBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode, p.Budget.MaxTokens = permission.ModeTakeover, 40
 	p.Product = &agent.Product{Kind: worker.KindPi, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget-rework"}}
 	a := worker.Assignment{Session: "rework-budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Initial work"}
@@ -301,7 +301,7 @@ func TestCodexWorkerStopsAtReportedTokenUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode, p.Budget = permission.ModeTakeover, agent.Budget{MaxTokens: 10}
 	p.Product = &agent.Product{Kind: worker.KindCodex, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "budget", "MERAKCODE_FIXTURE_APPROVAL": "never"}}
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "codex-budget", Claim: task.Claim{ID: "claim"}, Workdir: t.TempDir(), Packet: "Continue"})
@@ -332,7 +332,7 @@ func TestClaudeMessageFragmentsDoNotConsumeAdditionalSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode, p.Budget = permission.ModeTakeover, agent.Budget{MaxSteps: 2}
 	p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--fixture", fixture, "--fixture-hold"}}
 	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{session.MessageCompleted}})
@@ -370,7 +370,7 @@ func TestGrantedTaskReassignmentContinuesTheOriginalClaimSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead", "leader"
 	work.ID, work.Model.Provider = "work", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Budget", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead, work})
@@ -432,7 +432,7 @@ func TestActiveTaskWallClockGrantExtendsRunningWorker(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p := agent.DefaultWorker()
+			p := agent.DefaultMerakCode()
 			p.Model.Provider, p.Mode = "fixture", permission.ModeTakeover
 			p.Budget = agent.Budget{MaxWallClock: time.Second}
 			if external {

@@ -30,7 +30,7 @@ func TestLeaderThreadRecoveryKeepsItsSessionAndConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
@@ -108,7 +108,7 @@ func TestReplacingTheLeaderHandsOverTheGroupThread(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			p, next := agent.DefaultLeader(), agent.DefaultLeader()
+			p, next := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 			p.ID, p.Model.Provider = "profile", "fake"
 			next.ID, next.Name, next.Model.Provider = "next-profile", "Second", "fake"
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Handover", Leader: "first", Project: group.Project{Directory: dir}}, []group.Member{
@@ -169,7 +169,7 @@ func TestRecoveryCompletesALeaderChangePersistedBeforeTheHandover(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p, next := agent.DefaultLeader(), agent.DefaultLeader()
+	p, next := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "profile", "fake"
 	next.ID, next.Name, next.Model.Provider = "next-profile", "Second", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "a"}, []group.Member{

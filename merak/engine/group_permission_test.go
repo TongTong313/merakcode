@@ -65,7 +65,7 @@ func TestLeaderApprovalToolsResolveWorkerRequests(t *testing.T) {
 			if !status.Available {
 				t.Skip("enforced sandbox is unavailable")
 			}
-			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+			lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider, work.Mode = "worker-profile", "worker", permission.ModeAuto
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{

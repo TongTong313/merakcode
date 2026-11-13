@@ -50,7 +50,7 @@ func testProductMCPReport(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader"
 	work.ID, work.Mode = "work-profile", permission.ModeTakeover
 	work.Product = &agent.Product{Kind: kind, Binary: claude, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}

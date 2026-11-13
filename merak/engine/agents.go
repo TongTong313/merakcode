@@ -24,14 +24,14 @@ import (
 // builtinAgents are the Leader and the Worker. The build entry of the agent section overrides the Worker's model,
 // prompt and tools.
 func (e *Engine) builtinAgents() []agent.Agent {
-	leader, worker := agent.DefaultLeader(), agent.DefaultWorker()
-	leader.ID, worker.ID = "builtin-leader", "builtin-worker"
+	merak := agent.DefaultMerakCode()
+	merak.ID = "builtin-merakcode"
 	if settings := e.agentSettings.Load(); settings != nil {
 		if entry, ok := settings.Agents["build"]; ok && !entry.Disabled {
-			worker = overlay(worker, entry)
+			merak = overlay(merak, entry)
 		}
 	}
-	return []agent.Agent{leader, worker}
+	return []agent.Agent{merak}
 }
 
 // overlay puts what an entry of the agent section sets over an agent.
@@ -67,7 +67,7 @@ func (e *Engine) configAgents() []agent.Agent {
 		if slices.Contains(reservedAgents, name) || name == "general" || name == "explore" || entry.Disabled {
 			continue
 		}
-		found = append(found, overlay(agent.Agent{ID: event.ID("config:" + name), Name: name, Role: agent.Worker, ToolPool: "worker.default", Source: agent.SourceConfig}, entry))
+		found = append(found, overlay(agent.Agent{ID: event.ID("config:" + name), Name: name, ToolPool: "worker.default", Source: agent.SourceConfig}, entry))
 	}
 	return found
 }
@@ -220,18 +220,12 @@ func validateAgent(p agent.Agent) error {
 	if err := validateAgentNetwork(p); err != nil {
 		return err
 	}
-	if strings.TrimSpace(p.Name) == "" || p.Role != agent.Leader && p.Role != agent.Worker {
-		return errors.New("profile name and role are required")
+	if strings.TrimSpace(p.Name) == "" {
+		return errors.New("agent name is required")
 	}
-	if p.Role == agent.Leader {
-		if p.ToolPool != "leader.default" {
-			return errors.New("leader profile requires leader tools")
-		}
-		if p.Product != nil && p.Product.Kind != worker.KindClaudeCode && p.Product.Kind != worker.KindCodex && p.Product.Kind != worker.KindPi {
-			return coded(errorcode.ExternalLeaderUnsupported, errors.New("external leaders require MCP and steering"))
-		}
-	} else if p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
-		return errors.New("worker profile requires worker tools")
+	// The tools of a Leader seat come from the seat; the pool of the agent is what it works with as a Worker.
+	if p.ToolPool != "" && p.ToolPool != "worker.default" && p.ToolPool != "worker.readonly" {
+		return errors.New("agent requires worker tools")
 	}
 	if p.Product == nil {
 		return nil
@@ -313,7 +307,7 @@ func (e *Engine) agentNamed(name, directory string) (agent.Agent, bool) {
 		}
 	}
 	if prompt, ok := subagents[name]; ok {
-		found := agent.Agent{ID: event.ID("builtin:" + name), Name: name, Role: agent.Worker, ToolPool: "worker.default", System: prompt, Source: agent.SourceConfig}
+		found := agent.Agent{ID: event.ID("builtin:" + name), Name: name, ToolPool: "worker.default", System: prompt, Source: agent.SourceConfig}
 		if settings := e.agentSettings.Load(); settings != nil {
 			found = overlay(found, settings.Agents[name])
 		}
@@ -393,7 +387,7 @@ func (e *Engine) applyDefaultAgent(options *SessionOptions) {
 	if name == "" {
 		name = "build"
 	}
-	chosen := e.builtinAgents()[1]
+	chosen := e.builtinAgents()[0]
 	if name != "build" && name != chosen.Name {
 		found, ok := e.agentNamed(name, options.Workdir)
 		if !ok {

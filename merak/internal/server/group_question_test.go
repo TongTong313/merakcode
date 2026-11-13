@@ -53,9 +53,9 @@ func TestAWorkerQuestionReachesTheNamedHumanAndReturnsToItsClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
 	p.ToolPool = "worker.readonly"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{

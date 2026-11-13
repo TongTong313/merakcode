@@ -116,10 +116,10 @@ func agentDraft(ctx context.Context, client *protocol.Client, input io.Reader, f
 		if found.Kind != product || !found.Available || found.Binary == "" {
 			continue
 		}
-		base, _ := json.Marshal(agent.DefaultWorker())
+		base, _ := json.Marshal(agent.DefaultMerakCode())
 		var draft map[string]any
 		_ = json.Unmarshal(base, &draft)
-		draft["name"], draft["summary"] = found.Name, "Runs "+found.Name+" as a Worker."
+		draft["name"], draft["summary"] = found.Name, "Runs "+found.Name+"."
 		draft["product"] = map[string]any{"kind": found.Kind, "binary": found.Binary}
 		return draft, nil
 	}

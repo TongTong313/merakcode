@@ -32,7 +32,7 @@ func TestAnExternalAgentKeepsItsEnvironmentValuesInTheCredentialVault(t *testing
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Name, p.Mode = "External", permission.ModeTakeover
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: binary, Env: map[string]string{"MERAKCODE_FIXTURE_MODE": "env", "MERAKCODE_FIXTURE_ECHO": "OPENAI_API_KEY", "OPENAI_API_KEY": "secret-value"}}
 	saved, err := e.SaveAgent(ctx, "owner", p)

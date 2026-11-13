@@ -39,7 +39,7 @@ func TestExternalLeaderSteersAnActiveTurnInsteadOfStartingAnother(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Mode = "lead", permission.ModeTakeover
 	lead.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary, Args: []string{"--leader-boundary"}}
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Steering", Project: group.Project{Directory: t.TempDir()}, Leader: "leader"}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{lead})
@@ -83,7 +83,7 @@ func TestExternalLeaderCreatesChildAndRepliesThroughTheSameProcess(t *testing.T)
 	runExternalLeaderFixture(t, worker.KindClaudeCode)
 }
 
-func TestExternalLeaderProfilesCanBeSavedOnlyWithMCPAndSteering(t *testing.T) {
+func TestAnAgentOfAProductTakesTheLeaderSeatOnlyWithMCPAndSteering(t *testing.T) {
 	e, err := engine.New(engine.Deps{Workdir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -91,9 +91,21 @@ func TestExternalLeaderProfilesCanBeSavedOnlyWithMCPAndSteering(t *testing.T) {
 	defer e.Close()
 	for _, kind := range []worker.Kind{worker.KindClaudeCode, worker.KindCodex, worker.KindPi, worker.KindACP, worker.KindOpenCode, worker.KindCommand} {
 		t.Run(string(kind), func(t *testing.T) {
-			p := agent.DefaultLeader()
-			p.Product = &agent.Product{Kind: kind, Binary: "fixture"}
-			_, err := e.SaveAgent(t.Context(), "owner", p)
+			// No agent is a Leader by nature: every product agent can be saved, and the seat decides.
+			p := agent.DefaultMerakCode()
+			p.Name, p.Product = string(kind)+" agent", &agent.Product{Kind: kind, Binary: "fixture"}
+			saved, err := e.SaveAgent(t.Context(), "owner", p)
+			if err != nil {
+				t.Fatalf("the agent was not saved: %v", err)
+			}
+			g, err := e.CreateGroup(t.Context(), group.Group{Kind: group.KindLocal, Name: "Seats", Project: group.Project{Directory: t.TempDir()}, Leader: "lead"}, []group.Member{
+				{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
+				{ID: "lead", Name: "Lead", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = e.UpdateGroup(t.Context(), g.ID, "owner", group.Update{Leader: &saved.ID})
 			allowed := kind == worker.KindClaudeCode || kind == worker.KindCodex || kind == worker.KindPi
 			if (err == nil) != allowed {
 				t.Fatalf("allowed=%v error=%v", allowed, err)
@@ -138,7 +150,7 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	defaultLeader, external := agent.DefaultLeader(), agent.DefaultLeader()
+	defaultLeader, external := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	defaultLeader.ID, defaultLeader.Model.Provider = "default-profile", "group"
 	external.ID, external.Mode = "external-profile", permission.ModeTakeover
 	external.Budget.MaxSteps = 3
@@ -146,7 +158,7 @@ func runExternalLeaderFixture(t *testing.T, kind worker.Kind) {
 	if kind == worker.KindClaudeCode {
 		external.Product.Args = []string{"--mcp-leader"}
 	}
-	work := agent.DefaultWorker()
+	work := agent.DefaultMerakCode()
 	work.ID, work.Model.Provider, work.Mode = "worker-profile", "worker", permission.ModeAuto
 	g, err := createGroup(t, e, ctx, group.Group{Name: "External leader", Kind: group.KindLocal, Leader: "external", Project: group.Project{Directory: directory}}, []group.Member{{ID: "external", Name: "External", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: external.ID}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: work.ID}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}}, []agent.Agent{defaultLeader, external, work})
 	if err != nil {

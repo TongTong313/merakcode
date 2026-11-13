@@ -663,6 +663,8 @@ export function openPanel(input: Omit<PanelTab, "id">, reuse = false) {
   // Capture only promotions already requested; waiting for a later one would deadlock the queue.
   const promotion = selected && promotions.get(selected)
   const accepted = promotion?.ready
+  // Opening a file waits for lookups; a tab the person picks meanwhile keeps the selection.
+  const picked = panels()?.picks()
   const request = enqueueOwners(origin ? [origin, ...(promotion ? [promotion.target] : [])] : [], async () => {
     const source = await selected
     if (!source || !origin) return
@@ -679,7 +681,7 @@ export function openPanel(input: Omit<PanelTab, "id">, reuse = false) {
     }
     if (input.kind === "terminal") input = { ...input, ptyDirectory: input.ptyDirectory ?? origin.directory }
     if (deletedOwners.has(ownerOf(target))) throw new Error(t("panel.persistError"))
-    const id = result.open(input, reuse)
+    const id = result.open(input, reuse, picked === undefined || result !== source || result.picks() === picked)
     if (!id) throw new Error(t("panel.persistError"))
     if (input.kind === "browser") await retainBrowser(target, id)
     if (input.kind === "file" && input.path) {

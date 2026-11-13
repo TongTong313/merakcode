@@ -61,12 +61,12 @@ func TestRemoteRequestsAlreadyImportedByAnotherSubscriberStillReceiveOneAnswerPe
 		t.Fatal(err)
 	}
 	defer b.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "source-profile", "fake"
 	if _, err := b.SaveAgent(ctx, "owner", p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}}); err != nil {
+	if _, err := b.Groups.Create(ctx, group.Group{ID: "source", Kind: group.KindLocal, Name: "Source", Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: p.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	instance, err := server.Start(b, t.TempDir())

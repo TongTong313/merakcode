@@ -31,7 +31,7 @@ func TestBuiltinLeaderWithoutAModelAnswersWithTheDefaultModel(t *testing.T) {
 	defer e.Close()
 	e.SetDefaultModel("fake", "default-model", "high")
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Defaults", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
-		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"},
+		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"},
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},
 	}, nil)
 	if err != nil {

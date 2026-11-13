@@ -35,10 +35,22 @@ test("a subdirectory resolves to its checkout root and shares its branch state",
   const sub = path.join(env.project, "sub")
   await mkdir(sub)
   const options = await refreshBranches(sub)
+  expect(await realpath(options!.root)).toBe(await realpath(env.project))
   expect(await realpath(options!.directory)).toBe(await realpath(sub))
   expect(options?.branches.map((branch) => branch.name).sort()).toEqual(["feature", "main"])
   expect(await resolveDirectory(sub)).toBe(options!.directory)
   expect(checkoutOf(sub)).toMatch(/^main:/)
+  expect(checkoutOf(sub)).toBe(checkoutOf(env.project))
+})
+
+test("unsaved work in a subdirectory blocks switching the whole checkout", async () => {
+  const sub = path.join(env.project, "inner")
+  await mkdir(sub)
+  await resolveDirectory(sub)
+  registerDirty(sub, "comments:inner", 1)
+  expect(unsavedReason(env.project)).toBeTruthy()
+  registerDirty(sub, "comments:inner", 0)
+  expect(unsavedReason(env.project)).toBeUndefined()
 })
 
 test("a forced refresh does not reuse a lookup that began before a branch was created", async () => {

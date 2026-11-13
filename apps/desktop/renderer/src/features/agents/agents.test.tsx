@@ -160,7 +160,6 @@ test("a saved secret shows that it is kept and an empty field leaves it unchange
     agent: {
       id: "",
       name: "Secret keeper",
-      role: "worker",
       summary: "",
       duties: "",
       toolPool: "worker.default",
@@ -197,7 +196,6 @@ test("deleting an agent that is still in a group shows the engine's reason and l
     agent: {
       id: "",
       name: "Busy writer",
-      role: "worker",
       summary: "",
       duties: "",
       toolPool: "worker.default",
@@ -219,7 +217,7 @@ test("deleting an agent that is still in a group shows the engine's reason and l
         kind: "agent",
         name: "Lead",
         agentRole: "leader",
-        agent: "builtin-leader",
+        agent: "builtin-merakcode",
         status: "idle",
       },
       {
@@ -292,20 +290,19 @@ test("the wizard saves a product with its arguments, model, secrets and network 
     env: { FIXTURE_VALUE: "" },
   })
   expect(saved.network).toEqual(["api.example.com", "*.models.example.com:443"])
-  expect(saved.role).toBe("worker")
   expect(mine(host).textContent).toContain("CLI tester")
 }, 90000)
 
 test("copying a built-in agent opens the wizard with its duties, and a full takeover needs an explicit confirmation", async () => {
   const host = show()
-  await expect.poll(() => button(mine(host), t("agents.copy", { name: "Worker" })), { timeout: 10000 }).toBeDefined()
-  button(mine(host), t("agents.copy", { name: "Worker" }))!.click()
+  await expect.poll(() => button(mine(host), t("agents.copy", { name: "MerakCode" })), { timeout: 10000 }).toBeDefined()
+  button(mine(host), t("agents.copy", { name: "MerakCode" }))!.click()
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]:not([data-closed])')!
   await expect.poll(() => document.querySelector('[role="dialog"]:not([data-closed])')).not.toBeNull()
   await click(dialog(), t("agents.step.next"))
   await click(dialog(), t("agents.step.next"))
   const name = dialog().querySelector<HTMLInputElement>(`input[aria-label="${t("agents.name")}"]`)!
-  expect(name.value).toBe(t("agents.copyName", { name: "Worker" }))
+  expect(name.value).toBe(t("agents.copyName", { name: "MerakCode" }))
   name.value = "Audit"
   name.dispatchEvent(new InputEvent("input", { bubbles: true }))
   const duties = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("agents.duties")}"]`)!
@@ -340,7 +337,6 @@ test("each agent in the list shows its harness, model, name and duties, and the 
     agent: {
       id: "",
       name: "Planner",
-      role: "worker",
       summary: "Plans the work",
       duties: "Break features into small steps.",
       toolPool: "worker.default",
@@ -351,7 +347,6 @@ test("each agent in the list shows its harness, model, name and duties, and the 
     agent: {
       id: "",
       name: "Shell helper",
-      role: "worker",
       summary: "",
       duties: "Run commands.",
       toolPool: "worker.default",

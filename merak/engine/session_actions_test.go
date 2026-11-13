@@ -484,7 +484,7 @@ func TestAConversationWithAnExternalAgentKeepsBothAnswersInOneStream(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	external := agent.DefaultWorker()
+	external := agent.DefaultMerakCode()
 	external.Name, external.Mode = "Claude", permission.ModeTakeover
 	external.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: bin}
 	saved, err := e.SaveAgent(ctx, "owner", external)

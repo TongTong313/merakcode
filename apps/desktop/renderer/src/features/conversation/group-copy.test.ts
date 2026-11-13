@@ -5,13 +5,12 @@ import { copyGroup } from "./group-copy"
 
 beforeEach(() => setLocale("zh"))
 
-const agent = (id: string, name: string, role = "worker"): AgentAgent => ({
+const agent = (id: string, name: string): AgentAgent => ({
   id,
   name,
-  role,
   summary: "",
   duties: "",
-  toolPool: `${role}.default`,
+  toolPool: "worker.default",
   model: { provider: "", model: "" },
 })
 const member = (id: string, name: string, agentId: string, agentRole: string): GroupMember => ({
@@ -30,13 +29,13 @@ test("a copy keeps the group's name and its Workers, and leaves out the Leader, 
       name: "登录小组",
       members: [
         { id: "me", name: "You", group: "old", kind: "human", role: "owner", status: "idle" },
-        member("leader", "小主", "builtin-leader", "leader"),
+        member("leader", "小主", "builtin-merakcode", "leader"),
         member("a", "小红", "writer", "worker"),
         member("b", "小刚", "deleted-agent", "worker"),
         member("c", "小王", "reviewer", "worker"),
       ],
     },
-    [agent("builtin-leader", "Leader", "leader"), agent("writer", "写手"), agent("reviewer", "审核")],
+    [agent("builtin-merakcode", "MerakCode"), agent("writer", "写手"), agent("reviewer", "审核")],
   )
   expect(copy.name).toBe("登录小组")
   expect(copy.workers).toEqual(["writer", "reviewer"])

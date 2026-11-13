@@ -75,7 +75,7 @@ func newClaimRig(t *testing.T, workerModel model.Provider, leaderReply ...func(m
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { e.Close() })
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-agent", "leader"
 	work.ID, work.Model.Provider = "worker-agent", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Claims", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
@@ -353,7 +353,7 @@ func TestAnExternalWorkerClaimsATaskThroughItsMCPTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-agent", "leader"
 	work.ID, work.Mode = "work-agent", permission.ModeAsk
 	work.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: claude, Args: []string{"--mcp-report", "--mcp-claim-file", idFile}, Env: map[string]string{"MERAKCODE_FIXTURE_MCP": "1", "MERAKCODE_FIXTURE_APPROVAL": "never"}}

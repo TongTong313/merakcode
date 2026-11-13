@@ -176,17 +176,17 @@ test("a new group for a task has the task's workspace, fixed, and takes the task
   const create = () => find(openDialog(), t("group.create"))!
   const trigger = () => openDialog().querySelector<HTMLButtonElement>(`button[aria-label^="${t("group.leader")}"]`)!
   await expect.poll(trigger, { timeout: 10000 }).not.toBeNull()
-  await expect.poll(() => trigger().textContent, { timeout: 10000 }).toContain("Leader")
+  await expect.poll(() => trigger().textContent, { timeout: 10000 }).toContain("MerakCode")
   trigger().dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, pointerType: "mouse" }))
   await expect
     .poll(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')].map((option) => option.textContent), {
       timeout: 10000,
     })
-    .toEqual(expect.arrayContaining([expect.stringContaining("Task chief"), expect.stringContaining("Leader")]))
+    .toEqual(expect.arrayContaining([expect.stringContaining("Task chief"), expect.stringContaining("MerakCode")]))
   const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')].map(
     (option) => option.textContent ?? "",
   )
-  expect(options.some((label) => label.includes("Worker"))).toBe(false)
+  expect(options.some((label) => label.includes("Sleeper"))).toBe(false)
   ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
     .find((option) => option.textContent?.includes("Task chief"))!
     .click()
@@ -235,7 +235,6 @@ test("a group elsewhere is greyed out with the reason while it has work running"
     agent: {
       id: "",
       name: "Sleeper",
-      role: "worker",
       summary: "",
       duties: "",
       toolPool: "worker.default",

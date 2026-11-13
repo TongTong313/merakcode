@@ -46,7 +46,7 @@ func TestGroupAndProfileFailuresCarryTheirOwnCodes(t *testing.T) {
 	if err := as("owner").Call(ctx, "agent.list", struct{}{}, &defaults); err != nil {
 		t.Fatal(err)
 	}
-	leaderProfile, workerProfile := defaults[0], defaults[1]
+	workerProfile := defaults[0]
 	var owned agent.Agent
 	draft := workerProfile
 	draft.ID, draft.Name = "", "Codes worker"
@@ -58,8 +58,13 @@ func TestGroupAndProfileFailuresCarryTheirOwnCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	external := workerProfile
-	external.ID, external.Role, external.ToolPool = "", agent.Leader, "leader.default"
+	external.ID, external.Name = "", "Command agent"
 	external.Product = &agent.Product{Kind: "command", Binary: "node"}
+	// Any agent can be saved; whether it can lead is decided when it is given the Leader seat.
+	var savedExternal agent.Agent
+	if err := as("owner").Call(ctx, "agent.save", map[string]any{"agent": external}, &savedExternal); err != nil {
+		t.Fatal(err)
+	}
 	edited := owned
 	edited.Name = "Edited by someone else"
 	for _, test := range []struct {
@@ -67,9 +72,8 @@ func TestGroupAndProfileFailuresCarryTheirOwnCodes(t *testing.T) {
 		params              map[string]any
 		code                string
 	}{
-		{"a worker member with a leader profile", "group.addMember", "owner", map[string]any{"group": g.ID, "member": group.Member{ID: "extra", Name: "Extra", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: leaderProfile.ID}}, "MRK-6003"},
 		{"a target branch outside a repository", "group.create", "owner", map[string]any{"name": "Branch", "kind": "local", "project": group.Project{Directory: t.TempDir()}, "brief": group.Brief{TargetBranch: "main"}, "leader": "leader", "members": []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: "owner"}}}, "MRK-6006"},
-		{"an external leader without MCP and steering", "agent.save", "owner", map[string]any{"agent": external}, "MRK-6007"},
+		{"an external leader without MCP and steering", "group.update", "owner", map[string]any{"group": g.ID, "leader": savedExternal.ID}, "MRK-6007"},
 		{"deleting a profile that is still in a group", "agent.delete", "owner", map[string]any{"agent": owned.ID}, "MRK-6004"},
 		{"editing a profile owned by someone else", "agent.save", "other", map[string]any{"agent": edited}, "MRK-6005"},
 		{"deleting a profile owned by someone else", "agent.delete", "other", map[string]any{"agent": owned.ID}, "MRK-6005"},

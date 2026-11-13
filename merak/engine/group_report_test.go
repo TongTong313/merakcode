@@ -28,7 +28,7 @@ func TestStructuredWorkerReportRetainsReviewFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Model.Provider = "fake"
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: event.NewID(), Workdir: dir, Claim: task.Claim{ID: "claim", Task: "task", Member: "worker"}, Packet: "Update the documentation and return its structured report."})
 	if err != nil {
@@ -75,7 +75,7 @@ func TestSynthesizedWorkerReportCountsBothAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Model.Provider = "fake"
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Session: event.NewID(), Workdir: dir, Claim: task.Claim{ID: "claim", Task: "task", Member: "worker"}, Packet: "Complete the assignment."})
 	if err != nil {

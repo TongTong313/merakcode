@@ -119,9 +119,9 @@ func TestGroupApprovalRejectsAnUnqualifiedHumanWithoutConsumingTheRequest(t *tes
 		t.Fatal(err)
 	}
 	defer client.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "fake"
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
@@ -187,7 +187,7 @@ func TestOfflineGroupApprovalWaitsForAConnectingHuman(t *testing.T) {
 	defer handler.Close()
 	host := httptest.NewServer(handler)
 	defer host.Close()
-	lead, workerProfile := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, workerProfile := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-profile", "fixture"
 	workerProfile.ID, workerProfile.Model.Provider = "worker-profile", "fixture"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader"}, []group.Member{

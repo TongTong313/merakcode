@@ -97,7 +97,7 @@ func testClaimInputDuringPreparation(t *testing.T, before bool) {
 	}
 	defer e.Close()
 	defer close(hold)
-	lp, wp := agent.DefaultLeader(), agent.DefaultWorker()
+	lp, wp := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lp.ID, lp.Model.Provider, wp.ID, wp.Model.Provider = "lead", "leader", "work", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Preparing input", Leader: "leader", Project: group.Project{Directory: dir}}, []group.Member{
 		{ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner},

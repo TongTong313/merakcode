@@ -225,7 +225,7 @@ test.each([
   expect(!!window.unsavedReason(target)).toBe(linked)
 })
 
-test("legacy review comments in a project subdirectory protect that directory before their conversation is opened", async () => {
+test("legacy review comments in a project subdirectory protect the whole checkout before their conversation is opened", async () => {
   const root = await checkout("legacy-review")
   await mkdir(path.join(root, "sub"))
   const sub = (await (await client()).file.identity({ directory: path.join(root, "sub"), path: "." })).directory
@@ -264,7 +264,7 @@ test("legacy review comments in a project subdirectory protect that directory be
   await window.refreshBranches(sub)
   expect(window.unsavedReason(sub)).toBeTruthy()
   await window.refreshBranches(root)
-  expect(window.unsavedReason(root)).toBeUndefined()
+  expect(window.unsavedReason(root)).toBeTruthy()
 })
 
 test("a failed final review write keeps branch protection until the clear is durable", async () => {

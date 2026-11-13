@@ -27,7 +27,7 @@ func TestCancellingAGoalStopsItsWorkerAndRunsTheNextGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, worker := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, worker := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
@@ -103,7 +103,7 @@ func TestAFailedDependencyStallsTheGoalAndNotifiesItsOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
@@ -162,7 +162,7 @@ func TestCancellingAGoalInterruptsItsLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
@@ -207,7 +207,7 @@ func TestTheLeaderRequestsAPlanCheckpointAndHumanApprovalStartsDoing(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: true}}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID},
@@ -267,9 +267,9 @@ func TestIntegratedGoalAutomaticallyEntersReviewAndApprovalDeliversItsChildren(t
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := agent.DefaultWorker()
+	worker := agent.DefaultMerakCode()
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},
@@ -347,9 +347,9 @@ func TestAGroupCanDisableTheFinalHumanReviewCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := agent.DefaultWorker()
+	worker := agent.DefaultMerakCode()
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader", Settings: group.Settings{Review: &review}}, []group.Member{
 		{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},

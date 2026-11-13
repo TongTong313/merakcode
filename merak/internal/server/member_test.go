@@ -86,7 +86,7 @@ func TestMemberProbeChecksTheProtocolInAnIsolatedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: binary}
 	var caps worker.Caps
 	if err := client.Call(ctx, "agent.test", map[string]any{"agent": p}, &caps); err != nil {

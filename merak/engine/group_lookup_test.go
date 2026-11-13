@@ -68,7 +68,7 @@ func TestGroupLookupAndDocumentsRejectAnotherGroupsData(t *testing.T) {
 	var cards []task.Card
 	var facts []event.Event
 	for _, name := range []string{"first", "second"} {
-		g, err := e.Groups.Create(t.Context(), group.Group{Kind: group.KindLocal, Name: name, Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}})
+		g, err := e.Groups.Create(t.Context(), group.Group{Kind: group.KindLocal, Name: name, Leader: "leader", Project: group.Project{Directory: t.TempDir()}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,7 +96,7 @@ func TestGroupLookupAndDocumentsRejectAnotherGroupsData(t *testing.T) {
 		}
 	}
 	checks = append(checks, check{name: "read_doc", input: json.RawMessage(`{"key":"design","startLine":2,"endLine":2}`), excerpt: true})
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Model.Provider = "lookup"
 	run, err := e.StartWorker(ctx, p, worker.Assignment{Scope: event.Scope{Group: groups[0].ID, Task: cards[0].ID}, Session: "lookup", Claim: task.Claim{ID: "claim", Task: cards[0].ID, Member: "worker"}, Workdir: t.TempDir(), Packet: "Check references"})
 	if err != nil {

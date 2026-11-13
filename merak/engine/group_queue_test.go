@@ -54,7 +54,7 @@ func TestLeaderWithdrawsQueuedClaimAndMemberAutomaticallyStartsTheNext(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{

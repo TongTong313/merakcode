@@ -110,7 +110,7 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	p := agent.DefaultLeader()
+	p := agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "leader-profile", "fake"
 	params := protocol.GroupCreateParams{Group: group.Group{Kind: "cloud", Name: "Project", Project: group.Project{Directory: dir}, Leader: "leader"}, Members: []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: p.ID}}}
 	var created group.Group
@@ -125,7 +125,7 @@ func TestGroupRPCPublishesATaskAndExposesItsLeaderState(t *testing.T) {
 	if err := client.Call(ctx, "group.create", params, &created); err != nil {
 		t.Fatal(err)
 	}
-	p = agent.DefaultWorker()
+	p = agent.DefaultMerakCode()
 	p.ID, p.Model.Provider = "worker-profile", "fake"
 	if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: p}, nil); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestGroupRPCSupportsHumanMessagesAssignmentAndReview(t *testing.T) {
 			}
 			defer client.Close()
 			unknown := connectServerAs(t, handler, host, "unknown", protocol.Capabilities{})
-			lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+			lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
 			work.ID, work.Model.Provider = "worker-profile", "worker"
 			work.Memory = []memory.Scope{}

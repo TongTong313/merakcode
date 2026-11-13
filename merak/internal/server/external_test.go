@@ -103,7 +103,7 @@ func TestGroupUpdateRPCChangesRunningTriggerSettings(t *testing.T) {
 	as := func(human event.ID) *protocol.Client {
 		return connectServerAs(t, handler, host, human, protocol.Capabilities{})
 	}
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "profile", "fake"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Rules", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{Initiative: group.Passive}}, []group.Member{
 		{ID: "owner", Kind: group.MemberHuman, Role: group.RoleOwner, Name: "Owner"},

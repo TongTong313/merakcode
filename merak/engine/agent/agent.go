@@ -10,13 +10,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/worker"
 )
 
-type Role string
-
-const (
-	Leader Role = "leader"
-	Worker Role = "worker"
-)
-
 type ModelRef struct {
 	Provider string         `json:"provider"`
 	Model    string         `json:"model"`
@@ -47,7 +40,6 @@ type Agent struct {
 	Mode     permission.Mode `json:"mode,omitempty"`
 	ID       event.ID        `json:"id"`
 	Name     string          `json:"name"`
-	Role     Role            `json:"role"`
 	Summary  string          `json:"summary"`
 	Duties   string          `json:"duties"`
 	System   string          `json:"system,omitempty"`
@@ -64,9 +56,8 @@ type Agent struct {
 
 type Budget = session.Budget
 
-func DefaultLeader() Agent {
-	return Agent{Name: "Leader", Role: Leader, Summary: "Coordinate work and report outcomes.", ToolPool: "leader.default", Shared: true}
-}
-func DefaultWorker() Agent {
-	return Agent{Name: "Worker", Role: Worker, Summary: "Implement and verify assigned work.", ToolPool: "worker.default", Shared: true}
+// DefaultMerakCode is the agent MerakCode brings itself. No agent is a Leader or a Worker by nature: a group gives
+// the seat, and this one can take either.
+func DefaultMerakCode() Agent {
+	return Agent{Name: "MerakCode", Summary: "Coordinate work as a Leader or implement and verify assigned work as a Worker.", ToolPool: "worker.default", Shared: true}
 }

@@ -117,11 +117,10 @@ it("connects to a real merak serve and receives a completed conversation", async
         agent: {
           id: "leader-agent",
           name: "Leader",
-          role: "leader",
           summary: "Coordinate work",
           duties: "",
           model: { provider: "fake", model: "" },
-          toolPool: "leader.default",
+          toolPool: "worker.default",
         },
       })
       const group = await client.group.create({
@@ -162,7 +161,6 @@ it("connects to a real merak serve and receives a completed conversation", async
         agent: {
           id: "worker-agent",
           name: "Worker",
-          role: "worker",
           summary: "Do work",
           duties: "",
           model: { provider: "fake", model: "" },

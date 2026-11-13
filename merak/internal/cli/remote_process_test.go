@@ -97,7 +97,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 	}
 	create := func(client *protocol.Client, id event.ID, work agent.Agent, checkouts map[string]string) {
 		t.Helper()
-		lead := agent.DefaultLeader()
+		lead := agent.DefaultMerakCode()
 		lead.ID, lead.Model.Provider = "lead-profile", "fake"
 		params := protocol.GroupCreateParams{
 			Group: group.Group{ID: id, Name: string(id), Kind: group.KindLocal, Leader: "leader", Project: group.Project{Directory: t.TempDir()}},
@@ -116,7 +116,7 @@ func TestRemoteServeReportsAndDisconnectsThroughTheSDK(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	work := agent.DefaultWorker()
+	work := agent.DefaultMerakCode()
 	work.ID, work.Model.Provider, work.Mode = "work-profile", "fake", permission.ModeTakeover
 	create(b.client, "source", work, map[string]string{remoteURL: checkout})
 	var connection protocol.RemoteConnection

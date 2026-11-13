@@ -190,6 +190,8 @@ export async function createPanels(owner: string, persistence: Persistence, dire
   })
   let writing = Promise.resolve()
   let retired = false
+  // How often the person picked a tab; an open that waited for a lookup compares it to know if they moved on.
+  let picks = 0
   let latest = JSON.stringify({ version: 1, directory, ...state })
   const registered = new Set<string>()
   ownReviewProtection(owner)
@@ -293,10 +295,13 @@ export async function createPanels(owner: string, persistence: Persistence, dire
     },
     activate(id: string) {
       if (!state.tabs.some((tab) => tab.id === id)) return
+      picks++
       setState({ selected: id, chooser: undefined, visible: true })
       void save()
     },
-    open(input: TabInput, reuse = false) {
+    picks: () => picks,
+    /** With select false the tab is opened or found but the selection stays where the person put it. */
+    open(input: TabInput, reuse = false, select = true) {
       if (retired || state.transferring) return ""
       input = normalize(input)
       const known = [...state.tabs]
@@ -317,7 +322,7 @@ export async function createPanels(owner: string, persistence: Persistence, dire
             (view) => ({ ...(view ?? {}), ...input.view }),
           )
         setState("tabs", (tab) => tab.id === known.id, "navigation", (known.navigation ?? 0) + 1)
-        setState({ selected: known.id, chooser: undefined, visible: true })
+        if (select) setState({ selected: known.id, chooser: undefined, visible: true })
         void save()
         return known.id
       }
@@ -330,7 +335,7 @@ export async function createPanels(owner: string, persistence: Persistence, dire
           ordinal: Math.max(0, ...tabs.filter((tab) => tab.kind === input.kind).map((tab) => tab.ordinal ?? 1)) + 1,
         },
       ])
-      setState({ selected: id, chooser: undefined, visible: true })
+      if (select) setState({ selected: id, chooser: undefined, visible: true })
       void save()
       return id
     },

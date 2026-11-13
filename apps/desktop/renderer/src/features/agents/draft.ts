@@ -2,13 +2,12 @@ import type { AgentAgent, WorkerProductInfo } from "@merakcode/sdk"
 
 export type EnvRow = { name: string; value: string; saved: boolean }
 
-/** A worker that runs a product found on this machine, ready to be saved as it is. */
+/** An agent that runs a product found on this machine, ready to be saved as it is. */
 export function productDraft(product: WorkerProductInfo): AgentAgent {
   return {
     id: "",
     name: product.name,
-    role: "worker",
-    summary: `Runs ${product.name} as a Worker.`,
+    summary: `Runs ${product.name}.`,
     duties: "",
     toolPool: "worker.default",
     shared: true,
@@ -22,14 +21,17 @@ export function addedAgent(agents: readonly AgentAgent[], product: WorkerProduct
   return agents.find((agent) => agent.product?.kind === product.kind)
 }
 
-/** External products can lead only when they take messages in the middle of a turn and speak MCP. */
-export function productsFor(role: string, products: readonly WorkerProductInfo[]) {
-  return products.filter(
-    (product) =>
-      product.kind !== "builtin" &&
-      product.available &&
-      (role !== "leader" || (product.caps.steer && product.caps.mcp)),
-  )
+/** The products an agent can run: the ones found on this machine. */
+export function productsFor(products: readonly WorkerProductInfo[]) {
+  return products.filter((product) => product.kind !== "builtin" && product.available)
+}
+
+/** The products that take messages in the middle of a turn and speak MCP, so an agent that runs one can lead. */
+const LEADING_PRODUCTS = ["claude-code", "codex", "pi"]
+
+/** No agent is a Leader by nature; a group gives the seat. This says whether the engine will accept one for it. */
+export function canLead(agent: AgentAgent) {
+  return !agent.product || agent.product.kind === "builtin" || LEADING_PRODUCTS.includes(agent.product.kind)
 }
 
 /** The saved secrets of an agent come back with empty values: the row says it is saved and shows nothing. */

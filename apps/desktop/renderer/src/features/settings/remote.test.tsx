@@ -28,7 +28,7 @@ test("connects another engine and registers a selected remote worker without sav
           kind: "agent",
           name: worker ? "Remote Coordinator" : "Leader",
           agentRole: "leader",
-          agent: "builtin-leader",
+          agent: "builtin-merakcode",
           status: "idle",
         },
         ...(worker
@@ -39,7 +39,7 @@ test("connects another engine and registers a selected remote worker without sav
                 kind: "agent",
                 name: "Remote Worker",
                 agentRole: "worker",
-                agent: "builtin-worker",
+                agent: "builtin-merakcode",
                 status: "idle",
               },
             ]

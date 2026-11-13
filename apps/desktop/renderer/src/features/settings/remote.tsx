@@ -44,7 +44,6 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
           name: source.member.name,
           summary: source.member.summary ?? "",
           duties: "",
-          role: "worker",
           shared: true,
           model: { provider: "", model: "" },
           toolPool: "worker.default",

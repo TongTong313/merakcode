@@ -29,7 +29,7 @@ async function newGroup(name: string): Promise<GroupGroup> {
     leader: "leader",
     members: [
       { id: localHuman, group: "", kind: "human", name: "You", role: "owner", status: "idle" },
-      { id: "leader", group: "", kind: "agent", name, agentRole: "leader", agent: "builtin-leader", status: "idle" },
+      { id: "leader", group: "", kind: "agent", name, agentRole: "leader", agent: "builtin-merakcode", status: "idle" },
     ],
   })
 }

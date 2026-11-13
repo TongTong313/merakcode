@@ -217,9 +217,6 @@ func (e *Engine) prepareAgentMember(ctx context.Context, member group.Member, ac
 	if !configured.Shared && owner != "" && owner != member.Owner {
 		return group.Member{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the owner can use an unshared agent"))
 	}
-	if string(configured.Role) != string(member.AgentRole) {
-		return group.Member{}, coded(errorcode.MemberRoleMismatch, errors.New("member role must match its agent"))
-	}
 	if member.AgentRole == group.AgentLeader && configured.Product != nil {
 		caps := e.runnerFor(configured, nil).Caps()
 		if !caps.MCP || !caps.Steer {
@@ -243,7 +240,7 @@ func (e *Engine) memberAgent(ctx context.Context, member group.Member) (agent.Ag
 // loadAgent reads the agent of a member and the human who owns it; the built-in agents have no owner.
 func (e *Engine) loadAgent(ctx context.Context, member group.Member) (agent.Agent, event.ID, error) {
 	for _, p := range e.builtinAgents() {
-		if p.ID == member.Agent || member.Agent == "" && string(p.Role) == string(member.AgentRole) {
+		if p.ID == member.Agent || member.Agent == "" {
 			return p, "", nil
 		}
 	}

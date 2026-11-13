@@ -107,7 +107,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
           name: "Leader",
           kind: "agent",
           agentRole: "leader",
-          agent: "builtin-leader",
+          agent: "builtin-merakcode",
           status: "idle",
         },
         {
@@ -116,7 +116,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
           name: "Device Worker",
           kind: "agent",
           agentRole: "worker",
-          agent: "builtin-worker",
+          agent: "builtin-merakcode",
           owner: localHuman,
           status: "idle",
         },
@@ -194,14 +194,14 @@ test("creates a local group from default profiles and adds the selected worker",
   )
   try {
     await expect
-      .poll(() => document.querySelector('input[aria-label="Select Worker"]'), { timeout: 10000 })
+      .poll(() => document.querySelector('input[aria-label="Select MerakCode"]'), { timeout: 10000 })
       .not.toBeNull()
     expect(cloudKind()?.getAttribute("aria-disabled")).toBe("true")
     expect(document.body.textContent).toContain("Sign in to create a cloud group")
     const name = document.querySelector<HTMLInputElement>('input[aria-label="Group name"]')!
     name.value = "Documentation team"
     name.dispatchEvent(new InputEvent("input", { bubbles: true }))
-    document.querySelector<HTMLInputElement>('input[aria-label="Select Worker"]')!.click()
+    document.querySelector<HTMLInputElement>('input[aria-label="Select MerakCode"]')!.click()
     const create = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent === "Create",
     )!
@@ -234,13 +234,12 @@ const pick = async (label: string) => {
   return [...document.querySelectorAll<HTMLElement>('[role="option"]')]
 }
 
-test("the Leader list holds Leader agents only, includes a product, and the dialog has no model choice", async () => {
+test("any agent can be a member, the Leader list holds the agents that can lead, and the dialog has no model choice", async () => {
   const connection = await client()
   await connection.agent.save({
     agent: {
       id: "",
-      name: "Plain worker",
-      role: "worker",
+      name: "Plain agent",
       summary: "",
       duties: "",
       toolPool: "worker.default",
@@ -250,11 +249,21 @@ test("the Leader list holds Leader agents only, includes a product, and the dial
   await connection.agent.save({
     agent: {
       id: "",
-      name: "Claude lead",
-      role: "leader",
+      name: "Command runner",
       summary: "",
       duties: "",
-      toolPool: "leader.default",
+      toolPool: "worker.default",
+      model: { provider: "", model: "" },
+      product: { kind: "command", binary: "node" },
+    },
+  })
+  await connection.agent.save({
+    agent: {
+      id: "",
+      name: "Claude lead",
+      summary: "",
+      duties: "",
+      toolPool: "worker.default",
       model: { provider: "", model: "" },
       product: { kind: "claude-code", binary: "claude" },
     },
@@ -267,13 +276,15 @@ test("the Leader list holds Leader agents only, includes a product, and the dial
   )
   try {
     await expect
-      .poll(() => opened()?.querySelector('input[aria-label="Select Plain worker"]'), { timeout: 10000 })
+      .poll(() => opened()?.querySelector('input[aria-label="Select Command runner"]'), { timeout: 10000 })
       .not.toBeNull()
+    for (const name of ["MerakCode", "Plain agent", "Claude lead"])
+      expect(opened().querySelector(`input[aria-label="Select ${name}"]`)).not.toBeNull()
     expect(opened().querySelector('button[aria-label^="Configure model"]')).toBeNull()
     const options = (await pick("Leader")).map((option) => option.textContent ?? "")
-    expect(options.some((label) => label.includes("Plain worker"))).toBe(false)
-    expect(options.some((label) => label.includes("Claude lead"))).toBe(true)
-    expect(options.some((label) => label.startsWith("Leader"))).toBe(true)
+    expect(options.some((label) => label.includes("Command runner"))).toBe(false)
+    for (const name of ["Plain agent", "Claude lead"]) expect(options.some((label) => label.includes(name))).toBe(true)
+    expect(options.some((label) => label.startsWith("MerakCode"))).toBe(true)
   } finally {
     dispose()
     host.remove()
@@ -287,10 +298,9 @@ test("creating groups saves and changes no agent, and the Leader runs on the mod
     agent: {
       id: "",
       name: "Chosen model lead",
-      role: "leader",
       summary: "Leads on its own model.",
       duties: "",
-      toolPool: "leader.default",
+      toolPool: "worker.default",
       model: { provider: "fake", model: "fixture" },
     },
   })
@@ -305,7 +315,7 @@ test("creating groups saves and changes no agent, and the Leader runs on the mod
   )
   try {
     await expect
-      .poll(() => opened()?.querySelector('input[aria-label="Select Worker"]'), { timeout: 10000 })
+      .poll(() => opened()?.querySelector('input[aria-label="Select MerakCode"]'), { timeout: 10000 })
       .not.toBeNull()
     ;(await pick("Leader")).find((option) => option.textContent?.includes("Chosen model lead"))!.click()
     const create = () =>
@@ -336,6 +346,8 @@ test("creating groups saves and changes no agent, and the Leader runs on the mod
     const first = members[0]!
     if (first.type !== "group.created") throw new Error("group.created is missing")
     expect(first.payload.members?.find((member) => member.agentRole === "leader")?.agent).toBe(lead.id)
+    // The Leader seat is named after its agent, not after the person who made the group
+    expect(first.payload.members?.find((member) => member.agentRole === "leader")?.name).toBe("Chosen-model-lead")
   } finally {
     dispose()
     host.remove()

@@ -37,7 +37,7 @@ func TestAnExternalConversationReportsItsAgentAndIsTakenOverOnlyWithConfirmation
 	t.Cleanup(func() { instance.Close() })
 	client := connectAs(t, instance, protocol.LocalHuman, protocol.Capabilities{})
 	ctx := t.Context()
-	external := agent.DefaultWorker()
+	external := agent.DefaultMerakCode()
 	external.Name, external.Mode = "Claude", permission.ModeTakeover
 	external.Product = &agent.Product{Kind: worker.KindClaudeCode, Binary: bin}
 	var saved agent.Agent

@@ -206,7 +206,7 @@ func TestUserMCPOverridesWorkspaceAndStopsWhenTheTakeoverSessionEnds(t *testing.
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Mode, p.Model.Provider = permission.ModeTakeover, "fake"
 	run, err := e.StartWorker(t.Context(), p, worker.Assignment{Session: "takeover-session", Workdir: directory, Packet: "List tools"})
 	if err != nil {
@@ -327,7 +327,7 @@ func TestWorkspaceMCPTrustIsSharedByTwoWorktreesOfTheGroupProject(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.ID = "worker-profile"
 	p.Model.Provider, p.Model.Model = "fake", "fixture"
 	if _, err := e.SaveAgent(ctx, "owner", p); err != nil {

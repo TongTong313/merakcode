@@ -38,9 +38,9 @@ func TestGoalReviewRetainsChildFilesForReworkAndReleasesThemAfterDelivery(t *tes
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := agent.DefaultWorker()
+	worker := agent.DefaultMerakCode()
 	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{
@@ -186,9 +186,9 @@ func TestIntegratedWorktreeSurvivesGoalReviewAndReworksOnTheSameBranch(t *testin
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead := agent.DefaultLeader()
+	lead := agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider = "lead-profile", "leader-model"
-	worker := agent.DefaultWorker()
+	worker := agent.DefaultMerakCode()
 	worker.Memory = []memory.Scope{}
 	worker.ID, worker.Model.Provider = "worker-profile", "worker-model"
 	g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Group", Project: group.Project{Directory: dir}, Leader: "leader"}, []group.Member{

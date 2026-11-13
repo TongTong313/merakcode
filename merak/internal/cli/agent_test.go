@@ -32,11 +32,11 @@ func TestAgentCommandsListAddRemoveAndShowTheCatalog(t *testing.T) {
 	t.Setenv("MERAKCODE_HOME", home)
 	cleanupEngine(t, home)
 	before := len(agentsOf(t))
-	if before < 2 {
+	if before < 1 {
 		t.Fatalf("the built-in agents are not listed: %d", before)
 	}
 	file := filepath.Join(home, "agent.json")
-	draft := agent.DefaultWorker()
+	draft := agent.DefaultMerakCode()
 	draft.Name = "From a file"
 	body, _ := json.Marshal(draft)
 	if err := os.WriteFile(file, body, 0600); err != nil {
@@ -88,7 +88,7 @@ func TestAnAgentIsAddedFromADetectedProductInOneStep(t *testing.T) {
 		t.Fatalf("add=%d %s", code, &output)
 	}
 	var saved agent.Agent
-	if err := json.Unmarshal(output.Bytes(), &saved); err != nil || saved.Product == nil || string(saved.Product.Kind) != "claude-code" || saved.Product.Binary == "" || saved.Role != agent.Worker {
+	if err := json.Unmarshal(output.Bytes(), &saved); err != nil || saved.Product == nil || string(saved.Product.Kind) != "claude-code" || saved.Product.Binary == "" {
 		t.Fatalf("saved=%+v err=%v", saved, err)
 	}
 	if code := Run([]string{"agent", "add", "--product", "opencode"}, strings.NewReader(""), &output); code == 0 {

@@ -23,7 +23,7 @@ func TestRecoverKeepsOriginalPlanAndReviewDeadlines(t *testing.T) {
 			storage := memory.New()
 			bus := event.NewBus(storage, func() time.Time { return time.Now().Add(-time.Minute) }, event.NewID)
 			groups := group.New(storage, bus, event.NewID)
-			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Recover approval", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", ApprovalTimeout: time.Second}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-leader"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-worker"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
+			g, err := groups.Create(ctx, group.Group{Kind: group.KindLocal, Name: "Recover approval", Project: group.Project{Directory: t.TempDir()}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", ApprovalTimeout: time.Second}}, []group.Member{{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: "builtin-merakcode"}, {ID: "worker", Name: "Worker", Kind: group.MemberAgent, AgentRole: group.AgentWorker, Agent: "builtin-merakcode"}, {ID: "owner", Name: "Owner", Kind: group.MemberHuman, Role: group.RoleOwner}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,9 +90,9 @@ func TestRealPlanAndReviewRequestsTimeOutToBlockedTasks(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
-			lead := agent.DefaultLeader()
+			lead := agent.DefaultMerakCode()
 			lead.ID, lead.Model.Provider = "leader-profile", "leader"
-			work := agent.DefaultWorker()
+			work := agent.DefaultMerakCode()
 			work.ID, work.Model.Provider = "worker-profile", "worker"
 			g, err := createGroup(t, e, ctx, group.Group{Kind: group.KindLocal, Name: "Team", Project: group.Project{Directory: directory}, Leader: "leader", Settings: group.Settings{PlanNeedsApproval: kind == "plan", Review: new(true)}}, []group.Member{
 				{ID: "leader", Name: "Leader", Kind: group.MemberAgent, AgentRole: group.AgentLeader, Agent: lead.ID},

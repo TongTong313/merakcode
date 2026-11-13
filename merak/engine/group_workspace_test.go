@@ -60,7 +60,7 @@ func TestFolderTaskPublishesDeclaredArtifactsAndWaitsForReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"
@@ -146,7 +146,7 @@ func workspaceGroup(t *testing.T, dir string, providers map[string]model.Provide
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = e.Close() })
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	work.Memory = []memory.Scope{}
 	lead.ID, lead.Model.Provider = "leader-profile", "leader"
 	work.ID, work.Model.Provider = "worker-profile", "worker"

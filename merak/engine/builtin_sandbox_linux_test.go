@@ -76,7 +76,7 @@ func TestEngineSandboxMembersCannotReadCredentialDirectories(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					p := agent.DefaultWorker()
+					p := agent.DefaultMerakCode()
 					p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", command}}
 					run, err := e.StartWorker(ctx, p, worker.Assignment{Session: "credential-check", Workdir: workspace})
 					if err != nil {
@@ -134,7 +134,7 @@ func TestEngineSandboxPassesOnlyDeclaredMemberEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p := agent.DefaultWorker()
+	p := agent.DefaultMerakCode()
 	p.Product = &agent.Product{Kind: worker.KindCommand, Binary: "/bin/bash", Args: []string{"-c", `printf '%s|%s' "$MEMBER_SETTING" "$MERAK_UNLISTED_FIXTURE"`}, Env: map[string]string{"MEMBER_SETTING": "explicit value"}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()

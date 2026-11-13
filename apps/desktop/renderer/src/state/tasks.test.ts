@@ -53,7 +53,7 @@ test("a claim a worker took by itself is told apart from one it was given", asyn
   const connection = await client()
   const agents = (await connection.agent.list({}))!
   const worker = await connection.agent.save({
-    agent: { ...agents[1]!, id: "", name: "Taker", model: { provider: "fake", model: "fixture" } },
+    agent: { ...agents[0]!, id: "", name: "Taker", model: { provider: "fake", model: "fixture" } },
   })
   const lead = await connection.agent.save({
     agent: { ...agents[0]!, id: "", name: "Chief", model: { provider: "fake", model: "fixture" } },

@@ -444,8 +444,9 @@
         <td>智能体、智能体配置</td>
         <td>
           用户在“新建智能体”里建的东西。描述它的数据叫智能体配置，代码里叫
-          <code>Agent</code>：角色说明、职责、系统提示词、模型、工具池、权限模式、预算；外部产品还有启动方式。内置的
-          Leader 和 Worker 有默认配置。
+          <code>Agent</code
+          >：一句话说明、职责、系统提示词、模型、工具池、权限模式、预算；外部产品还有启动方式。智能体本身没有 Leader 或
+          Worker 的身份，身份由协作群在拉人时指定。内置只有一个 MerakCode，有默认配置，可以当 Leader，也可以当成员。
         </td>
       </tr>
       <tr>
@@ -624,7 +625,8 @@
         循环、上下文管理、记忆、会话、事件总线、工具调用、模型服务、权限与沙箱。不复制任何一家的代码。
       </li>
       <li>
-        同一套引擎装上不同的智能体配置得到 Leader 和 Worker；外部产品经适配器成为 Worker，经 MCP 也能成为 Leader。
+        同一套引擎装上不同的智能体配置，再由群给一个座位，就得到 Leader 或 Worker；外部产品经适配器成为 Worker，经 MCP
+        也能坐 Leader 座位。
       </li>
       <li>
         协作群以任务驱动、事件触发：任务可以先建再交给协作群，也可以在协作群里由 Leader
@@ -3441,8 +3443,11 @@ type Extractor interface {
 
     <h3 id="member-kinds">5.1 成员：人和智能体都是成员</h3>
     <p>
-      群里的参与者统称成员。人类成员有群角色，决定能批什么、能审什么；智能体成员有 Leader 或 Worker
-      角色、拥有者、所在设备和智能体配置。一个协作群有且只有一个 Leader 角色的智能体成员，群里所有任务都由它负责。
+      群里的参与者统称成员。人类成员有群角色，决定能批什么、能审什么；智能体成员有座位（Leader 或
+      Worker）、拥有者、所在设备和智能体配置。座位是群给的，不是智能体天生的：同一个智能体在这个群里可以是
+      Leader，在另一个群里是 Worker；一个群里的几个 MerakCode 也可以各坐各的座位。一个协作群有且只有一个 Leader
+      座位的智能体成员，群里所有任务都由它负责；外部产品的智能体要支持 MCP 和中途消息才能坐 Leader
+      座位，这在入座时检查，保存智能体时不检查。
     </p>
     <p class="file">engine/group/member.go</p>
     <pre><code>// Package group holds groups, their members and their settings. Humans and agents are both members.
@@ -3542,7 +3547,7 @@ type Member struct {
 
     <h3 id="member-profile">5.2 智能体配置</h3>
     <p>
-      内置 Leader 和 Worker
+      内置的 MerakCode
       有默认配置，不配模型时用设置里的默认模型；用户可以复制一份改名字和模型。外部产品必须有一份配置，最重要的字段是一句话的角色说明和几行职责说明，Leader
       派工时靠它们判断谁适合做什么。用户在“新建智能体”里建它们，本机探测到的产品可以一键添加。
     </p>
@@ -3554,12 +3559,11 @@ package agent
 type Agent struct {
 	ID       event.ID        `json:"id"`
 	Name     string          `json:"name"`
-	Role     group.AgentRole `json:"role"`     // leader or worker
 	Summary  string          `json:"summary"`  // one line the Leader uses to decide who does what
 	Duties   string          `json:"duties"`   // a few lines: what it is good at, what it should not be given
 	System   string          `json:"system"`   // extra system prompt written by the user, any language
 	Model    ModelRef        `json:"model"`    // provider, model, thinking level; builtin only; empty uses the default model
-	ToolPool string          `json:"toolPool"` // worker.default, worker.readonly, leader.default or a user pool; builtin only
+	ToolPool string          `json:"toolPool"` // worker.default or worker.readonly; the tools of a Leader seat come from the seat; builtin only
 	Mode     permission.Mode `json:"mode"`     // ask, auto, takeover
 	Budget   Budget          `json:"budget"`
 	Memory   []memory.Scope  `json:"memory"`   // scopes to recall and write
@@ -5818,9 +5822,9 @@ type Trust struct {
           协作群的生命周期。<code>create</code> 带 <code>kind: local | cloud</code>、工作空间、恰好一个 Leader，可带
           <code>task</code>（这时工作空间取任务的，建完任务归入本群；云端群暂不接任务）；<code>bind</code>
           把没有协作群的任务交给本群（7.1 节的工作空间规则）；<code>update</code>
-          <code>update {leader}</code> 一步把名册里的 Leader 换成另一个 Leader 角色的智能体，换 Leader
-          或工作空间时整群交接；<code>say</code> 是人在群里发言，可 @ 成员。云端群的每个请求由本机引擎经设备链接
-          <code>Forward</code> 到云端
+          <code>update {leader}</code> 一步把名册里的 Leader 换成另一个能当 Leader
+          的智能体（任何智能体都可以，外部产品要满足 MCP 和中途消息），换 Leader 或工作空间时整群交接；<code>say</code>
+          是人在群里发言，可 @ 成员。云端群的每个请求由本机引擎经设备链接 <code>Forward</code> 到云端
         </td>
       </tr>
       <tr>

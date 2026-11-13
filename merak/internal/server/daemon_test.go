@@ -46,7 +46,7 @@ func TestATaskKeepsRunningAfterTheClientDisconnects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID, lead.Model.Provider, work.ID, work.Model.Provider = "lead", "leader", "work", "worker"
 	for _, a := range []agent.Agent{lead, work} {
 		if err := client.Call(ctx, "agent.save", protocol.AgentSaveParams{Agent: a}, nil); err != nil {

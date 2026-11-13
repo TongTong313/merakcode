@@ -143,17 +143,6 @@
         "en": "Review the sentinel reason and related events, then resume, reassign or cancel the task."
       }
     },
-    "MEMBER_ROLE_MISMATCH": {
-      "code": "MRK-6003",
-      "domain": "task",
-      "status": 400,
-      "retryable": false,
-      "title": { "zh": "成员角色和智能体不符", "en": "Member role does not match the agent" },
-      "hint": {
-        "zh": "Leader 成员要选 Leader 智能体，Worker 成员要选 Worker 智能体。",
-        "en": "A Leader member needs a Leader agent, and a Worker member needs a Worker agent."
-      }
-    },
     "PROFILE_IN_USE": {
       "code": "MRK-6004",
       "domain": "task",
@@ -233,10 +222,10 @@
       "domain": "task",
       "status": 400,
       "retryable": false,
-      "title": { "zh": "Leader 必须是 Leader 智能体", "en": "The Leader must be a Leader agent" },
+      "title": { "zh": "Leader 必须是群里的 Leader 成员", "en": "The Leader must be the group's Leader member" },
       "hint": {
-        "zh": "Worker 智能体不能当 Leader，请选一个 Leader 角色的智能体。",
-        "en": "A Worker agent cannot lead. Pick an agent with the Leader role."
+        "zh": "身份是 Worker 的成员不能当 Leader。要换 Leader，请在群里选一个智能体，由它接任。",
+        "en": "A member with the Worker seat cannot lead. To change the Leader, pick an agent and let it take over."
       }
     },
     "WORKSPACE_INVALID": {

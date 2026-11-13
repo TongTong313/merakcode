@@ -13,7 +13,6 @@ async function addProduct(kit: Kit) {
       agent: {
         id: "",
         name: "Direct CLI",
-        role: "worker",
         summary: "",
         duties: "",
         toolPool: "worker.default",

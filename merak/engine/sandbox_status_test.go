@@ -18,7 +18,7 @@ func TestIdleGroupMemberSandboxUsesItsEffectiveProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	lead, work := agent.DefaultLeader(), agent.DefaultWorker()
+	lead, work := agent.DefaultMerakCode(), agent.DefaultMerakCode()
 	lead.ID = "leader-profile"
 	work.ID = "private-profile"
 	work.Mode = permission.ModeTakeover
