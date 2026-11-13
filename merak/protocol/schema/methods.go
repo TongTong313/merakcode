@@ -90,8 +90,6 @@ func Methods() []Method {
 		{"group.removeMember", reflect.TypeFor[protocol.GroupRemoveMemberParams](), reflect.TypeFor[struct{}]()},
 		{"group.renameMember", reflect.TypeFor[protocol.GroupRenameMemberParams](), reflect.TypeFor[group.Member]()},
 		{"group.state", reflect.TypeFor[protocol.GroupIDParams](), reflect.TypeFor[leader.View]()},
-		{"group.pause", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},
-		{"group.resume", reflect.TypeFor[protocol.GroupControlParams](), reflect.TypeFor[struct{}]()},
 		{"doc.list", reflect.TypeFor[protocol.GroupIDParams](), reflect.TypeFor[[]group.DocumentInfo]()},
 		{"doc.read", reflect.TypeFor[protocol.DocReadParams](), reflect.TypeFor[group.Document]()},
 		{"doc.write", reflect.TypeFor[protocol.DocWriteParams](), reflect.TypeFor[group.Document]()},

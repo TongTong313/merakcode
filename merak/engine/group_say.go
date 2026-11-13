@@ -44,6 +44,13 @@ func (e *Engine) SayGroup(ctx context.Context, groupID, taskID, human event.ID, 
 			return "", err
 		}
 	}
+	// A Leader that kept failing halted its group (MRK-4004); people have no control for it, so what they write wakes it.
+	if len(state.PausedThreads) > 0 {
+		wake, _ := json.Marshal(group.Control{})
+		if _, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + groupID), Scope: event.Scope{Group: groupID}, Actor: event.Actor{Kind: event.ActorHuman, ID: human}, Type: group.Resumed, Payload: wake}); err != nil {
+			return "", err
+		}
+	}
 	body, _ := json.Marshal(message)
 	fact, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + groupID), Scope: event.Scope{Group: groupID, Task: taskID}, Actor: event.Actor{Kind: event.ActorHuman, ID: human}, Type: group.HumanSaid, Payload: body})
 	if err != nil {

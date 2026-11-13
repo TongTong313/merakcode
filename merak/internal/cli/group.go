@@ -19,7 +19,7 @@ func groupCommand(args []string, input io.Reader, output io.Writer, ui *renderer
 	methods := map[string]string{
 		"group create": "group.create", "group add-member": "group.addMember", "group remove-member": "group.removeMember",
 		"group update": "group.update", "group board": "group.state", "group inbox": "inbox", "group say": "group.say",
-		"group pause": "group.pause", "group resume": "group.resume", "task create": "task.create", "task assign": "task.assign",
+		"task create": "task.create", "task assign": "task.assign",
 		"task review": "task.review", "task update": "task.update", "task cancel": "task.cancel", "task list": "task.list",
 		"task archive": "task.archive", "group bind": "group.bind", "group list": "group.list",
 	}

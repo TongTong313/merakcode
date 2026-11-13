@@ -57,6 +57,10 @@ func (s *retryStream) open() error {
 			return nil
 		}
 		if !s.retryable(err) {
+			// A request that failed because the caller gave up is a cancellation, not a failure of the provider
+			if ctxErr := s.ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return err
 		}
 	}

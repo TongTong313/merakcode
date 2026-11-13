@@ -138,6 +138,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Fixed
 
+- A review opened full screen stays full screen when the conversation is told about again with the same folder; before, it could close by itself.
+- A group whose Leader kept failing stops until someone writes in it, and what a person writes wakes it again. Groups have no pause or resume command for people; to hold work back, ask the Leader to tell the members.
 - A folder inside a repository shares the branch and the unsaved-work protection of that repository: switching branches is blocked while a review comment or an edited file sits in a subfolder, as in v0.3.1.
 - Opening a file no longer takes the selection from the tab you picked while it was still opening.
 - On Windows, a folder opened through a junction and its target are one workspace; a conversation that runs in a worktree or in the real directory behind a linked folder is listed under that folder in the sidebar; a deleted file with a kept draft opens read-only instead of failing.
@@ -340,6 +342,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 修复
 
+- 全屏打开的审阅，在对话被再次通知同一个文件夹时不会自己关闭；以前它可能无故退出全屏。
+- Leader 连续失败的群会停住，有人在群里发言就会重新唤醒它。群不再提供给人用的暂停和恢复命令；要让工作停一停，请让 Leader 通知成员。
 - 仓库里的子文件夹与整个仓库共用分支和未保存内容的保护：子文件夹里有评审评论或改过的文件时，同样不能切换分支，与 v0.3.1 一致。
 - 打开文件时，如果你在它还没打开完的时候点了别的标签，不会再被抢走选中。
 - Windows 上通过目录连接（junction）打开的文件夹与它的目标是同一个工作区；在工作树或在链接文件夹真实目录里运行的对话，列在侧栏对应的文件夹下；已删除但留有草稿的文件改为只读打开，不再报错。

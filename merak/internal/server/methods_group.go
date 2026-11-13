@@ -47,12 +47,6 @@ func (s *Server) groupMethods() map[string]handler {
 		"group.update": run(func(ctx context.Context, c *connection, params protocol.GroupUpdateParams) (any, error) {
 			return s.engine.UpdateGroup(ctx, params.Group, c.human, params.Update)
 		}),
-		"group.pause": run(func(ctx context.Context, c *connection, params protocol.GroupControlParams) (any, error) {
-			return done(s.engine.SetGroupPaused(ctx, params.Group, c.human, params.Thread, true))
-		}),
-		"group.resume": run(func(ctx context.Context, c *connection, params protocol.GroupControlParams) (any, error) {
-			return done(s.engine.SetGroupPaused(ctx, params.Group, c.human, params.Thread, false))
-		}),
 		"group.state": run(func(ctx context.Context, _ *connection, params protocol.GroupIDParams) (any, error) {
 			return s.engine.GroupState(ctx, params.Group)
 		}),

@@ -20,6 +20,9 @@ test("shows actual file tool results and writes only after approval", async ({ k
   await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
   await expect(kit.text("FILES_READY")).toBeVisible()
   expect(await readFile(path.join(kit.project, "out.txt"), "utf8")).toBe("written by e2e\n")
+  // The steps are open while the turn runs and fold when it ends; a click before the end would fold them by hand
+  await expect(kit.page.getByRole("button", { name: "重试", exact: true })).toBeVisible()
+  await expect(kit.page.locator("details.turn-work")).not.toHaveAttribute("open", "")
   await kit.page.getByText("执行过程", { exact: true }).click()
   await kit.page.getByRole("button", { name: /notes.txt/ }).click()
   await expect(kit.text("hello from e2e")).toBeVisible()

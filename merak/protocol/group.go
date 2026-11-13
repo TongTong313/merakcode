@@ -22,11 +22,6 @@ type GroupIDParams struct {
 	Group event.ID `json:"group"`
 }
 
-type GroupControlParams struct {
-	Group  event.ID `json:"group"`
-	Thread event.ID `json:"thread,omitempty"`
-}
-
 type GroupRemoveMemberParams struct {
 	Group  event.ID `json:"group"`
 	Member event.ID `json:"member"`

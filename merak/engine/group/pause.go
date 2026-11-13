@@ -1,14 +1,13 @@
 package group
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"slices"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 )
 
+// Paused halts a group: only a Leader that keeps failing does it (MRK-4004), and what a person writes in the group
+// resumes it. There is no control for people.
 const Paused event.Type = "group.paused"
 const Resumed event.Type = "group.resumed"
 
@@ -43,30 +42,4 @@ func FoldPauses(paused []event.ID, fact event.Event) ([]event.ID, error) {
 		return nil, nil
 	}
 	return slices.DeleteFunc(paused, func(id event.ID) bool { return id == thread }), nil
-}
-
-func (m *Manager) SetPaused(ctx context.Context, id, human, thread event.ID, paused bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	state, err := m.get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if !slices.ContainsFunc(state.Members, func(member Member) bool { return member.ID == human && member.Can(RoleAdmin) }) {
-		return errors.New("group control requires an admin or owner")
-	}
-	if thread == "" {
-		thread = id
-	}
-	kind := Resumed
-	if paused {
-		kind = Paused
-	}
-	scope := event.Scope{Group: id}
-	if thread != id {
-		scope.Task = thread
-	}
-	body, _ := json.Marshal(Control{Thread: thread})
-	_, err = m.bus.Publish(ctx, event.Event{Stream: event.Stream("group:" + id), Scope: scope, Actor: event.Actor{Kind: event.ActorHuman, ID: human}, Type: kind, Payload: body})
-	return err
 }

@@ -95,6 +95,98 @@ test.describe("worker progress", () => {
   })
 })
 
+test.describe("a reply that is still being written", () => {
+  let finish = () => {}
+  test.use({
+    git: true,
+    script: {
+      reply: async ({ prompt }) => {
+        if (!prompt.includes("慢慢回答")) return { tool: "say", args: { text: "好的。" } }
+        const held = new Promise<void>((resolve) => (finish = resolve))
+        return { tool: "say", args: { text: "先说前半句，再说后半句。" }, hold: held, splitBefore: "再说后半句" }
+      },
+    },
+  })
+
+  test("the Leader's reply appears while it streams in, and the stop button ends it", async ({ kit }) => {
+    await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await dialog.getByRole("textbox", { name: "群名称" }).fill("流式协作")
+    await dialog.getByRole("button", { name: "创建", exact: true }).click()
+    const log = kit.page.getByRole("log", { name: "群聊" })
+    await expect(log).toBeVisible()
+    try {
+      await kit.send("慢慢回答")
+      const streaming = log.locator('[data-group-message="streaming"]')
+      await expect(streaming).toContainText("先说前半句")
+      await expect(streaming).not.toContainText("再说后半句")
+      await kit.page.getByRole("button", { name: "停止", exact: true }).click()
+      await expect(log.locator('[data-group-message="streaming"]')).toHaveCount(0)
+      await expect(log).not.toContainText("再说后半句")
+    } finally {
+      finish()
+    }
+  })
+
+  test("the reply is whole once the rest of it has arrived", async ({ kit }) => {
+    await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await dialog.getByRole("textbox", { name: "群名称" }).fill("完整协作")
+    await dialog.getByRole("button", { name: "创建", exact: true }).click()
+    const log = kit.page.getByRole("log", { name: "群聊" })
+    await expect(log).toBeVisible()
+    try {
+      await kit.send("慢慢回答")
+      await expect(log.locator('[data-group-message="streaming"]')).toContainText("先说前半句")
+      finish()
+      await expect(log.getByText("先说前半句，再说后半句。", { exact: true })).toHaveCount(1)
+      await expect(log.locator('[data-group-message="streaming"]')).toHaveCount(0)
+    } finally {
+      finish()
+    }
+  })
+})
+
+test.describe("a message to a Worker that is working", () => {
+  const gate = Promise.withResolvers<void>()
+  const released = gate.promise
+  const releaseWorker = () => gate.resolve()
+  test.use({
+    git: true,
+    script: {
+      reply: async ({ tools, toolResults, closed }) => {
+        if (!tools.includes("submit_report")) return { tool: "say", args: { text: "已转达。" } }
+        // Every model request of this Worker waits here until the spec lets go, so a second message cannot slip past it
+        await Promise.race([released, closed])
+        if (toolResults.length === 0) return { tool: "report_progress", args: { summary: "正在检查。" } }
+        return { tool: "submit_report", args: { verdict: "done", summary: "检查完成。" } }
+      },
+    },
+  })
+
+  test("is marked as delivered to that Worker while the Worker keeps its status", async ({ kit }) => {
+    await kit.page.getByRole("button", { name: "新建协作群", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog")
+    await dialog.getByRole("textbox", { name: "群名称" }).fill("送达协作")
+    await dialog.getByRole("checkbox", { name: "选择 MerakCode", exact: true }).check()
+    await dialog.getByRole("button", { name: "创建", exact: true }).click()
+    const log = kit.page.getByRole("log", { name: "群聊" })
+    await expect(log).toBeVisible()
+    const worker = () => kit.page.getByRole("group", { name: "成员 MerakCode2", exact: true })
+    try {
+      await kit.send("@MerakCode2 检查三个验收条件")
+      await expect(worker()).toContainText("忙碌")
+      await kit.send("@MerakCode2 再补充一项检查")
+      await expect(log).toContainText("已送达 MerakCode2")
+      await expect(worker()).toContainText("忙碌")
+      releaseWorker()
+      await expect(worker()).toContainText("空闲")
+    } finally {
+      releaseWorker()
+    }
+  })
+})
+
 test.describe("full duplex", () => {
   let release = () => {}
   test.use({

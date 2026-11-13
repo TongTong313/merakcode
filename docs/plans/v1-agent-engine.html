@@ -4001,7 +4001,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		batch, pending = s.split(pending) // MaxBatch events by priority; the rest wait for the next turn
 		in := s.digest.Render(batch, s.state)
 		if _, err := s.loop.RunTurn(ctx, s.session, in, s); err != nil {
-			s.pause(ctx, err) // publishes group.paused for this thread; a human resumes from the client
+			s.pause(ctx, err) // publishes group.paused for this thread; a person writing in the group wakes it again; people have no pause control
 		}
 	}
 }
@@ -5815,7 +5815,6 @@ type Trust struct {
         <td>
           <code>group.create</code> / <code>group.list</code> / <code>group.update</code> /
           <code>group.addMember</code> / <code>group.removeMember</code> / <code>group.bind</code> /
-          <code>group.pause</code> / <code>group.resume</code> /
           <code>group.say</code>
         </td>
         <td>

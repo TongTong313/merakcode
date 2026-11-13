@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
@@ -10,16 +9,6 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/task"
 )
-
-func (e *Engine) SetGroupPaused(ctx context.Context, id, human, thread event.ID, paused bool) error {
-	if thread != "" && thread != id {
-		card, err := e.Tasks.Get(ctx, thread)
-		if err != nil || card.Group != id || card.Parent != "" {
-			return errors.New("pause thread is outside this group")
-		}
-	}
-	return e.Groups.SetPaused(ctx, id, human, thread, paused)
-}
 
 func (e *Engine) controlGroupClaims(ctx context.Context, run *groupRun, fact event.Event, thread event.ID) {
 	cards, err := e.Tasks.List(ctx, run.group.ID)

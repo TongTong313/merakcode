@@ -18,8 +18,8 @@ The `dev-v1.0.0` branch rebuilds the whole architecture. The user designs the ar
   `docs/plans/v1-acceptance-review.html`). The plugin module (v0.3 JavaScript plugins, slice R15) is not built in
   v1.0.0 either: the user decided on 2026-11-12 that plugins get their own design later; the `plugin` and
   `plugin_options` keys are only kept in the file and reported as unused.
-- Never move, skip or weaken a failing test to get CI green. Fix it, or list it in
-  `apps/desktop/main/e2e/PENDING.md` with the slice that fixes it.
+- Never move, skip or weaken a failing test to get CI green. Fix it. The `e2e-desktop` job runs every spec in
+  `apps/desktop/main/e2e`.
 - `docs/plans/v1-acceptance-review.html` sections 9 and 10 are the current work order. Where it differs from
   `docs/plans/v1-agent-engine.html`, follow the work order.
 

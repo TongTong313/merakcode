@@ -1466,10 +1466,6 @@ export type ProtocolGroupBindParams = { group: string; task: string }
 export const ProtocolGroupBindParamsSchema: z.ZodType<ProtocolGroupBindParams> = z.lazy(() =>
   z.strictObject({ group: z.string(), task: z.string() }),
 )
-export type ProtocolGroupControlParams = { group: string; thread?: string }
-export const ProtocolGroupControlParamsSchema: z.ZodType<ProtocolGroupControlParams> = z.lazy(() =>
-  z.strictObject({ group: z.string(), thread: z.string().optional() }),
-)
 export type ProtocolGroupCreateParams = {
   archived?: boolean
   brief?: GroupBrief
@@ -4782,10 +4778,8 @@ export type Methods = {
   "group.bind": { params: ProtocolGroupBindParams; result: TaskCard }
   "group.create": { params: ProtocolGroupCreateParams; result: GroupGroup }
   "group.list": { params: {}; result: GroupListing[] | null }
-  "group.pause": { params: ProtocolGroupControlParams; result: {} }
   "group.removeMember": { params: ProtocolGroupRemoveMemberParams; result: {} }
   "group.renameMember": { params: ProtocolGroupRenameMemberParams; result: GroupMember }
-  "group.resume": { params: ProtocolGroupControlParams; result: {} }
   "group.say": { params: ProtocolGroupSayParams; result: string }
   "group.state": { params: ProtocolGroupIDParams; result: LeaderView }
   "group.update": { params: ProtocolGroupUpdateParams; result: GroupGroup }
@@ -4910,10 +4904,8 @@ export const methodSchemas = {
   "group.bind": { params: ProtocolGroupBindParamsSchema, result: TaskCardSchema },
   "group.create": { params: ProtocolGroupCreateParamsSchema, result: GroupGroupSchema },
   "group.list": { params: z.strictObject({}), result: z.union([z.array(GroupListingSchema), z.null()]) },
-  "group.pause": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
   "group.removeMember": { params: ProtocolGroupRemoveMemberParamsSchema, result: z.strictObject({}) },
   "group.renameMember": { params: ProtocolGroupRenameMemberParamsSchema, result: GroupMemberSchema },
-  "group.resume": { params: ProtocolGroupControlParamsSchema, result: z.strictObject({}) },
   "group.say": { params: ProtocolGroupSayParamsSchema, result: z.string() },
   "group.state": { params: ProtocolGroupIDParamsSchema, result: LeaderViewSchema },
   "group.update": { params: ProtocolGroupUpdateParamsSchema, result: GroupGroupSchema },

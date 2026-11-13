@@ -19,7 +19,7 @@ import (
 // ForwardCloud leaves cloud-owned commands and history interpretation to the host.
 func (e *Engine) ForwardCloud(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, bool, error) {
 	switch method {
-	case "group.create", "group.say", "group.update", "group.pause", "group.resume", "group.addMember", "group.removeMember", "group.state", "task.create", "task.assign", "task.update", "task.cancel", "task.review", "group.bind", "member.register", "member.remove", "doc.list", "doc.read", "doc.write", "permission.reply", "question.reply", "event.emit", "events.read", "events.find", "events.get", "session.snapshot", "session.send", "session.cancel":
+	case "group.create", "group.say", "group.update", "group.addMember", "group.removeMember", "group.state", "task.create", "task.assign", "task.update", "task.cancel", "task.review", "group.bind", "member.register", "member.remove", "doc.list", "doc.read", "doc.write", "permission.reply", "question.reply", "event.emit", "events.read", "events.find", "events.get", "session.snapshot", "session.send", "session.cancel":
 	default:
 		return nil, false, nil
 	}

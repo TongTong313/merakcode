@@ -1,6 +1,6 @@
 import PanelRight from "lucide-solid/icons/panel-right"
 import SquareTerminal from "lucide-solid/icons/square-terminal"
-import { createEffect, createSignal, on, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, on, Show, type JSX } from "solid-js"
 import { t } from "../../i18n"
 import { mac } from "../../lib/bridge"
 import { setUi, togglePanel, ui } from "../../state/ui"
@@ -35,14 +35,14 @@ export function Frame(props: {
       setFailed(fromError(error)),
     )
   }
+  // A memo only changes when the folder or the conversation does; the page re-reads them whenever the record of the
+  // conversation is announced, and that must not close a maximized review.
+  const place = createMemo(() => JSON.stringify([props.directory, props.sessionID ?? null]))
   createEffect(
-    on(
-      () => [props.directory, props.sessionID] as const,
-      () => {
-        setUi("maximized", false)
-        select()
-      },
-    ),
+    on(place, () => {
+      setUi("maximized", false)
+      select()
+    }),
   )
   createEffect(() => {
     const state = panels()

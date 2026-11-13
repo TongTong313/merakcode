@@ -39,7 +39,6 @@ func TestGroupAndTaskCommandsUseTheRunningEngine(t *testing.T) {
 		t.Fatalf("group=%+v %v", g, err)
 	}
 	for _, args := range [][]string{
-		{"group", "pause", "--group", string(g.ID)},
 		{"task", "create", "--group", string(g.ID), "--title", "CLI task", "--workspace", "none"},
 		{"group", "board", "--group", string(g.ID)},
 		{"agent", "catalog"},

@@ -2,6 +2,7 @@ package task_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/engine/group"
@@ -110,17 +111,22 @@ func TestPausedGroupKeepsClaimsQueued(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := groups.SetPaused(ctx, g.ID, "owner", "", true); err != nil {
-		t.Fatal(err)
-	}
+	halt(t, bus, g.ID, group.Paused)
 	if _, err := pool.Next(ctx, "worker"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("paused next: %v", err)
 	}
-	if err := groups.SetPaused(ctx, g.ID, "owner", "", false); err != nil {
-		t.Fatal(err)
-	}
+	halt(t, bus, g.ID, group.Resumed)
 	next, err := pool.Next(ctx, "worker")
 	if err != nil || next.ID != claim.ID {
 		t.Fatalf("resumed next: %+v %v", next, err)
+	}
+}
+
+// halt publishes what a Leader that keeps failing publishes: the whole group stops, or starts again.
+func halt(t *testing.T, bus *event.Bus, id event.ID, kind event.Type) {
+	t.Helper()
+	body, _ := json.Marshal(group.Control{Thread: id})
+	if _, err := bus.Publish(context.Background(), event.Event{Stream: event.Stream("group:" + id), Scope: event.Scope{Group: id}, Actor: event.Actor{Kind: event.ActorAgent, ID: "leader"}, Type: kind, Payload: body}); err != nil {
+		t.Fatal(err)
 	}
 }

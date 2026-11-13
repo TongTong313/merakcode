@@ -3976,19 +3976,6 @@
       "required": ["group", "task"],
       "type": "object"
     },
-    "ProtocolGroupControlParams": {
-      "additionalProperties": false,
-      "properties": {
-        "group": {
-          "type": "string"
-        },
-        "thread": {
-          "type": "string"
-        }
-      },
-      "required": ["group"],
-      "type": "object"
-    },
     "ProtocolGroupCreateParams": {
       "additionalProperties": false,
       "properties": {
@@ -8316,16 +8303,6 @@
         ]
       }
     },
-    "group.pause": {
-      "params": {
-        "$ref": "#/$defs/ProtocolGroupControlParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      }
-    },
     "group.removeMember": {
       "params": {
         "$ref": "#/$defs/ProtocolGroupRemoveMemberParams"
@@ -8342,16 +8319,6 @@
       },
       "result": {
         "$ref": "#/$defs/GroupMember"
-      }
-    },
-    "group.resume": {
-      "params": {
-        "$ref": "#/$defs/ProtocolGroupControlParams"
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
       }
     },
     "group.say": {

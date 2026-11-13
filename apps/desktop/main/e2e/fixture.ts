@@ -53,8 +53,13 @@ export async function stopEngine(root: string) {
   if (alive(info.pid)) process.kill(info.pid)
 }
 
-/** One fake model reply: text, or a tool call (the model is asked again once the tool result is back) */
-type Reply = { text: string } | { tool: string; args: Record<string, unknown> }
+/**
+ * One fake model reply: text, or a tool call (the model is asked again once the tool result is back). A tool call with
+ * hold arrives in two parts: the arguments up to splitBefore at once, the rest when hold settles, so a spec can look at
+ * a reply that is still streaming in.
+ */
+type Reply =
+  { text: string } | { tool: string; args: Record<string, unknown>; hold?: Promise<void>; splitBefore?: string }
 
 /**
  * Fake model: picks a reply from the latest user message, the tool results so far in this turn, the system prompt and
@@ -125,6 +130,46 @@ const text = (content: unknown) =>
     : Array.isArray(content)
       ? withoutDate(content.map((part: { text?: string }) => part.text ?? "").join(""))
       : ""
+
+const sse = (chunk: unknown) => `data: ${JSON.stringify(chunk)}\n\n`
+const finishChunk = (reason: string) =>
+  sse({
+    id: "e2e",
+    object: "chat.completion.chunk",
+    choices: [{ index: 0, delta: {}, finish_reason: reason }],
+    // Fixed usage; the context usage shown in the UI is computed from it
+    usage: { prompt_tokens: 13_000, completion_tokens: 100, total_tokens: 13_100 },
+  })
+
+/** The two parts of a tool call whose arguments arrive in pieces */
+function splitStream(reply: { tool: string; args: Record<string, unknown>; splitBefore?: string }) {
+  const json = JSON.stringify(reply.args)
+  const at = reply.splitBefore ? json.indexOf(reply.splitBefore) : Math.floor(json.length / 2)
+  const piece = (text: string, first: boolean) =>
+    sse({
+      id: "e2e",
+      object: "chat.completion.chunk",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            ...(first ? { role: "assistant" } : {}),
+            tool_calls: [
+              {
+                index: 0,
+                ...(first ? { id: `call_${Math.random().toString(36).slice(2)}`, type: "function" } : {}),
+                function: { ...(first ? { name: reply.tool } : {}), arguments: text },
+              },
+            ],
+          },
+        },
+      ],
+    })
+  return {
+    head: piece(json.slice(0, at), true),
+    tail: piece(json.slice(at), false) + finishChunk("tool_calls") + "data: [DONE]\n\n",
+  }
+}
 
 /** OpenAI-compatible streaming reply */
 function stream(reply: Reply) {
@@ -197,6 +242,13 @@ async function model(script: Script) {
           })
         : { text: "E2E" }
     response.writeHead(200, { "content-type": "text/event-stream" })
+    if ("tool" in reply && reply.hold) {
+      const parts = splitStream(reply)
+      response.write(parts.head)
+      await Promise.race([reply.hold, closed.promise])
+      response.end(parts.tail)
+      return
+    }
     response.end(stream(reply))
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))

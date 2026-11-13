@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js"
+import { createSignal, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, beforeEach, expect, test } from "vitest"
 import { setLocale, t } from "../../i18n"
@@ -76,4 +76,42 @@ test("maximizing the review of an existing conversation fills the window with th
   host.querySelector<HTMLButtonElement>(`button[aria-label="${t("panel.maximize")}"]`)!.click()
   expect(host.querySelector("main.review-full")).toBeTruthy()
   expect(host.querySelector("h1")).toBeNull()
+})
+
+test("a maximized review stays maximized when the conversation is told about again with the same folder and id", async () => {
+  setUi({ panel: true, maximized: false })
+  const directory = "d:/work"
+  const state = await selectPanels({ directory, sessionID: "s2" })
+  state.open({ kind: "review" })
+  // The page reads the folder from the conversation's record, which is announced again whenever the record changes
+  const [info, setInfo] = createSignal({ directory }, { equals: false })
+  const host = mount(() => (
+    <Frame sessionID="s2" title="对话" directory={info().directory} folder={directory}>
+      <h1>对话内容</h1>
+    </Frame>
+  ))
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${t("panel.maximize")}"]`)!.click()
+  expect(host.querySelector("main.review-full")).toBeTruthy()
+  setInfo({ directory })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(host.querySelector("main.review-full")).toBeTruthy()
+})
+
+test("a maximized review closes when the conversation moves to another folder", async () => {
+  setUi({ panel: true, maximized: false })
+  const first = "d:/work"
+  const second = "d:/other"
+  const state = await selectPanels({ directory: first, sessionID: "s3" })
+  state.open({ kind: "review" })
+  const [directory, setDirectory] = createSignal(first)
+  const host = mount(() => (
+    <Frame sessionID="s3" title="对话" directory={directory()} folder={first}>
+      <h1>对话内容</h1>
+    </Frame>
+  ))
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${t("panel.maximize")}"]`)!.click()
+  expect(host.querySelector("main.review-full")).toBeTruthy()
+  setDirectory(second)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(host.querySelector("main.review-full")).toBeNull()
 })
