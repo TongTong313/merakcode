@@ -85,7 +85,7 @@
   color: var(--warning-text);
   border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
   font-size: var(--text-sm);
-  z-index: 60;
+  z-index: var(--z-top);
 }
 .empty-state {
   display: grid;
@@ -1198,7 +1198,7 @@
 .settings-layer {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: var(--z-page);
   background: var(--bg);
 }
 .settings-nav {
@@ -1214,9 +1214,9 @@
 .settings-nav .back {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: var(--bar-height);
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -1225,7 +1225,7 @@
 .settings-body {
   flex: 1;
   min-height: 0;
-  padding: 24px 40px 48px;
+  padding: var(--space-6) var(--space-8) 48px;
 }
 .settings-inner {
   max-width: 760px;
@@ -1233,23 +1233,23 @@
   overflow-wrap: anywhere;
 }
 .settings-inner h1 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   font-size: var(--text-xl);
   font-weight: 600;
 }
 .settings-inner .lead {
-  margin: 0 0 20px;
+  margin: 0 0 var(--space-5);
   color: var(--text-muted);
 }
 .settings-inner .card {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 .section-title {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
   font-size: var(--text-md);
   font-weight: 600;
 }
@@ -1262,7 +1262,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 10px 14px;
 }
 .setting-row + .setting-row {
@@ -1279,12 +1279,12 @@
   font-size: var(--text-sm);
 }
 .key-row {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .rule-form {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
 }
@@ -1335,7 +1335,7 @@
 }
 .relay-kind {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
 }
 .relay-kind .desc,
@@ -1344,18 +1344,18 @@
 }
 .relay-models {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .relay-model {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 6.5rem 6.5rem;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 .relay-head {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-raised);
   background: var(--surface);
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -1366,7 +1366,7 @@
 }
 .rule-editor {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .memory-body {
   margin: 0;
@@ -1456,7 +1456,7 @@
 /* Native terminal viewport and editor resize handle */
 .panel-resize {
   position: absolute;
-  z-index: 5;
+  z-index: var(--z-handle);
 }
 .terminal-host {
   flex: 1;
@@ -1483,14 +1483,14 @@
 .group-tabs {
   display: flex;
   flex: none;
-  gap: 8px;
-  padding: 8px 20px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
 }
 .member-settings {
-  margin-bottom: 12px;
-  padding: 10px 12px;
+  margin-bottom: var(--space-3);
+  padding: 10px var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -1506,8 +1506,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: 8px;
-  padding: 8px 12px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   overflow-wrap: anywhere;
 }
 .member-seat p {
@@ -1516,7 +1516,7 @@
 .group-discussion {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text-muted);
 }
 .group-discussion select {
@@ -1525,8 +1525,8 @@
 }
 .group-message {
   max-width: var(--content-width);
-  margin: 0 auto 16px;
-  padding: 12px 16px;
+  margin: 0 auto var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--surface-muted);
   overflow-wrap: anywhere;
@@ -1540,14 +1540,14 @@
 .profile-card {
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 .profile-card .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .profile-card .button,
 .member-seat .button,
@@ -1562,26 +1562,26 @@
   overflow-wrap: anywhere;
 }
 .profile-card h3 {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   font-size: var(--text-md);
 }
 .profile-card p {
-  margin: 8px 0 12px;
+  margin: var(--space-2) 0 var(--space-3);
 }
 .remote-member {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding-top: 12px;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 .review-artifact {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -1596,7 +1596,7 @@
   overflow-wrap: anywhere;
 }
 .remote-member p {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 .sandbox-status {
   width: fit-content;
@@ -1610,11 +1610,11 @@
   font-size: var(--text-sm);
 }
 .sandbox-details h2 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: var(--text-sm);
 }
 .sandbox-details p {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
 }
 
 /* Group chat: the user on the right, the leader and members on the left */
@@ -1651,7 +1651,7 @@
   min-width: 0;
   max-width: 82%;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .bubble-who {
   display: flex;
@@ -1665,7 +1665,7 @@
 }
 .bubble {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   padding: 9px 13px;
   border-radius: var(--radius-lg);
@@ -1681,7 +1681,7 @@
 }
 .bubble-steps-list {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .bubble-steps-list > .button {
   justify-self: start;
@@ -1696,7 +1696,7 @@
   gap: 2px;
   max-height: 240px;
   margin: 0;
-  padding: 0 0 0 20px;
+  padding: 0 0 0 var(--space-5);
   overflow-y: auto;
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
@@ -1715,7 +1715,7 @@
   display: grid;
   justify-items: center;
   gap: 6px;
-  padding: 72px 0 24px;
+  padding: 72px 0 var(--space-6);
   text-align: center;
   overflow-wrap: anywhere;
 }
@@ -1730,8 +1730,8 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 .group-intro .avatar {
   width: 56px;
@@ -1763,7 +1763,7 @@
   align-items: center;
   gap: 6px;
   height: 40px;
-  padding: 0 8px 0 14px;
+  padding: 0 var(--space-2) 0 14px;
 }
 .members.collapsed .members-head {
   justify-content: center;
@@ -1776,13 +1776,13 @@
 .members-body {
   flex: 1;
   min-height: 0;
-  padding: 0 8px 12px;
+  padding: 0 var(--space-2) var(--space-3);
 }
 .members-strip {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding: 4px 0 12px;
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-3);
 }
 .members-face {
   position: relative;
@@ -1810,7 +1810,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 7px var(--space-2);
   border: 0;
   border-radius: var(--radius-md);
   background: none;
@@ -1854,8 +1854,8 @@
 .member-add {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--space-2);
+  padding: var(--space-2);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-md);
   background: none;
@@ -1897,11 +1897,11 @@
 .member-form {
   display: grid;
   gap: 10px;
-  padding: 4px 10px 10px;
+  padding: var(--space-1) 10px 10px;
 }
 .member-field {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .member-label {
   font-size: var(--text-sm);
@@ -1910,7 +1910,7 @@
 .member-duty {
   min-height: 96px;
   height: auto;
-  padding: 6px 8px;
+  padding: 6px var(--space-2);
   resize: vertical;
   line-height: var(--leading);
 }
@@ -1925,7 +1925,7 @@
   gap: 6px;
 }
 .group-create .member-list {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 .bubble-waiting {
   color: var(--accent-text);
@@ -1958,7 +1958,7 @@
 }
 
 .plan-card {
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -1966,34 +1966,34 @@
 .task-board {
   flex: 1;
   min-height: 0;
-  padding: 20px;
+  padding: var(--space-5);
 }
 .task-review {
   flex: 1;
   min-height: 0;
-  padding: 20px;
+  padding: var(--space-5);
   overflow-wrap: anywhere;
 }
 .task-review > section,
 .task-review > label {
   display: block;
-  margin: 16px 0;
+  margin: var(--space-4) 0;
 }
 .task-review > label textarea {
   display: block;
   width: 100%;
   min-height: 90px;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .task-review > button {
-  margin: 4px 8px 4px 0;
+  margin: var(--space-1) var(--space-2) var(--space-1) 0;
 }
 .task-review-diff {
   display: grid;
   grid-template-columns: minmax(140px, 22%) minmax(0, 1fr);
   min-height: 180px;
   max-height: 65vh;
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: auto;
@@ -2009,23 +2009,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin: 16px 0;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
 }
 .task-goals h2 {
-  margin: 0 8px 0 0;
+  margin: 0 var(--space-2) 0 0;
   font-size: 14px;
 }
 .task-columns {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(220px, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 300px;
-  padding: 16px 0;
+  padding: var(--space-4) 0;
 }
 .task-column {
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-muted);
@@ -2034,15 +2034,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   font-size: 13px;
 }
 .task-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -2054,7 +2054,7 @@
 .task-create,
 .task-assign {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .task-create label,
 .task-assign label {
@@ -2083,9 +2083,9 @@
   border-bottom: 1px solid var(--border);
 }
 .claim-process {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   border-top: 1px solid var(--border);
-  padding-top: 12px;
+  padding-top: var(--space-3);
 }
 .claim-process > summary {
   cursor: pointer;
@@ -2100,8 +2100,8 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  gap: 24px;
-  padding: 20px;
+  gap: var(--space-6);
+  padding: var(--space-5);
 }
 .group-inbox h2 {
   font-size: 16px;
@@ -2109,9 +2109,9 @@
 .inbox-notice {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -2140,7 +2140,7 @@
 .home {
   flex: 1;
   min-height: 0;
-  padding: 24px 40px 48px;
+  padding: var(--space-6) var(--space-8) 48px;
 }
 .home-inner {
   display: grid;
@@ -2148,7 +2148,7 @@
   max-width: 1100px;
 }
 .home-section h2 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: var(--text-md);
   font-weight: 600;
 }
@@ -2157,7 +2157,7 @@
 }
 .home-inbox {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 760px;
 }
 .home-inbox .inbox-notice {
@@ -2165,6 +2165,35 @@
 }
 .home-inbox .inbox-notice[data-read="true"] {
   opacity: 0.65;
+}
+.import-bar {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 760px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.import-bar .progress {
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-active);
+}
+.import-bar .progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+.import-summary summary {
+  cursor: pointer;
+}
+.import-summary ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
 }
 .home-recent {
   display: grid;
@@ -2174,9 +2203,9 @@
 .home-recent-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
-  padding: 6px 8px;
+  padding: 6px var(--space-2);
   border-radius: var(--radius);
   color: var(--text);
   text-decoration: none;
@@ -2190,7 +2219,7 @@
 }
 .home-quick .row {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Toasts that lead somewhere */
@@ -2204,8 +2233,8 @@
 /* Agents */
 .agent-list {
   display: grid;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
 }
 .agent-card .setting-row {
   align-items: center;
@@ -2223,16 +2252,16 @@
 }
 .add-member {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .add-member .agent-card {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 /* Tasks */
 .task-card-wrap {
   position: relative;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .task-card-wrap .task-card {
   margin-bottom: 0;
@@ -2253,14 +2282,14 @@
 }
 .archive-list {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 760px;
 }
 .archive-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
 }
 .archive-row .task-card {
   flex: 1;
@@ -2272,7 +2301,7 @@
 }
 .task-page {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: 760px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2282,18 +2311,18 @@
   font-size: var(--text-xl);
 }
 .task-page h2 {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--text-md);
 }
 .task-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .task-facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 16px;
+  gap: var(--space-1) var(--space-4);
   margin: 0;
 }
 .task-facts dt {
@@ -2305,8 +2334,8 @@
 }
 .task-start {
   display: grid;
-  gap: 8px;
-  padding: 12px 16px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border: 1px dashed var(--border-strong);
 }
 .task-start p {
@@ -2314,28 +2343,28 @@
 }
 .task-claim {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 .choose-group {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .choose-row {
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
 }
 .choose-row.busy {
   opacity: 0.6;
 }
 .choose-row p {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 /* Group chat and the right column */
 .breakdown .group-todo-card {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .group-reply {
   max-width: var(--content-width);
@@ -2344,8 +2373,8 @@
 .group-author {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 .group-work {
   max-width: var(--content-width);
@@ -2354,10 +2383,10 @@
 .group-task-card {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: min(var(--content-width), 100%);
   margin: 0 auto;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -2371,7 +2400,7 @@
 .group-progress {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: min(var(--content-width), 100%);
   margin: 0 auto;
   min-width: 0;
@@ -2384,7 +2413,7 @@
   margin-left: 6px;
 }
 .members-subtitle {
-  margin: 12px 0 6px;
+  margin: var(--space-3) 0 6px;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
@@ -2395,9 +2424,9 @@
 }
 .breakdown-row {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
-  padding: 6px 8px 6px calc(8px + var(--depth, 0) * 14px);
+  padding: 6px var(--space-2) 6px calc(var(--space-2) + var(--depth, 0) * 14px);
   border: 0;
   border-radius: var(--radius);
   background: none;
@@ -2416,7 +2445,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .breakdown-assignee .avatar {
   width: 18px;
@@ -2435,8 +2464,8 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 0;
   background: none;
   color: inherit;
@@ -2452,15 +2481,15 @@
 }
 .group-todo-list {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
-  padding: 0 12px 10px 36px;
+  padding: 0 var(--space-3) 10px 36px;
   list-style: none;
 }
 .group-todo-item {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .group-todo-item::before {
   content: "○";

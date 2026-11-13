@@ -86,6 +86,7 @@ what to do.
 | MRK-4029    | 文件在编辑期间被改过       | The file changed on disk                             | 重新打开文件查看最新内容，或选择覆盖后再保存。<br>Reopen the file to see the latest content, or choose to overwrite and save again.                                                                                                       |
 | MRK-4030    | 审阅内容已经变了           | The review has changed                               | 文件在你查看之后又被改过，刷新审阅列表后再接受或拒绝。<br>The file changed after you looked at it. Refresh the review, then accept or reject again.                                                                                       |
 | MRK-4031    | 没有可撤销的审阅操作       | Nothing to undo                                      | 上一次接受或拒绝之后文件又变了，或者还没有审阅过。<br>The files changed after the last accept or reject, or nothing was reviewed yet.                                                                                                     |
+| MRK-4032    | 这个智能体已关闭           | This agent is turned off                             | 在智能体页打开它的开关后，才能与它对话或让它加入协作群。<br>Turn it on in the Agents page to talk to it or give it a seat in a group.                                                                                                     |
 
 ## 5xxx 工具、权限与沙箱 · Tools, permissions and sandbox
 

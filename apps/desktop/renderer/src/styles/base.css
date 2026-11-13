@@ -561,7 +561,7 @@ kbd {
   width: 14px;
   height: 14px;
   border-radius: var(--radius-full);
-  background: #ffffff;
+  background: var(--text-inverse);
   box-shadow: var(--shadow-sm);
   transition: left 0.15s;
 }
@@ -613,7 +613,7 @@ kbd {
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   overflow: auto;
-  z-index: 50;
+  z-index: var(--z-popover);
   outline: none;
 }
 /* Kobalte listbox is a ul; Chromium indents it 40px and adds 1em of vertical margin. */
@@ -693,7 +693,7 @@ kbd {
   background: var(--text);
   color: var(--bg);
   font-size: var(--text-sm);
-  z-index: 60;
+  z-index: var(--z-top);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -709,14 +709,14 @@ kbd {
   position: fixed;
   inset: 0;
   background: var(--overlay);
-  z-index: 40;
+  z-index: var(--z-dialog);
 }
 .dialog-positioner {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  z-index: 41;
+  z-index: var(--z-dialog-content);
   padding: 24px;
 }
 .dialog {
@@ -795,7 +795,7 @@ kbd {
   bottom: 16px;
   display: grid;
   gap: 8px;
-  z-index: 70;
+  z-index: var(--z-toast);
   max-width: 420px;
 }
 .toast {

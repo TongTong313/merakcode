@@ -146,6 +146,13 @@ export function foldSession(previous: SessionState | undefined, event: EngineEve
       if (event.payload.title != null) state.title = event.payload.title
       if (event.payload.archived != null) state.archived = event.payload.archived
       if (event.payload.mode) state.config = { ...state.config, mode: event.payload.mode }
+      if (event.payload.provider)
+        state.config = {
+          ...state.config,
+          provider: event.payload.provider,
+          model: event.payload.model ?? "",
+          thinking: event.payload.thinking,
+        }
       break
     case "todo.updated":
       state.todos = structuredClone(event.payload.items ?? [])

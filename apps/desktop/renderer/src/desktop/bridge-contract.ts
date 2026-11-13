@@ -154,6 +154,11 @@ export interface DesktopBridge {
   zoomOut(): Promise<number>
   zoomReset(): Promise<number>
 
+  /** Whether the engine starts when the user logs in (default off); the main process registers the login item */
+  getLoginItem(): Promise<boolean>
+  /** Turns "start at login" on or off; rejects with the engine's MRK code when the system refuses */
+  setLoginItem(enabled: boolean): Promise<boolean>
+
   checkForUpdates(): Promise<void>
   onUpdate(fn: (event: UpdateEvent) => void): () => void
   /** Downloads the update, or opens the download page when this install cannot update itself */

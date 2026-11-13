@@ -10,6 +10,7 @@ import { t } from "../../i18n"
 import { agents, catalog, catalogLoaded, deleteAgent, loadAgents, loadCatalog, saveAgent } from "../../state/agents"
 import { client } from "../../state/client"
 import { Confirm } from "../../ui/dialog"
+import { Switch } from "../../ui/switch"
 import { toast } from "../../ui/toast"
 import { Sidebar } from "../shell/sidebar"
 import { Row } from "../settings/layout"
@@ -47,7 +48,13 @@ function ProductCard(props: { product: WorkerProductInfo; added?: AgentAgent; on
   )
 }
 
-function AgentCard(props: { agent: AgentAgent; onEdit: () => void; onCopy: () => void; onDelete: () => void }) {
+function AgentCard(props: {
+  agent: AgentAgent
+  onEdit: () => void
+  onCopy: () => void
+  onDelete: () => void
+  onEnabled: (enabled: boolean) => void
+}) {
   const [testing, setTesting] = createSignal(false)
   const [verified, setVerified] = createSignal(false)
   const builtin = () => props.agent.id.startsWith("builtin-")
@@ -99,6 +106,14 @@ function AgentCard(props: { agent: AgentAgent; onEdit: () => void; onCopy: () =>
           <span class="subtle" role="status">
             {t("agents.tested")}
           </span>
+        </Show>
+        <Show when={!readonly() && props.agent.product && props.agent.product.kind !== "remote"}>
+          <Switch
+            label={t("agents.enable", { name: props.agent.name })}
+            hideLabel
+            checked={!props.agent.disabled}
+            onChange={props.onEnabled}
+          />
         </Show>
         <Show when={props.agent.product && props.agent.product.kind !== "remote"}>
           <button
@@ -243,6 +258,7 @@ export function AgentsPage() {
                         })
                       }
                       onDelete={() => setRemoving(agent)}
+                      onEnabled={(enabled) => void saveAgent({ ...agent, disabled: !enabled }).catch(failed)}
                     />
                   )}
                 </For>

@@ -1,8 +1,10 @@
 import type { GroupGroup, GroupMember } from "@merakcode/sdk"
-import { createSignal, For } from "solid-js"
+import { createSignal } from "solid-js"
 import { z } from "zod"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
+import { Select } from "../../ui/select"
+import { Switch } from "../../ui/switch"
 import { toast } from "../../ui/toast"
 
 const inputSchema = z.object({
@@ -88,30 +90,17 @@ export function CreateTask(props: { group: GroupGroup; members: GroupMember[]; o
           rows={3}
         />
       </label>
-      <label>
-        {t("task.assignee")}
-        <select
-          class="input"
-          aria-label={t("task.assignee")}
-          value={assignee()}
-          onChange={(event) => setAssignee(event.currentTarget.value)}
-          disabled={busy()}
-        >
-          <For each={props.members.filter((member) => member.kind === "agent")}>
-            {(member) => <option value={member.id}>{member.name}</option>}
-          </For>
-        </select>
-      </label>
-      <label class="row">
-        <input
-          type="checkbox"
-          aria-label={t("task.requireReview")}
-          checked={review()}
-          onChange={(event) => setReview(event.currentTarget.checked)}
-          disabled={busy()}
-        />
-        {t("task.requireReview")}
-      </label>
+      <Select
+        class="chip outlined"
+        label={t("task.assignee")}
+        value={assignee() || undefined}
+        disabled={busy()}
+        options={props.members
+          .filter((member) => member.kind === "agent")
+          .map((member) => ({ value: member.id, label: member.name }))}
+        onChange={setAssignee}
+      />
+      <Switch label={t("task.requireReview")} checked={review()} disabled={busy()} onChange={setReview} />
       <button class="button primary" type="submit" disabled={busy() || !title().trim() || !member()}>
         {t("task.create")}
       </button>

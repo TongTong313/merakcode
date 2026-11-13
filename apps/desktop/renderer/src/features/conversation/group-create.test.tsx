@@ -12,6 +12,14 @@ import { setState } from "../../state/store"
 import { GroupCreate } from "./group-create"
 import { CloudMembers } from "../settings/cloud-members"
 
+/** The group kind is a segmented control and the cloud consent a switch, not native inputs */
+const cloudKind = () =>
+  [...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((item) => item.textContent === "Cloud group")
+const consent = () =>
+  [...document.querySelectorAll<HTMLButtonElement>('[role="switch"]')].find(
+    (item) => item.textContent === "Allow this group's data to be sent to the cloud",
+  )
+
 let engine: Awaited<ReturnType<typeof engineFixture>>
 beforeAll(async () => {
   engine = await engineFixture()
@@ -58,12 +66,8 @@ test("creates a cloud group and folds its forwarded history through the shared g
       host,
     )
     // Product discovery may take ten seconds before process cleanup.
-    await expect
-      .poll(() => document.querySelector<HTMLInputElement>('input[aria-label="Cloud group"]')?.disabled, {
-        timeout: 15000,
-      })
-      .toBe(false)
-    document.querySelector<HTMLInputElement>('input[aria-label="Cloud group"]')!.click()
+    await expect.poll(() => cloudKind()?.getAttribute("aria-disabled"), { timeout: 15000 }).toBeNull()
+    cloudKind()!.click()
     await expect.poll(() => document.querySelector('input[aria-label="Select First remote worker"]')).not.toBeNull()
     document.querySelector<HTMLInputElement>('input[aria-label="Select Second remote worker"]')!.click()
     expect(document.querySelector<HTMLInputElement>('input[aria-label="Select First remote worker"]')!.checked).toBe(
@@ -76,9 +80,7 @@ test("creates a cloud group and folds its forwarded history through the shared g
       (button) => button.textContent === "Create",
     )!
     expect(create.disabled).toBe(true)
-    document
-      .querySelector<HTMLInputElement>('input[aria-label="Allow this group\'s data to be sent to the cloud"]')!
-      .click()
+    consent()!.click()
     await expect.poll(() => create.disabled).toBe(false)
     create.click()
     await expect.poll(() => created, { timeout: 10000 }).toBeDefined()
@@ -194,7 +196,7 @@ test("creates a local group from default profiles and adds the selected worker",
     await expect
       .poll(() => document.querySelector('input[aria-label="Select Worker"]'), { timeout: 10000 })
       .not.toBeNull()
-    expect(document.querySelector<HTMLInputElement>('input[aria-label="Cloud group"]')?.disabled).toBe(true)
+    expect(cloudKind()?.getAttribute("aria-disabled")).toBe("true")
     expect(document.body.textContent).toContain("Sign in to create a cloud group")
     const name = document.querySelector<HTMLInputElement>('input[aria-label="Group name"]')!
     name.value = "Documentation team"

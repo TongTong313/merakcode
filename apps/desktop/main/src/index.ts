@@ -12,6 +12,7 @@ import { exportDiagnostics } from "./diagnostics"
 import { Engine } from "./engine"
 import { Ipc } from "./ipc"
 import { Log } from "./log"
+import { Login } from "./login"
 import { AppMenu, type Actions } from "./menu"
 import { Route } from "./route"
 import { Settings } from "./settings"
@@ -92,6 +93,12 @@ function main() {
     serve: dev ? ["--development"] : [],
     log: (level, message, extra) =>
       Log.write(level === "info" ? "INFO" : level === "warn" ? "WARN" : "ERROR", "backend", message, extra),
+  })
+  // Only an unpackaged app may be pointed at another program: tests use it so they never write a real login item
+  const login = new Login({
+    settings,
+    program: () => (dev && process.env.MERAKCODE_SERVICE_PROGRAM) || Engine.command(layout)[0]!,
+    log: (message, extra) => Log.write("WARN", "login", message, extra),
   })
   const windows = new Windows({
     prepareWindow: (win) => browser.closeAll(win),
@@ -210,6 +217,7 @@ function main() {
     settings,
     storage,
     updater,
+    login,
     tray: (state) => {
       settings.tray = state
       tray.update(state)
@@ -248,6 +256,7 @@ function main() {
   pending = undefined
   void backend.start().catch((error: Error) => log.error("backend failed to start", { error: error.message }))
   updater.start()
+  void login.sync()
 
   app.on("activate", () => {
     if (!windows.all().length) windows.open()

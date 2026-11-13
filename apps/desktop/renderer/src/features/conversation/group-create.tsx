@@ -5,7 +5,9 @@ import { agents, loadAgents } from "../../state/agents"
 import { client } from "../../state/client"
 import { groupView, loadGroup, localHuman } from "../../state/groups"
 import { Dialog } from "../../ui/dialog"
+import { Segmented } from "../../ui/segmented"
 import { Select } from "../../ui/select"
+import { Switch } from "../../ui/switch"
 import { toast } from "../../ui/toast"
 import { WorkspacePicker } from "../shell/workspace-picker"
 import { memberName } from "../group/roster"
@@ -194,39 +196,30 @@ export function GroupCreate(props: {
       <div class="dialog-body form">
         <fieldset class="field" disabled={busy() || !!created() || !!props.task}>
           <legend>{t("group.kind")}</legend>
-          <For each={["local", "cloud"] as const}>
-            {(value) => (
-              <label class="row">
-                <input
-                  type="radio"
-                  name="group-kind"
-                  aria-label={t(`group.kind.${value}`)}
-                  checked={kind() === value}
-                  disabled={value === "cloud" && !cloud()?.account}
-                  onChange={() => {
-                    setKind(value)
-                    setWorkers([])
-                  }}
-                />
-                <span>{t(`group.kind.${value}`)}</span>
-              </label>
-            )}
-          </For>
+          <Segmented
+            label={t("group.kind")}
+            options={(["local", "cloud"] as const).map((value) => ({
+              value,
+              label: t(`group.kind.${value}`),
+              disabled: value === "cloud" && !cloud()?.account,
+            }))}
+            value={kind()}
+            onChange={(value) => {
+              setKind(value)
+              setWorkers([])
+            }}
+          />
           <Show when={!cloud()?.account}>
             <p class="subtle">{t("group.cloud.loginRequired")}</p>
           </Show>
         </fieldset>
         <Show when={kind() === "cloud"}>
-          <label class="row">
-            <input
-              type="checkbox"
-              checked={sharing()}
-              disabled={busy() || !!created()}
-              aria-label={t("group.cloud.consent")}
-              onChange={(event) => setSharing(event.currentTarget.checked)}
-            />
-            <span>{t("group.cloud.consent")}</span>
-          </label>
+          <Switch
+            label={t("group.cloud.consent")}
+            checked={sharing()}
+            disabled={busy() || !!created()}
+            onChange={setSharing}
+          />
           <p class="subtle">{t("group.cloud.data")}</p>
         </Show>
         <WorkspacePicker value={directory()} onChange={setDirectory} disabled={busy() || !!created() || !!props.task} />

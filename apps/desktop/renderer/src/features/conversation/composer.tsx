@@ -37,6 +37,8 @@ export function Composer(props: {
   directory: string
   busy: boolean
   disabled?: boolean
+  /** The conversation is held with an external product: no model, attachments or usage of MerakCode's own */
+  external?: boolean
   draft?: ComposerDraft
   onDraftChange?: (draft: ComposerDraft) => void
   compact?: boolean
@@ -53,7 +55,7 @@ export function Composer(props: {
   const selected = () => choice(props.sessionID, props.directory)
   const levels = () => find(selected().model)?.model.thinking ?? []
   const key = () => choiceKey(props.sessionID, props.directory)
-  const usable = () => !props.disabled && (props.group || (connected() && !!selected().model))
+  const usable = () => !props.disabled && (props.group || props.external || (connected() && !!selected().model))
   let epoch = 0
   createEffect(
     on(
@@ -110,7 +112,7 @@ export function Composer(props: {
     }
   }
   const attach = (file: File) => {
-    if (props.disabled || props.group) return
+    if (props.disabled || props.group || props.external) return
     const target = epoch
     const reader = new FileReader()
     reader.onload = () => {
@@ -196,12 +198,14 @@ export function Composer(props: {
             disabled={!!props.sessionID || props.busy || props.disabled}
             onChange={(mode) => choose(props.sessionID, props.directory, { mode })}
           />
-          <SandboxStatus
-            directory={props.directory}
-            sessionID={props.sessionID}
-            mode={selected().mode}
-            busy={props.busy}
-          />
+          <Show when={!props.external}>
+            <SandboxStatus
+              directory={props.directory}
+              sessionID={props.sessionID}
+              mode={selected().mode}
+              busy={props.busy}
+            />
+          </Show>
           <input
             ref={picker}
             type="file"
@@ -212,22 +216,24 @@ export function Composer(props: {
               event.currentTarget.value = ""
             }}
           />
-          <button
-            class="icon-button"
-            aria-label={t("prompt.attach")}
-            disabled={props.disabled}
-            onClick={() => picker.click()}
-          >
-            <Paperclip class="icon icon-sm" />
-          </button>
+          <Show when={!props.external}>
+            <button
+              class="icon-button"
+              aria-label={t("prompt.attach")}
+              disabled={props.disabled}
+              onClick={() => picker.click()}
+            >
+              <Paperclip class="icon icon-sm" />
+            </button>
+          </Show>
         </Show>
-        <Show when={!props.group && !connected()}>
+        <Show when={!props.group && !props.external && !connected()}>
           <button class="chip accent" onClick={() => setUi("settings", "models")}>
             {t("prompt.noModel")}
           </button>
         </Show>
         <span class="spacer" />
-        <Show when={props.sessionID ? usage(props.sessionID) : undefined}>
+        <Show when={!props.external && props.sessionID ? usage(props.sessionID) : undefined}>
           {(value) => (
             <span
               class="usage"
@@ -238,7 +244,7 @@ export function Composer(props: {
             </span>
           )}
         </Show>
-        <Show when={!props.group}>
+        <Show when={!props.group && !props.external}>
           <ModelPicker
             value={selected().model}
             disabled={props.disabled}

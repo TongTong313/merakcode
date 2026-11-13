@@ -23,11 +23,11 @@ describe("界面文字", () => {
     expect(fromConfig(undefined)).toBeUndefined()
   })
 
-  test("小模型没选时的占位有中英文", () => {
+  test("不自动归档的选项有中英文", () => {
     setLocale("zh")
-    expect(t("settings.smallModel.auto")).toBe("按供应商自动选")
+    expect(t("settings.board.off")).toBe("不自动归档")
     setLocale("en")
-    expect(t("settings.smallModel.auto")).toBe("Automatic per provider")
+    expect(t("settings.board.off")).toBe("Never")
   })
 
   test("变量替换，切换语言后取对应的文字，html 的 lang 跟着变", () => {

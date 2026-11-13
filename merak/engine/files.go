@@ -2,20 +2,24 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/TongTong313/merakcode/merak/engine/code"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/folderwatch"
 	"github.com/TongTong313/merakcode/merak/engine/review"
 	"github.com/TongTong313/merakcode/merak/engine/session"
 	"github.com/TongTong313/merakcode/merak/engine/workspace"
 	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/git"
+	"github.com/TongTong313/merakcode/merak/internal/platform/watch"
 )
 
 type FileContent struct {
@@ -345,4 +349,46 @@ func (e *Engine) ReviewUndo(ctx context.Context, id event.ID) (review.Status, er
 func (e *Engine) ReviewStatus(ctx context.Context, id event.ID) (review.Status, error) {
 	status, err := e.reviewer().Status(ctx, id)
 	return status, reviewError(err)
+}
+
+// SetDirectoryWatchInterval changes how often a watched folder is looked at; tests make it short.
+func (e *Engine) SetDirectoryWatchInterval(interval time.Duration) {
+	e.directoryWatches.SetInterval(interval)
+}
+
+// WatchDirectory makes the engine announce what changes in a folder without the engine having done it: a checkout or
+// a commit as repo.changed and the files that changed as file.changed. It lasts until the owner lets go with
+// UnwatchDirectories, which the server does when the connection of the owner closes. A group watches its own project
+// folder through watchGroup; this is for the folders of conversations that no group watches.
+func (e *Engine) WatchDirectory(ctx context.Context, owner, directory string) error {
+	directory = e.directory(directory)
+	if missing(directory) {
+		return coded(errorcode.DirectoryMissing, errors.New("the folder does not exist"))
+	}
+	return e.directoryWatches.Watch(ctx, folderwatch.Hooks{
+		Context: e.ctx,
+		Go:      func(run func()) { e.workers.Go(run) },
+		Excluded: func(ctx context.Context) []string {
+			excluded, _ := e.watchedWorkspaces(ctx)
+			return excluded
+		},
+		Repository: func(ctx context.Context, directory string, changed watch.RepoChanged) {
+			e.announceDirectory(ctx, directory, RepoChanged, RepoChanges{RepoChanged: changed})
+		},
+		Files: func(ctx context.Context, directory string, paths []string) {
+			e.announceDirectory(ctx, directory, FileChanged, FileChanges{Directory: directory, Paths: paths})
+		},
+	}, owner, directory)
+}
+
+// UnwatchDirectories lets go of every folder the owner watches.
+func (e *Engine) UnwatchDirectories(owner string) { e.directoryWatches.Unwatch(owner) }
+
+// announceDirectory publishes a change of a folder on the stream of that folder; it belongs to no session or group.
+func (e *Engine) announceDirectory(ctx context.Context, directory string, kind event.Type, payload any) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_, _ = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("watch:" + directory), Actor: event.Actor{Kind: event.ActorSystem, ID: "watch"}, Type: kind, Payload: body})
 }

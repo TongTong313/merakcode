@@ -38,7 +38,9 @@ type RemoteSource struct {
 	Caps       worker.Caps `json:"caps"`
 }
 type Agent struct {
-	Shared   bool            `json:"shared,omitempty"`
+	Shared bool `json:"shared,omitempty"`
+	// Disabled turns the agent off: it starts no conversation, continues none and takes no seat in a group.
+	Disabled bool            `json:"disabled,omitempty"`
 	Memory   []memory.Scope  `json:"memory,omitzero"`
 	Budget   Budget          `json:"budget,omitempty"`
 	Network  []string        `json:"network,omitempty"`

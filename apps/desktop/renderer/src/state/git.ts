@@ -109,6 +109,10 @@ export async function resolveDirectory(directory: string) {
   const options = optionsOf(await lookup(directory))
   await confirmDirectory(directory, options.directory)
   associate(directory, options.directory)
+  // A page opened straight onto a conversation has not asked for branches; saved review drafts name the branch they
+  // were written on, so they can only open again once the branch of the folder is known.
+  if (identities[gitDirectory(options.directory)] === undefined)
+    updateCheckout(options.directory, options.blocked?.reason === "not_git" ? null : options.current)
   return options.directory
 }
 

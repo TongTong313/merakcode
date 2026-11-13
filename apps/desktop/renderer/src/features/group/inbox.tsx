@@ -14,6 +14,7 @@ const kindKeys: Record<string, Key> = {
   info: "inbox.info",
   receipt: "inbox.receipt",
   sentinel: "notify.sentinel",
+  import: "import.title",
 }
 
 /** The title of a notice: a finished task says so; the other kinds name what is asked of the person. */

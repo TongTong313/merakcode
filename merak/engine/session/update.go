@@ -2,6 +2,7 @@ package session
 
 import (
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/model"
 	"github.com/TongTong313/merakcode/merak/engine/permission"
 )
 
@@ -24,6 +25,10 @@ type Change struct {
 	Title    *string         `json:"title,omitempty"`
 	Archived *bool           `json:"archived,omitempty"`
 	Mode     permission.Mode `json:"mode,omitempty"`
+	// Provider, Model and Thinking move the conversation to another model; a takeover sets them.
+	Provider string         `json:"provider,omitempty"`
+	Model    string         `json:"model,omitempty"`
+	Thinking model.Thinking `json:"thinking,omitempty"`
 }
 
 func (s *State) applyChange(change Change) {
@@ -35,5 +40,8 @@ func (s *State) applyChange(change Change) {
 	}
 	if change.Mode != "" {
 		s.Config.Mode = change.Mode
+	}
+	if change.Provider != "" {
+		s.Config.Provider, s.Config.Model, s.Config.Thinking = change.Provider, change.Model, change.Thinking
 	}
 }

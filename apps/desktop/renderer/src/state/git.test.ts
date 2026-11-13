@@ -6,6 +6,7 @@ import { client } from "./client"
 import {
   checkoutOf,
   gitState,
+  identityOf,
   registerDirty,
   refreshBranches,
   resolveDirectory,
@@ -69,4 +70,14 @@ test("a folder outside any repository is reported as such and cannot switch", as
   const options = await refreshBranches(plain)
   expect(options?.blocked?.reason).toBe("not_git")
   await expect(switchBranch(plain, "main")).rejects.toThrow()
+})
+
+test("resolving a folder that nothing has looked at yet makes its branch known, so saved review drafts can open", async () => {
+  const fresh = path.join(env.project, "fresh")
+  await mkdir(fresh)
+  expect(identityOf(fresh)).toBeUndefined()
+  await resolveDirectory(fresh)
+  const branch = await env.git("branch", "--show-current")
+  expect(identityOf(fresh)?.branch).toBe(branch)
+  expect(checkoutOf(fresh)).toMatch(new RegExp(`^${branch}:`))
 })

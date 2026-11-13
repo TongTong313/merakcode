@@ -128,6 +128,9 @@ const bridge: DesktopBridge = {
   zoomOut: () => zoom(webFrame.getZoomFactor() - 0.1),
   zoomReset: () => zoom(1),
 
+  getLoginItem: call("getLoginItem"),
+  setLoginItem: call("setLoginItem"),
+
   checkForUpdates: call("checkForUpdates"),
   onUpdate: on("update"),
   startUpdateDownload: call("startUpdateDownload"),

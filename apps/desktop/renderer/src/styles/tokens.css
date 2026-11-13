@@ -19,6 +19,25 @@
   --text-xl: 20px;
   --leading: 1.55;
 
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  --z-raised: 1;
+  --z-sticky: 2;
+  --z-handle: 5;
+  --z-page: 30;
+  --z-dialog: 40;
+  --z-dialog-content: 41;
+  --z-popover: 50;
+  --z-top: 60;
+  --z-toast: 70;
+
   --radius-sm: 4px;
   --radius: 6px;
   --radius-md: 8px;

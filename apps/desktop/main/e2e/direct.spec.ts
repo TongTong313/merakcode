@@ -1,20 +1,38 @@
+import { readFile } from "node:fs/promises"
 import path from "node:path"
 import type { Page } from "@playwright/test"
-import { test, expect } from "./fixture"
+import { connect } from "@merakcode/sdk"
+import { test, expect, type Kit } from "./fixture"
 
-const loader = new URL("../../../../script/node/register.mjs", import.meta.url).href
-const product = {
-  title: "Direct CLI",
-  adapter: "member",
-  command: process.execPath,
-  args: [
-    "--import",
-    loader,
-    "--disable-warning=ExperimentalWarning",
-    path.join(import.meta.dirname, "fake-member.ts"),
-    JSON.stringify({ streaming: {} }),
-  ],
-  model: { id: "fixture-requested" },
+// The external product is the Claude Code stand-in the fixture puts on PATH; with --echo it answers a message with
+// "External reply: <message>", so every answer shows which message it belongs to.
+async function addProduct(kit: Kit) {
+  const engine = await connect(JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")))
+  try {
+    await engine.agent.save({
+      agent: {
+        id: "",
+        name: "Direct CLI",
+        role: "worker",
+        summary: "",
+        duties: "",
+        toolPool: "worker.default",
+        shared: true,
+        model: { provider: "", model: "" },
+        product: { kind: "claude-code", binary: "claude", args: ["--echo"], model: "fixture-requested" },
+      },
+    })
+  } finally {
+    await engine.close()
+  }
+  // The window reads the agents when it starts
+  await kit.page.reload()
+  // Without a native model the start page asks to set one up first
+  const input = kit.page.getByRole("textbox", { name: "消息", exact: true }).filter({ visible: true }).first()
+  const skip = kit.page.getByRole("button", { name: "跳过", exact: true })
+  await input.or(skip).first().waitFor()
+  if (await skip.isVisible()) await skip.click()
+  await input.waitFor()
 }
 
 async function selectExternal(page: Page) {
@@ -22,25 +40,37 @@ async function selectExternal(page: Page) {
   await page.getByRole("option", { name: /Direct CLI/ }).click()
 }
 
-test.use({ config: { agentConnections: { products: { direct: product } } } })
+// The page that turns the product of an agent on and off
+async function switchProduct(kit: Kit) {
+  const { page } = kit
+  await page.getByRole("button", { name: "新建智能体", exact: true }).click()
+  await page.keyboard.press("Escape")
+  await page.getByRole("switch", { name: "启用 Direct CLI" }).click()
+}
+
+test.use({ claude: true })
 
 test("creates and continues a direct external conversation through the existing new-chat page", async ({ kit }) => {
   const { page } = kit
+  await addProduct(kit)
   await expect(page.getByRole("button", { name: /^对话对象/ })).toContainText("MerakCode")
   await selectExternal(page)
   const requests = kit.requests()
   await kit.send("first direct message")
   await expect(kit.text("External reply: first direct message")).toBeVisible()
-  await expect(kit.text(/Direct CLI.*fixture-selected/)).toBeVisible()
-  await expect(page.getByRole("link", { name: /E2E/ })).toBeVisible()
-  expect(kit.modelRequests().slice(requests)).toEqual([
-    {
-      model: "qwen-plus",
-      system: expect.stringContaining("You are a title generator."),
-      prompt: "first direct message",
-      tools: 0,
-    },
-  ])
+  await expect(kit.text(/Direct CLI.*fixture-requested/)).toBeVisible()
+  await expect(page.getByRole("link", { name: /first direct message/ })).toBeVisible()
+  // The only request of the engine's own model is the title of the conversation
+  await expect
+    .poll(() => kit.modelRequests().slice(requests))
+    .toEqual([
+      {
+        model: "e2e",
+        system: expect.stringContaining("Write a title of at most 50 characters"),
+        prompt: expect.stringContaining("first direct message"),
+        tools: 0,
+      },
+    ])
   await kit.send("second direct message")
   await expect(kit.text("External reply: second direct message")).toBeVisible()
   expect(kit.requests()).toBe(requests + 1)
@@ -48,19 +78,18 @@ test("creates and continues a direct external conversation through the existing 
     kit
       .modelRequests()
       .slice(requests)
-      .every((request) => request.system.includes("You are a title generator.")),
+      .every((request) => request.system.includes("Write a title of at most 50 characters")),
   ).toBe(true)
 })
 
 test("keeps a refused external chat locked after reconnect and restores its product when enabled", async ({ kit }) => {
   const { page } = kit
+  await addProduct(kit)
   await selectExternal(page)
   await kit.send("before disable")
   await expect(kit.text("External reply: before disable")).toBeVisible()
-  await kit.settings(/智能体接入/)
-  const panel = page.getByRole("region", { name: "智能体接入" })
-  await panel.getByRole("switch", { name: "启用 Direct CLI" }).click()
-  await page.getByRole("button", { name: "返回", exact: true }).click()
+  await switchProduct(kit)
+  await page.getByRole("link", { name: /before disable/ }).click()
   const dialog = page.getByRole("dialog", { name: "对话产品已关闭" })
   await expect(dialog).toBeVisible()
   await page.keyboard.press("Escape")
@@ -74,9 +103,8 @@ test("keeps a refused external chat locked after reconnect and restores its prod
   await expect(input).toBeDisabled()
   await expect(page.getByRole("dialog", { name: "对话产品已关闭" })).toHaveCount(0)
   await expect(kit.text("产品已关闭，输入已锁定。")).toBeVisible()
-  await kit.settings(/智能体接入/)
-  await panel.getByRole("switch", { name: "启用 Direct CLI" }).click()
-  await page.getByRole("button", { name: "返回", exact: true }).click()
+  await switchProduct(kit)
+  await page.getByRole("link", { name: /before disable/ }).click()
   await expect(input).toBeEnabled()
   await kit.send("after enable")
   await expect(kit.text("External reply: after enable")).toBeVisible()
@@ -84,13 +112,13 @@ test("keeps a refused external chat locked after reconnect and restores its prod
 
 test("switches to MerakCode only after an explicit acceptance and keeps the external history", async ({ kit }) => {
   const { page } = kit
+  await addProduct(kit)
   await selectExternal(page)
   await kit.send("retain this external reply")
   await expect(kit.text("External reply: retain this external reply")).toBeVisible()
   const originalURL = page.url()
-  await kit.settings(/智能体接入/)
-  await page.getByRole("region", { name: "智能体接入" }).getByRole("switch", { name: "启用 Direct CLI" }).click()
-  await page.getByRole("button", { name: "返回", exact: true }).click()
+  await switchProduct(kit)
+  await page.getByRole("link", { name: /retain this external reply/ }).click()
   const dialog = page.getByRole("dialog", { name: "对话产品已关闭" })
   await dialog.getByRole("button", { name: "暂不接管" }).click()
   await expect(
@@ -108,9 +136,10 @@ test("switches to MerakCode only after an explicit acceptance and keeps the exte
 })
 
 test.describe("without a native provider", () => {
-  test.use({ config: { enabled_providers: [], agentConnections: { products: { direct: product } } } })
+  test.use({ config: { model: undefined, small_model: undefined, enabled_providers: undefined, provider: undefined } })
 
   test("can select and send to an external product before configuring a native model", async ({ kit }) => {
+    await addProduct(kit)
     await selectExternal(kit.page)
     await expect(
       kit.page.getByRole("textbox", { name: "消息", exact: true }).filter({ visible: true }).first(),

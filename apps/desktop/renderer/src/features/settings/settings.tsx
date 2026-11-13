@@ -5,6 +5,7 @@ import Info from "lucide-solid/icons/info"
 import ListChecks from "lucide-solid/icons/list-checks"
 import Plug from "lucide-solid/icons/plug"
 import Puzzle from "lucide-solid/icons/puzzle"
+import Server from "lucide-solid/icons/server"
 import ScrollText from "lucide-solid/icons/scroll-text"
 import ShieldCheck from "lucide-solid/icons/shield-check"
 import SettingsIcon from "lucide-solid/icons/settings"
@@ -26,6 +27,7 @@ import { Row, Section } from "./layout"
 import { Models } from "./models"
 import { BoardSettings } from "./board"
 import { Cloud } from "./cloud"
+import { EngineSettings } from "./engine"
 import { ConfigWarnings } from "./warnings"
 import { Mcp } from "./mcp"
 import { Permissions } from "./permissions"
@@ -184,6 +186,7 @@ const SECTIONS: { id: SettingsSection; label: () => string; icon: typeof Cpu; vi
   { id: "rules", label: () => t("settings.rules"), icon: ScrollText, view: Rules },
   { id: "memory", label: () => t("settings.memory"), icon: Brain, view: Memory },
   { id: "board", label: () => t("settings.board"), icon: ListChecks, view: BoardSettings },
+  { id: "engine", label: () => t("settings.engine"), icon: Server, view: EngineSettings },
   { id: "cloud", label: () => t("cloud.title"), icon: SettingsIcon, view: Cloud },
   { id: "about", label: () => t("settings.about"), icon: Info, view: About },
 ]

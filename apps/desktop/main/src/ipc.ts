@@ -6,6 +6,7 @@ import type { AppLocale, DesktopBridge, FileFilter, Theme, TrayState } from "../
 import { IPC } from "../../renderer/src/desktop/bridge-contract"
 import type { Backend } from "./backend"
 import type { BrowserPanel } from "./browser"
+import type { Login } from "./login"
 import { Log } from "./log"
 import type { Settings } from "./settings"
 import type { Storage } from "./storage"
@@ -26,6 +27,7 @@ type Deps = {
   settings: Settings
   storage: Storage
   updater: Updater
+  login: Login
   tray: (state: TrayState) => void
   locale: (locale: AppLocale) => void
   theme: (theme: Theme) => void
@@ -275,6 +277,13 @@ export namespace Ipc {
           message,
           extra && typeof extra === "object" ? (extra as Record<string, unknown>) : undefined,
         )
+      },
+
+      getLoginItem: () => deps.login.enabled,
+      setLoginItem: async (_ctx, enabled) => {
+        const value = z.boolean().parse(enabled)
+        await deps.login.set(value)
+        return deps.login.enabled
       },
 
       checkForUpdates: () => deps.updater.check(),

@@ -51,6 +51,17 @@ export class Settings {
     this.write("bounds", value)
   }
 
+  /** The engine program the "start at login" item was registered with; unset while the switch is off */
+  get loginProgram(): string | undefined {
+    const value = this.read<string>("loginProgram")
+    return typeof value === "string" && value ? value : undefined
+  }
+
+  set loginProgram(value: string | undefined) {
+    if (value === undefined) this.storage.remove(Settings.BUCKET, "loginProgram")
+    else this.write("loginProgram", value)
+  }
+
   /** Recent sessions in the tray, so they show at the next startup before any window has loaded */
   get tray(): TrayState | undefined {
     return this.read<TrayState>("tray")

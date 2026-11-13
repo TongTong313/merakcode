@@ -104,6 +104,9 @@ func (e *Engine) CreateSession(ctx context.Context, options SessionOptions) (eve
 		if err != nil {
 			return "", coded(errorcode.SessionRequestFailed, err)
 		}
+		if p.Disabled {
+			return "", coded(errorcode.AgentDisabled, errors.New("the agent is turned off"))
+		}
 		if p.Product != nil && p.Product.Kind != worker.KindBuiltin {
 			return e.createExternalChat(ctx, p, options)
 		}
@@ -726,51 +729,13 @@ func (e *Engine) maybeTitle(c *conversation) {
 	if skip || !ok || provider == nil {
 		return
 	}
-	var first, answer strings.Builder
 	e.mu.Lock()
-	for _, message := range c.state.Messages {
-		target := &first
-		if message.Role == model.Assistant {
-			target = &answer
-		} else if message.Role != model.User {
-			continue
-		}
-		for _, part := range message.Parts {
-			if part.Text != "" && !part.Synthetic && target.Len() < 2000 {
-				target.WriteString(part.Text + "\n")
-			}
-		}
-		if first.Len() > 0 && answer.Len() > 0 {
-			break
-		}
-	}
+	first, answer := titleSource(c.state.Messages)
 	e.mu.Unlock()
 	e.workers.Go(func() {
 		ctx, cancel := context.WithTimeout(e.ctx, 30*time.Second)
 		defer cancel()
-		request := model.Request{Model: ref.Model, MaxTokens: 60, System: "Write a title of at most 50 characters for the conversation below, in the language of the user. Reply with the title only: no quotes, no punctuation at the end.", Messages: []model.Message{{Role: model.User, Parts: []model.Part{{Text: "User:\n" + first.String() + "\nAssistant:\n" + answer.String()}}}}}
-		stream, err := provider.Stream(ctx, request)
-		if err != nil {
-			return
-		}
-		defer stream.Close()
-		var collector model.Collector
-		for {
-			chunk, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return
-			}
-			collector.Add(chunk)
-		}
-		message, _, _ := collector.Message()
-		var text strings.Builder
-		for _, part := range message.Parts {
-			text.WriteString(part.Text)
-		}
-		title := cleanTitle(text.String())
+		title := e.writeTitle(ctx, provider, ref.Model, first, answer)
 		if title == "" {
 			return
 		}
@@ -783,6 +748,93 @@ func (e *Engine) maybeTitle(c *conversation) {
 			_ = e.manager.Snapshot(ctx, c.state)
 		}
 	})
+}
+
+// titleSource is the text of the first message of the user and of the first answer, which a title is written from.
+func titleSource(messages []model.Message) (first, answer string) {
+	var user, assistant strings.Builder
+	for _, message := range messages {
+		target := &user
+		if message.Role == model.Assistant {
+			target = &assistant
+		} else if message.Role != model.User {
+			continue
+		}
+		for _, part := range message.Parts {
+			if part.Text != "" && !part.Synthetic && target.Len() < 2000 {
+				target.WriteString(part.Text + "\n")
+			}
+		}
+		if user.Len() > 0 && assistant.Len() > 0 {
+			break
+		}
+	}
+	return user.String(), assistant.String()
+}
+
+// titleExternal names a conversation with an external product after its first answer, as maybeTitle does for the
+// engine's own conversations. The caller is the goroutine that drives the conversation.
+func (e *Engine) titleExternal(id event.ID, chat *externalChat) {
+	e.mu.Lock()
+	skip := chat.titled
+	e.mu.Unlock()
+	ref, ok := e.jobModel("title")
+	provider := e.provider(ref.Provider)
+	state, err := e.manager.Load(e.ctx, id)
+	if skip || !ok || provider == nil || err != nil || state.Title != "" {
+		return
+	}
+	first, answer := titleSource(state.Messages)
+	if first == "" || answer == "" {
+		return
+	}
+	e.mu.Lock()
+	chat.titled = true
+	e.mu.Unlock()
+	ctx, cancel := context.WithTimeout(e.ctx, 30*time.Second)
+	defer cancel()
+	title := e.writeTitle(ctx, provider, ref.Model, first, answer)
+	if title == "" {
+		return
+	}
+	body, err := json.Marshal(session.Change{Title: &title})
+	if err != nil {
+		return
+	}
+	scope := state.Scope
+	scope.Session = id
+	if current, err := e.manager.Load(ctx, id); err != nil || current.Title != "" {
+		return
+	}
+	_, _ = e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + id), Scope: scope, Type: session.Updated, Actor: event.Actor{Kind: event.ActorHuman}, Payload: body})
+}
+
+// writeTitle asks the model for a short title of a conversation from its first message and first answer; an empty
+// string means no usable title came back.
+func (e *Engine) writeTitle(ctx context.Context, provider model.Provider, modelID, first, answer string) string {
+	request := model.Request{Model: modelID, MaxTokens: 60, System: "Write a title of at most 50 characters for the conversation below, in the language of the user. Reply with the title only: no quotes, no punctuation at the end.", Messages: []model.Message{{Role: model.User, Parts: []model.Part{{Text: "User:\n" + first + "\nAssistant:\n" + answer}}}}}
+	stream, err := provider.Stream(ctx, request)
+	if err != nil {
+		return ""
+	}
+	defer stream.Close()
+	var collector model.Collector
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return ""
+		}
+		collector.Add(chunk)
+	}
+	message, _, _ := collector.Message()
+	var text strings.Builder
+	for _, part := range message.Parts {
+		text.WriteString(part.Text)
+	}
+	return cleanTitle(text.String())
 }
 
 // cleanTitle keeps the first line of a model's answer without quotes or closing punctuation, at most 50 characters.
@@ -856,6 +908,7 @@ type externalChat struct {
 	steered []steeredInput
 	active  worker.Run
 	running bool
+	titled  bool
 }
 
 const externalChatKind = "chat-agent"
@@ -901,6 +954,86 @@ func (e *Engine) externalChatOf(ctx context.Context, id event.ID) (*externalChat
 	return chat, nil
 }
 
+// ExternalAgent returns the agent that drives a conversation, or "" when the engine's own model does.
+func (e *Engine) ExternalAgent(ctx context.Context, id event.ID) (event.ID, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	chat, err := e.externalChatOf(ctx, id)
+	if chat == nil {
+		return "", err
+	}
+	return chat.Agent, nil
+}
+
+// TakeOverSession turns a conversation with an external product into one of the engine's own: the history stays in
+// the session, only the record of who drives it goes, and the next message is answered by the model the client picks.
+func (e *Engine) TakeOverSession(ctx context.Context, id event.ID, confirm bool, selection session.Selection) error {
+	if !confirm {
+		return coded(errorcode.TakeoverNeedsConfirmation, errors.New("a takeover needs confirmation"))
+	}
+	if selection.Provider == "" {
+		if fallback := e.defaultModel.Load(); fallback != nil {
+			selection = session.Selection{Provider: fallback.Provider, Model: fallback.Model, Thinking: fallback.Thinking}
+		}
+	}
+	if selection.Model == "" || e.provider(selection.Provider) == nil {
+		return coded(errorcode.SessionRequestFailed, errors.New("a takeover needs a configured model"))
+	}
+	e.waitExternalIdle(ctx, id)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	chat, err := e.externalChatOf(ctx, id)
+	if err != nil {
+		return err
+	}
+	if chat == nil {
+		return coded(errorcode.SessionRequestFailed, errors.New("the conversation is not driven by an external product"))
+	}
+	if chat.running || chat.active != nil || len(chat.pending) > 0 {
+		return coded(errorcode.SessionBusy, errors.New("take over between turns"))
+	}
+	state, err := e.manager.Load(ctx, id)
+	if err != nil {
+		return coded(errorcode.SessionRequestFailed, errors.New("the external conversation has no history to take over"))
+	}
+	body, err := json.Marshal(session.Change{Provider: selection.Provider, Model: selection.Model, Thinking: selection.Thinking})
+	if err != nil {
+		return err
+	}
+	scope := state.Scope
+	scope.Session = id
+	fact, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("session:" + id), Scope: scope, Type: session.Updated, Actor: event.Actor{Kind: event.ActorHuman}, Payload: body})
+	if err != nil {
+		return err
+	}
+	if err := session.Fold(state, fact); err != nil {
+		return err
+	}
+	if err := e.manager.Snapshot(ctx, state); err != nil {
+		return err
+	}
+	if err := e.store.Delete(ctx, externalChatKind, string(id)); err != nil {
+		return err
+	}
+	delete(e.externals, id)
+	return nil
+}
+
+// waitExternalIdle gives a run of an external product that has just answered a moment to leave the engine's books.
+func (e *Engine) waitExternalIdle(ctx context.Context, id event.ID) {
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		e.mu.Lock()
+		chat := e.externals[id]
+		idle := chat == nil || !chat.running && chat.active == nil && len(chat.pending) == 0
+		e.mu.Unlock()
+		if idle || ctx.Err() != nil {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // sendExternal hands a message to the product of an external conversation. The caller holds e.mu.
 func (e *Engine) sendExternal(ctx context.Context, id event.ID, chat *externalChat, parts []model.Part) error {
 	var text strings.Builder
@@ -910,8 +1043,12 @@ func (e *Engine) sendExternal(ctx context.Context, id event.ID, chat *externalCh
 	if strings.TrimSpace(text.String()) == "" {
 		return coded(errorcode.SessionRequestFailed, errors.New("an external conversation takes text"))
 	}
+	p, loadErr := e.loadAgentByID(ctx, chat.Agent)
+	if loadErr == nil && p.Disabled {
+		return coded(errorcode.AgentDisabled, errors.New("the agent of this conversation is turned off"))
+	}
 	if chat.active != nil {
-		if p, err := e.loadAgentByID(ctx, chat.Agent); err == nil && e.runnerFor(p, nil).Caps().Steer {
+		if loadErr == nil && e.runnerFor(p, nil).Caps().Steer {
 			if chat.active.Send(ctx, loop.Input{Parts: parts, Actor: event.Actor{Kind: event.ActorHuman}}) == nil {
 				chat.steered = append(chat.steered, steeredInput{text: text.String(), at: e.now()})
 				return nil
@@ -951,6 +1088,7 @@ func (e *Engine) driveExternal(id event.ID, chat *externalChat) {
 		chat.active = run
 		e.mu.Unlock()
 		_, _ = run.Wait(context.Background())
+		e.titleExternal(id, chat)
 		e.mu.Lock()
 		chat.active = nil
 		steered := chat.steered

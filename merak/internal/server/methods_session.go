@@ -81,6 +81,17 @@ func (s *Server) sessionMethods() map[string]handler {
 		"session.compact": run(func(ctx context.Context, _ *connection, params protocol.SessionCancelParams) (any, error) {
 			return done(s.engine.CompactSession(ctx, params.Session))
 		}),
+		"session.external": run(func(ctx context.Context, _ *connection, params protocol.SessionCancelParams) (any, error) {
+			agent, err := s.engine.ExternalAgent(ctx, params.Session)
+			return protocol.SessionExternalResult{Agent: agent}, err
+		}),
+		"session.takeover": run(func(ctx context.Context, _ *connection, params protocol.SessionTakeoverParams) (any, error) {
+			var selection session.Selection
+			if params.Selection != nil {
+				selection = *params.Selection
+			}
+			return done(s.engine.TakeOverSession(ctx, params.Session, params.Confirm, selection))
+		}),
 		"session.delete": run(func(ctx context.Context, _ *connection, params protocol.SessionCancelParams) (any, error) {
 			return done(s.engine.DeleteSession(ctx, params.Session))
 		}),

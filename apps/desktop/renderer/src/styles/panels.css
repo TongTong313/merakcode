@@ -204,7 +204,7 @@
 .diff-file-head {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   gap: 8px;

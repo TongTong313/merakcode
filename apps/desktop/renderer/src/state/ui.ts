@@ -5,7 +5,7 @@ import { t } from "../i18n"
 import { toast } from "../ui/toast"
 
 export type SettingsSection =
-  "general" | "models" | "permissions" | "mcp" | "skills" | "rules" | "memory" | "board" | "cloud" | "about"
+  "general" | "models" | "permissions" | "mcp" | "skills" | "rules" | "memory" | "board" | "engine" | "cloud" | "about"
 
 /** UI layout state; panel width, tab and terminal height are saved and restored on the next launch */
 type UI = {

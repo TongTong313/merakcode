@@ -96,6 +96,8 @@ export async function engineFixture(options: { replies?: unknown[] } = {}) {
   await git("config", "user.email", "fixture@example.invalid")
   return {
     endpoint: info.endpoint,
+    /** The data root (MERAKCODE_HOME) of the engine */
+    root,
     token,
     project,
     git,

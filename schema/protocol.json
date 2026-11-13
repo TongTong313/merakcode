@@ -6,6 +6,9 @@
         "budget": {
           "$ref": "#/$defs/SessionBudget"
         },
+        "disabled": {
+          "type": "boolean"
+        },
         "duties": {
           "type": "string"
         },
@@ -5086,6 +5089,15 @@
       "required": ["session"],
       "type": "object"
     },
+    "ProtocolSessionExternalResult": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ProtocolSessionImportParams": {
       "additionalProperties": false,
       "properties": {
@@ -5178,6 +5190,29 @@
         }
       },
       "required": ["parts", "session"],
+      "type": "object"
+    },
+    "ProtocolSessionTakeoverParams": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "type": "boolean"
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["session"],
       "type": "object"
     },
     "ProtocolSessionUpdateParams": {
@@ -5905,6 +5940,15 @@
           ]
         },
         "mode": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "thinking": {
           "type": "string"
         },
         "title": {
@@ -8705,6 +8749,16 @@
         "type": "object"
       }
     },
+    "repo.watch": {
+      "params": {
+        "$ref": "#/$defs/ProtocolDirectoryParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
     "review.accept": {
       "params": {
         "$ref": "#/$defs/ProtocolReviewDecideParams"
@@ -8869,6 +8923,14 @@
         ]
       }
     },
+    "session.external": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionCancelParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ProtocolSessionExternalResult"
+      }
+    },
     "session.import": {
       "params": {
         "$ref": "#/$defs/ProtocolSessionImportParams"
@@ -8939,6 +9001,16 @@
       },
       "result": {
         "$ref": "#/$defs/SessionState"
+      }
+    },
+    "session.takeover": {
+      "params": {
+        "$ref": "#/$defs/ProtocolSessionTakeoverParams"
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
       }
     },
     "session.unrevert": {

@@ -8,6 +8,10 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Added
 
+- Chat directly with an external product on the new-chat page, switch an agent that has a product on or off on the Agents page, lock the input of a chat whose product was turned off, and hand such a chat over to MerakCode with its history kept.
+- Add a "Background engine" page to Settings with a "Start at login" switch (off by default); the app registers the login item again when the engine path changes after an update.
+- Show a progress bar while v0.3 data is imported in the background, and show the result in the home inbox as a summary of what was imported and what was skipped and why.
+- Watch every folder that is open in the app, also when no group works in it, so a branch switch, a commit or a file change made outside the app (in a terminal or another editor) reaches the Git panel, the editor and the review.
 - Bring back the desktop side panel on the new engine: per-conversation tabs for files, review, Git, plan, terminal and browser, a code editor that saves only over the version it read, Git staging, commit and push, branch switching, conversations that start in their own worktree, and recovery of drafts, terminals and browser pages after restarts and renamed or offline folders.
 - Add a home page with an inbox, a global task board and recent groups and conversations, with a corner notice for every new message (and a system notice when the window is in the background); messages that wait for your decision can be marked read from the home inbox and the tray.
 - Add an Agents page: one-click adding of the products found on this machine and a four-step wizard that configures everything about an agent (harness, model, role name, duties, permissions, hosts, environment); each agent in the list shows its harness, model and duties.
@@ -89,6 +93,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- The group kind and cloud consent in the new-group dialog, and the assignee and review choices in the task forms, use the app's own segmented, switch and select controls.
 - Leave the `plugin` and `plugin_options` keys of a v0.3 configuration file in place but report them as unused: v1.0.0 has no plugin module.
 - Rename permission choices to Ask every time, Ask only for risky actions and Full takeover, with explicit safety descriptions.
 
@@ -133,6 +138,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### Fixed
 
 - On Windows, a folder opened through a junction and its target are one workspace; a conversation that runs in a worktree or in the real directory behind a linked folder is listed under that folder in the sidebar; a deleted file with a kept draft opens read-only instead of failing.
+- A review comment you wrote before closing the app opens again in its inline box after you come back to the conversation; before, it only showed as a "resume draft" row until the branch list had been loaded.
 - Cancel the turn that runs a plan and the plan reads as stopped, so it can be started again; before, it stayed "executing" and its button stayed disabled.
 - Creating a group no longer adds duplicate agents, and one group failing to load no longer interrupts the other conversations.
 - Hide the date and recalled notes that the engine adds to the first message of a conversation from what the person sees, so editing or retrying a message no longer puts them back in the input.
@@ -201,6 +207,10 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 新增
 
+- 新对话页可以直接与外部产品单聊；智能体页可以开关带产品的智能体；产品关闭后对应单聊会锁定输入，可由 MerakCode 接管并保留历史消息。
+- 设置新增“后台引擎”页，提供“登录时启动”开关（默认关闭）；应用更新导致引擎路径变化时，会自动重新登记登录启动项。
+- 后台导入 v0.3 数据时，桌面端显示进度条；导入完成后，首页收件箱用摘要显示结果（导入了什么、跳过了什么以及原因）。
+- 应用里打开的每个文件夹都会被监视，即使没有协作群在其中工作：在终端或别的编辑器里切换分支、提交或改文件，Git 面板、编辑器和审阅都会及时更新。
 - 在新引擎上恢复桌面端侧边面板：每个对话各有标签页（文件、审阅、Git、计划、终端、浏览器）；代码编辑器只在读到的版本上保存；Git 暂存、提交、推送和切换分支；对话可在独立工作树里开始；重启、目录改名或离线后恢复草稿、终端和浏览器页面。
 - 新增首页：收件箱、全局任务看板、最近的协作群和对话；新消息在右下角弹出提醒（窗口在后台时发系统通知）；等待你决定的消息也能在首页收件箱和托盘里标为已读。
 - 新增智能体页：一键添加本机探测到的产品；四步向导完整配置智能体（产品、模型、角色名、职责、权限、主机、环境变量）；列表里每个智能体显示它的产品、模型和职责。
@@ -282,6 +292,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 新建协作群对话框里的群类型和云端同意，以及任务表单里的负责人和审核选项，改用应用自带的分段控件、开关和下拉框。
 - v0.3 配置文件里的 `plugin` 和 `plugin_options` 保留在文件里，但会提示不再使用：v1.0.0 没有插件模块。
 - 权限选项改为“每次询问”“仅询问危险行为”和“全面接管”，并显示对应安全性描述。
 
@@ -326,6 +337,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 ### 修复
 
 - Windows 上通过目录连接（junction）打开的文件夹与它的目标是同一个工作区；在工作树或在链接文件夹真实目录里运行的对话，列在侧栏对应的文件夹下；已删除但留有草稿的文件改为只读打开，不再报错。
+- 关闭应用前写下的审阅评论，回到对话后会重新在原位置的输入框里打开；以前要等分支列表加载后，它才从“继续评论草稿”一行变回输入框。
 - 取消正在执行计划的回合后，计划变为“已停止”，可以再次开始；以前它一直是“执行中”，按钮一直不能点。
 - 新建协作群不再重复生成智能体；一个协作群加载出错不再打断其他对话。
 - 引擎加在对话第一条消息前的日期和召回的记忆不再显示给用户，编辑或重试消息时也不会把它们放回输入框。

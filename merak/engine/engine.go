@@ -19,6 +19,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/code"
 	slash "github.com/TongTong313/merakcode/merak/engine/command"
 	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/folderwatch"
 	"github.com/TongTong313/merakcode/merak/engine/group"
 	"github.com/TongTong313/merakcode/merak/engine/loop"
 	"github.com/TongTong313/merakcode/merak/engine/mcp"
@@ -191,6 +192,7 @@ type Engine struct {
 	now              func() time.Time
 	tools            *tool.Pool
 	clientTools      *clienttool.Registry
+	directoryWatches folderwatch.Watches
 	schedules        schedule.Schedules
 	scheduleRunner   *schedule.Runner
 	scheduleNoticeMu sync.Mutex

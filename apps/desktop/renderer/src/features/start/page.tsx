@@ -13,6 +13,7 @@ import { setUi } from "../../state/ui"
 import { pickFolder, Sidebar } from "../shell/sidebar"
 import { TaskColumns } from "../tasks/board"
 import { HomeInbox } from "./inbox"
+import { ImportBar } from "./import"
 
 type Recent = { key: string; title: string; subtitle: string; href: string; updated: number; kind: "group" | "session" }
 
@@ -58,6 +59,7 @@ export function StartPage() {
           <span class="title">{t("home.heading")}</span>
         </div>
         <div class="home scroll">
+          <ImportBar />
           <Show
             when={!empty()}
             fallback={

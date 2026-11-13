@@ -13,6 +13,7 @@ import (
 
 	"github.com/TongTong313/merakcode/merak/engine"
 	codepanel "github.com/TongTong313/merakcode/merak/engine/code"
+	"github.com/TongTong313/merakcode/merak/engine/event"
 	"github.com/TongTong313/merakcode/merak/internal/server"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
@@ -184,4 +185,71 @@ func TestStageUnstageAndAStagedCommitOverRPC(t *testing.T) {
 	if files := strings.Fields(gitIn(t, repo, "show", "--name-only", "--format=", "HEAD")); len(files) != 1 || files[0] != "a.txt" {
 		t.Fatalf("the commit holds %v", files)
 	}
+}
+
+func TestRepoWatchAnnouncesAnExternalCheckoutUntilTheConnectionCloses(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-b", "main")
+	gitIn(t, repo, "config", "user.name", "Fixture")
+	gitIn(t, repo, "config", "user.email", "fixture@example.invalid")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-m", "Baseline")
+	gitIn(t, repo, "branch", "one")
+	gitIn(t, repo, "branch", "two")
+	e, err := engine.New(engine.Deps{Workdir: repo, DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetDirectoryWatchInterval(100 * time.Millisecond)
+	handler := server.New(e, "token")
+	defer handler.Close()
+	host := httptest.NewServer(handler)
+	defer host.Close()
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(host.URL, "http"), "token", protocol.HelloParams{Protocol: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts, stop := e.Bus.Subscribe(event.Filter{Types: []event.Type{engine.RepoChanged}})
+	defer stop()
+	if err := client.Call(ctx, "repo.watch", protocol.DirectoryParams{Directory: repo}, nil); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "switch", "--quiet", "one")
+	select {
+	case <-facts:
+	case <-ctx.Done():
+		t.Fatal("an external checkout was not announced to a client that watches the folder")
+	}
+
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond) // the server lets go of the connection's watches when it notices the close
+	for len(facts) > 0 {
+		<-facts
+	}
+	gitIn(t, repo, "switch", "--quiet", "two")
+	select {
+	case fact := <-facts:
+		t.Fatalf("a folder whose watcher closed its connection was announced: %s", fact.Payload)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	if err := client2Missing(ctx, host.URL, repo); err == nil {
+		t.Fatal("repo.watch accepted a folder that does not exist")
+	}
+}
+
+// client2Missing asks a second connection to watch a folder that does not exist.
+func client2Missing(ctx context.Context, url, repo string) error {
+	client, err := protocol.Connect(ctx, "ws"+strings.TrimPrefix(url, "http"), "token", protocol.HelloParams{Protocol: 1})
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.Call(ctx, "repo.watch", protocol.DirectoryParams{Directory: filepath.Join(repo, "missing")}, nil)
 }

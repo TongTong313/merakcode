@@ -121,6 +121,19 @@ type SessionCancelParams struct {
 	Session event.ID `json:"session"`
 }
 
+// SessionExternalResult names the agent that drives a conversation; it is empty when the engine's own model does.
+type SessionExternalResult struct {
+	Agent event.ID `json:"agent,omitempty"`
+}
+
+// SessionTakeoverParams moves a conversation with an external product to the engine's own model. Confirm must be
+// true; Selection is the model that answers from now on, and the default model when it is left out.
+type SessionTakeoverParams struct {
+	Session   event.ID           `json:"session"`
+	Confirm   bool               `json:"confirm,omitempty"`
+	Selection *session.Selection `json:"selection,omitempty"`
+}
+
 type SubscribeResult struct {
 	Subscription event.ID `json:"subscription"`
 }

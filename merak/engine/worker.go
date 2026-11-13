@@ -16,6 +16,7 @@ import (
 	"github.com/TongTong313/merakcode/merak/engine/task"
 	"github.com/TongTong313/merakcode/merak/engine/window"
 	"github.com/TongTong313/merakcode/merak/engine/worker"
+	"github.com/TongTong313/merakcode/merak/internal/platform/errorcode"
 	"github.com/TongTong313/merakcode/merak/internal/platform/process"
 	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
 )
@@ -24,6 +25,9 @@ func (e *Engine) StartWorker(ctx context.Context, p agent.Agent, a worker.Assign
 	p, err := e.withAgentSecrets(ctx, p)
 	if err != nil {
 		return nil, err
+	}
+	if p.Disabled {
+		return nil, coded(errorcode.AgentDisabled, errors.New("the agent is turned off"))
 	}
 	a.Scope.Session = a.Session
 	if p.Product != nil && p.Product.Kind == worker.KindRemote {

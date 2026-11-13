@@ -211,6 +211,9 @@ func (e *Engine) prepareAgentMember(ctx context.Context, member group.Member, ac
 	if err != nil {
 		return group.Member{}, err
 	}
+	if configured.Disabled {
+		return group.Member{}, coded(errorcode.AgentDisabled, errors.New("the agent is turned off"))
+	}
 	if !configured.Shared && owner != "" && owner != member.Owner {
 		return group.Member{}, coded(errorcode.ProfileOwnerOnly, errors.New("only the owner can use an unshared agent"))
 	}

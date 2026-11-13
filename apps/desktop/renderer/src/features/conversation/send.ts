@@ -1,5 +1,6 @@
 import type { CodeWorktree, ModelMessage, ModelPart } from "@merakcode/sdk"
 import { client } from "../../state/client"
+import { driverOf } from "../../state/external"
 import { choice } from "../../state/models"
 import { renameSession, session } from "../../state/store"
 import type { Submission } from "./composer"
@@ -22,15 +23,20 @@ export function submissionParts(submission: Submission): ModelPart[] {
 }
 
 export async function send(id: string, directory: string, submission: Submission, extendBudget = false) {
-  const selected = choice(id, directory)
-  if (!selected.model) throw new Error("MRK-3001")
+  // An external product picks its own model: the conversation sends no selection to the engine
+  const selected = driverOf(id) ? undefined : choice(id, directory)
+  if (selected && !selected.model) throw new Error("MRK-3001")
   await (
     await client()
   ).session.send({
     session: id,
     parts: submissionParts(submission),
     extendBudget,
-    selection: { provider: selected.model.providerID, model: selected.model.modelID, thinking: selected.variant },
+    selection: selected?.model && {
+      provider: selected.model.providerID,
+      model: selected.model.modelID,
+      thinking: selected.variant,
+    },
   })
   if (!session(id)?.title) await renameSession(id, submission.text.slice(0, 80) || submission.files[0]?.filename || "")
 }

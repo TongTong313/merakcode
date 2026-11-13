@@ -35,6 +35,7 @@ func main() {
 	fixture := flag.String("fixture", "", "")
 	fixtureHold := flag.Bool("fixture-hold", false, "")
 	hold := flag.Bool("hold", false, "")
+	echo := flag.Bool("echo", false, "")
 	history := flag.Bool("history", false, "")
 	resume := flag.String("resume", "", "")
 	tools := flag.String("tools", "", "")
@@ -227,6 +228,13 @@ func main() {
 				os.Exit(15)
 			}
 			fmt.Println(`{"type":"result","subtype":"success","result":"MCP finished."}`)
+			return
+		}
+		if *echo {
+			// Answers with the message it was given, so a conversation shows which message each answer belongs to.
+			text := "External reply: " + input.Message.Content
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "assistant", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": text}}}})
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "subtype": "success", "result": text})
 			return
 		}
 		if *fixture == "" {

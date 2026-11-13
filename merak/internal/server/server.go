@@ -90,6 +90,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		conn.Close()
 		s.engine.DropClientTools((&connection{ws: conn}).owner())
+		s.engine.UnwatchDirectories((&connection{ws: conn}).owner())
 		remote.close()
 		if stopSubscription != nil {
 			stopSubscription()

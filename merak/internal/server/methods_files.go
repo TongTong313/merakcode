@@ -22,6 +22,9 @@ func (s *Server) fileMethods() map[string]handler {
 		"repo.status": run(func(ctx context.Context, _ *connection, params protocol.DirectoryParams) (any, error) {
 			return s.engine.RepoStatus(ctx, params.Directory)
 		}),
+		"repo.watch": run(func(ctx context.Context, c *connection, params protocol.DirectoryParams) (any, error) {
+			return done(s.engine.WatchDirectory(ctx, c.owner(), params.Directory))
+		}),
 		"repo.branches": run(func(ctx context.Context, _ *connection, params protocol.DirectoryParams) (any, error) {
 			return s.engine.RepoBranches(ctx, params.Directory)
 		}),

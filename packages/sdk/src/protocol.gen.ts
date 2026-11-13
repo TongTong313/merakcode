@@ -3,6 +3,7 @@ import { z } from "zod"
 export const PROTOCOL_VERSION = 1
 export type AgentAgent = {
   budget?: SessionBudget
+  disabled?: boolean
   duties: string
   id: string
   memory?: string[] | null
@@ -23,6 +24,7 @@ export type AgentAgent = {
 export const AgentAgentSchema: z.ZodType<AgentAgent> = z.lazy(() =>
   z.strictObject({
     budget: SessionBudgetSchema.optional(),
+    disabled: z.boolean().optional(),
     duties: z.string(),
     id: z.string(),
     memory: z.union([z.array(z.string()), z.null()]).optional(),
@@ -1891,6 +1893,10 @@ export type ProtocolSessionCreateResult = { session: string }
 export const ProtocolSessionCreateResultSchema: z.ZodType<ProtocolSessionCreateResult> = z.lazy(() =>
   z.strictObject({ session: z.string() }),
 )
+export type ProtocolSessionExternalResult = { agent?: string }
+export const ProtocolSessionExternalResultSchema: z.ZodType<ProtocolSessionExternalResult> = z.lazy(() =>
+  z.strictObject({ agent: z.string().optional() }),
+)
 export type ProtocolSessionImportParams = { events: EventEvent[] | null }
 export const ProtocolSessionImportParamsSchema: z.ZodType<ProtocolSessionImportParams> = z.lazy(() =>
   z.strictObject({ events: z.union([z.array(EventEventSchema), z.null()]) }),
@@ -1919,6 +1925,14 @@ export const ProtocolSessionSendParamsSchema: z.ZodType<ProtocolSessionSendParam
     extendBudget: z.boolean().optional(),
     parts: z.union([z.array(ModelPartSchema), z.null()]),
     plan: z.boolean().optional(),
+    selection: z.union([SessionSelectionSchema, z.null()]).optional(),
+    session: z.string(),
+  }),
+)
+export type ProtocolSessionTakeoverParams = { confirm?: boolean; selection?: SessionSelection | null; session: string }
+export const ProtocolSessionTakeoverParamsSchema: z.ZodType<ProtocolSessionTakeoverParams> = z.lazy(() =>
+  z.strictObject({
+    confirm: z.boolean().optional(),
     selection: z.union([SessionSelectionSchema, z.null()]).optional(),
     session: z.string(),
   }),
@@ -2178,11 +2192,21 @@ export const SessionBudgetSchema: z.ZodType<SessionBudget> = z.lazy(() =>
     maxWallClock: z.number().int().optional(),
   }),
 )
-export type SessionChange = { archived?: boolean | null; mode?: string; title?: string | null }
+export type SessionChange = {
+  archived?: boolean | null
+  mode?: string
+  model?: string
+  provider?: string
+  thinking?: string
+  title?: string | null
+}
 export const SessionChangeSchema: z.ZodType<SessionChange> = z.lazy(() =>
   z.strictObject({
     archived: z.union([z.boolean(), z.null()]).optional(),
     mode: z.string().optional(),
+    model: z.string().optional(),
+    provider: z.string().optional(),
+    thinking: z.string().optional(),
     title: z.union([z.string(), z.null()]).optional(),
   }),
 )
@@ -4800,6 +4824,7 @@ export type Methods = {
   "repo.stage": { params: ProtocolRepoPathsParams; result: {} }
   "repo.status": { params: ProtocolDirectoryParams; result: GitState }
   "repo.unstage": { params: ProtocolRepoPathsParams; result: {} }
+  "repo.watch": { params: ProtocolDirectoryParams; result: {} }
   "review.accept": { params: ProtocolReviewDecideParams; result: ReviewStatus }
   "review.reject": { params: ProtocolReviewDecideParams; result: ReviewStatus }
   "review.status": { params: ProtocolSessionCancelParams; result: ReviewStatus }
@@ -4816,12 +4841,14 @@ export type Methods = {
   "session.create": { params: ProtocolSessionCreateParams; result: ProtocolSessionCreateResult }
   "session.delete": { params: ProtocolSessionCancelParams; result: {} }
   "session.export": { params: ProtocolSessionCancelParams; result: EventEvent[] | null }
+  "session.external": { params: ProtocolSessionCancelParams; result: ProtocolSessionExternalResult }
   "session.import": { params: ProtocolSessionImportParams; result: ProtocolSessionCreateResult }
   "session.list": { params: ProtocolSessionListParams; result: SessionInfo[] | null }
   "session.revert": { params: ProtocolSessionRevertParams; result: {} }
   "session.search": { params: ProtocolSessionSearchParams; result: SessionHit[] | null }
   "session.send": { params: ProtocolSessionSendParams; result: {} }
   "session.snapshot": { params: ProtocolSessionCancelParams; result: SessionState }
+  "session.takeover": { params: ProtocolSessionTakeoverParams; result: {} }
   "session.unrevert": { params: ProtocolSessionCancelParams; result: {} }
   "session.update": { params: ProtocolSessionUpdateParams; result: {} }
   "skill.discover": { params: ProtocolSkillDiscoverParams; result: SkillOffer[] | null }
@@ -4931,6 +4958,7 @@ export const methodSchemas = {
   "repo.stage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
   "repo.status": { params: ProtocolDirectoryParamsSchema, result: GitStateSchema },
   "repo.unstage": { params: ProtocolRepoPathsParamsSchema, result: z.strictObject({}) },
+  "repo.watch": { params: ProtocolDirectoryParamsSchema, result: z.strictObject({}) },
   "review.accept": { params: ProtocolReviewDecideParamsSchema, result: ReviewStatusSchema },
   "review.reject": { params: ProtocolReviewDecideParamsSchema, result: ReviewStatusSchema },
   "review.status": { params: ProtocolSessionCancelParamsSchema, result: ReviewStatusSchema },
@@ -4950,6 +4978,7 @@ export const methodSchemas = {
     params: ProtocolSessionCancelParamsSchema,
     result: z.union([z.array(EventEventSchema), z.null()]),
   },
+  "session.external": { params: ProtocolSessionCancelParamsSchema, result: ProtocolSessionExternalResultSchema },
   "session.import": { params: ProtocolSessionImportParamsSchema, result: ProtocolSessionCreateResultSchema },
   "session.list": { params: ProtocolSessionListParamsSchema, result: z.union([z.array(SessionInfoSchema), z.null()]) },
   "session.revert": { params: ProtocolSessionRevertParamsSchema, result: z.strictObject({}) },
@@ -4959,6 +4988,7 @@ export const methodSchemas = {
   },
   "session.send": { params: ProtocolSessionSendParamsSchema, result: z.strictObject({}) },
   "session.snapshot": { params: ProtocolSessionCancelParamsSchema, result: SessionStateSchema },
+  "session.takeover": { params: ProtocolSessionTakeoverParamsSchema, result: z.strictObject({}) },
   "session.unrevert": { params: ProtocolSessionCancelParamsSchema, result: z.strictObject({}) },
   "session.update": { params: ProtocolSessionUpdateParamsSchema, result: z.strictObject({}) },
   "skill.discover": {

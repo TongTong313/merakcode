@@ -23,6 +23,7 @@ import { TaskBoardPage } from "./features/tasks/board"
 import { TaskPage } from "./features/tasks/page"
 import { GroupConversation } from "./features/conversation/group-page"
 import { connectGroups, loadGroups } from "./state/groups"
+import { connectImport } from "./state/import"
 import { connectTasks } from "./state/tasks"
 
 /** Global shortcuts, ⌘/Ctrl plus: K palette, N new conversation, G new group, "," settings, J terminal, B side panel */
@@ -116,6 +117,7 @@ function Root(props: { children?: JSX.Element }) {
   )
   onMount(() => onCleanup(connectGroups()))
   onMount(() => onCleanup(connectTasks()))
+  onMount(() => onCleanup(connectImport()))
   createEffect(() => ready.error && log("error", "bootstrap failed", { error: String(ready.error) }))
   return (
     <>

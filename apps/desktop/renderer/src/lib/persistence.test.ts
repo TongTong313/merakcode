@@ -25,3 +25,15 @@ test.each(["set", "remove"] as const)(
     expect(await persistent.get("draft-test", "notes.txt")).toBe("original draft")
   },
 )
+
+test("a failed durable read exposes its recovery error code and leaves the record alone", async () => {
+  await persistent.set("draft-test", "notes.txt", "original draft")
+  const cause = new Error("Storage unavailable")
+  vi.spyOn(localStorage, "getItem").mockImplementationOnce(() => {
+    throw cause
+  })
+  const result = await persistent.get("draft-test", "notes.txt").catch((error: unknown) => error)
+  expect(result).toMatchObject({ code: "MRK-4026", cause })
+  expect(summary(result)).toBe("MRK-4026")
+  expect(await persistent.get("draft-test", "notes.txt")).toBe("original draft")
+})

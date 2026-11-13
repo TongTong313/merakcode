@@ -1108,6 +1108,17 @@
         "en": "The files changed after the last accept or reject, or nothing was reviewed yet."
       }
     },
+    "AGENT_DISABLED": {
+      "code": "MRK-4032",
+      "domain": "session",
+      "status": 409,
+      "retryable": false,
+      "title": { "zh": "这个智能体已关闭", "en": "This agent is turned off" },
+      "hint": {
+        "zh": "在智能体页打开它的开关后，才能与它对话或让它加入协作群。",
+        "en": "Turn it on in the Agents page to talk to it or give it a seat in a group."
+      }
+    },
     "DIRECTORY_MISSING": {
       "code": "MRK-3009",
       "domain": "config",

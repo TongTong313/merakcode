@@ -6,6 +6,7 @@ import { taskPath } from "../../lib/route"
 import { homeNotices, markNoticeRead, noticeRead, type HomeNotice } from "../../state/groups"
 import { noticeText } from "../group/notice"
 import { noticeTitle, RequestDialog } from "../group/inbox"
+import { ImportSummary } from "./import"
 
 /** Where a notice leads: a request that waits for an answer opens in the inbox, everything else goes to its task. */
 export function noticeHref(notice: Pick<Notice, "kind" | "scope" | "id">) {
@@ -49,7 +50,9 @@ export function InboxColumn(props: { notices: HomeNotice[]; opened?: string; onT
                 <span class="spacer" />
                 <span class="subtle">{ago(Date.parse(entry.notice.time))}</span>
               </div>
-              <p>{noticeText(entry.notice.text)}</p>
+              <Show when={entry.notice.kind === "import"} fallback={<p>{noticeText(entry.notice.text)}</p>}>
+                <ImportSummary text={entry.notice.text} count={entry.notice.count ?? 0} />
+              </Show>
               <div class="row">
                 <Show when={entry.pending}>
                   <button class="button secondary sm" data-open onClick={() => open(entry.notice)}>

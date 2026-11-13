@@ -115,6 +115,7 @@ export function connect() {
       .then(async () => {
         if (epoch !== generation) return
         await refresh(connection)
+        await watchFolders(connection)
       })
       .catch(failed)
   })
@@ -210,6 +211,11 @@ export const connected = () =>
   })
 const folderOf = (directory: string) => state.folders.find((folder) => sameDir(folder.directory, directory))
 
+/** Asks the engine to tell about changes made outside the app (a checkout, a commit, a file) in every open folder. */
+async function watchFolders(connection: EngineClient) {
+  await Promise.all(state.folders.map((folder) => connection.repo.watch({ directory: folder.directory }).catch(failed)))
+}
+
 export async function openFolder(directory: string) {
   if (!folderOf(directory)) {
     setState("folders", (folders) => [{ directory }, ...folders])
@@ -219,6 +225,7 @@ export async function openFolder(directory: string) {
     )
   }
   await refresh()
+  await (await client()).repo.watch({ directory }).catch(failed)
 }
 
 export async function closeFolder(directory: string) {

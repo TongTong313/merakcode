@@ -3,6 +3,7 @@ import { createEffect, createSignal, For, on, Show } from "solid-js"
 import { t, type Key } from "../../i18n"
 import { Dialog } from "../../ui/dialog"
 import { Markdown } from "../../ui/markdown"
+import { Select } from "../../ui/select"
 import { Report } from "./report"
 import { CreateTask } from "./create-task"
 import { client } from "../../state/client"
@@ -188,27 +189,21 @@ export function TaskBoard(props: {
             <div class="dialog-body task-detail">
               <Show when={["open", "queued", "running"].includes(task().status)}>
                 <div class="task-assign">
-                  <label>
-                    {t("task.assign")}
-                    <select
-                      class="input"
-                      aria-label={t("task.assign")}
-                      value={assignee()}
-                      disabled={busy()}
-                      onChange={(event) => setAssignee(event.currentTarget.value)}
-                    >
-                      <option value="">{t("task.chooseMember")}</option>
-                      <For
-                        each={props.members.filter(
-                          (member) =>
-                            member.agentRole === "worker" &&
-                            !task().claims?.some((claim) => claim.member === member.id && claim.status !== "abandoned"),
-                        )}
-                      >
-                        {(member) => <option value={member.id}>{member.name}</option>}
-                      </For>
-                    </select>
-                  </label>
+                  <Select
+                    class="chip outlined"
+                    label={t("task.assign")}
+                    placeholder={t("task.chooseMember")}
+                    value={assignee() || undefined}
+                    disabled={busy()}
+                    options={props.members
+                      .filter(
+                        (member) =>
+                          member.agentRole === "worker" &&
+                          !task().claims?.some((claim) => claim.member === member.id && claim.status !== "abandoned"),
+                      )
+                      .map((member) => ({ value: member.id, label: member.name }))}
+                    onChange={setAssignee}
+                  />
                   <Show when={collaborators()}>
                     <label>
                       {t("task.scope")}

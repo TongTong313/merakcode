@@ -192,3 +192,14 @@ test("renames, archives and changes the mode of a session and keeps the todo lis
   })
   expect(state?.archived).toBeFalsy()
 })
+
+test("a takeover moves the session to another model", () => {
+  let state: SessionState | undefined = foldSession(undefined, at(1, { type: "session.created", payload: blank }))
+  state = foldSession(
+    state,
+    at(2, { type: "session.updated", payload: { provider: "openai", model: "gpt", thinking: "high" } }),
+  )
+  expect(state?.config).toMatchObject({ provider: "openai", model: "gpt", thinking: "high" })
+  state = foldSession(state, at(3, { type: "session.updated", payload: { title: "Named" } }))
+  expect(state?.config).toMatchObject({ provider: "openai", model: "gpt", thinking: "high" })
+})

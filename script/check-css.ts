@@ -1,6 +1,7 @@
 /**
  * Desktop UI styles must not use !important: styling relies on design tokens and the cascade, and !important makes
- * every later override harder.
+ * every later override harder. Stylesheets other than styles/tokens.css must not write colors (hexadecimal or rgb())
+ * either: every color is a token, so light and dark themes stay in one file.
  * Usage (from the repository root): pnpm check:css
  */
 import path from "node:path"
@@ -8,6 +9,7 @@ import { Filesystem } from "@merakcode/util/filesystem"
 import { Glob } from "@merakcode/util/glob"
 
 const IMPORTANT = /!\s*important/i
+const COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\brgba?\(/i
 
 /** Replaces text with spaces of the same length, keeping newlines so line numbers stay put */
 const blank = (text: string) => text.replace(/[^\n]/g, " ")
@@ -20,9 +22,13 @@ export function violations(files: { path: string; text: string }[]) {
     const code = file.text
       .replace(/\/\*[\s\S]*?\*\//g, blank)
       .replace(css ? /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g : /(^|[^:"'`])\/\/[^\n]*/g, blank)
+    const colors = css && !file.path.endsWith("styles/tokens.css")
     return code
       .split("\n")
-      .flatMap((line, index) => (IMPORTANT.test(line) ? [{ file: file.path, line: index + 1 }] : []))
+      .flatMap((line, index) => [
+        ...(IMPORTANT.test(line) ? [{ file: file.path, line: index + 1, rule: "important" }] : []),
+        ...(colors && COLOR.test(line) ? [{ file: file.path, line: index + 1, rule: "color" }] : []),
+      ])
   })
 }
 
@@ -35,8 +41,8 @@ async function main() {
     paths.map(async (file) => ({ path: file, text: await Filesystem.readText(path.join(root, file)) })),
   )
   const found = violations(files)
-  for (const item of found) console.error(`${item.file}:${item.line} !important`)
-  console.log(`${files.length} files checked, ${found.length} !important`)
+  for (const item of found) console.error(`${item.file}:${item.line} ${item.rule}`)
+  console.log(`${files.length} files checked, ${found.length} violations`)
   if (found.length > 0) process.exitCode = 1
 }
 

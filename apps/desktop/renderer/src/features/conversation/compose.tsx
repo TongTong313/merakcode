@@ -1,15 +1,18 @@
 import Folder from "lucide-solid/icons/folder"
 import Plus from "lucide-solid/icons/plus"
 import X from "lucide-solid/icons/x"
-import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { t } from "../../i18n"
 import { mac } from "../../lib/bridge"
 import { baseName, sessionPath } from "../../lib/route"
+import { agents, chatTargets, loadAgents } from "../../state/agents"
 import { client } from "../../state/client"
+import { rememberDriver } from "../../state/external"
 import { choice, choose } from "../../state/models"
 import { ensureSession } from "../../state/store"
 import { gitState, identityOf, refreshBranches, switching } from "../../state/git"
+import { Select } from "../../ui/select"
 import { toast } from "../../ui/toast"
 import { BranchPicker } from "../git/branch-picker"
 import { promotePanels } from "../panel/workspace"
@@ -17,13 +20,20 @@ import { Frame } from "../shell/frame"
 import { Composer, type ComposerDraft, type Submission } from "./composer"
 import { createWorktree, send, type WorktreeAttempt } from "./send"
 
+/** The choice of the target selector that stands for MerakCode itself */
+const OWN = "merak"
+
 /** What a new conversation has prepared so far: where it runs, the starting branch and the unsent draft. */
 function preparation() {
   const [worktree, setWorktree] = createSignal(false)
   const [creating, setCreating] = createSignal(false)
   const [base, setBase] = createSignal<string>()
   const [draft, setDraft] = createSignal<ComposerDraft>()
+  /** The agent of an external product the conversation is held with; none means MerakCode */
+  const [agent, setAgent] = createSignal<string>()
   return {
+    agent,
+    setAgent,
     worktree,
     setWorktree,
     creating,
@@ -46,6 +56,18 @@ function preparationFor(directory: string) {
   return created
 }
 
+/** An external conversation exists once its product has started: waits until the window can read it. */
+async function started(id: string) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const known = await ensureSession(id).then(
+      () => true,
+      () => false,
+    )
+    if (known) return
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
 /**
  * New conversation: choose where it runs (the current directory or a new worktree); the session is created only when
  * the first message is sent.
@@ -57,6 +79,23 @@ export function Compose(props: { directory: string }) {
     disposed = true
   })
   const prepared = () => preparationFor(props.directory)
+  const agent = () => prepared().agent()
+  // The list is read again when the selector is reached; the options only change when what they show changes, so an
+  // open list is not rebuilt under the pointer
+  const choices = createMemo(
+    () => [
+      { value: OWN, label: "MerakCode" },
+      ...chatTargets(agents()).map((target) => ({ value: target.id, label: target.name })),
+    ],
+    undefined,
+    {
+      equals: (a, b) =>
+        a.length === b.length && a.every((item, i) => item.value === b[i]!.value && item.label === b[i]!.label),
+    },
+  )
+  // Once a first message was sent the conversation belongs to its target
+  const targetLocked = () => [...prepared().sessions.values()].some((pending) => pending.id)
+  onMount(() => void loadAgents().catch(() => undefined))
   const worktree = () => prepared().worktree()
   const creating = () => prepared().creating()
   const git = () => !!identityOf(props.directory)
@@ -80,7 +119,8 @@ export function Compose(props: { directory: string }) {
     current.setCreating(true)
     try {
       const selected = choice(undefined, directory)
-      if (!selected.model) throw new Error("MRK-3001")
+      const external = agent()
+      if (!external && !selected.model) throw new Error("MRK-3001")
       const target = current.worktree()
         ? (await createWorktree(directory, current.base(), current.attempt)).path
         : directory
@@ -91,16 +131,21 @@ export function Compose(props: { directory: string }) {
         await client()
       ).session.create({
         key: pending.key,
-        provider: selected.model.providerID,
-        model: selected.model.modelID,
-        thinking: selected.variant,
+        ...(external
+          ? { agent: external }
+          : { provider: selected.model!.providerID, model: selected.model!.modelID, thinking: selected.variant }),
         mode: selected.mode,
         workdir: target,
       })
       pending.id = created.session
-      await ensureSession(created.session)
-      choose(created.session, directory, selected)
+      if (external) {
+        rememberDriver(created.session, external)
+      } else {
+        await ensureSession(created.session)
+        choose(created.session, directory, selected)
+      }
       await send(created.session, directory, submission)
+      if (external) await started(created.session)
       await promotePanels(directory, { directory: target, sessionID: created.session }).catch(() =>
         toast({ kind: "error", title: t("panel.persistError") }),
       )
@@ -122,6 +167,13 @@ export function Compose(props: { directory: string }) {
         <h1 class="compose-heading">{t("compose.heading", { name: baseName(props.directory) })}</h1>
         <div class="compose-wrap">
           <div class="context-row">
+            <Select
+              label={t("conversation.target")}
+              value={agent() ?? OWN}
+              options={choices()}
+              disabled={creating() || targetLocked()}
+              onChange={(id) => !creating() && !targetLocked() && prepared().setAgent(id === OWN ? undefined : id)}
+            />
             <span class="chip outlined">
               <Folder class="icon icon-sm" />
               <span class="ellipsis" title={props.directory}>
@@ -182,6 +234,7 @@ export function Compose(props: { directory: string }) {
           <Composer
             directory={props.directory}
             busy={false}
+            external={!!agent()}
             disabled={creating() || switching(props.directory)}
             autofocus
             draft={prepared().draft()}
