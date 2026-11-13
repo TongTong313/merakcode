@@ -2258,6 +2258,7 @@
           { "$ref": "#/components/schemas/Event.session.idle" },
           { "$ref": "#/components/schemas/Event.session.notification.created" },
           { "$ref": "#/components/schemas/Event.session.plan.updated" },
+          { "$ref": "#/components/schemas/Event.session.queue.updated" },
           { "$ref": "#/components/schemas/Event.session.status" },
           { "$ref": "#/components/schemas/Event.session.updated" },
           { "$ref": "#/components/schemas/Event.skill.updated" },
@@ -2829,6 +2830,23 @@
         "properties": {
           "properties": { "$ref": "#/components/schemas/SessionPlan" },
           "type": { "const": "session.plan.updated", "type": "string" }
+        },
+        "required": ["properties", "type"],
+        "type": "object"
+      },
+      "Event.session.queue.updated": {
+        "additionalProperties": false,
+        "properties": {
+          "properties": {
+            "additionalProperties": false,
+            "properties": {
+              "items": { "items": { "$ref": "#/components/schemas/SessionPromptQueueItem" }, "type": "array" },
+              "sessionID": { "type": "string" }
+            },
+            "required": ["items", "sessionID"],
+            "type": "object"
+          },
+          "type": { "const": "session.queue.updated", "type": "string" }
         },
         "required": ["properties", "type"],
         "type": "object"
@@ -4244,7 +4262,7 @@
               },
               "bash_readonly": {
                 "$ref": "#/components/schemas/PermissionRuleConfig",
-                "description": "Run read-only commands (ls, git status, ...)"
+                "description": "Run read-only commands (ls, pwd, ...)"
               },
               "bash_risky": {
                 "$ref": "#/components/schemas/PermissionRuleConfig",
@@ -5851,6 +5869,20 @@
         "required": ["content", "humanRevision", "path", "revision", "sessionID", "source", "status"],
         "type": "object"
       },
+      "SessionPromptQueue": {
+        "additionalProperties": false,
+        "properties": {
+          "items": { "items": { "$ref": "#/components/schemas/SessionPromptQueueItem" }, "type": "array" }
+        },
+        "required": ["items"],
+        "type": "object"
+      },
+      "SessionPromptQueueItem": {
+        "additionalProperties": false,
+        "properties": { "messageID": { "type": "string" } },
+        "required": ["messageID"],
+        "type": "object"
+      },
       "SessionSearchResult": {
         "additionalProperties": false,
         "properties": {
@@ -6548,6 +6580,7 @@
             "type": "object"
           },
           "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
+          "queued": { "type": "boolean" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
           "summary": {
@@ -6597,6 +6630,7 @@
             "type": "object"
           },
           "permissionLevel": { "$ref": "#/components/schemas/PermissionLevel" },
+          "queued": { "type": "boolean" },
           "role": { "const": "user", "type": "string" },
           "sessionID": { "type": "string" },
           "summary": {
@@ -14051,6 +14085,179 @@
           {
             "lang": "js",
             "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.prompt_async({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/queue": {
+      "get": {
+        "description": "Return prompts accepted while the session was busy, in FIFO order.",
+        "operationId": "session.queue",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPromptQueue" } } },
+            "description": "Queued prompts"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "List queued prompts",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.queue({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/queue/{messageID}": {
+      "delete": {
+        "description": "Cancel one waiting prompt. The active turn and later queue items keep their order.",
+        "operationId": "session.queueRemove",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } },
+          { "in": "path", "name": "messageID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPromptQueue" } } },
+            "description": "Updated queue"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Remove a queued prompt",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.queueRemove({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "description": "Replace the text of a prompt that is still waiting behind the active turn.",
+        "operationId": "session.queueEdit",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } },
+          { "in": "path", "name": "messageID", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": { "text": { "minLength": 1, "type": "string" } },
+                "required": ["text"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPromptQueue" } } },
+            "description": "Updated queue"
+          },
+          "400": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Edit a queued prompt",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.queueEdit({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/queue/{messageID}/send": {
+      "post": {
+        "description": "Interrupt the active turn and run this waiting prompt next. Other queued prompts keep their relative order.",
+        "operationId": "session.queueSendNow",
+        "parameters": [
+          { "in": "query", "name": "directory", "schema": { "type": "string" } },
+          { "in": "path", "name": "sessionID", "required": true, "schema": { "type": "string" } },
+          { "in": "path", "name": "messageID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionPromptQueue" } } },
+            "description": "Updated queue"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {},
+                    "error": { "items": {}, "type": "array" },
+                    "success": { "enum": [false], "type": "boolean" }
+                  },
+                  "required": ["data", "error", "success"],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "404": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+            "description": "Not found"
+          }
+        },
+        "summary": "Send a queued prompt now",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createMerakCodeClient } from \"@merakcode/sdk\n\nconst client = createMerakCodeClient()\nawait client.session.queueSendNow({\n  ...\n})"
           }
         ]
       }

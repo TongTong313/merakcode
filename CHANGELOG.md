@@ -6,6 +6,26 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- While a turn is running, follow-up messages go into a queue panel above the composer. You can edit, remove, or send one now; the rest stay queued in order. Queued messages stay out of the working timeline until they start. Interrupt keeps the queue visible, and a follow-up is marked queued on its first message event so it does not flash in the timeline.
+
+### 新增
+
+- 智能体正在执行时，后续消息进入输入框上方的排队区。你可以修改、删除或立即发送其中一条；其余消息仍按原顺序排队。排队消息在开始执行前不会出现在正在处理的对话主区域。打断当前轮次时排队区保持可见；后续消息在首次消息事件上就带排队标记，避免在主区域闪一下。
+
+### Changed
+
+- Redesign the side-panel chooser as two-column tiles, keep each tab close button inside its tab, right-align the new-tab button, and remove the redundant in-panel close button.
+- Remove the permanent sandbox readiness control from the composer; unisolated operations still explain and offer setup in the approval prompt.
+- Ask only for risky actions allows ordinary sandboxed workspace commands (including in-workspace deletes) when the sandbox is on, matching Codex Auto and Cursor sandboxed run. Push, privilege, secrets, outside-workspace writes and leaving the sandbox still ask once. Approval cards no longer show a sandbox status menu; when the sandbox is not on they offer Configure sandbox. Windows write-capability grants for large trees no longer time out after five seconds.
+
+### 变更
+
+- 侧边面板的选择器改为两列卡片；标签页关闭按钮移入标签内部，新标签按钮右对齐，并移除面板内重复的收起按钮。
+- 输入框不再常驻显示沙箱状态；未隔离的操作仍在审批提示中说明并引导初始化沙箱。
+- 「仅询问危险行为」在沙箱已启动时放行沙箱内普通工作区命令（含工作区内删除），对齐 Codex Auto 与 Cursor 沙箱内执行。推送、提权、密钥、工作区外写入、离开沙箱仍只问一次。审批框不再显示沙箱状态下拉；沙箱未启动时提供「配置沙箱」。Windows 大目录写入能力授权不再在 5 秒超时。
+
 ## [0.3.1] - 2026-11-13
 
 ### Changed

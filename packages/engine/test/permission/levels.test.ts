@@ -144,7 +144,7 @@ test.each([
   "udp-not-restricted",
   "unix-socket-not-restricted",
   "ambient-world-writable",
-])("%s disables dependent grants while ordinary reads keep isolation", async (degraded) => {
+])("%s keeps workspace shell isolation while network checks still wait", async (degraded) => {
   const previous = process.env.MERAKCODE_SANDBOX_MODE
   process.env.MERAKCODE_SANDBOX_MODE = "preferred"
   PermissionExecution.useBackendForTest({
@@ -155,7 +155,7 @@ test.each([
   })
   try {
     expect(await PermissionExecution.ready([{ permission: "network", pattern: "localhost", grants: [] }])).toBe(false)
-    expect(await PermissionExecution.ready([{ permission: "bash", pattern: "node script.js", grants: [] }])).toBe(false)
+    expect(await PermissionExecution.ready([{ permission: "bash", pattern: "node script.js", grants: [] }])).toBe(true)
     expect(await PermissionExecution.ready([{ permission: "read", pattern: "README.md", grants: [] }])).toBe(true)
   } finally {
     PermissionExecution.useBackendForTest(undefined)
@@ -257,9 +257,9 @@ test("autoApprove allows controlled project work and asks for dangerous or unkno
     { permission: "*", pattern: "*", action: "allow" },
     { permission: "sensitive_read", pattern: "*", action: "deny" },
   ])
-  for (const permission of ["read", "edit", "bash_readonly", "plan_generate"])
+  for (const permission of ["read", "edit", "bash_readonly", "bash", "bash_delete", "plan_generate"])
     expect(PermissionNext.evaluate(permission, "target", rules).action, permission).toBe("allow")
-  for (const permission of ["bash", "bash_risky", "bash_delete", "external_write", "config_write", "mcp", "unknown"])
+  for (const permission of ["bash_risky", "external_write", "config_write", "mcp", "unknown"])
     expect(PermissionNext.evaluate(permission, "target", rules).action, permission).toBe("ask")
   expect(PermissionNext.evaluate("sensitive_read", "target", rules).action).toBe("deny")
 })

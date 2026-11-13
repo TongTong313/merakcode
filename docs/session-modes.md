@@ -6,7 +6,7 @@ New root conversations use `permissionLevel: "ask"` and `permissionRevision: 0`.
 ## Authorization
 
 - `ask`: ask before each real operation. A human may authorize the displayed scope for this root conversation while the required isolation is ready.
-- `autoApprove`: allow controlled ordinary project reads and edits, provably read-only commands and dedicated official-plan writes. Dangerous, unknown, sensitive and external operations still ask.
+- `autoApprove`: allow controlled ordinary project reads and edits, sandboxed workspace shell commands (including in-workspace deletes), and dedicated official-plan writes when the sandbox is on. Push, privilege, secrets, outside-workspace writes, network beyond the allowlist and leaving the sandbox still ask. Without a ready sandbox, ordinary commands still ask per operation.
 - `fullTakeover`: skip safety approvals. Select isolation or the current account before launching; preserve task scope, input validation and real process outcomes. Never automatically replay a failed command with another account.
 
 Missing isolation preserves the selected level. Ask and Auto approve then ask per operation and offer only allow once or reject. Old permanent allows do not answer new Ask requests. Explicit applicable denies still apply in the first two levels. Conversation grants remain separate from persistent configuration.

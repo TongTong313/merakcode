@@ -184,11 +184,11 @@ Editors that speak [ACP](https://agentclientprotocol.com) can use MerakCode as t
 
 New conversations default to Ask every time. Child tasks, group members and background work follow the root conversation's latest permission level.
 
-| Permission level                         | Required isolation is ready                                                                                                           | Required isolation is unavailable                          |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Ask every time `ask`                     | Ask before each operation; scoped conversation grants may apply                                                                       | Ask each time; allow once or reject                        |
-| Ask only for risky actions `autoApprove` | Allow controlled project reads and edits, provably read-only commands and dedicated plan writes; ask for dangerous or unknown actions | Preserve the selection and ask each time                   |
-| Full takeover `fullTakeover`             | Skip safety approvals; isolate compatible controlled commands and use the current account when needed                                 | Skip safety approvals and report current-account execution |
+| Permission level                         | Required isolation is ready                                                                                                                                                                                  | Required isolation is unavailable                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Ask every time `ask`                     | Ask before each operation; scoped conversation grants may apply                                                                                                                                              | Ask each time; allow once or reject                        |
+| Ask only for risky actions `autoApprove` | Allow controlled project reads and edits, sandboxed workspace shell commands (including in-workspace deletes), and dedicated plan writes; ask for push, privilege, leaving the sandbox and other escalations | Preserve the selection and ask each time                   |
+| Full takeover `fullTakeover`             | Skip safety approvals; isolate compatible controlled commands and use the current account when needed                                                                                                        | Skip safety approvals and report current-account execution |
 
 Full takeover still respects the user's task scope, input validation and concurrency protection. A failed command is never automatically replayed with the current account.
 

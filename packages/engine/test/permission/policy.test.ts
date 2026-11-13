@@ -159,8 +159,8 @@ describe("default decisions in the three modes", () => {
       "autoApprove",
       [
         [ls, "allow"],
-        [npmTest, "ask"],
-        [remove, "ask"],
+        [npmTest, "allow"],
+        [remove, "allow"],
         [push, "ask"],
       ],
     ],
@@ -219,9 +219,9 @@ describe("default decisions in the three modes", () => {
 
 describe("precedence of user rules and modes", () => {
   test("legacy allows cannot approve a risky command and explicit denies still apply", () => {
-    const npmTest = PermissionPolicy.command({ command: "npm test", level: "normal", prefix: "npm test" })
-    const user = PermissionNext.fromConfig({ bash: { "npm test*": "allow" }, edit: { "*.lock": "deny" } })
-    expect(decide("autoApprove", npmTest, user)).toBe("ask")
+    const push = PermissionPolicy.command({ command: "git push", level: "risky", prefix: "git push" })
+    const user = PermissionNext.fromConfig({ bash_risky: { "git push*": "allow" }, edit: { "*.lock": "deny" } })
+    expect(decide("autoApprove", push, user)).toBe("ask")
     expect(decide("autoApprove", PermissionPolicy.file({ ...ctx, op: "write", path: at("pnpm.lock") }), user)).toBe(
       "deny",
     )

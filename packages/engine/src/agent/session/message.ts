@@ -490,6 +490,8 @@ export namespace Message {
     commandSource: z.object({ templatePartIDs: z.array(z.string()) }).optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    /** True while this prompt is waiting behind the active turn; cleared when execution starts or the item is cancelled. */
+    queued: z.boolean().optional(),
   }).meta({
     ref: "UserMessage",
   })

@@ -33,7 +33,7 @@ function startsSessionPlan(text: string): boolean
 function tool<Args extends z.ZodRawShape>(definition: HostTool<Args>): HostTool<Args>
 type ToolRunContext = { sessionID: string; messageID: string; callID: string; }
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1135 exports generated from openapi.json
++ 1158 exports generated from openapi.json
 
 ## @merakcode/sdk/client
 
@@ -46,7 +46,7 @@ interface RequestDeadlineTimer { set(run: () => void, delay: number): unknown; c
 class RequestTimeoutError extends MerakCodeError { constructor(message?: string); }
 function startsSessionPlan(text: string): boolean
 function withRequestDeadline<Value>(run: (signal: AbortSignal) => Promise<Value>, options?: RequestDeadlineOptions): Promise<Value>
-+ 1135 exports generated from openapi.json
++ 1158 exports generated from openapi.json
 
 ## @merakcode/sdk/errors
 
@@ -64,7 +64,7 @@ function createSessionsState(): SessionsState
 function forgetSession(state: SessionsState, sessionID: string): void
 function rootOf(state: SessionsState, sessionID: string): string
 function search<T>(list: readonly T[], id: string, key: (item: T) => string): { found: boolean; index: number; }
-type SessionsState = { session: Session[]; session_status: Record<string, SessionStatus>; session_diff: Record<string, FileDiff[]>; todo: Record<string, Todo[]>; permission: Record<string, PermissionRequest[]>; question: Record<string, QuestionRequest[]>; message: Record<string, Message[]>; part: Record<string, Part[]>; vcs: VcsInfo | undefined; }
+type SessionsState = { session: Session[]; session_status: Record<string, SessionStatus>; session_diff: Record<string, FileDiff[]>; session_queue: Record<string, SessionPromptQueueItem[]>; todo: Record<string, Todo[]>; permission: Record<string, PermissionRequest[]>; question: Record<string, QuestionRequest[]>; message: Record<string, Message[]>; part: Record<string, Part[]>; vcs: VcsInfo | undefined; }
 
 ## @merakcode/sdk/process
 

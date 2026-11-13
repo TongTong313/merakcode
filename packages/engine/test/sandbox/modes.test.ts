@@ -130,6 +130,27 @@ test("autoApprove asks for a read-only command when isolation is not ready", asy
   expect(result?.metadata.exit).toBe(0)
 })
 
+test("autoApprove runs a normal workspace command without approval when the sandbox is on", async () => {
+  const windowsLike: Backend = {
+    status: async () => ({
+      status: "on",
+      backend: "windows-account",
+      degraded: ["loopback-not-restricted", "ambient-world-writable"],
+    }),
+    wrap: on.wrap,
+  }
+  const { result, error, requests } = await run(
+    "preferred",
+    windowsLike,
+    "echo hi > out.txt",
+    "ses_mode_auto_normal",
+    "autoApprove",
+  )
+  expect(requests).toHaveLength(0)
+  expect(error).toBeUndefined()
+  expect(result?.metadata.exit).toBe(0)
+})
+
 test("legacy required configuration still asks once when isolation is not ready", async () => {
   const { result, error, requests } = await run("required", missing, "pwd", "ses_mode_required")
   expect(requests).toHaveLength(1)

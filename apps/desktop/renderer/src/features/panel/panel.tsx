@@ -13,7 +13,7 @@ import { bridge } from "../../lib/bridge"
 import { call, client } from "../../state/client"
 import { listen } from "../../state/store"
 import { registerDirty } from "../../state/git"
-import { saveLayout, setUi, togglePanel, ui } from "../../state/ui"
+import { saveLayout, setUi, ui } from "../../state/ui"
 import { Dialog } from "../../ui/dialog"
 import { toast } from "../../ui/toast"
 import { releaseBrowserState } from "../browser/state"
@@ -370,6 +370,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
                     <button
                       class="icon-button sm"
                       aria-label={t("panel.closeTab", { name: label(tab) })}
+                      tabIndex={active()?.id === tab.id ? 0 : -1}
                       disabled={working()}
                       onClick={() => void remove(tab)}
                     >
@@ -402,9 +403,6 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
               <Maximize2 class="icon icon-sm" />
             </button>
           </Show>
-          <button class="icon-button" aria-label={t("panel.close")} onClick={togglePanel}>
-            <X class="icon icon-sm" />
-          </button>
         </div>
       </Show>
       <div
@@ -465,7 +463,7 @@ export function Panel(props: { sessionID?: string; directory: string; folder: st
                     const Icon = icons[kind]
                     return (
                       <button
-                        class="button secondary"
+                        class="button secondary panel-choice"
                         data-panel-kind={kind}
                         onClick={() =>
                           kind === "file" ? void panels()?.update({ chooser: "files" }) : void openPanel({ kind })

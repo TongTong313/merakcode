@@ -2,18 +2,19 @@ import type { PermissionRequest, QuestionRequest } from "@merakcode/sdk/client"
 import { permissionChoices, permissionKind, permissionTags, type PermissionChoice } from "./permission"
 import MessageCircleQuestion from "lucide-solid/icons/message-circle-question-mark"
 import ShieldAlert from "lucide-solid/icons/shield-alert"
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { t, type Key } from "../../i18n"
 import { relative } from "../../lib/route"
 import { call, client } from "../../state/client"
 import { session, setPermissionLevel } from "../../state/store"
+import { setUi } from "../../state/ui"
 import { toast } from "../../ui/toast"
-import { SandboxField } from "./sandbox-control"
 
 const directoryOf = (sessionID: string, fallback: string) => session(sessionID)?.directory ?? fallback
 
 /** Permission request title: what the agent wants to do */
 function title(request: PermissionRequest) {
+  if (request.metadata?.unsandboxed) return t("approval.leaveSandbox")
   const kind = permissionKind(request.permission)
   if (kind === "plan") return t(request.metadata?.update ? "approval.planUpdate" : "approval.planGenerate")
   if (kind === "tool") return t("approval.tool", { name: request.permission })
@@ -41,6 +42,11 @@ export function Approval(props: {
 }) {
   const [reason, setReason] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
+  const [sandbox] = createResource(
+    () => props.directory,
+    (directory) => call(client(directory).sandbox.status()).catch(() => undefined),
+  )
+  const needsSandboxSetup = () => props.request.sandboxReady === false && sandbox()?.status !== "on"
   const choices = () => permissionChoices(props.request)
   const label = (choice: PermissionChoice) => t(choice.label.key as Key, choice.label.vars)
 
@@ -97,7 +103,7 @@ export function Approval(props: {
         </Show>
       </div>
       <pre class="command selectable">{subject(props.request, props.directory)}</pre>
-      <Show when={props.request.sandboxReady === false}>
+      <Show when={needsSandboxSetup()}>
         <div class="approval-isolation subtle">
           <p>
             {t(
@@ -106,7 +112,9 @@ export function Approval(props: {
                 : "approval.unisolated",
             )}
           </p>
-          <SandboxField directory={props.directory} />
+          <button class="button secondary sm" onClick={() => setUi("settings", "permissions")}>
+            {t("approval.configureSandbox")}
+          </button>
         </div>
       </Show>
       <Show

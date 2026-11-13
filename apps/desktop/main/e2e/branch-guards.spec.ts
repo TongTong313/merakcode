@@ -40,6 +40,7 @@ test("review drafts in another tab keep branch switching blocked until explicitl
   await expect(kit.page.getByText("请先发送或清除未发送的审阅评论及输入草稿", { exact: true })).toBeVisible()
   await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
   await kit.page.keyboard.press("Escape")
+  await kit.panel().getByRole("tab", { name: "审阅", exact: true }).hover()
   await kit.panel().getByRole("button", { name: "关闭 审阅", exact: true }).click()
   await kit.page.getByRole("dialog").getByRole("button", { name: /^放弃/ }).click()
   await kit

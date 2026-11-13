@@ -60,7 +60,7 @@ export namespace PermissionConfig {
             "Write MerakCode's config files (merakcode.json, merakcode.jsonc), global or a project's",
           ),
           external_write: PermissionRule.optional().describe("Write files outside the workspace"),
-          bash_readonly: PermissionRule.optional().describe("Run read-only commands (ls, git status, ...)"),
+          bash_readonly: PermissionRule.optional().describe("Run read-only commands (ls, pwd, ...)"),
           bash: PermissionRule.optional().describe("Run other commands"),
           bash_delete: PermissionRule.optional().describe("Run commands that delete files (rm, git clean, ...)"),
           bash_risky: PermissionRule.optional().describe("Run risky commands (sudo, git push, npm publish, ...)"),

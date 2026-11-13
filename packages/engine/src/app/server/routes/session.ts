@@ -147,6 +147,91 @@ export const SessionRoutes = lazy(() =>
       }),
       async (c) => c.json(await SessionPlan.get(c.req.param("sessionID"))),
     )
+    .get(
+      "/:sessionID/queue",
+      describeRoute({
+        summary: "List queued prompts",
+        description: "Return prompts accepted while the session was busy, in FIFO order.",
+        operationId: "session.queue",
+        responses: {
+          200: {
+            description: "Queued prompts",
+            content: { "application/json": { schema: resolver(Loop.Queue) } },
+          },
+          ...errors(404),
+        },
+      }),
+      async (c) => {
+        const sessionID = c.req.param("sessionID")
+        await SessionOperations.get(sessionID)
+        return c.json(Loop.queue(sessionID))
+      },
+    )
+    .patch(
+      "/:sessionID/queue/:messageID",
+      describeRoute({
+        summary: "Edit a queued prompt",
+        description: "Replace the text of a prompt that is still waiting behind the active turn.",
+        operationId: "session.queueEdit",
+        responses: {
+          200: {
+            description: "Updated queue",
+            content: { "application/json": { schema: resolver(Loop.Queue) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("json", z.object({ text: z.string().min(1) })),
+      async (c) => {
+        const sessionID = c.req.param("sessionID")
+        const messageID = c.req.param("messageID")
+        await SessionOperations.get(sessionID)
+        return c.json(await Loop.editQueue(sessionID, messageID, c.req.valid("json")))
+      },
+    )
+    .delete(
+      "/:sessionID/queue/:messageID",
+      describeRoute({
+        summary: "Remove a queued prompt",
+        description: "Cancel one waiting prompt. The active turn and later queue items keep their order.",
+        operationId: "session.queueRemove",
+        responses: {
+          200: {
+            description: "Updated queue",
+            content: { "application/json": { schema: resolver(Loop.Queue) } },
+          },
+          ...errors(404),
+        },
+      }),
+      async (c) => {
+        const sessionID = c.req.param("sessionID")
+        const messageID = c.req.param("messageID")
+        await SessionOperations.get(sessionID)
+        return c.json(await Loop.removeQueue(sessionID, messageID))
+      },
+    )
+    .post(
+      "/:sessionID/queue/:messageID/send",
+      describeRoute({
+        summary: "Send a queued prompt now",
+        description:
+          "Interrupt the active turn and run this waiting prompt next. Other queued prompts keep their relative order.",
+        operationId: "session.queueSendNow",
+        responses: {
+          200: {
+            description: "Updated queue",
+            content: { "application/json": { schema: resolver(Loop.Queue) } },
+          },
+          ...errors(404),
+        },
+      }),
+      async (c) => {
+        const sessionID = c.req.param("sessionID")
+        const messageID = c.req.param("messageID")
+        await SessionOperations.get(sessionID)
+        return c.json(await Loop.sendQueueNow(sessionID, messageID))
+      },
+    )
     .put(
       "/:sessionID/plan",
       describeRoute({

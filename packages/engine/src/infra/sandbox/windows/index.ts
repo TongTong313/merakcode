@@ -352,7 +352,13 @@ export namespace WindowsSandbox {
           const stat = statSync(target, { throwIfNoEntry: false })
           if (!stat) continue
           const sid = directoryRestriction(target)
-          await run(exe, ["grant", sid, target], { windowsHide: true, timeout: 5000 })
+          try {
+            // Large trees can take minutes the first time; a short timeout left only "Command failed".
+            await run(exe, ["grant", sid, target], { windowsHide: true, timeout: 30 * 60 * 1000 })
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            throw new Error(`Windows sandbox could not grant write access for ${target}: ${detail}`, { cause: error })
+          }
           sids.push(sid)
           const rule = `restricted:${sid}`
           if (!state.granted.some((entry) => entry.path === target && entry.rule === rule)) {

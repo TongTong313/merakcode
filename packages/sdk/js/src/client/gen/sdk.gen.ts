@@ -292,6 +292,14 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionQueueEditErrors,
+  SessionQueueEditResponses,
+  SessionQueueErrors,
+  SessionQueueRemoveErrors,
+  SessionQueueRemoveResponses,
+  SessionQueueResponses,
+  SessionQueueSendNowErrors,
+  SessionQueueSendNowResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionSearchErrors,
@@ -5286,6 +5294,143 @@ export class Session2 extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  /**
+   * List queued prompts
+   *
+   * Return prompts accepted while the session was busy, in FIFO order.
+   */
+  public queue<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionQueueResponses, SessionQueueErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionQueueResponses, SessionQueueErrors, ThrowOnError>({
+      url: "/session/{sessionID}/queue",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove a queued prompt
+   *
+   * Cancel one waiting prompt. The active turn and later queue items keep their order.
+   */
+  public queueRemove<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionQueueRemoveResponses, SessionQueueRemoveErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<SessionQueueRemoveResponses, SessionQueueRemoveErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/queue/{messageID}",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Edit a queued prompt
+   *
+   * Replace the text of a prompt that is still waiting behind the active turn.
+   */
+  public queueEdit<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      text: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionQueueEditResponses, SessionQueueEditErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<SessionQueueEditResponses, SessionQueueEditErrors, ThrowOnError>({
+      url: "/session/{sessionID}/queue/{messageID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Send a queued prompt now
+   *
+   * Interrupt the active turn and run this waiting prompt next. Other queued prompts keep their relative order.
+   */
+  public queueSendNow<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<SessionQueueSendNowResponses, SessionQueueSendNowErrors, ThrowOnError> {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionQueueSendNowResponses, SessionQueueSendNowErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/queue/{messageID}/send",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**

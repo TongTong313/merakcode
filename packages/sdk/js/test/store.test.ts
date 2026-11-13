@@ -91,6 +91,10 @@ describe("sessions", () => {
       { type: "todo.updated", properties: { sessionID: "ses_a", todos: [] } },
       { type: "session.status", properties: { sessionID: "ses_a", status: { type: "busy" } } },
       {
+        type: "session.queue.updated",
+        properties: { sessionID: "ses_a", items: [{ messageID: "msg_q" }] },
+      },
+      {
         type: "session.updated",
         properties: { info: session("ses_a", { time: { created: 1, updated: 2, archived: 2 } }) },
       },
@@ -101,6 +105,28 @@ describe("sessions", () => {
     expect(state.part).toEqual({})
     expect(state.todo).toEqual({})
     expect(state.session_status).toEqual({})
+    expect(state.session_queue).toEqual({})
+  })
+
+  test("session.queue.updated replaces the queued follow-up list for that session", () => {
+    const state = run([
+      {
+        type: "session.queue.updated",
+        properties: { sessionID: "ses_a", items: [{ messageID: "msg_1" }] },
+      },
+      {
+        type: "session.queue.updated",
+        properties: { sessionID: "ses_a", items: [{ messageID: "msg_2" }, { messageID: "msg_3" }] },
+      },
+      {
+        type: "session.queue.updated",
+        properties: { sessionID: "ses_b", items: [{ messageID: "msg_b" }] },
+      },
+    ] as Event[])
+    expect(state.session_queue).toEqual({
+      ses_a: [{ messageID: "msg_2" }, { messageID: "msg_3" }],
+      ses_b: [{ messageID: "msg_b" }],
+    })
   })
 })
 

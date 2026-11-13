@@ -14,11 +14,6 @@ const http = vi.hoisted(() => ({
   events: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
 }))
 
-test("auto approval explains per-operation asking while isolation is unavailable", async () => {
-  setLocale("zh")
-  const host = mount(() => <SandboxField directory="/degraded-auto" permissionLevel="autoApprove" />)
-  await expect.poll(() => host.textContent).toContain("仅询问危险行为 · 当前逐次询问")
-})
 vi.mock("undici", () => ({
   Agent: class {
     constructor() {}
@@ -274,12 +269,10 @@ test("a failed setup shows the error and leaves the sandbox mode unchanged", asy
   expect(requests.some((item) => item.url.includes("/global/config"))).toBe(false)
 })
 
-test("the composer shows the sandbox control", () => {
+test("the composer leaves sandbox readiness to the approval prompt", () => {
   setLocale("zh")
   const host = mount(() => <Composer directory="/proj" busy={false} onSubmit={() => {}} />)
-  const button = [...host.querySelectorAll("button")].find((item) => item.querySelector(".lucide-shield"))
-  expect(button?.textContent?.trim()).toBe("检查中")
-  expect(button?.getAttribute("aria-label")).toBe("沙箱状态，检查中")
+  expect(host.querySelector('.composer-bar [aria-label^="沙箱状态"]')).toBeNull()
 })
 
 test("sandbox repair uses the SDK without saving an on-off configuration", async () => {

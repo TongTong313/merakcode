@@ -91,11 +91,29 @@ export async function prepareBashCommand(
   })
   // The sandbox should be used but is not ready: commands that change things ask first, even in auto mode
   // ("required" mode refuses every command instead)
-  const unsandboxed =
+  const missingSandbox =
     ctx.permissionLevel !== "fullTakeover" &&
     !params.unsandboxed &&
     (await PermissionExecution.missing()) &&
     !analysis.readOnly
+  const writable = (params.writable_paths ?? []).map((dir) => path.resolve(cwd, dir))
+  const directory = (dir: string) => PermissionNext.normalizePath(dir).replace(/\/$/, "") + "/*"
+  const leave = [
+    ...writable.map((dir) => ({
+      permission: "sandbox",
+      pattern: directory(dir),
+      grants: [{ scope: "directory" as const, pattern: directory(dir) }],
+    })),
+    ...(params.unsandboxed
+      ? [
+          {
+            permission: "sandbox",
+            pattern: params.command,
+            grants: [{ scope: "prefix" as const, pattern: `${prefix} *` }],
+          },
+        ]
+      : []),
+  ]
   const request = {
     permission: "bash",
     checks: [
@@ -103,24 +121,28 @@ export async function prepareBashCommand(
         PermissionPolicy.command({ command: segment.text, level: segment.level, prefix: segment.prefix }),
       ),
       ...reads,
-      ...(unsandboxed ? [PermissionPolicy.unsandboxed(params.command, prefix)] : []),
+      ...(missingSandbox ? [PermissionPolicy.unsandboxed(params.command, prefix)] : []),
+      ...leave,
     ],
     metadata: {
       command: params.command,
       description: params.description,
       cwd,
-      tags: unsandboxed ? [...analysis.tags, "no-sandbox"] : analysis.tags,
+      tags: missingSandbox || params.unsandboxed ? [...analysis.tags, "no-sandbox"] : analysis.tags,
+      ...(writable.length ? { writable } : {}),
+      ...(params.unsandboxed ? { unsandboxed: true } : {}),
+      ...(params.justification ? { justification: params.justification } : {}),
     },
   }
   const admission = await ctx.ask(request)
-  const sandbox = await escalate(params, cwd, prefix, ctx)
 
   return {
     cwd,
     shellEnv,
     readOnly: analysis.readOnly,
     sandbox: {
-      ...sandbox,
+      writable,
+      unsandboxed: params.unsandboxed,
       canIsolate:
         analysis.readOnly &&
         reads.length === 0 &&
@@ -159,39 +181,6 @@ export const SandboxEscalation = {
 }
 
 type Escalation = { writable_paths?: string[]; unsandboxed?: boolean; justification?: string }
-
-/** Requests extra permissions as one approval: one entry per directory, plus one for running outside the sandbox */
-async function escalate(params: Escalation & { command: string }, cwd: string, prefix: string, ctx: Tool.Context) {
-  const writable = (params.writable_paths ?? []).map((dir) => path.resolve(cwd, dir))
-  if (!writable.length && !params.unsandboxed) return { writable }
-  const directory = (dir: string) => PermissionNext.normalizePath(dir).replace(/\/$/, "") + "/*"
-  await ctx.ask({
-    permission: "sandbox",
-    checks: [
-      ...writable.map((dir) => ({
-        permission: "sandbox",
-        pattern: directory(dir),
-        grants: [{ scope: "directory" as const, pattern: directory(dir) }],
-      })),
-      ...(params.unsandboxed
-        ? [
-            {
-              permission: "sandbox",
-              pattern: params.command,
-              grants: [{ scope: "prefix" as const, pattern: `${prefix} *` }],
-            },
-          ]
-        : []),
-    ],
-    metadata: {
-      command: params.command,
-      writable,
-      unsandboxed: !!params.unsandboxed,
-      justification: params.justification,
-    },
-  })
-  return { writable, unsandboxed: params.unsandboxed }
-}
 
 /**
  * Starts the command: wrapped in the sandbox when it is on (the wrapped argv runs with shell: false), otherwise

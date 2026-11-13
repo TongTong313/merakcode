@@ -773,8 +773,12 @@ export namespace CommandAnalysis {
     const words = node.namedChildren.map((child) => shellWord(child!.text))
     if (words.some((word) => !word.known) || words[0]?.value !== "git") return
     const args = words.slice(1).map((word) => word.value)
-    const [name = "", ...options] = args
+    const values = GLOBAL_VALUES.git ?? []
+    let at = 0
+    while (at < args.length && args[at]!.startsWith("-")) at += values.includes(args[at]!) ? 2 : 1
+    const name = args[at] ?? ""
     if (name !== "log") return
+    const options = args.slice(at + 1)
     for (let index = 0; index < options.length; index++) {
       const option = options[index]!
       if (GIT_LOG_OPTIONS.has(option)) continue
@@ -788,7 +792,7 @@ export namespace CommandAnalysis {
       if (!option.startsWith("-") && /^[\w./~-]+$/.test(option)) continue
       return
     }
-    return args
+    return args.slice(at)
   }
 
   export async function analyze(

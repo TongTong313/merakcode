@@ -87,6 +87,8 @@ export namespace PermissionPolicy {
               "skill",
               "edit",
               "bash_readonly",
+              "bash",
+              "bash_delete",
               "plan_generate",
               "plan_edit",
               "plan_read_chunk",

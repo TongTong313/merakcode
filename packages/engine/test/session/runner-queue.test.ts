@@ -9,7 +9,9 @@ import { Loop } from "@merakcode/engine/agent/loop/index"
 import { SessionContextLayer } from "@merakcode/engine/agent/context/context-layer"
 import { LoopStatus } from "@merakcode/engine/agent/loop/status"
 import { SessionRoutes } from "@merakcode/engine/app/server/routes/session"
+import { Server } from "@merakcode/engine/app/server/server"
 import { LoopRequest } from "@merakcode/engine/agent/loop/request"
+import { Bus } from "@merakcode/engine/infra/bus/index"
 import { Log } from "@merakcode/log/logger"
 import { Plugin } from "@merakcode/engine/agent/plugin/index"
 import { tmpdir } from "../fixture/fixture"
@@ -139,6 +141,735 @@ test("prompt sent while the session is running queues behind the current task wi
       expect(streamMsgs[2].parts[0]).toMatchObject({ type: "text", text: "任务 2" })
       expect(streamMsgs[3].info.role).toBe("assistant")
       expect((streamMsgs[3].info as any).parentID).toBe(streamMsgs[2].info.id)
+    },
+  })
+}, 20000)
+
+test("a prompt sent while the session is running is listed by the public queue", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+
+  LLM.stream = (async (input: { agent?: { id?: string } }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Visibility" })
+
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+
+      await prompt1Started
+      expect(Loop.queue(session.id)).toEqual({ items: [] })
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 2" }],
+      })
+
+      await delay(50)
+      const streamMsgs = await Message.filterCompacted(Message.stream(session.id))
+      const queuedUser = streamMsgs.find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "任务 2"),
+      )
+      expect(queuedUser).toBeTruthy()
+      expect(Loop.queue(session.id)).toEqual({ items: [{ messageID: queuedUser!.info.id }] })
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+      expect(Loop.queue(session.id)).toEqual({ items: [] })
+    },
+  })
+}, 20000)
+
+test("the session queue HTTP route lists prompts waiting behind a running turn", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+
+  LLM.stream = (async (input: { agent?: { id?: string } }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue HTTP" })
+      const app = Server.App()
+      const queueUrl = `/session/${session.id}/queue?directory=${encodeURIComponent(tmp.path)}`
+
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+
+      const empty = await app.request(queueUrl)
+      expect(empty.status).toBe(200)
+      expect(await empty.json()).toEqual({ items: [] })
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 2" }],
+      })
+      await delay(50)
+
+      const streamMsgs = await Message.filterCompacted(Message.stream(session.id))
+      const queuedUser = streamMsgs.find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "任务 2"),
+      )
+      expect(queuedUser).toBeTruthy()
+
+      const listed = await app.request(queueUrl)
+      expect(listed.status).toBe(200)
+      expect(await listed.json()).toEqual({ items: [{ messageID: queuedUser!.info.id }] })
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+
+      const cleared = await app.request(queueUrl)
+      expect(cleared.status).toBe(200)
+      expect(await cleared.json()).toEqual({ items: [] })
+    },
+  })
+}, 20000)
+
+test("enqueueing a prompt while busy publishes session.queue.updated", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+
+  LLM.stream = (async (input: { agent?: { id?: string } }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Event" })
+      const updates: Array<{ sessionID: string; items: Array<{ messageID: string }> }> = []
+      const unsubscribe = Bus.subscribe(Loop.Event.QueueUpdated, (event) => {
+        updates.push(event.properties)
+      })
+
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 2" }],
+      })
+      await delay(50)
+
+      const queuedUser = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "任务 2"),
+      )
+      expect(queuedUser).toBeTruthy()
+      expect(updates).toContainEqual({
+        sessionID: session.id,
+        items: [{ messageID: queuedUser!.info.id }],
+      })
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+      expect(updates.at(-1)).toEqual({ sessionID: session.id, items: [] })
+      unsubscribe()
+    },
+  })
+}, 20000)
+
+test("a follow-up accepted while busy is marked queued on its first message.updated", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+
+  LLM.stream = (async (input: { agent?: { id?: string } }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Mark" })
+      const userUpdates: Array<{ id: string; queued?: boolean }> = []
+      const unsubscribe = Bus.subscribe(Message.Event.Updated, (event) => {
+        const info = event.properties.info
+        if (info.role === "user") userUpdates.push({ id: info.id, queued: info.queued })
+      })
+
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+      const before = userUpdates.length
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 2" }],
+      })
+      await delay(50)
+
+      const followUps = userUpdates.slice(before)
+      expect(followUps.length).toBeGreaterThan(0)
+      expect(followUps[0]?.queued).toBe(true)
+      expect(Loop.queue(session.id).items).toEqual([{ messageID: followUps[0]!.id }])
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+      const finished = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.id === followUps[0]!.id,
+      )
+      expect(finished?.info.role === "user" && finished.info.queued).toBeFalsy()
+      unsubscribe()
+    },
+  })
+}, 20000)
+
+test("interrupt keeps queued prompts in the public queue without publishing an empty list", async () => {
+  const started = Promise.withResolvers<void>()
+  const cleanup = Promise.withResolvers<void>()
+
+  LLM.stream = (async (input: Parameters<typeof LLM.stream>[0]) => ({
+    stream: (async function* () {
+      if (input.agent?.id !== "build") {
+        yield { type: "start" }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+        return
+      }
+      const user = input.messages?.findLast((message) => message.role === "user")
+      const text =
+        typeof user?.content === "string"
+          ? user.content
+          : (user?.content
+              ?.filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("\n") ?? "")
+      if (text.includes("任务 1")) {
+        yield { type: "start" }
+        started.resolve()
+        await new Promise<void>((resolve) => {
+          if (input.abort.aborted) return resolve()
+          input.abort.addEventListener("abort", () => resolve(), { once: true })
+        })
+        await cleanup.promise
+        throw new Error("stream stopped")
+      }
+      yield { type: "start" }
+      yield { type: "text-start", id: "t2" }
+      yield { type: "text-delta", id: "t2", text: "回复 2" }
+      yield { type: "text-end", id: "t2" }
+      yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+      yield { type: "finish" }
+    })(),
+  })) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Interrupt Visibility" })
+      const updates: Array<{ sessionID: string; items: Array<{ messageID: string }> }> = []
+      const unsubscribe = Bus.subscribe(Loop.Event.QueueUpdated, (event) => {
+        updates.push(event.properties)
+      })
+
+      const p1 = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      }).then(
+        (message) => ({ message, error: undefined as unknown }),
+        (error: unknown) => ({ message: undefined, error }),
+      )
+      await started.promise
+
+      const p2 = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 2" }],
+      })
+      await delay(50)
+
+      const queuedUser = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "任务 2"),
+      )
+      expect(queuedUser).toBeTruthy()
+      const afterEnqueue = updates.length
+
+      const stopped = Loop.interruptAndSettle(session.id)
+      cleanup.resolve()
+      await stopped
+
+      const mid = updates.slice(afterEnqueue)
+      expect(mid.some((item) => item.items.length === 0)).toBe(false)
+      expect(Loop.queue(session.id)).toEqual({ items: [{ messageID: queuedUser!.info.id }] })
+
+      const first = await p1
+      expect(first.error).toBeInstanceOf(Message.AbortedError)
+      await p2
+      unsubscribe()
+    },
+  })
+}, 20000)
+
+test("sending a queued prompt now interrupts the active turn and keeps the rest queued", async () => {
+  const started = Promise.withResolvers<void>()
+  const cleanup = Promise.withResolvers<void>()
+  const seen: string[] = []
+  let buildCalls = 0
+
+  LLM.stream = (async (input: Parameters<typeof LLM.stream>[0]) => ({
+    stream: (async function* () {
+      if (input.agent?.id !== "build") {
+        yield { type: "start" }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+        return
+      }
+      const index = buildCalls++
+      const user = input.messages?.findLast((message) => message.role === "user")
+      const text =
+        typeof user?.content === "string"
+          ? user.content
+          : (user?.content
+              ?.filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("\n") ?? "")
+      if (index === 0) {
+        yield { type: "start" }
+        started.resolve()
+        await new Promise<void>((resolve) => {
+          if (input.abort.aborted) return resolve()
+          input.abort.addEventListener("abort", () => resolve(), { once: true })
+        })
+        await cleanup.promise
+        throw new Error("stream stopped")
+      }
+      seen.push(text)
+      yield { type: "start" }
+      yield { type: "text-start", id: `t${index}` }
+      yield { type: "text-delta", id: `t${index}`, text: `回复 ${index}` }
+      yield { type: "text-end", id: `t${index}` }
+      yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+      yield { type: "finish" }
+    })(),
+  })) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Send Now" })
+      const settle = (promise: Promise<Message.FullMsg>) =>
+        promise.then(
+          (message) => ({ message, error: undefined as unknown }),
+          (error: unknown) => ({ message: undefined, error }),
+        )
+      const p1 = settle(
+        Loop.prompt({
+          sessionID: session.id,
+          agent: "build",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "任务 1" }],
+        }),
+      )
+      await started.promise
+
+      const p2 = settle(
+        Loop.prompt({
+          sessionID: session.id,
+          agent: "build",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "第二" }],
+        }),
+      )
+      const p3 = settle(
+        Loop.prompt({
+          sessionID: session.id,
+          agent: "build",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "立即" }],
+        }),
+      )
+      await delay(50)
+
+      const queued = Loop.queue(session.id).items
+      expect(queued).toHaveLength(2)
+      const preferred = queued[1]!.messageID
+      const remaining = queued[0]!.messageID
+      const stopped = Loop.sendQueueNow(session.id, preferred)
+      cleanup.resolve()
+      await stopped
+
+      const results = await Promise.all([p1, p3, p2])
+      expect(results[0]?.error).toBeInstanceOf(Message.AbortedError)
+      expect(results[1]?.message?.info.role).toBe("assistant")
+      expect(results[2]?.message?.info.role).toBe("assistant")
+      expect(seen[0]).toContain("立即")
+      expect(seen[1]).toContain("第二")
+      expect(Loop.queue(session.id).items.map((item) => item.messageID)).not.toContain(preferred)
+      expect(Loop.queue(session.id).items.map((item) => item.messageID)).not.toContain(remaining)
+    },
+  })
+}, 20000)
+
+test("removing a queued prompt cancels it and keeps later items in order", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+  const seen: string[] = []
+
+  LLM.stream = (async (input: { agent?: { id?: string }; messages?: any[] }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        if (isBuild && currentCall >= 2) {
+          const lastUser = [...(input.messages ?? [])].reverse().find((msg) => msg.role === "user")
+          const content = lastUser?.content
+          seen.push(
+            Array.isArray(content) ? content.map((part: any) => part.text ?? "").join("") : String(content ?? ""),
+          )
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Remove" })
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "将被删除" }],
+      })
+      const p3Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "仍要执行" }],
+      })
+      await delay(50)
+
+      const queued = Loop.queue(session.id).items
+      expect(queued).toHaveLength(2)
+      const removed = expect(p2Promise).rejects.toBeInstanceOf(Message.AbortedError)
+      await Loop.removeQueue(session.id, queued[0]!.messageID)
+      expect(Loop.queue(session.id).items).toEqual([{ messageID: queued[1]!.messageID }])
+      await removed
+
+      prompt1GateResolve()
+      await p1Promise
+      await p3Promise
+      expect(seen.some((text) => text.includes("仍要执行"))).toBe(true)
+      expect(seen.some((text) => text.includes("将被删除"))).toBe(false)
+    },
+  })
+}, 20000)
+
+test("the session queue HTTP route edits the text of a waiting prompt", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+
+  LLM.stream = (async (input: { agent?: { id?: string } }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Edit HTTP" })
+      const app = Server.App()
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "旧文案" }],
+      })
+      await delay(50)
+
+      const queuedUser = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "旧文案"),
+      )
+      expect(queuedUser).toBeTruthy()
+
+      const edited = await app.request(
+        `/session/${session.id}/queue/${queuedUser!.info.id}?directory=${encodeURIComponent(tmp.path)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "新文案" }),
+        },
+      )
+      expect(edited.status).toBe(200)
+      expect(await edited.json()).toEqual({ items: [{ messageID: queuedUser!.info.id }] })
+
+      const stored = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.id === queuedUser!.info.id,
+      )
+      expect(stored?.parts.some((part) => part.type === "text" && part.text === "新文案")).toBe(true)
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+    },
+  })
+}, 20000)
+
+test("editing a queued prompt changes the text the model receives for that turn", async () => {
+  let buildCallCount = 0
+  let prompt1StartedResolve: () => void
+  const prompt1Started = new Promise<void>((r) => {
+    prompt1StartedResolve = r
+  })
+  let prompt1GateResolve: () => void
+  const prompt1Gate = new Promise<void>((r) => {
+    prompt1GateResolve = r
+  })
+  let turn2UserText = ""
+
+  LLM.stream = (async (input: { agent?: { id?: string }; messages?: any[] }) => {
+    const isBuild = input.agent?.id === "build"
+    const currentCall = isBuild ? ++buildCallCount : 0
+    return {
+      stream: (async function* () {
+        if (isBuild && currentCall === 1) {
+          prompt1StartedResolve()
+          await prompt1Gate
+        }
+        if (isBuild && currentCall === 2) {
+          const lastUser = [...(input.messages ?? [])].reverse().find((msg) => msg.role === "user")
+          const content = lastUser?.content
+          turn2UserText = Array.isArray(content)
+            ? content.map((part: any) => part.text ?? "").join("")
+            : String(content ?? "")
+        }
+        yield { type: "start" }
+        yield { type: "text-start", id: `t${currentCall}` }
+        yield { type: "text-delta", id: `t${currentCall}`, text: `回复 ${currentCall}` }
+        yield { type: "text-end", id: `t${currentCall}` }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1 } }
+        yield { type: "finish" }
+      })(),
+    }
+  }) as unknown as typeof LLM.stream
+
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({ title: "Queue Edit" })
+      const p1Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "任务 1" }],
+      })
+      await prompt1Started
+
+      const p2Promise = Loop.prompt({
+        sessionID: session.id,
+        agent: "build",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        parts: [{ type: "text", text: "旧文案" }],
+      })
+      await delay(50)
+
+      const queuedUser = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "text" && part.text === "旧文案"),
+      )
+      expect(queuedUser).toBeTruthy()
+
+      await Loop.editQueue(session.id, queuedUser!.info.id, { text: "新文案" })
+      expect(Loop.queue(session.id).items).toEqual([{ messageID: queuedUser!.info.id }])
+      const edited = (await Message.filterCompacted(Message.stream(session.id))).find(
+        (msg) => msg.info.id === queuedUser!.info.id,
+      )
+      expect(edited?.parts.some((part) => part.type === "text" && part.text === "新文案")).toBe(true)
+
+      prompt1GateResolve()
+      await p1Promise
+      await p2Promise
+      expect(turn2UserText).toContain("新文案")
+      expect(turn2UserText).not.toContain("旧文案")
     },
   })
 }, 20000)

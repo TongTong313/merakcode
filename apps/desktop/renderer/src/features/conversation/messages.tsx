@@ -719,7 +719,17 @@ export function Messages(props: {
     () => props.sessionID,
     () => props.directory,
   ).plan
-  const grouped = createMemo(() => turns(messagesOf(props.sessionID)))
+  const queued = createMemo(
+    () => new Set((state.sessions.session_queue[props.sessionID] ?? []).map((item) => item.messageID)),
+  )
+  const grouped = createMemo(() =>
+    turns(
+      messagesOf(props.sessionID).filter((message) => {
+        if (queued().has(message.id)) return false
+        return !(message.role === "user" && "queued" in message && message.queued)
+      }),
+    ),
+  )
   const lastWorked = createMemo(() => grouped().turns.findLastIndex((turn) => turn.replies.length > 0))
   const events = createMemo(() =>
     eventsByTurn(

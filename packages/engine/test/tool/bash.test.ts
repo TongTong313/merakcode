@@ -328,6 +328,36 @@ describe("tool.bash permissions", () => {
     })
   })
 
+  test("leaving the sandbox asks once with the command instead of a second sandbox tool card", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const { ctx: testCtx, requests } = permissionCtx({ ruleset: PermissionPolicy.ruleset("ask") })
+        await bash.execute(
+          {
+            command: "node -e 1",
+            description: "Run node",
+            unsandboxed: true,
+            justification: "Needs the current account",
+          },
+          testCtx,
+        )
+        expect(requests).toHaveLength(1)
+        expect(requests[0]).toMatchObject({
+          permission: "bash",
+          metadata: {
+            command: "node -e 1",
+            unsandboxed: true,
+            justification: "Needs the current account",
+          },
+        })
+        expect(requests.some((request) => request.permission === "sandbox")).toBe(false)
+      },
+    })
+  })
+
   test("chained unisolated commands produce one approval listing every segment", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

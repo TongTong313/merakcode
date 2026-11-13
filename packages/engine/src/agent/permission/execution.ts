@@ -161,6 +161,8 @@ export namespace PermissionExecution {
     const status = await current()
     if (status.status !== "on") return false
     return !status.degraded?.some((reason) => {
+      // Known platform gaps stay documented; they no longer force per-command approval for workspace shell work.
+      // Network checks still wait: the proxy asks when a host is neither allowed nor denied.
       if (
         [
           "network-not-enforced",
@@ -171,11 +173,7 @@ export namespace PermissionExecution {
           "ambient-world-writable",
         ].includes(reason)
       )
-        return checks.some(
-          (check) =>
-            check.permission === "network" ||
-            (check.permission.startsWith("bash") && check.permission !== "bash_readonly"),
-        )
+        return checks.some((check) => check.permission === "network")
       return true
     })
   }

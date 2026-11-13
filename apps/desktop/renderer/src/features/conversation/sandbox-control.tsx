@@ -1,4 +1,4 @@
-import type { SandboxStatus, PermissionLevel } from "@merakcode/sdk/client"
+import type { SandboxStatus } from "@merakcode/sdk/client"
 import Shield from "lucide-solid/icons/shield"
 import { createEffect, createResource, createSignal, onCleanup, Show } from "solid-js"
 import { t } from "../../i18n"
@@ -13,7 +13,6 @@ import { listen } from "../../state/store"
 export function SandboxControl(props: {
   status: SandboxStatus | undefined
   busy: boolean
-  disabled?: boolean
   onInstall: () => void
   onPrepare?: () => void
 }) {
@@ -51,7 +50,7 @@ export function SandboxControl(props: {
         label={t("sandbox.named", { state: word() })}
         options={options()}
         value={undefined}
-        disabled={props.busy || props.status?.status === "starting" || props.disabled || !props.status}
+        disabled={props.busy || props.status?.status === "starting" || !props.status}
         placeholder={
           <>
             <Shield class="icon icon-sm" />
@@ -67,8 +66,8 @@ export function SandboxControl(props: {
   )
 }
 
-/** Composer control: shows the sandbox state for this project and applies the chosen action. */
-export function SandboxField(props: { directory: string; disabled?: boolean; permissionLevel?: PermissionLevel }) {
+/** Approval guidance: shows the sandbox state for this project and applies the chosen action. */
+export function SandboxField(props: { directory: string }) {
   const [status, { refetch, mutate }] = createResource(
     () => props.directory,
     (directory) => call(client(directory).sandbox.status()).catch(() => undefined),
@@ -80,7 +79,7 @@ export function SandboxField(props: { directory: string; disabled?: boolean; per
   )
   const [busy, setBusy] = createSignal(false)
   const run = async () => {
-    if (props.disabled || busy()) return
+    if (busy()) return
     setBusy(true)
     try {
       const result = await call(client(props.directory).sandbox.install())
@@ -94,8 +93,7 @@ export function SandboxField(props: { directory: string; disabled?: boolean; per
     }
   }
   createEffect(() => {
-    if (bridge?.os !== "windows" || status()?.status !== "unsupported" || !status()?.installable || props.disabled)
-      return
+    if (bridge?.os !== "windows" || status()?.status !== "unsupported" || !status()?.installable) return
     void (async () => {
       const key = "sandbox-setup-attempted-v3"
       if (await storage.get(key, false)) return
@@ -105,17 +103,6 @@ export function SandboxField(props: { directory: string; disabled?: boolean; per
     })()
   })
   return (
-    <>
-      <Show when={props.permissionLevel === "autoApprove" && status()?.status !== "on"}>
-        <span class="subtle">{t("permissionLevel.degraded")}</span>
-      </Show>
-      <SandboxControl
-        status={status()}
-        busy={busy()}
-        disabled={props.disabled}
-        onInstall={() => void run()}
-        onPrepare={() => void refetch()}
-      />
-    </>
+    <SandboxControl status={status()} busy={busy()} onInstall={() => void run()} onPrepare={() => void refetch()} />
   )
 }
