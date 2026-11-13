@@ -39,6 +39,35 @@ test("the chooser hides each open singleton and restores it after closing", asyn
   }
 })
 
+test("only the selected tab exposes its close button to the keyboard and the panel has no close control", async () => {
+  setLocale("en")
+  window.requestIdleCallback = (callback) =>
+    window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 0)
+  window.cancelIdleCallback = window.clearTimeout
+  localStorage.clear()
+  await selectPanels({ directory: "/panel-close", sessionID: crypto.randomUUID() })
+  const host = document.createElement("div")
+  document.body.append(host)
+  const dispose = render(() => <Panel directory="/panel-close" folder="/panel-close" />, host)
+  try {
+    host.querySelector<HTMLButtonElement>('[data-panel-kind="git"]')!.click()
+    await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(1))
+    host.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click()
+    host.querySelector<HTMLButtonElement>('[data-panel-kind="plan"]')!.click()
+    await vi.waitFor(() => expect(host.querySelectorAll('[role="tab"]')).toHaveLength(2))
+    expect(host.querySelector('[aria-label="Close panel"]')).toBeNull()
+    const close = (kind: "git" | "plan") =>
+      host.querySelector<HTMLElement>(
+        `[aria-label="${t("panel.closeTab", { name: t(`panel.${kind}` as "panel.git") })}"]`,
+      )
+    expect(close("plan")!.getAttribute("tabindex")).toBe("0")
+    expect(close("git")!.getAttribute("tabindex")).toBe("-1")
+  } finally {
+    dispose()
+    host.remove()
+  }
+})
+
 test("promotion blocks a pending discard dialog outside the editor portal", async () => {
   setLocale("en")
   const directory = `/test/${crypto.randomUUID()}`

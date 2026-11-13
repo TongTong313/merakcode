@@ -565,6 +565,57 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+.prompt-queue {
+  display: grid;
+  gap: 6px;
+}
+.prompt-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.prompt-queue-badge {
+  flex: none;
+  color: var(--text-muted);
+}
+.prompt-queue-text {
+  min-width: 0;
+  flex: 1;
+}
+.prompt-queue-editor {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.prompt-queue-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-left: auto;
+}
+.prompt-queue-item:has(.prompt-queue-editor) {
+  flex-wrap: wrap;
+}
+.prompt-queue-item:has(.prompt-queue-editor) .prompt-queue-actions {
+  width: 100%;
+  margin-left: 0;
+  gap: 6px;
+}
 .conversation-target-status {
   display: flex;
   align-items: center;

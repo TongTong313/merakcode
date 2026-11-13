@@ -30,6 +30,7 @@ import { SessionContextLayer } from "../context/context-layer"
 import { Instance } from "../../infra/project/instance"
 import { Checkout } from "../../infra/project/checkout"
 import { Bus } from "../../infra/bus"
+import { BusEvent } from "../../infra/bus/bus-event"
 import { ProviderTransform } from "../model/transform"
 import { ContextAttach } from "../context/context-attach"
 import { Plugin } from "../plugin"
@@ -113,6 +114,120 @@ export namespace Loop {
   }
   /** Process-local busy/retry state and the existing session status events. */
   export const Status = LoopStatus
+
+  export const QueueItem = z
+    .object({
+      messageID: z.string(),
+    })
+    .meta({ ref: "SessionPromptQueueItem" })
+  export type QueueItem = z.infer<typeof QueueItem>
+
+  export const Queue = z
+    .object({
+      items: z.array(QueueItem),
+    })
+    .meta({ ref: "SessionPromptQueue" })
+  export type Queue = z.infer<typeof Queue>
+
+  export const Event = {
+    QueueUpdated: BusEvent.define(
+      "session.queue.updated",
+      z.object({
+        sessionID: z.string(),
+        items: z.array(QueueItem),
+      }),
+    ),
+  }
+
+  /** Accepted prompts waiting for the active turn to finish, in FIFO order. */
+  export function queue(sessionID: string): Queue {
+    const match = state()[sessionID]
+    if (!match) return { items: [] }
+    return {
+      items: match.queuedPrompts.filter((item) => item.message).map((item) => ({ messageID: item.message!.info.id })),
+    }
+  }
+
+  function publishQueue(sessionID: string) {
+    void Bus.publish(Event.QueueUpdated, { sessionID, ...queue(sessionID) })
+  }
+
+  /**
+   * Interrupt the active turn and run this waiting prompt next.
+   * Other queued prompts keep their relative order behind it.
+   */
+  export async function sendQueueNow(sessionID: string, messageID: string) {
+    const match = state()[sessionID]
+    const index = match?.queuedPrompts.findIndex((item) => item.message?.info.id === messageID) ?? -1
+    if (!match || index === -1) {
+      throw new Storage.NotFoundError({ message: `Resource not found: queued prompt ${messageID}` })
+    }
+    if (index > 0) {
+      const [item] = match.queuedPrompts.splice(index, 1)
+      match.queuedPrompts.unshift(item!)
+      publishQueue(sessionID)
+    }
+    await interruptAndSettle(sessionID)
+    return queue(sessionID)
+  }
+
+  async function clearQueuedFlag(message: Message.FullMsg): Promise<Message.FullMsg> {
+    if (message.info.role !== "user" || !message.info.queued) return message
+    const info = { ...message.info, queued: undefined }
+    await Session.updateInfo(info)
+    return { info, parts: message.parts }
+  }
+
+  /** Cancel one waiting prompt without interrupting the active turn or later queue items. */
+  export async function removeQueue(sessionID: string, messageID: string) {
+    const match = state()[sessionID]
+    const index = match?.queuedPrompts.findIndex((item) => item.message?.info.id === messageID) ?? -1
+    if (!match || index === -1) {
+      throw new Storage.NotFoundError({ message: `Resource not found: queued prompt ${messageID}` })
+    }
+    const [removed] = match.queuedPrompts.splice(index, 1)
+    publishQueue(sessionID)
+    if (removed?.message) {
+      const settled = await clearQueuedFlag(removed.message)
+      await settleCancelledPrompt(settled)
+    }
+    removed?.reject(new Message.AbortedError({ message: "Queued prompt removed by user" }))
+    return queue(sessionID)
+  }
+
+  /** Replace the visible text of a prompt that is still waiting in the FIFO queue. */
+  export async function editQueue(sessionID: string, messageID: string, input: { text: string }) {
+    const match = state()[sessionID]
+    const queued = match?.queuedPrompts.find((item) => item.message?.info.id === messageID)
+    if (!queued?.message) {
+      throw new Storage.NotFoundError({ message: `Resource not found: queued prompt ${messageID}` })
+    }
+    const text = input.text
+    const existing = queued.message.parts.find(
+      (part): part is Message.TextPart => part.type === "text" && !part.synthetic && !part.ignored,
+    )
+    const part: Message.TextPart = existing
+      ? { ...existing, text }
+      : {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text,
+          sessionID,
+          messageID,
+        }
+    await Session.updatePart(part)
+    queued.message = {
+      info: queued.message.info,
+      parts: existing
+        ? queued.message.parts.map((item) => (item.id === part.id ? part : item))
+        : [...queued.message.parts, part],
+    }
+    queued.input = {
+      ...queued.input,
+      parts: [{ type: "text", text }, ...queued.input.parts.filter((item) => item.type !== "text")],
+    }
+    return queue(sessionID)
+  }
 
   /** Starts an idle session outside the request that created its background task. */
   export function background(input: PromptInput): Promise<boolean> {
@@ -314,6 +429,8 @@ export namespace Loop {
     input: PromptInput,
     options?: {
       commandSource?: Message.UserInfo["commandSource"]
+      /** Mark the user message queued on first persist so clients can hide it from the working timeline. */
+      queued?: boolean
     },
   ): Promise<Message.FullMsg> {
     LoopExecution.check(input.sessionID)
@@ -332,7 +449,7 @@ export namespace Loop {
     const messageID = !input.messageID || (lastID && input.messageID <= lastID) ? freshID : input.messageID
 
     const message = await LoopExecution.wait(async () =>
-      createUserMessage({ ...input, messageID }, options?.commandSource),
+      createUserMessage({ ...input, messageID }, options?.commandSource, options?.queued),
     )
     await LoopExecution.wait(async () => Session.touch(input.sessionID))
 
@@ -407,7 +524,8 @@ export namespace Loop {
     await SessionCrash.reconcile(input.sessionID, () => Boolean(resume(input.sessionID)))
     const admission = admit(input.sessionID)
     try {
-      const message = await prepareAndCreatePromptMessage(input, options)
+      const busy = Boolean(state()[input.sessionID]?.running)
+      let message = await prepareAndCreatePromptMessage(input, { ...options, queued: busy })
       LoopExecution.check(input.sessionID)
       if (input.noReply === true || message.info.role === "assistant") {
         return message
@@ -430,7 +548,12 @@ export namespace Loop {
             resolve,
             reject,
           })
+          publishQueue(input.sessionID)
         })
+      }
+
+      if (message.info.role === "user" && message.info.queued) {
+        message = await clearQueuedFlag(message)
       }
 
       return run({
@@ -778,7 +901,14 @@ export namespace Loop {
     void Question.abortPending(sessionID)
   }
 
-  export function cancel(sessionID: string, owner?: AbortController) {
+  export function cancel(
+    sessionID: string,
+    owner?: AbortController,
+    options?: {
+      /** When true, skip the empty-queue event so interrupt can republish the retained prompts. */
+      retainQueue?: boolean
+    },
+  ) {
     if (owner && state()[sessionID]?.abort !== owner) return
     log.info("cancel", { sessionID })
     for (const admission of admissions().get(sessionID) ?? [])
@@ -804,6 +934,7 @@ export namespace Loop {
       }
       match.queuedPrompts = []
       delete s[sessionID]
+      if (!options?.retainQueue) publishQueue(sessionID)
       // Publish the abort before idle so the desktop can suppress its "reply ready" notice; if idle arrived first,
       // the suppression window would not be marked yet.
       Bus.publish(Session.Event.Error, {
@@ -875,13 +1006,13 @@ export namespace Loop {
    * and no background task keeps editing files after the rollback. Orchestration lives in cancel-tree.ts.
    * WorkflowState / BashJobStore are imported dynamically to avoid circular dependencies.
    */
-  export async function cancelAndSettle(sessionID: string) {
+  export async function cancelAndSettle(sessionID: string, options?: { retainQueue?: boolean }) {
     // Capture the owner before cancel removes its entry. Wait for its normal
     // settlement before ACK, subject to awaitLoopStopped's 3s safety limit.
     const entry = state()[sessionID]
     const done = entry?.done?.promise
     const releaseCheckout = entry?.releaseCheckout
-    cancel(sessionID)
+    cancel(sessionID, undefined, options)
     await Promise.all([awaitLoopStopped(done), reconciliations().get(sessionID)])
     // If the owner never settled (stuck shell on Windows), drop its checkout hold so later switches are not blocked.
     releaseCheckout?.()
@@ -909,7 +1040,7 @@ export namespace Loop {
     // admissions synchronously.
     const admitting = admissions().get(sessionID)
     admissions().delete(sessionID)
-    const stopped = cancelAndSettle(sessionID)
+    const stopped = cancelAndSettle(sessionID, { retainQueue: true })
     if (admitting) admissions().set(sessionID, admitting)
     const scoped = scope ? LoopExecution.cancel(sessionID, [scope.id]) : Promise.resolve()
     const reconciliation = reconciliations().get(sessionID)
@@ -921,6 +1052,7 @@ export namespace Loop {
     self.queuedPrompts = queued
     self.running = true
     LoopStatus.set(sessionID, { type: "busy" })
+    publishQueue(sessionID)
     log.info("prompt queue retained after interrupt", { sessionID, count: queued.length })
 
     void LoopExecution.run(undefined, async () => {
@@ -1913,6 +2045,7 @@ export namespace Loop {
 
   async function persistCancelledPrompt(message: Message.FullMsg) {
     if (message.info.role !== "user" || Message.isExternal(message.info)) return
+    if (message.info.queued) await Session.updateInfo({ ...message.info, queued: undefined })
     const user = message.info
     const messages = await Message.filterCompacted(Message.stream(user.sessionID))
     if (messages.some((item) => item.info.role === "assistant" && item.info.parentID === user.id)) return
@@ -1970,54 +2103,45 @@ export namespace Loop {
         const allMsgs = await Message.filterCompacted(Message.stream(sessionID))
         // With no unanswered or queued user message, check for pending notifications (e.g. a finished background
         // workflow) and turn one into a user message to keep going.
-        let targetUser =
-          findNextUnansweredUser(allMsgs) ??
-          (self.queuedPrompts.length === 0
-            ? findNextUnansweredUser(await consumeSessionNotifications({ sessionID, messages: allMsgs }))
-            : undefined)
-
-        if (targetUser) {
-          const queueIndex = self.queuedPrompts.findIndex((q) => q.message && q.message.info.id === targetUser!.info.id)
-          if (queueIndex !== -1) {
-            const [matched] = self.queuedPrompts.splice(queueIndex, 1)
-            if (matched.scope?.controller.signal.aborted) {
-              await settleCancelledPrompt(matched.message!)
-              matched.reject(matched.scope.controller.signal.reason)
+        // Prefer the FIFO queue when it has items so send-now can reorder waiting prompts.
+        // With an empty queue, fall back to unanswered messages already on the session.
+        let targetUser: Message.FullMsg | undefined
+        if (self.queuedPrompts.length > 0) {
+          const nextPrompt = self.queuedPrompts.shift()!
+          publishQueue(sessionID)
+          if (nextPrompt.scope?.controller.signal.aborted) {
+            if (nextPrompt.message) await settleCancelledPrompt(nextPrompt.message)
+            nextPrompt.reject(nextPrompt.scope.controller.signal.reason)
+            continue
+          }
+          try {
+            nextPrompt.scope?.controller.signal.throwIfAborted()
+            let msg =
+              nextPrompt.message ??
+              (await LoopExecution.run(nextPrompt.scope, () =>
+                prepareAndCreatePromptMessage(nextPrompt.input, nextPrompt.options),
+              ))
+            if (nextPrompt.input.noReply === true || msg.info.role === "assistant") {
+              nextPrompt.resolve(msg)
               continue
             }
+            msg = await clearQueuedFlag(msg)
+            nextPrompt.message = msg
             self.callbacks.push({
-              scope: matched.scope,
-              resolve: matched.resolve,
-              reject: matched.reject,
+              scope: nextPrompt.scope,
+              resolve: nextPrompt.resolve,
+              reject: nextPrompt.reject,
             })
+            targetUser = msg
+          } catch (err) {
+            nextPrompt.reject(err)
+            continue
           }
         } else {
-          const nextPrompt = self.queuedPrompts.shift()
-          if (nextPrompt) {
-            try {
-              nextPrompt.scope?.controller.signal.throwIfAborted()
-              const msg =
-                nextPrompt.message ??
-                (await LoopExecution.run(nextPrompt.scope, () =>
-                  prepareAndCreatePromptMessage(nextPrompt.input, nextPrompt.options),
-                ))
-              if (nextPrompt.input.noReply === true || msg.info.role === "assistant") {
-                nextPrompt.resolve(msg)
-                continue
-              }
-              self.callbacks.push({
-                scope: nextPrompt.scope,
-                resolve: nextPrompt.resolve,
-                reject: nextPrompt.reject,
-              })
-              targetUser = msg
-            } catch (err) {
-              nextPrompt.reject(err)
-              continue
-            }
-          } else {
-            break
-          }
+          targetUser =
+            findNextUnansweredUser(allMsgs) ??
+            findNextUnansweredUser(await consumeSessionNotifications({ sessionID, messages: allMsgs }))
+          if (!targetUser) break
         }
 
         // A successor keeps the owner busy. With no successor, resolve the last
@@ -2069,6 +2193,7 @@ export namespace Loop {
       for (const q of queuedPrompts) {
         q.reject(error)
       }
+      if (queuedPrompts.length) publishQueue(sessionID)
     } finally {
       unbind()
       try {
@@ -3135,7 +3260,11 @@ export namespace Loop {
     return extra
   }
 
-  async function createUserMessage(input: PromptInput, commandSource?: Message.UserInfo["commandSource"]) {
+  async function createUserMessage(
+    input: PromptInput,
+    commandSource?: Message.UserInfo["commandSource"],
+    queued?: boolean,
+  ) {
     LoopExecution.check(input.sessionID)
     const selection = await LoopExecution.wait(async () => PromptMode.resolve(input))
     const agent = await LoopExecution.wait(async () => Agent.get(selection.agentID))
@@ -3178,6 +3307,7 @@ export namespace Loop {
       commandSource,
       format: input.format,
       variant,
+      ...(queued ? { queued: true } : {}),
     }
     using _ = defer(() => ContextAttach.clear(info.id))
     await LoopExecution.wait(async () => RuleSession.noteUserTurn(input.sessionID, info.id))

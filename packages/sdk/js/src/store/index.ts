@@ -15,6 +15,7 @@ import type {
   PermissionRequest,
   QuestionRequest,
   Session,
+  SessionPromptQueueItem,
   SessionStatus,
   Todo,
   VcsInfo,
@@ -24,6 +25,7 @@ export type SessionsState = {
   session: Session[]
   session_status: Record<string, SessionStatus>
   session_diff: Record<string, FileDiff[]>
+  session_queue: Record<string, SessionPromptQueueItem[]>
   todo: Record<string, Todo[]>
   permission: Record<string, PermissionRequest[]>
   question: Record<string, QuestionRequest[]>
@@ -39,6 +41,7 @@ export function createSessionsState(): SessionsState {
     session: [],
     session_status: {},
     session_diff: {},
+    session_queue: {},
     todo: {},
     permission: {},
     question: {},
@@ -117,6 +120,7 @@ export function forgetSession(state: SessionsState, sessionID: string) {
   delete state.permission[sessionID]
   delete state.question[sessionID]
   delete state.session_status[sessionID]
+  delete state.session_queue[sessionID]
 }
 
 export function applyEvent(state: SessionsState, event: Event): Change {
@@ -146,6 +150,12 @@ export function applyEvent(state: SessionsState, event: Event): Change {
     case "session.status":
       state.session_status[event.properties.sessionID] = event.properties.status as SessionStatus
       return "replace"
+    case "session.queue.updated": {
+      const { sessionID, items } = event.properties
+      if (items.length === 0) delete state.session_queue[sessionID]
+      else state.session_queue[sessionID] = items as SessionPromptQueueItem[]
+      return "replace"
+    }
     case "session.diff":
       state.session_diff[event.properties.sessionID] = event.properties.diff as FileDiff[]
       return "replace"

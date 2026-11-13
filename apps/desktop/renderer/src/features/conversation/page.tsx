@@ -36,6 +36,7 @@ import { openReview } from "../review/state"
 import { Frame } from "../shell/frame"
 import { Rename } from "../shell/rename"
 import { Composer } from "./composer"
+import { PromptQueue } from "./prompt-queue"
 import { switching } from "../../state/git"
 import { groupState } from "./group-state"
 import { working } from "./turns"
@@ -406,6 +407,7 @@ export function Conversation(props: { id: string; directory: string }) {
                   {t("conversation.external.readOnly")}
                 </p>
               </Show>
+              <PromptQueue sessionID={props.id} directory={props.directory} />
               <Composer
                 disabled={switching(dir()) || inputLocked()}
                 external={external()}

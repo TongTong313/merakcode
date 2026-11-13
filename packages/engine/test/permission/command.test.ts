@@ -245,6 +245,16 @@ describe("commands inside other commands", () => {
         })
       ).readOnly,
     ).toBe(true)
+    expect(
+      (
+        await CommandAnalysis.analyze("git --no-pager log --oneline -3", {
+          cwd: root,
+          workspace: [root],
+          home,
+          controlledGit: true,
+        })
+      ).git,
+    ).toEqual(["log", "--oneline", "-3"])
     for (const command of ["git log --output=out", "env git log", "git log && echo done", "git -c core.pager=evil log"])
       expect(await worst(command), command).toBe("normal")
   })

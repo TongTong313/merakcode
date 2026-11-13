@@ -17,14 +17,14 @@ test("the composer stays usable beside Git management when the window shrinks an
     if (index === 4) await page.reload()
     await expect(input).toBeVisible()
     if (width === 800) {
-      const close = kit.panel().getByRole("button", { name: "关闭面板" })
-      await expect(close).toBeInViewport({ ratio: 1 })
+      const toggle = page.getByRole("button", { name: "右侧面板", exact: true })
+      await expect(toggle).toBeInViewport({ ratio: 1 })
       await kit.openPanel("browser")
       await expect(kit.panel().getByRole("tab", { name: "浏览器" })).toHaveAttribute("aria-selected", "true")
       await kit.openPanel("git")
-      await close.click()
+      await toggle.click()
       await expect(kit.panel()).toBeHidden()
-      await page.getByRole("button", { name: "右侧面板" }).click()
+      await toggle.click()
       await expect(kit.panel()).toBeVisible()
     }
     await expect

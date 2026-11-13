@@ -81,10 +81,29 @@ test.each([
   if (!sandboxReady) {
     expect(host.textContent).toContain("当前操作未隔离")
     expect(host.textContent).toContain("允许后将保存本次计划")
+    expect(host.textContent).toContain("配置沙箱")
+    expect(host.textContent).not.toContain("已启动")
     expect(
       [...host.querySelectorAll(".approval-actions button")]
         .filter((button) => button.querySelector("kbd"))
         .map((button) => button.textContent),
     ).toEqual([expect.stringContaining("允许这一次"), expect.stringContaining("拒绝")])
   }
+})
+
+test("leaving the sandbox uses the leave-sandbox title", () => {
+  const host = mount(() => (
+    <Approval
+      request={{
+        ...approval,
+        permission: "bash",
+        patterns: ["node -e 1"],
+        sandboxReady: false,
+        metadata: { command: "node -e 1", unsandboxed: true },
+      }}
+      more={0}
+      directory="/p"
+    />
+  ))
+  expect(host.querySelector(".what")?.textContent).toBe("要在沙箱外运行这条命令")
 })

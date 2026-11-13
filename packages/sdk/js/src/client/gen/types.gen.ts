@@ -1596,6 +1596,7 @@ export type Event =
   | EventSessionIdle
   | EventSessionNotificationCreated
   | EventSessionPlanUpdated
+  | EventSessionQueueUpdated
   | EventSessionStatus
   | EventSessionUpdated
   | EventSkillUpdated
@@ -1916,6 +1917,14 @@ export type EventSessionNotificationCreated = {
 export type EventSessionPlanUpdated = {
   properties: SessionPlan
   type: "session.plan.updated"
+}
+
+export type EventSessionQueueUpdated = {
+  properties: {
+    items: Array<SessionPromptQueueItem>
+    sessionID: string
+  }
+  type: "session.queue.updated"
 }
 
 export type EventSessionStatus = {
@@ -2912,7 +2921,7 @@ export type PermissionConfig =
        */
       bash_forbidden?: PermissionRuleConfig
       /**
-       * Run read-only commands (ls, git status, ...)
+       * Run read-only commands (ls, pwd, ...)
        */
       bash_readonly?: PermissionRuleConfig
       /**
@@ -3982,6 +3991,14 @@ export type SessionPlan = {
   status: "completed" | "draft" | "executing" | "failed" | "paused" | "review" | "stopped"
 }
 
+export type SessionPromptQueue = {
+  items: Array<SessionPromptQueueItem>
+}
+
+export type SessionPromptQueueItem = {
+  messageID: string
+}
+
 export type SessionSearchResult = {
   /**
    * The latest conversation text containing the search, shortened around it
@@ -4475,6 +4492,7 @@ export type UserMessage = {
     providerID: string
   }
   permissionLevel?: PermissionLevel
+  queued?: boolean
   role: "user"
   sessionID: string
   summary?: {
@@ -4510,6 +4528,7 @@ export type UserMessageOutput = {
     providerID: string
   }
   permissionLevel?: PermissionLevel
+  queued?: boolean
   role: "user"
   sessionID: string
   summary?: {
@@ -10146,6 +10165,155 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionQueueData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/queue"
+}
+
+export type SessionQueueErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionQueueError = SessionQueueErrors[keyof SessionQueueErrors]
+
+export type SessionQueueResponses = {
+  /**
+   * Queued prompts
+   */
+  200: SessionPromptQueue
+}
+
+export type SessionQueueResponse = SessionQueueResponses[keyof SessionQueueResponses]
+
+export type SessionQueueRemoveData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/queue/{messageID}"
+}
+
+export type SessionQueueRemoveErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionQueueRemoveError = SessionQueueRemoveErrors[keyof SessionQueueRemoveErrors]
+
+export type SessionQueueRemoveResponses = {
+  /**
+   * Updated queue
+   */
+  200: SessionPromptQueue
+}
+
+export type SessionQueueRemoveResponse = SessionQueueRemoveResponses[keyof SessionQueueRemoveResponses]
+
+export type SessionQueueEditData = {
+  body: {
+    text: string
+  }
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/queue/{messageID}"
+}
+
+export type SessionQueueEditErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorResponse
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionQueueEditError = SessionQueueEditErrors[keyof SessionQueueEditErrors]
+
+export type SessionQueueEditResponses = {
+  /**
+   * Updated queue
+   */
+  200: SessionPromptQueue
+}
+
+export type SessionQueueEditResponse = SessionQueueEditResponses[keyof SessionQueueEditResponses]
+
+export type SessionQueueSendNowData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/queue/{messageID}/send"
+}
+
+export type SessionQueueSendNowErrors = {
+  /**
+   * Validation Error
+   */
+  400: {
+    data: unknown
+    error: Array<unknown>
+    success: false
+  }
+  /**
+   * Not found
+   */
+  404: ErrorResponse
+}
+
+export type SessionQueueSendNowError = SessionQueueSendNowErrors[keyof SessionQueueSendNowErrors]
+
+export type SessionQueueSendNowResponses = {
+  /**
+   * Updated queue
+   */
+  200: SessionPromptQueue
+}
+
+export type SessionQueueSendNowResponse = SessionQueueSendNowResponses[keyof SessionQueueSendNowResponses]
 
 export type SessionRevertData = {
   body: {

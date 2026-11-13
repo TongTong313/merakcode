@@ -58,6 +58,11 @@ export const en: Record<keyof typeof zh, string> = {
   "prompt.label": "Message",
   "prompt.placeholder": "Ask the agent to do something. Drop or paste files to attach them",
   "prompt.placeholderBusy": "Write the next message; it is sent when this turn ends",
+  "prompt.queue": "Queued messages",
+  "prompt.queue.badge": "Queued",
+  "prompt.queue.edit": "Edit queued message",
+  "prompt.queue.remove": "Remove queued message",
+  "prompt.queue.sendNow": "Send now",
   "prompt.send": "Send",
   "prompt.stop": "Stop",
   "prompt.attach": "Attach",
@@ -111,7 +116,6 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.agentConnections.staticMode": "Live mode changes are not reported",
   "settings.agentConnections.controlWarning":
     "Only reported operations are governed. Unreported actions are outside MerakCode approval control, native sandbox limits may still apply, and undeclared capabilities are unknown.",
-  "permissionLevel.degraded": "Ask only for risky actions · currently asking for each operation",
   "permissionLevel.label": "Permission level",
   "permissionLevel.hint": "Select permission level",
   "permissionLevel.named": "Permission level, {mode}",
@@ -119,7 +123,7 @@ export const en: Record<keyof typeof zh, string> = {
   "permissionLevel.ask.desc": "Ask the user about every agent operation. Highest safety.",
   "permissionLevel.autoApprove": "Ask only for risky actions",
   "permissionLevel.autoApprove.desc":
-    "Automatically approve non-risky actions and ask the user only about risky actions. Medium safety.",
+    "With the sandbox on, ordinary workspace actions run without asking. Push, privilege, leaving the sandbox and other escalations still ask. Medium safety.",
   "permissionLevel.fullTakeover": "Full takeover",
   "permissionLevel.fullTakeover.desc": "Give MerakCode full control and allow all operations. Lowest safety.",
   "permissionLevel.fullTakeover.badge": "Danger",
@@ -189,6 +193,8 @@ export const en: Record<keyof typeof zh, string> = {
 
   "approval.label": "Approval",
   "approval.from": "{name} asks to",
+  "approval.leaveSandbox": "Wants to run this command outside the sandbox",
+  "approval.configureSandbox": "Configure sandbox",
   "approval.command": "Wants to run a command",
   "approval.edit": "Wants to change a file",
   "approval.read": "Wants to read a file outside the workspace",
@@ -269,7 +275,6 @@ export const en: Record<keyof typeof zh, string> = {
   "panel.browser": "Browser",
   "panel.maximize": "Maximize",
   "panel.restore": "Restore",
-  "panel.close": "Close panel",
 
   "panel.git": "Source Control",
   "git.staged": "Staged",
@@ -570,8 +575,7 @@ export const en: Record<keyof typeof zh, string> = {
   "settings.sandbox.limit.tcp-matched-by-port": "TCP is limited by port only.",
   "settings.sandbox.limit.udp-not-restricted": "UDP (for example DNS) is not restricted.",
   "settings.sandbox.limit.unix-socket-not-restricted": "Unix sockets are not restricted.",
-  "settings.sandbox.limit.ambient-world-writable":
-    "Commands can still write to directories writable by Everyone. Commands that cannot be proven read-only require approval each time.",
+  "settings.sandbox.limit.ambient-world-writable": "Commands can still write to directories writable by Everyone.",
   "settings.providers": "Providers",
   "settings.providers.desc": "API keys are stored only on this computer",
   "settings.provider.connected": "Connected",

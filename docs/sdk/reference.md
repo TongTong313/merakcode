@@ -2174,6 +2174,66 @@ Create and send a new message to a session asynchronously, starting the session 
 
 Returns: nothing
 
+### client.session.queue
+
+`GET /session/{sessionID}/queue` · operationId `session.queue`
+
+List queued prompts.
+
+Return prompts accepted while the session was busy, in FIFO order.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+
+Returns: `SessionPromptQueue`
+
+### client.session.queueRemove
+
+`DELETE /session/{sessionID}/queue/{messageID}` · operationId `session.queueRemove`
+
+Remove a queued prompt.
+
+Cancel one waiting prompt. The active turn and later queue items keep their order.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `messageID` | `string` | yes      |             |
+
+Returns: `SessionPromptQueue`
+
+### client.session.queueEdit
+
+`PATCH /session/{sessionID}/queue/{messageID}` · operationId `session.queueEdit`
+
+Edit a queued prompt.
+
+Replace the text of a prompt that is still waiting behind the active turn.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `messageID` | `string` | yes      |             |
+| `text`      | `string` | yes      |             |
+
+Returns: `SessionPromptQueue`
+
+### client.session.queueSendNow
+
+`POST /session/{sessionID}/queue/{messageID}/send` · operationId `session.queueSendNow`
+
+Send a queued prompt now.
+
+Interrupt the active turn and run this waiting prompt next. Other queued prompts keep their relative order.
+
+| Parameter   | Type     | Required | Description |
+| ----------- | -------- | -------- | ----------- |
+| `sessionID` | `string` | yes      |             |
+| `messageID` | `string` | yes      |             |
+
+Returns: `SessionPromptQueue`
+
 ### client.session.revert
 
 `POST /session/{sessionID}/revert` · operationId `session.revert`

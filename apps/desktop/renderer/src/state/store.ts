@@ -228,6 +228,7 @@ async function resync() {
   messageLoads.clear()
   setState("loaded", reconcile({}))
   setState("sessions", "session_status", reconcile({}))
+  setState("sessions", "session_queue", reconcile({}))
   setState("statusLoaded", reconcile({}))
   await Promise.all(state.folders.map((folder) => refresh(folder.directory).catch(() => {})))
   await Promise.all(opened.map((id) => messages(id).catch(() => {})))
@@ -543,7 +544,11 @@ export async function messages(id: string) {
   if (!info) return
   const snapshot = new MessageSnapshot(id)
   const promise = (async () => {
-    const list = await call(client(info.directory).session.messages({ sessionID: info.id, limit: 400 }))
+    const c = client(info.directory)
+    const [list, queue] = await Promise.all([
+      call(c.session.messages({ sessionID: info.id, limit: 400 })),
+      call(c.session.queue({ sessionID: info.id })).catch(() => undefined),
+    ])
     if (messageLoads.get(id)?.snapshot !== snapshot) return
     batch(() => {
       let loaded = false
@@ -551,6 +556,10 @@ export async function messages(id: string) {
         "sessions",
         produce((draft) => {
           loaded = snapshot.apply(draft, list)
+          if (queue) {
+            if (queue.items.length === 0) delete draft.session_queue[info.id]
+            else draft.session_queue[info.id] = queue.items
+          }
         }),
       )
       if (loaded) setState("loaded", id, true)

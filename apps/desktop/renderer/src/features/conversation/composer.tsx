@@ -23,7 +23,6 @@ import { Tip } from "../../ui/tooltip"
 import { toast } from "../../ui/toast"
 import { AttachmentPreview } from "./attachment"
 import { ModelPicker } from "./model-picker"
-import { SandboxField } from "./sandbox-control"
 import { COMPACT, loadCommands } from "./send"
 import { apply, fileUrl, trigger, type Trigger } from "./suggest"
 import { mentionChoices, type Product } from "./members"
@@ -523,9 +522,6 @@ export function Composer(props: {
               )}
             />
           </Tip>
-        </Show>
-        <Show when={!props.external}>
-          <SandboxField directory={dir()} disabled={props.disabled} permissionLevel={current().mode} />
         </Show>
         <Show
           when={props.busy && !text().trim()}

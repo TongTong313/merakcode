@@ -99,6 +99,7 @@ test("multiple terminals run independently, switching back works, and closing on
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
   await write("three")
 
+  await tabs.nth(1).hover()
   await kit
     .panel()
     .getByRole("button", { name: /^关闭 终端/ })
