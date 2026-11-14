@@ -1,6 +1,6 @@
 import Pencil from "lucide-solid/icons/pencil"
 import Send from "lucide-solid/icons/send"
-import Trash2 from "lucide-solid/icons/trash-2"
+import Trash2 from "lucide-solid/icons/trash"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { produce } from "solid-js/store"
 import type { Part } from "@merakcode/sdk/client"

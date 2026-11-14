@@ -172,7 +172,7 @@ export namespace Loop {
   }
 
   async function clearQueuedFlag(message: Message.FullMsg): Promise<Message.FullMsg> {
-    if (message.info.role !== "user" || !message.info.queued) return message
+    if (message.info.role !== "user" || Message.isExternal(message.info) || !message.info.queued) return message
     const info = { ...message.info, queued: undefined }
     await Session.updateInfo(info)
     return { info, parts: message.parts }
@@ -552,7 +552,7 @@ export namespace Loop {
         })
       }
 
-      if (message.info.role === "user" && message.info.queued) {
+      if (message.info.role === "user" && !Message.isExternal(message.info) && message.info.queued) {
         message = await clearQueuedFlag(message)
       }
 
