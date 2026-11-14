@@ -538,8 +538,7 @@ function controlledMember(tools: unknown[]) {
 }
 
 async function approveDelegation(kit: Kit) {
-  await expect(kit.approval()).toBeVisible({ timeout: 60000 })
-  await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
+  // External members start without a launch approval. The first card is the member's own request.
   await expect(kit.approval()).toContainText("example.com", { timeout: 60000 })
 }
 
