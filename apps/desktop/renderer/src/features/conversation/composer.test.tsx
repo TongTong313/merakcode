@@ -98,7 +98,10 @@ test("the composer exposes the requested permission labels and safety descriptio
   expect(takeover.badge).toBe("危险")
   expect(levels.map(({ label, description }) => ({ label, description }))).toEqual([
     { label: "每次询问", description: "智能体全量操作询问用户，安全性最高" },
-    { label: "仅询问危险行为", description: "智能体自动审批非危险行为，仅危险行为询问用户，安全性中等" },
+    {
+      label: "仅询问危险行为",
+      description: "沙箱已启动时，工作区内普通操作直接运行；推送、提权、越界和离开沙箱仍询问，安全性中等",
+    },
     { label: "全面接管", description: "将控制权完全交给 MerakCode，所有操作均允许，安全性最低" },
   ])
 })
@@ -109,7 +112,8 @@ test("English permission choices explain the same safety levels", () => {
     { label: "Ask every time", description: "Ask the user about every agent operation. Highest safety." },
     {
       label: "Ask only for risky actions",
-      description: "Automatically approve non-risky actions and ask the user only about risky actions. Medium safety.",
+      description:
+        "With the sandbox on, ordinary workspace actions run without asking. Push, privilege, leaving the sandbox and other escalations still ask. Medium safety.",
     },
     { label: "Full takeover", description: "Give MerakCode full control and allow all operations. Lowest safety." },
   ])

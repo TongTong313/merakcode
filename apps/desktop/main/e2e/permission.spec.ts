@@ -14,7 +14,7 @@ test("permission choices show the requested names and safety descriptions", asyn
   await kit.modeButton().click()
   for (const [label, description] of [
     ["每次询问", "智能体全量操作询问用户，安全性最高"],
-    ["仅询问危险行为", "智能体自动审批非危险行为，仅危险行为询问用户，安全性中等"],
+    ["仅询问危险行为", "沙箱已启动时，工作区内普通操作直接运行；推送、提权、越界和离开沙箱仍询问，安全性中等"],
     ["全面接管", "将控制权完全交给 MerakCode，所有操作均允许，安全性最低"],
   ] as const) {
     const option = kit.page.getByRole("option", { name: new RegExp(label) })
