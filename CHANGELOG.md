@@ -6,6 +6,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-14
+
 ### Added
 
 - While a turn is running, follow-up messages go into a queue panel above the composer. You can edit, remove, or send one now; the rest stay queued in order. Queued messages stay out of the working timeline until they start. Interrupt keeps the queue visible, and a follow-up is marked queued on its first message event so it does not flash in the timeline.
