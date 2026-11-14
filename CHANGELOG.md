@@ -16,6 +16,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- On a new conversation, the folder chip switches among open projects or opens another project, and the product, workspace, branch and new-worktree controls share one outlined chip style.
 - Redesign the side-panel chooser as two-column tiles, keep each tab close button inside its tab, right-align the new-tab button, and remove the redundant in-panel close button.
 - Remove the permanent sandbox readiness control from the composer; unisolated operations still explain and offer setup in the approval prompt.
 - Ask only for risky actions allows ordinary sandboxed workspace commands (including in-workspace deletes) when the sandbox is on, matching Codex Auto and Cursor sandboxed run. Push, privilege, secrets, outside-workspace writes and leaving the sandbox still ask once. Approval cards no longer show a sandbox status menu; when the sandbox is not on they offer Configure sandbox. Windows write-capability grants for large trees no longer time out after five seconds.
@@ -23,6 +24,7 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 新对话上栏的文件夹可切换已打开项目或打开其他项目；对话对象、工作区、分支与新工作树统一为描边 chip 样式。
 - 侧边面板的选择器改为两列卡片；标签页关闭按钮移入标签内部，新标签按钮右对齐，并移除面板内重复的收起按钮。
 - 输入框不再常驻显示沙箱状态；未隔离的操作仍在审批提示中说明并引导初始化沙箱。
 - 「仅询问危险行为」在沙箱已启动时放行沙箱内普通工作区命令（含工作区内删除），对齐 Codex Auto 与 Cursor 沙箱内执行。推送、提权、密钥、工作区外写入、离开沙箱仍只问一次。审批框不再显示沙箱状态下拉；沙箱未启动时提供「配置沙箱」。Windows 大目录写入能力授权不再在 5 秒超时。

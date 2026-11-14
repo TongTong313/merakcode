@@ -15,6 +15,7 @@ import { branchOf, folderOf, setState, state } from "../../state/store"
 import { agentConnections, connectionsLoaded, loadConnections } from "../../state/agent-connections"
 import { Select } from "../../ui/select"
 import { Frame } from "../shell/frame"
+import { pickFolder } from "../shell/sidebar"
 import { BranchPicker } from "../git/branch-picker"
 import { promotePanels } from "../panel/workspace"
 import { toast } from "../../ui/toast"
@@ -157,6 +158,7 @@ export function Compose(props: { directory: string }) {
           <div class="context-row">
             <Select
               label={t("conversation.target")}
+              class="chip outlined"
               value={productID()}
               options={agentConnections()
                 .filter((product) => product.enabled)
@@ -170,10 +172,29 @@ export function Compose(props: { directory: string }) {
               disabled={creating() || lockedTarget() || !connectionsLoaded()}
               onChange={(id) => !creating() && !lockedTarget() && prepared().setProductID(id)}
             />
-            <span class="chip outlined">
-              <Folder class="icon icon-sm" />
-              {baseName(props.directory)}
-            </span>
+            <Select
+              label={t("compose.workspace")}
+              class="chip outlined"
+              value={props.directory}
+              options={[
+                ...state.folders.map((folder) => ({
+                  value: folder.directory,
+                  label: baseName(folder.directory),
+                  icon: Folder,
+                })),
+                { value: "__open__", label: t("sidebar.openProject"), icon: Plus },
+              ]}
+              disabled={creating()}
+              onChange={(directory) => {
+                if (creating()) return
+                if (directory === "__open__") {
+                  void pickFolder(navigate)
+                  return
+                }
+                if (sameDir(directory, props.directory)) return
+                navigate(sessionPath(directory))
+              }}
+            />
             <Show when={git()}>
               <BranchPicker
                 directory={props.directory}
@@ -187,7 +208,8 @@ export function Compose(props: { directory: string }) {
                 when={worktree()}
                 fallback={
                   <button
-                    class="button ghost sm"
+                    class="chip outlined"
+                    aria-label={t("compose.newWorktree")}
                     onClick={prepareWorktree}
                     disabled={
                       creating() ||
