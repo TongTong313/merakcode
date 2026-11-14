@@ -527,7 +527,7 @@ test("turning a product off prevents an existing member from starting", async ()
 })
 
 test.each(["ask", "autoApprove"] as const)(
-  "%s requires consent before every delegation entry point",
+  "%s starts an external member without a launch approval and still asks before a subagent",
   async (permissionLevel) => {
     using _sandbox = readySandbox()
     const model = await fakeModel(() => ({ text: "Child executed" }))
@@ -589,21 +589,20 @@ test.each(["ask", "autoApprove"] as const)(
               ),
           }
           try {
-            await expect(
-              (await DelegateTool.init()).execute({ seat: "Member", task: "Read controlled input" }, ctx),
-            ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
-            expect(shown).toHaveLength(1)
-            expect(shown[0].permission).toBe("subagent")
-            expect(shown[0].sandboxReady).toBe(false)
-            expect(shown[0].grants).toEqual([])
-            await expect(fs.stat(received)).rejects.toMatchObject({ code: "ENOENT" })
+            const started = await (
+              await DelegateTool.init()
+            ).execute({ seat: "Member", task: "Read controlled input" }, ctx)
+            expect(shown).toEqual([])
+            expect(started.output).toBe("Plan received")
+            expect(JSON.parse(await fs.readFile(received, "utf8")).prompt).toContain("Read controlled input")
             await expect(
               (await SubAgentTool.init()).execute(
                 { description: "Controlled child", prompt: "Read controlled input", subagent_type: "general" },
                 ctx,
               ),
             ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
-            expect(shown).toHaveLength(2)
+            expect(shown).toHaveLength(1)
+            expect(shown[0].permission).toBe("subagent")
             expect(await Session.children(session.id)).toHaveLength(0)
           } finally {
             off()
@@ -850,7 +849,7 @@ test.each([false, true])(
   20000,
 )
 
-test("an external member rechecks delegation consent after its delayed handshake", async () => {
+test("an external member starts after a delayed handshake without a launch approval", async () => {
   await using tmp = await tmpdir({ git: true })
   const gate = path.join(tmp.path, "release-delegate")
   await configureConnections({
@@ -906,11 +905,8 @@ test("an external member rechecks delegation consent after its delayed handshake
         await expect.poll(() => exists(`${gate}.started`), { timeout: 10000 }).toBe(true)
         await selectPermissionLevel({ sessionID: session.id, permissionLevel: "ask" })
         await fs.writeFile(gate, "release")
-        await expect.poll(async () => requests.length > 0 || (await exists(`${gate}.received`))).toBe(true)
-        expect(await exists(`${gate}.received`)).toBe(false)
-        expect(requests).toHaveLength(1)
-        await PermissionNext.reply({ requestID: requests[0]!.id, reply: "once" })
         await running
+        expect(requests).toEqual([])
         expect(await exists(`${gate}.received`)).toBe(true)
       } finally {
         off()

@@ -101,11 +101,11 @@ test("Claude Code asks MerakCode before it fetches a page, and is told the answe
   expect(denied.result.text).toContain("WebFetch denied: 不行")
 }, 60_000)
 
-test("Claude Code refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
-  for (const permissionLevel of ["ask", "autoApprove"] as const)
-    await expect(run({ adapter: "claude", permissionLevel, env: { CLAUDE_FIXTURE: "[]" } })).rejects.toMatchObject({
-      name: "ExternalAdapterError",
-    })
+test("Claude Code runs at every permission level and can resume", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const) {
+    const result = await run({ adapter: "claude", permissionLevel, env: { CLAUDE_FIXTURE: "[]" } })
+    expect(result.result.text).toContain("prompt:")
+  }
   const resumed = await run({ adapter: "claude", resume: "claude-session-7", env: { CLAUDE_FIXTURE: "[]" } })
   expect(resumed.args).not.toContain("--disallowedTools")
   expect(resumed.args.slice(resumed.args.indexOf("--resume"), resumed.args.indexOf("--resume") + 2)).toEqual([
@@ -202,11 +202,11 @@ test("Codex runs as an app server that asks MerakCode about its commands, file c
   ])
 }, 60_000)
 
-test("Codex refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
-  for (const permissionLevel of ["ask", "autoApprove"] as const)
-    await expect(run({ adapter: "codex", permissionLevel, env: { CODEX_FIXTURE: "[]" } })).rejects.toMatchObject({
-      name: "ExternalAdapterError",
-    })
+test("Codex runs at every permission level and can resume", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const) {
+    const result = await run({ adapter: "codex", permissionLevel, env: { CODEX_FIXTURE: "[]" } })
+    expect(result.result.text.trim().length).toBeGreaterThan(0)
+  }
   const resumed = await run({ adapter: "codex", resume: "codex-thread-7", env: { CODEX_FIXTURE: "[]" } })
   expect(resumed.calls["thread/resume"]).toMatchObject({ threadId: "codex-thread-7", approvalPolicy: "untrusted" })
   expect(resumed.calls["thread/start"]).toBeUndefined()
@@ -321,11 +321,11 @@ test("OpenCode runs as a local server whose permission requests and questions co
   ])
 }, 60_000)
 
-test("OpenCode refuses unsupported controlled levels and resumes only under explicit full takeover", async () => {
-  for (const permissionLevel of ["ask", "autoApprove"] as const)
-    await expect(run({ adapter: "opencode", permissionLevel, env: { OPENCODE_FIXTURE: "[]" } })).rejects.toMatchObject({
-      name: "ExternalAdapterError",
-    })
+test("OpenCode runs at every permission level and can resume", async () => {
+  for (const permissionLevel of ["ask", "autoApprove"] as const) {
+    const result = await run({ adapter: "opencode", permissionLevel, env: { OPENCODE_FIXTURE: "[]" } })
+    expect(result.result.text.trim().length).toBeGreaterThan(0)
+  }
   const resumed = await run({ adapter: "opencode", resume: "ses_old", env: { OPENCODE_FIXTURE: "[]" } })
   expect(resumed.calls.prompts).toEqual([expect.objectContaining({ sessionID: "ses_old" })])
   expect(resumed.result.sessionId).toBe("ses_old")

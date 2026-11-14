@@ -89,9 +89,7 @@ adapter({
         cancellation: "task",
         liveMode: false,
         isolation: "product",
-        limitations: [
-          "Only native approval callbacks are reported; complete operation coverage is unverified. 仅上报原生审批回调，完整操作覆盖尚未验证。",
-        ],
+        limitations: ["Only native approval callbacks are reported. Complete operation coverage is unverified."],
       },
     },
     ...(await version(product.command || "codex")),

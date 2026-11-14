@@ -408,14 +408,14 @@ export async function runMember(input: {
         revision: owner.permissionRevision ?? 0,
       })
     input.task.permissionLevel = owner?.permissionLevel ?? input.task.permissionLevel
-    if (input.task.permissionLevel !== "fullTakeover" && !supportsPerOperationControl(info.capabilities))
-      throw new ExternalAdapterError({
-        message: await Text.pick({
-          zh: "此适配器不能拦截全部实际操作，无法支持当前权限级别。请升级适配器或明确选择全面接管。",
-          en: "This adapter cannot intercept every actual operation and cannot support the selected permission level. Upgrade it or explicitly select full takeover.",
-        }),
-      })
-    if (executionContext && rootID && !supportsPerOperationControl(info.capabilities)) {
+    // Full takeover can already be running actions the adapter never reports. Register that whole task so
+    // tightening the level stops the process. The other levels decide each reported request and keep running.
+    if (
+      executionContext &&
+      rootID &&
+      input.task.permissionLevel === "fullTakeover" &&
+      !supportsPerOperationControl(info.capabilities)
+    ) {
       const operationID = `external-task:${randomUUID()}`
       unregisterOpaque = ModeOperations.register(
         executionContext.sessionID,
@@ -702,6 +702,7 @@ export async function decideExternal(
     const admission = await PermissionNext.askCurrent(
       {
         ...input,
+        metadata: { ...input.metadata, externalReported: true },
         sessionID: context.sessionID,
         root,
         executionID: context.executionID,

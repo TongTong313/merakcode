@@ -105,11 +105,40 @@ const row = (host: HTMLElement, title: string) =>
     item.querySelector(".label")?.textContent?.startsWith(title),
   )!
 
-test("an undeclared isolation owner remains explicitly unknown", () => {
+test.each([
+  ["zh", "做不到权限的全量接管，没来问的操作有使用风险。"],
+  ["en", "MerakCode cannot fully control this product. Unreported actions can still run."],
+] as const)("a connected product without full control shows one risk line in %s", (locale, risk) => {
+  setLocale(locale)
+  const governed: Product = {
+    ...theirs,
+    id: "governed",
+    title: "Governed",
+    capabilities: {
+      ...theirs.capabilities,
+      permission: "merak",
+      control: {
+        reportedOperations: ["read", "write", "command", "network", "tool"],
+        cancellation: "operation",
+        liveMode: true,
+        isolation: "product",
+        limitations: ["Only native approval callbacks are reported. 仅上报原生审批回调。"],
+      },
+    },
+  }
   const host = mount(() => (
-    <ProductSettings products={[theirs]} onChange={async () => true} onRefresh={async () => {}} />
+    <ProductSettings products={[theirs, governed]} onChange={async () => true} onRefresh={async () => {}} />
   ))
-  expect(row(host, "Theirs").textContent).toContain("隔离归属：未知")
+  const partial = row(host, "Theirs").textContent ?? ""
+  const full = row(host, "Governed").textContent ?? ""
+  expect(partial).toContain(risk)
+  expect(partial).not.toContain("隔离归属")
+  expect(partial).not.toContain("Isolation owner")
+  expect(partial).not.toContain("上报审批")
+  expect(partial).not.toContain("Reported approval")
+  expect(full).not.toContain(risk)
+  expect(full).not.toContain("仅上报")
+  expect(full).not.toContain("Only native")
 })
 
 test.each([

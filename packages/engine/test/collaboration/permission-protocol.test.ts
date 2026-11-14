@@ -24,7 +24,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 `
 
 test.each(["ask", "autoApprove", "fullTakeover"] as const)(
-  "an opaque adapter supports only the actual %s contract",
+  "an opaque adapter runs at %s and still starts its task",
   async (permissionLevel) => {
     await using tmp = await tmpdir()
     const marker = path.join(tmp.path, "effect")
@@ -46,13 +46,8 @@ readline.createInterface({input:process.stdin}).on("line",line=>{
         question: async () => [],
       },
     })
-    if (permissionLevel === "fullTakeover") {
-      await running
-      expect(await fs.readFile(marker, "utf8")).toBe("RAN")
-      return
-    }
-    await expect(running).rejects.toMatchObject({ name: "ExternalAdapterError" })
-    await expect(fs.stat(marker)).rejects.toMatchObject({ code: "ENOENT" })
+    await running
+    expect(await fs.readFile(marker, "utf8")).toBe("RAN")
   },
 )
 

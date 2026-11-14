@@ -1054,7 +1054,7 @@ node <适配器文件夹>/merakcode-adapter.mjs test -- node <适配器文件夹
 - 写 `hello.txt` 作为 `write` 请求到达；
 - 结果正常返回。
 
-只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试默认使用 `ask`。`--permission-level` 可指定三档。工作目录是当前目录，产品是 `{ id: "test", title: "test" }`。不能报告全部操作的适配器须显式选择 `fullTakeover`。SDK 里同样的入口是 `cli(argv)`。
+只有 `check` 通过还不够，它只证明握手没问题（`inspect` 返回 `unavailable` 时 `check` 的退出码也是 0）。测试默认使用 `ask`。`--permission-level` 可指定三档。工作目录是当前目录，产品是 `{ id: "test", title: "test" }`。不能报告全部操作的适配器也会启动。SDK 里同样的入口是 `cli(argv)`。
 
 ### 15.8 注册到 MerakCode
 
@@ -1141,8 +1141,8 @@ MerakCode 自带的 Node 运行 `.mts` 时，只是把类型删掉再运行，�
 
 `parseOperationStart` 和 `parseOperationFinish` 校验协议参数。
 `supportsPerOperationControl` 检查适配器是否声明全部实际操作类别的事前回调。
-声明不足的适配器不能用于每次询问或仅询问危险行为。隔离归属声明不证明隔离已经生效，未知覆盖仍须逐次询问。
+声明不足时，宿主仍会启动任务。产品发来的询问按当前权限级别决定。没发来的操作不受宿主控制，配置页说明这个风险。隔离归属声明不证明隔离已经生效。
 
-独立自检默认使用每次询问。无法逐项拦截的适配器需要明确选择全面接管：
-`node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`。
+独立自检默认使用每次询问。三档都可以跑：
+`node merakcode-adapter.mjs test --permission-level ask -- node adapter.mts "test task"`。
 自检会显示操作开始和结束，不会把普通任务解释为完整计划执行。

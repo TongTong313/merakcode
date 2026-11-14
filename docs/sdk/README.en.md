@@ -1060,7 +1060,7 @@ Test mode prints every step, permission request and question, allows each reques
 - writing `hello.txt` arrives as a `write` request;
 - the result comes back.
 
-A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test defaults to `ask`; `--permission-level` selects any of the three levels. It uses the current directory and the product `{ id: "test", title: "test" }`. An adapter without complete operation reporting requires explicit `fullTakeover`. In the SDK the same entry is `cli(argv)`.
+A passing `check` alone proves only the handshake (it exits with 0 even when `inspect` returns `unavailable`). Test defaults to `ask`; `--permission-level` selects any of the three levels. It uses the current directory and the product `{ id: "test", title: "test" }`. An adapter without complete operation reporting still starts. In the SDK the same entry is `cli(argv)`.
 
 ### 15.8 Register it with MerakCode
 
@@ -1141,9 +1141,8 @@ A failed or stopped action must not report completion. `cancelOperation` returns
 
 `parseOperationStart` and `parseOperationFinish` validate protocol parameters.
 `supportsPerOperationControl` checks the declaration of pre-action callbacks for every actual operation category.
-Incomplete adapters cannot run under Ask every time or Ask only for risky actions. Declaring an isolation owner does not establish readiness;
-unknown protection still requires per-operation approval.
+An incomplete declaration still starts the task. Requests the product sends follow the current permission level. Actions it does not send stay outside host control, and product settings state that risk. Declaring an isolation owner does not establish readiness.
 
-The standalone host defaults to Ask every time. Explicitly select full takeover for an adapter without complete operation control:
-`node merakcode-adapter.mjs test --permission-level fullTakeover -- node adapter.mts "test task"`.
+The standalone host defaults to Ask every time. Any of the three levels can run:
+`node merakcode-adapter.mjs test --permission-level ask -- node adapter.mts "test task"`.
 The host prints operation start and finish. Ordinary tasks do not require official-plan support.
