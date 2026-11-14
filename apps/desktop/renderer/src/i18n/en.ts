@@ -49,6 +49,7 @@ export const en: Record<keyof typeof zh, string> = {
   "home.open": "Open folder",
 
   "compose.heading": "What should we do in {name}?",
+  "compose.workspace": "Workspace",
   "compose.worktreeBase": "from {branch}",
   "compose.hint.palette": "Command palette",
   "compose.hint.terminal": "Terminal",

@@ -283,6 +283,15 @@ pre,
   height: 12px;
   opacity: 0.7;
 }
+.chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.chip.branch-chip {
+  max-width: 170px;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
 
 /* Settings model picker: current value on the left, menu chevron on the right */
 .select-field {

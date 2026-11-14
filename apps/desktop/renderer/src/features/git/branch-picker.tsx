@@ -118,7 +118,7 @@ export function BranchPicker(props: {
     >
       <Popover.Trigger
         ref={trigger}
-        class="branch-chip"
+        class="chip outlined branch-chip"
         aria-label={`${label()} ${display() ?? t("git.choose")}`}
         title={`${label()}：${display() ?? t("git.choose")}`}
         disabled={props.disabled || switching(props.directory)}

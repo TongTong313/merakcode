@@ -47,6 +47,7 @@ export const zh = {
   "home.open": "打开文件夹",
 
   "compose.heading": "要在 {name} 里做什么？",
+  "compose.workspace": "工作区",
   "compose.worktreeBase": "基于 {branch}",
   "compose.hint.palette": "命令面板",
   "compose.hint.terminal": "终端",

@@ -128,30 +128,6 @@
 .review-toolbar .segmented button {
   padding: 4px 7px;
 }
-.branch-chip {
-  height: 29px;
-  min-width: 0;
-  max-width: 170px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.branch-chip:hover {
-  background: var(--surface-active);
-  border-color: var(--accent);
-}
-.branch-chip:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 .branch-popover {
   width: min(350px, calc(100vw - 24px));
   padding: 8px;
