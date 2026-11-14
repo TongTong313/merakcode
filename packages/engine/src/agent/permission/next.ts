@@ -353,11 +353,14 @@ export namespace PermissionNext {
       input.permission !== "lsp" &&
       !input.metadata.unsandboxed &&
       (await PermissionExecution.ready(checks))
+    // A reported external request keeps this level's allow rules. The product runs outside MerakCode's sandbox,
+    // so missing isolation must not turn every allow into an ask.
+    const reported = input.metadata.externalReported === true
     return {
       permissionLevel,
       sandboxReady,
       ruleset:
-        permissionLevel === "fullTakeover" || sandboxReady
+        permissionLevel === "fullTakeover" || sandboxReady || reported
           ? ruleset
           : ruleset.map((rule) => (rule.action === "allow" ? { ...rule, action: "ask" as const } : rule)),
     }

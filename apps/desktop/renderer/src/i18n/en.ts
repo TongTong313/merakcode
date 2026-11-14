@@ -104,19 +104,10 @@ export const en: Record<keyof typeof zh, string> = {
   "code.directoryRecovery":
     "Could not identify the saved draft directory: {directory}. Reconnect it and retry. Drafts are retained.",
   "plan.reviewHint": "View or edit the plan, then start execution or continue editing.",
-  "settings.agentConnections.isolation.product": "Isolation owner: the product; actual coverage is unverified",
-  "settings.agentConnections.isolation.none": "Isolation owner: no isolation",
-  "settings.agentConnections.isolation.unknown": "Isolation owner: unknown",
   "permissionLevel.migrated":
     "Legacy permissions now use Ask every time. Old allow rules do not become conversation grants. Select the permission level again.",
-  "settings.agentConnections.coverage": "Reported approval coverage: {operations}",
-  "settings.agentConnections.cancel.operation": "Supports operation cancellation",
-  "settings.agentConnections.cancel.task": "Supports task cancellation only",
-  "settings.agentConnections.cancel.none": "No cancellation support reported",
-  "settings.agentConnections.liveMode": "Supports live mode changes",
-  "settings.agentConnections.staticMode": "Live mode changes are not reported",
-  "settings.agentConnections.controlWarning":
-    "Only reported operations are governed. Unreported actions are outside MerakCode approval control, native sandbox limits may still apply, and undeclared capabilities are unknown.",
+  "settings.agentConnections.partialControl":
+    "MerakCode cannot fully control this product. Unreported actions can still run.",
   "permissionLevel.label": "Permission level",
   "permissionLevel.hint": "Select permission level",
   "permissionLevel.named": "Permission level, {mode}",

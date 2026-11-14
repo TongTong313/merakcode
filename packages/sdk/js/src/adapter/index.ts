@@ -11,7 +11,6 @@ import { spawn as nodeSpawn, type ChildProcess } from "node:child_process"
 import readline from "node:readline"
 import crossSpawn from "cross-spawn"
 import z from "zod"
-import { ErrorCode } from "@merakcode/util/error-code"
 
 /**
  * Starts a CLI: node:child_process spawn with the same arguments and result, which also starts a CLI installed by npm
@@ -570,12 +569,6 @@ async function tryAdapter(input: {
     if (info.unavailable) print(`unavailable: ${info.unavailable}`)
     if (input.prompt === undefined || info.unavailable) return info
     const permissionLevel = input.permissionLevel ?? "ask"
-    if (permissionLevel !== "fullTakeover" && !supportsPerOperationControl(info.capabilities)) {
-      const error = ErrorCode.CATALOG.EXTERNAL_ADAPTER_FAILED
-      throw new Error(
-        `${error.code}: The adapter cannot intercept every actual operation. Upgrade the adapter or explicitly select fullTakeover. 此适配器不能拦截全部实际操作。请升级适配器或明确选择完全接管。`,
-      )
-    }
     const result = await rpc.request<Result>("task/run", {
       prompt: input.prompt,
       cwd: process.cwd(),

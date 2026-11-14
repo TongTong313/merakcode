@@ -30,9 +30,17 @@ type Product = AgentConnectionProduct
 type ProductChange = AgentConnectionProductChangeData["body"]
 type Adapter = "command" | "member" | "claude" | "codex" | "opencode"
 
+const REPORTED = ["read", "write", "command", "network", "tool"]
+
+/** True when the adapter declares a pre-action callback for every operation category. */
+function fullyGoverned(product: Product) {
+  const reported = product.capabilities.control?.reportedOperations
+  return product.capabilities.permission === "merak" && !!reported && REPORTED.every((kind) => reported.includes(kind))
+}
+
 /**
- * Under a product's name: whether it runs, with the version and path found, or why not, and who decides its
- * permissions, as reported by the installed adapter.
+ * Under a product's name: whether it runs, with the version and path found, or why not, who decides the
+ * requests it sends, and one risk line when those requests do not cover every operation.
  */
 function status(product: Product) {
   if (product.id === "merak") return t("settings.agentConnections.builtin")
@@ -47,25 +55,13 @@ function status(product: Product) {
     (product.capabilities.permission === "merak"
       ? t("settings.collaboration.permission.merak")
       : t("settings.collaboration.permission.own"))
+  const risk = product.connected && !fullyGoverned(product) ? t("settings.agentConnections.partialControl") : undefined
   return [
     product.enabled ? undefined : t("settings.collaboration.off"),
     ...runs,
     permission,
+    risk,
     product.connected && !product.capabilities.textStreaming ? t("conversation.outputOnCompletion") : undefined,
-    t("settings.agentConnections.controlWarning"),
-    t(`settings.agentConnections.isolation.${product.capabilities.control?.isolation ?? "unknown"}`),
-    product.capabilities.control &&
-      t("settings.agentConnections.coverage", {
-        operations: product.capabilities.control.reportedOperations.join(", ") || "—",
-      }),
-    product.capabilities.control && t(`settings.agentConnections.cancel.${product.capabilities.control.cancellation}`),
-    product.capabilities.control &&
-      t(
-        product.capabilities.control.liveMode
-          ? "settings.agentConnections.liveMode"
-          : "settings.agentConnections.staticMode",
-      ),
-    product.capabilities.control?.limitations.join(" · "),
   ]
     .filter(Boolean)
     .join(" · ")

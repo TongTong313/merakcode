@@ -136,27 +136,31 @@ export const DelegateTool = Tool.define("delegate", {
               if (steps.length > STEP_LIMIT) steps.shift()
               ctx.metadata({ title: seat.name, metadata: { ...metadata, steps: [...steps] } })
             }
+            // An external member starts without a launch approval. Its own requests still come back one by one.
+            // A MerakCode member stays inside this process, so starting it keeps the subagent check.
+            const external = current.product !== "merak"
             const approval = {
-              permission: "subagent",
+              permission: "subagent" as const,
               checks: [PermissionPolicy.subagent(`${current.id}:${current.product}`)],
               metadata: {
                 description: params.task,
                 subagent_type: current.name,
                 product: current.product,
-                unsandboxed: current.product !== "merak",
               },
             }
-            let admission = await ctx.ask(approval)
+            let admission = external ? undefined : await ctx.ask(approval)
             const beforeTask = async () => {
-              while (
-                admission &&
-                !(await PermissionNext.isCurrent(admission, {
-                  ...approval,
-                  sessionID: ctx.sessionID,
-                  tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
-                }))
-              )
-                admission = await ctx.ask(approval)
+              if (!external) {
+                while (
+                  admission &&
+                  !(await PermissionNext.isCurrent(admission, {
+                    ...approval,
+                    sessionID: ctx.sessionID,
+                    tool: { messageID: ctx.messageID, callID: ctx.callID ?? "" },
+                  }))
+                )
+                  admission = await ctx.ask(approval)
+              }
               signal.throwIfAborted()
             }
             signal.throwIfAborted()

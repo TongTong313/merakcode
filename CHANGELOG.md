@@ -16,6 +16,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### Changed
 
+- External products that cannot report every operation still start. Requests they send follow Ask every time, Ask only for risky actions, or Full takeover. Unreported actions stay outside MerakCode's control. Product settings state that risk in one line.
+- Starting an external group member no longer asks for a separate launch approval. Requests the member sends afterward still follow the conversation's permission level.
 - On a new conversation, the folder chip switches among open projects or opens another project, and the product, workspace, branch and new-worktree controls share one outlined chip style.
 - Redesign the side-panel chooser as two-column tiles, keep each tab close button inside its tab, right-align the new-tab button, and remove the redundant in-panel close button.
 - Remove the permanent sandbox readiness control from the composer; unisolated operations still explain and offer setup in the approval prompt.
@@ -24,6 +26,8 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 ### 变更
 
+- 不能上报全部操作的外部产品仍会启动。它发来的询问按每次询问、仅询问危险行为或全面接管处理。没发来的操作不受 MerakCode 控制。产品设置用一行说明这个风险。
+- 群里启动外部成员时不再单独弹出启动审批。成员随后发来的询问仍按当前权限级别处理。
 - 新对话上栏的文件夹可切换已打开项目或打开其他项目；对话对象、工作区、分支与新工作树统一为描边 chip 样式。
 - 侧边面板的选择器改为两列卡片；标签页关闭按钮移入标签内部，新标签按钮右对齐，并移除面板内重复的收起按钮。
 - 输入框不再常驻显示沙箱状态；未隔离的操作仍在审批提示中说明并引导初始化沙箱。

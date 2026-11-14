@@ -194,7 +194,7 @@ async function delegate(input: {
           results.push(await call())
         }
         const result = results.at(-1)!
-        expect(delegations).toHaveLength(input.permissionLevel === "fullTakeover" ? 0 : (input.calls ?? 1))
+        expect(delegations).toHaveLength(0)
         // Questions still waiting for an answer once the member is done
         const open = await Question.list()
         if (result instanceof Error)
@@ -362,22 +362,28 @@ test("each kind of request is judged like MerakCode's own tools, in each permiss
   ]
   const allowed = (result: Awaited<ReturnType<typeof delegate>>) => result.verdicts.map((verdict) => verdict.allow)
 
-  for (const permissionLevel of ["ask", "autoApprove"] as const) {
-    const result = await delegate({ permissionLevel, permissions })
-    expect(allowed(result)).toEqual(permissions.map(() => true))
-    expect(result.shown.map((request) => request.permission)).toEqual([
-      "edit",
-      "bash",
-      "read",
-      "bash",
-      "mcp__github__create_issue",
-      "network",
-      "network",
-    ])
-    for (const request of result.shown) {
-      expect(request.sandboxReady).toBe(false)
-      expect(request.grants).toEqual([])
-    }
+  const asked = await delegate({ permissionLevel: "ask", permissions })
+  expect(allowed(asked)).toEqual(permissions.map(() => true))
+  expect(asked.shown.map((request) => request.permission)).toEqual([
+    "edit",
+    "bash",
+    "read",
+    "bash",
+    "mcp__github__create_issue",
+    "network",
+    "network",
+  ])
+  const automatic = await delegate({ permissionLevel: "autoApprove", permissions })
+  expect(allowed(automatic)).toEqual(permissions.map(() => true))
+  expect(automatic.shown.map((request) => request.permission)).toEqual([
+    "read",
+    "mcp__github__create_issue",
+    "network",
+    "network",
+  ])
+  for (const request of [...asked.shown, ...automatic.shown]) {
+    expect(request.sandboxReady).toBe(false)
+    expect(request.grants).toEqual([])
   }
   const full = await delegate({ permissionLevel: "fullTakeover", permissions })
   expect(full.shown).toEqual([])
@@ -409,8 +415,8 @@ test("unisolated command prefix grants cannot authorize later member commands", 
   const result = await delegate({
     permissionLevel: "autoApprove",
     permissions: [
-      { kind: "command", command: "npm install lodash" },
-      { kind: "command", command: "npm install zod" },
+      { kind: "command", command: "git push origin main" },
+      { kind: "command", command: "git push origin release" },
     ],
     user: () => ({ reply: "session", scope: "prefix" }),
   })
@@ -486,7 +492,7 @@ async function shim(dir: string, name: string, fixture: string) {
   return command
 }
 
-test("a partially controlled Claude Code member cannot run under auto approval", async () => {
+test("a Claude Code member runs under auto approval and still asks for network", async () => {
   await using bin = await tmpdir()
   const command = await shim(bin.path, "claude", "claude.ts")
   const saved = process.env.CLAUDE_FIXTURE
@@ -497,9 +503,9 @@ test("a partially controlled Claude Code member cannot run under auto approval",
       product: { id: "claude", config: { command } },
       user: () => ({ reply: "reject", message: "先别联网" }),
     })
-    expect(result.shown).toEqual([])
-    expect(result.error?.message).toMatch(/cannot intercept|不能拦截/)
-    expect(result.output).toBeUndefined()
+    expect(result.error).toBeUndefined()
+    expect(result.shown.map((request) => request.permission)).toEqual(["network"])
+    expect(String(result.output)).toContain("denied")
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_FIXTURE
     else process.env.CLAUDE_FIXTURE = saved
@@ -512,21 +518,21 @@ test("a member that ends with no reply fails with the product named, rather than
 }, 60_000)
 
 for (const name of ["codex", "opencode"] as const) {
-  test(`the partially controlled ${name} member cannot run under auto approval`, async () => {
+  test(`the ${name} member runs under auto approval without a launch approval`, async () => {
     await using bin = await tmpdir()
     const command = await shim(bin.path, name, `${name}.ts`)
     const fixture = `${name.toUpperCase()}_FIXTURE`
     const saved = process.env[fixture]
     process.env[fixture] = JSON.stringify(
       name === "codex"
-        ? [{ type: "command", command: "rm -rf build" }]
-        : [{ permission: "bash", patterns: ["rm -rf build"], metadata: { command: "rm -rf build" } }],
+        ? [{ type: "command", command: "git status" }]
+        : [{ permission: "bash", patterns: ["git status"], metadata: { command: "git status" } }],
     )
     try {
       const result = await delegate({ permissionLevel: "autoApprove", product: { id: name, config: { command } } })
+      expect(result.error).toBeUndefined()
       expect(result.shown).toEqual([])
-      expect(result.error?.message).toMatch(/cannot intercept|不能拦截/)
-      expect(result.output).toBeUndefined()
+      expect(result.output).toBeTruthy()
     } finally {
       if (saved === undefined) delete process.env[fixture]
       else process.env[fixture] = saved
@@ -580,13 +586,13 @@ test("unisolated repeated file requests cannot reuse a conversation grant", asyn
 test("once approval for a member command never creates a persistent allow rule", async () => {
   const result = await delegate({
     permissionLevel: "autoApprove",
-    permissions: [{ kind: "command", command: "npm install lodash" }],
+    permissions: [{ kind: "command", command: "git push origin main" }],
     user: () => ({ reply: "once", scope: "prefix" }),
     calls: 2,
   })
   expect(result.calls).toEqual([[{ allow: true }], [{ allow: true }]])
   expect(result.shown).toHaveLength(2)
-  expect(JSON.stringify(result.saved ?? {})).not.toContain("npm install *")
+  expect(JSON.stringify(result.saved ?? {})).not.toContain("git push *")
 }, 60_000)
 
 test("full takeover preserves a member business question and its human answer", async () => {

@@ -9,7 +9,7 @@ import { bundle, declarations } from "../script/adapter-library"
 const run = promisify(execFile)
 
 test.each(["ask", "autoApprove", "fullTakeover"])(
-  "standalone host checks actual operation coverage for %s",
+  "standalone host runs an opaque adapter at %s",
   async (permissionLevel) => {
     await using space = await workspace(`import {adapter} from "./merakcode-adapter.mjs"
     import fs from "node:fs/promises"
@@ -28,13 +28,8 @@ test.each(["ask", "autoApprove", "fullTakeover"])(
       ],
       { cwd: space.dir },
     )
-    if (permissionLevel === "fullTakeover") {
-      expect((await execution).stdout).toContain("result DONE")
-      expect(await fs.readFile(path.join(space.dir, "effect"), "utf8")).toBe("CHANGED")
-      return
-    }
-    await expect(execution).rejects.toMatchObject({ stderr: expect.stringContaining("MRK-4009") })
-    await expect(fs.stat(path.join(space.dir, "effect"))).rejects.toMatchObject({ code: "ENOENT" })
+    expect((await execution).stdout).toContain("result DONE")
+    expect(await fs.readFile(path.join(space.dir, "effect"), "utf8")).toBe("CHANGED")
   },
   30000,
 )
