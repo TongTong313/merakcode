@@ -74,12 +74,18 @@ export async function prepareBashCommand(
     !analysis.git &&
     (Object.keys(shellEnv).length > 0 ||
       (process.env.RIPGREP_CONFIG_PATH && analysis.segments.some((segment) => segment.program === "rg")) ||
+      (process.env.GIT_EXTERNAL_DIFF && analysis.segments.some((segment) => segment.program === "git")) ||
       Object.entries(process.env).some(
         ([key, value]) =>
           value && /^(NODE_OPTIONS|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|BASH_ENV|ENV|BASH_FUNC_.*)$/i.test(key),
       ))
   ) {
-    analysis.segments.push({ text: params.command, tokens: [params.command], prefix: params.command, level: "normal" })
+    analysis.segments.push({
+      text: params.command,
+      tokens: [params.command],
+      prefix: params.command,
+      level: process.env.GIT_EXTERNAL_DIFF ? "risky" : "normal",
+    })
     analysis.readOnly = false
   }
   const prefix = analysis.segments[0]?.prefix ?? params.command

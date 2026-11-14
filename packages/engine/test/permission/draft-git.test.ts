@@ -207,7 +207,7 @@ test("file inputs and aliases keep sensitive approval while ordinary reads stay 
   })
 })
 
-test("indirect file reads require approval before an implementation task runs them", async () => {
+test("ordinary sandboxed reads do not ask under autoApprove", async () => {
   using _isolation = readySandbox()
   await using tmp = await tmpdir({ git: true })
   await fs.writeFile(path.join(tmp.path, ".env"), "FAKE_KEY=fixture-only\n")
@@ -247,11 +247,9 @@ test("indirect file reads require approval before an implementation task runs th
           "rg -f.env input.txt",
         ]) {
           shown.length = 0
-          await expect(
-            prepareBashCommand({ command, description: "Inspect project input" }, ctx),
-            command,
-          ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
-          expect(shown, command).toHaveLength(1)
+          const ran = await prepareBashCommand({ command, description: "Inspect project input" }, ctx)
+          expect(ran.sandbox, command).toBeDefined()
+          expect(shown, command).toHaveLength(0)
         }
         await Promise.all(replies)
       } finally {

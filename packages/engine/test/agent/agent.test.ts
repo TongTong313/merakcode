@@ -54,9 +54,10 @@ test("build agent has correct default properties", async () => {
       expect(build).toBeDefined()
       expect(build?.mode).toBe("primary")
       expect(build?.native).toBe(true)
-      // Ask mode: workspace edits are written directly (undone later in review); non-read-only commands ask.
+      // Ask only for risky actions: workspace edits and ordinary commands are allowed; risky commands still ask.
       expect(evalPerm(build, "edit")).toBe("allow")
-      expect(evalPerm(build, "bash")).toBe("ask")
+      expect(evalPerm(build, "bash")).toBe("allow")
+      expect(evalPerm(build, "bash_risky")).toBe("ask")
       expect(build?.profile?.availableTools).toContain("edit")
       expect(build?.profile?.availableTools).toContain("write")
       expect(build?.profile?.availableTools).toContain("multi_edit")

@@ -68,15 +68,12 @@ test("a multi-segment command shows one approval listing only the segments that 
       checks: [
         command("pwd", "readonly", "pwd"),
         command("npm install", "normal", "npm install"),
-        command("rm -rf dist", "delete", "rm"),
+        command("git push", "risky", "git push"),
       ],
     })
     const [request] = await pending()
-    expect(request!.patterns).toEqual(["npm install", "rm -rf dist"])
-    expect(request!.grants).toEqual([
-      { scope: "prefix", pattern: "npm install *" },
-      { scope: "prefix", pattern: "rm *" },
-    ])
+    expect(request!.patterns).toEqual(["git push"])
+    expect(request!.grants).toEqual([{ scope: "prefix", pattern: "git push *" }])
     await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_multi", reply: "once" })
     await running
@@ -105,14 +102,14 @@ test("session prefix grant is stored on the main session, covers subagents and n
     const first = ask({
       id: "permission_grant",
       sessionID: main.id,
-      checks: [command("npm install lodash", "normal", "npm install")],
+      checks: [command("git push origin main", "risky", "git push")],
     })
     await pending()
     await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_grant", reply: "session", scope: "prefix" })
     await first
     expect(await PermissionNext.grants(main.id)).toEqual([
-      { permission: "bash", pattern: "npm install *", action: "allow" },
+      { permission: "bash_risky", pattern: "git push *", action: "allow" },
     ])
 
     await expect(
@@ -120,14 +117,14 @@ test("session prefix grant is stored on the main session, covers subagents and n
         id: "permission_child",
         sessionID: child.id,
         root: main.id,
-        checks: [command("npm install -D vitest", "normal", "npm install")],
+        checks: [command("git push origin feature", "risky", "git push")],
       }),
     ).resolves.toBeUndefined()
 
     const elsewhere = ask({
       id: "permission_other",
       sessionID: other.id,
-      checks: [command("npm install lodash", "normal", "npm install")],
+      checks: [command("git push origin main", "risky", "git push")],
     })
     expect((await pending()).map((item) => item.id)).toEqual(["permission_other"])
     await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
@@ -138,14 +135,14 @@ test("session prefix grant is stored on the main session, covers subagents and n
 test("a grant also resolves waiting approvals in the same main session that it covers", () =>
   project(async (main) => {
     const child = await Session.create({ parentID: main.id })
-    const a = ask({ id: "permission_a", sessionID: main.id, checks: [command("npm test", "normal", "npm test")] })
+    const a = ask({ id: "permission_a", sessionID: main.id, checks: [command("git push", "risky", "git push")] })
     const b = ask({
       id: "permission_b",
       sessionID: child.id,
       root: main.id,
-      checks: [command("npm test -- --watch", "normal", "npm test")],
+      checks: [command("git push origin", "risky", "git push")],
     })
-    const c = ask({ id: "permission_c", sessionID: main.id, checks: [command("cargo build", "normal", "cargo build")] })
+    const c = ask({ id: "permission_c", sessionID: main.id, checks: [command("npm publish", "risky", "npm publish")] })
     await pending(3)
     await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_a", reply: "session", scope: "prefix" })
@@ -162,20 +159,20 @@ test("grants cannot override deny: a granted command is still denied in readonly
     const first = ask({
       id: "permission_then_readonly",
       sessionID: main.id,
-      checks: [command("npm test", "normal", "npm test")],
+      checks: [command("git push", "risky", "git push")],
     })
     await pending()
     await expect.poll(async () => (await PermissionNext.list()).length).toBeGreaterThan(0)
     await PermissionNext.reply({ requestID: "permission_then_readonly", reply: "session" })
     await first
     await Session.update(main.id, (draft) => {
-      draft.permission = [{ permission: "bash", pattern: "*", action: "deny" }]
+      draft.permission = [{ permission: "bash_risky", pattern: "*", action: "deny" }]
     })
     await expect(
       ask({
         id: "permission_readonly",
         sessionID: main.id,
-        checks: [command("npm test", "normal", "npm test")],
+        checks: [command("git push", "risky", "git push")],
         permissionLevel: "ask",
       }),
     ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
@@ -235,7 +232,7 @@ test("once approval never writes project rules or authorizes another conversatio
       const first = ask({
         id: "permission_once",
         sessionID: main.id,
-        checks: [command("pnpm build", "normal", "pnpm build")],
+        checks: [command("git push", "risky", "git push")],
       })
       const [request] = await pending()
       expect(request!.always).toBe(false)
@@ -246,7 +243,7 @@ test("once approval never writes project rules or authorizes another conversatio
       const second = ask({
         id: "permission_other",
         sessionID: other.id,
-        checks: [command("pnpm build", "normal", "pnpm build")],
+        checks: [command("git push", "risky", "git push")],
       })
       expect((await pending())[0]!.id).toBe("permission_other")
       const rejected = expect(second).rejects.toBeInstanceOf(PermissionNext.RejectedError)

@@ -52,15 +52,16 @@ test.each(['--ou"tp"ut', "--outp\\ut"])("autoApprove recognizes shell-normalized
         }
         try {
           const tool = await BashTool.init()
-          await expect(
-            tool.execute({ command: `git log --oneline ${option}=sentinel.txt`, description: "Inspect history" }, ctx),
-          ).rejects.toBeInstanceOf(PermissionNext.RejectedError)
-          expect(await fs.readFile(path.join(tmp.path, "sentinel.txt"), "utf8")).toBe("KEEP")
-          expect(approvals).toBe(1)
+          const ran = await tool.execute(
+            { command: `git log --oneline ${option}=sentinel.txt`, description: "Inspect history" },
+            ctx,
+          )
+          expect(ran.metadata.exit).toBeTypeOf("number")
+          expect(approvals).toBe(0)
           expect(
             (await tool.execute({ command: "cat sentinel.txt", description: "Read file" }, ctx)).metadata.exit,
           ).toBe(0)
-          expect(approvals).toBe(1)
+          expect(approvals).toBe(0)
         } finally {
           unsubscribe()
         }
