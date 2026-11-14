@@ -100,6 +100,11 @@ test("a deleted file restores one selected alias tab and its protected draft acr
     await expect(kit.page.getByRole("option", { name: /^feature/ })).toHaveAttribute("aria-disabled", "true")
     await kit.page.keyboard.press("Escape")
   }
+  // Close stays hidden until the tab is hovered. Git is the selected tab here.
+  await kit
+    .panel()
+    .getByRole("tab", { name: /^removed\.txt/ })
+    .hover()
   await kit.panel().getByRole("button", { name: "关闭 removed.txt", exact: true }).click()
   await kit.page.getByRole("dialog").getByRole("button", { name: /^放弃/ }).click()
   await expect(kit.page.getByRole("dialog")).toHaveCount(0)

@@ -34,6 +34,14 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 - 「仅询问危险行为」在沙箱已启动时放行沙箱内普通工作区命令（含工作区内删除），对齐 Codex Auto 与 Cursor 沙箱内执行。推送、提权、密钥、工作区外写入、离开沙箱仍只问一次。审批框不再显示沙箱状态下拉；沙箱未启动时提供「配置沙箱」。Windows 大目录写入能力授权不再在 5 秒超时。
 - 产品图标内的标识放大，托盘图标先裁掉透明边再缩放，观感更接近其他桌面应用。
 
+### Fixed
+
+- Hover hints no longer receive clicks, so a side-panel hint cannot block the new-tab button.
+
+### 修复
+
+- 悬停提示不再接收点击，因此侧栏提示不能挡住新标签按钮。
+
 ## [0.3.1] - 2026-11-13
 
 ### Changed
