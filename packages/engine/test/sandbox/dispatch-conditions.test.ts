@@ -149,7 +149,7 @@ test("sandbox loss during metadata persistence requires a fresh decision before 
           await expect(
             (await BashTool.init()).execute(
               {
-                command: `node -e "require('fs').writeFileSync('effect.txt','CHANGED')"`,
+                command: "git push origin main",
                 description: "Revalidate launch conditions",
               },
               ctx,

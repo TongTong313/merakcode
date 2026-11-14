@@ -60,7 +60,7 @@ test("sandbox loss after approval requires a new decision before a host process 
         try {
           const result = (await BashTool.init()).execute(
             {
-              command: `node -e "require('fs').writeFileSync('effect.txt','CHANGED')"`,
+              command: "git push origin main",
               description: "Check execution conditions",
             },
             ctx,
