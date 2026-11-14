@@ -1,4 +1,4 @@
-import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from "electron"
+import { Menu, Tray, nativeImage, screen, type MenuItemConstructorOptions } from "electron"
 import type { AppLocale, TrayState } from "../../renderer/src/desktop/bridge-contract"
 
 /** System tray: recent sessions, new session, settings, quit */
@@ -11,6 +11,24 @@ export type Options = {
   settings: () => void
   clear: () => void
   quit: () => void
+}
+
+/** Crop the macOS-style transparent margin, then size for the tray so the mark fills the pixel budget. */
+function trayImage(path: string) {
+  const image = nativeImage.createFromPath(path)
+  if (image.isEmpty()) return image
+  const { width, height } = image.getSize()
+  const inset = Math.round(Math.min(width, height) * 0.09)
+  const cropped = image.crop({
+    x: inset,
+    y: inset,
+    width: width - inset * 2,
+    height: height - inset * 2,
+  })
+  const base = process.platform === "darwin" ? 18 : 16
+  const scale = process.platform === "darwin" ? 1 : Math.max(1, Math.round(screen.getPrimaryDisplay().scaleFactor))
+  const side = base * scale
+  return cropped.resize({ width: side, height: side, quality: "best" })
 }
 
 const text = {
@@ -43,9 +61,9 @@ export class AppTray {
   }
 
   start() {
-    const image = nativeImage.createFromPath(this.options.icon)
+    const image = trayImage(this.options.icon)
     if (image.isEmpty()) return
-    this.tray = new Tray(image.resize({ width: process.platform === "darwin" ? 18 : 16, quality: "best" }))
+    this.tray = new Tray(image)
     this.tray.setToolTip("MerakCode")
     // On macOS a click opens the menu; on Windows and Linux a left click opens the window and a right click the menu
     if (process.platform !== "darwin") this.tray.on("click", () => this.options.open())
