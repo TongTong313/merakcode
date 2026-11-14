@@ -479,28 +479,13 @@ test.each(["permission", "question"] as const)(
       ).json()
       const id: string = created.sessionID
       expect(
-        (await request(`/session/${id}/permission-level`, { permissionLevel: "autoApprove", expectedRevision: 0 }))
-          .status,
+        (await request(`/session/${id}/permission-level`, { permissionLevel: "ask", expectedRevision: 0 })).status,
       ).toBe(200)
       const completed = request(`/session/${id}/message`, {
         parts: [{ type: "text", text: "Ask both members in parallel" }],
       }).then((response) => response.json())
       completed.catch(() => undefined)
       try {
-        const delegations = async () =>
-          ((await (await request("/permission")).json()) as PermissionRequest[]).filter(
-            (item) => item.sessionID === id && item.permission === "subagent",
-          )
-        await expect.poll(delegations, { timeout: 10_000 }).toHaveLength(2)
-        for (const delegation of await delegations())
-          expect(
-            (
-              await request(`/permission/${delegation.id}/reply`, {
-                reply: "once",
-                decisionRevision: delegation.decisionRevision,
-              })
-            ).status,
-          ).toBe(200)
         const pending = async () =>
           ((await (await request(`/${kind}`)).json()) as (PermissionRequest | QuestionRequest)[]).filter(
             (item) => item.sessionID === id,
