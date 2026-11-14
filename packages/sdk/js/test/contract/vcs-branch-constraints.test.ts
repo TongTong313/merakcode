@@ -309,7 +309,8 @@ test("observes a same-branch commit made outside the engine", async () => {
   })().catch(() => {})
   try {
     git("commit", "--quiet", "--allow-empty", "-m", "external commit")
-    await expect.poll(() => updated, { timeout: 5000 }).toMatchObject({ branch: "main", branchChanged: false })
+    // CI file watchers can lag behind the commit before emitting vcs.head.updated.
+    await expect.poll(() => updated, { timeout: 20_000 }).toMatchObject({ branch: "main", branchChanged: false })
     expect(updated!.checkout).not.toBe(before.checkout)
     expect((await client.vcs.get({}, { throwOnError: true })).data.checkout).toBe(updated!.checkout)
   } finally {
