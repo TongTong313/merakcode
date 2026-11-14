@@ -1538,7 +1538,7 @@
               "$ref": "#/$defs/__schema3"
             },
             "bash_readonly": {
-              "description": "Run read-only commands (ls, git status, ...)",
+              "description": "Run read-only commands (ls, pwd, ...)",
               "$ref": "#/$defs/__schema3"
             },
             "bash": {

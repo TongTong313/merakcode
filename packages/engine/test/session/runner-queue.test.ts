@@ -405,7 +405,7 @@ test("a follow-up accepted while busy is marked queued on its first message.upda
       const userUpdates: Array<{ id: string; queued?: boolean }> = []
       const unsubscribe = Bus.subscribe(Message.Event.Updated, (event) => {
         const info = event.properties.info
-        if (info.role === "user") userUpdates.push({ id: info.id, queued: info.queued })
+        if (info.role === "user" && !Message.isExternal(info)) userUpdates.push({ id: info.id, queued: info.queued })
       })
 
       const p1Promise = Loop.prompt({
@@ -436,7 +436,7 @@ test("a follow-up accepted while busy is marked queued on its first message.upda
       const finished = (await Message.filterCompacted(Message.stream(session.id))).find(
         (msg) => msg.info.id === followUps[0]!.id,
       )
-      expect(finished?.info.role === "user" && finished.info.queued).toBeFalsy()
+      expect(finished?.info.role === "user" && !Message.isExternal(finished.info) && finished.info.queued).toBeFalsy()
       unsubscribe()
     },
   })
