@@ -2861,14 +2861,6 @@ func (p *Pool) With(tools ...Tool) *Pool</code></pre>
         <td>按名字取一条只有说明的规则（4.8 节）</td>
       </tr>
       <tr>
-        <td>客户端工具 <code>client__*</code></td>
-        <td>exec</td>
-        <td>
-          连上来的客户端经
-          <code>tool.register</code> 注册的工具，调用经同一条连接交给客户端执行；连接断开时消失。延迟加载
-        </td>
-      </tr>
-      <tr>
         <td><code>skill</code></td>
         <td>read</td>
         <td>按名字取一个技能的 <code>SKILL.md</code> 正文和附带文件路径（4.8 节）</td>
@@ -5898,10 +5890,6 @@ type Trust struct {
           <code>command.list</code>
         </td>
         <td>技能和斜杠命令（4.8 节）</td>
-      </tr>
-      <tr>
-        <td><code>tool.register</code> / <code>tool.unregister</code></td>
-        <td>客户端注册自己执行的工具；引擎调用时向这个客户端发 <code>tool.call</code> 请求</td>
       </tr>
       <tr>
         <td><code>schedule.list</code> / <code>schedule.delete</code></td>

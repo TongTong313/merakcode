@@ -1,6 +1,6 @@
 package protocol
 
-import "github.com/TongTong313/merakcode/merak/engine/event"
+import "github.com/TongTong313/merakcode/merak/engine/infra/event"
 
 type DiagnosticsParams struct {
 	Days       int      `json:"days,omitempty"`

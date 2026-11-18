@@ -3,9 +3,9 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"time"
 
-	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 const Shutdown event.Type = "engine.shutdown"
@@ -35,41 +35,30 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 }
 
 func (e *Engine) shutdown(ctx context.Context) error {
-	defer e.disconnectCloud()
-	defer func() {
-		e.snapshotMu.Lock()
-		defer e.snapshotMu.Unlock()
-		if e.snapshotTemp {
-			_ = os.RemoveAll(e.snapshotDir)
-		}
-	}()
-	e.Terminals.Close()
-	e.Workspaces.Close()
-	e.mu.Lock()
-	e.mu.Unlock()
-	e.workers.Wait()
-	e.cloudMu.Lock()
-	connected, link := e.cloudCancel != nil, e.cloud
-	e.cloudMu.Unlock()
-	if connected {
-		if err := e.flushCloud(ctx, link); err != nil {
-			return err
-		}
+	defer e.remote.CloseCloud()
+	e.terminals.Close()
+	e.workspaces.Close()
+	e.conversation.Barrier()
+	e.execution.Barrier()
+	e.remote.Barrier()
+	e.coordinator.Barrier()
+	e.core.Workers.Wait()
+	if err := e.remote.FlushConnectedCloud(ctx); err != nil {
+		return err
 	}
-	e.releaseSandbox("")
-	if e.sandboxErr != nil {
-		return e.sandboxErr
+	e.execution.ReleaseSandbox("")
+	if err := e.execution.SandboxFailure(); err != nil {
+		return err
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for _, c := range e.sessions {
-		if err := e.manager.Reconcile(ctx, c.state); err != nil {
-			return err
-		}
-		if err := e.manager.Snapshot(ctx, c.state); err != nil {
-			return err
-		}
+	if err := e.conversation.Checkpoint(ctx); err != nil {
+		return err
 	}
-	_, err := e.Bus.Publish(ctx, event.Event{Stream: event.Stream("engine:" + e.newID()), Type: Shutdown, Actor: event.Actor{Kind: event.ActorAgent}, Payload: json.RawMessage(`{}`)})
+	_, err := e.core.Bus.Publish(ctx, event.Event{Stream: event.Stream("engine:" + e.core.NewID()), Type: Shutdown, Actor: event.Actor{Kind: event.ActorAgent}, Payload: json.RawMessage(`{}`)})
 	return err
+}
+
+func (e *Engine) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return e.Shutdown(ctx)
 }

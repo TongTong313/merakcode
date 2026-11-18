@@ -33,7 +33,7 @@ test("a closed terminal output connection offers retry and reconnects the same r
   const script = path.join(kit.project, "output-retry.mjs")
   await writeFile(script, 'process.stdout.write("output-after-reconnection\\n")')
   await panel.click()
-  await kit.page.keyboard.type(`node "${script}"`)
+  await kit.page.keyboard.type(`"${process.execPath}" "${script}"`)
   await kit.page.keyboard.press("Enter")
   await expect.poll(() => output.join("")).toContain("output-after-reconnection")
 })
@@ -56,7 +56,7 @@ test("a running terminal reconnects input after normal transport closure without
   )
   const enter = async (value: string) => {
     await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-    await kit.page.keyboard.type(`node "${script}" ${value}`)
+    await kit.page.keyboard.type(`"${process.execPath}" "${script}" ${value}`)
     await kit.page.keyboard.press("Enter")
   }
   await kit.openPanel("terminal", true)
@@ -105,7 +105,7 @@ test("retrying terminal creation retains a submitted command and runs it once", 
     await kit.openPanel("terminal", true)
     await creating.entered
     await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-    await kit.page.keyboard.type(`node "${script}"`)
+    await kit.page.keyboard.type(`"${process.execPath}" "${script}"`)
     await kit.page.keyboard.press("Enter")
     creating.release()
     await kit.panel().getByRole("button", { name: "重试", exact: true }).click()
@@ -127,6 +127,7 @@ for (const revisit of [false, true])
       const rpc = await kit.rpc()
       const creating = rpc.hold("terminal.create", { times: 1 })
       const marker = path.join(kit.project, "background-input.txt")
+      // An explicit executable bypasses host shell aliases such as Git Bash winpty.
       const script = path.join(kit.project, "background-input.mjs")
       await writeFile(
         script,
@@ -136,7 +137,7 @@ for (const revisit of [false, true])
         await kit.openPanel("terminal", true)
         await creating.entered
         await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-        await kit.page.keyboard.type(`node "${script}"`)
+        await kit.page.keyboard.type(`"${process.execPath}" "${script}"`)
         await kit.page.keyboard.press("Enter")
         await kit.openPanel("git")
         if (revisit) {
@@ -147,7 +148,7 @@ for (const revisit of [false, true])
           )
           await kit.openPanel("terminal")
           await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-          await kit.page.keyboard.type(`node "${next}"`)
+          await kit.page.keyboard.type(`"${process.execPath}" "${next}"`)
           await kit.page.keyboard.press("Enter")
         }
         creating.release()
@@ -171,7 +172,7 @@ test("Unicode commands typed during terminal startup stay out of the conversatio
     await kit.openPanel("terminal", true)
     await creating.entered
     await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-    await kit.page.keyboard.type(`node "${script}"`)
+    await kit.page.keyboard.type(`"${process.execPath}" "${script}"`)
     await expect(kit.page.getByRole("textbox", { name: "消息", exact: true })).toHaveValue("")
     await kit.page.keyboard.press("Enter")
     creating.release()
@@ -201,7 +202,7 @@ for (const cancel of [false, true])
         await kit.openPanel("terminal", true)
         await creating.entered
         await kit.page.getByRole("region", { name: "终端", exact: true }).click()
-        await kit.page.keyboard.type(`node "${kit.project}${path.sep}`)
+        await kit.page.keyboard.type(`"${process.execPath}" "${kit.project}${path.sep}`)
         await cdp.send("Input.imeSetComposition", { text: "启", selectionStart: 1, selectionEnd: 1 })
         creating.release()
         // The terminal exists in the engine once the held creation was answered

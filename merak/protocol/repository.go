@@ -1,8 +1,8 @@
 package protocol
 
 import (
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/review"
+	"github.com/TongTong313/merakcode/merak/engine/feature/review"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 type DirectoryParams struct {

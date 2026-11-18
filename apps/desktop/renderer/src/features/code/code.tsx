@@ -1,5 +1,5 @@
 import { diffLines } from "diff"
-import type { EngineFileNode as FileNode } from "@merakcode/sdk"
+import type { ProjectFileNode as FileNode } from "@merakcode/sdk"
 import type * as Monaco from "monaco-editor"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ChevronRight from "lucide-solid/icons/chevron-right"

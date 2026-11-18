@@ -5,27 +5,30 @@ package schema
 import (
 	"reflect"
 
-	"github.com/TongTong313/merakcode/merak/engine"
-	"github.com/TongTong313/merakcode/merak/engine/agent"
-	"github.com/TongTong313/merakcode/merak/engine/code"
-	"github.com/TongTong313/merakcode/merak/engine/command"
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/leader"
-	"github.com/TongTong313/merakcode/merak/engine/mcp"
-	"github.com/TongTong313/merakcode/merak/engine/memory"
-	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
-	"github.com/TongTong313/merakcode/merak/engine/plan"
-	"github.com/TongTong313/merakcode/merak/engine/review"
-	"github.com/TongTong313/merakcode/merak/engine/schedule"
-	"github.com/TongTong313/merakcode/merak/engine/session"
-	"github.com/TongTong313/merakcode/merak/engine/skill"
-	"github.com/TongTong313/merakcode/merak/engine/store"
-	"github.com/TongTong313/merakcode/merak/engine/task"
-	"github.com/TongTong313/merakcode/merak/engine/terminal"
-	"github.com/TongTong313/merakcode/merak/engine/worker"
-	"github.com/TongTong313/merakcode/merak/internal/platform/git"
-	"github.com/TongTong313/merakcode/merak/internal/platform/sandbox"
+	// Register lifecycle events owned by the engine root package.
+	_ "github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/engine/agent/definition"
+	"github.com/TongTong313/merakcode/merak/engine/agent/mcp"
+	"github.com/TongTong313/merakcode/merak/engine/agent/memory"
+	"github.com/TongTong313/merakcode/merak/engine/agent/model/catalog"
+	"github.com/TongTong313/merakcode/merak/engine/agent/session"
+	"github.com/TongTong313/merakcode/merak/engine/collab/group"
+	"github.com/TongTong313/merakcode/merak/engine/collab/leader"
+	"github.com/TongTong313/merakcode/merak/engine/collab/task"
+	"github.com/TongTong313/merakcode/merak/engine/collab/wire"
+	"github.com/TongTong313/merakcode/merak/engine/collab/worker"
+	"github.com/TongTong313/merakcode/merak/engine/feature/admin/skill"
+	"github.com/TongTong313/merakcode/merak/engine/feature/code"
+	"github.com/TongTong313/merakcode/merak/engine/feature/command"
+	"github.com/TongTong313/merakcode/merak/engine/feature/plan"
+	"github.com/TongTong313/merakcode/merak/engine/feature/project"
+	"github.com/TongTong313/merakcode/merak/engine/feature/review"
+	"github.com/TongTong313/merakcode/merak/engine/feature/schedule"
+	"github.com/TongTong313/merakcode/merak/engine/feature/terminal"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
+	"github.com/TongTong313/merakcode/merak/engine/infra/git"
+	"github.com/TongTong313/merakcode/merak/engine/infra/sandbox"
+	"github.com/TongTong313/merakcode/merak/engine/infra/store"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
@@ -41,9 +44,9 @@ func Methods() []Method {
 		{"hello", reflect.TypeFor[protocol.HelloParams](), reflect.TypeFor[protocol.HelloResult]()},
 		{"engine.stop", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
 		{"engine.status", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.EngineStatus]()},
-		{"cloud.login", reflect.TypeFor[protocol.CloudLoginParams](), reflect.TypeFor[protocol.CloudStatus]()},
+		{"cloud.login", reflect.TypeFor[protocol.CloudLoginParams](), reflect.TypeFor[wire.CloudStatus]()},
 		{"cloud.logout", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
-		{"cloud.status", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.CloudStatus]()},
+		{"cloud.status", reflect.TypeFor[struct{}](), reflect.TypeFor[wire.CloudStatus]()},
 		{"cloud.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]group.Member]()},
 		{"config.get", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.Config]()},
 		{"config.set", reflect.TypeFor[protocol.ConfigPatch](), reflect.TypeFor[protocol.Config]()},
@@ -68,17 +71,17 @@ func Methods() []Method {
 		{"model.list", reflect.TypeFor[protocol.ModelListParams](), reflect.TypeFor[[]catalog.Model]()},
 		{"agent.catalog", reflect.TypeFor[struct{}](), reflect.TypeFor[[]worker.ProductInfo]()},
 		{"worker.run", reflect.TypeFor[protocol.WorkerRunParams](), reflect.TypeFor[task.Report]()},
-		{"sandbox.status", reflect.TypeFor[protocol.SandboxStatusParams](), reflect.TypeFor[sandbox.Status]()},
+		{"sandbox.status", reflect.TypeFor[wire.SandboxStatusParams](), reflect.TypeFor[sandbox.Status]()},
 		{"sandbox.setup", reflect.TypeFor[struct{}](), reflect.TypeFor[struct{}]()},
-		{"remote.connect", reflect.TypeFor[protocol.RemoteConnectParams](), reflect.TypeFor[protocol.RemoteConnection]()},
-		{"remote.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]protocol.RemoteMember]()},
-		{"remote.start", reflect.TypeFor[protocol.RemoteStartParams](), reflect.TypeFor[protocol.RemoteStartResult]()},
-		{"remote.deliver", reflect.TypeFor[protocol.RemoteDeliveryParams](), reflect.TypeFor[protocol.RemoteDelivery]()},
-		{"remote.sync", reflect.TypeFor[protocol.RemoteSyncParams](), reflect.TypeFor[struct{}]()},
-		{"remote.control", reflect.TypeFor[protocol.RemoteControlParams](), reflect.TypeFor[struct{}]()},
-		{"agent.test", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[worker.Caps]()},
-		{"agent.list", reflect.TypeFor[protocol.AgentListParams](), reflect.TypeFor[[]agent.Agent]()},
-		{"agent.save", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[agent.Agent]()},
+		{"remote.connect", reflect.TypeFor[wire.RemoteConnectParams](), reflect.TypeFor[wire.RemoteConnection]()},
+		{"remote.members", reflect.TypeFor[struct{}](), reflect.TypeFor[[]wire.RemoteMember]()},
+		{"remote.start", reflect.TypeFor[wire.RemoteStartParams](), reflect.TypeFor[wire.RemoteStartResult]()},
+		{"remote.deliver", reflect.TypeFor[wire.RemoteDeliveryParams](), reflect.TypeFor[wire.RemoteDelivery]()},
+		{"remote.sync", reflect.TypeFor[wire.RemoteSyncParams](), reflect.TypeFor[struct{}]()},
+		{"remote.control", reflect.TypeFor[wire.RemoteControlParams](), reflect.TypeFor[struct{}]()},
+		{"agent.test", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[definition.Caps]()},
+		{"agent.list", reflect.TypeFor[protocol.AgentListParams](), reflect.TypeFor[[]definition.Agent]()},
+		{"agent.save", reflect.TypeFor[protocol.AgentSaveParams](), reflect.TypeFor[definition.Agent]()},
 		{"agent.delete", reflect.TypeFor[protocol.AgentDeleteParams](), reflect.TypeFor[struct{}]()},
 		{"group.create", reflect.TypeFor[protocol.GroupCreateParams](), reflect.TypeFor[group.Group]()},
 		{"group.bind", reflect.TypeFor[protocol.GroupBindParams](), reflect.TypeFor[task.Card]()},
@@ -108,9 +111,9 @@ func Methods() []Method {
 		{"terminal.get", reflect.TypeFor[protocol.TerminalIDParams](), reflect.TypeFor[terminal.Info]()},
 		{"terminal.update", reflect.TypeFor[protocol.TerminalUpdateParams](), reflect.TypeFor[terminal.Info]()},
 		{"terminal.remove", reflect.TypeFor[protocol.TerminalIDParams](), reflect.TypeFor[struct{}]()},
-		{"file.read", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[engine.FileContent]()},
+		{"file.read", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[project.FileContent]()},
 		{"file.write", reflect.TypeFor[protocol.FileWriteParams](), reflect.TypeFor[protocol.FileWriteResult]()},
-		{"file.list", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[[]engine.FileNode]()},
+		{"file.list", reflect.TypeFor[protocol.FileParams](), reflect.TypeFor[[]project.FileNode]()},
 		{"repo.status", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[git.State]()},
 		{"repo.watch", reflect.TypeFor[protocol.DirectoryParams](), reflect.TypeFor[struct{}]()},
 		{"repo.diff", reflect.TypeFor[protocol.RepoDiffParams](), reflect.TypeFor[[]git.Change]()},
@@ -147,19 +150,16 @@ func Methods() []Method {
 		{"session.export", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[[]event.Event]()},
 		{"session.import", reflect.TypeFor[protocol.SessionImportParams](), reflect.TypeFor[protocol.SessionCreateResult]()},
 		{"session.snapshot", reflect.TypeFor[protocol.SessionCancelParams](), reflect.TypeFor[session.State]()},
-		{"events.read", reflect.TypeFor[protocol.EventsReadParams](), reflect.TypeFor[[]event.Event]()},
+		{"events.read", reflect.TypeFor[wire.EventsReadParams](), reflect.TypeFor[[]event.Event]()},
 		{"events.find", reflect.TypeFor[store.Query](), reflect.TypeFor[[]event.Event]()},
 		{"events.get", reflect.TypeFor[protocol.EventsGetParams](), reflect.TypeFor[event.Event]()},
 		{"event.emit", reflect.TypeFor[protocol.EventEmitParams](), reflect.TypeFor[event.Event]()},
-		{"permission.reply", reflect.TypeFor[protocol.PermissionReplyParams](), reflect.TypeFor[struct{}]()},
-		{"question.reply", reflect.TypeFor[protocol.QuestionReplyParams](), reflect.TypeFor[struct{}]()},
+		{"permission.reply", reflect.TypeFor[wire.PermissionReplyParams](), reflect.TypeFor[struct{}]()},
+		{"question.reply", reflect.TypeFor[wire.QuestionReplyParams](), reflect.TypeFor[struct{}]()},
 		{"schedule.list", reflect.TypeFor[struct{}](), reflect.TypeFor[[]schedule.Schedule]()},
 		{"schedule.delete", reflect.TypeFor[protocol.ScheduleDeleteParams](), reflect.TypeFor[struct{}]()},
 		{"import.start", reflect.TypeFor[protocol.ImportStartParams](), reflect.TypeFor[protocol.ImportStartResult]()},
 		{"import.status", reflect.TypeFor[struct{}](), reflect.TypeFor[protocol.ImportStatus]()},
-		{"tool.register", reflect.TypeFor[protocol.ToolRegisterParams](), reflect.TypeFor[struct{}]()},
-		{"tool.unregister", reflect.TypeFor[protocol.ToolUnregisterParams](), reflect.TypeFor[struct{}]()},
-		{"tool.result", reflect.TypeFor[protocol.ToolResultParams](), reflect.TypeFor[struct{}]()},
 		{"events.subscribe", reflect.TypeFor[event.Filter](), reflect.TypeFor[protocol.SubscribeResult]()},
 		{"events.unsubscribe", reflect.TypeFor[protocol.UnsubscribeParams](), reflect.TypeFor[struct{}]()},
 	}

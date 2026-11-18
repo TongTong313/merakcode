@@ -3,6 +3,10 @@ import { For } from "solid-js"
 import { t } from "../../i18n"
 
 export function ContextBudget(props: { report: WindowReport }) {
+  const used = () =>
+    t("context.used", {
+      percent: props.report.window > 0 ? Math.round((props.report.total / props.report.window) * 100) : 0,
+    })
   const segments = () => [
     { key: "system", label: t("context.system"), value: props.report.system },
     { key: "tools", label: t("context.tools"), value: props.report.tools },
@@ -17,7 +21,10 @@ export function ContextBudget(props: { report: WindowReport }) {
   return (
     <details class="context-budget">
       <summary>
-        {t("context.title")} · {props.report.total} / {props.report.window}
+        <span role="status" aria-label={used()}>
+          {used()}
+        </span>{" "}
+        · {props.report.total} / {props.report.window}
       </summary>
       <div
         class="context-bar"

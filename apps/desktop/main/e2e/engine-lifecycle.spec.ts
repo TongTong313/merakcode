@@ -6,6 +6,7 @@ import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
+import { testEngineEnv } from "../../../../script/lib/test-engine-env"
 import { connect } from "@merakcode/sdk"
 import { bundle } from "../script/build"
 import { stopEngine } from "./fixture"
@@ -62,10 +63,7 @@ test("the engine is a background process: it outlives the app, the next start jo
         ...(process.platform === "linux" && process.env.CI ? ["--no-sandbox"] : []),
       ],
       env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(([key, value]) => key !== "ELECTRON_RUN_AS_NODE" && value !== undefined),
-        ),
-        MERAKCODE_HOME: home,
+        ...testEngineEnv(home),
         MERAKCODE_APP_DEV_URL: modelURL,
         MERAKCODE_DISABLE_AUTOUPDATE: "1",
         OPENAI_API_KEY: "test-key",

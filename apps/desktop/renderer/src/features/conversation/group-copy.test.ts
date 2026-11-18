@@ -1,11 +1,11 @@
 import { beforeEach, expect, test } from "vitest"
-import type { AgentAgent, GroupMember } from "@merakcode/sdk"
+import type { DefinitionAgent, GroupMember } from "@merakcode/sdk"
 import { setLocale } from "../../i18n"
 import { copyGroup } from "./group-copy"
 
 beforeEach(() => setLocale("zh"))
 
-const agent = (id: string, name: string): AgentAgent => ({
+const agent = (id: string, name: string): DefinitionAgent => ({
   id,
   name,
   summary: "",

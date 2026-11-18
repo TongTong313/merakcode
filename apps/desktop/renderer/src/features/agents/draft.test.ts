@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import type { AgentAgent, WorkerProductInfo } from "@merakcode/sdk"
+import type { DefinitionAgent, WorkerProductInfo } from "@merakcode/sdk"
 import { addedAgent, envPayload, envProblem, envRows, productDraft, productsFor } from "./draft"
 
 const claude: WorkerProductInfo = {
@@ -10,7 +10,7 @@ const claude: WorkerProductInfo = {
   version: "2.1.0",
   caps: { steer: true, permission: true, mcp: true },
 }
-const worker = (extra: Partial<AgentAgent> = {}): AgentAgent => ({
+const worker = (extra: Partial<DefinitionAgent> = {}): DefinitionAgent => ({
   id: "a1",
   name: "Worker",
   summary: "",

@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store"
-import type { AgentAgent } from "@merakcode/sdk"
+import type { DefinitionAgent } from "@merakcode/sdk"
 import { storage } from "../lib/bridge"
 import { client } from "./client"
 
@@ -34,7 +34,7 @@ export function rememberDriver(id: string, agent: string) {
 }
 
 /** An agent that cannot be talked to: gone, or turned off. */
-export const unusable = (agent: AgentAgent | undefined) => !agent || !!agent.disabled
+export const unusable = (agent: DefinitionAgent | undefined) => !agent || !!agent.disabled
 
 /** Whether the person said "not now" to taking over this conversation from this agent. */
 export const hasDeclined = (id: string, agent: string) => declined[id] === agent

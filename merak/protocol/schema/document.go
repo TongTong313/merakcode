@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"path"
 	"reflect"
@@ -9,17 +10,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 	"github.com/TongTong313/merakcode/merak/protocol"
 )
 
 type node map[string]any
-type generator struct{ defs map[string]node }
+type generator struct {
+	defs  map[string]node
+	types map[string]reflect.Type
+	err   error
+}
 
 // WriteDocument writes the JSON Schema of the protocol: its methods with their parameters and results, the typed
 // payload of every registered event and the event envelope.
 func WriteDocument(output io.Writer) error {
-	g := generator{defs: make(map[string]node)}
+	return WriteDocumentWithTypes(output, nil)
+}
+
+// WriteDocumentWithTypes includes the supplied types alongside the protocol's methods and events.
+func WriteDocumentWithTypes(output io.Writer, types []reflect.Type) error {
+	g := generator{defs: make(map[string]node), types: make(map[string]reflect.Type)}
 	methods := map[string]node{}
 	for _, method := range Methods() {
 		methods[method.Name] = node{"params": g.describe(method.Params), "result": g.describe(method.Result)}
@@ -31,6 +41,12 @@ func WriteDocument(output io.Writer) error {
 	envelope := g.describe(reflect.TypeFor[event.Event]())
 	g.describe(reflect.TypeFor[protocol.Error]())
 	g.describe(reflect.TypeFor[protocol.ConnectionInfo]())
+	for _, t := range types {
+		g.describe(t)
+	}
+	if g.err != nil {
+		return g.err
+	}
 	document := node{"$schema": "https://json-schema.org/draft/2020-12/schema", "$defs": g.defs, "x-protocol": protocol.Version, "x-methods": methods, "x-events": events, "x-envelope": envelope}
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
@@ -38,6 +54,9 @@ func WriteDocument(output io.Writer) error {
 }
 
 func (g *generator) describe(t reflect.Type) node {
+	if g.err != nil {
+		return nil
+	}
 	if t == reflect.TypeFor[json.RawMessage]() {
 		return node{}
 	}
@@ -53,6 +72,11 @@ func (g *generator) describe(t reflect.Type) node {
 	if t.Kind() == reflect.Struct && t.Name() != "" {
 		pkg := path.Base(t.PkgPath())
 		name := strings.ToUpper(pkg[:1]) + pkg[1:] + t.Name()
+		if previous, exists := g.types[name]; exists && previous != t {
+			g.err = fmt.Errorf("protocol: schema name %q belongs to both %s.%s and %s.%s", name, previous.PkgPath(), previous.Name(), t.PkgPath(), t.Name())
+			return nil
+		}
+		g.types[name] = t
 		if _, exists := g.defs[name]; !exists {
 			g.defs[name] = node{}
 			g.defs[name] = g.object(t)

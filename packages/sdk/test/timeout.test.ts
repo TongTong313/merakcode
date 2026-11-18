@@ -1,3 +1,4 @@
+import { testEngineEnv } from "../../../script/lib/test-engine-env"
 import { execFile, spawn } from "node:child_process"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { createServer } from "node:http"
@@ -11,15 +12,13 @@ import { connect } from "../src/index"
 
 /** Starts a real `merak serve` with the given environment and returns a connected client. */
 async function engine(home: string, env: Record<string, string>) {
-  const binary =
-    process.env.MERAKCODE_TEST_BINARY ?? path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
-  if (!process.env.MERAKCODE_TEST_BINARY)
-    await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
-      cwd: path.resolve(import.meta.dirname, "../../../merak"),
-      windowsHide: true,
-    })
+  const binary = path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
+  await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
+    cwd: path.resolve(import.meta.dirname, "../../../merak"),
+    windowsHide: true,
+  })
   const child = spawn(binary, ["serve"], {
-    env: { ...process.env, MERAKCODE_HOME: home, ...env },
+    env: { ...testEngineEnv(home), ...env },
     stdio: "ignore",
     windowsHide: true,
   })

@@ -513,8 +513,8 @@
           <td>
             <code>model</code>（含
             <code>anthropic</code
-            >、<code>openai</code>、<code>catalog</code>、<code>fake</code>）、<code>tool</code>、<code>permission</code>、<code>session</code>、<code>window</code>、<code>memory</code>、<code>prompt</code>、<code>loop</code>、<code>definition</code>、<code>question</code>、<code>mcp</code>、<code>skill</code>、<code>rules</code>、<code>web</code>、<code
-              >clienttool</code
+            >、<code>openai</code>、<code>catalog</code>、<code>fake</code>）、<code>tool</code>、<code>permission</code>、<code>session</code>、<code>window</code>、<code>memory</code>、<code>prompt</code>、<code>loop</code>、<code>definition</code>、<code>question</code>、<code>mcp</code>、<code>skill</code>、<code>rules</code>、<code
+              >web</code
             >
           </td>
           <td>
@@ -611,6 +611,7 @@ storage、cloudlink、migrate、diagnose、testkit → engine
         <li>这两个接口的实现，以及配置文件和日志文件的落盘，都在 <code>merak/storage/</code>。</li>
         <li>
           引擎直接写磁盘只限两处：用户的项目文件夹，和启动方传进来的工作目录。引擎不自己拼路径，也不退到系统临时目录。
+          <a href="#e7">E7 列明的三项既有目录来源例外</a>除外。项目文件和 Git 元数据沿用 E7 说明的原路径解析规则。
         </li>
       </ol>
 
@@ -1554,7 +1555,7 @@ go tool cover -func=/tmp/cover.out | awk '$NF=="0.0%"'</code></pre>
         <tr>
           <th>绿灯</th>
           <td>
-            把要搬的上级文件夹填进 <code>pending</code>，子包不用单独写，一共 55 行（下面的代码里已经填好）。测试通过
+            把要搬的上级文件夹填进 <code>pending</code>，子包不用单独写，一共 54 行（下面的代码里已经填好）。测试通过
           </td>
         </tr>
         <tr>
@@ -1625,7 +1626,6 @@ var pending = []string{
 	"engine/skill",
 	"engine/rules",
 	"engine/web",
-	"engine/clienttool",
 	"engine/task",
 	"engine/group",
 	"engine/worker",
@@ -2132,11 +2132,11 @@ func platform(path string) bool {
       <table class="card">
         <tr>
           <th>搬什么</th>
-          <td>附录 F 第三组，15 行</td>
+          <td>附录 F 第三组，14 行</td>
         </tr>
         <tr>
           <th>红灯</th>
-          <td>从 <code>pending</code> 删掉这 15 行的旧路径</td>
+          <td>从 <code>pending</code> 删掉这 14 行的旧路径</td>
         </tr>
         <tr>
           <th>手工修正</th>
@@ -2795,7 +2795,7 @@ NewLink func() wire.Link</code></pre>
                 <code>cli/architecture_test.go</code>：用
                 <code>go/parser</code>
                 找出服务端源码里对引擎子包的函数调用，以及对 <code>Engine</code> 那 6
-                个对象字段的访问（<code>Bus</code>、<code>Groups</code>、<code>Tasks</code>、<code>Board</code>、<code>Workspaces</code>、<code>Terminals</code>）。允许清单里只放创建模型厂商的构造函数。运行它，失败，列出下面第一张表的
+                个对象字段的访问（<code>Bus</code>、<code>Groups</code>、<code>Tasks</code>、<code>Board</code>、<code>Workspaces</code>、<code>Terminals</code>）。允许清单保留模型厂商构造函数，以及下文已批准的限定调用。运行它，失败，列出下面第一张表的
                 5 处和第二张表里服务端的 15 处。
               </li>
               <li>
@@ -2855,15 +2855,46 @@ NewLink func() wire.Link</code></pre>
         <li>每个新方法的参数和返回值与被替换的函数完全一样，方法体就是原来那次调用。</li>
         <li>
           服务端可以继续使用引擎子包的<strong>类型和常量</strong>，以及只做类型转换的写法（例如
-          <code>permission.Mode(x)</code>）。不允许的是调用子包的函数。
+          <code>permission.Mode(x)</code>）。子包函数只能按下面的明确清单调用。
         </li>
         <li>
           在 <code>server</code> 里加一条架构测试，写法参照 <code>cli/architecture_test.go</code>（用
           <code>go/parser</code>
-          找出对引擎子包的函数调用）。允许清单里只放创建模型厂商的构造函数（<code>anthropic</code>、<code>openai</code>
-          包），因为那是启动方的装配工作。
+          找出对引擎子包的函数调用）。允许清单保留创建模型厂商的构造函数（<code>anthropic.New</code>、<code>openai.New</code>），因为那是启动方的装配工作。用户已批准补充必要的现有调用，范围如下表。
         </li>
       </ol>
+      <table>
+        <tr>
+          <th>服务端文件和函数</th>
+          <th>允许调用</th>
+          <th>用途</th>
+        </tr>
+        <tr>
+          <td><code>config.go/environmentSource</code>、<code>config.go/applyConfiguration</code></td>
+          <td><code>anthropic.Builtin</code>、<code>openai.Builtin</code></td>
+          <td>装配模型厂商配置</td>
+        </tr>
+        <tr>
+          <td><code>cloud.go/loginCloud</code></td>
+          <td><code>event.NewID</code></td>
+          <td>生成设备编号</td>
+        </tr>
+        <tr>
+          <td><code>methods_events.go/eventMethods</code></td>
+          <td><code>event.NewID</code></td>
+          <td>生成订阅编号</td>
+        </tr>
+        <tr>
+          <td><code>approval.go/offerPendingApprovals</code>、<code>server.go/ServeHTTP</code></td>
+          <td><code>event.Decode</code></td>
+          <td>解析审批事件的 JSON 内容</td>
+        </tr>
+      </table>
+      <p>
+        这些例外仅限表内的文件、函数和调用目标，不允许整个包。<code>event.Decode</code> 是函数调用，不是类型转换。
+        <code>config.Open</code>、<code>credential.New</code>、<code>log.Root</code> 的原例外已在 E5、E2、E6
+        迁移后删除。 这些例外不增加门面方法，也不允许服务端直接访问引擎的对象字段。
+      </p>
       <p class="file">第二张表：通过 <code>Engine</code> 的对象字段绕过门面的 17 处</p>
       <p>
         <code>Engine</code> 有 6
@@ -3309,10 +3340,71 @@ NewLink func() wire.Link</code></pre>
         </li>
         <li>不许新加一把跨领域的锁，不许把两把锁合成一把来图省事。</li>
       </ol>
+      <p><strong>D3 持锁调用的限定例外：</strong>以下四类保留原锁覆盖的调用范围。例外不允许新增跨领域锁或接入点。</p>
+      <ol>
+        <li>
+          <code>conversation.mu</code> 保护首次加载的完整过程。过程依次为
+          <code>Load</code>、<code>Reconcile</code>、<code>conversationFor</code>、<code>startConversation</code>。
+          同一次持锁覆盖会话表写入和后台任务登记。 构造过程允许调用现有 registry 查询及既定
+          <code>Environment</code>、<code>Loop</code>、<code>Children</code> 接入点。 范围限于
+          <code>openSession</code> 的七个现有入口及 <code>SendWithBudget</code> 的首次加载分支。 七个入口为
+          <code>UpdateSession</code
+          >、<code>RevertSession</code>、<code>UnrevertSession</code>、<code>CompactSession</code>、<code>DeleteSession</code>、<code
+            >RunCommand</code
+          >
+          及审核的 <code>Announce</code>。
+        </li>
+        <li>
+          <code>RevertSession</code>、<code>UnrevertSession</code> 保留对话锁的原覆盖范围。 范围包括原快照开关查询及
+          <code>snapshotRepo</code> 调用。 检查、文件操作、事件发布继续按原顺序执行。
+        </li>
+        <li>
+          <code>createKeyed</code> 保留已有 <code>keyMu</code> 的原覆盖范围。 范围包括
+          <code>CreateSession</code> 的现有创建链及既定 <code>External.Create</code> 接入点。 范围也包括
+          <code>SessionSnapshot</code> 的现有读取链及既定 <code>Pending</code> 接入点。
+        </li>
+        <li>
+          <code>TakeOverSession</code> 保留执行锁的原覆盖范围。 范围从外部对话状态检查到外部记录删除。 其中的
+          <code>Load</code>、更新事件发布、<code>Fold</code>、<code>Snapshot</code> 改由对话方法执行。 对话方法持有
+          <code>conversation.mu</code>，保护 <code>Manager.Load</code> 返回的共享状态。 对话方法不得反向获取执行锁。
+          本项保留接管与首次加载、对话更新对共享状态的互斥。
+        </li>
+      </ol>
+      <p>这些调用不得反向获取调用者持有的锁。每次搬包后必须复查调用链。新增反向加锁时，停止该步骤并询问用户。</p>
+      <p>
+        <code>SendWithBudget</code> 未找到内置对话时，先释放对话锁。 执行对象在自己的锁内再次检查关闭状态，随后处理
+        <code>External.Send</code> 并登记所需后台任务。 同一次持锁覆盖关闭检查、外部状态修改和 <code>workers.Go</code>。
+        关闭流程通过同一把锁完成等待检查。 返回未处理时，对话对象重新加锁，并复查关闭状态和会话表。
+        仍无会话时，对话对象执行完整的首次加载，再继续原有发送流程。
+        并发接管可能在两次查询之间完成。此时发送使用接管后的内置对话。
+      </p>
       <p>
         并发问题写不出“先红”的测试。这一步的保护是三样：<code>TestTheBigLockShrinks</code> 保证没有漏改和新增；CI 的
         <code>go test -race</code>；人审。出了问题按附录 G“数据竞争”“死锁”两行处理。
       </p>
+
+      <p><strong>D5 已确认的三项拆锁处理：</strong></p>
+      <ol>
+        <li>
+          <code>releaseSandbox</code> 先通过 registry 方法取出 MCP 进程，再通过 execution 方法取出沙箱。
+          每个方法分别加锁并删除表项。随后仍先关闭 MCP 进程，再关闭沙箱。 execution 使用专用
+          <code>sandboxMu</code> 保护沙箱表和释放错误，不复用 <code>execution.mu</code>。
+          这避免对话首次加载与接管之间新增相反方向的锁调用。
+          两次取出之间允许并发操作；所有交错结果是否等价仍不确定。用户已确认这项拆分。
+        </li>
+        <li>
+          <code>startLeader</code> 由群事件循环先暂存 <code>g.started</code>。 execution
+          在自己的锁内检查关闭状态、登记群会话并登记后台任务。 execution 拒绝启动时，调用方删除暂存记录并取消刚创建的
+          context。 后台函数不在持锁的当前调用栈中执行。关闭流程在等待后台任务前调用 execution 的等待方法。
+        </li>
+        <li>
+          <code>sendExternalSession</code> 在执行锁内查找对话并保留原空消息检查顺序。
+          函数解锁后读取智能体定义，随后重新加锁，复查关闭状态和对话对象。
+          对话已被接管时，函数返回未处理，由原对话流程复查并继续发送。
+          对话对象已替换时，函数重新读取定义；对象未替换时，函数执行原发送操作。
+          外部状态修改和后台任务登记继续由同一次持锁覆盖。原有禁用、排队、插话及读取失败处理保持不变。
+        </li>
+      </ol>
 
       <h4 id="d1">D1 错误类型下沉到 <code>errorcode</code></h4>
       <table class="card">
@@ -3387,7 +3479,7 @@ NewLink func() wire.Link</code></pre>
         </tr>
         <tr>
           <th>字段</th>
-          <td>附录 C 里 <code>registry</code> 的全部字段，共 17 个</td>
+          <td>附录 C 里 <code>registry</code> 的全部字段，共 16 个</td>
         </tr>
         <tr>
           <th>文件</th>
@@ -4243,6 +4335,7 @@ type External interface {
 	Worktrees    string // worktrees of conversations
 	SkillCache   string // downloaded skill sources
 	SandboxState string // sandbox state and lock files
+	Temporary    string // connection checks, product extensions and sandbox setup scripts
 }</code></pre>
         </li>
         <li>
@@ -4336,6 +4429,28 @@ type External interface {
           <th>清单的最终内容</th>
           <td>
             只应该剩两类：写用户项目的（工具、编辑器保存、审核、规则文件、技能文件夹），和写启动方给的工作目录的（快照、工作树、沙箱、git、外部产品的临时配置）。清单里每一行后面用注释写明属于哪一类。出现第三类，告诉用户
+            <p>保留以下三项既有目录来源例外，范围仅限当前调用：</p>
+            <ol>
+              <li>
+                <code>engine/agent/tool</code> 的 <code>write_file</code>、<code>edit_file</code>、
+                <code>multi_edit</code>、<code>excel_write</code> 保留原权限流程允许的项目外路径。
+                原策略、模式、记忆授权和管理员路由均保持原样；这不表示每次写入都经过单独审批。
+              </li>
+              <li>
+                <code>engine/feature/admin/skill</code> 保留由 <code>ConfigureSkills</code> 配置的全局技能目录。
+                技能缓存仍由 <code>Dirs.SkillCache</code> 提供。
+              </li>
+              <li>
+                <code>engine/infra/sandbox</code> 保留外部产品现有用户状态的准备和配置复制。 范围仅为现有
+                <code>stdio.ProductState</code>、<code>stdio.ClaudeState</code> 经
+                <code>sandbox.PrepareStateDirectory</code>、<code>sandbox.CreateStateFile</code> 的调用。
+              </li>
+            </ol>
+            <p>
+              用户项目文件和元数据按原路径解析规则归类。保留项目符号链接及 Git 返回的独立公共目录。
+              <code>code.Inside</code> 原有的字面路径检查保持不变；本条不承诺真实路径隔离。
+              以上说明不增加目录来源、写盘包或公开接口，不改变权限、覆盖条件、测试判断或时限。
+            </p>
           </td>
         </tr>
         <tr>
@@ -4383,7 +4498,8 @@ type External interface {
           <td>
             <ol>
               <li>
-                一个子文件夹一个提交：<code>conversation</code>、<code>group</code>、<code>task</code>、<code>remote</code>、<code>sandbox</code>、<code>worker</code>、<code>feature</code>。<code
+                一个子文件夹一个迁移步骤：<code>conversation</code>、<code>remote</code>、<code>sandbox</code>、<code>worker</code>、<code>feature</code>。用户已确认群协作、任务和沙箱测试共用
+                <code>scenario/sandbox</code>。44 个文件只修改包名，原判断、准备、等待、清理和时限保持。<code
                   >package</code
                 >
                 行改成“文件夹名加 <code>_test</code>”。
@@ -4428,7 +4544,10 @@ type External interface {
                 <code>testdata/biglock.txt</code> 是 <code>0</code>；<code>testdata/fields.txt</code> 是 D12
                 做完以后的清单，里面没有大写开头的名字。
               </li>
-              <li><code>testdata/facade.txt</code> 和 A4 生成的那份相比，只多了 C7 的 19 行和 D12 加的只读方法。</li>
+              <li>
+                <code>testdata/facade.txt</code> 以 A4 清单为基准。清单删除客户端工具的 4 个方法。清单增加 C7 的 19
+                行。清单再增加 D12 的只读方法。
+              </li>
               <li><code>AGENTS.md</code> 和 <code>CONTRIBUTING.md</code> 的布局说明与实际一致。</li>
               <li>把清单已经空了的测试里“清单”相关的注释改成说明现在的规则，测试本身保留，继续防止以后退回去。</li>
             </ol>
@@ -4673,10 +4792,7 @@ type External interface {
           <td><code>registry</code></td>
           <td>
             <code>mcpLogin</code>、<code>mcpDefinitions</code>、<code>ConfigureSkills</code>、<code>skills</code>、类型
-            <code>skillRoots</code
-            >、<code>RegisterClientTool</code>、<code>UnregisterClientTool</code>、<code>DropClientTools</code>、<code
-              >ClientTools</code
-            >
+            <code>skillRoots</code>
           </td>
         </tr>
         <tr>
@@ -4718,7 +4834,7 @@ type External interface {
       </ul>
 
       <h2 id="app-c">附录 C 字段归属</h2>
-      <p>118 个字段。归属规则：</p>
+      <p>原有 118 个字段。删除客户端工具功能后，归属表保留 117 个字段。归属规则：</p>
       <ol>
         <li>只有一个领域使用：归那个领域。</li>
         <li>多个领域使用，而且创建以后不再改变：放进 <code>core</code>，或者在装配时作为依赖传给每个需要它的领域。</li>
@@ -4818,7 +4934,7 @@ type External interface {
           <td><code>registry</code></td>
           <td>
             <code>providers</code
-            >、<code>providersMu</code>、<code>catalogOnce</code>、<code>defaultModel</code>、<code>smallModel</code>、<code>agentSettings</code>、<code>toolSwitches</code>、<code>networkSettings</code>、<code>networkMu</code>、<code>mcpLoginSet</code>、<code>mcpLoginOnce</code>、<code>clientTools</code>、<code
+            >、<code>providersMu</code>、<code>catalogOnce</code>、<code>defaultModel</code>、<code>smallModel</code>、<code>agentSettings</code>、<code>toolSwitches</code>、<code>networkSettings</code>、<code>networkMu</code>、<code>mcpLoginSet</code>、<code>mcpLoginOnce</code>、<code
               >personal</code
             >
           </td>
@@ -5176,7 +5292,7 @@ internal/platform/secret       engine/infra/secret
 internal/platform/watch        engine/infra/watch
 engine/event                   engine/infra/event
 engine/store                   engine/infra/store</code></pre>
-      <p class="file">B5 <code>agent</code> 层（15 行）</p>
+      <p class="file">B5 <code>agent</code> 层（14 行）</p>
       <pre><code>engine/model                   engine/agent/model
 engine/tool                    engine/agent/tool
 engine/permission              engine/agent/permission
@@ -5190,8 +5306,7 @@ engine/question                engine/agent/question
 engine/mcp                     engine/agent/mcp
 engine/skill                   engine/agent/skill
 engine/rules                   engine/agent/rules
-engine/web                     engine/agent/web
-engine/clienttool              engine/agent/clienttool</code></pre>
+engine/web                     engine/agent/web</code></pre>
       <p class="file">B6 <code>collab</code> 层（6 行）</p>
       <pre><code>engine/task                    engine/collab/task
 engine/group                   engine/collab/group

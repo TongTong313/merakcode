@@ -1,11 +1,11 @@
 package protocol
 
 import (
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/model/catalog"
-	"github.com/TongTong313/merakcode/merak/engine/rules"
-	"github.com/TongTong313/merakcode/merak/engine/skill"
-	"github.com/TongTong313/merakcode/merak/internal/platform/config"
+	"github.com/TongTong313/merakcode/merak/engine/agent/model/catalog"
+	"github.com/TongTong313/merakcode/merak/engine/agent/rules"
+	"github.com/TongTong313/merakcode/merak/engine/agent/skill"
+	"github.com/TongTong313/merakcode/merak/engine/infra/config"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 type ModelListParams struct {

@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
+import { testEngineEnv } from "../../../../script/lib/test-engine-env"
 import { connect } from "@merakcode/sdk"
 import { installRpc, type Rpc } from "./rpc"
 
@@ -293,6 +294,7 @@ export const test = base.extend<{
   modelWindow: number
   /** Reuses the Go adapter fixture as a discoverable Claude Code executable. */
   claude: boolean
+  serviceProgram: string
   kit: Kit
 }>({
   // Wrapped in an object because Playwright treats a bare function as a fixture function
@@ -301,7 +303,8 @@ export const test = base.extend<{
   git: [false, { option: true }],
   modelWindow: [32000, { option: true }],
   claude: [false, { option: true }],
-  kit: async ({ script, config, git, claude, modelWindow }, use, info) => {
+  serviceProgram: ["", { option: true }],
+  kit: async ({ script, config, git, claude, modelWindow, serviceProgram }, use, info) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "merakcode-desktop-e2e-"))
     const project = path.join(root, "project")
     await mkdir(project, { recursive: true })
@@ -342,15 +345,8 @@ export const test = base.extend<{
         ...config,
       }),
     )
-    // Terminals such as VS Code's pass on ELECTRON_RUN_AS_NODE=1, which turns Electron into plain Node.
-    // Local model keys (*_API_KEY) are dropped too, so only the fake model is used and the onboarding "no model
-    // available" state can be tested.
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(
-        (entry): entry is [string, string] =>
-          entry[0] !== "ELECTRON_RUN_AS_NODE" && !/_API_KEY$/i.test(entry[0]) && entry[1] !== undefined,
-      ),
-    )
+    const env = testEngineEnv(root)
+    if (serviceProgram) env.MERAKCODE_SERVICE_PROGRAM = serviceProgram
     if (claude) {
       const bin = path.join(root, "bin")
       await mkdir(bin)
@@ -360,7 +356,7 @@ export const test = base.extend<{
           "build",
           "-o",
           path.join(bin, process.platform === "win32" ? "claude.exe" : "claude"),
-          "./engine/worker/claudecode/testdata/fakeclaude",
+          "./engine/collab/worker/claudecode/testdata/fakeclaude",
         ],
         {
           cwd: path.resolve(main, "../../../merak"),
@@ -475,24 +471,27 @@ export const test = base.extend<{
       await panel().getByRole("button", { name: "新标签页", exact: true }).click()
       await panel().getByRole("button", { name: names[kind], exact: true }).click()
     }
-    const exited = () => appProcess.exitCode !== null || appProcess.signalCode !== null
     /**
      * Closes the app the way a person does: if the close guard asks about unsaved drafts, keeps them and closes. The
      * wait ends when the process exits; one that has not exited after a bounded time is killed with its children.
      */
     const closeApp = async () => {
+      const closingApp = app
+      const closingProcess = appProcess
+      const closingPage = closingApp.windows()[0]
+      const exited = () => closingProcess.exitCode !== null || closingProcess.signalCode !== null
       if (exited()) return
-      void app.close().catch(() => {})
-      const keep = page
-        .getByRole("dialog", { name: /^(关闭窗口？|Close window?)$/ })
+      void closingApp.close().catch(() => {})
+      const keep = closingPage
+        ?.getByRole("dialog", { name: /^(关闭窗口？|Close window?)$/ })
         .getByRole("button", { name: /^(保留草稿并关闭|Keep drafts and close)$/ })
       const deadline = Date.now() + 20_000
       while (Date.now() < deadline && !exited()) {
-        if (await keep.isVisible().catch(() => false)) await keep.click({ timeout: 2000 }).catch(() => {})
+        if (keep && (await keep.isVisible().catch(() => false))) await keep.click({ timeout: 2000 }).catch(() => {})
         await delay(250)
       }
       if (exited()) return
-      const pid = appProcess.pid
+      const pid = closingProcess.pid
       if (pid && process.platform === "win32") {
         try {
           execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
@@ -501,7 +500,7 @@ export const test = base.extend<{
         }
       } else {
         try {
-          appProcess.kill("SIGKILL")
+          closingProcess.kill("SIGKILL")
         } catch {
           /* The process may have exited meanwhile. */
         }
@@ -511,7 +510,22 @@ export const test = base.extend<{
     // Electron creates its own context, outside Playwright's page fixture and automatic browser tracing.
     let tracing = app.context().tracing
     await tracing.start({ screenshots: true, snapshots: true, sources: true })
+    let tracingActive = true
+    const stopTrace = async (file?: string) => {
+      if (!tracingActive) return
+      tracingActive = false
+      await tracing.stop(file ? { path: file } : undefined)
+    }
     let appProcess = app.process()
+    let closing = false
+    let cancelRestart = () => {}
+    const closingSignal = new Promise<void>((resolve) => {
+      cancelRestart = resolve
+    })
+    let restarting: Promise<void> | undefined
+    const requireOpen = () => {
+      if (closing) throw new Error("The desktop fixture is closing")
+    }
     let proxied: { page: Page; rpc: Rpc } | undefined
     const rpc = async () => {
       if (proxied?.page === page) return proxied.rpc
@@ -528,23 +542,47 @@ export const test = base.extend<{
       get page() {
         return page
       },
-      restart: async (crash = false) => {
-        await tracing.stop()
-        if (crash) {
-          const exited = new Promise<void>((resolve) => appProcess.once("exit", () => resolve()))
-          await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
-          await exited
-        } else {
-          await closeApp()
+      restart: (crash = false) => {
+        const restart = async () => {
+          requireOpen()
+          await Promise.race([stopTrace(), closingSignal])
+          requireOpen()
+          if (crash) {
+            const currentProcess = appProcess
+            let onExit = () => {}
+            const exited = new Promise<void>((resolve) => {
+              onExit = resolve
+              if (currentProcess.exitCode !== null || currentProcess.signalCode !== null) resolve()
+              else currentProcess.once("exit", onExit)
+            })
+            try {
+              // Crash the owned Electron process. A graceful exit can wait indefinitely for its debugger.
+              const crashApp = app.evaluate(() => process.kill(process.pid, "SIGKILL"))
+              // Destruction of the execution context can reject the call before the launcher exits.
+              await Promise.race([crashApp.catch(() => {}), exited, closingSignal])
+              await Promise.race([exited, closingSignal])
+            } finally {
+              currentProcess.removeListener("exit", onExit)
+            }
+          } else {
+            await closeApp()
+          }
+          requireOpen()
+          app = await launch()
+          appProcess = app.process()
+          requireOpen()
+          page = await app.firstWindow()
+          requireOpen()
+          page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
+          page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
+          tracing = app.context().tracing
+          await tracing.start({ screenshots: true, snapshots: true, sources: true })
+          tracingActive = true
+          requireOpen()
+          await input().waitFor({ timeout: 120_000 })
         }
-        app = await launch()
-        appProcess = app.process()
-        page = await app.firstWindow()
-        page.on("console", (message) => output.push(`[${message.type()}] ${message.text()}`))
-        page.on("pageerror", (error) => output.push(`[pageerror] ${error.message}`))
-        tracing = app.context().tracing
-        await tracing.start({ screenshots: true, snapshots: true, sources: true })
-        await input().waitFor({ timeout: 120_000 })
+        restarting = restart()
+        return restarting
       },
       project,
       root,
@@ -562,16 +600,34 @@ export const test = base.extend<{
       rpc,
       git: run,
     })
-    const alreadyExited = appProcess.exitCode !== null || appProcess.signalCode !== null
-    if (!alreadyExited && info.status !== info.expectedStatus) {
-      const trace = info.outputPath("electron-trace.zip")
-      await tracing.stop({ path: trace })
-      await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
-    } else if (!alreadyExited) await tracing.stop()
-    // The app may be waiting on its close dialog (unsaved drafts): answer it, and never leave a process behind
-    await closeApp()
-    await stopEngine(root)
-    fake.close()
+    closing = true
+    cancelRestart()
+    const errors: unknown[] = []
+    const cleanup = async (run: () => unknown) => {
+      try {
+        await run()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    const saveTrace = async () => {
+      if (appProcess.exitCode !== null || appProcess.signalCode !== null || !tracingActive) return
+      const trace = info.status !== info.expectedStatus ? info.outputPath("electron-trace.zip") : undefined
+      await stopTrace(trace)
+      if (trace) await info.attach("electron-trace", { path: trace, contentType: "application/zip" })
+    }
+    // Finish an interrupted restart before closing the engine and the fake model.
+    const previousProcess = appProcess
+    await cleanup(saveTrace)
+    await cleanup(closeApp)
+    await cleanup(() => restarting)
+    if (appProcess !== previousProcess) {
+      await cleanup(saveTrace)
+      await cleanup(closeApp)
+    }
+    await cleanup(() => stopEngine(root))
+    await cleanup(() => fake.close())
+    if (errors.length) throw new AggregateError(errors, "Desktop fixture cleanup failed")
     const initializedSandbox = await readFile(path.join(root, "data", "sandbox", "state.json")).then(
       () => true,
       (error: NodeJS.ErrnoException) => {

@@ -38,18 +38,13 @@ function realLoginItem() {
 let directory: string
 let program: string
 let before: string
-let previous: string | undefined
+test.use({ serviceProgram: async ({}, use) => use(program) })
 test.beforeAll(async () => {
   directory = await mkdtemp(path.join(os.tmpdir(), "merakcode-login-e2e-"))
   program = await buildFakeService(directory)
   before = realLoginItem()
-  previous = process.env.MERAKCODE_SERVICE_PROGRAM
-  // The unpackaged app runs this program for `service install` and `service uninstall` instead of the engine
-  process.env.MERAKCODE_SERVICE_PROGRAM = program
 })
 test.afterAll(async () => {
-  if (previous === undefined) delete process.env.MERAKCODE_SERVICE_PROGRAM
-  else process.env.MERAKCODE_SERVICE_PROGRAM = previous
   await rm(directory, { recursive: true, force: true })
 })
 

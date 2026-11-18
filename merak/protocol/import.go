@@ -1,6 +1,6 @@
 package protocol
 
-import "github.com/TongTong313/merakcode/merak/engine/event"
+import "github.com/TongTong313/merakcode/merak/engine/infra/event"
 
 // ImportProgress is published once for each conversation the migration from an earlier version has dealt with.
 const ImportProgress event.Type = "import.progress"

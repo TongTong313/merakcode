@@ -8,7 +8,7 @@ import { promisify } from "node:util"
 export async function cloudFixture() {
   const root = await mkdtemp(path.join(tmpdir(), "merak-cloud-renderer-"))
   const binary = path.join(root, process.platform === "win32" ? "cloud.exe" : "cloud")
-  await promisify(execFile)("go", ["build", "-o", binary, "./internal/testcloud/testdata/desktop"], {
+  await promisify(execFile)("go", ["build", "-o", binary, "./testkit/testcloud/testdata/desktop"], {
     cwd: path.resolve(import.meta.dirname, "../../../../../merak"),
     windowsHide: true,
   })

@@ -1,14 +1,7 @@
 import { methodSchemas, type Methods } from "./protocol.gen"
 
-/** Methods that need state of the connection (subscriptions, client tools, the greeting) and are written by hand. */
-export const INTERNAL_METHODS = [
-  "hello",
-  "events.subscribe",
-  "events.unsubscribe",
-  "tool.register",
-  "tool.unregister",
-  "tool.result",
-] as const
+/** Methods that need state of the connection (subscriptions and the greeting) and are written by hand. */
+export const INTERNAL_METHODS = ["hello", "events.subscribe", "events.unsubscribe"] as const
 
 type Internal = (typeof INTERNAL_METHODS)[number]
 type Public = Exclude<keyof Methods, Internal>

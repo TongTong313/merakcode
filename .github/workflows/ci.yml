@@ -123,7 +123,6 @@ jobs:
     env:
       CGO_ENABLED: "0"
       MERAKCODE_SANDBOX_REQUIRED: "1"
-      MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,16 +136,22 @@ jobs:
       - name: Initialize Windows sandbox accounts and read access
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
         run: |
           New-Item -ItemType Directory -Force .cache/sandbox-ci | Out-Null
           ./script/sandbox/setup-windows.ps1 -Count 2 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE
           ./script/sandbox/grant-read-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE -InstallDir "$env:GITHUB_WORKSPACE/.cache/sandbox-ci"
       - name: Run kernel isolation and shared consistency tests
         shell: pwsh
+        env:
+          MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
         run: ./script/sandbox/test.ps1
       - name: Reset Windows accounts, profiles, registry, firewall and state
         if: always() && runner.os == 'Windows'
         shell: pwsh
+        env:
+          MERAKCODE_SANDBOX_TEST_STATE: ${{ runner.temp }}/merak-sandbox
         run: |
           if (Test-Path "$env:MERAKCODE_SANDBOX_TEST_STATE/accounts.json") {
             ./script/sandbox/reset-windows.ps1 -StateDir $env:MERAKCODE_SANDBOX_TEST_STATE

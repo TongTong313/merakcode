@@ -1,4 +1,4 @@
-export { connect, type ClientToolDefinition, type ClientToolHandler } from "./client"
+export { connect } from "./client"
 export { connectTerminal, type TerminalConnection } from "./terminal"
 export { watchConversation } from "./watch"
 export { foldSession } from "./fold/session"

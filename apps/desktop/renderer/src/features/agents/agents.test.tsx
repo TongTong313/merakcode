@@ -25,7 +25,7 @@ beforeAll(async () => {
       "build",
       "-o",
       path.join(bin, process.platform === "win32" ? "claude.exe" : "claude"),
-      "./engine/worker/claudecode/testdata/fakeclaude",
+      "./engine/collab/worker/claudecode/testdata/fakeclaude",
     ],
     { cwd: path.resolve(import.meta.dirname, "../../../../../../merak"), windowsHide: true },
   )

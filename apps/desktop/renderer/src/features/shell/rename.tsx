@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from "solid-js"
+import { createEffect, createSignal, on } from "solid-js"
 import { t } from "../../i18n"
 import { renameSession, type SessionSummary } from "../../state/store"
 import { Dialog } from "../../ui/dialog"
@@ -7,7 +7,12 @@ import { toast } from "../../ui/toast"
 /** Renames a conversation */
 export function Rename(props: { session: SessionSummary; open: boolean; onClose: () => void }) {
   const [title, setTitle] = createSignal("")
-  createEffect(() => props.open && setTitle(props.session.title))
+  createEffect(
+    on(
+      () => props.open,
+      (open) => open && setTitle(props.session.title),
+    ),
+  )
   const save = async () => {
     const value = title().trim()
     if (!value) return

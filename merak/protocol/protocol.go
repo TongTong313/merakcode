@@ -3,11 +3,12 @@ package protocol
 
 import (
 	"encoding/json"
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/model"
-	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/session"
-	"github.com/TongTong313/merakcode/merak/internal/platform/config"
+
+	"github.com/TongTong313/merakcode/merak/engine/agent/model"
+	"github.com/TongTong313/merakcode/merak/engine/agent/permission"
+	"github.com/TongTong313/merakcode/merak/engine/agent/session"
+	"github.com/TongTong313/merakcode/merak/engine/infra/config"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 const Version = 1
@@ -32,19 +33,6 @@ type HelloParams struct {
 
 type Capabilities struct {
 	Approve bool `json:"approve,omitempty"`
-}
-
-type PermissionReplyParams struct {
-	Leader   event.ID            `json:"leader,omitempty"`
-	Remember string              `json:"remember,omitempty"`
-	Request  event.ID            `json:"request"`
-	Decision permission.Decision `json:"decision"`
-}
-
-type QuestionReplyParams struct {
-	Request   event.ID `json:"request"`
-	Text      string   `json:"text,omitempty"`
-	Cancelled bool     `json:"cancelled,omitempty"`
 }
 
 type HelloResult struct {
@@ -95,14 +83,6 @@ type SessionCreateParams struct {
 }
 
 type MCPServer = config.MCPServer
-
-type SandboxStatusParams struct {
-	Group   event.ID        `json:"group,omitempty"`
-	Member  event.ID        `json:"member,omitempty"`
-	Session event.ID        `json:"session,omitempty"`
-	Workdir string          `json:"workdir,omitempty"`
-	Mode    permission.Mode `json:"mode,omitempty"`
-}
 
 type SessionCreateResult struct {
 	Session event.ID `json:"session"`

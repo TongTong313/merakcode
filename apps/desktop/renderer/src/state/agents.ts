@@ -1,8 +1,8 @@
 import { createSignal } from "solid-js"
-import type { AgentAgent, WorkerProductInfo } from "@merakcode/sdk"
+import type { DefinitionAgent, WorkerProductInfo } from "@merakcode/sdk"
 import { client } from "./client"
 
-const [agents, setAgents] = createSignal<AgentAgent[]>([])
+const [agents, setAgents] = createSignal<DefinitionAgent[]>([])
 const [catalog, setCatalog] = createSignal<WorkerProductInfo[]>([])
 const [catalogLoaded, setCatalogLoaded] = createSignal(false)
 const [agentsLoaded, setAgentsLoaded] = createSignal(false)
@@ -18,7 +18,7 @@ export async function loadAgents() {
 }
 
 /** The agents a new conversation can be held with: they run an external product and are turned on. */
-export const chatTargets = (list: readonly AgentAgent[]) =>
+export const chatTargets = (list: readonly DefinitionAgent[]) =>
   list.filter(
     (agent) => agent.product && agent.product.kind !== "builtin" && agent.product.kind !== "remote" && !agent.disabled,
   )
@@ -31,7 +31,7 @@ export async function loadCatalog() {
   return found
 }
 
-export async function saveAgent(agent: AgentAgent) {
+export async function saveAgent(agent: DefinitionAgent) {
   const saved = await (await client()).agent.save({ agent })
   await loadAgents()
   return saved

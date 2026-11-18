@@ -130,13 +130,23 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - Bring the v0.3 tools back: `multi_edit`, `docx_read`, `excel_read`, `excel_write`, `web_fetch`, `web_search` and `code_search`; the `tools` section of the configuration switches tools off by name or pattern.
 
-- Let a client offer tools to the models: `tool.register` lists a tool as `client__<name>`, the engine sends `tool.call` to that connection and the client answers with `tool.result`; the tool is asked about by its effect and disappears when the connection closes. The SDK has `client.tool.register`.
+- Remove client-provided tools from the engine, protocol and SDK. Clients no longer register tool handlers or receive tool execution callbacks.
 
 - Read the v0.3 `agent` and `default_agent` keys: `build` overrides the built-in Worker's model, prompt and tools, `general` and `explore` are agents a child can be started as, `title`, `summary`, `compaction` and `memory-extractor` choose the model of those jobs, `plan` is ignored with a warning, and every other name becomes an agent that is listed, can be started as a child and can be the default for new conversations. `small_model` and `memory.model` now take effect too.
 
 - Run tasks on a schedule: the model can create, list and delete scheduled tasks with `schedule_create`, `schedule_list` and `schedule_delete` (five-field cron in the machine's time zone, a built-in `loop` skill explains how). The background engine checks every minute and starts a new conversation titled "定时：…" in the task's folder, then puts a notice in the inbox; runs that fell while the engine was stopped are not made up, and one notice says how many were missed. `schedule.list` and `schedule.delete` and `merak schedule list|delete` manage them.
 
 ### Fixed
+
+- Keep the original file path in cloud tool results, including interleaved calls that reuse an identifier, while retaining file-content filtering.
+- Synchronize live session reads and event updates, and prevent older checkpoints from replacing newer saved state.
+- Drain the terminal's final output before publishing its exit event.
+- Preserve open conversation menus and unfinished rename text during background updates, and show the context usage percentage.
+- Avoid unnecessary credential pattern scans in ordinary text while preserving the existing detection and redaction rules.
+- Return the sandbox-unavailable error for unsupported setup, and avoid waiting for a network capability probe after the namespace has been created.
+- Keep Linux sandbox startup working when an optional read-only path disappears during setup; required device and writable paths still fail normally.
+- Read saved events after the last session snapshot when building a review, so a delayed snapshot does not mix later turns into an earlier turn's review.
+- Reuse the executable lookup within each Windows launch of an ordinary program, while preserving script entry points and explicit paths.
 
 - A review opened full screen stays full screen when the conversation is told about again with the same folder; before, it could close by itself.
 - A group whose Leader kept failing stops until someone writes in it, and what a person writes wakes it again. Groups have no pause or resume command for people; to hold work back, ask the Leader to tell the members.
@@ -334,13 +344,23 @@ MerakCode 所有值得注意的变化都记在这里。格式遵循 [Keep a Chan
 
 - 找回 v0.3 的工具：`multi_edit`、`docx_read`、`excel_read`、`excel_write`、`web_fetch`、`web_search`、`code_search`；配置的 `tools` 段可以按名字或通配符关闭工具。
 
-- 客户端可以给模型提供工具：`tool.register` 把工具列为 `client__<name>`，引擎向该连接发 `tool.call`，客户端用 `tool.result` 回答；工具按其影响类别询问权限，连接断开后消失。SDK 有 `client.tool.register`。
+- 删除引擎、协议和 SDK 中的客户端工具功能。客户端不再注册工具处理函数，也不再接收工具执行回调。
 
 - 读取 v0.3 的 `agent` 和 `default_agent`：`build` 覆盖内置 Worker 的模型、提示词和工具，`general`、`explore` 是子智能体可选的角色，`title`、`summary`、`compaction`、`memory-extractor` 指定这几件内部任务用的模型，`plan` 忽略并告警，其他名字成为智能体，出现在智能体库里、可作为子智能体启动、可作为新对话的默认智能体。`small_model` 和 `memory.model` 现在也会生效。
 
 - 定时任务：模型可以用 `schedule_create`、`schedule_list`、`schedule_delete` 创建、查看和删除定时任务（五段 cron，按本机时区，内置 `loop` 技能说明怎么写）。后台引擎每分钟检查一次，到点在任务的工作空间里新开一个标题为“定时：…”的对话，结束后给收件箱发通知；引擎没运行时错过的时间点不补跑，只发一条说明错过了几次的通知。可以用 `schedule.list`、`schedule.delete` 和 `merak schedule list|delete` 管理。
 
 ### 修复
+
+- 云端工具结果保留原调用的文件路径。相同编号的调用交错时，结果仍对应原调用。文件内容过滤保持。
+- 引擎同步会话读取与事件更新。旧快照不能覆盖已保存的新快照。
+- 终端先保存最后一段输出，再发布退出事件。
+- 桌面更新会话时保留打开的菜单和未完成的改名。桌面显示上下文用量百分比。
+- 引擎减少普通文本的密钥扫描。原检测规则和隐藏规则保持不变。
+- 沙箱不支持初始化时返回对应错误。网络隔离创建成功后，引擎不再等待探测程序退出。
+- Linux 沙箱准备时忽略已消失的可选只读路径。必要设备和可写路径仍保留原错误处理。
+- 审核补读会话快照之后的已保存事件。快照延迟不再使早期回合混入后续回合内容。
+- Windows 启动普通程序时复用本次查找结果。脚本入口和显式路径保留原流程。
 
 - 全屏打开的审阅，在对话被再次通知同一个文件夹时不会自己关闭；以前它可能无故退出全屏。
 - Leader 连续失败的群会停住，有人在群里发言就会重新唤醒它。群不再提供给人用的暂停和恢复命令；要让工作停一停，请让 Leader 通知成员。

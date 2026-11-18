@@ -4,7 +4,7 @@ Monorepo for MerakCode, an AI coding tool built around an Electron desktop app. 
 
 ## Layout
 
-- `merak` — the Go module of the `merak` program (command line, engine and protocol server). It sits at the repository root because it follows Go's layout, not the `apps/` and `packages/` split. `engine/` and `protocol/` are its public packages (the cloud service imports them); `cmd/merak` is the entry; everything else is under `internal/`. The module root package reads the product version from the `package.json` next to it, which only wraps the Go commands for pnpm and turbo.
+- `merak` — the Go module of the `merak` program. `engine/` is the engine in four layers (`infra`, `agent`, `collab`, `feature`); `cli`, `server`, `protocol`, `storage`, `cloudlink`, `migrate`, `diagnose` and `testkit` sit next to it; `cmd/merak` is the entry. There is no `internal/` directory. The module root package reads the product version from the `package.json` next to it, which only wraps the Go commands for pnpm and turbo.
 - `packages/util`, `packages/log` — shared helpers, the error code catalog, logging.
 - `packages/sdk` — the TypeScript SDK; its protocol types are generated from `merak/protocol` (`pnpm generate:protocol`).
 - `apps/desktop/main` — Electron main process.
@@ -14,14 +14,15 @@ Monorepo for MerakCode, an AI coding tool built around an Electron desktop app. 
 
 - Use the Go version named in `merak/go.mod`. Run Go commands inside `merak`, or through its scripts: `pnpm --dir merak test` runs `go test ./...`, `typecheck` runs gofmt and then `go vet ./...` for Linux, macOS and Windows, and `build` builds every release platform into `dist/`.
 - No cgo: everything builds with `CGO_ENABLED=0`, so one machine builds every platform. `go test -race` needs cgo and runs only in CI on Linux.
-- `engine/` and `protocol/` are public packages; every other package is under `internal/`. Go itself rejects import cycles. Dependencies point one way: `cli` → `server`/`protocol` → `engine` → `platform`; `engine.New` is the only place that imports every engine package.
+- Dependencies point one way: `cli` → `server` → `protocol` → `engine`; inside the engine `feature` → `collab` → `agent` → `infra`. Engine code imports nothing of this module outside `engine/` except the module root package. `engine.New` is the only place that imports every engine package. `engine/layers_test.go` enforces this.
 - A package never imports a package above it. When it needs something from above, it defines an interface for what it needs and the package above passes the implementation.
 - Standard library first. Add a module to `go.mod` only for a reason the user agrees with. Provider SDK types never leave the provider's package: the rest of the engine sees only `model.Message` and `model.Part`.
 - Format with gofmt; `pnpm --dir merak typecheck` fails on unformatted files.
 - Tests are table-driven when cases share a shape, use `t.TempDir()` for temporary directories, and test real behavior without mocks: the fake model is a real `model.Provider`, the memory store is a real `store.Store`.
-- The tests of a package sit next to its code. A helper that the tests of several packages share lives in a helper package of its own (for example `engine/store/storetest`), not in a `_test.go` file of another package.
+- The tests of a package sit next to its code. A helper that the tests of several packages share lives in a helper package of its own (for example `testkit/storetest`), not in a `_test.go` file of another package.
+- Whole-engine tests live in `engine/scenario`. Group, task and sandbox scenarios share `scenario/sandbox` to preserve the approved package grouping. Tests that need the server or cloud link live in `server` or `cloudlink`; shared engine helpers live in `testkit/enginetest`.
 - Comments and `t.Run` titles are in English; `check:comments` checks Go files too.
-- Logging goes through `log/slog` configured by `internal/platform/log`; never log keys, tokens, environment values or conversation content. The engine prints no text meant for users: it emits events and `MRK-xxxx` error codes, and the clients render them. The command line has its own `zh`/`en` text table.
+- Logging goes through `log/slog` configured by `storage/logfile`; never log keys, tokens, environment values or conversation content. The engine prints no text meant for users: it emits events and `MRK-xxxx` error codes, and the clients render them. The command line has its own `zh`/`en` text table.
 
 ## Commands
 

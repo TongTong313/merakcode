@@ -1,5 +1,5 @@
 import type * as Monaco from "monaco-editor"
-import type { EngineFileContent as FileContent } from "@merakcode/sdk"
+import type { ProjectFileContent as FileContent } from "@merakcode/sdk"
 import { createStore } from "solid-js/store"
 import { t } from "../../i18n"
 import { client } from "../../state/client"

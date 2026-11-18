@@ -5,7 +5,7 @@ import Plus from "lucide-solid/icons/plus"
 import Trash2 from "lucide-solid/icons/trash"
 import { useSearchParams } from "@solidjs/router"
 import { createSignal, For, onMount, Show } from "solid-js"
-import type { AgentAgent, WorkerProductInfo } from "@merakcode/sdk"
+import type { DefinitionAgent, WorkerProductInfo } from "@merakcode/sdk"
 import { t } from "../../i18n"
 import { agents, catalog, catalogLoaded, deleteAgent, loadAgents, loadCatalog, saveAgent } from "../../state/agents"
 import { client } from "../../state/client"
@@ -19,7 +19,7 @@ import { AgentWizard } from "./wizard"
 
 const failed = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-4001" }), error })
 
-function ProductCard(props: { product: WorkerProductInfo; added?: AgentAgent; onAdd: () => void; busy: boolean }) {
+function ProductCard(props: { product: WorkerProductInfo; added?: DefinitionAgent; onAdd: () => void; busy: boolean }) {
   const status = () =>
     props.product.available
       ? [t("agents.available"), props.product.version, props.product.binary].filter(Boolean).join(" · ")
@@ -49,7 +49,7 @@ function ProductCard(props: { product: WorkerProductInfo; added?: AgentAgent; on
 }
 
 function AgentCard(props: {
-  agent: AgentAgent
+  agent: DefinitionAgent
   onEdit: () => void
   onCopy: () => void
   onDelete: () => void
@@ -162,8 +162,8 @@ function AgentCard(props: {
 /** The agents of this person: products found on this machine to add in one click, and the agents to edit. */
 export function AgentsPage() {
   const [params, setParams] = useSearchParams()
-  const [editing, setEditing] = createSignal<AgentAgent | "new">()
-  const [removing, setRemoving] = createSignal<AgentAgent>()
+  const [editing, setEditing] = createSignal<DefinitionAgent | "new">()
+  const [removing, setRemoving] = createSignal<DefinitionAgent>()
   const [busy, setBusy] = createSignal(false)
   const [checking, setChecking] = createSignal(false)
   const detect = () => {
@@ -267,7 +267,7 @@ export function AgentsPage() {
       </main>
       <AgentWizard
         open={!!editing()}
-        agent={editing() === "new" ? undefined : (editing() as AgentAgent | undefined)}
+        agent={editing() === "new" ? undefined : (editing() as DefinitionAgent | undefined)}
         onClose={() => setEditing(undefined)}
       />
       <Confirm

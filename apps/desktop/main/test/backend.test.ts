@@ -7,6 +7,7 @@ import { promisify } from "node:util"
 import { setTimeout as delay } from "node:timers/promises"
 import { connect } from "@merakcode/sdk"
 import { Backend } from "../src/backend"
+import { testEngineEnv } from "../../../../script/lib/test-engine-env"
 
 let buildDir: string
 let binary: string
@@ -31,7 +32,11 @@ afterAll(async () => {
 function create(home: string) {
   const created = new Backend({
     executable: [binary],
-    env: () => ({ MERAKCODE_HOME: home }),
+    // Backend merges overrides onto process.env. Undefined removes an inherited entry on spawn.
+    env: () => ({
+      ...Object.fromEntries(Object.keys(process.env).map((key) => [key, undefined])),
+      ...testEngineEnv(home),
+    }),
     cwd: home,
     serve: ["--script", path.join(home, "replies.json")],
     log: () => {},
@@ -125,7 +130,7 @@ test("restarts a crashed engine on the same port with a new token", async () => 
 test("attaches to an engine somebody else started and leaves it running", async () => {
   const { created, home } = await backend()
   const child = spawn(binary, ["serve", "--script", path.join(home, "replies.json")], {
-    env: { ...process.env, MERAKCODE_HOME: home },
+    env: testEngineEnv(home),
     windowsHide: true,
     stdio: "ignore",
   })

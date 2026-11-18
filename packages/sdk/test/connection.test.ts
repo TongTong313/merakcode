@@ -1,3 +1,4 @@
+import { testEngineEnv } from "../../../script/lib/test-engine-env"
 import { spawn, execFile } from "node:child_process"
 import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises"
 import { randomBytes } from "node:crypto"
@@ -10,12 +11,10 @@ import { connect, watchConversation, type Conversation, type EngineEvent } from 
 
 it("connects to a real merak serve and receives a completed conversation", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "merakcode-sdk-"))
-  const binary =
-    process.env.MERAKCODE_TEST_BINARY ?? path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
-  if (!process.env.MERAKCODE_TEST_BINARY)
-    await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
-      cwd: path.resolve(import.meta.dirname, "../../../merak"),
-    })
+  const binary = path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
+  await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
+    cwd: path.resolve(import.meta.dirname, "../../../merak"),
+  })
   const script = path.join(home, "replies.json")
   await writeFile(
     script,
@@ -30,7 +29,7 @@ it("connects to a real merak serve and receives a completed conversation", async
     ]),
   )
   const child = spawn(binary, ["serve", "--script", script], {
-    env: { ...process.env, MERAKCODE_HOME: home },
+    env: testEngineEnv(home),
     stdio: "ignore",
     windowsHide: true,
   })
@@ -107,7 +106,7 @@ it("connects to a real merak serve and receives a completed conversation", async
       expect(new TextDecoder().decode(archive)).toContain("versions.json")
       const diagnosticPath = path.join(home, "command-diagnostics.zip")
       await promisify(execFile)(binary, ["diagnose", "--session", created.session, "--out", diagnosticPath], {
-        env: { ...process.env, MERAKCODE_HOME: home },
+        env: testEngineEnv(home),
         windowsHide: true,
       })
       const commandArchive = await readFile(diagnosticPath)

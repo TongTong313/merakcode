@@ -70,7 +70,7 @@ SOFTWARE.
 ## ledongthuc/pdf
 
 - Project: https://github.com/ledongthuc/pdf
-- Used in: Go PDF text extraction, through `merak/internal/platform/pdf`
+- Used in: Go PDF text extraction, through `merak/engine/infra/pdf`
 - License: BSD-3-Clause
 
 ```

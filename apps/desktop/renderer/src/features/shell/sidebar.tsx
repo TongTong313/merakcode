@@ -11,7 +11,7 @@ import Users from "lucide-solid/icons/users"
 import Search from "lucide-solid/icons/search"
 import Settings from "lucide-solid/icons/settings"
 import ArrowUpCircle from "lucide-solid/icons/circle-arrow-up"
-import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { A, useNavigate } from "@solidjs/router"
 import { ago, t } from "../../i18n"
 import { bridge, mac } from "../../lib/bridge"
@@ -249,22 +249,25 @@ function Group(props: {
       <Show when={!props.entries.length}>
         <div class="group-empty subtle">{t("sidebar.empty")}</div>
       </Show>
-      <For each={props.entries}>
-        {(entry) => (
-          <Switch>
-            <Match when={entry.kind === "group" && entry}>
-              {(item) => <GroupLink group={item().group} current={props.group} />}
-            </Match>
-            <Match when={entry.kind === "task" && entry}>
-              {(item) => <TaskLink task={item().task} current={props.task} />}
-            </Match>
-            <Match when={entry.kind === "session" && entry}>
-              {(item) => (
-                <Conversation session={conversationOf(item().id)!} folder={props.folder} current={props.current} />
-              )}
-            </Match>
-          </Switch>
-        )}
+      <For each={props.entries.map((entry) => `${entry.kind}:${entry.id}`)}>
+        {(key) => {
+          const entry = createMemo(() => props.entries.find((entry) => `${entry.kind}:${entry.id}` === key)!)
+          return (
+            <Switch>
+              <Match when={entry().kind === "group" && (entry() as Extract<Entry, { kind: "group" }>)}>
+                {(item) => <GroupLink group={item().group} current={props.group} />}
+              </Match>
+              <Match when={entry().kind === "task" && (entry() as Extract<Entry, { kind: "task" }>)}>
+                {(item) => <TaskLink task={item().task} current={props.task} />}
+              </Match>
+              <Match when={entry().kind === "session" && (entry() as Extract<Entry, { kind: "session" }>)}>
+                {(item) => (
+                  <Conversation session={conversationOf(item().id)!} folder={props.folder} current={props.current} />
+                )}
+              </Match>
+            </Switch>
+          )
+        }}
       </For>
     </section>
   )
@@ -377,11 +380,11 @@ export function Sidebar(props: { directory?: string; current?: string; group?: s
             {t("sidebar.openFolder")}
           </button>
         </Show>
-        <For each={workspaces()}>
-          {(folder) => (
+        <For each={workspaces().map((folder) => folder.directory)}>
+          {(directory) => (
             <Group
-              folder={folder}
-              entries={entries(folder)}
+              folder={{ directory }}
+              entries={entries({ directory })}
               current={props.current}
               route={props.directory}
               group={props.group}

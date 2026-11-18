@@ -29,7 +29,5 @@ it("sends an empty object when a method that takes no required fields is called 
 })
 
 it("keeps the methods that need local state out of the generic table", () => {
-  expect(INTERNAL_METHODS).toEqual(
-    expect.arrayContaining(["hello", "events.subscribe", "events.unsubscribe", "tool.register", "tool.unregister"]),
-  )
+  expect(INTERNAL_METHODS).toEqual(["hello", "events.subscribe", "events.unsubscribe"])
 })

@@ -1,8 +1,8 @@
 package protocol
 
 import (
-	"github.com/TongTong313/merakcode/merak/engine/agent"
-	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/agent/definition"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 type AgentListParams struct {
@@ -15,5 +15,5 @@ type AgentDeleteParams struct {
 }
 
 type AgentSaveParams struct {
-	Agent agent.Agent `json:"agent"`
+	Agent definition.Agent `json:"agent"`
 }

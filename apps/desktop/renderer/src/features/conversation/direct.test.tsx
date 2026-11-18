@@ -5,7 +5,7 @@ import path from "node:path"
 import { Route, Router } from "@solidjs/router"
 import { render } from "solid-js/web"
 import { afterAll, afterEach, beforeAll, expect, test } from "vitest"
-import type { AgentAgent } from "@merakcode/sdk"
+import type { DefinitionAgent } from "@merakcode/sdk"
 import { setLocale, t } from "../../i18n"
 import { saveAgent } from "../../state/agents"
 import { client } from "../../state/client"
@@ -28,7 +28,7 @@ beforeAll(async () => {
       "build",
       "-o",
       path.join(bin, process.platform === "win32" ? "claude.exe" : "claude"),
-      "./engine/worker/claudecode/testdata/fakeclaude",
+      "./engine/collab/worker/claudecode/testdata/fakeclaude",
     ],
     { cwd: path.resolve(import.meta.dirname, "../../../../../../merak"), windowsHide: true },
   )
@@ -54,7 +54,7 @@ afterEach(() => {
   window.history.replaceState({}, "", "/")
 })
 
-const external = (name: string, extra: Partial<AgentAgent> = {}): AgentAgent => ({
+const external = (name: string, extra: Partial<DefinitionAgent> = {}): DefinitionAgent => ({
   id: "",
   name,
   summary: "",

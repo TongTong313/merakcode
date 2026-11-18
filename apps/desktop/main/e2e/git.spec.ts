@@ -150,6 +150,8 @@ test("Git selection and all-file index actions preserve working files and pendin
   await kit.mode(/全面接管|Full takeover/)
   await kit.send("Write a file")
   await expect(kit.text("写好了")).toBeVisible({ timeout: 60_000 })
+  // Wait for the end snapshot before editing files outside the agent's turn.
+  await expect(kit.page.getByRole("button", { name: /^(停止|Stop)$/ })).toHaveCount(0)
   await writeFile(path.join(kit.project, "manual-a.txt"), "manual A\n")
   await writeFile(path.join(kit.project, "manual-b.txt"), "manual B\n")
   await kit.page.getByRole("log").getByRole("button", { name: "审阅" }).click()

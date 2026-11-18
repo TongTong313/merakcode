@@ -1,4 +1,4 @@
-import { EngineEventSchema, type ProtocolRemoteConnection, type ProtocolRemoteMember } from "@merakcode/sdk"
+import { EngineEventSchema, type WireRemoteConnection, type WireRemoteMember } from "@merakcode/sdk"
 import { createResource, createSignal, For, Show } from "solid-js"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
@@ -16,7 +16,7 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
   )
   const [endpoint, setEndpoint] = createSignal("")
   const [token, setToken] = createSignal("")
-  const [remote, setRemote] = createSignal<ProtocolRemoteConnection>()
+  const [remote, setRemote] = createSignal<WireRemoteConnection>()
   const [busy, setBusy] = createSignal(false)
   const [added, setAdded] = createSignal<string[]>([])
   const fail = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-1001" }), error })
@@ -32,7 +32,7 @@ export function RemoteMembers(props: { group: string; onAdded: () => void }) {
       setBusy(false)
     }
   }
-  const add = async (source: ProtocolRemoteMember) => {
+  const add = async (source: WireRemoteMember) => {
     const selected = remote()
     if (!selected) return
     setBusy(true)

@@ -57,25 +57,27 @@ pnpm hooks:install   # 提交前检查暂存文件的格式，提交时检查标
 
 ## 代码是怎么组织的
 
-| 目录                            | 内容                                                                                                                                                     |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `merak`                         | `merak` 程序的 Go 模块（命令行、引擎、协议服务端），按 Go 的布局放在根目录。`engine/`、`protocol/` 是公开包，入口是 `cmd/merak`，其他包在 `internal/` 下 |
-| `packages/util`、`packages/log` | 共用的基础代码、错误码目录、日志                                                                                                                         |
-| `apps/desktop/main`             | 桌面端主进程（Electron）                                                                                                                                 |
-| `apps/desktop/renderer`         | 桌面端界面（SolidJS + Vite，纯 CSS）                                                                                                                     |
+| 目录                            | 内容                                                                                                                                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merak`                         | `merak` 程序的 Go 模块，入口是 `cmd/merak`。`engine/` 含 `infra`、`agent`、`collab`、`feature` 四层。`cli`、`server`、`protocol`、`storage`、`cloudlink`、`migrate`、`diagnose`、`testkit` 与引擎同级。没有 `internal/` 目录 |
+| `packages/util`、`packages/log` | 共用的基础代码、错误码目录、日志                                                                                                                                                                                             |
+| `apps/desktop/main`             | 桌面端主进程（Electron）                                                                                                                                                                                                     |
+| `apps/desktop/renderer`         | 桌面端界面（SolidJS + Vite，纯 CSS）                                                                                                                                                                                         |
 
 ## 测试
 
 - Go 的测试在 `merak` 里用 `go test ./...` 跑，也可以用 `pnpm --dir merak test`。临时目录用 `t.TempDir()`。
 - 测试用 Vitest，每个包在自己的目录里跑：`cd packages/util && pnpm test`；只跑一个文件就把路径加在后面。根目录的 `pnpm test` 不跑任何测试；根目录 `script/` 下的脚本用 `pnpm test:script` 测。
 - 测真实行为，尽量不用 mock。需要临时目录就用测试夹具里的 `tmpdir()`，用完自动清理。
-- 要模型回复的用例用本地的假模型，不要连真的模型服务。
+- 所有测试都用本机模拟服务提供模型回复和模型列表。可选测试和集成测试也遵守此规则。测试禁止读取个人密钥或调用真实模型。测试身份验证时只用无效的测试字符串。
+- Linux 可选测试 `product_integration` 需要独立容器。容器只保留本机网络接口。测试使用空的用户目录。启动外部程序前，测试先核对网络接口。
 - Windows 最多同时执行两个测试文件。
 - 修 Bug 先写一个能复现的失败用例，再改代码。
 
 ## 代码约定
 
-- `merak` 的 Go 代码用 gofmt 格式化，不用 cgo。`engine/`、`protocol/` 之外的包都放在 `internal/` 下。优先用标准库，加 Go 依赖前先说明理由。模型服务商 SDK 的类型不出它自己的包。日志走 `log/slog`，不记密钥和对话内容。引擎不输出给用户看的文字，只发事件和错误码。
+- `merak` 的 Go 代码用 gofmt 格式化，不用 cgo。依赖方向是 `cli` → `server` → `protocol` → `engine`。引擎内的依赖方向是 `feature` → `collab` → `agent` → `infra`。引擎对本模块的引用仅限 `engine/` 内的包和保存版本号的模块根包。`engine/layers_test.go` 检查分层规则。优先用标准库，加 Go 依赖前先说明理由。模型服务商 SDK 的类型不出它自己的包。日志走 `log/slog`，不记密钥和对话内容。引擎不输出给用户看的文字，只发事件和错误码。
+- 完整引擎的场景测试放在 `engine/scenario`。群协作、任务和沙箱测试共用 `scenario/sandbox`。这个目录安排保留已确认的同包范围。依赖服务端的测试放在 `server`。依赖云连接的测试放在 `cloudlink`。共用引擎测试辅助放在 `testkit/enginetest`。
 - TypeScript + ESM，Prettier 格式化（不写分号，每行最长 120 字符）。
 - 输入用 Zod 校验。
 - 多用提前 `return`，少用 `else`；多用 `const`，少用 `let`；函数保持短小。
@@ -217,25 +219,27 @@ All from the repo root:
 
 ## How the code is organized
 
-| Directory                       | What's in it                                                                                                                                                                                                             |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `merak`                         | The Go module of the `merak` program (command line, engine and protocol server), at the root following Go's layout. `engine/` and `protocol/` are public; `cmd/merak` is the entry; everything else is under `internal/` |
-| `packages/util`, `packages/log` | Shared helpers, the error code catalog, logging                                                                                                                                                                          |
-| `apps/desktop/main`             | Desktop main process (Electron)                                                                                                                                                                                          |
-| `apps/desktop/renderer`         | Desktop UI (SolidJS + Vite, plain CSS)                                                                                                                                                                                   |
+| Directory                       | What's in it                                                                                                                                                                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merak`                         | The Go module of the `merak` program; `cmd/merak` is the entry. `engine/` has four layers: `infra`, `agent`, `collab`, `feature`. `cli`, `server`, `protocol`, `storage`, `cloudlink`, `migrate`, `diagnose` and `testkit` sit next to it. There is no `internal/` directory |
+| `packages/util`, `packages/log` | Shared helpers, the error code catalog, logging                                                                                                                                                                                                                              |
+| `apps/desktop/main`             | Desktop main process (Electron)                                                                                                                                                                                                                                              |
+| `apps/desktop/renderer`         | Desktop UI (SolidJS + Vite, plain CSS)                                                                                                                                                                                                                                       |
 
 ## Tests
 
 - Run Go tests inside `merak` with `go test ./...`, or use `pnpm --dir merak test`. Use `t.TempDir()` for temporary directories.
 - Tests use Vitest and run per package: `cd packages/util && pnpm test`; add a file path to run just that file. `pnpm test` at the root runs no tests; the scripts in the root `script/` folder are tested with `pnpm test:script`.
 - Test real behavior and avoid mocks. For temporary directories use the `tmpdir()` fixture; it cleans up after itself.
-- Tests that need model replies use a local fake model, never a real provider.
+- Tests that need model replies or model catalogs use an in-process fixture or a loopback server. This includes optional and integration tests. Never load a personal provider key or call a live model API in a test. Use fixed dummy values when checking authentication.
+- Run the optional Linux `product_integration` test in a clean container with loopback as its only network interface. Give it an empty home and no personal credentials. The test checks the network before starting the external CLI.
 - Windows runs at most two test files at a time.
 - When fixing a bug, write a failing test that reproduces it before changing the code.
 
 ## Conventions
 
-- Go code in `merak` uses gofmt and no cgo. `engine/` and `protocol/` are public; every other package is under `internal/`. Prefer the standard library and explain the reason before adding a Go dependency. Provider SDK types stay inside the provider's package. Log through `log/slog`, without keys or conversation content. The engine emits events and error codes, not text meant for users.
+- Go code in `merak` uses gofmt and no cgo. Dependencies point one way: `cli` → `server` → `protocol` → `engine`; inside the engine `feature` → `collab` → `agent` → `infra`. Engine code imports nothing of this module outside `engine/` except the module root package that holds the version. `engine/layers_test.go` enforces the layering. Prefer the standard library and explain the reason before adding a Go dependency. Provider SDK types stay inside the provider's package. Log through `log/slog`, without keys or conversation content. The engine emits events and error codes, not text meant for users.
+- Whole-engine scenarios live in `engine/scenario`. Group, task and sandbox tests share `scenario/sandbox`, preserving the approved package grouping. Tests that need the server live in `server`; tests that need the cloud link live in `cloudlink`. Shared engine test helpers live in `testkit/enginetest`.
 - TypeScript and ESM, formatted with Prettier (no semicolons, 120 columns).
 - Validate inputs with Zod.
 - Prefer early returns over `else`, `const` over `let`, and short functions.

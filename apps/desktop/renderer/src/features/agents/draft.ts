@@ -1,9 +1,9 @@
-import type { AgentAgent, WorkerProductInfo } from "@merakcode/sdk"
+import type { DefinitionAgent, WorkerProductInfo } from "@merakcode/sdk"
 
 export type EnvRow = { name: string; value: string; saved: boolean }
 
 /** An agent that runs a product found on this machine, ready to be saved as it is. */
-export function productDraft(product: WorkerProductInfo): AgentAgent {
+export function productDraft(product: WorkerProductInfo): DefinitionAgent {
   return {
     id: "",
     name: product.name,
@@ -17,7 +17,7 @@ export function productDraft(product: WorkerProductInfo): AgentAgent {
 }
 
 /** The agent of this machine that already runs a product, if any. */
-export function addedAgent(agents: readonly AgentAgent[], product: WorkerProductInfo) {
+export function addedAgent(agents: readonly DefinitionAgent[], product: WorkerProductInfo) {
   return agents.find((agent) => agent.product?.kind === product.kind)
 }
 
@@ -30,7 +30,7 @@ export function productsFor(products: readonly WorkerProductInfo[]) {
 const LEADING_PRODUCTS = ["claude-code", "codex", "pi"]
 
 /** No agent is a Leader by nature; a group gives the seat. This says whether the engine will accept one for it. */
-export function canLead(agent: AgentAgent) {
+export function canLead(agent: DefinitionAgent) {
   return !agent.product || agent.product.kind === "builtin" || LEADING_PRODUCTS.includes(agent.product.kind)
 }
 

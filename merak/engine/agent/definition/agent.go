@@ -1,0 +1,62 @@
+// Package definition contains what defines an agent: its role, model, tools and the product that runs it.
+package definition
+
+import (
+	"github.com/TongTong313/merakcode/merak/engine/agent/memory"
+	"github.com/TongTong313/merakcode/merak/engine/agent/model"
+	"github.com/TongTong313/merakcode/merak/engine/agent/permission"
+	"github.com/TongTong313/merakcode/merak/engine/agent/session"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
+)
+
+type ModelRef struct {
+	Provider string         `json:"provider"`
+	Model    string         `json:"model"`
+	Thinking model.Thinking `json:"thinking,omitempty"`
+}
+type Product struct {
+	Remote *RemoteSource     `json:"remote,omitempty"`
+	Kind   Kind              `json:"kind"`
+	Binary string            `json:"binary"`
+	Args   []string          `json:"args,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
+	Model  string            `json:"model,omitempty"`
+}
+
+type RemoteSource struct {
+	Connection event.ID `json:"connection"`
+	Group      event.ID `json:"group"`
+	Member     event.ID `json:"member"`
+	Caps       Caps     `json:"caps"`
+}
+type Agent struct {
+	Shared bool `json:"shared,omitempty"`
+	// Disabled turns the agent off: it starts no conversation, continues none and takes no seat in a group.
+	Disabled bool            `json:"disabled,omitempty"`
+	Memory   []memory.Scope  `json:"memory,omitzero"`
+	Budget   Budget          `json:"budget,omitempty"`
+	Network  []string        `json:"network,omitempty"`
+	Mode     permission.Mode `json:"mode,omitempty"`
+	ID       event.ID        `json:"id"`
+	Name     string          `json:"name"`
+	Summary  string          `json:"summary"`
+	Duties   string          `json:"duties"`
+	System   string          `json:"system,omitempty"`
+	Model    ModelRef        `json:"model"`
+	ToolPool string          `json:"toolPool"`
+	Product  *Product        `json:"product,omitempty"`
+	// Tools limits a child started from this agent to these tools; empty means the pool of its kind.
+	Tools []string `json:"tools,omitempty"`
+	// Switches turn tools off or on by name for conversations with this agent; a name may end in *.
+	Switches map[string]bool `json:"switches,omitempty"`
+	// Source is "file" or "config" for an agent that is defined outside the library; it is read-only.
+	Source string `json:"source,omitempty"`
+}
+
+type Budget = session.Budget
+
+// DefaultMerakCode is the agent MerakCode brings itself. No agent is a Leader or a Worker by nature: a group gives
+// the seat, and this one can take either.
+func DefaultMerakCode() Agent {
+	return Agent{Name: "MerakCode", Summary: "Coordinate work as a Leader or implement and verify assigned work as a Worker.", ToolPool: "worker.default", Shared: true}
+}

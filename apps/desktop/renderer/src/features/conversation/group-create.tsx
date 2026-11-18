@@ -1,4 +1,4 @@
-import type { AgentAgent, GroupGroup, GroupListing, GroupMember, ProtocolCloudStatus, TaskCard } from "@merakcode/sdk"
+import type { DefinitionAgent, GroupGroup, GroupListing, GroupMember, WireCloudStatus, TaskCard } from "@merakcode/sdk"
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { locale, t } from "../../i18n"
 import { agents, loadAgents } from "../../state/agents"
@@ -32,7 +32,7 @@ export function GroupCreate(props: {
   const [loading, setLoading] = createSignal(true)
   const [created, setCreated] = createSignal<GroupGroup>()
   const [kind, setKind] = createSignal<"local" | "cloud">("local")
-  const [cloud, setCloud] = createSignal<ProtocolCloudStatus>()
+  const [cloud, setCloud] = createSignal<WireCloudStatus>()
   const [cloudMembers, setCloudMembers] = createSignal<GroupMember[]>([])
   const [sharing, setSharing] = createSignal(false)
   const [listed, setListed] = createSignal<GroupListing[]>([])
@@ -80,7 +80,7 @@ export function GroupCreate(props: {
   )
   // No agent is a Leader or a member by nature: any agent can take either seat, the Leader seat only when it can lead.
   const leaders = createMemo(() => agents().filter((agent) => !agent.disabled && canLead(agent)))
-  const choices = (): AgentAgent[] =>
+  const choices = (): DefinitionAgent[] =>
     kind() === "cloud"
       ? cloudMembers().map((member) => ({
           id: cloudMemberKey(member),

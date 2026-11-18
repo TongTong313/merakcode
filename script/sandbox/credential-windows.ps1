@@ -1,1 +1,1 @@
-. (Join-Path $PSScriptRoot '../../merak/internal/platform/sandbox/scripts/credential-windows.ps1')
+. (Join-Path $PSScriptRoot '../../merak/engine/infra/sandbox/scripts/credential-windows.ps1')

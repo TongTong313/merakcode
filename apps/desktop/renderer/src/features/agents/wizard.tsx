@@ -1,6 +1,6 @@
 import X from "lucide-solid/icons/x"
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
-import type { AgentAgent } from "@merakcode/sdk"
+import type { DefinitionAgent } from "@merakcode/sdk"
 import { t } from "../../i18n"
 import { agents, catalog, saveAgent } from "../../state/agents"
 import { client } from "../../state/client"
@@ -16,7 +16,7 @@ import { envPayload, envProblem, envRows, productsFor, type EnvRow } from "./dra
 const steps = ["product", "connection", "duties", "permissions"] as const
 type Step = (typeof steps)[number]
 
-const blank = (): AgentAgent => ({
+const blank = (): DefinitionAgent => ({
   id: "",
   name: "",
   summary: "",
@@ -29,9 +29,9 @@ const blank = (): AgentAgent => ({
 const failed = (error: unknown) => toast({ kind: "error", title: t("error.request", { message: "MRK-4001" }), error })
 
 /** New or edited agent in four steps: the product, its model or command, its duties, and its permissions. */
-export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose: () => void }) {
+export function AgentWizard(props: { open: boolean; agent?: DefinitionAgent; onClose: () => void }) {
   const [step, setStep] = createSignal<Step>("product")
-  const [draft, setDraft] = createSignal<AgentAgent>(blank())
+  const [draft, setDraft] = createSignal<DefinitionAgent>(blank())
   const [env, setEnv] = createSignal<EnvRow[]>([])
   const [picked, setPicked] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
@@ -60,8 +60,8 @@ export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose:
       { defer: true },
     ),
   )
-  const patch = (change: Partial<AgentAgent>) => setDraft((agent) => ({ ...agent, ...change }))
-  const patchProduct = (change: Partial<NonNullable<AgentAgent["product"]>>) =>
+  const patch = (change: Partial<DefinitionAgent>) => setDraft((agent) => ({ ...agent, ...change }))
+  const patchProduct = (change: Partial<NonNullable<DefinitionAgent["product"]>>) =>
     setDraft((agent) => ({ ...agent, product: { kind: "", binary: "", ...agent.product, ...change } }))
   const setProduct = (value: string) => {
     if (value === "builtin") {
@@ -90,7 +90,7 @@ export function AgentWizard(props: { open: boolean; agent?: AgentAgent; onClose:
     return choice(undefined, "").model
   }
   const problem = () => envProblem(env())
-  const payload = (): AgentAgent => {
+  const payload = (): DefinitionAgent => {
     const agent = draft()
     const base = { ...agent, name: agent.name.trim(), summary: agent.summary.trim() }
     if (!agent.product) return { ...base, product: undefined, network: undefined }

@@ -5,11 +5,14 @@ import { execFileSync } from "node:child_process"
 import type { DesktopBridge } from "../../renderer/src/desktop/bridge-contract"
 import { test, expect, type Kit } from "./fixture"
 
+const approvalButton = (kit: Kit) =>
+  kit.approval().getByRole("button", { name: "允许这一次", exact: true }).and(kit.page.locator("button:not(:disabled)"))
+
 test.beforeEach(async ({ kit }) => {
   await kit.page.addLocatorHandler(
-    kit.approval(),
-    async () => {
-      await kit.approval().getByRole("button", { name: "允许这一次", exact: true }).click()
+    approvalButton(kit),
+    async (button) => {
+      await button.click()
     },
     { noWaitAfter: true },
   )
@@ -83,6 +86,26 @@ const hunk = (kit: Kit, n: number) =>
 let lastFeedback = ""
 let current: Kit
 test.use({ git: true, script: agent(() => current) })
+
+test("review actions do not submit an approval again while its reply is pending", async ({ kit }) => {
+  current = kit
+  await prepare(kit)
+  const rpc = await kit.rpc()
+  const reply = rpc.hold("permission.reply", { times: 1 })
+  try {
+    await kit.send("Update math")
+    await expect(kit.approval()).toBeVisible()
+    await kit.page.getByRole("log").hover()
+    await reply.entered
+    await expect(kit.approval().getByRole("button", { name: "允许这一次", exact: true })).toBeDisabled()
+    await kit.page.getByRole("log").hover()
+    expect(rpc.seen("permission.reply")).toHaveLength(1)
+    reply.release()
+    await expect(kit.text("改好了")).toBeVisible({ timeout: 90_000 })
+  } finally {
+    reply.release()
+  }
+})
 
 test("rejects and accepts hunks with undo, then reviews in full window and returns", async ({ kit }) => {
   current = kit
@@ -963,7 +986,7 @@ test.describe("task worktree review", () => {
       ).toBe(true)
       await review.getByRole("button", { name: "通过", exact: true }).click()
       const reviewURL = kit.page.url()
-      await kit.page.removeLocatorHandler(kit.approval())
+      await kit.page.removeLocatorHandler(approvalButton(kit))
       await kit.page.getByRole("link", { name: "首页", exact: true }).click()
       await kit.page
         .getByRole("article")

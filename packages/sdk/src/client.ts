@@ -24,18 +24,6 @@ const messageSchema = z.object({
   params: z.unknown().optional(),
 })
 
-const ToolCallSchema = z.object({ call: z.string(), name: z.string(), input: z.unknown().optional() })
-
-export type ClientToolDefinition = {
-  name: string
-  description: string
-  schema?: unknown
-  effect?: "read" | "write" | "exec" | "network"
-}
-export type ClientToolHandler = (
-  input: unknown,
-) => Promise<{ text: string; isError?: boolean }> | { text: string; isError?: boolean }
-
 /** Calls that wait on a model service, an external product or a log archive get longer than the default 10 seconds. */
 const CALL_TIMEOUTS: Partial<Record<keyof Methods, number>> = {
   "agent.test": 40000,
@@ -69,7 +57,6 @@ export async function connect(options: {
     : new WebSocket(parsed.endpoint)
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   const listeners = new Map<(event: EngineEvent) => void, EventFilter>()
-  const toolHandlers = new Map<string, ClientToolHandler>()
   let nextID = 0
   let failure: Error | undefined
   const closed = Promise.withResolvers<void>()
@@ -91,10 +78,6 @@ export async function connect(options: {
         for (const [listener, filter] of listeners) {
           if (matches(filter, fact)) listener(fact)
         }
-        return
-      }
-      if (message.method === "tool.call") {
-        void runClientTool(ToolCallSchema.parse(message.params))
         return
       }
       if (typeof message.id !== "number") return
@@ -157,18 +140,6 @@ export async function connect(options: {
     return methodSchemas[method].result.parse(result) as Methods[K]["result"]
   }
 
-  async function runClientTool(request: { call: string; name: string; input?: unknown }) {
-    const handler = toolHandlers.get(request.name)
-    let result: { text: string; isError?: boolean }
-    try {
-      if (!handler) throw new Error("tool is not registered")
-      result = await handler(request.input)
-    } catch (error) {
-      result = { text: error instanceof Error ? error.message : String(error), isError: true }
-    }
-    await call("tool.result", { call: request.call, text: result.text, isError: result.isError }).catch(() => {})
-  }
-
   let hello: Methods["hello"]["result"]
   try {
     hello = await call("hello", {
@@ -209,22 +180,6 @@ export async function connect(options: {
     hello,
     closed: closed.promise,
     ...api,
-    tool: {
-      /** Offers a tool to the models as client__<name>; the handler runs here when a model calls it. */
-      register: async (definition: ClientToolDefinition, handler: ClientToolHandler) => {
-        toolHandlers.set(definition.name, handler)
-        try {
-          await call("tool.register", { ...definition, schema: definition.schema ?? { type: "object" } })
-        } catch (error) {
-          toolHandlers.delete(definition.name)
-          throw error
-        }
-      },
-      unregister: async (name: string) => {
-        await call("tool.unregister", { name })
-        toolHandlers.delete(name)
-      },
-    },
     blob: {
       ...api.blob,
       get: getBlob,

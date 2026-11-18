@@ -1,3 +1,4 @@
+import { testEngineEnv } from "../../../../../script/lib/test-engine-env"
 import { execFile, spawn } from "node:child_process"
 import { mkdtemp, readFile, writeFile, rm, chmod, readdir, mkdir } from "node:fs/promises"
 import { createServer } from "node:http"
@@ -25,10 +26,8 @@ export async function engineFixture(options: { replies?: unknown[] } = {}) {
   const child = spawn(executable, ["serve", "--script", script], {
     cwd: project,
     env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !/_API_KEY$/i.test(name))),
-      MERAKCODE_HOME: root,
+      ...testEngineEnv(root),
       MERAKCODE_DISABLE_AUTOUPDATE: "1",
-      MERAKCODE_DISABLE_CATALOG_FETCH: "1",
       MERAKCODE_DISABLE_LSP_DOWNLOAD: "1",
       MERAKCODE_DISABLE_EXTERNAL_SKILLS: "1",
     },

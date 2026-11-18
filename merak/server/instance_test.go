@@ -1,0 +1,99 @@
+package server_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/TongTong313/merakcode/merak/engine"
+	"github.com/TongTong313/merakcode/merak/protocol"
+	"github.com/TongTong313/merakcode/merak/server"
+	"github.com/TongTong313/merakcode/merak/testkit/enginetest"
+)
+
+func TestInstancePublishesConnectionInfoAndExclusivelyOwnsItsDirectory(t *testing.T) {
+	home := t.TempDir()
+	deps := enginetest.Deps(t)
+	deps.Workdir = home
+	e, err := engine.New(deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := server.Start(e, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := os.Stat(filepath.Join(home, "engine.json")); err != nil {
+		t.Fatalf("shared data layout: %v", err)
+	}
+	info, err := server.ReadInfo(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.PID != os.Getpid() || len(info.Token) < 32 {
+		t.Fatalf("invalid connection metadata")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := protocol.Connect(ctx, info.Endpoint, info.Token, protocol.HelloParams{Protocol: 1, Client: protocol.ClientInfo{Name: "test", Version: "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+	deps2 := enginetest.Deps(t)
+	deps2.Workdir = home
+	other, err := engine.New(deps2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if duplicate, err := server.Start(other, home); err == nil {
+		duplicate.Close()
+		t.Fatal("two engines acquired one directory")
+	}
+	if err := instance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.ReadInfo(home); !os.IsNotExist(err) {
+		t.Fatalf("connection file remained after shutdown: %v", err)
+	}
+	next, err := server.Start(other, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.Close()
+}
+
+func TestInstanceAcceptsAnExplicitListenAddressAndStillRequiresItsToken(t *testing.T) {
+	deps3 := enginetest.Deps(t)
+	deps3.Workdir = t.TempDir()
+	e, err := engine.New(deps3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if instance, err := server.StartListening(e, t.TempDir(), "invalid-address", 0); err == nil {
+		instance.Close()
+		t.Fatal("invalid listen address was accepted")
+	}
+	instance, err := server.StartListening(e, t.TempDir(), "127.0.0.1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	hello := protocol.HelloParams{Protocol: protocol.Version, Client: protocol.ClientInfo{Name: "remote-test"}}
+	if client, err := protocol.Connect(ctx, instance.Info.Endpoint, "wrong-token", hello); err == nil {
+		client.Close()
+		t.Fatal("remote listener accepted an invalid token")
+	}
+	client, err := protocol.Connect(ctx, instance.Info.Endpoint, instance.Info.Token, hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+}

@@ -1,10 +1,13 @@
-import type { AgentAgent, GroupMember } from "@merakcode/sdk"
+import type { DefinitionAgent, GroupMember } from "@merakcode/sdk"
 
 /**
  * A new group's name and workers taken from an existing group: which agents were in it, nothing of what they did.
  * A worker whose agent is gone is left out and named in skipped.
  */
-export function copyGroup(group: { name: string; members: readonly GroupMember[] }, agents: readonly AgentAgent[]) {
+export function copyGroup(
+  group: { name: string; members: readonly GroupMember[] },
+  agents: readonly DefinitionAgent[],
+) {
   const workers: string[] = []
   const skipped: string[] = []
   for (const member of group.members) {

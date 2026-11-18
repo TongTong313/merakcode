@@ -1,3 +1,4 @@
+import { testEngineEnv } from "../../../script/lib/test-engine-env"
 import { execFile, spawn } from "node:child_process"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -9,13 +10,11 @@ import { connect, watchConversation, type Conversation } from "../src/index"
 
 it("lists and deletes a scheduled task that the model created, through the SDK", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "merakcode-sdk-schedule-"))
-  const binary =
-    process.env.MERAKCODE_TEST_BINARY ?? path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
-  if (!process.env.MERAKCODE_TEST_BINARY)
-    await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
-      cwd: path.resolve(import.meta.dirname, "../../../merak"),
-      windowsHide: true,
-    })
+  const binary = path.join(home, process.platform === "win32" ? "merak.exe" : "merak")
+  await promisify(execFile)("go", ["build", "-o", binary, "./cmd/merak"], {
+    cwd: path.resolve(import.meta.dirname, "../../../merak"),
+    windowsHide: true,
+  })
   const script = path.join(home, "replies.json")
   await writeFile(
     script,
@@ -29,7 +28,7 @@ it("lists and deletes a scheduled task that the model created, through the SDK",
     ]),
   )
   const child = spawn(binary, ["serve", "--script", script], {
-    env: { ...process.env, MERAKCODE_HOME: home },
+    env: testEngineEnv(home),
     stdio: "ignore",
     windowsHide: true,
   })

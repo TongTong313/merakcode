@@ -146,7 +146,7 @@ async function main() {
   const files = [
     { file, text },
     { file: path.join(root, "packages/util/src/error-code.ts"), text: catalog.typescript },
-    { file: path.join(root, "merak/internal/platform/errorcode/catalog.gen.go"), text: catalog.go },
+    { file: path.join(root, "merak/engine/infra/errorcode/catalog.gen.go"), text: catalog.go },
   ]
   if (process.argv.includes("--check")) {
     const stale = await checkOutputs(files)

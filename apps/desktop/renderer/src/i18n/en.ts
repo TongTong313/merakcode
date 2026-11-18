@@ -33,6 +33,7 @@ export const en: Record<keyof typeof zh, string> = {
   "usage.title": "Tokens and cost",
   "notify.sentinel": "Task needs attention",
   "context.title": "Context breakdown",
+  "context.used": "Context used {percent}%",
   "context.system": "System prompt",
   "context.tools": "Tool definitions",
   "context.messages": "Messages",

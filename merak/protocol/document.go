@@ -1,8 +1,8 @@
 package protocol
 
 import (
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/group"
+	"github.com/TongTong313/merakcode/merak/engine/collab/group"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 )
 
 type DocReadParams struct {

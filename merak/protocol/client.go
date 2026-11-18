@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/TongTong313/merakcode/merak/engine/event"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
 	"strconv"
 	"sync"
 
-	"github.com/TongTong313/merakcode/merak/internal/platform/websocket"
+	"github.com/TongTong313/merakcode/merak/protocol/websocket"
 )
 
 type Client struct {

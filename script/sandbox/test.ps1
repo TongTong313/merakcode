@@ -8,10 +8,10 @@ $env:CGO_ENABLED = '0'
 $env:MERAKCODE_SANDBOX_REQUIRED = '1'
 $suffix = if ($IsWindows) { '.exe' } else { '' }
 $packages = @(
-    @{ Name = 'sandbox'; Path = './internal/platform/sandbox'; Tests = '.' },
-    @{ Name = 'worker'; Path = './engine/worker'; Tests = 'Test(Windows|SandboxExternalWorker|ExternalWorkersRestore)' },
-    @{ Name = 'tool'; Path = './engine/tool'; Tests = 'TestBash.*(Sandbox|Protect)' },
-    @{ Name = 'engine'; Path = './engine'; Tests = 'Test(Windows|EngineSandbox|EngineBuiltinPreservesProtection|EngineRestoresMemberChanges)' }
+    @{ Name = 'sandbox'; Path = './engine/infra/sandbox'; Tests = '.' },
+    @{ Name = 'worker'; Path = './engine/collab/worker'; Tests = 'Test(Windows|SandboxExternalWorker|ExternalWorkersRestore)' },
+    @{ Name = 'tool'; Path = './engine/agent/tool'; Tests = 'TestBash.*(Sandbox|Protect)' },
+    @{ Name = 'engine'; Path = './engine/scenario/sandbox'; Tests = 'Test(Windows|EngineSandbox|EngineBuiltinPreservesProtection|EngineRestoresMemberChanges)' }
 )
 if ($External) { $packages = @($packages[0]); $packages[0].Tests = '^TestSandboxExternalNetwork$' }
 $tags = if ($External) { 'sandbox_integration,sandbox_external' } else { 'sandbox_integration' }

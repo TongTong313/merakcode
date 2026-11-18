@@ -1,5 +1,6 @@
 import { access, readFile } from "node:fs/promises"
 import path from "node:path"
+import { connect } from "@merakcode/sdk"
 import { test, expect, type Kit } from "./fixture"
 
 // Basic conversation actions: revert to a message (files revert too, and can be restored), edit and resend, retry,
@@ -91,4 +92,29 @@ test("copies a reply, renames the conversation and shows context usage next to t
   await dialog.getByRole("textbox").fill("新名字")
   await dialog.getByRole("button", { name: "保存" }).click()
   await expect(sidebar.getByRole("link", { name: /新名字/ })).toBeVisible()
+})
+
+test("conversation updates preserve an open menu and an unfinished rename", async ({ kit }) => {
+  await kit.send("Keep the menu open")
+  await expect(kit.text("第1次回答：Keep the menu open")).toBeVisible()
+  await expect(kit.page.getByRole("button", { name: /^(停止|Stop)$/ })).toHaveCount(0)
+  const session = new URL(kit.page.url()).pathname.split("/").at(-1)!
+  const engine = await connect(JSON.parse(await readFile(path.join(kit.root, "data", "engine.json"), "utf8")))
+  const sidebar = kit.page.getByRole("navigation", { name: "对话" })
+  try {
+    await sidebar.getByRole("button", { name: "对话操作" }).first().click()
+    await expect(kit.page.getByRole("menuitem", { name: "重命名", exact: true })).toBeVisible()
+    await engine.session.update({ session, mode: "ask" })
+    await expect(kit.modeButton()).toContainText("每次询问")
+    await kit.page.getByRole("menuitem", { name: "重命名", exact: true }).click()
+    const dialog = kit.page.getByRole("dialog", { name: "重命名对话" })
+    await dialog.getByRole("textbox").fill("Unfinished local name")
+    await engine.session.update({ session, mode: "takeover", confirm: true })
+    await expect(kit.page.getByRole("button", { name: /^权限级别 全面接管/, includeHidden: true })).toHaveCount(1)
+    await expect(dialog.getByRole("textbox")).toHaveValue("Unfinished local name")
+    await dialog.getByRole("button", { name: "保存", exact: true }).click()
+    await expect(sidebar.getByRole("link", { name: /Unfinished local name/ })).toBeVisible()
+  } finally {
+    await engine.close()
+  }
 })

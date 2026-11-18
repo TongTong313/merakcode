@@ -1,6 +1,6 @@
 import Plus from "lucide-solid/icons/plus"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
-import type { AgentAgent, GroupMember } from "@merakcode/sdk"
+import type { DefinitionAgent, GroupMember } from "@merakcode/sdk"
 import { t } from "../../i18n"
 import { client } from "../../state/client"
 import { localHuman } from "../../state/groups"
@@ -120,8 +120,8 @@ function AddMember(props: {
     async (open) => (open ? ((await (await client()).agent.list({})) ?? []).filter((agent) => !agent.disabled) : []),
   )
   const [busy, setBusy] = createSignal("")
-  const inGroup = (agent: AgentAgent) => props.members.some((member) => member.agent === agent.id)
-  const add = async (agent: AgentAgent) => {
+  const inGroup = (agent: DefinitionAgent) => props.members.some((member) => member.agent === agent.id)
+  const add = async (agent: DefinitionAgent) => {
     setBusy(agent.id)
     try {
       await (

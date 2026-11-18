@@ -28,6 +28,8 @@ test("renders context segments with readable values and no overlapping cache seg
     host,
   )
   try {
+    expect(host.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe("Context used 70%")
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("Context used 70%")
     expect(host.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("700")
     expect(host.querySelector('[role="meter"]')?.getAttribute("aria-valuemax")).toBe("1000")
     expect(host.querySelectorAll("[data-segment]")).toHaveLength(5)

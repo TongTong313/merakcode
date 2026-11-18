@@ -5,12 +5,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/TongTong313/merakcode/merak/engine/event"
-	"github.com/TongTong313/merakcode/merak/engine/group"
-	"github.com/TongTong313/merakcode/merak/engine/permission"
-	"github.com/TongTong313/merakcode/merak/engine/question"
-	"github.com/TongTong313/merakcode/merak/engine/store"
-	"github.com/TongTong313/merakcode/merak/engine/task"
+	"github.com/TongTong313/merakcode/merak/engine/agent/permission"
+	"github.com/TongTong313/merakcode/merak/engine/agent/question"
+	"github.com/TongTong313/merakcode/merak/engine/collab/group"
+	"github.com/TongTong313/merakcode/merak/engine/collab/task"
+	"github.com/TongTong313/merakcode/merak/engine/infra/event"
+	"github.com/TongTong313/merakcode/merak/engine/infra/store"
 )
 
 type InboxNotice struct {

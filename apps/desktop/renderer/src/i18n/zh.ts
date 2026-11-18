@@ -30,6 +30,7 @@ export const zh = {
   "usage.title": "用量与费用",
   "notify.sentinel": "任务需要处理",
   "context.title": "上下文用量",
+  "context.used": "上下文已用 {percent}%",
   "context.system": "系统提示词",
   "context.tools": "工具定义",
   "context.messages": "消息",

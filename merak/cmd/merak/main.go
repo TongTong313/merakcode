@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/TongTong313/merakcode/merak/internal/cli"
+	"github.com/TongTong313/merakcode/merak/cli"
 )
 
 func main() {
